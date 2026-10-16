@@ -12217,6 +12217,618 @@
           }
         }
       }
+    },
+    "/v1/agent-assignments": {
+      "post": {
+        "operationId": "createAgentAssignment",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [],
+        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
+        "responses": {
+          "200": {
+            "description": "Account-owned assignment or page, no-store/private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAssignmentValue"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentAssignmentCreate"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listAgentAssignments",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "host",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_.-]+$"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
+        "responses": {
+          "200": {
+            "description": "Account-owned assignment or page, no-store/private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAssignmentPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent-assignments/{id}": {
+      "get": {
+        "operationId": "getAgentAssignment",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
+        "responses": {
+          "200": {
+            "description": "Account-owned assignment or page, no-store/private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAssignmentValue"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent-assignments/{id}/commands": {
+      "post": {
+        "operationId": "commandAgentAssignment",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
+        "responses": {
+          "200": {
+            "description": "Account-owned assignment or page, no-store/private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAssignmentValue"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentAssignmentCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent-assignments/{id}/report": {
+      "post": {
+        "operationId": "reportAgentAssignment",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
+        "responses": {
+          "200": {
+            "description": "Account-owned assignment or page, no-store/private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAssignmentValue"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentAssignmentReport"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -12849,6 +13461,7 @@
           },
           "access": {
             "enum": [
+              "host_default",
               "read_only",
               "workspace_write"
             ]
@@ -16021,6 +16634,263 @@
             "text": "Example text."
           }
         ]
+      },
+      "AgentAssignmentSpec": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "agent",
+          "agent_revision",
+          "host",
+          "task"
+        ],
+        "properties": {
+          "agent": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "agent_revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "host": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          },
+          "task": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536,
+            "description": "Nonblank, no NUL, at most 65,536 UTF-8 bytes."
+          }
+        }
+      },
+      "AgentAssignmentCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "spec"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/AgentAssignmentSpec"
+          }
+        }
+      },
+      "AgentAssignmentCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "action"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "action": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "action",
+                  "text"
+                ],
+                "properties": {
+                  "action": {
+                    "const": "follow_up"
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 65536,
+                    "description": "Nonblank, no NUL, at most 65,536 UTF-8 bytes."
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "action"
+                ],
+                "properties": {
+                  "action": {
+                    "enum": [
+                      "stop",
+                      "archive"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "AgentAssignmentReport": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "host",
+          "expected_revision",
+          "state"
+        ],
+        "properties": {
+          "active_command": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "after_seq": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "request_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "host": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "state": {
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "stopped",
+              "unknown"
+            ]
+          },
+          "result": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4096,
+            "description": "At most 4,096 UTF-8 bytes; no NUL."
+          }
+        }
+      },
+      "AgentAssignmentValue": {
+        "type": "object",
+        "required": [
+          "id",
+          "revision",
+          "spec",
+          "definition",
+          "chat",
+          "state",
+          "commands",
+          "result",
+          "archived"
+        ],
+        "properties": {
+          "active_command": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "after_seq": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "spec": {
+            "$ref": "#/components/schemas/AgentAssignmentSpec"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/CustomAgentDefinition"
+          },
+          "chat": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "stopped",
+              "unknown"
+            ]
+          },
+          "commands": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "$ref": "#/components/schemas/AgentAssignmentCommand"
+            }
+          },
+          "result": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4096
+          },
+          "archived": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AgentAssignmentPage": {
+        "type": "object",
+        "required": [
+          "data",
+          "next"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "$ref": "#/components/schemas/AgentAssignmentValue"
+            }
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       }
     }
   }

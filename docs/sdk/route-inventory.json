@@ -3,6 +3,26 @@
   "scope": "Literal web mounts and gateway audience declarations; not a public schema or permission to expose a route. Constants/dynamic mounts remain in owning route tests.",
   "web_literal_mounts": [
     {
+      "path": "/v1/agent-assignments",
+      "source": "crates/openagents-web/src/agent_assignments.rs",
+      "line": 272
+    },
+    {
+      "path": "/v1/agent-assignments/{id}",
+      "source": "crates/openagents-web/src/agent_assignments.rs",
+      "line": 273
+    },
+    {
+      "path": "/v1/agent-assignments/{id}/commands",
+      "source": "crates/openagents-web/src/agent_assignments.rs",
+      "line": 274
+    },
+    {
+      "path": "/v1/agent-assignments/{id}/report",
+      "source": "crates/openagents-web/src/agent_assignments.rs",
+      "line": 275
+    },
+    {
       "path": "/v1/openapi.json",
       "source": "crates/openagents-web/src/agent_ready.rs",
       "line": 108
@@ -30,12 +50,12 @@
     {
       "path": "/v1/agent-definitions",
       "source": "crates/openagents-web/src/custom_agents.rs",
-      "line": 247
+      "line": 255
     },
     {
       "path": "/v1/agent-definitions/{id}",
       "source": "crates/openagents-web/src/custom_agents.rs",
-      "line": 248
+      "line": 256
     },
     {
       "path": "/v1/history",

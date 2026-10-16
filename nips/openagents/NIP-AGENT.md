@@ -1,0 +1,76 @@
+# NIP-AGENT: Saved custom agents
+
+`draft` · `openagents.agent.definition.v1` · no new event kinds
+
+## Scope
+
+A saved agent combines a name, instructions, a runtime ID, an optional model,
+and requested access. It is inert configuration. This profile gives private
+exports a portable payload and exact definition reference. It does not replace
+AP identity, CAP discovery, SESS conversations, WORK ownership, HOST admission,
+CJ execution, POL permissions, or RUN evidence.
+
+The OpenAgents app initially stores account-owned definitions through the
+[SDK API](../../docs/sdk/agents.md). Account identity and a Nostr key are separate:
+an export's signer must be selected explicitly by the reader. An account ID
+is never proof that the signer controls that account.
+
+## Definition payload
+
+The JSON object contains exactly `schema` (`openagents.agent.definition.v1`)
+and `definition`. The definition contains `id` (64 lowercase hexadecimal
+characters), `revision` (positive integer), `spec`, and `deleted` (boolean).
+`spec` contains exactly:
+
+| Field | Contract |
+| --- | --- |
+| `name` | Nonblank, at most 80 UTF-8 bytes, no control characters. |
+| `description` | At most 512 UTF-8 bytes, no control characters. |
+| `instructions` | Nonblank, at most 16,384 UTF-8 bytes, no NUL. |
+| `runtime` | 1–128 ASCII letters, digits, `.`, `_`, `:`, or `-`. An installed implementation ID, never a command or URL. |
+| `model` | Null or 1–256 UTF-8 bytes without control characters. |
+| `access` | `host_default`, `read_only`, or `workspace_write`. A request that the executing host must enforce or refuse. |
+
+An SDK runner uses runtime `sdk` and a model naming an operator-installed
+runner. `host_default` means the host's configured access; it promises no sandbox.
+Definitions cannot add executable paths, credentials, spending, approval, or
+enrollment authority. Unknown fields, schemas, and access values are refused.
+
+## Private carriage and selection
+
+Use the existing private artifact envelope, kind `3188`, NIP-44 v2, and the
+shared [artifact contract](contracts.md). The artifact schema is the payload
+schema above. Its digest covers JCS payload bytes; its size is the exact byte
+length. The signed recipient and mailbox have their existing meanings.
+
+The consumer verifies the original signature, recipient, decryption, artifact
+digest, schema, payload bounds, and an explicitly selected signer, definition
+ID, revision, and digest. A newer revision cannot silently replace an assigned
+revision. A deletion prevents new assignments; it does not erase prior evidence
+or cancel a running session. Sharing the encrypted envelope grants no execution
+rights. Public AP export is a separate deliberate action and is not implemented
+by this profile.
+
+## Work and sessions
+
+An assignment pins the definition revision and selecting account, host, project,
+and conversation. Existing SESS command identities distinguish retry from new
+work. The host checks current account, installed runtime, model, project, and
+access before dispatch. A saved assignment is not proof of execution. Lost
+contact cannot mean completion; uncertain execution must be inspected before
+new work is issued. Stop is an intent until the session reports it stopped.
+Completion is distinct from WORK acceptance and LAB settlement.
+
+The app's HTTP assignment book supplies bounded summaries and durable retry
+identities. The existing coder-sync session owns the transcript and controls.
+There is no second writable session transport in this profile. Remote relay
+execution would require an admitted CAP/CJ role; it is not implied here.
+
+## Implemented roles
+
+`agent-contract` validates the shared payload. `nostr::agent_profile` publishes
+and consumes pinned private artifacts with producer/consumer tests covering
+wrong signers, pins, recipients, and modified bytes. The app's account store and
+local host assignment adapter are separate roles. General Nostr discovery,
+public publication, remote runner enrollment, and paid work are outside this
+implementation. See [the implementation plan](../../docs/custom-agents.md).

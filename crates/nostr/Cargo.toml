@@ -21,6 +21,7 @@ test-invoice = []
 # algorithm RFC 8785 requires. The ordinary `ryu` form disagrees with
 # `JSON.stringify` on published JCS vectors.
 [dependencies]
+agent-contract = { path = "../agent-contract" }
 ryu-js = "1.0.2"
 secp256k1 = { version = "0.31.1", features = ["recovery"] }
 serde = { version = "1.0.229", features = ["derive"] }

@@ -1,5 +1,7 @@
 # OpenAgents protocols
 
+[NIP-AGENT](NIP-AGENT.md) defines private, revisioned custom-agent exports using existing artifact events. It adds no execution authority or new event kinds.
+
 OpenAgents defines general agent infrastructure. Coding agents are the first
 specialization. These specifications describe how agents share capabilities,
 workflows, context, and work across tools, models, and machines, and how they

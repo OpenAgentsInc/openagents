@@ -216,7 +216,10 @@ impl Client {
         token: Option<&str>,
     ) -> Result<T, Error> {
         let response = self.send(method, segments, query, body, token).await?;
-        let limit = if segments.first() == Some(&"agent-definitions") {
+        let limit = if matches!(
+            segments.first().copied(),
+            Some("agent-definitions" | "agent-assignments")
+        ) {
             4 * 1024 * 1024
         } else {
             1024 * 1024
@@ -379,6 +382,8 @@ impl Client {
                 Some("version_conflict") => Some("version_conflict"),
                 Some("idempotency_conflict") => Some("idempotency_conflict"),
                 Some("invalid_agent") => Some("invalid_agent"),
+                Some("assignment_conflict") => Some("assignment_conflict"),
+                Some("invalid_assignment") => Some("invalid_assignment"),
                 Some("quota_exhausted") => Some("quota_exhausted"),
                 _ => None,
             };

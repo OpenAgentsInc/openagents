@@ -11,7 +11,7 @@ pub(crate) fn extend(doc: &mut Value) {
   "description":{"type":"string","maxLength":512,"description":"At most 512 UTF-8 bytes; no control characters."},
   "instructions":{"type":"string","minLength":1,"maxLength":16384,"description":"Nonblank, no NUL; at most 16,384 UTF-8 bytes."},
   "runtime":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9_.:-]+$"},
-  "model":{"type":["string","null"],"minLength":1,"maxLength":256},"access":{"enum":["read_only","workspace_write"]}}});
+  "model":{"type":["string","null"],"minLength":1,"maxLength":256},"access":{"enum":["host_default","read_only","workspace_write"]}}});
     let schemas = json!({
      "CustomAgentSpec":spec,
      "CustomAgentDefinition":{"type":"object","additionalProperties":false,"required":["id","revision","spec","deleted"],"properties":{"id":id,"revision":revision,"spec":r("Spec"),"deleted":{"type":"boolean"}}},

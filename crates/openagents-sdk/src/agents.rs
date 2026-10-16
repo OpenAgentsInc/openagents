@@ -1,71 +1,11 @@
 //! Private, revisioned agent definitions. Saving a definition never starts work.
+pub mod assignments;
+pub mod runner;
 use crate::{CancellationToken, Client, Deployment, Error, Session};
 use reqwest::Method;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-/// Runtime IDs resolve only to implementations installed and authorized by a host.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AgentSpec {
-    pub name: String,
-    pub description: String,
-    pub instructions: String,
-    pub runtime: String,
-    pub model: Option<String>,
-    pub access: Access,
-}
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Access {
-    ReadOnly,
-    WorkspaceWrite,
-}
-
-impl AgentSpec {
-    pub fn validate(&self) -> Result<(), &'static str> {
-        if self.name.trim().is_empty()
-            || self.name.len() > 80
-            || self.name.chars().any(char::is_control)
-        {
-            return Err("Enter a short name.");
-        }
-        if self.description.len() > 512 || self.description.chars().any(char::is_control) {
-            return Err("Enter a shorter description.");
-        }
-        if self.instructions.trim().is_empty()
-            || self.instructions.len() > 16_384
-            || self.instructions.contains('\0')
-        {
-            return Err("Add instructions or shorten the text.");
-        }
-        if self.runtime.is_empty()
-            || self.runtime.len() > 128
-            || !self
-                .runtime
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"-_.:".contains(&b))
-        {
-            return Err("Choose a supported runtime.");
-        }
-        if self
-            .model
-            .as_ref()
-            .is_some_and(|m| m.is_empty() || m.len() > 256 || m.chars().any(char::is_control))
-        {
-            return Err("Choose a supported model.");
-        }
-        Ok(())
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AgentDefinition {
-    pub id: String,
-    pub revision: u64,
-    pub spec: AgentSpec,
-    pub deleted: bool,
-}
+pub use agent_contract::{Access, AgentDefinition, AgentSpec, Profile, valid_id};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateAgent {
@@ -99,12 +39,6 @@ pub struct AgentRequest<T> {
     pub body: T,
 }
 
-pub fn valid_id(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
 pub fn request_id() -> Result<String, Error> {
     let mut bytes = [0_u8; 32];
     getrandom::fill(&mut bytes).map_err(|_| Error::InvalidReference)?;

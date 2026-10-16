@@ -31,7 +31,7 @@ struct Receipt {
     result: AgentDefinition,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum Refusal {
+pub(super) enum Refusal {
     Invalid(&'static str),
     Missing,
     Version,
@@ -39,7 +39,7 @@ enum Refusal {
     Full,
 }
 impl Refusal {
-    fn response(&self) -> Response {
+    pub(super) fn response(&self) -> Response {
         let (status, code, message) = match self {
             Self::Invalid(message) => (StatusCode::BAD_REQUEST, "invalid_agent", *message),
             Self::Missing => (
@@ -216,6 +216,14 @@ async fn load(store: &Store, owner: &str) -> Result<(Book, Option<String>), Erro
             Ok((book, Some(generation)))
         }
     }
+}
+pub(super) async fn definition(
+    store: &Store,
+    owner: &str,
+    id: &str,
+    revision: Option<u64>,
+) -> Result<Result<AgentDefinition, Refusal>, Error> {
+    Ok(load(store, owner).await?.0.get(id, revision))
 }
 async fn mutate(
     store: &Store,
@@ -616,7 +624,13 @@ mod tests {
             crate::cloud::session::CloudSession::load(&config_path).unwrap(),
         ));
         let app = App(Arc::new(crate::Inner { config }));
-        let (base, task) = serve(routes().with_state(app).route("/v1/account", get(auth))).await;
+        let (base, task) = serve(
+            routes()
+                .merge(crate::agent_assignments::routes())
+                .with_state(app)
+                .route("/v1/account", get(auth)),
+        )
+        .await;
         let client = openagents_sdk::Client::new(
             openagents_sdk::Deployment::new(&format!("{base}/v1"), &base).unwrap(),
         )
@@ -658,6 +672,177 @@ mod tests {
             client.agents(&b).unwrap().create(&request, &cancel).await,
             Err(openagents_sdk::Error::WrongAccount)
         ));
+        use openagents_sdk::agents::assignments::{
+            AssignmentAction, AssignmentSpec, AssignmentState,
+        };
+        let assignment_request = agents
+            .assignment_request(AssignmentSpec {
+                agent: saved.id.clone(),
+                agent_revision: 1,
+                host: "fixture-host".into(),
+                project: None,
+                task: "Review fixture".into(),
+            })
+            .unwrap();
+        let assignment = agents.assign(&assignment_request, &cancel).await.unwrap();
+        assert_eq!(
+            assignment,
+            agents.assign(&assignment_request, &cancel).await.unwrap()
+        );
+        assert!(
+            client
+                .agents(&b)
+                .unwrap()
+                .assignments(None, None, &cancel)
+                .await
+                .unwrap()
+                .data
+                .is_empty()
+        );
+        assert!(
+            client
+                .agents(&b)
+                .unwrap()
+                .assignment(&assignment.id, &cancel)
+                .await
+                .is_err()
+        );
+        assert!(
+            client
+                .agents(&b)
+                .unwrap()
+                .assign(&assignment_request, &cancel)
+                .await
+                .is_err()
+        );
+        let report = agents
+            .report_request(
+                "fixture-host".into(),
+                assignment.revision,
+                AssignmentState::Running,
+                None,
+                Some(assignment_request.body.request_id.clone()),
+                10,
+            )
+            .unwrap();
+        let running = agents
+            .report(&assignment.id, &report, &cancel)
+            .await
+            .unwrap();
+        assert_eq!(
+            running,
+            agents
+                .report(&assignment.id, &report, &cancel)
+                .await
+                .unwrap()
+        );
+        let report = agents
+            .report_request(
+                "fixture-host".into(),
+                running.revision,
+                AssignmentState::Completed,
+                Some("Reviewed".into()),
+                running.active_command.clone(),
+                10,
+            )
+            .unwrap();
+        let completed = agents
+            .report(&assignment.id, &report, &cancel)
+            .await
+            .unwrap();
+        assert_eq!(completed.result.as_deref(), Some("Reviewed"));
+        let followup = agents
+            .command_request(AssignmentAction::FollowUp {
+                text: "Check again".into(),
+            })
+            .unwrap();
+        let queued = agents
+            .command(&assignment.id, &followup, &cancel)
+            .await
+            .unwrap();
+        assert_eq!(queued.state, AssignmentState::Queued);
+        assert!(
+            agents
+                .report(&assignment.id, &report, &cancel)
+                .await
+                .is_ok()
+        ); // exact retry does not overwrite newer work
+        assert_eq!(
+            agents
+                .assignment(&assignment.id, &cancel)
+                .await
+                .unwrap()
+                .state,
+            AssignmentState::Queued
+        );
+        let stale = agents
+            .report_request(
+                "fixture-host".into(),
+                completed.revision,
+                AssignmentState::Failed,
+                None,
+                completed.active_command.clone(),
+                10,
+            )
+            .unwrap();
+        assert!(
+            agents
+                .report(&assignment.id, &stale, &cancel)
+                .await
+                .is_err()
+        );
+        let reserve = agents
+            .report_request(
+                "fixture-host".into(),
+                queued.revision,
+                AssignmentState::Running,
+                None,
+                Some(followup.body.request_id),
+                30,
+            )
+            .unwrap();
+        let running = agents
+            .report(&assignment.id, &reserve, &cancel)
+            .await
+            .unwrap();
+        let stop = agents.command_request(AssignmentAction::Stop).unwrap();
+        let stopping = agents
+            .command(&assignment.id, &stop, &cancel)
+            .await
+            .unwrap();
+        let report = agents
+            .report_request(
+                "fixture-host".into(),
+                stopping.revision,
+                AssignmentState::Stopped,
+                None,
+                running.active_command.clone(),
+                30,
+            )
+            .unwrap();
+        let stopped = agents
+            .report(&assignment.id, &report, &cancel)
+            .await
+            .unwrap();
+        let archive = agents.command_request(AssignmentAction::Archive).unwrap();
+        assert!(
+            agents
+                .command(&assignment.id, &archive, &cancel)
+                .await
+                .unwrap()
+                .archived
+        );
+        assert!(
+            agents
+                .assignments(None, None, &cancel)
+                .await
+                .unwrap()
+                .data
+                .is_empty()
+        );
+        let schema = crate::app_openapi::document();
+        let validator=jsonschema::validator_for(&json!({"$ref":"#/components/schemas/AgentAssignmentValue","components":schema["components"]})).unwrap();
+        assert!(validator.is_valid(&json!(stopped)));
         let edit = agents
             .update_request(
                 1,

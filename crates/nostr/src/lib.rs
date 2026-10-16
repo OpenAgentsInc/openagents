@@ -12,6 +12,7 @@
 
 pub mod activity_summary;
 pub mod agent_persona;
+pub mod agent_profile;
 pub mod att;
 pub mod automation;
 pub mod block_lane;
