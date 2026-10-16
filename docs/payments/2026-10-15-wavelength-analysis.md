@@ -373,6 +373,17 @@ attempts to resume a paused wallet before it stops. It creates no invoice,
 payment intent, replacement payment, or faucet request. Window crossing
 and refresh completion remain unmeasured until those records exist.
 
+The October 16 continuation checks the original observer at 19:29 UTC.
+Core, both indexes, and the proxy agree on height **326649**. The observer
+and all three scratch processes are healthy. The same exit has 72 blocks
+left until maturity at 326721, and its 400-sat sweep fee remains an estimate.
+The 20,000-sat refresh target is still live; its planned restart is at
+327067, twelve blocks into the free window. The LDK comparison wallet
+reports 3,597 spendable on-chain sats and a separate 379,062-sat delayed
+channel output that is still unspent. The archive includes the read-only
+audit and its source. The continuation keeps the existing controller and
+payment records in place.
+
 `observer-state.json`, `observer.pid`, and `exit-observation-history.ndjson`
 on the builder identify the running check. The source archive includes
 its controller and the resume, exit, provider, and node helpers. Preserve

@@ -1,7 +1,7 @@
 {
   "issue": 11770,
   "network": "default signet",
-  "observed_at": "2026-10-16T04:00:47.611402+00:00",
+  "observed_at": "2026-10-16T19:29:27.741794+00:00",
   "release": "v0.1.2",
   "release_commit": "903aec7f1bb38475b563a1a7b49e0711e2df20a5",
   "snapshot_commit": "85cfb97905a27c420338c2a5bd688a4a7d2147b1",
@@ -11,11 +11,6 @@
   "omitted_unavailable_results": [
     "snapshot-credit-raw.json",
     "force-exit-funding-started.json",
-    "vtxos-before-force-exit.json",
-    "force-exit-plan-final.json",
-    "force-exit-started.json",
-    "force-exit-request.json",
-    "force-exit-status-initial.json",
     "force-exit-status-checkpoint.json",
     "vtxos-offline-start.json",
     "balance-offline-start.json",
@@ -34,5 +29,17 @@
     "request-hash-21000000-lookup.json"
   ],
   "additional_faucet_request": "HTTP 429; stopped without retries or IP changes",
-  "production_integration": false
+  "production_integration": false,
+  "resume_audit": {
+    "result": "results/resume-audit-2026-10-16T1929Z.json",
+    "source": "source/live-checkpoint.py",
+    "height": 326649,
+    "phase": "waiting_exit",
+    "exit_maturity_height": 326721,
+    "offline_window_start_height": 327055,
+    "offline_resume_height": 327067,
+    "offline_expiry_height": 327559,
+    "processes_changed": false,
+    "new_payment_created": false
+  }
 }
