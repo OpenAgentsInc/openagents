@@ -8,6 +8,7 @@ the [OpenAgents SDK](../sdk/README.md) from outside this repository.
 
 - [plan.md](plan.md): the integration plan. Ownership rules, the public
   contracts it uses, stages D0–D6 and their exit criteria.
+- [Coder on the phone](../mobile/2026-10-15-coder-mobile-from-zeron.md): porting the iOS app to the fork's app, with `coder-sync` (Rust, Google Cloud) replacing Zeron's Cloudflare server.
 - [Zeron research](../research/zeron/README.md): the earlier gap analysis,
   kept as a workflow and test checklist.
 
