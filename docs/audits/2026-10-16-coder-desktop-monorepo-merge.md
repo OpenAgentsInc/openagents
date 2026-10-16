@@ -1,6 +1,6 @@
 # Merging the Coder Desktop fork into the monorepo
 
-Status: assessment, 2026-10-16. Owner request: move all relevant code from
+Status: assessment, 2026-10-16. Time estimates were revised the same day from the measured commit pace of the previous 7 days ([how](#how-these-estimates-were-set)). Owner request: move all relevant code from
 the Zeron fork ([OpenAgentsInc/coder-desktop](https://github.com/OpenAgentsInc/coder-desktop))
 into this repository, accepting a mixed tech stack, and ship the result as
 **the OpenAgents desktop and mobile apps** instead of separate "Coder Desktop"
@@ -17,22 +17,22 @@ Sources: fork `origin/main` `57c13158` (23 commits on top of upstream
 It is feasible and mostly mechanical for the first step, then real product
 work after that:
 
-1. **Import (days).** Bring the fork in with its history as its own Cargo
+1. **Import (hours).** Bring the fork in with its history as its own Cargo
    workspace inside this repository, the way `crates/psionic` and
    `crates/openagents-mobile` already live here. That sidesteps the two hard
    build conflicts (below), the toolchain gap and the fork's build profiles.
    Leave `edge/` (TypeScript) and the marketing sites behind: `coder-sync`
    already replaces the edge (#11842–#11847).
-2. **One identity (about a week).** Rename the apps to OpenAgents on the
+2. **One identity (about a day).** Rename the apps to OpenAgents on the
    existing OpenAgents bundle IDs, migrate local data, and move release
    scripts out of GitHub Actions.
-3. **One app per platform (weeks).** The fork's desktop is the stronger base
+3. **One app per platform (days).** The fork's desktop is the stronger base
    (GPUI, about 330,000 lines with its engine), so OpenAgents desktop
    features (hosted chat, Verse, Gym, pairing, wallet) move into it and the
    current `openagents-desktop` retires after parity. On the phone, the fork's
    iOS app takes over from `bins/openagents-ios` and `bins/coder-ios`
    after it gains Chat, Wallet and Account. Android needs a decision.
-4. **Converge (months, incremental).** Remove duplicate systems (agent
+4. **Converge (one to two weeks, incremental).** Remove duplicate systems (agent
    harness drivers, sync, Markdown/syntax, terminal) and fold the separate
    workspace into the root one once its dependency conflicts are resolved.
 
@@ -207,24 +207,67 @@ hard to reverse. Data migration also needs the Keychain service names
 
 ## Proposed plan
 
-| Step | Work | Estimate (agent-days) | Exit check |
-| --- | --- | --- | --- |
-| 0. Decisions | Upstream policy, sync channel, bundle IDs, Android, directory name | Owner, 1 day | Recorded here and in AGENTS.md |
-| 1. Import | `git subtree add` the fork without `edge/`, the sites and workflows, into one directory (suggested `apps/openagents/`) as its own workspace, with a nested toolchain file; exclude it from the root workspace; switch `coder-account` to the path SDK; AGENTS.md exceptions (GPUI desktop, UIKit iOS) | 1–2 | `cargo build -p zeron`, the fork's tests and `scripts/ios/build-core.sh` pass from the monorepo; the iOS simulator build runs; the monorepo's own checks are unchanged |
-| 2. Retire the fork repo | Move FORK.md, patch notes and the conformance checkpoint (`scripts/coder-sync/conformance.sh` now runs in one tree); archive `coder-desktop` read-only; repoint issue and doc links | 1 | No live references to the fork repo outside history |
-| 3. Release scripts | macOS sign/notarize/package, iOS TestFlight (match `scripts/release/testflight.sh`), Windows and Linux packaging as local scripts; no GitHub workflows | 2–3 | A signed macOS build and a TestFlight validate-only run from the monorepo |
-| 4. OpenAgents identity | `crates/brand` values, icons, data migration, Keychain migration, updater channel, About and licenses | 3–5 | Coder Desktop users and OpenAgents desktop users both land in the new app with their data; dedicated test accounts only |
-| 5. Desktop parity | Hosted chat sending through the SDK; Gym cards; Verse surface; settings | 10–20 | Every row of the OpenAgents desktop table works in the merged app; `openagents-desktop` marked retired |
-| 6. Phone parity | Chat sending, Wallet and Account in `crates/mobile` plus UIKit; release on the chosen bundle | 10–15 | TestFlight build with Chat, Wallet, Account, live sessions |
-| 7. Android | A Kotlin host over `crates/mobile`, or keep the current app | 15–30, or 0 | Owner choice |
-| 8. Converge | One harness layer (fork's `harness` vs `coder-sdk`), one sync path, shared Markdown, syntax and theme; resolve the `links` conflicts and join the root workspace; delete retired apps and crates | Ongoing, 20–40 | No duplicate implementations of the same capability |
+Estimates are wall-clock time at this repository's measured pace (next
+section), with two to four agents working at once where the steps allow it.
 
-Steps 1–4 are about two weeks of focused agent work. They give one
-repository and apps named OpenAgents, with the fork's features and the
-current OpenAgents features side by side until parity. Steps 5–6 are the
-real product cost, about four to seven weeks. Step 8 can run indefinitely
-and should be done crate by crate, whenever upstream tracking for that
-crate is dropped.
+| Step | Work | Estimate | Exit check |
+| --- | --- | --- | --- |
+| 0. Decisions | Upstream policy, sync channel, bundle IDs, Android, directory name | Owner; same day | Recorded here and in AGENTS.md |
+| 1. Import | `git subtree add` the fork without `edge/`, the sites and workflows, into one directory (suggested `apps/openagents/`) as its own workspace, with a nested toolchain file; exclude it from the root workspace; switch `coder-account` to the path SDK; AGENTS.md exceptions (GPUI desktop, UIKit iOS) | 2–4 hours (a cold build of about 900 crates is a large part of it) | `cargo build -p zeron`, the fork's tests and `scripts/ios/build-core.sh` pass from the monorepo; the iOS simulator build runs; the monorepo's own checks are unchanged |
+| 2. Retire the fork repo | Move FORK.md, patch notes and the conformance checkpoint (`scripts/coder-sync/conformance.sh` now runs in one tree); archive `coder-desktop` read-only; repoint issue and doc links | About 1 hour | No live references to the fork repo outside history |
+| 3. Release scripts | macOS sign/notarize/package, iOS TestFlight (match `scripts/release/testflight.sh`), Windows and Linux packaging as local scripts; no GitHub workflows | 3–6 hours, plus owner-held signing steps | A signed macOS build and a TestFlight validate-only run from the monorepo |
+| 4. OpenAgents identity | `crates/brand` values, icons, data migration, Keychain migration, updater channel, About and licenses | 4–8 hours | Coder Desktop users and OpenAgents desktop users both land in the new app with their data; dedicated test accounts only |
+| 5. Desktop parity | Hosted chat sending through the SDK; Gym cards; Verse surface; settings | 1–3 days | Every row of the OpenAgents desktop table works in the merged app; `openagents-desktop` marked retired |
+| 6. Phone parity | Chat sending, Wallet and Account in `crates/mobile` plus UIKit; release on the chosen bundle | 1–2 days (can overlap step 5) | TestFlight build with Chat, Wallet, Account, live sessions |
+| 7. Android | A Kotlin host over `crates/mobile`, or keep the current app | 2–4 days, or none | Owner choice |
+| 8. Converge | One harness layer (fork's `harness` vs `coder-sdk`), one sync path, shared Markdown, syntax and theme; resolve the `links` conflicts and join the root workspace; delete retired apps and crates | 1–2 weeks, in the background, crate by crate | No duplicate implementations of the same capability |
+
+**Steps 1–4 fit in one day.** They give one repository and apps named
+OpenAgents, with the fork's features and the current OpenAgents features
+side by side until parity.
+
+**Steps 5–6 are the real product cost: about 2–4 days.** The largest single
+item is sending hosted chats from the fork's apps through the SDK.
+
+**One app per platform takes about 4–7 working days in total**, without
+Android and convergence. Step 8 runs alongside later work, whenever upstream
+tracking for a crate is dropped.
+
+### How these estimates were set
+
+The first version of this document used "agent-days" (about 2 weeks for
+steps 1–4, and 4–7 weeks for steps 5–6). Measured pace over the 7 days to
+2026-10-16 is far higher:
+
+- **This repository:** about 1,930 commits, 170–310 a day. Leaving out 7
+  very large commits (vendored or deleted trees), they added about
+  1.25 million lines and removed 72,000.
+- **The fork:** 23 commits of ours in 2 days (16,500 lines added, 4,700
+  removed), beside 31 upstream commits in the same week.
+
+Delivered work comparable to these steps:
+
+| Work | Issues | Opened → closed (UTC, 2026-10-16) | Compares to |
+| --- | --- | --- | --- |
+| Fork iOS rename: identity, icon, Zeron services off | #11841 | 04:45 → 05:13 (28 min) | Step 4 |
+| `coder-sync` server: skeleton, chat rooms, registry, device relay, blobs, conformance (8,700 lines) | #11842–#11847 | 04:45 → 08:31 (under 4 h for all six) | Steps 5 and 8 |
+| Desktop SDK sign-in, sidebar, saved-chat reader, end-to-end proof | #11824, #11829–#11832 | 02:13 → 06:57 (under 5 h) | Step 5 |
+| Shared sign-in, desktop-to-phone live sessions, first TestFlight build, saved chats on the phone | #11848–#11851 | 04:46 → 13:59 (about 9 h) | Steps 3 and 6 |
+| CAD Lab hosted on openagents.com | #11653 | 2026-10-15 01:55 → 12:37 (about 11 h) | Step 5 (a feature with a 3D view) |
+
+The whole Coder-for-iPhone epic (#11840) went from issues to a TestFlight
+build in about 9 hours, so the multi-week figures were 5–10 times too high.
+
+**What doesn't speed up with more agents:**
+- owner-held steps: App Store records, signing and notarization
+  credentials, TestFlight review, physical-device checks;
+- cold builds of about 900 crates;
+- local disk space (#11869 stalled below 8 GiB);
+- GPUI parity work, which goes through a few very large files
+  (`crates/ui/src/transcript.rs` is over 15,000 lines). Agents working in
+  parallel there conflict, so that work runs one or two at a time.
+
+The upper ends of the ranges allow for those.
 
 ## Risks
 
