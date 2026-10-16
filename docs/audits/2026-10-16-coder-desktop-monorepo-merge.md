@@ -403,15 +403,13 @@ Decided (2026-10-16):
   and Android; `com.openagents.coder` retires after the move.
 - **Android:** a Kotlin host over the fork's `crates/mobile`.
 
-Still open:
+Also decided (2026-10-16), and recorded in [AGENTS.md](../../AGENTS.md):
 
-1. Keep pulling upstream Zeron for now, and decide per crate later
-   (recommended), or hard fork at import.
-2. Sessions: Loro documents on `coder-sync`, with NIP-HOST grants as the
-   authority and NIP-HOST/REACH as transport. Revise NIP-SESS and NIP-CTRL
-   to match (recommended).
-3. UI rule: Rust Native as the card and sheet layer on all surfaces; GPUI,
-   UIKit and Kotlin for app shells (recommended), written into AGENTS.md.
-4. Directory name for the import (`apps/openagents/` suggested, holding
-   the desktop and mobile apps; the existing `crates/openagents-desktop`
-   and `crates/openagents-mobile` keep their names until retired).
+- **Upstream:** keep pulling Zeron with `git subtree pull`; decide crate by
+  crate later whether to stop.
+- **Sessions:** Loro documents on `coder-sync`, NIP-HOST grants as the
+  authority, NIP-HOST/REACH as transport. NIP-SESS and NIP-CTRL are marked
+  for revision.
+- **UI rule:** Rust Native is the card and sheet layer on every surface;
+  GPUI, UIKit and Kotlin are the app shells.
+- **Directory:** `apps/openagents/`.

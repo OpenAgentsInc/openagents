@@ -7,6 +7,7 @@ repo script and supervised as a child process. Coder's iOS host at `bins/coder-i
 callbacks, as explicitly requested for that surface. Keep its application state,
 domain logic, permissions, and transport in Rust; the implemented observer keeps these in `coder-mobile` and `coder-connect`. Read `crates/rust-native/docs/spec.md` and `docs/coder/rust-native/architecture.md`
 before adding that boundary.
+The OpenAgents desktop and mobile apps at `apps/openagents/` (GPUI, UIKit, and Kotlin shells over Rust) are the named exception described in "One OpenAgents desktop app and one mobile app" below.
 The OpenAgents iOS host at `bins/openagents-ios/host` follows the same thin
 SwiftUI boundary; its application state lives in `crates/openagents-mobile`.
 The OpenAgents Android host at `bins/openagents-android/host` is thin Kotlin
@@ -51,6 +52,55 @@ anything Coder or its server routes touch.
 - Improve 1.0 through what it gets from our servers: the model list, Auto
   routing, decisions, plugins, cloud computers, projects. The policy doc
   lists the opportunities.
+
+## One OpenAgents desktop app and one mobile app (owner, 2026-10-16, binding)
+
+The Coder Desktop fork of Zeron is moving into this repository at
+`apps/openagents/` and becomes **the** OpenAgents desktop app and **the**
+OpenAgents mobile app. Plan, sizes and steps:
+[`docs/audits/2026-10-16-coder-desktop-monorepo-merge.md`](docs/audits/2026-10-16-coder-desktop-monorepo-merge.md).
+
+- **Identity.** Desktop: OpenAgents, `com.openagents.desktop`. Phone: the
+  OpenAgents mobile app, `com.openagents.app` on iOS and Android.
+  `com.openagents.coder` and `com.openagents.coder.desktop` retire after the
+  move. Product identity values live only in `apps/openagents/crates/brand`.
+- **UI layers.** App shells are GPUI on the desktop, UIKit on iOS (the
+  imported app, painting display lists laid out in Rust by
+  `apps/openagents/crates/mobile`), and Kotlin on Android over that same
+  UniFFI core. This is an explicit exception to the thin-host rule above,
+  for these two apps only. **Rust Native stays the card and sheet layer on
+  every surface**: chat, Gym, Lab, wallet and approval cards, sheets and
+  settings forms are Rust Native views rendered by each shell's adapter
+  (a GPUI adapter is to be added). Don't write a card separately for each
+  shell. New phone logic goes into Rust; Swift and Kotlin stay presentation.
+- **Domain crates, not rebuilds.** Nostr, chat jobs, pairing, the wallet,
+  push, Verse, XP, Labs and the SDK are linked into the apps from `crates/`
+  as libraries. Never reimplement them inside the apps.
+- **Sessions.** Live sessions are Loro documents in rooms on `coder-sync`
+  (`crates/coder-sync`). NIP-HOST grants decide which device may join which
+  room, and NIP-HOST/REACH carry the device channel (#11854). NIP-SESS and
+  NIP-CTRL are being revised to describe this; don't build a second session
+  path beside it.
+- **Upstream Zeron.** We keep pulling upstream (`git subtree pull
+  --prefix=apps/openagents https://github.com/zeronsh/zeron.git main`)
+  until we decide crate by crate to stop. Until then, keep the imported
+  tree mergeable:
+  - crates stay `zeron-*`, the binary stays `zeron`, and `ZERON_*`
+    variables keep their names;
+  - don't reformat upstream code (format only the files you change);
+  - put OpenAgents features in our own crates and modules, with one hook in
+    each upstream file;
+  - record each integration in `apps/openagents/docs/downstream-patches.md`.
+- **Builds.** `apps/openagents/` is its own Cargo workspace (its own lock,
+  profiles and `rust-toolchain.toml`, Rust 1.98.1 for GPUI). It is not a
+  member of the root workspace. Its SQLite (`libsqlite3-sys` 0.30) matches
+  Breez; the root's `ldk-node` keeps 0.28. Build from that directory, for
+  example `cargo build -p zeron`. Domain crates linked into it must build in
+  both workspaces, with SQLite behind a feature as `crates/spark-wallet`
+  does.
+- **Not imported:** Zeron's TypeScript `edge/` (replaced by `coder-sync`),
+  its landing sites, and its GitHub workflows. Release steps become local
+  scripts.
 
 ## Never test on the owner's account (owner, 2026-10-14, binding)
 
