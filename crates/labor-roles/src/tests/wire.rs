@@ -197,3 +197,114 @@ fn canonical_wire_references_join_the_role_book_without_rehashing_its_model() {
             .is_err()
     );
 }
+
+#[test]
+fn canonical_participants_persist_before_sending_and_replay_original_signed_records() {
+    let t = terms(1);
+    let mut bytes = Bytes::new();
+    let market = put(
+        &mut bytes,
+        &json!({"v":nostr::market_contracts::RECORD_SCHEMA}),
+    );
+    let order = json!({"market":t.market,"order_id":t.order,"buyer":t.buyer,"provider":t.provider,"order":market,"confirmation":market});
+    let policy = put(
+        &mut bytes,
+        &json!({"v":"openagents.labor-acceptance-policy.v1"}),
+    );
+    let admission = Admission::fixture(
+        order.clone(),
+        policy,
+        BTreeMap::from([("patch".into(), json!({"type":"object"}))]),
+    );
+    let output = put(
+        &mut bytes,
+        &json!({"v":"output.json","patch":"source change"}),
+    );
+    let execution = put(&mut bytes, &json!({"v":"openagents.labor-execution.v1"}));
+    let run = put(&mut bytes, &json!({"v":nostr::run::RECORD_SCHEMA}));
+    let inert = put(
+        &mut bytes,
+        &json!({"v":"inert.text.v1","text":"wire persistence test; no execution assertion"}),
+    );
+    let submission = json!({"v":SUBMISSION_V,"requires":[],"issuer":t.worker,"order":order,"number":0,"previous":null,"rework":null,
+        "executions":[execution],"deliverables":[{"id":"patch","content":output}],"run_evidence":[run],"limitations":inert});
+    let dirs = tempfile::tempdir().unwrap();
+    let mut worker = crate::wire_host::Host::open(
+        dirs.path().join("worker"),
+        secret(WORKER),
+        t.clone(),
+        admission.clone(),
+        NOW,
+    )
+    .unwrap();
+    let mut buyer = crate::wire_host::Host::open(
+        dirs.path().join("buyer"),
+        secret(BUYER),
+        t.clone(),
+        admission.clone(),
+        NOW,
+    )
+    .unwrap();
+    assert!(
+        crate::wire_host::Host::open(
+            dirs.path().join("worker"),
+            secret(WORKER),
+            t.clone(),
+            admission.clone(),
+            NOW
+        )
+        .is_err()
+    );
+    let discarded = worker.issue(&submission, &bytes, NOW + 1).unwrap();
+    let digest = crate::digest_of(&submission).unwrap();
+    assert_eq!(worker.book().entries()[0].digest, digest);
+    drop(discarded);
+    drop(worker);
+    let mut worker = crate::wire_host::Host::open(
+        dirs.path().join("worker"),
+        secret(WORKER),
+        t.clone(),
+        admission.clone(),
+        NOW + 2,
+    )
+    .unwrap();
+    assert_eq!(worker.book().original(&digest), Some(&submission));
+    let resent = worker.issue(&submission, &bytes, NOW + 2).unwrap();
+    assert_eq!(worker.book().entries().len(), 1);
+    let event = resent
+        .iter()
+        .find(|e| e.tag_values("p").next() == Some(key(BUYER).as_str()))
+        .unwrap();
+    assert!(matches!(
+        buyer.receive(event, &bytes, NOW + 2).unwrap(),
+        Applied::New(_)
+    ));
+    assert!(matches!(
+        buyer.receive(event, &bytes, NOW + 2).unwrap(),
+        Applied::Duplicate(_)
+    ));
+    let sub_ref = put(&mut bytes, &submission);
+    let delivery = json!({"v":DELIVERY_V,"requires":[],"issuer":t.buyer,"order":order,"submission":sub_ref,"received_at":NOW+2,"available":true});
+    let outgoing = buyer.issue(&delivery, &bytes, NOW + 3).unwrap();
+    let event = outgoing
+        .iter()
+        .find(|e| e.tag_values("p").next() == Some(key(WORKER).as_str()))
+        .unwrap();
+    worker.receive(event, &bytes, NOW + 3).unwrap();
+    assert_eq!(worker.book().entries().len(), 2);
+    let mut changed = submission;
+    changed["number"] = json!(1);
+    assert!(buyer.issue(&changed, &bytes, NOW + 4).is_err());
+    drop(worker);
+    std::fs::remove_file(dirs.path().join("worker/state.json")).unwrap();
+    assert!(
+        crate::wire_host::Host::open(
+            dirs.path().join("worker"),
+            secret(WORKER),
+            t,
+            admission,
+            NOW + 5
+        )
+        .is_err()
+    );
+}

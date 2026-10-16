@@ -201,16 +201,16 @@ repository. The paid test uses a signed fake BOLT11 and authenticated fake recei
 lookup; it exercises actual local execution and central liability with synthetic
 source and operators.
 
-Run `cargo test --locked -p coder-labor --lib` through the build lease with your
-existing `CARGO_TARGET_DIR`. To include the paid CLI process fixture, first build
-`openagents-cli --bin openagents` through the same lease, then set
+Run `cargo test --locked -p coder-labor --lib -- --test-threads=1` with your existing
+`CARGO_TARGET_DIR`. To include the paid CLI process fixture, first build
+`openagents-cli --bin openagents` with the same target directory, then set
 `CODER_LABOR_CLI` to that binary's absolute path for the library test.
 
 To retain a fresh successful process and relay fixture rather than deleting its
 temporary working directories:
 
 Set `CODER_LABOR_ACCEPTANCE_DIR` to a directory below `openagents scratch`, then
-run the same leased library test. It prints the retained fixture directories.
+run the same library test. It prints the retained fixture directories.
 
 The test generates a synthetic Rust file returning `41`, freezes expected
 bytes returning `42` before dispatch, and grants one exact shell edit. The
@@ -269,15 +269,69 @@ Run `cargo test -p labor-roles`. The fixtures use synthetic keys and
 operators, synthetic deliverable digests, and fake funding receipts; they do
 not run the worker's code (that stays with this crate's task owner path).
 
+## Native execution and bounded rework
+
+`agreement::Agreement` and `rework::Worker` join the four delivery roles to
+actual protected task execution. This is an embedding API; the frozen Coder
+commands keep their existing behavior. An agreement must confirm the original
+signed MKT records before it can open a canonical `labor-roles::wire_host`.
+Each participant has its own key, private directory, signed journal, and
+exclusive writer lock. Wire references retain the hashes of the original
+bodies, including during restart and duplicate delivery.
+
+A target must explicitly implement `coder.labor-context-file.v1` with interface
+`openagents.labor-context-file.v1` and an absolute `meta.context_file` outside
+workspace writes. The worker writes only the admitted context manifest and
+its exact representations there. The task owner's library entry point admits
+that one file read-only under its expected hash; neighboring files remain
+inaccessible. Rework preserves the original input, source snapshot, instructions,
+program, arguments, policy, recipients, logical request, and run. Its new context
+can append the exact buyer review and permitted prior output or execution
+records, within the original rights and retention period. It cannot add a new
+requirement or give a document execution authority.
+
+`Worker::dispatch` requires the buyer's original CJ event, signed execution
+linkage, a separate operator grant, and current authority supplied by the host.
+Attempts have distinct local task identities and consume the finite whole-order
+wall and output allowances; concurrency is one. A prior attempt must have a
+known terminal result and a cleared process group before repair can start.
+Unknown or missing task history never permits another dispatch. The host polls
+current authority and cancellation while the owner runs and drains it before
+returning. Exact retries observe the original task. The environment owner must
+restore the admitted source snapshot between attempts; this worker does not
+reset arbitrary workspaces.
+
+`Worker::submit` collects bounded JSON deliverables from the task owner's
+retained artifacts, saves the submission before transport, and emits actual
+RUN linkage plus an execution receipt containing hashes and outcome facts.
+The receipt excludes task prompts and command arguments. `rework::verify`
+implements the pinned byte-equality checker in Rust under the independent
+reviewer's key: it compares the delivered bytes with the expected hash frozen
+in the original input. Other checker profiles refuse. Passing verification
+supplies neither acceptance nor payment.
+
+Free agreements remain the default. Paid agreements require
+`Agreement::with_central_receive` to bind the receiver separately from the
+provider payee in the signed order. `Worker::record_funding` checks that binding
+and derives the ledger pins from the frozen agreement. Its caller must supply
+an authenticated central receive adapter's observation. Recording a receipt
+performs no wallet operation; acceptance stays uncollected until that separate
+receipt arrives. The existing role book owns disputes, unavailable buyers,
+resolver decisions, cancellation, competing finals, and refunds owed.
+
+`cargo test -p coder-labor -p labor-roles -- --test-threads=1` exercises real local commands over
+synthetic source, one context-driven repair, separately keyed worker, reviewer,
+buyer and resolver journals, exact delivered bytes, failed then passing checks,
+revoked authority, missing task history, wrong grants and receivers, fake funding,
+and retry/restart. These isolated participants are not independently operated
+commercial services.
+
 ## Remaining product work
 
-The free-order experiment from
-[issue #9679](https://github.com/OpenAgentsInc/openagents/issues/9679) and the
-explicit paid lane have scoped local acceptance checks. Their fixtures do not
-demonstrate model coding quality, independent operators, a public relay
-deployment, general checker execution, arbitrary instruction policies,
-or real commercial settlement. Nonzero rework, resolver adjudication and
-independently operated roles are now in `crates/labor-roles` after
-execution; joining them to this crate's execution path (a rework attempt's
-context manifest and fresh dispatch) and to `openagents labor` is next. Real
-funding, payout, and complete costs remain owner qualification steps.
+The supported adapters are bounded local commands producing JSON and the pinned
+byte-equality checker. General checker execution, arbitrary instruction policies,
+model coding quality, independently operated commercial delivery, real funding,
+payout, and complete costs remain separate qualifications. Owner steps are in
+[`NEEDS_OWNER.md`](../../../NEEDS_OWNER.md). Native rework is available through
+the Rust embedding API; exposing it through `openagents labor` waits for the
+next Coder release.

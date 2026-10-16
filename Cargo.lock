@@ -3848,6 +3848,7 @@ dependencies = [
  "coder",
  "coder-boundary",
  "futures-util",
+ "labor-roles",
  "libc",
  "nostr",
  "openagents-wallet",
@@ -9053,6 +9054,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "workspace-host",
 ]
 
 [[package]]

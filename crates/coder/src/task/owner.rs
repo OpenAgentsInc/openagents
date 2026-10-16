@@ -705,7 +705,9 @@ fn real_admission_refused(task: &Task, admission: &Admission) -> bool {
             !matches!(
                 admission.network.as_str(),
                 "external_ip_denied_localhost_allowed" | "network_namespace_isolated"
-            ) || admission.read_scope != "workspace_and_system"
+            ) || !(admission.read_scope == "workspace_and_system"
+                || (admission.grant.adapter_configuration.is_none()
+                    && admission.read_scope == "workspace_system_and_one_hashed_input"))
         }
 }
 
@@ -1051,6 +1053,35 @@ pub(super) fn effect_id_for(task: &Task) -> String {
 /// Execute a single explicitly granted bounded command. The calling process is
 /// the owner, not a client connection. Use the detached CLI to outlive a client.
 pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
+    execute_inner(directory, bytes, None).await
+}
+
+/// Run a command with one additional read-only input. The embedding host must
+/// separately admit the exact input hash and the command's use of that path.
+/// This library entry point is not exposed by the frozen Coder commands.
+pub async fn execute_with_readonly_input(
+    directory: &Path,
+    bytes: &[u8],
+    path: &Path,
+    digest: &str,
+) -> Result<Task, Error> {
+    execute_inner(directory, bytes, Some((path, digest))).await
+}
+fn readonly_input_matches(path: &Path, digest: &str) -> bool {
+    let Ok(file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut limited = std::io::Read::take(file, 2 * 1024 * 1024 + 1);
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut limited, &mut bytes).is_ok()
+        && bytes.len() <= 2 * 1024 * 1024
+        && digest_bytes(&bytes) == digest
+}
+async fn execute_inner(
+    directory: &Path,
+    bytes: &[u8],
+    readonly_input: Option<(&Path, &str)>,
+) -> Result<Task, Error> {
     let grant = Grant::parse(bytes)?;
     if grant.adapter_configuration.is_some() {
         return Err(Error::InvalidCommand(
@@ -1096,6 +1127,24 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
         )
         .await?,
     );
+    let extra = if let Some((path, digest)) = readonly_input {
+        let canonical = path.canonicalize()?;
+        if canonical != path
+            || !canonical.is_file()
+            || canonical.starts_with(&workspace)
+            || canonical.starts_with(&owner.dir)
+            || canonical.starts_with(&git_directory)
+            || std::fs::metadata(&canonical)?.len() > 2 * 1024 * 1024
+            || !readonly_input_matches(&canonical, digest)
+        {
+            return Err(refused(
+                "the granted read-only input changed or has an unsafe path",
+            ));
+        }
+        Some(canonical)
+    } else {
+        None
+    };
     let before = Snapshot::observe(&workspace);
     if !before.is_complete() {
         return Err(refused("the source snapshot is incomplete"));
@@ -1118,6 +1167,9 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
         .sealed(&owner.dir)
         .sealed(&git_directory)
         .offline();
+    if let Some(path) = &extra {
+        spec = spec.readable(path);
+    }
     let boundary = spec.build().map_err(refused)?;
     let context = checks::Context::capture(&task, &workspace, grant.requirements.as_ref())?;
     let admission = Admission {
@@ -1130,7 +1182,12 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
         program_digest: digest_bytes(&std::fs::read(&program)?),
         adapter: "bounded-command".into(),
         network: network_policy().into(),
-        read_scope: "workspace_and_system".into(),
+        read_scope: if extra.is_some() {
+            "workspace_system_and_one_hashed_input"
+        } else {
+            "workspace_and_system"
+        }
+        .into(),
         authority: "local_os_user".into(),
         trace_file: task.trace_file(task.turn()),
         context,
@@ -1168,12 +1225,18 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
             effect_id: effect_id.clone(),
         })?;
         fault("after_intent")?;
-        trace.append(
-            &Step::said(Source::System, "Effect intent persisted before dispatch.")
-                .noting("effect_id", json!(effect_id)),
-        )?;
+        let mut effect = Step::said(Source::System, "Effect intent persisted before dispatch.")
+            .noting("effect_id", json!(effect_id));
+        if let Some((path, digest)) = readonly_input {
+            effect = effect.noting("readonly_input", json!({"path":path,"digest":digest}));
+        }
+        trace.append(&effect)?;
         if Snapshot::observe(&workspace).digest() != before.digest()
             || digest_bytes(&std::fs::read(&program)?) != admission.program_digest
+            || extra
+                .as_ref()
+                .zip(readonly_input)
+                .is_some_and(|(path, (_, digest))| !readonly_input_matches(path, digest))
         {
             return Err(refused(
                 "source or executable changed after admission; recover the unresolved attempt",

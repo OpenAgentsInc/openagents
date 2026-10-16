@@ -170,8 +170,9 @@ replaces historical `39230`/`39231`. Private sharing is the default; public
 publication and HTTPS source hosts require explicit selection.
 MKT/LAB has a bounded free-order host in `crates/coder-labor`, with retained relay
 and process fixtures. Explicit paid fulfillment has fake-fund fixtures;
-independently operated service delivery, general rework/resolver roles, and
-live settlement remain unfinished. CTRL has a bounded local-owner bridge in
+native context-bound repair, retained JSON delivery, independent byte-equality
+checking, and resolver roles now join through `coder-labor` and `labor-roles`.
+Independent commercial operation and live settlement remain owner qualification. CTRL has a bounded local-owner bridge in
 `crates/coder-control`; read
 `docs/coder/runtime/nostr-task-control.md` for its rights, expiry, exact retry,
 and disclosure limits. It does not complete mobile control or a cross-device

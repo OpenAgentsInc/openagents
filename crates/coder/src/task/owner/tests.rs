@@ -1239,3 +1239,51 @@ fn an_owner_waits_out_a_full_disk_and_nothing_else() {
     let gave_up = wait_out_full_disk(std::time::Duration::ZERO, step, || Err::<(), _>(full()));
     assert!(gave_up.is_err_and(|error| storage_full(&error)));
 }
+
+#[tokio::test]
+async fn one_hashed_readonly_input_does_not_expose_its_neighbors_or_allow_writes() {
+    let (root, _workspace, mut grant) = fixture();
+    let external = tempfile::tempdir().unwrap();
+    let context = external.path().join("review.json");
+    let neighbor = external.path().join("secret.txt");
+    std::fs::write(&context, b"approved-review\n").unwrap();
+    std::fs::write(&neighbor, b"private-neighbor\n").unwrap();
+    let context = context.canonicalize().unwrap();
+    grant.arguments=vec!["-c".into(),
+        r#"IFS= read -r line < "$1" || exit 7; printf '%s' "$line"; if printf changed >> "$1"; then exit 8; fi; if IFS= read -r secret < "$2"; then exit 9; fi; exit 0"#.into(),
+        "fixture".into(),context.display().to_string(),neighbor.display().to_string()];
+    let directory = root.path().join("store");
+    let raw = serde_json::to_vec(&grant).unwrap();
+    assert!(
+        execute_with_readonly_input(&directory, &raw, &context, &digest_bytes(b"wrong input"))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        Store::open(&directory)
+            .unwrap()
+            .show("task-one")
+            .unwrap()
+            .status,
+        Status::Queued
+    );
+    let finished = execute_with_readonly_input(
+        &directory,
+        &raw,
+        &context,
+        &digest_bytes(b"approved-review\n"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(finished.execution, Execution::Finished);
+    assert_eq!(std::fs::read(&context).unwrap(), b"approved-review\n");
+    let run = finished.run.unwrap();
+    assert_eq!(run.result.unwrap().exit_code, Some(0));
+    let trace = atif::log::read_whole(&directory.join(run.admission.trace_file))
+        .unwrap()
+        .document()
+        .to_string();
+    assert!(trace.contains("readonly_input"));
+    assert!(trace.contains("approved-review"));
+    assert!(!trace.contains("private-neighbor"));
+}

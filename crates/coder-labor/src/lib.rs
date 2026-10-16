@@ -11,10 +11,12 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 pub mod admission;
+pub mod agreement;
 pub mod book;
 pub mod execution;
 pub mod paid;
 pub mod records;
+pub mod rework;
 pub mod store;
 pub mod transport;
 pub mod work;

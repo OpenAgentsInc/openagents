@@ -9,7 +9,11 @@ The delivery roles after execution (independently operated worker,
 reviewer, buyer and resolver hosts, bounded nonzero rework, resolver
 adjudication, cancellation, an unavailable buyer, rights, and obligations
 funded through `pay-ledger`) are in `crates/labor-roles`, fixture-tested
-with four isolated participants and fake funding. It assigns no new event kinds.
+with four isolated participants and fake funding. `coder-labor` joins the
+confirmed agreement to protected native execution, context-bound repair,
+retained JSON delivery, independent byte-equality checking, and separately bound
+central receive observations. The runtime guide states the supported adapters
+and owner-only commercial qualification. It assigns no new event kinds.
 
 **Name provenance:** OpenAgents already used
 [NIP-LBR v1](https://github.com/OpenAgentsInc/openagents/blob/8f84d05896ef14edee491621bf977ee5315cc8ed/docs/nips/LBR.md)

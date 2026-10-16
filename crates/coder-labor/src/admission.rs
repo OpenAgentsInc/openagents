@@ -44,6 +44,17 @@ impl Admission {
         rights: &Rights,
         capability: Option<&DefinitionRef>,
     ) -> Result<()> {
+        self.check_profile(parties, terms, checker, rights, capability, false)
+    }
+    fn check_profile(
+        &self,
+        parties: &Parties,
+        terms: &LaborTerms,
+        checker: &AcceptancePolicy,
+        rights: &Rights,
+        capability: Option<&DefinitionRef>,
+        repair: bool,
+    ) -> Result<()> {
         let target = parse_definition(&self.target).map_err(|e| e.to_string())?;
         let expected_checker = parse_definition(&self.checker).map_err(|e| e.to_string())?;
         if target != terms.execution.target
@@ -205,9 +216,60 @@ impl Admission {
         }
         // The first operational lane supports no rework. A rework request remains
         // a retained refusal rather than extending a grant or moving a deadline.
-        if terms.max_reworks != 0 {
+        if terms.max_reworks != 0 && !repair {
             return Err("this host does not admit executable rework".into());
         }
+        if repair {
+            use nostr::contracts::{Assurance, Bound};
+            let bounds = &terms.execution.bounds;
+            if bounds.len() != 3
+                || bounds
+                    .iter()
+                    .any(|b| b.assurance != Assurance::Host || b.mechanism != "native-task-owner")
+                || !bounds
+                    .iter()
+                    .any(|b| b.bound == Bound::WallMs && b.ceiling > 0)
+                || !bounds
+                    .iter()
+                    .any(|b| b.bound == Bound::OutputBytes && b.ceiling > 0)
+                || !bounds
+                    .iter()
+                    .any(|b| b.bound == Bound::Concurrency && b.ceiling == 1)
+            {
+                return Err(
+                    "the native target requires supported finite whole-order bounds".into(),
+                );
+            }
+            let body = self.blobs.resolve(&target.artifact)?;
+            if body["binding_contract"]["operation"] != "coder.labor-context-file.v1"
+                || body["binding_contract"]["interface"] != "openagents.labor-context-file.v1"
+                || !body["meta"]["context_file"]
+                    .as_str()
+                    .is_some_and(|p| std::path::Path::new(p).is_absolute())
+            {
+                return Err("the target does not support the native repair context file".into());
+            }
+        }
         Ok(())
+    }
+}
+
+/// Explicit native context-file profile; ordinary admission stays zero-rework.
+pub(crate) struct RepairAdmission<'a>(pub &'a Admission);
+impl ClosureAdmission for RepairAdmission<'_> {
+    fn resolve(&self, r: &ArtifactRef) -> std::result::Result<Vec<u8>, ContractError> {
+        self.0.resolve(r)
+    }
+    fn check(
+        &self,
+        parties: &Parties,
+        terms: &LaborTerms,
+        checker: &AcceptancePolicy,
+        rights: &Rights,
+        capability: Option<&DefinitionRef>,
+    ) -> std::result::Result<(), ContractError> {
+        self.0
+            .check_profile(parties, terms, checker, rights, capability, true)
+            .map_err(contract)
     }
 }

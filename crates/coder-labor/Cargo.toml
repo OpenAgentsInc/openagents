@@ -7,6 +7,8 @@ publish.workspace = true
 description = "A recoverable admitted Nostr buyer-provider labor order."
 
 [dependencies]
+labor-roles = { path = "../labor-roles" }
+workspace-host = { path = "../workspace-host" }
 work-host = { path = "../work-host" }
 coder = { path = "../coder" }
 coder-boundary = { path = "../coder-boundary" }
@@ -24,7 +26,6 @@ tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"]
 futures-util = "0.3"
 
 [dev-dependencies]
-workspace-host = { path = "../workspace-host" }
 tempfile = "3"
 nostr = { path = "../nostr", features = ["test-invoice"] }
 

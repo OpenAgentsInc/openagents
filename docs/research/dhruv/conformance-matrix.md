@@ -115,6 +115,7 @@ records the cloud image, source, synthetic limits, and instance cleanup.
 | Buyer and provider agreement | `coder-labor` | `crates/coder-labor/src/tests.rs::both_roles_confirm_the_exact_order_without_creating_execution` | | Fixture |
 | Execution worker | `coder-labor` | `crates/coder-labor/src/tests.rs::worker_requires_durable_linkage_and_generic_workers_reject_labor_feature` | | Fixture |
 | Unknown execution | `coder-labor` | `crates/coder-labor/src/tests.rs::unknown_execution_cannot_be_delivered_and_dispute_blocks_acceptance` | I | Fixture |
+| Native execution, repair, independent checker and funding | `coder-labor`, `labor-roles` | `crates/coder-labor/src/tests/roundtrip.rs::native_rework_runs_exact_buyer_context_and_independent_checker_before_acceptance` | I, R, D, $ | Real local commands; synthetic source and fake funds |
 | Worker, reviewer, buyer with rework | `labor-roles` | `crates/labor-roles/src/tests.rs::rework_then_acceptance_records_an_obligation_that_only_funding_settles` | I, $ | Fixture |
 | Resolver for an unavailable buyer | `labor-roles` | `crates/labor-roles/src/tests.rs::an_unavailable_buyer_does_not_forfeit_timely_conforming_work` | D | Fixture |
 | Cancellation | `labor-roles` | `crates/labor-roles/src/tests.rs::cancellation_before_during_and_after_delivery` | R | Fixture |

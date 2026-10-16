@@ -21,6 +21,7 @@ pub mod host;
 pub mod records;
 pub mod terms;
 pub mod wire;
+pub mod wire_host;
 
 #[cfg(test)]
 mod tests;

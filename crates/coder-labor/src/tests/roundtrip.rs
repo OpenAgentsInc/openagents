@@ -1875,3 +1875,533 @@ fn each_admitted_attempt_keeps_its_input_and_exact_separate_local_grant() {
         .is_err()
     );
 }
+
+#[tokio::test]
+async fn native_worker_executes_one_admitted_context_bound_task_and_only_observes_retries() {
+    Box::pin(native_role_roundtrip(false, false)).await;
+}
+#[tokio::test]
+async fn native_rework_runs_exact_buyer_context_and_independent_checker_before_acceptance() {
+    Box::pin(native_role_roundtrip(true, false)).await;
+}
+#[tokio::test]
+async fn native_control_revocation_stops_and_drains_the_actual_process_group() {
+    Box::pin(native_role_roundtrip(false, true)).await;
+}
+fn receive_native(
+    publication: &crate::rework::Publication,
+    host: &mut labor_roles::wire_host::Host,
+    secret: &SecretKey,
+    now: u64,
+) {
+    for event in &publication.events {
+        if private_artifact::open(event, secret).is_ok() {
+            host.receive(event, &publication.artifacts, now).unwrap();
+        }
+    }
+}
+async fn native_role_roundtrip(repair: bool, stop: bool) {
+    let directory = tempfile::tempdir().unwrap();
+    let work = repository(
+        directory.path(),
+        "native-worker",
+        "input.json",
+        b"{\"patch\":\"actual local output\"}\n",
+    );
+    let context = directory.path().join("context.json");
+    let task_intent = intent(&work, "produce the exact agreed JSON artifact");
+    let mut grant = make_grant(
+        &task_intent,
+        "labor-native-request-a1",
+        &tool("sh"),
+        vec![
+            "-c".into(),
+            if stop {
+                format!(
+                    "{} 2; {} input.json output.json",
+                    tool("sleep").display(),
+                    tool("cp").display()
+                )
+            } else if repair {
+                format!(
+                    "if {} -q request_rework '{}'; then {} input.json output.json; else printf '%s' '{{\"patch\":\"needs repair\"}}' > output.json; fi",
+                    tool("grep").display(),
+                    context.display(),
+                    tool("cp").display()
+                )
+            } else {
+                format!("{} input.json output.json", tool("cp").display())
+            },
+        ],
+    );
+    grant["write_workspace"] = json!(true);
+    let input = json!({"v":"coder.free-labor.command.v1","requires":[],"intent":task_intent,"source_snapshot":grant["expected_source_snapshot"],
+        "expected_output_digest":nostr::contracts::digest_bytes(b"{\"patch\":\"actual local output\"}\n")});
+    let requirements = json!({"v":"coder.free-labor.requirements.v1","requires":[],"program_digest":nostr::contracts::digest_bytes(&std::fs::read(grant["program"].as_str().unwrap()).unwrap()),
+        "arguments_digest":nostr::contracts::digest_bytes(&jcs(&grant["arguments"]).unwrap()),"write_workspace":true,"wall_seconds":10,"stream_bytes":4096,"memory_bytes":268435456});
+    let mut f = fixture_repair_at(Some((input, requirements)), context.clone());
+    let mut agreement = crate::agreement::Agreement::with_central_receive(
+        f.setup.clone(),
+        f.provider,
+        public(&key(5)),
+    )
+    .unwrap();
+    for event in &f.events {
+        agreement.receive(event, f.now, &f.blobs).unwrap();
+    }
+    let mut worker = crate::rework::Worker::open(
+        directory.path().join("worker"),
+        f.provider,
+        &agreement,
+        f.now,
+    )
+    .unwrap();
+    let order = agreement.order().unwrap();
+    let order = json!({"market":order.market,"order_id":order.order_id,"buyer":order.buyer,"provider":order.provider,"order":artifact_value(&order.order),"confirmation":artifact_value(&order.confirmation)});
+    let body = json!({"v":nostr::execution::SCHEMA,"requires":["openagents.labor-binding.v1"],"type":"execute","request":"native-request","attempt":1,"run":"native-run",
+        "target":f.setup.admission.target,"lock":artifact_value(&agreement.labor().execution.lock),"input":{"artifact":f.setup.admission.input},
+        "context":f.setup.admission.context,"requirements":f.setup.admission.requirements,"bounds":{"wall_ms":10000,"output_bytes":3145728,"jobs":1},
+        "deadline":agreement.market().delivery_due_at,"retain_until":agreement.market().retain_until});
+    let execute = nostr::execution::Seal {
+        signer: &sign(&f.buyer),
+        conversation: nostr::nip44::conversation_key(
+            &f.buyer,
+            &public(&f.provider).parse().unwrap(),
+        ),
+        nonce: [7; 32],
+        created_at: f.now,
+    }
+    .event(
+        nostr::execution::REQUEST_KIND,
+        vec![
+            Tag::new(vec!["p".into(), public(&f.provider)]),
+            Tag::new(vec![
+                "expiration".into(),
+                agreement.market().delivery_due_at.to_string(),
+            ]),
+        ],
+        &body,
+    )
+    .unwrap();
+    let execute_ref = put(&mut f.blobs, body, nostr::execution::SCHEMA);
+    let link = json!({"v":crate::records::LINK,"requires":[],"issuer":public(&f.buyer),"order":order,"request":"native-request","attempt":1,"run":"native-run",
+        "execute":{"id":execute.id,"pubkey":execute.pubkey,"kind":execute.kind},"execute_body":execute_ref,"rework":null,"context":f.setup.admission.context,"previous":null});
+    let link_event = sealed(&link, crate::records::LINK, &f.buyer, &f.provider, f.now);
+    let bytes = f
+        .blobs
+        .0
+        .iter()
+        .map(|(d, v)| (d.clone(), jcs(v).unwrap()))
+        .collect();
+    let grant_raw = serde_json::to_vec(&grant).unwrap();
+    assert!(
+        worker
+            .dispatch(
+                &mut agreement,
+                &link_event,
+                &execute,
+                &bytes,
+                &grant_raw,
+                f.now,
+                &mut |_, _, _| Err("authority revoked".into())
+            )
+            .await
+            .is_err()
+    );
+    assert!(worker.attempts().is_empty());
+    assert!(!context.exists());
+    let mut saw_running = false;
+    let task_directory = directory.path().join("worker/tasks");
+    let mut current_authority = |_: &mut crate::agreement::Agreement,
+                                 _: &mut labor_roles::wire_host::Host,
+                                 _: u64|
+     -> Result<()> {
+        if stop
+            && let Ok(store) = task::Store::open(&task_directory)
+            && let Ok(task) = store.show("labor-native-request-a1")
+            && task.run.as_ref().is_some_and(|r| r.process_id.is_some())
+        {
+            saw_running = true;
+            return Err("authority revoked during execution".into());
+        }
+        Ok(())
+    };
+    let result = worker
+        .dispatch(
+            &mut agreement,
+            &link_event,
+            &execute,
+            &bytes,
+            &grant_raw,
+            f.now,
+            &mut current_authority,
+        )
+        .await
+        .unwrap();
+    if stop {
+        assert!(saw_running);
+        assert_eq!(result.outcome, "stopped");
+        assert!(
+            result
+                .observation
+                .as_ref()
+                .unwrap()
+                .run
+                .as_ref()
+                .unwrap()
+                .result
+                .as_ref()
+                .unwrap()
+                .group_clear
+        );
+        assert!(!work.join("output.json").exists());
+        let paths = BTreeMap::from([("patch".into(), PathBuf::from("output.json"))]);
+        assert!(worker.submit(&agreement, 1, &paths, f.now).is_err());
+        let replay = worker
+            .dispatch(
+                &mut agreement,
+                &link_event,
+                &execute,
+                &bytes,
+                &grant_raw,
+                f.now,
+                &mut |_, _, _| Err("revoked".into()),
+            )
+            .await
+            .unwrap();
+        assert_eq!(replay.outcome, "stopped");
+        assert_eq!(worker.attempts().len(), 1);
+        return;
+    }
+    assert_eq!(
+        result.outcome,
+        "finished",
+        "{}",
+        serde_json::to_string_pretty(&result.observation).unwrap()
+    );
+    if !repair {
+        assert_eq!(
+            std::fs::read(work.join("output.json")).unwrap(),
+            b"{\"patch\":\"actual local output\"}\n"
+        );
+    }
+    let context_body: Value = serde_json::from_slice(&std::fs::read(&context).unwrap()).unwrap();
+    assert!(
+        context_body["representations"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let (terms, wire) = agreement.wire_admission(f.now).unwrap();
+    let mut buyer = labor_roles::wire_host::Host::open(
+        directory.path().join("native-buyer"),
+        f.buyer,
+        terms.clone(),
+        wire.clone(),
+        f.now,
+    )
+    .unwrap();
+    let mut reviewer = labor_roles::wire_host::Host::open(
+        directory.path().join("native-reviewer"),
+        key(4),
+        terms.clone(),
+        wire.clone(),
+        f.now,
+    )
+    .unwrap();
+    let mut resolver = labor_roles::wire_host::Host::open(
+        directory.path().join("native-resolver"),
+        key(3),
+        terms,
+        wire,
+        f.now,
+    )
+    .unwrap();
+    let paths = BTreeMap::from([("patch".into(), PathBuf::from("output.json"))]);
+    let submission = worker.submit(&agreement, 1, &paths, f.now).unwrap();
+    let mut active_submission = reference(&submission.body, records::SUBMISSION).unwrap();
+    let receipt = &submission.artifacts[submission.body["limitations"]["digest"].as_str().unwrap()];
+    assert!(!String::from_utf8_lossy(receipt).contains("arguments"));
+    assert!(!String::from_utf8_lossy(receipt).contains("prompt"));
+    receive_native(&submission, &mut buyer, &f.buyer, f.now);
+    receive_native(&submission, &mut reviewer, &key(4), f.now);
+    receive_native(&submission, &mut resolver, &key(3), f.now);
+    assert!(
+        crate::rework::verify(&agreement, worker.roles_mut(), &active_submission, f.now).is_err()
+    );
+    let check =
+        crate::rework::verify(&agreement, &mut reviewer, &active_submission, f.now).unwrap();
+    assert_eq!(
+        check.body["verdict"],
+        if repair { "failed" } else { "passed" }
+    );
+    receive_native(&check, &mut buyer, &f.buyer, f.now);
+    receive_native(&check, worker.roles_mut(), &f.provider, f.now);
+    receive_native(&check, &mut resolver, &key(3), f.now);
+    assert_eq!(
+        buyer.book().collection(),
+        labor_roles::book::Collection::None
+    );
+    let mut verification = reference(&check.body, records::VERIFICATION).unwrap();
+    if repair {
+        let review = json!({"v":records::REVIEW,"requires":[],"issuer":public(&f.buyer),"order":order,"submission":active_submission,
+            "verification":verification,"decision":"request_rework","criteria":["result"],"reason":check.body["limitations"]});
+        let review_ref = reference(&review, records::REVIEW).unwrap();
+        let events = buyer.issue(&review, &check.artifacts, f.now).unwrap();
+        let review_publication = crate::rework::Publication {
+            body: review.clone(),
+            events,
+            artifacts: buyer.bytes().clone(),
+        };
+        receive_native(&review_publication, worker.roles_mut(), &f.provider, f.now);
+        receive_native(&review_publication, &mut reviewer, &key(4), f.now);
+        receive_native(&review_publication, &mut resolver, &key(3), f.now);
+        let initial = f.blobs.get(&f.setup.admission.context).unwrap();
+        let mut descriptor = json!({"v":"openagents.evidence.v1","requires":[],"content":review_ref,
+            "source":{"kind":"document","identity":agreement.order().unwrap().order_id,"version":review_ref["digest"],"observation":review_ref},
+            "capture":{"complete":true,"omitted_bytes":0},"derived_from":[],"scope":{"task":initial["task"],"recipients":[public(&f.provider)],"classification":"private"}});
+        let evidence_id = nostr::contracts::digest_bytes(&jcs(&descriptor).unwrap());
+        descriptor["id"] = json!(evidence_id);
+        let mut manifest = initial.clone();
+        manifest["entries"] =
+            json!([{"evidence":evidence_id,"representation":review_ref,"mandatory":true}]);
+        let manifest_ref = put(&mut f.blobs, manifest, "openagents.context.v1");
+        put(&mut f.blobs, descriptor, "openagents.evidence.v1");
+        let mut second_body = f.blobs.get(&execute_ref).unwrap().clone();
+        second_body["attempt"] = json!(2);
+        second_body["context"] = manifest_ref.clone();
+        second_body["deadline"] = json!(agreement.labor().rework_due_at.unwrap());
+        let second = nostr::execution::Seal {
+            signer: &sign(&f.buyer),
+            conversation: nostr::nip44::conversation_key(
+                &f.buyer,
+                &public(&f.provider).parse().unwrap(),
+            ),
+            nonce: [8; 32],
+            created_at: f.now,
+        }
+        .event(
+            nostr::execution::REQUEST_KIND,
+            vec![
+                Tag::new(vec!["p".into(), public(&f.provider)]),
+                Tag::new(vec![
+                    "expiration".into(),
+                    agreement.labor().rework_due_at.unwrap().to_string(),
+                ]),
+            ],
+            &second_body,
+        )
+        .unwrap();
+        let second_ref = put(&mut f.blobs, second_body, nostr::execution::SCHEMA);
+        let mut second_link = link.clone();
+        second_link["attempt"] = json!(2);
+        second_link["context"] = manifest_ref;
+        second_link["rework"] = review_ref;
+        second_link["previous"] = result.linkage.clone();
+        second_link["execute"] = json!({"id":second.id,"pubkey":second.pubkey,"kind":second.kind});
+        second_link["execute_body"] = second_ref;
+        let second_link_event = sealed(&second_link, records::LINK, &f.buyer, &f.provider, f.now);
+        let mut next_bytes = worker.roles().bytes().clone();
+        for (d, v) in &f.blobs.0 {
+            next_bytes.insert(d.clone(), jcs(v).unwrap());
+        }
+        let mut next_grant = grant.clone();
+        next_grant["task_id"] = json!("labor-native-request-a2");
+        let next_raw = serde_json::to_vec(&next_grant).unwrap();
+        // Even an approved review cannot change frozen task requirements.
+        assert!(
+            worker
+                .dispatch(
+                    &mut agreement,
+                    &second_link_event,
+                    &second,
+                    &next_bytes,
+                    &grant_raw,
+                    f.now,
+                    &mut |_, _, _| Ok(())
+                )
+                .await
+                .is_err()
+        );
+        // The environment owner resets only this disposable fixture's output,
+        // after the first exact deliverable was retained by its task owner.
+        std::fs::remove_file(work.join("output.json")).unwrap();
+        let tasks_path = directory.path().join("worker/tasks");
+        let hidden_tasks = directory.path().join("interrupted-tasks");
+        std::fs::rename(&tasks_path, &hidden_tasks).unwrap();
+        assert!(
+            worker
+                .dispatch(
+                    &mut agreement,
+                    &second_link_event,
+                    &second,
+                    &next_bytes,
+                    &next_raw,
+                    f.now,
+                    &mut |_, _, _| Ok(())
+                )
+                .await
+                .is_err()
+        );
+        assert_eq!(worker.attempts().len(), 1);
+        std::fs::remove_dir_all(&tasks_path).ok();
+        std::fs::rename(hidden_tasks, tasks_path).unwrap();
+        let second_result = worker
+            .dispatch(
+                &mut agreement,
+                &second_link_event,
+                &second,
+                &next_bytes,
+                &next_raw,
+                f.now,
+                &mut |_, _, _| Ok(()),
+            )
+            .await
+            .unwrap();
+        assert_eq!(second_result.outcome, "finished");
+        assert_ne!(second_result.local_task, result.local_task);
+        assert_eq!(
+            std::fs::read(work.join("output.json")).unwrap(),
+            b"{\"patch\":\"actual local output\"}\n"
+        );
+        let materialized: Value =
+            serde_json::from_slice(&std::fs::read(&context).unwrap()).unwrap();
+        assert_eq!(
+            materialized["representations"][0]["content"]["value"],
+            review
+        );
+        let repaired = worker.submit(&agreement, 2, &paths, f.now).unwrap();
+        let refs = repaired.body["run_evidence"].as_array().unwrap();
+        assert_eq!(refs.len(), 7);
+        let mut run_journal = nostr::run::Journal::default();
+        for reference in refs {
+            let value: Value =
+                serde_json::from_slice(&repaired.artifacts[reference["digest"].as_str().unwrap()])
+                    .unwrap();
+            let record = nostr::run::parse_envelope(&value).unwrap();
+            assert_eq!(record.run, "native-run");
+            assert_eq!(
+                nostr::run::ingest(&mut run_journal, record, &public(&f.provider)).unwrap(),
+                nostr::run::Ingest::Applied
+            );
+        }
+        assert!(!run_journal.conflict);
+
+        receive_native(&repaired, &mut buyer, &f.buyer, f.now);
+        receive_native(&repaired, &mut reviewer, &key(4), f.now);
+        receive_native(&repaired, &mut resolver, &key(3), f.now);
+        active_submission = reference(&repaired.body, records::SUBMISSION).unwrap();
+        let checked =
+            crate::rework::verify(&agreement, &mut reviewer, &active_submission, f.now).unwrap();
+        assert_eq!(checked.body["verdict"], "passed");
+        receive_native(&checked, &mut buyer, &f.buyer, f.now);
+        receive_native(&checked, worker.roles_mut(), &f.provider, f.now);
+        receive_native(&checked, &mut resolver, &key(3), f.now);
+        verification = reference(&checked.body, records::VERIFICATION).unwrap();
+        assert_eq!(
+            buyer.book().collection(),
+            labor_roles::book::Collection::None
+        );
+    }
+    let delivery = json!({"v":records::DELIVERY,"requires":[],"issuer":public(&f.buyer),"order":order,"submission":active_submission,"received_at":f.now,"available":true});
+    let events = buyer
+        .issue(&delivery, &buyer.bytes().clone(), f.now)
+        .unwrap();
+    let delivered = crate::rework::Publication {
+        body: delivery,
+        events,
+        artifacts: buyer.bytes().clone(),
+    };
+    receive_native(&delivered, worker.roles_mut(), &f.provider, f.now);
+    receive_native(&delivered, &mut resolver, &key(3), f.now);
+    let reason = check.body["limitations"].clone();
+    let review = json!({"v":records::REVIEW,"requires":[],"issuer":public(&f.buyer),"order":order,"submission":active_submission,"verification":verification,
+        "decision":"accept","criteria":[],"reason":reason});
+    let events = buyer.issue(&review, &buyer.bytes().clone(), f.now).unwrap();
+    let reviewed = crate::rework::Publication {
+        body: review.clone(),
+        events,
+        artifacts: buyer.bytes().clone(),
+    };
+    receive_native(&reviewed, worker.roles_mut(), &f.provider, f.now);
+    receive_native(&reviewed, &mut resolver, &key(3), f.now);
+    let acceptance = json!({"v":records::ACCEPTANCE,"requires":[],"issuer":public(&f.buyer),"order":order,"submission":active_submission,"verification":verification,
+        "outcome":"accepted","basis":"buyer_acceptance","review":reference(&review,records::REVIEW).unwrap(),"resolution":null,
+        "amount_due_msat":agreement.market().price_msat,"supersedes":[],"evidence":[reason]});
+    let events = buyer
+        .issue(&acceptance, &buyer.bytes().clone(), f.now)
+        .unwrap();
+    let accepted = crate::rework::Publication {
+        body: acceptance,
+        events,
+        artifacts: buyer.bytes().clone(),
+    };
+    receive_native(&accepted, worker.roles_mut(), &f.provider, f.now);
+    receive_native(&accepted, &mut resolver, &key(3), f.now);
+    assert!(matches!(
+        worker.roles().book().collection(),
+        labor_roles::book::Collection::Unknown { .. }
+    ));
+    assert_eq!(
+        resolver.book().final_state(),
+        worker.roles().book().final_state()
+    );
+    let mut ledger =
+        pay_ledger::Ledger::open(directory.path().join("native-funding.sqlite")).unwrap();
+    let funding = pay_ledger::markets::worker::FundingReceipt {
+        payment_hash: "8b".repeat(32),
+        received_msat: agreement.market().price_msat as i64,
+        platform_fee_msat: 0,
+        received_at: f.now as i64,
+    };
+    assert!(
+        worker
+            .record_funding(&agreement, &public(&key(6)), &mut ledger, &funding)
+            .is_err()
+    );
+    let funded = worker
+        .record_funding(&agreement, &public(&key(5)), &mut ledger, &funding)
+        .unwrap();
+    let duplicate = worker
+        .record_funding(&agreement, &public(&key(5)), &mut ledger, &funding)
+        .unwrap();
+    assert_eq!(funded.key, duplicate.key);
+    assert!(matches!(
+        worker.roles().book().collection(),
+        labor_roles::book::Collection::Funded { .. }
+    ));
+    // A saved collection survives mutable workspace deletion and transport loss.
+    std::fs::remove_file(work.join("output.json")).unwrap();
+    assert_eq!(
+        worker.submit(&agreement, 1, &paths, f.now).unwrap().body,
+        submission.body
+    );
+    let replay = worker
+        .dispatch(
+            &mut agreement,
+            &link_event,
+            &execute,
+            &bytes,
+            &grant_raw,
+            f.now,
+            &mut |_, _, _| Ok(()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(replay.local_task, result.local_task);
+    assert!(!work.join("output.json").exists());
+    drop(worker);
+    let mut worker = crate::rework::Worker::open(
+        directory.path().join("worker"),
+        f.provider,
+        &agreement,
+        f.now,
+    )
+    .unwrap();
+    assert_eq!(worker.reconcile(1).unwrap().outcome, "finished");
+    assert!(matches!(
+        worker.roles().book().collection(),
+        labor_roles::book::Collection::Funded { .. }
+    ));
+    assert!(!work.join("output.json").exists());
+}

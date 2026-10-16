@@ -54,6 +54,20 @@ fn fixture_with(custom: Option<(Value, Value)>) -> Fixture {
     fixture_with_paid(custom, false)
 }
 fn fixture_with_paid(custom: Option<(Value, Value)>, paid: bool) -> Fixture {
+    fixture_profile(custom, paid, false, None)
+}
+fn fixture_repair(custom: Option<(Value, Value)>) -> Fixture {
+    fixture_profile(custom, false, true, None)
+}
+fn fixture_repair_at(custom: Option<(Value, Value)>, context: std::path::PathBuf) -> Fixture {
+    fixture_profile(custom, true, true, Some(context))
+}
+fn fixture_profile(
+    custom: Option<(Value, Value)>,
+    paid: bool,
+    repair: bool,
+    context: Option<std::path::PathBuf>,
+) -> Fixture {
     let buyer = key(1);
     let provider = key(2);
     let resolver = key(3);
@@ -76,7 +90,11 @@ fn fixture_with_paid(custom: Option<(Value, Value)>, paid: bool) -> Fixture {
     );
     let mut schema = schema;
     schema["media_type"] = json!("application/schema+json");
-    let target_body = json!({"v":1,"requires":[],"id":format!("{p}:labor/command"),"profile":"native","summary":"Admitted local bounded command","input":schema,"output":schema,"effects":{"reads":["workspace"],"writes":["workspace"],"network":[],"process":true,"delegates":false,"spend":false},"minimum":{},"support":{"bounds":{},"cancellation":"host_terminated","idempotency":"idempotent","evidence":[]},"binding_contract":{"operation":"coder.free-labor.command.v1","interface":"coder.free-labor.command.v1"}});
+    let mut target_body = json!({"v":1,"requires":[],"id":format!("{p}:labor/command"),"profile":"native","summary":"Admitted local bounded command","input":schema,"output":schema,"effects":{"reads":["workspace"],"writes":["workspace"],"network":[],"process":true,"delegates":false,"spend":false},"minimum":{},"support":{"bounds":{},"cancellation":"host_terminated","idempotency":"idempotent","evidence":[]},"binding_contract":{"operation":"coder.free-labor.command.v1","interface":"coder.free-labor.command.v1"}});
+    if repair {
+        target_body["binding_contract"] = json!({"operation":"coder.labor-context-file.v1","interface":"openagents.labor-context-file.v1"});
+        target_body["meta"] = json!({"context_file":context.unwrap_or_else(||"/fixture/private/repair/context.json".into())});
+    }
     let target_ref = put(&mut blobs, target_body, "openagents.cap.v1");
     let target = json!({"id":format!("{p}:labor/command"),"artifact":target_ref});
     let mut checker_body = blobs.get(&target_ref).unwrap().clone();
@@ -163,9 +181,27 @@ fn fixture_with_paid(custom: Option<(Value, Value)>, paid: bool) -> Fixture {
     } else {
         "single-fixture-operator"
     };
+    let reviewer = if repair { public(&key(4)) } else { b.clone() };
+    let role_rights = if repair {
+        json!([b, p, r, reviewer])
+    } else {
+        json!([b, p, r])
+    };
+    let rights = if repair {
+        let mut body = blobs.get(&rights).unwrap().clone();
+        body["recipients"] = role_rights;
+        put(&mut blobs, body, labor::RIGHTS_SCHEMA)
+    } else {
+        rights
+    };
+    let relationships = if repair {
+        json!([{ "pubkey":b,"operator":"buyer-native"},{"pubkey":p,"operator":"provider-native"},{"pubkey":r,"operator":"resolver-native"},{"pubkey":reviewer,"operator":"reviewer-native"}])
+    } else {
+        json!([{ "pubkey":b,"operator":buyer_operator},{"pubkey":p,"operator":provider_operator},{"pubkey":r,"operator":buyer_operator}])
+    };
     let terms = put(
         &mut blobs,
-        json!({"v":labor::LABOR_TERMS_SCHEMA,"requires":[],"task_frame":frame,"execution":{"target":target,"lock":target_lock,"input":input,"context":context,"requirements":requirements,"bounds":[]},"deliverables":[{"id":"patch","schema":schema,"max_bytes":4096}],"reviewer":b,"acceptance_policy":policy,"resolver":r,"resolver_policy":"labor-evidence-v1","max_reworks":0,"rework_due_at":null,"dispute_due_at":now+450,"resolution_due_at":now+500,"cancellation":"evaluate-delivered-work-v1","partial_delivery":"no-partial-payment-v1","buyer_unavailable":"resolver-required-v1","rights":rights,"role_relationships":[{"pubkey":b,"operator":buyer_operator},{"pubkey":p,"operator":provider_operator},{"pubkey":r,"operator":buyer_operator}]}),
+        json!({"v":labor::LABOR_TERMS_SCHEMA,"requires":[],"task_frame":frame,"execution":{"target":target,"lock":target_lock,"input":input,"context":context,"requirements":requirements,"bounds":if repair {json!([{"bound":"wall_ms","ceiling":40000,"assurance":"host","mechanism":"native-task-owner"},{"bound":"output_bytes","ceiling":12582912,"assurance":"host","mechanism":"native-task-owner"},{"bound":"concurrency","ceiling":1,"assurance":"host","mechanism":"native-task-owner"}])} else {json!([])}},"deliverables":[{"id":"patch","schema":schema,"max_bytes":4096}],"reviewer":reviewer,"acceptance_policy":policy,"resolver":r,"resolver_policy":"labor-evidence-v1","max_reworks":if repair {1} else {0},"rework_due_at":if repair {json!(now+350)} else {Value::Null},"dispute_due_at":now+450,"resolution_due_at":now+500,"cancellation":"evaluate-delivered-work-v1","partial_delivery":"no-partial-payment-v1","buyer_unavailable":"resolver-required-v1","rights":rights,"role_relationships":relationships}),
         labor::LABOR_TERMS_SCHEMA,
     );
     let price = if paid { 10_000 } else { 0 };
@@ -738,4 +774,45 @@ fn work_linker_requires_actual_lab_identity_and_keeps_acceptance_separate() {
         vec![json!({"proposal":null,"request":execution["execute"],"run":null,"session":null})];
     book.delegation(&order, &frame, &policy, &worker, &links)
         .unwrap();
+}
+
+#[test]
+fn native_repair_agreement_requires_opted_in_target_and_confirmed_market_records() {
+    let f = fixture_repair(None);
+    assert!(Book::new(f.setup.clone(), f.provider).is_err());
+    let mut agreement = crate::agreement::Agreement::new(f.setup.clone(), f.provider).unwrap();
+    assert!(agreement.order().is_none());
+    for event in &f.events {
+        agreement.receive(event, f.now, &f.blobs).unwrap();
+    }
+    assert_eq!(agreement.labor().max_reworks, 1);
+    let (terms, wire) = agreement.wire_admission(f.now).unwrap();
+    assert_eq!(terms.price_msat, agreement.market().price_msat);
+    assert_eq!(terms.reviewer, public(&key(4)));
+    let directory = tempfile::tempdir().unwrap();
+    let participant = labor_roles::wire_host::Host::open(
+        directory.path().join("role"),
+        f.provider,
+        terms,
+        wire,
+        f.now,
+    )
+    .unwrap();
+    assert!(participant.book().entries().is_empty());
+    assert_eq!(agreement.order().unwrap().buyer, public(&f.buyer));
+    assert_eq!(agreement.order().unwrap().provider, public(&f.provider));
+    let ordinary = fixture();
+    assert!(crate::agreement::Agreement::new(ordinary.setup, ordinary.provider).is_err());
+    let not_market = sealed(
+        &json!({"v":"openagents.labor-input.v1","requires":[]}),
+        "openagents.labor-input.v1",
+        &f.buyer,
+        &f.provider,
+        f.now,
+    );
+    assert!(
+        agreement
+            .receive(&not_market, f.now, &Blobs::default())
+            .is_err()
+    );
 }

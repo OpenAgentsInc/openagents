@@ -7,6 +7,7 @@ publish.workspace = true
 description = "NIP-LAB delivery roles after execution: independently operated worker, reviewer, buyer and resolver hosts, bounded rework, resolver adjudication, cancellation and unavailable buyers, rights, and obligations recorded through pay-ledger."
 
 [dependencies]
+workspace-host = { path = "../workspace-host" }
 nostr = { path = "../nostr" }
 pay-ledger = { path = "../pay-ledger" }
 secp256k1 = "0.31.1"
