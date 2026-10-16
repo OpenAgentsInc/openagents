@@ -44,7 +44,7 @@ clip_for() {
     macbook-tray) echo terminal-tray ;;
     macbook-rewind) echo terminal-rewind ;;
     grid-plate) echo none ;;
-    suite-boot|sync-terminal-web|sync-phone|sync-web-back|trio-wide) echo devices ;;
+    suite-boot|sync-terminal-web|sync-phone|sync-web-back|trio-wide|four-apps-intro) echo devices ;;
     *) echo "" ;;
   esac
 }

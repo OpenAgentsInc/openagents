@@ -69,6 +69,12 @@ the agent row under it), `macbook-rewind` (the whole screen; not in cut 5).
 
 ### Multi-device sync
 
+`four-apps-intro` places the Episode 290 shared-clock capture on two MacBooks
+(terminal and native desktop), the display (web), and the iPhone. It uses the
+same Grid, lighting, and camera crane as `suite-boot`, over eight seconds.
+Render with `SYNC=~/work/film-out/episode-290-four-apps/intro` and
+`render-all.sh --resolution=1920x1080 four-apps-intro`.
+
 All five are rendered at 1080p from `sync-v2` into `~/work/film-out/studio-1080/`
 (cut 3); 4K waits for the owner's approval.
 
@@ -87,8 +93,9 @@ rig. The trio layout is:
 - Display at (0.04, 0.42), rotated -3°.
 - iPhone at (0.30, -0.14), standing.
 
-`sync-web-back` has its own layout. There is no desktop-app clip: the
-MacBook shows the terminal in every shot (see `handoff-footage.md`).
+`sync-web-back` has its own layout. In the original sync shots, the MacBook
+shows the terminal; `four-apps-intro` adds the native desktop app on a second
+MacBook (see `handoff-footage.md`).
 
 ## Commands
 

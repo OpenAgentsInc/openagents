@@ -62,9 +62,33 @@
   ],
   "lab": {
     "workspace": "episode-290-workspace",
-    "version": 3,
+    "version": 4,
     "intro": "episode-290-four-apps-intro",
-    "intro_version": 2,
+    "intro_version": 3,
     "first_eight_seconds_replaced": true
+  },
+  "studio": {
+    "issue": 11870,
+    "spec": "scripts/film/studio/shots/four-apps-intro.json",
+    "environment": "Original sync-base Grid floor and lighting",
+    "devices": {
+      "left_macbook": "terminal",
+      "right_macbook": "native desktop",
+      "display": "web",
+      "iphone": "native mobile"
+    },
+    "camera": "Eight-second crane and push adapted from suite-boot",
+    "resolution": [
+      1920,
+      1080
+    ],
+    "samples": 40,
+    "sources": "Same synchronized eight-second captures; one clock for all screens",
+    "checks": [
+      "1080p stills inspected at 4 and 7.9 seconds; all four devices visible",
+      "Full 240-frame Cycles render at 40 samples completed; eight-second 1080p H.264 decodes without errors",
+      "Browser playback passed for standalone intro v3 (8 seconds, 1080p) and working cut v4 (274 seconds, preview); first two shots use the 3D source"
+    ],
+    "sha256": "1bd72230fa5eea3f388b400d193742850652367009a25c48670f6d281f8e6459"
   }
 }
