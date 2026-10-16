@@ -336,14 +336,10 @@ async fn local_runtime_checks_public_releases_without_starting_edge_links() {
         .expect("local runtime starts the public release checker");
     assert_eq!(requests.load(Ordering::SeqCst), 0);
 
+    // Coder Desktop: no update feed is configured, so a check never reaches
+    // the edge (upstream expects manifest.json and latest.txt requests here).
     updater.check_now();
-    tokio::time::timeout(std::time::Duration::from_secs(2), async {
-        while requests.load(Ordering::SeqCst) < 2 {
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .expect("release checker requested manifest.json and latest.txt");
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     assert!(runtime.core().links().is_none());
 
     runtime.shutdown().await;
@@ -488,7 +484,9 @@ async fn workspace_recovers_from_an_unreachable_edge_without_restarting() {
 async fn development_without_an_explicit_bearer_stays_offline() {
     let dir = tempfile::tempdir().unwrap();
     let (edge_url, requests, edge_task) = rejecting_edge().await;
-    let config = config(dir.path(), edge_url, None, None);
+    let mut config = config(dir.path(), edge_url, None, None);
+    // Coder Desktop: development scope needs an explicit request (dev org).
+    config.org_id = Some("dev-org".into());
     let auth = Engine::build_auth(&config).await;
     let scope = Engine::initial_workspace_scope(&auth);
     let profile = Engine::resolve_profile(&config, &auth, scope)
@@ -509,6 +507,40 @@ async fn development_without_an_explicit_bearer_stays_offline() {
     assert_eq!(requests.load(Ordering::SeqCst), 0);
     runtime.shutdown().await;
     edge_task.abort();
+}
+
+/// Coder Desktop: with hosted sign-in off (no WorkOS) and no dev bearer or
+/// org, the app opens the existing local profile, not `orgs/dev-org/dev-user`.
+#[tokio::test]
+async fn account_free_boot_without_workos_reopens_the_local_profile() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = config(dir.path(), "http://127.0.0.1:1".into(), None, None);
+    let mut local_ids = Vec::new();
+    for _ in 0..2 {
+        let auth = Engine::build_auth(&config).await;
+        let scope = Engine::initial_workspace_scope(&auth);
+        assert_eq!(scope, WorkspaceScope::Local);
+        assert!(matches!(auth.state(), AuthState::SignedOut));
+        let profile = Engine::resolve_profile(&config, &auth, scope)
+            .unwrap()
+            .expect("local profile is ready");
+        assert_eq!(profile.store_root(), dir.path().join("profiles/local"));
+        local_ids.push(profile.user_id().to_string());
+        let runtime = Engine::assemble_runtime(&config, auth, profile)
+            .await
+            .unwrap();
+        let client = memory_client(runtime.core().rpc_service());
+        let info: EngineInfo = client
+            .call_as(methods::ENGINE_INFO, serde_json::json!({}))
+            .await
+            .unwrap();
+        assert_eq!(info.workspace_scope, WorkspaceScope::Local);
+        assert!(runtime.core().links().is_none());
+        runtime.shutdown().await;
+    }
+    // The second boot reuses the registry the first one created.
+    assert_eq!(local_ids[0], local_ids[1]);
+    assert!(!dir.path().join("orgs/dev-org/dev-user").exists());
 }
 
 #[tokio::test]

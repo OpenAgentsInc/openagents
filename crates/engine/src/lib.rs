@@ -380,6 +380,8 @@ impl EngineCore {
                 .unwrap_or_else(|| "dev-user".into());
             let mut config = AuthConfig::new("http://localhost:27640", std::env::temp_dir());
             config.dev_user_id = dev_user;
+            // Coder Desktop: keep upstream's dev identity for cores built without auth.
+            config.development_requested = true;
             Auth::new(config)
         })
         .clone()
@@ -646,13 +648,23 @@ impl Engine {
         if let Some(token) = &config.edge_token {
             auth_config.dev_user_id = token.clone();
         }
+        // Coder Desktop: development scope is opt-in (see `initial_workspace_scope`).
+        auth_config.development_requested = config.edge_token.is_some()
+            || config.org_id.is_some()
+            || std::env::var("ZERON_WORKSPACE_SCOPE").is_ok_and(|scope| scope == "development");
         Auth::new(auth_config)
     }
 
     /// Capture the workspace boundary once, before refresh or sign-in can mutate auth.
     pub fn initial_workspace_scope(auth: &Auth) -> WorkspaceScope {
-        if !auth.workos_enabled() {
+        // Coder Desktop: hosted sign-in is off by default, so "no WorkOS" is the
+        // normal account-free run and must open the local profile
+        // (`profiles/local`). Upstream treats it as development mode; keep that
+        // only when a dev bearer/org or ZERON_WORKSPACE_SCOPE asks for it.
+        if !auth.workos_enabled() && auth.development_requested() {
             WorkspaceScope::Development
+        } else if !auth.workos_enabled() {
+            WorkspaceScope::Local
         } else if auth.loaded_workos_session() {
             WorkspaceScope::Synced
         } else {

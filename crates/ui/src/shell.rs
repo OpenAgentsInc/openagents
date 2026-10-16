@@ -1794,6 +1794,13 @@ fn account_menu_action(scope: Option<WorkspaceScope>, flow: SyncFlow) -> Option<
     }
 }
 
+/// Coder Desktop: whether hosted sign-in is configured (off by default; see
+/// `coder_brand::WORKOS_CLIENT_ID`, dev override `ZERON_WORKOS_CLIENT_ID`).
+fn coder_sign_in_available() -> bool {
+    coder_brand::WORKOS_CLIENT_ID.is_some()
+        || std::env::var("ZERON_WORKOS_CLIENT_ID").is_ok_and(|id| !id.trim().is_empty())
+}
+
 /// The sidebar footer's profile label and the account menu's identity line.
 /// Anything without a signed-in account reads "Local"; the menu carries the
 /// storage/sync detail.
@@ -1811,9 +1818,9 @@ fn sidebar_account_identity(
             };
             ("Local".into(), identity.into())
         }
-        Some(WorkspaceScope::Development) => {
-            ("Development".into(), "Authentication disabled".into())
-        }
+        // Coder Desktop runs account-free (hosted sign-in is off), which is
+        // this scope: it is the user's local workspace, not a dev mode.
+        Some(WorkspaceScope::Development) => ("Local".into(), "Stored on this device".into()),
         Some(WorkspaceScope::Synced) | None => match user {
             Some(user) => {
                 let name = user
@@ -2985,7 +2992,7 @@ impl Shell {
                 {
                     let body = match connectivity {
                         zeron_proto::ConnectivityState::Offline => "Your device is offline",
-                        _ => "Zeron is trying to reconnect",
+                        _ => "Coder is trying to reconnect",
                     };
                     crate::notify::post("Connection unavailable", body, None);
                 }
@@ -5219,7 +5226,7 @@ impl Shell {
                 )))
             })
             .child(
-                item("chat-copy-zeron", "Zeron conversation link".into()).on_click(cx.listener(
+                item("chat-copy-zeron", "Coder conversation link".into()).on_click(cx.listener(
                     move |this, _, _, cx| this.copy_zeron_conversation_link(&zeron_id, cx),
                 )),
             )
@@ -5260,7 +5267,7 @@ impl Shell {
         };
         if let Some(link) = link {
             cx.write_to_clipboard(ClipboardItem::new_string(link));
-            self.show_notice(crate::toast::ToastKind::Success, "Zeron conversation link copied", cx);
+            self.show_notice(crate::toast::ToastKind::Success, "Coder conversation link copied", cx);
         } else {
             self.show_notice(crate::toast::ToastKind::Error, "Conversation link is not ready yet", cx);
         }
@@ -5691,7 +5698,7 @@ impl Shell {
                     let detail = if !online {
                         "Offline"
                     } else if !compatible {
-                        "Update Zeron to use remote voice"
+                        "Update Coder to use remote voice"
                     } else {
                         "Available"
                     };
@@ -6774,7 +6781,7 @@ impl Shell {
                     },
                     Err(err) => {
                         shell.runtime_change_error = Some(format!(
-                            "Could not stop the remote engine: {err}. Run `zeron daemon stop`, then quit and reopen Zeron."
+                            "Could not stop the remote engine: {err}. Run `zeron daemon stop`, then quit and reopen Coder."
                         ).into());
                         cx.notify();
                     }
@@ -9448,7 +9455,7 @@ impl Shell {
             match update.prompt()? {
                 Prompt::Checking => (
                     "Checking for updates…".into(),
-                    format!("You're on Zeron {current}.").into(),
+                    format!("You're on Coder {current}.").into(),
                     vec![UpdatePromptButton::Close("Cancel")],
                 ),
                 Prompt::CheckFailed(message) => (
@@ -9461,12 +9468,12 @@ impl Shell {
                 ),
                 Prompt::Result => match update.available() {
                     None => (
-                        "Zeron is up to date".into(),
+                        "Coder is up to date".into(),
                         format!("Version {current} is the newest release.").into(),
                         vec![UpdatePromptButton::Close("OK")],
                     ),
                     Some(latest) => {
-                        let title: SharedString = format!("Zeron {latest} is available").into();
+                        let title: SharedString = format!("Coder {latest} is available").into();
                         if let Some(blocker) = update.blocker() {
                             (
                                 title,
@@ -9493,8 +9500,8 @@ impl Shell {
                                     vec![UpdatePromptButton::Close("Hide")],
                                 ),
                                 Flow::Ready { version, .. } => (
-                                    format!("Zeron {version} is ready").into(),
-                                    "Restart to finish updating. If you don't, it installs the next time you quit Zeron."
+                                    format!("Coder {version} is ready").into(),
+                                    "Restart to finish updating. If you don't, it installs the next time you quit Coder."
                                         .into(),
                                     vec![
                                         UpdatePromptButton::Close("Later"),
@@ -9522,7 +9529,7 @@ impl Shell {
                         } else {
                             (
                                 title,
-                                "This copy of Zeron wasn't set up by an installer (for example, a source build), so it can't update itself."
+                                "This copy of Coder wasn't set up by an installer (for example, a source build), so it can't update itself."
                                     .into(),
                                 vec![
                                     UpdatePromptButton::Close("Later"),
@@ -9686,7 +9693,11 @@ impl Shell {
         let pull_requests = self.render_pull_requests_button(theme, cx);
         let theme = &theme.for_popup();
         let open = self.user_menu.is_open();
-        let action = account_menu_action(self.state.read(cx).workspace_scope, self.sync_flow);
+        let action = account_menu_action(self.state.read(cx).workspace_scope, self.sync_flow)
+            // Coder Desktop: no "turn on sync" entry while hosted sign-in is off.
+            .filter(|action| {
+                !matches!(action, AccountMenuAction::EnableSync) || coder_sign_in_available()
+            });
         // The profile pill hugs avatar + name (shrinking so long names fade
         // out); the gap between it and the settings button is not interactive.
         let initial: SharedString = user_line
@@ -9976,7 +9987,7 @@ impl Shell {
         } else if remote_engine {
             "Stop daemon and quit"
         } else {
-            "Quit Zeron"
+            "Quit Coder"
         };
 
         if self.sync_flow == SyncFlow::Enabling && needs_org {
@@ -10001,7 +10012,7 @@ impl Shell {
                 .child(
                     div().mt(px(6.0)).child(popover::dialog_body(
                         &theme,
-                        "Finish signing in in your browser. Zeron will keep using this local workspace until you quit and reopen.",
+                        "Finish signing in in your browser. Coder will keep using this local workspace until you quit and reopen.",
                     )),
                 )
                 .child(
@@ -10045,14 +10056,14 @@ impl Shell {
                     )
                     .into(),
                     (Some(email), None) => format!(
-                        "You're signed in as {email}. Zeron can switch to your synced workspace now."
+                        "You're signed in as {email}. Coder can switch to your synced workspace now."
                     )
                     .into(),
                     (None, Some(phrase)) => format!(
                         "Bring {phrase} from this device into your synced workspace, or start it fresh."
                     )
                     .into(),
-                    (None, None) => "Zeron can switch to your synced workspace now.".into(),
+                    (None, None) => "Coder can switch to your synced workspace now.".into(),
                 };
                 let mut actions = div()
                     .mt(px(16.0))
@@ -10241,9 +10252,9 @@ impl Shell {
                     div().mt(px(6.0)).child(popover::dialog_body(
                         &theme,
                         if remote_engine {
-                            "Zeron is using a background daemon. Stop it and quit Zeron, then reopen to start the synced workspace. Existing local sessions stay on this device and will not be uploaded."
+                            "Coder is using a background daemon. Stop it and quit Coder, then reopen to start the synced workspace. Existing local sessions stay on this device and will not be uploaded."
                         } else {
-                            "Quit and reopen Zeron to start the synced workspace. Existing local sessions stay on this device and will not be uploaded."
+                            "Quit and reopen Coder to start the synced workspace. Existing local sessions stay on this device and will not be uploaded."
                         },
                     )),
                 )
@@ -10288,7 +10299,7 @@ impl Shell {
                 .child(
                     div().mt(px(6.0)).child(popover::dialog_body(
                         &theme,
-                        "Zeron will remove your credentials, close the synced workspace, and continue in local mode.",
+                        "Coder will remove your credentials, close the synced workspace, and continue in local mode.",
                     )),
                 )
                 .child(
@@ -11898,7 +11909,7 @@ impl Shell {
                     .line_height(px(19.0))
                     .text_color(theme.text_muted)
                     .child(SharedString::from(
-                        "Zeron removed your credentials but could not finish closing the previous synced workspace. Retry before continuing in local mode.",
+                        "Coder removed your credentials but could not finish closing the previous synced workspace. Retry before continuing in local mode.",
                     )),
             )
             .when_some(self.runtime_change_error.clone(), |card, error| {
@@ -12478,7 +12489,7 @@ impl Shell {
                         .text_size(crate::typography::ui_rems(18.0))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(theme.text)
-                        .child(SharedString::from("Log in to Zeron")),
+                        .child(SharedString::from("Log in to Coder")),
                 )
                 .child(
                     div()
@@ -12633,11 +12644,11 @@ impl Shell {
         // then existing memberships and the account escape hatch.
         let blurb: SharedString = match email {
             Some(email) => format!(
-                "Zeron is organized around workspaces — create one for yourself or your team. Signed in as {email}."
+                "Coder is organized around workspaces — create one for yourself or your team. Signed in as {email}."
             )
             .into(),
             None => {
-                "Zeron is organized around workspaces — create one for yourself or your team."
+                "Coder is organized around workspaces — create one for yourself or your team."
                     .into()
             }
         };

@@ -166,6 +166,10 @@ pub struct AuthConfig {
     pub dev_user_id: String,
     /// Loopback callback port; `None` = ephemeral.
     pub callback_port: Option<u16>,
+    /// Coder Desktop: without WorkOS, open the development profile only when a
+    /// dev bearer, dev org, or `ZERON_WORKSPACE_SCOPE=development` asks for
+    /// it; otherwise the account-free run uses the local profile.
+    pub development_requested: bool,
 }
 
 impl AuthConfig {
@@ -177,6 +181,7 @@ impl AuthConfig {
             workos_api_base: "https://api.workos.com".into(),
             dev_user_id: "dev-user".into(),
             callback_port: None,
+            development_requested: false,
         }
     }
 }
@@ -289,6 +294,9 @@ impl Auth {
             None
         };
         let initial = match (&workos, &stored) {
+            // Coder Desktop: an account-free run (no WorkOS, no dev request)
+            // is signed out, so the local profile never offers a sync switch.
+            (None, _) if !config.development_requested => AuthState::SignedOut,
             (None, _) => AuthState::SignedIn {
                 user: AuthUser {
                     id: config.dev_user_id.clone(),
@@ -361,6 +369,12 @@ impl Auth {
 
     pub fn workos_enabled(&self) -> bool {
         self.inner.workos.is_some()
+    }
+
+    /// Coder Desktop: whether a run without WorkOS asked for the development
+    /// profile (see [`AuthConfig::development_requested`]).
+    pub fn development_requested(&self) -> bool {
+        self.inner.config.development_requested
     }
 
     /// True when construction loaded a parseable persisted WorkOS session.

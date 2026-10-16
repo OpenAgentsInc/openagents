@@ -284,11 +284,24 @@ async fn wait_for<T: Clone + PartialEq>(
 // Tests
 // ---------------------------------------------------------------------------
 
+/// Coder Desktop: without WorkOS or a dev request the run is account-free
+/// and signed out (the local profile), never the synthetic dev user.
+#[tokio::test]
+async fn account_free_mode_is_signed_out() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let auth = Auth::new(AuthConfig::new("http://127.0.0.1:1", dir.path()));
+    assert!(!auth.workos_enabled());
+    assert!(!auth.development_requested());
+    assert!(matches!(auth.state(), AuthState::SignedOut));
+}
+
 #[tokio::test]
 async fn dev_mode_is_signed_in_with_configured_bearer() {
     let dir = tempfile::tempdir().expect("tempdir");
     let mut config = AuthConfig::new("http://127.0.0.1:1", dir.path());
     config.dev_user_id = "wing-dev".into();
+    // Coder Desktop: build_auth sets this when a dev bearer is configured.
+    config.development_requested = true;
     let auth = Auth::new(config);
     assert!(!auth.workos_enabled());
     assert!(!auth.loaded_workos_session());
