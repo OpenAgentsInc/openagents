@@ -27,7 +27,7 @@ use zeron_client as zc;
 pub use session::*;
 pub use types::*;
 
-/// Default sync server for OpenAgents Coder.
+/// Default sync server for the OpenAgents mobile app.
 #[uniffi::export]
 pub fn production_edge_url() -> String {
     zc::auth::PRODUCTION_EDGE_URL.to_owned()

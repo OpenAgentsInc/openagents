@@ -25,11 +25,13 @@ scripts/ios/build-core.sh           # the phone core for the iOS simulator
 
 The phone core is arm64 only. For an Xcode simulator build, name an
 Apple-silicon simulator and pass `ARCHS=arm64` (a generic simulator
-destination also links x86_64 and fails):
+destination also links x86_64 and fails). Sign locally (`CODE_SIGN_IDENTITY=-`):
+an unsigned build can't reach the Keychain and shows "Couldn't save or restore
+your login":
 
 ```sh
 cd apps/ios
-xcodebuild -project Zeron.xcodeproj -scheme Zeron -destination 'id=<simulator id>' ARCHS=arm64 CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project Zeron.xcodeproj -scheme Zeron -destination 'id=<simulator id>' ARCHS=arm64 CODE_SIGN_IDENTITY=- build
 ```
 
 A persistent `CARGO_TARGET_DIR` outside the checkout saves a cold build of
@@ -47,6 +49,15 @@ device identity on `coder-sync`) lives outside any checkout, in
 which is kept as a backup. Never run the old bundle again: it has the same
 device identity.
 
+Since the OpenAgents rename (2026-10-16) the development bundle is
+`OpenAgents Dev.app` (`com.openagents.desktop.dev`), and packaged builds are
+`OpenAgents.app` (`com.openagents.desktop`). The OpenAgents sign-in is carried
+over once from the old `Coder Dev` Keychain entry. Earlier data-directory
+paths are listed in `openagents-account/previous-profiles` inside the data
+directory, one per line. macOS may ask once to let the renamed app read that
+entry. A packaged install's `Coder Desktop` data folder is renamed to
+`OpenAgents Desktop` on first start.
+
 Update and relaunch (quit the app first):
 
 ```sh
@@ -57,7 +68,7 @@ ZERON_DEV_DATA_DIR="$HOME/Library/Application Support/OpenAgents Dev/data" scrip
 ```
 
 The data directory is written into the bundle, so opening
-`~/work/openagents-app/apps/openagents/target/macos-dev/Coder Dev.app` from the
+`~/work/openagents-app/apps/openagents/target/macos-dev/OpenAgents Dev.app` from the
 Dock or Finder uses the same data. Agents testing their own builds keep the
 default checkout-local data and a different `ZERON_DEV_IPC_PORT`, never this
 directory.

@@ -111,7 +111,7 @@ final class AppModel {
         path.pathUpdateHandler = { [weak self] p in
             DispatchQueue.main.async { self?.client?.setNetworkOnline(online: p.status == .satisfied) }
         }
-        path.start(queue: DispatchQueue(label: "com.openagents.coder.path"))
+        path.start(queue: DispatchQueue(label: "com.openagents.app.path"))
         let args = ProcessInfo.processInfo.arguments
         #if DEBUG
         // Test hooks (never in release builds): wipe the Keychain, or run
@@ -251,7 +251,7 @@ final class AppModel {
         #endif
     }
     static var preferences: UserDefaults {
-        isAccountFixture ? UserDefaults(suiteName: "com.openagents.coder.account-fixture")! : .standard
+        isAccountFixture ? UserDefaults(suiteName: "com.openagents.app.account-fixture")! : .standard
     }
     private static var coreDir: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(isAccountFixture ? "account-fixture-core" : "core", isDirectory: true)
@@ -827,7 +827,7 @@ struct AccountProfile: Codable {
     var email: String?
     var orgName: String?
 
-    private static var service: String { AppModel.isAccountFixture ? "com.openagents.coder.account-fixture" : "com.openagents.coder" }
+    private static var service: String { AppModel.isAccountFixture ? "com.openagents.app.account-fixture" : "com.openagents.app" }
     private static let account = "profile"
 
     static func load() -> AccountProfile {

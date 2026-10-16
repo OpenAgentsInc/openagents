@@ -3,7 +3,7 @@ import os
 /// Signposts for Instruments / XCTOSSignpostMetric: every hot path on the
 /// transcript's main-thread budget is an interval.
 enum Signposts {
-    static let transcript = OSSignposter(subsystem: "com.openagents.coder", category: "transcript")
+    static let transcript = OSSignposter(subsystem: "com.openagents.app", category: "transcript")
 }
 
 /// Main-thread cost counters for the transcript (read by `-bench`).

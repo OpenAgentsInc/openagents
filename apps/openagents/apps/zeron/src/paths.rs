@@ -1,14 +1,41 @@
 //! Application storage paths. Provider credentials keep their own locations.
 //!
-//! Coder Desktop keeps its own data directory (see `coder_brand`), never
-//! Zeron's `~/.zeron` or `%LOCALAPPDATA%\Zeron`, so installing Coder never
-//! reads a Zeron login, session, or database.
+//! The app keeps its own data directory (see `coder_brand`), never Zeron's
+//! `~/.zeron` or `%LOCALAPPDATA%\Zeron`, so installing it never reads a Zeron
+//! login, session, or database. A data directory left under the name used
+//! before the OpenAgents rename (`Coder Desktop`) is moved into place once.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
 
 pub fn data_dir() -> PathBuf {
-    resolve_data_dir(|name| std::env::var_os(name))
+    let dir = resolve_data_dir(|name| std::env::var_os(name));
+    if std::env::var_os("ZERON_DATA_DIR").is_none_or(|dir| dir.is_empty()) {
+        adopt_legacy(&dir);
+    }
+    dir
+}
+
+/// Move the pre-rename data directory (same parent, legacy folder name) to
+/// `dir` when only the legacy one exists. A failed rename leaves both as they
+/// were; the app then starts with an empty directory and the old one stays.
+fn adopt_legacy(dir: &std::path::Path) {
+    let Some(parent) = dir.parent() else { return };
+    let legacy_name = if cfg!(all(not(windows), not(target_os = "macos"))) {
+        coder_brand::LEGACY_LINUX_DATA_DIR_NAME
+    } else {
+        coder_brand::LEGACY_DATA_DIR_NAME
+    };
+    let legacy = parent.join(legacy_name);
+    if legacy != dir && !dir.exists() && legacy.is_dir() {
+        if let Err(error) = std::fs::rename(&legacy, dir) {
+            eprintln!(
+                "couldn't move {} to {}: {error}",
+                legacy.display(),
+                dir.display()
+            );
+        }
+    }
 }
 
 fn resolve_data_dir(mut env: impl FnMut(&str) -> Option<OsString>) -> PathBuf {
@@ -56,6 +83,27 @@ fn resolve_data_dir(mut env: impl FnMut(&str) -> Option<OsString>) -> PathBuf {
 mod tests {
     use super::*;
 
+    #[test]
+    fn legacy_data_directory_moves_into_place_once() {
+        let root = tempfile::tempdir().unwrap();
+        let legacy_name = if cfg!(all(not(windows), not(target_os = "macos"))) {
+            coder_brand::LEGACY_LINUX_DATA_DIR_NAME
+        } else {
+            coder_brand::LEGACY_DATA_DIR_NAME
+        };
+        let legacy = root.path().join(legacy_name);
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::write(legacy.join("device-id"), "abc").unwrap();
+        let dir = root.path().join(coder_brand::DATA_DIR_NAME);
+        adopt_legacy(&dir);
+        assert_eq!(std::fs::read_to_string(dir.join("device-id")).unwrap(), "abc");
+        assert!(!legacy.exists());
+        // An existing directory is never replaced.
+        std::fs::create_dir_all(&legacy).unwrap();
+        adopt_legacy(&dir);
+        assert!(legacy.exists());
+    }
+
     fn resolve(vars: &[(&str, &str)]) -> PathBuf {
         resolve_data_dir(|name| {
             vars.iter()
@@ -77,7 +125,7 @@ mod tests {
     fn macos_default_is_coder_application_support() {
         assert_eq!(
             resolve(&[("HOME", "/Users/u")]),
-            PathBuf::from("/Users/u/Library/Application Support/Coder Desktop"),
+            PathBuf::from("/Users/u/Library/Application Support/OpenAgents Desktop"),
         );
     }
 
@@ -107,7 +155,7 @@ mod tests {
     fn explorer_launch_without_home_uses_local_app_data() {
         assert_eq!(
             resolve(&[("LOCALAPPDATA", r"C:\Users\Test User\AppData\Local")]),
-            PathBuf::from(r"C:\Users\Test User\AppData\Local\Coder Desktop"),
+            PathBuf::from(r"C:\Users\Test User\AppData\Local\OpenAgents Desktop"),
         );
     }
 
@@ -116,7 +164,7 @@ mod tests {
     fn windows_profile_fallback_handles_unicode_and_apostrophes() {
         assert_eq!(
             resolve(&[("USERPROFILE", r"C:\Users\O'Brien 日本語")]),
-            PathBuf::from(r"C:\Users\O'Brien 日本語\AppData\Local\Coder Desktop"),
+            PathBuf::from(r"C:\Users\O'Brien 日本語\AppData\Local\OpenAgents Desktop"),
         );
     }
 
@@ -125,7 +173,7 @@ mod tests {
     fn windows_default_does_not_depend_on_shell_home() {
         assert_eq!(
             resolve(&[("HOME", r"D:\msys-home"), ("LOCALAPPDATA", r"C:\Local")]),
-            PathBuf::from(r"C:\Local\Coder Desktop"),
+            PathBuf::from(r"C:\Local\OpenAgents Desktop"),
         );
     }
 }

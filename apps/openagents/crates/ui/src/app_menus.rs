@@ -249,11 +249,11 @@ mod tests {
     #[test]
     fn app_menu_ends_with_quit() {
         let menus = app_menus();
-        assert_eq!(menus[0].name.as_ref(), "Zeron");
+        assert_eq!(menus[0].name.as_ref(), coder_brand::NAME);
         let Some(MenuItem::Action { name, action, .. }) = menus[0].items.last() else {
             panic!("last app-menu item must be an action");
         };
-        assert_eq!(name.as_ref(), "Quit Zeron");
+        assert_eq!(name.as_ref(), format!("Quit {}", coder_brand::NAME));
         assert_eq!(action.name(), Quit.name());
     }
 
@@ -385,7 +385,7 @@ mod tests {
 
 // Standard AppKit about panel. Icon and copyright still come from the bundle's
 // Info.plist; name and version are passed explicitly so unbundled dev builds
-// (`cargo run`) show "Coder" and the crate version instead of the process name.
+// (`cargo run`) show "OpenAgents" and the crate version instead of the process name.
 #[cfg(target_os = "macos")]
 mod about_panel {
     use objc2::MainThreadMarker;

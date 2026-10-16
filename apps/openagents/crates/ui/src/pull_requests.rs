@@ -3510,7 +3510,7 @@ fn error_copy(error: &PullRequestsPageError) -> (String, String) {
             "Reconnect the device and try again.".into(),
         ),
         PullRequestsPageError::UpdateRequired(name) => (
-            format!("Update Coder on {name}"),
+            format!("Update OpenAgents on {name}"),
             "This device doesn’t support pull requests yet.".into(),
         ),
     }

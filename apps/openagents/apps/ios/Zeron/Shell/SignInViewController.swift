@@ -19,7 +19,7 @@ final class SignInViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = Palette.background
         let title = UILabel()
-        title.text = "OpenAgents Coder"
+        title.text = "OpenAgents"
         title.font = Fonts.ui(.sansSemibold, 30)
         title.textColor = Palette.text
         status.font = Fonts.ui(.sans, 17)

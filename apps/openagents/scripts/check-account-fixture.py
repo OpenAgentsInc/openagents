@@ -34,7 +34,7 @@ def main():
     executable.chmod(0o755)
     with (contents / "Info.plist").open("wb") as output:
         plistlib.dump({
-            "CFBundleIdentifier": "com.openagents.coder.desktop.dev.account-fixture",
+            "CFBundleIdentifier": "com.openagents.desktop.dev.account-fixture",
             "CFBundleName": "Coder Account Fixture",
             "CFBundleExecutable": "account-fixture",
             "CFBundlePackageType": "APPL",

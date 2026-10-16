@@ -163,7 +163,7 @@ async fn browser_approval_restores_the_actual_account_and_signs_out() {
     }
     assert_eq!(
         s.device_label.lock().unwrap().as_ref().unwrap(),
-        &json!({"app":"Coder Desktop", "computer":"Fixture Mac"})
+        &json!({"app":"OpenAgents", "computer":"Fixture Mac"})
     );
     s.approved.store(true, Ordering::SeqCst);
     task.await.unwrap();

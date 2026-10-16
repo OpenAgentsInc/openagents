@@ -134,14 +134,14 @@ impl AgentAccounts {
             Ok(()) => (
                 "200 OK",
                 "<!doctype html><title>Signed in</title><p>Signed in to ChatGPT.</p>\
-                 <p>You can close this tab and return to Coder.</p>"
+                 <p>You can close this tab and return to OpenAgents.</p>"
                     .to_string(),
             ),
             Err(error) => (
                 "400 Bad Request",
                 format!(
                     "<!doctype html><title>Sign-in failed</title><p>{}</p>\
-                     <p>Return to Coder to try again.</p>",
+                     <p>Return to OpenAgents to try again.</p>",
                     html_escape(&error.to_string())
                 ),
             ),

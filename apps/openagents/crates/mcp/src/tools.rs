@@ -1272,7 +1272,7 @@ impl Tools {
                 Ok(_) => {
                     object.insert(
                         "shown".into(),
-                        json!("Coder shows this result's Video Lab card (picture, render state, links to play it and to open the Lab player) above your reply. Don't describe the card; end with the player link."),
+                        json!("OpenAgents shows this result's Video Lab card (picture, render state, links to play it and to open the Lab player) above your reply. Don't describe the card; end with the player link."),
                     );
                 }
                 Err(error) => {

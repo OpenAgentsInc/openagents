@@ -1,6 +1,6 @@
-# OpenAgents Coder for iOS
+# The OpenAgents mobile app for iOS
 
-OpenAgents Coder uses a UIKit shell over the Rust mobile core. The phone
+The OpenAgents mobile app (formerly OpenAgents Coder) uses a UIKit shell over the Rust mobile core. The phone
 is a **peer device**: it mirrors the workspace registry, joins per-chat session
 rooms, and drives remote engines through the durable command ledger. No agent
 runs on the phone.
@@ -12,8 +12,8 @@ links the same library. See [`docs/mobile-rewrite.md`](../../docs/mobile-rewrite
 ## Build & run
 
 Requires Xcode 26+ and Rust 1.98.1 or newer. Keep the upstream scheme and
-internal crate names. The installed app is **OpenAgents Coder**
-(`com.openagents.coder`), alongside an existing Zeron installation.
+internal crate names. The installed app is **OpenAgents**
+(`com.openagents.app`), alongside an existing Zeron installation.
 
 ```sh
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim --toolchain 1.98.1

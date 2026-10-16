@@ -67,7 +67,7 @@ def main():
             if result.returncode:
                 raise RuntimeError("Native " + name + " check failed; inspect its result bundle.")
             container = subprocess.check_output(["xcrun", "simctl", "get_app_container", SIMULATOR,
-                "com.openagents.coder", "data"], text=True).strip()
+                "com.openagents.app", "data"], text=True).strip()
             proof = Path(container) / "Documents/account-fixture-result.json"
             report = json.loads(proof.read_text())
             if not all(report.get(key) is True for key in ("signed_in", "saw_session", "keychain_empty")) or proof.stat().st_mtime <= run.joinpath("config.json").stat().st_mtime:

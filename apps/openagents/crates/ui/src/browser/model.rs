@@ -189,7 +189,7 @@ mod tests {
             "javascript:alert(1)",
             "file:///tmp/a",
             "data:text/html,hi",
-            "coder-desktop://open/chat/a",
+            "openagents://open/chat/a",
             "https://user:pass@example.com",
             "https://",
             "two words",
@@ -212,7 +212,7 @@ mod tests {
             assert!(allowed_frame_navigation(ok), "{ok}");
         }
         for blocked in [
-            "coder-desktop://open/chat/a",
+            "openagents://open/chat/a",
             "ms-settings:privacy",
             "file:///C:/Windows/win.ini",
             "javascript:alert(1)",

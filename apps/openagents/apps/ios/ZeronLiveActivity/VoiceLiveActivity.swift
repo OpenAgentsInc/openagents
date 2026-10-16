@@ -75,7 +75,7 @@ struct VoiceLiveActivity: Widget {
 }
 
 private enum Stage {
-    static let url = URL(string: "openagents-coder://voice")
+    static let url = URL(string: "openagents://voice")
 }
 
 // MARK: Lock Screen

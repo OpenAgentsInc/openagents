@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # macOS packaging: build the release binary for the host arch and produce
-#   target/package/coder-desktop-<version>-macos-<arch>.dmg          (user download)
-#   target/package/coder-desktop-<version>-macos-<arch>-app.tar.gz   (update artifact)
-# containing Coder.app (unsigned unless CODESIGN_IDENTITY is set). Coder Desktop
+#   target/package/openagents-desktop-<version>-macos-<arch>.dmg          (user download)
+#   target/package/openagents-desktop-<version>-macos-<arch>-app.tar.gz   (update artifact)
+# containing OpenAgents.app (unsigned unless CODESIGN_IDENTITY is set). Coder Desktop
 # has no update feed yet (crates/brand), so nothing consumes the tarball today.
 #
 # Usage: scripts/package-macos.sh
@@ -18,9 +18,9 @@ command -v cargo >/dev/null 2>&1 || PATH="$HOME/.cargo/bin:$PATH"
 VERSION="$(grep -m1 '^version' "$ROOT/Cargo.toml" | sed 's/.*"\(.*\)".*/\1/')"
 ARCH="$(uname -m)" # arm64 on Apple silicon runners
 OUT_DIR="$ROOT/target/package"
-APP="$OUT_DIR/Coder.app"
-DMG="$OUT_DIR/coder-desktop-$VERSION-macos-$ARCH.dmg"
-APP_TARBALL="$OUT_DIR/coder-desktop-$VERSION-macos-$ARCH-app.tar.gz"
+APP="$OUT_DIR/OpenAgents.app"
+DMG="$OUT_DIR/openagents-desktop-$VERSION-macos-$ARCH.dmg"
+APP_TARBALL="$OUT_DIR/openagents-desktop-$VERSION-macos-$ARCH-app.tar.gz"
 
 cd "$ROOT"
 cargo build --release -p zeron
@@ -73,7 +73,7 @@ if $NOTARIZE; then
 fi
 
 # The auto-updater artifact.
-tar -czf "$APP_TARBALL" -C "$OUT_DIR" Coder.app
+tar -czf "$APP_TARBALL" -C "$OUT_DIR" OpenAgents.app
 echo "packaged: $APP_TARBALL"
 
 # The dmg presents the classic drag-into-Applications layout over the
@@ -97,7 +97,7 @@ import dmgbuild
 app = os.environ["APP"]
 dmgbuild.build_dmg(
     filename=os.environ["DMG"],
-    volume_name="Coder",
+    volume_name="OpenAgents",
     settings={
         "format": "UDZO",
         "files": [app],
@@ -114,7 +114,7 @@ dmgbuild.build_dmg(
         "window_rect": ((200, 120), (660, 400)),
         "icon_size": 104,
         "text_size": 12,
-        "icon_locations": {"Coder.app": (165, 195), "Applications": (495, 195)},
+        "icon_locations": {"OpenAgents.app": (165, 195), "Applications": (495, 195)},
     },
 )
 PY

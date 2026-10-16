@@ -26,7 +26,7 @@ final class LaunchLifecycleTests: XCTestCase {
         app.launch()
         capture(app, "release-first-launch")
         XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["OpenAgents Coder"].exists)
+        XCTAssertTrue(app.staticTexts["OpenAgents"].exists)
         backgroundAndReturn(app)
         XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 5))
         app.buttons["open-demo"].tap()

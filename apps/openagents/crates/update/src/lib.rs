@@ -325,7 +325,7 @@ pub const LATEST_RELEASE_PAGE: &str = coder_brand::DOWNLOAD_URL;
 
 /// Shown when no update feed is configured (Coder Desktop has none yet).
 pub const NO_FEED_MESSAGE: &str =
-    "Coder doesn't update itself yet. Get new versions at openagents.com/download.";
+    "OpenAgents doesn't update itself yet. Get new versions at openagents.com/download.";
 
 /// Whether this build has an update feed: the developer override
 /// `ZERON_RELEASES_URL`, or `coder_brand::UPDATE_FEED`. Without one the
@@ -399,12 +399,12 @@ impl std::fmt::Display for UpdateBlocker {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Translocated | Self::DiskImage => f.write_str(
-                "Coder is running from a temporary, read-only location. Move Coder to your \
+                "OpenAgents is running from a temporary, read-only location. Move OpenAgents to your \
                  Applications folder and reopen it to turn on updates.",
             ),
             Self::NotWritable(dir) => write!(
                 f,
-                "Coder doesn't have permission to replace itself in {}.",
+                "OpenAgents doesn't have permission to replace itself in {}.",
                 dir.display()
             ),
         }
@@ -1880,16 +1880,16 @@ mod tests {
     #[test]
     fn systemd_service_cgroup_is_recognized() {
         assert!(in_zeron_service_cgroup(
-            "0::/user.slice/user-1000.slice/user@1000.service/app.slice/coder-desktop.service\n"
+            "0::/user.slice/user-1000.slice/user@1000.service/app.slice/openagents-desktop.service\n"
         ));
         assert!(in_zeron_service_cgroup(
-            "12:pids:/user.slice/user@1000.service/coder-desktop.service\n1:name=systemd:/x\n"
+            "12:pids:/user.slice/user@1000.service/openagents-desktop.service\n1:name=systemd:/x\n"
         ));
         assert!(!in_zeron_service_cgroup(
             "0::/user.slice/user-1000.slice/session-3.scope\n"
         ));
         assert!(!in_zeron_service_cgroup(
-            "0::/user.slice/user@1000.service/app.slice/coder-desktop.service.d\n"
+            "0::/user.slice/user@1000.service/app.slice/openagents-desktop.service.d\n"
         ));
     }
 

@@ -78,7 +78,7 @@ impl Controller {
         store: Arc<dyn CredentialStore + Send + Sync>,
         marker: PathBuf,
     ) -> Arc<Self> {
-        Self::new_named(client, store, marker, "Coder Desktop".into())
+        Self::new_named(client, store, marker, "OpenAgents".into())
     }
     pub fn new_named(
         client: Client,

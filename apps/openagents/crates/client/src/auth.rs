@@ -29,7 +29,7 @@ pub const EARLY_REFRESH_SECS: i64 = 60;
 pub const PRODUCTION_EDGE_URL: &str = "https://sync.openagents.com";
 pub const WORKOS_CLIENT_ID: &str = "client_01KWD0EAKZKD50YCQJNYSRE4BY";
 pub const WORKOS_API_BASE: &str = "https://api.workos.com";
-/// OAuth redirect: `coder-desktop://callback?code=…&state=…`.
+/// OAuth redirect: `openagents://callback?code=…&state=…`.
 pub const CALLBACK_SCHEME: &str = coder_brand::URL_SCHEME;
 
 fn percent_encode(value: &str) -> String {
@@ -501,17 +501,17 @@ mod tests {
             assert!(url.is_empty());
         }
         assert_eq!(
-            parse_auth_callback("coder-desktop://callback?code=abc&state=s%20t%261"),
+            parse_auth_callback("openagents://callback?code=abc&state=s%20t%261"),
             Some(AuthCallback::Code {
                 code: "abc".into(),
                 state: Some("s t&1".into())
             })
         );
         assert!(matches!(
-            parse_auth_callback("coder-desktop://callback?error=access_denied"),
+            parse_auth_callback("openagents://callback?error=access_denied"),
             Some(AuthCallback::Error { .. })
         ));
-        assert_eq!(parse_auth_callback("coder-desktop://callback"), None);
+        assert_eq!(parse_auth_callback("openagents://callback"), None);
     }
 
     /// A raw HTTP/1.1 responder: counts requests, answers each with `reply`.

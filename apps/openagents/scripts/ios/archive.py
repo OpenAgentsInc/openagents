@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare a Coder iOS archive locally. This command never exports or uploads."""
+"""Prepare an OpenAgents iOS archive locally. This command never exports or uploads."""
 import argparse
 import json
 import os
@@ -35,7 +35,7 @@ def run(command, env):
 
 def verify(app, version):
     info = plistlib.loads((app / "Info.plist").read_bytes())
-    assert info["CFBundleIdentifier"] == "com.openagents.coder"
+    assert info["CFBundleIdentifier"] == "com.openagents.app"
     assert info["CFBundleShortVersionString"] == version["version"]
     assert info["CFBundleVersion"] == version["build"]
     assert info.get("ITSAppUsesNonExemptEncryption") is False, "Export exemption must be explicit."
@@ -49,7 +49,7 @@ def verify(app, version):
         other = plistlib.loads((extension / "Info.plist").read_bytes())
         assert other["CFBundleShortVersionString"] == version["version"]
         assert other["CFBundleVersion"] == version["build"]
-        assert other["CFBundleIdentifier"].startswith("com.openagents.coder.")
+        assert other["CFBundleIdentifier"].startswith("com.openagents.app.")
     binary = app / info["CFBundleExecutable"]
     symbols = subprocess.check_output(["/usr/bin/strings", "-a", str(binary)])
     assert b"sign_in_from_fixture" not in symbols
@@ -89,7 +89,7 @@ def main():
     assert "aps-environment" not in entitlements
     assert not entitlements.get("get-task-allow", False)
     if args.check_only:
-        print("PASS Coder release metadata, matching versions, and no push entitlement")
+        print("PASS OpenAgents release metadata, matching versions, and no push entitlement")
         return
     if subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT).strip():
         parser.error("Commit release changes before archiving.")
@@ -125,7 +125,7 @@ def main():
     proof = {**version, "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "signed": bool(args.team), "uploaded": False, "identity_privacy_and_fixture_checks": True}
     output.with_suffix(".json").write_text(json.dumps(proof, indent=2) + "\n")
-    print("PASS local Coder archive prepared; no export or upload performed")
+    print("PASS local OpenAgents archive prepared; no export or upload performed")
 
 
 if __name__ == "__main__":

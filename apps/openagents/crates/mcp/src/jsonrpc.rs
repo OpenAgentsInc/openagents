@@ -58,7 +58,7 @@ the OpenAgents Video Lab: read a document (`lab_show` for a time range, `lab_ope
 own words and offer what the Lab would accept. Never invent a version, time, or result the \
 tools didn't return. Each Lab call that returns a film shows its own card above your reply, so \
 make the calls the request needs and no more (don't open a document just to show a range of it); end with the \
-Lab player link from the result, which opens the player and timeline in Coder's browser.";
+Lab player link from the result, which opens the player and timeline in the app's browser.";
 
 const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;

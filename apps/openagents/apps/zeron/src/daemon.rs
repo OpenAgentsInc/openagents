@@ -226,7 +226,7 @@ fn captured_env() -> Vec<(String, String)> {
 
 fn render_systemd_unit(exe: &Path, env: &[(String, String)]) -> String {
     let mut unit = String::from(
-        "[Unit]\nDescription=Coder Desktop headless engine\nAfter=network-online.target\nStartLimitIntervalSec=60\nStartLimitBurst=5\n\n[Service]\n",
+        "[Unit]\nDescription=OpenAgents headless engine\nAfter=network-online.target\nStartLimitIntervalSec=60\nStartLimitBurst=5\n\n[Service]\n",
     );
     for (key, value) in env {
         // systemd unquotes the value; escape the characters it treats specially.
@@ -441,7 +441,7 @@ mod tests {
             &[("ZERON_EDGE_URL".into(), "https://e?a=1&b=2".into())],
             Path::new("/Users/x/.zeron/daemon.log"),
         );
-        assert!(plist.contains("<key>Label</key><string>com.openagents.coder.desktop</string>"));
+        assert!(plist.contains("<key>Label</key><string>com.openagents.desktop</string>"));
         // XML-escaped exe path and env value.
         assert!(plist.contains("<string>/Users/x/zeron &amp; co/zeron</string>"));
         assert!(plist.contains("<string>https://e?a=1&amp;b=2</string>"));

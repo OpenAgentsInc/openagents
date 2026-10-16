@@ -2,7 +2,7 @@
 Type=Application
 Name=Coder
 GenericName=Coding Agent Desktop
-Comment=Coder Desktop: a desktop for coding agents (based on Zeron)
+Comment=OpenAgents: a desktop for coding agents (based on Zeron)
 Exec=zeron %u
 TryExec=zeron
 Icon=zeron

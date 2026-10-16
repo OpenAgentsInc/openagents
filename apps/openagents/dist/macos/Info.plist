@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Template for Coder.app/Contents/Info.plist (Coder Desktop; identity values
+<!-- Template for OpenAgents.app/Contents/Info.plist (the OpenAgents desktop app; identity values
      mirror crates/brand/src/lib.rs) — see dist/README.md for the
      bundling steps. Replace __VERSION__ before packaging. -->
 <plist version="1.0">
@@ -8,17 +8,17 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
-    <string>Coder</string>
+    <string>OpenAgents</string>
     <key>CFBundleExecutable</key>
     <string>zeron</string>
     <key>CFBundleIconFile</key>
     <string>coder.icns</string>
     <key>CFBundleIdentifier</key>
-    <string>com.openagents.coder.desktop</string>
+    <string>com.openagents.desktop</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Coder</string>
+    <string>OpenAgents</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -29,17 +29,17 @@
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>com.openagents.coder.desktop.conversation</string>
+            <string>com.openagents.desktop.conversation</string>
             <key>CFBundleURLSchemes</key>
             <array>
-                <string>coder-desktop</string>
+                <string>openagents</string>
             </array>
         </dict>
     </array>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Coder uses your microphone for on-device dictation and for voice sessions you start. Voice sessions stream your audio to OpenAI through your ChatGPT-authenticated Codex account.</string>
+    <string>OpenAgents uses your microphone for on-device dictation and for voice sessions you start. Voice sessions stream your audio to OpenAI through your ChatGPT-authenticated Codex account.</string>
     <!-- macOS 26 attaches one-time-code AutoFill (a SafariPlatformSupport
          helper process) to every text input unless the app opts out. -->
     <key>NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac</key>
@@ -54,7 +54,7 @@
         <true/>
     </dict>
     <key>NSHumanReadableCopyright</key>
-    <string>Coder Desktop. Based on Zeron by Wing, MIT.</string>
+    <string>OpenAgents. Based on Zeron by Wing, MIT.</string>
     <!-- gpui renders via Metal. -->
     <key>NSSupportsAutomaticGraphicsSwitching</key>
     <true/>

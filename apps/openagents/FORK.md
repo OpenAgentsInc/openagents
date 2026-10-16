@@ -75,6 +75,23 @@ OpenAgents push-gateway delivery lands in #11853.
 
 ## Identity and branding seams (patch log)
 
+**Renamed to OpenAgents on 2026-10-16.**
+
+| Seam | Value now |
+| --- | --- |
+| App name | OpenAgents (`NAME`, `LONG_NAME`) |
+| Bundle IDs | `com.openagents.desktop`, dev `com.openagents.desktop.dev` |
+| Data folder | `OpenAgents Desktop` (`openagents-desktop` on Linux); the earlier Rust Native desktop keeps `OpenAgents` |
+| URL scheme | `openagents://` |
+| systemd unit | `openagents-desktop.service` |
+| Bundles | `OpenAgents.app`, `OpenAgents Dev.app` |
+| Windows installer | AppName OpenAgents (same AppId) |
+| iPhone | the OpenAgents mobile app: `com.openagents.app` (+ `.LiveActivity`, `.tests`, `.uitests`), display name OpenAgents, scheme `openagents://`; this replaces `com.openagents.coder` |
+
+`~/.coder-desktop` worktrees and the IPC ports are unchanged. The
+`LEGACY_*` constants in `crates/brand` carry data and the sign-in over.
+The table below is the history up to the rename.
+
 The source of truth is [`crates/brand/src/lib.rs`](crates/brand/src/lib.rs).
 
 | Seam | Zeron | Coder Desktop | Where |

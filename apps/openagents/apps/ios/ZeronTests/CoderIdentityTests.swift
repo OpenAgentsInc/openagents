@@ -4,11 +4,11 @@ import UIKit
 
 final class CoderIdentityTests: XCTestCase {
     func testAppIdentityAndServer() {
-        XCTAssertEqual(Bundle.main.bundleIdentifier, "com.openagents.coder")
-        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String, "OpenAgents Coder")
+        XCTAssertEqual(Bundle.main.bundleIdentifier, "com.openagents.app")
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String, "OpenAgents")
         XCTAssertEqual(productionEdgeUrl(), "https://sync.openagents.com")
         let types = Bundle.main.object(forInfoDictionaryKey: "CFBundleURLTypes") as? [[String: Any]]
-        XCTAssertEqual(types?.first?["CFBundleURLSchemes"] as? [String], ["openagents-coder"])
+        XCTAssertEqual(types?.first?["CFBundleURLSchemes"] as? [String], ["openagents"])
     }
 
     @MainActor

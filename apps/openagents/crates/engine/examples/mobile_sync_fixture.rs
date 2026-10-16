@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 use zeron_rpc::{RpcClient, methods};
 
 const ACCOUNT: &str = "acct_83d16a35955ef908";
-const TITLE: &str = "Coder mobile live fixture";
+const TITLE: &str = "OpenAgents mobile live fixture";
 struct Fixture {
     binary: PathBuf,
     root: PathBuf,
@@ -116,7 +116,7 @@ impl Fixture {
             .into();
         ipc.call(
             methods::MUTATE,
-            json!({"op":"renameDevice","deviceId":self.device,"name":"Coder mobile fixture"}),
+            json!({"op":"renameDevice","deviceId":self.device,"name":"OpenAgents mobile fixture"}),
         )
         .await?;
         self.ipc = Some(ipc);

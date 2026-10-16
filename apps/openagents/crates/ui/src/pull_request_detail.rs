@@ -67,7 +67,7 @@ fn failure_reason(error: &zeron_rpc::RpcError) -> &'static str {
         RpcError::Capability(code) if code == codes::PULL_REQUESTS_DECODE => {
             "GitHub’s response was too large or unreadable. Open it on GitHub instead."
         }
-        RpcError::UnknownMethod(_) => "Update Coder on the selected device.",
+        RpcError::UnknownMethod(_) => "Update OpenAgents on the selected device.",
         _ => "Check the link and your connection, then try again.",
     }
 }
@@ -878,7 +878,7 @@ impl PullRequestDetailPage {
         self.task = Some(cx.spawn(async move |this, cx| {
             let result = engine.client().call(methods::GET_CHANGE_REQUEST, params).await
                 .map_err(|error| format!("Couldn’t load this pull request. {}", failure_reason(&error)))
-                .and_then(|value| serde_json::from_value::<ChangeRequestDetail>(value).map_err(|_| "The device sent a pull request this version can’t read. Update Coder on the selected device.".to_owned()));
+                .and_then(|value| serde_json::from_value::<ChangeRequestDetail>(value).map_err(|_| "The device sent a pull request this version can’t read. Update OpenAgents on the selected device.".to_owned()));
             // Large descriptions and review threads must not stall the UI thread.
             let result = cx.background_executor().spawn(async move {
                 result.map(|detail| DetailSnapshot {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build and run an isolated Coder Desktop development bundle ("Coder Dev.app").
-# Coder.app, Zeron.app and Zeron Dev.app may remain open: this bundle has its
+# Build and run an isolated OpenAgents desktop development bundle ("OpenAgents Dev.app").
+# OpenAgents.app, Zeron.app and Zeron Dev.app may remain open: this bundle has its
 # own LaunchServices/TCC identity, data directory, and engine IPC port.
 # Set ZERON_DEV_BUILD_ONLY=1 to prepare the signed bundle without launching it.
 
@@ -10,16 +10,16 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 command -v cargo >/dev/null 2>&1 || PATH="$HOME/.cargo/bin:$PATH"
 VERSION="$(grep -m1 '^version' "$ROOT/Cargo.toml" | sed 's/.*"\(.*\)".*/\1/')"
 DEV_ROOT="$ROOT/target/macos-dev"
-APP="$DEV_ROOT/Coder Dev.app"
+APP="$DEV_ROOT/OpenAgents Dev.app"
 CONTENTS="$APP/Contents"
 # The dev bundle keeps the checkout-local data the fork has used since it was
 # created (it holds the owner's dev sessions); never a real install's data.
 DATA_DIR="${ZERON_DEV_DATA_DIR:-$DEV_ROOT/data}"
 IPC_PORT="${ZERON_DEV_IPC_PORT:-49777}"
-BUNDLE_ID="${ZERON_DEV_BUNDLE_ID:-com.openagents.coder.desktop.dev}"
+BUNDLE_ID="${ZERON_DEV_BUNDLE_ID:-com.openagents.desktop.dev}"
 
 if pgrep -f -x "$CONTENTS/MacOS/zeron" >/dev/null 2>&1; then
-  echo "Coder Dev is already running. Quit it before rebuilding the signed bundle." >&2
+  echo "OpenAgents Dev is already running. Quit it before rebuilding the signed bundle." >&2
   exit 1
 fi
 
@@ -63,7 +63,7 @@ if [[ "${ZERON_DEV_BUILD_ONLY:-0}" == "1" ]]; then
   exit 0
 fi
 
-echo "running Coder Dev (bundle $BUNDLE_ID, data $DATA_DIR, IPC $IPC_PORT)" >&2
+echo "running OpenAgents Dev (bundle $BUNDLE_ID, data $DATA_DIR, IPC $IPC_PORT)" >&2
 # LaunchServices must own the process. Launching Contents/MacOS/zeron directly
 # makes TCC attribute Screen Recording to the terminal (Warp, Terminal, etc.).
 # -W keeps the script attached until the app exits. Runtime logs remain in the

@@ -310,7 +310,7 @@ impl ShortcutsPage {
                                             .text_size(px(12.0))
                                             .text_color(theme.text_muted)
                                             .child(
-                                                "Changed a permission? Check again after returning to Coder.",
+                                                "Changed a permission? Check again after returning to OpenAgents.",
                                             ),
                                     )
                                     .child(refresh),

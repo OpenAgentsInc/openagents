@@ -1,7 +1,9 @@
 # Prepare Coder for TestFlight
 
-The candidate is **OpenAgents Coder 1.0.0 (1002)**, bundle
-`com.openagents.coder`. This uses the existing App Store Connect record.
+Since the 2026-10-16 rename the app is **OpenAgents** on bundle
+`com.openagents.app` (the OpenAgents App Store Connect record; its next build must
+be above both 59 there and 1002 here). The history below describes 1.0.0 (1002) on
+the retired `com.openagents.coder` record.
 Before signing, the owner checks that this version and build are available.
 If they are already used, change every app/extension version in
 `Zeron.xcodeproj/project.pbxproj` and `version.json` together, commit, and push.

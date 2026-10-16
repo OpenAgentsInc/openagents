@@ -5708,27 +5708,27 @@ impl WorkspaceCommand {
             (
                 Self::Model,
                 "model",
-                "Coder: choose agent, model, and reasoning",
+                "OpenAgents: choose agent, model, and reasoning",
                 false,
             ),
-            (Self::New, "new", "Coder: start a new conversation", false),
+            (Self::New, "new", "OpenAgents: start a new conversation", false),
             (
                 Self::Resume,
                 "resume",
-                "Coder: search and open conversations",
+                "OpenAgents: search and open conversations",
                 false,
             ),
-            (Self::Settings, "settings", "Coder: open settings", false),
-            (Self::Diff, "diff", "Coder: open changes", true),
-            (Self::Files, "files", "Coder: open project files", true),
-            (Self::Terminal, "terminal", "Coder: open a terminal", true),
+            (Self::Settings, "settings", "OpenAgents: open settings", false),
+            (Self::Diff, "diff", "OpenAgents: open changes", true),
+            (Self::Files, "files", "OpenAgents: open project files", true),
+            (Self::Terminal, "terminal", "OpenAgents: open a terminal", true),
             (
                 Self::Rename,
                 "rename",
-                "Coder: rename this conversation",
+                "OpenAgents: rename this conversation",
                 true,
             ),
-            (Self::Stop, "stop", "Coder: stop the active run", true),
+            (Self::Stop, "stop", "OpenAgents: stop the active run", true),
         ]
     }
 }
@@ -5961,9 +5961,9 @@ fn slash_error_message(err: &RpcError, skill: bool) -> SharedString {
     match err {
         RpcError::UnknownMethod(_) => {
             if skill {
-                "Skills require an updated engine on the selected device. Restart that device’s Coder after updating.".into()
+                "Skills require an updated engine on the selected device. Restart OpenAgents on that device after updating.".into()
             } else {
-                "Commands require an updated engine on the selected device. Restart that device’s Coder after updating.".into()
+                "Commands require an updated engine on the selected device. Restart OpenAgents on that device after updating.".into()
             }
         }
         RpcError::Transport(_) | RpcError::Closed => "The session's device is unreachable".into(),
@@ -8647,7 +8647,7 @@ impl Composer {
     /// Check before consuming drafts, attachments, or an edited queue row.
     pub(crate) fn check_reference_delivery(&mut self, text: &str, cx: &mut Context<Self>) -> bool {
         if references_require_update(text, self.reference_delivery_supported(cx)) {
-            self.failure = Some("Update the selected device’s Coder to send file, command, or skill references. Your draft is preserved.".into());
+            self.failure = Some("Update OpenAgents on the selected device to send file, command, or skill references. Your draft is preserved.".into());
             self.failure_key = Some(self.current_key.clone());
             cx.notify();
             return false;

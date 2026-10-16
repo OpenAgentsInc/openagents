@@ -93,7 +93,7 @@ impl CoreAccount {
             client,
             store.clone(),
             data_dir.join("account/signed-out"),
-            "OpenAgents Coder".into(),
+            "OpenAgents".into(),
         );
         let cancel = CancellationToken::new();
         let clients: Clients = Arc::default();
@@ -176,7 +176,7 @@ impl CoreAccount {
             }
         })?;
         let store = Arc::new(PlatformStore::new(
-            "com.openagents.coder.account".into(),
+            "com.openagents.app.account".into(),
             data_dir.clone(),
         ));
         Ok(Self::from_store(

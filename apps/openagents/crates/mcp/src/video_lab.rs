@@ -166,7 +166,7 @@ pub fn declarations(body: &Value) -> Vec<ToolDef> {
             Some(ToolDef {
                 name: Box::leak(name.to_owned().into_boxed_str()),
                 description: Box::leak(
-                    format!("Video Lab: {description} Results carry the Lab player link; Coder shows the film in a card with that link.")
+                    format!("Video Lab: {description} Results carry the Lab player link; OpenAgents shows the film in a card with that link.")
                         .into_boxed_str(),
                 ),
                 input_schema: schema,

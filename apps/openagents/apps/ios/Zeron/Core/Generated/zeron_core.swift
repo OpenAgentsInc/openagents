@@ -18695,7 +18695,7 @@ public func parseUserMessage(content: String) -> ParsedUserMessage  {
 })
 }
 /**
- * Default sync server for OpenAgents Coder.
+ * Default sync server for the OpenAgents mobile app.
  */
 public func productionEdgeUrl() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
@@ -18911,7 +18911,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_zeron_mobile_checksum_func_parse_user_message() != 19553) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_zeron_mobile_checksum_func_production_edge_url() != 58148) {
+    if (uniffi_zeron_mobile_checksum_func_production_edge_url() != 3402) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_func_project_color_count() != 30925) {

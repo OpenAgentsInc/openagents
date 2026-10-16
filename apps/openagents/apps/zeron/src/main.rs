@@ -15,12 +15,12 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "zeron",
     version,
-    about = "Coder Desktop: a desktop for coding agents (based on Zeron)"
+    about = "OpenAgents: a desktop for coding agents (based on Zeron)"
 )]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
-    /// Open a Coder conversation URL (`coder-desktop://open/chat/...`).
+    /// Open an OpenAgents conversation URL (`openagents://open/chat/...`).
     #[arg(value_name = "URL")]
     open_url: Option<String>,
     #[cfg(windows)]

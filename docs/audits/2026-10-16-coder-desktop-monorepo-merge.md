@@ -339,6 +339,21 @@ its own workspace on Rust 1.98.1, using the SDK by path. `edge/` (apart from
 
 Next is step 3, release scripts.
 
+**Step 4 (rename) is done (2026-10-16), ahead of step 3.**
+- **Desktop:** it is OpenAgents (`com.openagents.desktop`, dev
+  `com.openagents.desktop.dev`, data folder `OpenAgents Desktop`,
+  `openagents://`).
+- **Phone:** the iPhone app is the OpenAgents mobile app on
+  `com.openagents.app`.
+- **Strings:** about 100 user-visible strings that said Coder now say
+  OpenAgents.
+- **Carry-over:** the desktop carries the sign-in and a packaged data folder
+  over once. The phone can't read the old app's Keychain, so testers sign in
+  again on the new bundle.
+- **App Store:** uploading under `com.openagents.app` needs that record's
+  App IDs for the main app and the Live Activity extension, and its next
+  build number. The fork numbering (1002) is above the record's 59.
+
 Estimates are wall-clock time at this repository's measured pace (next
 section), with two to four agents working at once where the steps allow it.
 

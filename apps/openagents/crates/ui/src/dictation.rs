@@ -87,12 +87,12 @@ impl Transcriber for Native {
                 -2 => {
                     self.finished = true;
                     return Some(Event::Unavailable(
-                        "Dictation requires the packaged Coder app.".into(),
+                        "Dictation requires the packaged OpenAgents app.".into(),
                     ));
                 }
                 -1 => {
                     self.finished = true;
-                    return Some(Event::Denied("Allow Microphone access for Coder in System Settings → Privacy & Security, then retry.".into()));
+                    return Some(Event::Denied("Allow Microphone access for OpenAgents in System Settings → Privacy & Security, then retry.".into()));
                 }
                 _ if self.origin_window == 0 || origin_window() != self.origin_window => {
                     self.finished = true;

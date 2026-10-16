@@ -5,7 +5,7 @@ final class CoderIdentityTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-signedout"]
         app.launch()
-        XCTAssertTrue(app.staticTexts["OpenAgents Coder"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["OpenAgents"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["signed-out"].exists)
         XCTAssertFalse(app.buttons["sign-in"].exists)
         app.buttons["open-demo"].tap()

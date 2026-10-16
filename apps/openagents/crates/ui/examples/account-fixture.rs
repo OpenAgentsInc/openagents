@@ -156,8 +156,8 @@ fn main() -> anyhow::Result<()> {
         let server=Arc::new(Server::default());server.revision.store(1,Ordering::SeqCst);
         let code_origin=origin.clone();
         let router=Router::new()
-            .route("/device",get(|| async {Html("<h1>Sign in to Coder Desktop</h1><p>Fixture Mac · BCDF-GHJK</p><form action='/approve' method='post'><button>Approve</button></form>")}))
-            .route("/approve",post(|State(s): State<Arc<Server>>| async move {s.approved.store(true,Ordering::SeqCst); Html("<h1>Approved</h1><p>Return to Coder Desktop.</p>")}))
+            .route("/device",get(|| async {Html("<h1>Sign in to OpenAgents</h1><p>Fixture Mac · BCDF-GHJK</p><form action='/approve' method='post'><button>Approve</button></form>")}))
+            .route("/approve",post(|State(s): State<Arc<Server>>| async move {s.approved.store(true,Ordering::SeqCst); Html("<h1>Approved</h1><p>Return to OpenAgents.</p>")}))
             .route("/v1/device/code",post(move || {let origin=code_origin.clone();async move {Json(json!({"device_code":"dvc_fixture","user_code":"BCDF-GHJK","verification_uri":format!("{origin}/device"),"verification_uri_complete":format!("{origin}/device?code=BCDF-GHJK"),"interval":1,"expires_in":120}))}}))
             .route("/v1/device/token",post(|State(s):State<Arc<Server>>|async move {if !s.approved.load(Ordering::SeqCst) {return (StatusCode::BAD_REQUEST,Json(json!({"error":"authorization_pending"})));} s.active.store(true,Ordering::SeqCst);(StatusCode::OK,Json(json!({"access_token":format!("sess_{:064x}",1),"token_type":"Bearer","expires_in":120,"account":{"id":"acct_fixture","label":"Fixture account"}})))}))
             .route("/v1/account",get(|State(s):State<Arc<Server>>|async move {if s.active.load(Ordering::SeqCst) {(StatusCode::OK,Json(json!({"account":{"id":"acct_fixture","label":"Fixture account"},"workspaces":[]})))}else{(StatusCode::UNAUTHORIZED,Json(json!({"error":"unauthorized"})))}}))

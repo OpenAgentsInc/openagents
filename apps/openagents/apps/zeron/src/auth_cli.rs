@@ -88,7 +88,7 @@ pub async fn login(config: EngineConfig) -> anyhow::Result<()> {
                 );
             }
             let mut updates = controller.watch();
-            let operation = controller.sign_in("Coder Desktop".into());
+            let operation = controller.sign_in("OpenAgents".into());
             tokio::pin!(operation);
             loop {
                 tokio::select! {
@@ -96,7 +96,7 @@ pub async fn login(config: EngineConfig) -> anyhow::Result<()> {
                     changed = updates.changed() => {
                         if changed.is_err() { break; }
                         if let coder_account::Phase::Waiting { code, url } = &updates.borrow_and_update().phase {
-                            println!("Open {url} and approve code {code} for Coder Desktop.");
+                            println!("Open {url} and approve code {code} for OpenAgents.");
                         }
                     }
                 }
@@ -108,10 +108,10 @@ pub async fn login(config: EngineConfig) -> anyhow::Result<()> {
             println!("Signed in as {}.", account.label);
             if temporary {
                 println!(
-                    "Keep CODER_DESKTOP_CREDENTIAL set when starting Coder; this credential was not saved."
+                    "Keep CODER_DESKTOP_CREDENTIAL set when starting OpenAgents; this credential was not saved."
                 );
             } else {
-                println!("Start Coder to sync new sessions; local sessions stay local.");
+                println!("Start OpenAgents to sync new sessions; local sessions stay local.");
             }
         }
         coder_account::Phase::Failed { message, .. } => anyhow::bail!("{message}"),

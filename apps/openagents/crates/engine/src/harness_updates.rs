@@ -318,7 +318,7 @@ fn manual_update_command(harness: HarnessId, executable: &Path, can_apply: bool)
     if harness == HarnessId::Antigravity
         && zeron_harness::acp::is_managed_antigravity_server(executable)
     {
-        return Some("Update Coder to install this release".into());
+        return Some("Update OpenAgents to install this release".into());
     }
     Some(
         claude_package_manager_command_for(harness, executable)

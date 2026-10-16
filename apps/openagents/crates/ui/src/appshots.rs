@@ -119,10 +119,10 @@ impl AppshotCapabilities {
                 "Set up once, one permission at a time. Screen Recording captures the window; Accessibility optionally adds off-screen application text."
             }
             AppshotPlatform::LinuxWayland => {
-                "Your desktop owns capture and shortcut consent. Coder checks each portal capability separately and explains any required fallback."
+                "Your desktop owns capture and shortcut consent. OpenAgents checks each portal capability separately and explains any required fallback."
             }
             AppshotPlatform::LinuxX11 => {
-                "X11 normally needs no capture permission. Coder prefers an active-window screenshot portal when available and otherwise uses native X11 capture."
+                "X11 normally needs no capture permission. OpenAgents prefers an active-window screenshot portal when available and otherwise uses native X11 capture."
             }
             AppshotPlatform::Unsupported => {
                 "This platform does not currently provide an Appshot capture backend."
@@ -153,10 +153,10 @@ impl AppshotCapabilities {
     pub fn capture_description(self) -> &'static str {
         match (self.platform, self.target) {
             (AppshotPlatform::MacOs, _) => {
-                "Screen Recording lets Coder capture the frontmost window. macOS may request one restart."
+                "Screen Recording lets OpenAgents capture the frontmost window. macOS may request one restart."
             }
             (AppshotPlatform::LinuxX11, _) => {
-                "Coder uses native X11 capture when active-window portal capture is unavailable. Obscured or protected windows may be incomplete."
+                "OpenAgents uses native X11 capture when active-window portal capture is unavailable. Obscured or protected windows may be incomplete."
             }
             (AppshotPlatform::LinuxWayland, CaptureTarget::ActiveWindow) => {
                 "Your screenshot portal supports the active-window target. A system consent surface may appear."
@@ -332,7 +332,7 @@ pub fn validate_capture_dimensions(width: u32, height: u32) -> Result<usize, Cap
         .ok_or_else(|| CaptureError::CaptureFailed("The captured window is too large.".into()))?;
     if pixels > MAX_CAPTURE_PIXELS || rgba_bytes > MAX_CAPTURE_RGBA_BYTES {
         return Err(CaptureError::CaptureFailed(format!(
-            "The captured window ({width}×{height}) exceeds Coder's capture budget."
+            "The captured window ({width}×{height}) exceeds OpenAgents' capture budget."
         )));
     }
     usize::try_from(rgba_bytes)
@@ -372,7 +372,7 @@ fn trim_appshot_padding(bytes: &[u8]) -> Result<Option<Vec<u8>>, CaptureError> {
     };
     if bytes.len() as u64 > crate::attachments::MAX_ATTACHMENT_BYTES {
         return Err(CaptureError::CaptureFailed(
-            "The captured window is larger than Coder's 24 MB image limit.".into(),
+            "The captured window is larger than OpenAgents' 24 MB image limit.".into(),
         ));
     }
     let (width, height) = png_dimensions(bytes).ok_or_else(|| {
@@ -463,7 +463,7 @@ pub fn stage_appshot_png(
 ) -> Result<(StagedAttachment, (u32, u32)), CaptureError> {
     if bytes.len() as u64 > crate::attachments::MAX_ATTACHMENT_BYTES {
         return Err(CaptureError::CaptureFailed(
-            "The captured window is larger than Coder's 24 MB image limit.".into(),
+            "The captured window is larger than OpenAgents' 24 MB image limit.".into(),
         ));
     }
     let bytes = trim_appshot_padding(&bytes)?.unwrap_or(bytes);
@@ -545,7 +545,7 @@ impl std::fmt::Display for CaptureError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::PermissionRequired => f.write_str(
-                "Window capture permission is required. Open Coder Settings → Appshots for the platform-specific recovery step.",
+                "Window capture permission is required. Open OpenAgents Settings → Appshots for the platform-specific recovery step.",
             ),
             Self::Cancelled => f.write_str("Appshot capture cancelled."),
             Self::SelfCapture => f.write_str("Switch to another app to capture an Appshot."),

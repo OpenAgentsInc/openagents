@@ -2235,7 +2235,7 @@ impl FilesSurface {
                                 if confirming_reload {
                                     "Discard unsaved changes?"
                                 } else {
-                                    "This file changed outside Coder."
+                                    "This file changed outside OpenAgents."
                                 },
                             ))
                             .child(

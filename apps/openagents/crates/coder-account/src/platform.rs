@@ -4,25 +4,56 @@ use sha2::{Digest, Sha256};
 pub struct PlatformStore {
     service: String,
     profile: String,
+    /// Earlier (service, profile) pairs read once when this entry is empty:
+    /// the identity before a rename, or a data directory that moved.
+    legacy: Vec<(String, String)>,
 }
 impl PlatformStore {
     pub fn new(service: String, profile: String) -> Self {
-        Self { service, profile }
+        Self {
+            service,
+            profile,
+            legacy: Vec::new(),
+        }
+    }
+    /// Carry a sign-in over from earlier entries. The first one found is
+    /// saved under this entry; the earlier entry is left in place.
+    pub fn with_legacy(mut self, legacy: Vec<(String, String)>) -> Self {
+        self.legacy = legacy;
+        self
     }
     fn key(&self, deployment: &Deployment) -> String {
-        format!(
-            "{:x}",
-            Sha256::digest(
-                format!(
-                    "{}\n{}\n{}",
-                    self.profile,
-                    deployment.api_base(),
-                    deployment.website()
-                )
-                .as_bytes()
-            )
-        )
+        key_for(&self.profile, deployment)
     }
+}
+fn key_for(profile: &str, deployment: &Deployment) -> String {
+    format!(
+        "{:x}",
+        Sha256::digest(
+            format!(
+                "{}\n{}\n{}",
+                profile,
+                deployment.api_base(),
+                deployment.website()
+            )
+            .as_bytes()
+        )
+    )
+}
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn read(service: &str, key: &str) -> Result<Option<CredentialRecord>, StorageError> {
+    let mut bytes = match security_framework::passwords::get_generic_password(service, key) {
+        Ok(b) => b,
+        Err(e) if e.code() == -25300 => return Ok(None),
+        Err(e) => return Err(mapped(e)),
+    };
+    if bytes.len() > 32 * 1024 {
+        bytes.fill(0);
+        return Err(StorageError::Unavailable);
+    }
+    let record = serde_json::from_slice(&bytes).map_err(|_| StorageError::Unavailable);
+    bytes.fill(0);
+    record.map(Some)
 }
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn mapped(e: security_framework::base::Error) -> StorageError {
@@ -35,21 +66,19 @@ impl CredentialStore for PlatformStore {
     fn load(&self, deployment: &Deployment) -> Result<Option<CredentialRecord>, StorageError> {
         #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
-            let mut bytes = match security_framework::passwords::get_generic_password(
-                &self.service,
-                &self.key(deployment),
-            ) {
-                Ok(b) => b,
-                Err(e) if e.code() == -25300 => return Ok(None),
-                Err(e) => return Err(mapped(e)),
-            };
-            if bytes.len() > 32 * 1024 {
-                bytes.fill(0);
-                return Err(StorageError::Unavailable);
+            if let Some(record) = read(&self.service, &self.key(deployment))? {
+                return Ok(Some(record));
             }
-            let record = serde_json::from_slice(&bytes).map_err(|_| StorageError::Unavailable);
-            bytes.fill(0);
-            record.map(Some)
+            for (service, profile) in &self.legacy {
+                // An unreadable earlier entry never blocks a fresh sign-in.
+                if let Ok(Some(record)) = read(service, &key_for(profile, deployment)) {
+                    if record.deployment() == deployment {
+                        let _ = self.save(&record);
+                        return Ok(Some(record));
+                    }
+                }
+            }
+            Ok(None)
         }
         #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         {

@@ -17,7 +17,7 @@ class ArchiveChecks(unittest.TestCase):
         self.app = Path(self.scratch.name) / "Zeron.app"
         self.app.mkdir()
         self.version = {"version": "1.0.0", "build": "1002"}
-        self.info = {"CFBundleIdentifier": "com.openagents.coder",
+        self.info = {"CFBundleIdentifier": "com.openagents.app",
                      "CFBundleShortVersionString": "1.0.0", "CFBundleVersion": "1002",
                      "CFBundleExecutable": "Zeron", "ITSAppUsesNonExemptEncryption": False}
         self.write_info()
@@ -54,7 +54,7 @@ class ArchiveChecks(unittest.TestCase):
     def test_extension_build_must_match_app(self):
         extension = self.app / "PlugIns/Voice.appex"
         extension.mkdir(parents=True)
-        other = dict(self.info, CFBundleIdentifier="com.openagents.coder.LiveActivity", CFBundleVersion="999")
+        other = dict(self.info, CFBundleIdentifier="com.openagents.app.LiveActivity", CFBundleVersion="999")
         (extension / "Info.plist").write_bytes(plistlib.dumps(other))
         with self.assertRaises(AssertionError):
             archive.verify(self.app, self.version)

@@ -96,15 +96,16 @@ pub fn configured(data: &Path) -> Result<(Arc<Controller>, Option<String>), Erro
     let store: Arc<dyn CredentialStore + Send + Sync> = if credential.is_some() {
         Arc::new(MemoryStore::default())
     } else {
-        let bundle = if cfg!(debug_assertions) {
-            coder_brand::DEV_BUNDLE_ID
+        let (bundle, legacy_bundle) = if cfg!(debug_assertions) {
+            (coder_brand::DEV_BUNDLE_ID, coder_brand::LEGACY_DEV_BUNDLE_ID)
         } else {
-            coder_brand::BUNDLE_ID
+            (coder_brand::BUNDLE_ID, coder_brand::LEGACY_BUNDLE_ID)
         };
-        Arc::new(PlatformStore::new(
-            format!("{bundle}.account"),
-            data.to_string_lossy().into_owned(),
-        ))
+        let profile = data.to_string_lossy().into_owned();
+        Arc::new(
+            PlatformStore::new(format!("{bundle}.account"), profile.clone())
+                .with_legacy(legacy_entries(data, bundle, legacy_bundle)),
+        )
     };
     let marker = if credential.is_some() {
         "openagents-account/temporary-signed-out"
@@ -114,4 +115,58 @@ pub fn configured(data: &Path) -> Result<(Arc<Controller>, Option<String>), Erro
     let controller = Controller::new(Client::new(deployment)?, store, data.join(marker));
     register(data, &controller);
     Ok((controller, credential))
+}
+
+/// Earlier Keychain entries to carry a sign-in over from: the pre-rename
+/// bundle's entry for this data directory, then both bundles' entries for
+/// each directory listed in `openagents-account/previous-profiles` (one
+/// absolute path per line, written when a data directory is moved).
+fn legacy_entries(data: &std::path::Path, bundle: &str, legacy_bundle: &str) -> Vec<(String, String)> {
+    let current = data.to_string_lossy().into_owned();
+    let mut profiles = vec![current.clone()];
+    if let Ok(text) = std::fs::read_to_string(data.join("openagents-account/previous-profiles")) {
+        profiles.extend(
+            text.lines()
+                .map(str::trim)
+                .filter(|line| line.starts_with('/') && *line != current)
+                .map(str::to_owned),
+        );
+    }
+    let mut entries = Vec::new();
+    for profile in profiles {
+        for service in [bundle, legacy_bundle] {
+            if service == bundle && profile == current {
+                continue;
+            }
+            entries.push((format!("{service}.account"), profile.clone()));
+        }
+    }
+    entries
+}
+
+#[cfg(test)]
+mod legacy_tests {
+    use super::legacy_entries;
+
+    #[test]
+    fn sign_in_carries_over_from_the_old_bundle_and_moved_data_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(data.join("openagents-account")).unwrap();
+        std::fs::write(
+            data.join("openagents-account/previous-profiles"),
+            "/old/checkout/target/macos-dev/data\nnot-absolute\n",
+        )
+        .unwrap();
+        let current = data.to_string_lossy().into_owned();
+        let entries = legacy_entries(&data, "new.bundle", "old.bundle");
+        assert_eq!(
+            entries,
+            vec![
+                ("old.bundle.account".to_owned(), current),
+                ("new.bundle.account".to_owned(), "/old/checkout/target/macos-dev/data".to_owned()),
+                ("old.bundle.account".to_owned(), "/old/checkout/target/macos-dev/data".to_owned()),
+            ]
+        );
+    }
 }

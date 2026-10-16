@@ -156,7 +156,7 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             }
             if notificationStatus == .denied {
                 // Only the Settings app can turn them back on.
-                let alert = UIAlertController(title: "Notifications are off", message: "Allow notifications for Coder in iOS Settings.", preferredStyle: .alert)
+                let alert = UIAlertController(title: "Notifications are off", message: "Allow notifications for OpenAgents in iOS Settings.", preferredStyle: .alert)
                 alert.addAction(UIAlertAction(title: "Not Now", style: .cancel) { [weak self] _ in self?.reload() })
                 alert.addAction(UIAlertAction(title: "Open Settings", style: .default) { [weak self] _ in
                     if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
@@ -214,7 +214,7 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             Row(id: "archived", title: "Archived Sessions", symbol: "archivebox"),
         ])
         s.appendSections(["About"])
-        s.appendItems([Row(id: "about", title: "OpenAgents Coder", subtitle: "Based on Zeron by Wing, MIT", symbol: "info.circle")])
+        s.appendItems([Row(id: "about", title: "OpenAgents", subtitle: "Based on Zeron by Wing, MIT", symbol: "info.circle")])
         s.appendSections([" "])
         s.appendItems([Row(id: "signout", title: "Sign Out", symbol: "rectangle.portrait.and.arrow.right", accessory: .none, destructive: true)])
         dataSource.apply(s, animatingDifferences: false)
@@ -225,7 +225,7 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
         guard let row = dataSource.itemIdentifier(for: path) else { return }
         switch row.id {
         case "about":
-            let about = UIAlertController(title: "OpenAgents Coder", message: Bundle.main.url(forResource: "Zeron-MIT", withExtension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) }, preferredStyle: .alert)
+            let about = UIAlertController(title: "OpenAgents", message: Bundle.main.url(forResource: "Zeron-MIT", withExtension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) }, preferredStyle: .alert)
             about.addAction(UIAlertAction(title: "Done", style: .default))
             present(about, animated: true)
         case "voice": navigationController?.pushViewController(VoiceViewController(app: app), animated: true)

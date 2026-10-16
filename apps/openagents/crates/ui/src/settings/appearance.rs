@@ -2403,7 +2403,7 @@ impl AppearancePage {
                             .mt(px(1.0))
                             .flex_none(),
                     )
-                    .child("Coder finds light and dark variants automatically."),
+                    .child("OpenAgents finds light and dark variants automatically."),
             );
         }
 
@@ -3835,7 +3835,7 @@ impl Render for AppearancePage {
                             vec![
                                 div()
                                     .child(
-                                        "Hold animations still while Coder isn't the focused window.",
+                                        "Hold animations still while OpenAgents isn't the focused window.",
                                     )
                                     .into_any_element(),
                             ],
