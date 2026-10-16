@@ -1,0 +1,29 @@
+[package]
+name = "openagents-sdk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The lightweight public OpenAgents client: app authentication and account resources."
+
+[dependencies]
+openagents-login = { path = "../openagents-login", default-features = false }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["time", "macros"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+url = { version = "2", features = ["serde"] }
+httpdate = "1"
+
+[dev-dependencies]
+oa-copy = { path = "../oa-copy" }
+axum = "0.8"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "net", "rt", "test-util"] }
+oa-auth = { path = "../oa-auth", features = ["fake", "local"] }
+tenancy = { path = "../tenancy" }
+openagents-web = { path = "../openagents-web" }
+
+[lints]
+workspace = true

@@ -35,6 +35,13 @@ with #11818, without waiting for the Computers specification or package publicat
 | [#11831](https://github.com/OpenAgentsInc/openagents/issues/11831) | Existing-chat transcript view with full available history | #11828, #11829 |
 | [#11832](https://github.com/OpenAgentsInc/openagents/issues/11832) | External SDK example and complete desktop journey against deployed public handlers | #11830, #11831 |
 
+The public auth schema (#11825) is implemented and deployed. The development
+Rust auth facade is [`openagents-sdk`](../../crates/openagents-sdk/README.md)
+(#11826); it reuses portable device parsing from `openagents-login` with the
+CLI's `system` helpers disabled. History and application integration remain
+separate implementation issues. A clean outside checkout and the SDK's own
+checks qualify this boundary; publication is still deferred.
+
 The built device flow is `POST /v1/device/code`, `POST /v1/device/token`,
 and `POST /v1/device/sign-out`; approval stays on the website. Reuse
 `openagents-login` and the account service, not Zeron WorkOS/edge auth.

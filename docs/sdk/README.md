@@ -41,7 +41,7 @@ clients; a new SDK does not need to duplicate them before computers are useful.
 
 | Area | Existing pieces | Remaining work |
 | --- | --- | --- |
-| Clients | Decisions client in `jev`, generated Boat client, account login, CLI and product-specific HTTP callers | Exported app authentication and complete history reads, then public Computers; maintained public schemas |
+| Clients | `openagents-sdk` app authentication, sessions, and account/workspace discovery; decisions in `jev`; generated Boat client and product-specific callers | Complete public history reads, then Computers; maintained public schemas |
 | Host | `coder-sdk`, Claude/Codex/ACP transports, hooks, policy and session ownership | Explicit third-party boundary, supported capabilities, and publication evidence |
 | Providers | `computer-driver`, Core/Suspend/Snapshot/Fork declarations, `computer-conformance`, Boat wire schema | Per-computer backend registry and separate external-provider qualification |
 | Computers | `oa-computers` PostgreSQL intent/reconciliation and web chat integration | Public auth/lifecycle/commands/files, shared client consumption, and supported SPACE operation |
@@ -111,11 +111,19 @@ and crates.io publication do not block this milestone.
 
 ## Rust packaging and release boundaries
 
-Use generated public types/client bindings with a small ergonomic layer for
-waits, streaming, files, credentials, and retry identities. The target module
-shape is `openagents::computers`; confirm package naming against the existing
-workspace and binaries before creating a facade. Do not rename existing
-packages or change workspace-wide publishing policy to satisfy the example.
+The development client package is [`openagents-sdk`](../../crates/openagents-sdk/README.md),
+exported as `openagents_sdk` or an application's `openagents` dependency alias.
+Its auth facade reuses the CLI's portable device protocol, with typed sessions,
+account/workspace discovery, caller-owned storage, bounded transport, and
+cancellation. It never adopts CLI credentials or launches a browser. Public
+handler fixtures check its types against implemented behavior; no crates.io
+package is published.
+
+Use generated public resource bindings with a small ergonomic layer for waits,
+streaming, files, credentials, and retry identities as those contracts ship.
+The future Computers module remains `openagents::computers`; #11805 can extend
+this package without holding authentication on its prerequisites. Existing
+binaries and workspace-wide publication policy keep their names and rules.
 
 Client-only builds must avoid host harness/process stacks, provider services,
 and server database dependencies. Add other client domains as their public

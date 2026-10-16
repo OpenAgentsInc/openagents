@@ -32,11 +32,14 @@
 //! Settings on the website. It never appears in `Debug` output, and
 //! nothing here logs it.
 
+#[cfg(feature = "system")]
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+
+pub mod protocol;
 
 /// The production website.
 pub const DEFAULT_ORIGIN: &str = "https://openagents.com";
@@ -144,6 +147,7 @@ pub fn valid_pair(pair: &str) -> bool {
 
 /// This computer's name, as the approval page shows it.
 #[must_use]
+#[cfg(feature = "system")]
 pub fn computer_name() -> String {
     let from = |program: &str, args: &[&str]| {
         std::process::Command::new(program)
@@ -216,6 +220,14 @@ pub struct Started {
     pub interval: u64,
 }
 
+impl Started {
+    /// The existing poll request. It contains the private device code; never log it.
+    #[must_use]
+    pub fn poll_request(&self) -> Value {
+        json!({"grant_type": "urn:ietf:params:oauth:grant-type:device_code", "device_code": self.device_code})
+    }
+}
+
 impl std::fmt::Debug for Started {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Started")
@@ -264,11 +276,13 @@ impl Saved {
 
     /// The account to act as: [`TOKEN_ENV`] when it is set, else the one
     /// saved in `dir`. A file that isn't ours (wrong shape) reads as none.
+    #[cfg(feature = "system")]
     pub fn load(dir: &Path) -> Option<Self> {
         Self::from_env(|name| std::env::var(name).ok()).or_else(|| Self::load_file(dir))
     }
 
     /// The account saved in `dir` only, whatever the environment says.
+    #[cfg(feature = "system")]
     pub fn load_file(dir: &Path) -> Option<Self> {
         let text = std::fs::read_to_string(dir.join(FILE)).ok()?;
         serde_json::from_str(&text).ok()
@@ -316,6 +330,7 @@ impl Saved {
 
     /// Keep this account in `dir/account.json`, readable only by this
     /// user (0600), the folder 0700.
+    #[cfg(feature = "system")]
     pub fn store(&self, dir: &Path) -> Result<PathBuf, String> {
         let path = dir.join(FILE);
         let mut bytes = serde_json::to_vec_pretty(self).map_err(|e| e.to_string())?;
@@ -326,6 +341,7 @@ impl Saved {
     }
 
     /// Remove the saved account from `dir`.
+    #[cfg(feature = "system")]
     pub fn forget(dir: &Path) -> Result<(), String> {
         match std::fs::remove_file(dir.join(FILE)) {
             Ok(()) => Ok(()),
@@ -335,6 +351,7 @@ impl Saved {
     }
 }
 
+#[cfg(feature = "system")]
 fn write_private(file: &Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
     let dir = file
@@ -475,10 +492,7 @@ async fn poll_with(http: &reqwest::Client, origin: &str, started: &Started) -> R
         http,
         origin,
         "/v1/device/token",
-        json!({
-            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-            "device_code": started.device_code,
-        }),
+        started.poll_request(),
         None,
     )
     .await?;
@@ -502,15 +516,12 @@ async fn poll_with(http: &reqwest::Client, origin: &str, started: &Started) -> R
             token: token.to_string(),
         }));
     }
-    match body["error"].as_str() {
-        Some("authorization_pending") => Ok(Poll::Pending),
-        Some("slow_down") => Ok(Poll::SlowDown(
-            body["interval"].as_u64().unwrap_or(started.interval + 5),
-        )),
-        Some("access_denied") => Err(Error::Denied),
-        Some("expired_token") => Err(Error::Expired),
-        Some("invalid_grant") => Err(Error::Expired),
-        _ => Err(Error::Refused(
+    match protocol::device_error(&body, started.interval) {
+        protocol::DeviceError::Pending => Ok(Poll::Pending),
+        protocol::DeviceError::SlowDown(interval) => Ok(Poll::SlowDown(interval)),
+        protocol::DeviceError::Denied => Err(Error::Denied),
+        protocol::DeviceError::Expired | protocol::DeviceError::InvalidGrant => Err(Error::Expired),
+        protocol::DeviceError::Other => Err(Error::Refused(
             body["error_description"]
                 .as_str()
                 .unwrap_or("Login stopped. Try again.")
@@ -617,6 +628,7 @@ pub async fn sign_out(saved: &Saved) -> Result<(), Error> {
 /// Open `url` in this computer's browser, when it has one. Over SSH with
 /// no display, there is none to open: answers false.
 #[must_use]
+#[cfg(feature = "system")]
 pub fn open_browser(url: &str) -> bool {
     if !url.starts_with("https://") && !url.starts_with("http://") {
         return false;

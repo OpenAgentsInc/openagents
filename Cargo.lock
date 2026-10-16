@@ -11815,6 +11815,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-sdk"
+version = "1.0.0"
+dependencies = [
+ "axum 0.8.9",
+ "httpdate",
+ "oa-auth",
+ "oa-copy",
+ "openagents-login",
+ "openagents-web",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tenancy",
+ "tokio",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
 name = "openagents-spark"
 version = "1.0.0"
 dependencies = [

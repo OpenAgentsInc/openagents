@@ -6,6 +6,11 @@ rust-version.workspace = true
 publish.workspace = true
 description = "Sign a command-line app in to an openagents.com account with a device code (RFC 8628), and keep its token in a private file."
 
+[features]
+default = ["system"]
+# CLI persistence and browser launching. The SDK uses only the portable protocol.
+system = []
+
 [dependencies]
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }

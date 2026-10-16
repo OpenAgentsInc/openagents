@@ -1,0 +1,295 @@
+use std::fmt;
+use std::time::{Duration, SystemTime};
+
+use reqwest::Method;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::Value;
+use url::Url;
+
+/// The two explicit addresses belonging to one deployment.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Deployment {
+    api: Url,
+    website: Url,
+}
+
+fn allowed(url: &Url) -> bool {
+    let loopback = url.host_str().is_some_and(|host| {
+        host == "localhost"
+            || host
+                .trim_matches(['[', ']'])
+                .parse::<std::net::IpAddr>()
+                .is_ok_and(|ip| ip.is_loopback())
+    });
+    (url.scheme() == "https" || url.scheme() == "http" && loopback)
+        && url.host().is_some()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none()
+}
+
+impl Deployment {
+    pub fn new(api_base: &str, website: &str) -> Result<Self, Error> {
+        let mut api = Url::parse(api_base).map_err(|_| Error::InvalidDeployment)?;
+        let website = Url::parse(website).map_err(|_| Error::InvalidDeployment)?;
+        if api.path() == "/v1" {
+            api.set_path("/v1/");
+        }
+        let deployment = Self { api, website };
+        deployment.validate()?;
+        Ok(deployment)
+    }
+
+    #[must_use]
+    pub fn production() -> Self {
+        Self::new("https://api.openagents.com/v1", "https://openagents.com")
+            .expect("fixed production addresses")
+    }
+
+    pub(crate) fn validate(&self) -> Result<(), Error> {
+        if allowed(&self.api)
+            && allowed(&self.website)
+            && self.api.path() == "/v1/"
+            && self.website.path() == "/"
+        {
+            Ok(())
+        } else {
+            Err(Error::InvalidDeployment)
+        }
+    }
+
+    pub fn api_base(&self) -> &Url {
+        &self.api
+    }
+    pub fn website(&self) -> &Url {
+        &self.website
+    }
+
+    pub(crate) fn verification(&self, uri: &str, code: &str) -> Result<Url, Error> {
+        let expected = self
+            .website
+            .join("device")
+            .map_err(|_| Error::InvalidResponse)?;
+        let actual = Url::parse(uri).map_err(|_| Error::InvalidResponse)?;
+        if actual != expected
+            || code.is_empty()
+            || code.len() > 32
+            || code.chars().any(char::is_control)
+        {
+            return Err(Error::InvalidResponse);
+        }
+        let mut complete = expected;
+        complete.query_pairs_mut().append_pair("code", code);
+        Ok(complete)
+    }
+}
+
+/// Errors never retain response bodies, credential values, or request URLs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Error {
+    InvalidDeployment,
+    InvalidTimeout,
+    InvalidCredential,
+    WrongDeployment,
+    WrongAccount,
+    ExpiredSession,
+    Unauthorized,
+    Forbidden,
+    Denied,
+    ExpiredLogin,
+    FinishedLogin,
+    Cancelled,
+    /// A poll might have redeemed its single-use grant. Start a new login.
+    UncertainLogin(Box<Error>),
+    Network {
+        timeout: bool,
+    },
+    InvalidResponse,
+    TooLarge,
+    Redirect,
+    RateLimited {
+        retry_after: Option<Duration>,
+    },
+    Unavailable {
+        retry_after: Option<Duration>,
+    },
+    Refused {
+        status: u16,
+        code: Option<&'static str>,
+    },
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::InvalidDeployment => "Check the website address and try again.",
+            Self::InvalidTimeout => "Use a positive request timeout of at most two minutes.",
+            Self::InvalidCredential => "Log in again to continue.",
+            Self::WrongDeployment => "This login belongs to another site.",
+            Self::WrongAccount => "This login belongs to another account.",
+            Self::ExpiredSession | Self::Unauthorized => "Log in again to continue.",
+            Self::Forbidden => "You don't have access to this.",
+            Self::Denied => "Login was denied on the website.",
+            Self::ExpiredLogin => "The login code expired. Start again.",
+            Self::FinishedLogin => "Start a new login to continue.",
+            Self::Cancelled => "Login canceled.",
+            Self::UncertainLogin(_) => "Login could not be confirmed. Start again.",
+            Self::Network { .. } => "Couldn't connect. Check your connection and try again.",
+            Self::InvalidResponse => "That response couldn't be opened. Try again.",
+            Self::TooLarge => "The response is too large to open.",
+            Self::Redirect => "Check the website address and try again.",
+            Self::RateLimited { .. } => "Too many requests. Try again later.",
+            Self::Unavailable { .. } => "The service is unavailable. Try again later.",
+            Self::Refused { .. } => "The service could not complete this request.",
+        })
+    }
+}
+impl std::error::Error for Error {}
+
+/// A bounded, redirect-free client for one deployment. Requests are never retried implicitly.
+#[derive(Clone)]
+pub struct Client {
+    pub(crate) deployment: Deployment,
+    http: reqwest::Client,
+}
+
+impl fmt::Debug for Client {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Client")
+            .field("deployment", &self.deployment)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Client {
+    pub fn new(deployment: Deployment) -> Result<Self, Error> {
+        Self::with_timeout(deployment, Duration::from_secs(20))
+    }
+
+    pub fn with_timeout(deployment: Deployment, timeout: Duration) -> Result<Self, Error> {
+        deployment.validate()?;
+        if timeout.is_zero() || timeout > Duration::from_secs(120) {
+            return Err(Error::InvalidTimeout);
+        }
+        let http = reqwest::Client::builder()
+            .pool_max_idle_per_host(8)
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(timeout.min(Duration::from_secs(10)))
+            .timeout(timeout)
+            .build()
+            .map_err(|_| Error::Network { timeout: false })?;
+        Ok(Self { deployment, http })
+    }
+
+    pub fn deployment(&self) -> &Deployment {
+        &self.deployment
+    }
+
+    pub(crate) async fn request<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        segments: &[&str],
+        query: &[(&str, String)],
+        body: Option<Value>,
+        token: Option<&str>,
+    ) -> Result<T, Error> {
+        let mut url = self.deployment.api.clone();
+        {
+            let mut path = url
+                .path_segments_mut()
+                .map_err(|_| Error::InvalidDeployment)?;
+            path.pop_if_empty();
+            for segment in segments {
+                path.push(segment);
+            }
+        }
+        if !query.is_empty() {
+            url.query_pairs_mut()
+                .extend_pairs(query.iter().map(|(k, v)| (*k, v.as_str())));
+        }
+        let mut request = self.http.request(method, url);
+        if let Some(token) = token {
+            request = request.bearer_auth(token);
+        }
+        if let Some(body) = body {
+            request = request.json(&body);
+        }
+        let mut response = request.send().await.map_err(|error| Error::Network {
+            timeout: error.is_timeout(),
+        })?;
+        let status = response.status();
+        let retry_after = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|h| h.to_str().ok())
+            .and_then(|value| {
+                value
+                    .parse::<u64>()
+                    .ok()
+                    .map(Duration::from_secs)
+                    .or_else(|| {
+                        httpdate::parse_http_date(value)
+                            .ok()?
+                            .duration_since(SystemTime::now())
+                            .ok()
+                    })
+            });
+        if status.is_redirection() {
+            return Err(Error::Redirect);
+        }
+        if status.as_u16() == 429 {
+            return Err(Error::RateLimited { retry_after });
+        }
+        if status.is_server_error() || status.as_u16() == 408 {
+            return Err(Error::Unavailable { retry_after });
+        }
+        if status.as_u16() == 401 {
+            return Err(Error::Unauthorized);
+        }
+        if status.as_u16() == 403 {
+            return Err(Error::Forbidden);
+        }
+        const MAX_BYTES: usize = 1024 * 1024;
+        if response
+            .content_length()
+            .is_some_and(|size| size > MAX_BYTES as u64)
+        {
+            return Err(Error::TooLarge);
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|error| Error::Network {
+            timeout: error.is_timeout(),
+        })? {
+            if chunk.len() > MAX_BYTES.saturating_sub(bytes.len()) {
+                return Err(Error::TooLarge);
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        let value = serde_json::from_slice::<Value>(&bytes).map_err(|_| Error::InvalidResponse);
+        bytes.fill(0);
+        let value = value?;
+        if !status.is_success() {
+            // Device errors use a different envelope and are interpreted by the shared protocol.
+            if segments == ["device", "token"]
+                && !matches!(
+                    openagents_login::protocol::device_error(&value, 0),
+                    openagents_login::protocol::DeviceError::Other
+                )
+            {
+                return serde_json::from_value(value).map_err(|_| Error::InvalidResponse);
+            }
+            let code = match value["error"]["code"].as_str() {
+                Some("not_found") => Some("not_found"),
+                Some("invalid_cursor") => Some("invalid_cursor"),
+                Some("changed") => Some("changed"),
+                _ => None,
+            };
+            return Err(Error::Refused {
+                status: status.as_u16(),
+                code,
+            });
+        }
+        serde_json::from_value(value).map_err(|_| Error::InvalidResponse)
+    }
+}
