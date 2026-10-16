@@ -96,6 +96,35 @@ impl Assets {
         )
         .await
     }
+    /// Open only the bounded synthetic signet experiment, never a mainnet channel.
+    /// The pinned tapd implementation fixes the BTC funding value at 100,000 sats.
+    #[cfg(feature = "supervisor")]
+    pub async fn fund_signet_research_channel(
+        &self,
+        asset: [u8; 32],
+        peer: [u8; 33],
+        units: u64,
+    ) -> Result<tapchannelrpc::FundChannelResponse> {
+        if self.lnd.network() != "signet" {
+            return Err(Error::PermissionDenied);
+        }
+        if units == 0 || units > 1_000_000 || asset == [0; 32] {
+            return Err(Error::Invalid("signet research asset funding"));
+        }
+        self.ready().await?;
+        transport::once(
+            self.channels()
+                .fund_channel(tapchannelrpc::FundChannelRequest {
+                    asset_id: asset.to_vec(),
+                    peer_pubkey: peer.to_vec(),
+                    asset_amount: units,
+                    fee_rate_sat_per_vbyte: 2,
+                    push_sat: 1062,
+                    ..Default::default()
+                }),
+        )
+        .await
+    }
     pub async fn ready(&self) -> Result<()> {
         let i = transport::read(|| {
             let mut c = self.rpc();

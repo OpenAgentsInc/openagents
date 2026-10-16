@@ -969,6 +969,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "supervise",
  "thiserror",
  "tokio",
  "tokio-rustls",
@@ -989,6 +990,7 @@ dependencies = [
  "nostr",
  "openagents-wallet",
  "openagents-x402",
+ "pay-ledger",
  "reqwest",
  "rustls-pemfile",
  "serde",
@@ -1708,6 +1710,15 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+
+[[package]]
+name = "supervise"
+version = "1.0.0"
+dependencies = [
+ "libc",
+ "tokio",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "syn"

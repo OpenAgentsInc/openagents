@@ -7,7 +7,7 @@ publish = false
 [workspace]
 
 [dependencies]
-lnd-sdk = { path = ".." }
+lnd-sdk = { path = "..", features = ["supervisor"] }
 openagents-x402 = { path = "../../x402" }
 openagents-wallet = { path = "../../wallet", default-features = false }
 nostr = { path = "../../nostr" }
@@ -22,7 +22,12 @@ base64 = "0.22"
 
 tonic = { version = "=0.12.3", features = ["tls"] }
 zeroize = "1"
+pay-ledger = { path = "../../pay-ledger" }
 
 [[bin]]
 name = "lnd-signet-recovery"
 path = "src/bin/recovery.rs"
+
+[[bin]]
+name = "lnd-signet-assets"
+path = "src/bin/assets.rs"

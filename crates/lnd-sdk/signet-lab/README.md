@@ -66,3 +66,41 @@ watcher, so it never sends a second return. The controller records each
 attempt before sending, waits for the original return transaction, checks
 all three balances are zero, and stops only these test containers. A missing
 result after a recorded send stops for inspection.
+
+## Synthetic signet assets
+
+`lnd-signet-assets ROOT inspect|exercise` is the #11863 research program.
+It requires `$HOME/lnd-assets-signet-11863`, original recorded node identities,
+pinned local TLS, two integrated litd 0.17 / LND 0.21 / tapd 0.8 instances,
+and a confirmed asset named `openagents-signet-test-11863`. This synthetic
+asset has no peg or monetary value. The setup keeps RPC, the mock test oracle,
+and proof delivery on loopback; all mainnet approval flags stay false.
+
+After on-chain mint/transfer and private asset-channel preparation,
+`exercise` pays 10,000 units to node B and 5,000 back to A through the existing
+Rust `Assets` implementation. Each direction checks the frozen RFQ rate,
+actual asset HTLC details, exact receiver units, original-hash payment
+lookup, and a reopened ledger's single credit. The action book preserves
+original quotes and uncertain sends across restarts. Only the selected
+public payment measurements are printed; credentials and preimages remain
+private. Infrastructure must retain confirmed chain/proof evidence, close
+the channel, return BTC, and stop the two test nodes before #11863 closes.
+
+`scripts/lnd-signet-assets-setup.py` creates the two fresh containers once on
+the research builder. Its writable home and SQLite temporary directory stay
+under the isolated data directory while the container root filesystem stays
+read-only. `scripts/lnd-signet-assets-observe.py --preflight` checks the live
+nodes without funding or minting. Without that flag, the 72-hour controller
+watches the initial 5,000-sat funding, saves each mint/transfer attempt,
+checks the confirmed receiver's exact 10,000 units and exported proof, then
+waits for the existing scratch recoveries to supply channel liquidity.
+
+Pinned tapd 0.8 fixes an asset channel's BTC value at 100,000 sats. The total
+research funding cap is therefore 150,000 recycled signet sats: 5,000
+initially, then 120,000 to A and 20,000 to B only when available. No faucet
+requests are made. The signet funding helper exists only with the SDK's
+`supervisor` feature and rejects every other network. The controller waits
+for confirmed reserves, the original private channel, and graph readiness
+before running the RFQ checks. It stops with `cleanup_pending` after those
+checks; closing the channel, preserving the final asset proofs, and returning
+BTC remain explicit steps in this research issue.
