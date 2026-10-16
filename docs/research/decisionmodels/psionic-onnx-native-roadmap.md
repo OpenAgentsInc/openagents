@@ -13,6 +13,10 @@ explicit CUDA/Core ML and native CUDA/Metal paths are implemented in
 
 ## Native performance work
 
+The [proposed CPU and CUDA next steps](psionic-cpu-cuda-next-steps.md) cover
+release-server load, cold start, device memory, CPU quantization, CUDA throughput,
+packaging, and router evaluation without requiring Metal or Apple hardware.
+
 The seven initial milestones establish executable models and comparisons.
 They do not establish native performance parity, complete native GPU execution,
 or qualified Apple/mobile deployments. The owner requested native parity or
