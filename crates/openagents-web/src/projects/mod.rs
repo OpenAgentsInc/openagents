@@ -235,10 +235,6 @@ async fn list_page(
         Ok(found) => found,
         Err(response) => return response,
     };
-    let waiting = match &viewer.github {
-        Some((github, _)) => pending::waiting(&app.config.chat_store, *github).await,
-        None => Vec::new(),
-    };
     render_with(
         service,
         &viewer,
@@ -248,7 +244,7 @@ async fn list_page(
         StatusCode::OK,
         app.config.github_install.is_some(),
         crate::connections::access::permitted(&app, &viewer),
-        &waiting,
+        Some(&app.config.chat_store),
     )
     .await
 }
@@ -265,15 +261,7 @@ async fn render(
     sources: bool,
 ) -> Response {
     render_with(
-        service,
-        viewer,
-        headers,
-        q,
-        problem,
-        status,
-        install,
-        sources,
-        &[],
+        service, viewer, headers, q, problem, status, install, sources, None,
     )
     .await
 }
@@ -289,7 +277,7 @@ async fn render_with(
     status: StatusCode,
     install: bool,
     sources: bool,
-    waiting: &[(String, pending::Pending)],
+    invitation_store: Option<&crate::chat_store::Store>,
 ) -> Response {
     let state = match service.github_status(headers).await {
         Ok(state) => state,
@@ -298,7 +286,11 @@ async fn render_with(
     let token = service
         .csrf(headers, viewer, CSRF_SCOPE, "")
         .unwrap_or_default();
-    let invited = pending::section(waiting, &token);
+    let waiting = match (invitation_store, &viewer.github) {
+        (Some(store), Some((github, _))) => pending::waiting(store, *github, &state.projects).await,
+        _ => Vec::new(),
+    };
+    let invited = pending::section(&waiting, &token);
     let body = view_with(
         &state,
         &token,

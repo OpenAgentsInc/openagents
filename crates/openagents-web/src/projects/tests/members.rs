@@ -1092,5 +1092,111 @@ async fn an_invitation_by_github_username_waits_on_their_projects_page() {
     assert_eq!(refused["error"]["code"], "unknown_github_user");
 }
 
+async fn accepted_project_invitations(via_api: bool) {
+    let world = world().await;
+    let mut owner = Browser::default();
+    owner.sign_in(&world, "octo-local").await;
+    let mut recipient = Browser::default();
+    recipient.sign_in(&world, "quiet-local").await;
+    let owner_api = Api::of(&owner);
+    let recipient_api = Api::of(&recipient);
+    let (_, project) = owner_api
+        .json(
+            &world,
+            "POST",
+            "/v1/projects",
+            json!({"name": "Shared ledger"}),
+        )
+        .await;
+    let id = project["id"].as_str().unwrap();
+    let mut invitations = Vec::new();
+    for role in ["viewer", "editor"] {
+        let (status, invitation) = owner_api
+            .json(
+                &world,
+                "POST",
+                &format!("/v1/projects/{id}/invitations"),
+                json!({"github": "quiet-local", "role": role}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{invitation}");
+        invitations.push(invitation["code"].as_str().unwrap().to_owned());
+    }
+    // An invitation to another project must remain available.
+    let (_, garden) = owner_api
+        .json(&world, "POST", "/v1/projects", json!({"name": "Garden"}))
+        .await;
+    let (_, garden_invitation) = owner_api
+        .json(
+            &world,
+            "POST",
+            &format!(
+                "/v1/projects/{}/invitations",
+                garden["id"].as_str().unwrap()
+            ),
+            json!({"github": "quiet-local"}),
+        )
+        .await;
+    let garden_code = garden_invitation["code"].as_str().unwrap();
+    let before = recipient.get(&world, "/projects").await;
+    assert!(before.body.contains(&invitations[0]));
+    assert!(before.body.contains(&invitations[1]));
+    if via_api {
+        let (status, joined) = recipient_api
+            .json(
+                &world,
+                "POST",
+                "/v1/projects/invitations/accept",
+                json!({"code": invitations[0]}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{joined}");
+        assert_eq!(joined["role"], "viewer");
+    } else {
+        let path = format!("/projects/join/{}", invitations[0]);
+        let preview = recipient.get(&world, &path).await;
+        let csrf = hidden(&preview.body, &format!("action=\"{path}\""), "csrf");
+        let joined = recipient.post(&world, &path, &[("csrf", &csrf)]).await;
+        assert_eq!(joined.location(), format!("/projects/{id}"));
+    }
+    let duplicate = recipient
+        .get(&world, &format!("/projects/join/{}", invitations[1]))
+        .await;
+    assert!(
+        duplicate.body.contains("Open the project"),
+        "{}",
+        duplicate.body
+    );
+    assert!(!duplicate.body.contains(">Join</button>"));
+    for _ in 0..2 {
+        let after = recipient.get(&world, "/projects").await;
+        assert_eq!(after.status, StatusCode::OK);
+        assert!(!after.body.contains(&invitations[0]), "{}", after.body);
+        assert!(!after.body.contains(&invitations[1]), "{}", after.body);
+        assert!(after.body.contains(garden_code), "{}", after.body);
+        assert!(after.body.contains("Shared · viewer"), "{}", after.body);
+    }
+    assert_eq!(
+        world
+            .store
+            .folder_keys("project-invitations/github-9000001")
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "Only the unrelated project's invitation should remain",
+    );
+}
+
+#[tokio::test]
+async fn api_acceptance_removes_joined_project_invitations() {
+    accepted_project_invitations(true).await;
+}
+
+#[tokio::test]
+async fn browser_acceptance_removes_joined_project_invitations() {
+    accepted_project_invitations(false).await;
+}
+
 #[path = "history.rs"]
 mod history;
