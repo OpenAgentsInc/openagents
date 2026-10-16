@@ -276,10 +276,33 @@ pub fn fallback_models(harness: &str) -> Vec<ModelInfo> {
             ),
         ],
         "codex" => vec![
+            // Codex's own order and wording (2026-10-16 catalog); the live
+            // `ListModels` reply replaces this as soon as the host answers.
+            model(
+                "gpt-6.1-sol",
+                "GPT-6.1-Sol",
+                "Latest workhorse model for coding and everyday work.",
+                CODEX_ULTRA,
+                service_tier(),
+            ),
             model(
                 "gpt-6-astra",
                 "GPT-6-Astra",
-                "Our most capable model for complex, demanding work.",
+                "Frontier intelligence for the most demanding work.",
+                CODEX_ULTRA,
+                service_tier(),
+            ),
+            model(
+                "gpt-6-sol",
+                "GPT-6-Sol",
+                "Previous generation workhorse model.",
+                CODEX_ULTRA,
+                service_tier(),
+            ),
+            model(
+                "gpt-6-luna",
+                "GPT-6-Luna",
+                "Fast and affordable model for easier tasks.",
                 CODEX_ULTRA,
                 service_tier(),
             ),
@@ -698,7 +721,7 @@ mod tests {
         assert_eq!(cache.harnesses("dev/mac").unwrap().len(), 2);
         assert_eq!(
             cache.models("dev/mac", "codex").unwrap()[0].id,
-            "gpt-6-astra"
+            "gpt-6.1-sol"
         );
         assert!(cache.models("dev/mac", "grok").is_none());
     }
