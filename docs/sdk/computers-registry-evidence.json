@@ -1,0 +1,102 @@
+{
+  "schema": "openagents.computers.registry.evidence.v1",
+  "issue": 11809,
+  "date": "2026-10-16",
+  "implementation_commit": "7d1eb70f60e52a213f1957a7cbf5d935cf454109",
+  "deployment_helper_commit": "86f2716fa8",
+  "deployed_services": [
+    {
+      "service": "oa-boat",
+      "revision": "oa-boat-00011-c9r",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-boat@sha256:6af321b7dd54c9fda18531c3025ff107b4f47f7c0ada273dca740922b16290d9",
+      "traffic_percent": 100,
+      "source_commit": "7d1eb70f60e52a213f1957a7cbf5d935cf454109"
+    },
+    {
+      "service": "oa-computers",
+      "revision": "oa-computers-registry-7d1eb70f60-164207",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-computers@sha256:1b2abcd8b5764b65b8ab93f9934a38dbdd8fe84f68fbd8a58304eb9812c74394",
+      "traffic_percent": 100,
+      "source_commit": "7d1eb70f60e52a213f1957a7cbf5d935cf454109",
+      "settings": {
+        "BOAT_API_BASE": "https://oa-boat-157437760789.us-central1.run.app/api/v1",
+        "OA_COMPUTERS_DRIVER": "boat",
+        "OA_COMPUTERS_LEGACY_DEPLOYMENT": "oa-boat-primary"
+      }
+    },
+    {
+      "service": "oa-computers-staging",
+      "revision": "oa-computers-staging-registry-7d1eb70f60-163632",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-computers@sha256:1b2abcd8b5764b65b8ab93f9934a38dbdd8fe84f68fbd8a58304eb9812c74394",
+      "traffic_percent": 100,
+      "source_commit": "7d1eb70f60e52a213f1957a7cbf5d935cf454109",
+      "settings": {
+        "OA_COMPUTERS_DRIVER": "boat",
+        "BOAT_API_BASE": "https://oa-boat-157437760789.us-central1.run.app/api/v1",
+        "OA_COMPUTERS_LEGACY_DEPLOYMENT": "oa-boat-primary"
+      }
+    },
+    {
+      "service": "coder",
+      "revision": "coder-web-8c92b268bf-20261016164723",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:8c92b268bfa3ecc256435119767f0aa8414665382317499971a6eec6d7dd0dd9",
+      "traffic_percent": 100,
+      "source_commit": "7d1eb70f60e52a213f1957a7cbf5d935cf454109"
+    },
+    {
+      "service": "openagents-web-1-staging",
+      "revision": "openagents-web-1-staging-registry-7d1eb70f60-164159",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:8c92b268bfa3ecc256435119767f0aa8414665382317499971a6eec6d7dd0dd9",
+      "traffic_percent": 100,
+      "source_commit": "7d1eb70f60e52a213f1957a7cbf5d935cf454109"
+    }
+  ],
+  "verification": {
+    "provider_tests_passed": 25,
+    "postgres_tests_passed": 25,
+    "public_api_unit_tests_passed": 5,
+    "openapi_unit_tests_passed": 5,
+    "sdk_tests_passed": 35,
+    "lifecycle_model_tests_passed": 2,
+    "long_model_tests_ignored": 1,
+    "python_contract_and_reference_checks_passed": 12,
+    "published_operations_verified": 18,
+    "published_computers_contract_sha256": "19dcf5d6bca65a0874c4abd385b54e556619a079e84499fa925c3e031687b769",
+    "staging_workflow_and_cleanup": true,
+    "production_workflow_and_cleanup": true,
+    "unchanged_old_sdk_workflow_and_cleanup": true,
+    "old_sdk_source_commit": "7ff3991b2ff2d9b4ebbea3d4898f804f0d5d9b89",
+    "old_sdk_consumer_sha256": "a8d41f643d5ede18273282e284f146b852e29bb6d814b1dd5f8f2bfe9c8141c6",
+    "released_cli_version": "1.0.0",
+    "released_cli_commit": "3230ded51181aa438656825da8245cea6c8e717c",
+    "released_available_commands_and_absent_computer_delete_passed": true,
+    "coder_doctor_available_in_1_0_0": false,
+    "unsupported_fast_sandbox_refused": true,
+    "unsupported_memory_suspend_refused": true,
+    "insufficient_size_refused": true,
+    "refused_requests_allocated_computers": false,
+    "temporary_staging_sessions_revoked": true,
+    "temporary_provider_tag_removed": true
+  },
+  "samples": {
+    "staging_total_seconds": 166.495,
+    "production_total_seconds": 180.867,
+    "old_sdk_total_seconds": 198.217,
+    "interpretation": "One complete workflow per client/deployment; these are not latency percentiles."
+  },
+  "boundaries": {
+    "default": "Boat",
+    "space_in_production": false,
+    "mixed_backends": "Disposable PostgreSQL and registry fakes",
+    "real_space_qualification": "Tracked separately in #11810 and the SPACE delivery milestone",
+    "candidate_openapi_before_traffic": "Returned 502; not counted as a passing check. Staging and serving production passed the contract.",
+    "new_coder_binary_released": false,
+    "mainnet_activation": false
+  },
+  "archive": {
+    "path": "evidence/computers-registry-2026-10-16.tar.gz",
+    "bytes": 15284,
+    "files": 14,
+    "sha256": "93bcfa5ad0461459b6a1f14fd89110511f4af286d6e12e7fcaf537e34b4eb2ae"
+  }
+}

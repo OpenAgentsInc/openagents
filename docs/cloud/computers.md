@@ -88,6 +88,9 @@ Optional settings include `data_plane_url`, digest-pinned `template`, `scope`,
 trusted `shapes`, and explicit `legacy`. Credentials stay in environment variables.
 Boat remains the default. SPACE needs the server's `space` feature and an admitted
 configuration; this change does not enable SPACE in production.
+The [registry deployment evidence](../sdk/computers-registry-evidence.json) records
+the scoped tests, staging and production checks, and compatibility with the
+released clients.
 
 Staging uses its own `oa-computers-staging` service, staging account database,
 and `oa-computers-staging-token`. Deploy the appropriate lifecycle service from
