@@ -68,12 +68,24 @@ if [[ -z $sdk_digest ]]; then
 fi
 [[ $sdk_digest =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'The built image digest is unavailable.' >&2; exit 1; }
 
-# A newer deployment must not be replaced by an older checkout after the build.
-sdk_previous=$(gcloud run services describe "$sdk_service" --project "$sdk_project" --region "$sdk_region" \
- --format='value(spec.template.metadata.labels.openagents-commit)' 2>/dev/null || true)
+# Check the revision serving requests; the latest template can be an untested
+# candidate while traffic still points to an older revision.
+sdk_serving_revision() {
+ gcloud run services describe "$sdk_service" --project "$sdk_project" --region "$sdk_region" --format=json |
+ python3 -c '
+import json,sys
+traffic=[t for t in json.load(sys.stdin)["status"]["traffic"] if t.get("percent")]
+if len(traffic)!=1 or traffic[0]["percent"]!=100:
+    sys.exit("The service has split traffic. Keep its rollout before using this helper.")
+print(traffic[0]["revisionName"])
+'
+}
+sdk_previous_revision=$(sdk_serving_revision)
+sdk_previous=$(gcloud run revisions describe "$sdk_previous_revision" --project "$sdk_project" --region "$sdk_region" \
+ --format='value(metadata.labels.openagents-commit)' 2>/dev/null || true)
 if [[ -z $sdk_previous ]]; then
- sdk_image=$(gcloud run services describe "$sdk_service" --project "$sdk_project" --region "$sdk_region" \
-  --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || true)
+ sdk_image=$(gcloud run revisions describe "$sdk_previous_revision" --project "$sdk_project" --region "$sdk_region" \
+  --format='value(spec.containers[0].image)' 2>/dev/null || true)
  if [[ $sdk_image =~ :([0-9a-f]{40})$ ]]; then sdk_previous=${BASH_REMATCH[1]}; fi
 fi
 if [[ -n $sdk_previous ]]; then
@@ -84,13 +96,22 @@ if [[ -n $sdk_previous ]]; then
 fi
 
 sdk_legacy=$(sdk_legacy_mapping)
+sdk_revision_suffix="registry-${sdk_commit:0:10}-$(date -u +%H%M%S)"
+sdk_revision="$sdk_service-$sdk_revision_suffix"
 gcloud run deploy "$sdk_service" --project "$sdk_project" --region "$sdk_region" \
  --image "$sdk_repo@$sdk_digest" --service-account "$sdk_runtime" \
  --add-cloudsql-instances "$sdk_project:$sdk_region:$sdk_database" \
  --update-secrets "OA_COMPUTERS_DATABASE_URL=$sdk_dsn:latest,OA_COMPUTERS_TOKEN=$sdk_token:latest,BOAT_API_KEY=oa-boat-api-key:latest" \
  --update-env-vars "OA_COMPUTERS_DRIVER=boat,BOAT_API_BASE=$sdk_boat_base,OA_COMPUTERS_LEGACY_DEPLOYMENT=$sdk_legacy" \
- --labels "openagents-commit=$sdk_commit" --min-instances 1 --max-instances 1 \
+ --labels "openagents-commit=$sdk_commit" --revision-suffix "$sdk_revision_suffix" --no-traffic --min-instances 1 --max-instances 1 \
  --no-cpu-throttling --cpu 1 --memory 512Mi --allow-unauthenticated --quiet
+# Explicit traffic can remain on the old revision after a successful deploy.
+[[ $(sdk_serving_revision) == "$sdk_previous_revision" ]] || {
+ echo 'Another deployment changed traffic. Keep its revision and review this candidate.' >&2; exit 1;
+}
+gcloud run services update-traffic "$sdk_service" --project "$sdk_project" --region "$sdk_region" \
+ --to-revisions "$sdk_revision=100" --quiet
+[[ $(sdk_serving_revision) == "$sdk_revision" ]] || { echo 'The new revision is not serving traffic.' >&2; exit 1; }
 sdk_running=$(gcloud run services describe "$sdk_service" --project "$sdk_project" --region "$sdk_region" \
  --format='value(spec.template.metadata.labels.openagents-commit)')
 [[ $sdk_running == "$sdk_commit" ]] || { echo 'The running service commit does not match.' >&2; exit 1; }
