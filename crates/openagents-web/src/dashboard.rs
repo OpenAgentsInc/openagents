@@ -19,8 +19,6 @@ use std::collections::BTreeMap;
 mod issues;
 mod moderation;
 use moderation::moderate;
-#[cfg(test)]
-mod tests;
 const MAX_BOOK: usize = 16 * 1024 * 1024;
 const DIRECTORY: &str = "home-templates/v1.json";
 #[derive(Clone, Default, Serialize, Deserialize)]
@@ -618,3 +616,6 @@ async fn work(State(app): State<App>, headers: HeaderMap, Query(q): Query<Page>)
     out.data.truncate(100);
     answer(StatusCode::OK, json!(out))
 }
+
+#[cfg(test)]
+mod tests;

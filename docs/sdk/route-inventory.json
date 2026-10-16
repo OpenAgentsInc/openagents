@@ -58,6 +58,46 @@
       "line": 256
     },
     {
+      "path": "/v1/home/projects",
+      "source": "crates/openagents-web/src/dashboard.rs",
+      "line": 178
+    },
+    {
+      "path": "/v1/home/issues",
+      "source": "crates/openagents-web/src/dashboard.rs",
+      "line": 179
+    },
+    {
+      "path": "/v1/home/work",
+      "source": "crates/openagents-web/src/dashboard.rs",
+      "line": 180
+    },
+    {
+      "path": "/v1/home/dashboards",
+      "source": "crates/openagents-web/src/dashboard.rs",
+      "line": 181
+    },
+    {
+      "path": "/v1/home/templates",
+      "source": "crates/openagents-web/src/dashboard.rs",
+      "line": 182
+    },
+    {
+      "path": "/v1/home/templates/{id}",
+      "source": "crates/openagents-web/src/dashboard.rs",
+      "line": 183
+    },
+    {
+      "path": "/v1/home/templates/{id}/report",
+      "source": "crates/openagents-web/src/dashboard.rs",
+      "line": 187
+    },
+    {
+      "path": "/v1/home/templates/{id}/moderate",
+      "source": "crates/openagents-web/src/dashboard.rs",
+      "line": 188
+    },
+    {
       "path": "/v1/history",
       "source": "crates/openagents-web/src/history_api.rs",
       "line": 21
