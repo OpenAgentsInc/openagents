@@ -1,0 +1,54 @@
+{
+  "source_commit": "a6e2e8e12bf10423272c0664e4f6ef5965b1d441",
+  "at_unix": 1792177618.908449,
+  "old_pid": 129437,
+  "new_pid": 380639,
+  "old_phase": "confirm",
+  "retained_inflight_transaction_id": "883b9db51b4daa9541c5425ac9c62c5dc86b770808abf58695eed6e78969a2e6",
+  "old_source_sha256": "1d835ce6adbbc994c3a96bc11fe82a767fa1012bdf3d95a7761d808bc40a479b",
+  "new_source_sha256": "9738c4f08b56757b10dfdb609cb032a88be5321ed9032bf02eacec9bd0861162",
+  "scheduler_sha256": "b6ae9b3e99b0e6266ab015b394f93fb9e8bdd71b3856311f2ef9f23afa75dbcf",
+  "binary_sha256": "2056813732bebff96134e89b79f14eb723be1fe072eea49a0b402816b14addda",
+  "vm_restarted": false,
+  "preflight": {
+    "preflight": true,
+    "height": 326648,
+    "endpoint_available": true,
+    "kill_at": 1792834080,
+    "publishes_or_spends": false
+  },
+  "required_soak_seconds": 86400,
+  "deletion_after_qualification_seconds": 300,
+  "original_kill_at_unix": 1792834080,
+  "original_soak_ends_at_unix": 1792762493.552368,
+  "soak_began_at_unix": 1792157693.552368,
+  "retained_late_heartbeats": [
+    {
+      "action": "refresh",
+      "txid": "819b5feb7bd7328d48b789fa5d67976760df145aaddefc75cda6d1ae033fa0a1",
+      "height": 326612,
+      "observed_at_unix": 1792156778.8437667,
+      "gap_blocks": 7
+    }
+  ],
+  "scheduler_account": "oa-layertree-soak@openagentsgemini.iam.gserviceaccount.com",
+  "soak_ends_at_unix": 1792244093.552368,
+  "observed_phase": "confirm",
+  "scheduler_preflight": {
+    "created_read_and_deleted_task": "scheduler-preflight-1792177500",
+    "task_executed": false
+  },
+  "scheduler_access": {
+    "queue": "projects/openagentsgemini/locations/us-central1/queues/layertree-signet-kill",
+    "task_permissions": [
+      "cloudtasks.tasks.create",
+      "cloudtasks.tasks.get",
+      "cloudtasks.tasks.delete"
+    ],
+    "compute_read_instance_id": "6613632645341139193",
+    "read_and_act_as_expire_at": "2026-10-25T09:28:00Z",
+    "disable_task": "projects/openagentsgemini/locations/us-central1/queues/layertree-signet-kill/tasks/disable-soak-20261025",
+    "disable_task_scheduled_at": "2026-10-25T09:28:00Z",
+    "local_private_credential_copy_removed": true
+  }
+}

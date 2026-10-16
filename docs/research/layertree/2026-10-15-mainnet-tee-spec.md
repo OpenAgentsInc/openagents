@@ -402,7 +402,7 @@ service, launcher, and measurement policy, as well as Intel hardware.
 A client checks that Google-signed token instead of claiming a direct
 Intel-only quote verification. Independent image reproduction, release-log inclusion, sealed-key recovery
 probes, and the confirmed signet output binding are now recorded in the
-[P1 verification report](2026-10-16-signet-verification.md); the week and
+[P1 verification report](2026-10-16-signet-verification.md); the 24-hour soak and
 final recovery measurements remain #11793.
 
 No SNP route on GCP qualified: the raw SNP report measures firmware, the
@@ -670,7 +670,7 @@ per-GiB surcharge. The base VM prices are approximate. Our own figure for a
 | Phase | What | Money | Monthly cost | Gate |
 | --- | --- | --- | --- | --- |
 | **P0 regtest** | `crates/layertree-tee-lab` (done: predicate, enclave model, unroll, light client, fake attestation, upstream vector check, and `scripts/layertree-regtest.sh`: transitions, light-client alarms and timed unrolls on bitcoind in Docker, with measured sizes and fees, section 3.2) | none | about $0 (local) | none; agent work |
-| **P1 signet** | a real `c3-standard-4` TDX Confidential Space service first (#11787); Google-backed verification, reproduced image, release log, public relay records, and confirmed normal signet transitions are complete; the week, kill, HALT, and timed unroll continue in #11793; SNP qualification remains separate (#11788) | signet coins only | about $65 (SEV-SNP alone, about $0.09/h) to about $230 (both legs; TDX about $0.22/h) | owner OK to run the VMs |
+| **P1 signet** | a real `c3-standard-4` TDX Confidential Space service first (#11787); Google-backed verification, reproduced image, release log, public relay records, and confirmed normal signet transitions are complete; the 24-hour soak, kill, HALT, and timed unroll continue in #11793; SNP qualification remains separate (#11788) | signet coins only | about $65 (SEV-SNP alone, about $0.09/h) to about $230 (both legs; TDX about $0.22/h) | owner OK to run the VMs |
 | **P2 small mainnet** | MuSig2 of SEV-SNP, TDX and the owner's guardian; one tree, OpenAgents and staff as members first, then opt-in payees | **hard cap**: for example 0.01 BTC per tree and 100,000 sat per leaf; at most 50 members | about $230 for the VMs, plus on-chain fees: heartbeats 255 vB each (measured), twice a week at Δ = 1,008, about 5,100 sat a week at 10 sat/vB | **owner go/no-go**; #11761 custody and money-transmission review; owner holds `G` and the kill switch |
 | **P3 more** | FROST 2-of-3 across two clouds and two vendors; larger caps; payout credit leaves in production; LND channel funding from leaves | caps raised step by step | plus about $100 to $300 per extra Confidential VM | owner decision per cap step; external review of the enclave code |
 
@@ -739,7 +739,7 @@ The separate guardian HALT run recovered all five exact 1,000-sat payouts at
 height 326616, with 934 sats in external anchor fees. The
 [P1 report](2026-10-16-signet-verification.md) links the checked public package,
 Core reads, and final capture. This completes the separate HALT recovery;
-it does not replace the primary week or physical-loss measurement.
+it does not replace the primary 24-hour soak or physical-loss measurement.
 
 ## 11. What the sandbox proves, and what it does not
 

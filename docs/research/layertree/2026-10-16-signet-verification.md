@@ -61,7 +61,7 @@ also exercised by the existing `gcp_token_verify` cargo-fuzz target; its
 previous 1,000-run bounded check passed. This change adds capture tests and
 does not change that parser.
 
-The normal transitions are recorded below. The week of heartbeats,
+The normal transitions are recorded below. The 24 hours of heartbeats,
 deliberate enclave loss, and final public-package recovery remain #11793
 measurements. A confirmed creation output alone does not complete them.
 
@@ -110,20 +110,37 @@ The first measurement began at **2026-10-16 11:01:32 UTC**, height 326599,
 after all five publications passed. The second heartbeat confirmed at 326612,
 seven blocks after the previous one. That misses the six-block target while
 remaining inside the twelve-block exit delay. The first window stays in the
-history as interrupted; it does not qualify as a clean week.
+history as interrupted; it does not qualify as a clean soak.
 
 The revised observer submits a refresh after three blocks, polls every fifteen
 seconds, and reserves the earlier part of each interval for publication retries.
-It began a new full week at **2026-10-16 13:34:53 UTC**; the earliest completion
-is **2026-10-23 13:34:53 UTC**. It retains every late heartbeat, restarts an
-interrupted measurement, and preserves a completed clean week through later
-misses. Three isolated window-state tests pass. The enclave VM, Q, native
-research binary, 500-sat refresh fee, and kill deadline are unchanged. See the
-[measurement record](evidence/signet-heartbeat-window-2026-10-16.json).
-A one-time Cloud Task will
-delete the primary VM at **2026-10-24 09:28:00 UTC**, with a nine-day native
-VM deadline as fallback. #11793 still requires the elapsed week, deletion
-audit evidence, CSV maturity, exact payouts, and the separate HALT run.
+It began a new clean window at **2026-10-16 13:34:53 UTC**. The owner reduced
+the required soak from seven days to **24 hours** on October 16. Its earliest
+completion is now **2026-10-17 13:34:53 UTC**, provided no later heartbeat
+interrupts it. The observer retains every late heartbeat, restarts an
+interrupted window for 24 hours, and preserves a completed clean soak through
+later misses. The original seven-day [measurement record](evidence/signet-heartbeat-window-2026-10-16.json)
+stays available as historical evidence.
+
+The 24-hour controller schedules deletion only after observing a completed
+clean window and a recent confirmed heartbeat. It creates a one-time deletion
+five minutes ahead, verifies its target and time, then cancels the October 24
+09:28 UTC task. An uncertain scheduling reply reuses the same task and time;
+a scheduling failure leaves heartbeat supervision running. The original task
+and nine-day native VM deadline remain fallbacks until replacement succeeds.
+After deletion, the observer waits for actual endpoint loss and runs the same
+saved-package recovery. No completed soak or primary recovery is claimed yet.
+
+Ten isolated tests cover the duration boundary, state migration, interrupted
+windows, scheduling retries, and deletion target checks. The [24-hour deployment record](evidence/signet-soak-24h-2026-10-16.json)
+records the source, process replacement, read-only preflight, and scheduling
+access check. The enclave VM, Q, native research binary, and 500-sat refresh fee
+are unchanged. The scheduling identity has task permissions only on the research
+queue, read access only to the primary VM, and expiring permission to use its
+deletion identity. A separate October 25 cleanup task disables the scheduling
+identity; its private credential stays in the builder's experiment directory.
+#11793 still requires the elapsed 24 hours, deletion audit evidence, CSV
+maturity, exact payouts, and the separate HALT result.
 
 The separate HALT run uses committed `server/halt-service.json`, with fresh
 test keys and 20,000 signet sats. Its image
@@ -175,7 +192,7 @@ are committed. Re-render with `scripts/layertree-captures.py --signet-halt-paid`
 
 This measures guardian HALT followed by public-package recovery. VM cleanup
 follows payout verification; it does not establish the primary tree's
-scheduled physical-loss recovery or its required week of heartbeats.
+scheduled physical-loss recovery or its required 24 hours of heartbeats.
 
 After all payout and archive checks passed, GCP deleted only
 `oa-layertree-halt-tdx` (instance ID `4848185565226450307`). A subsequent
