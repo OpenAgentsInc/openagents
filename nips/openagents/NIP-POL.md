@@ -235,6 +235,12 @@ its probability cannot itself authorize work. Changed conditions require a new
 action and admission. Revoking consumed permission requests cancellation and
 reconciliation; it does not prove an effect stopped.
 
+Rust callers use `nostr::policy::{parse, validate, verify}` for closed actions,
+effect and bound shapes, and exact artifact bytes. This checker accepts bodies
+up to 1 MiB and at most 64 bounds. Approval requests and decisions use the same
+pinned format as the custody profile. Hosts separately enforce current approver
+authority, source freshness, single-use consumption, and actual dispatch.
+
 ## Routing and observed cost
 
 A route receipt has `v: "openagents.route.v1"`, `task_frame`, `context_request`,
