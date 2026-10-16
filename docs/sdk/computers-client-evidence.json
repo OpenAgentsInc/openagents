@@ -1,0 +1,89 @@
+{
+  "schema": "openagents.sdk.computers.client.evidence.v1",
+  "date": "2026-10-16",
+  "issue": 11805,
+  "client_commit": "7ff3991b2ff2d9b4ebbea3d4898f804f0d5d9b89",
+  "computers_schema_sha256": "62dd6e891408c634cd106c0d81b7deab93781ae427d261db94edaa57cda4c3bf",
+  "consumer": {
+    "name": "sdk-computers-consumer-11805",
+    "git_pinned": true,
+    "dependency_alias": "openagents",
+    "normal_dependency_rows": 258,
+    "unique_packages": 101,
+    "host_provider_postgres_dependencies": [],
+    "binary_sha256": "a8d41f643d5ede18273282e284f146b852e29bb6d814b1dd5f8f2bfe9c8141c6"
+  },
+  "checks": {
+    "sdk_tests": 35,
+    "computers_wire_tests": 13,
+    "python_contract_tests": 6,
+    "generator_check": true,
+    "cargo_fmt": true,
+    "final_example_compiles": true,
+    "published_operations_match": 18,
+    "published_used_components_match": true,
+    "published_full_subset_matches": true
+  },
+  "live_workflow": {
+    "api": "https://api.openagents.com/v1",
+    "cleanup_passed": true,
+    "computer": "cmp_9d8d9436b86e46716804",
+    "contains_credentials": false,
+    "contains_file_or_command_output": false,
+    "dedicated_test_account": true,
+    "elapsed_ms": 189288,
+    "request_key": "238c5b67ea37986a4fc594f03cfeb24d",
+    "schema": "openagents.sdk.computers.workflow.v1",
+    "workflow_passed": true
+  },
+  "cleanup": {
+    "checked_at": "2026-10-16T14:23:29.073086+00:00",
+    "dedicated_account_verified": true,
+    "computer": "cmp_9d8d9436b86e46716804",
+    "observed_state": "deleted",
+    "desired": "deleted",
+    "computer_absent_from_all_cloud_pages": true,
+    "pages": 1,
+    "other_cloud_rows_count": 0
+  },
+  "observed_provider_vm": {
+    "name": "oa-boat-uh269xdm54",
+    "id": "7416903740008926317",
+    "identification": "Only Boat VM observed in the workflow creation window; subsequent inventory is empty.",
+    "remaining_matching_instances": []
+  },
+  "api_deployment": {
+    "spec": {
+      "template": {
+        "spec": {
+          "containers": [
+            {
+              "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:85b32a57a6bef949dff9138245809d5a0348e73f0e7fe7ab15debfbc92aba015"
+            }
+          ]
+        }
+      }
+    },
+    "status": {
+      "latestReadyRevisionName": "coder-web-85b32a57a6-20261016141652",
+      "traffic": [
+        {
+          "percent": 100,
+          "revisionName": "coder-web-85b32a57a6-20261016141652",
+          "tag": "new",
+          "url": "https://new---coder-ezxz4mgdsq-uc.a.run.app"
+        }
+      ]
+    }
+  },
+  "timing_boundary": "189288 ms from the saved create request through observed deletion; excludes authentication, build, and setup. One run, not a latency distribution.",
+  "runtime_platform": "Linux x86_64; Rust 1.97.1",
+  "spending_enabled": false,
+  "package_published": false,
+  "frozen_binary_release": false,
+  "public_archive": {
+    "path": "evidence/computers-client-2026-10-16.tar.gz",
+    "sha256": "f29ce205fb09c8bdddef6bedbc98cc7faa822465fbbfba318038acc8ffdf5de6",
+    "files": 13
+  }
+}

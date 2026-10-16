@@ -8,13 +8,16 @@ run on the application's Tokio runtime.
 
 ```toml
 [dependencies]
-openagents-sdk = { git = "https://github.com/OpenAgentsInc/openagents.git", rev = "4b5b70d72b1f1d142170417c283937876dc5734d" }
+openagents-sdk = { git = "https://github.com/OpenAgentsInc/openagents.git", rev = "7ff3991b2ff2d9b4ebbea3d4898f804f0d5d9b89" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
-This pin passed an outside-checkout build, account/workspace discovery, and
-complete saved-history reads against the public API with a dedicated test
-account; see the [verification record](../../docs/sdk/history-client-evidence.json).
+The pin above passed an outside-checkout client-only build and the complete
+public Computers workflow, with all test resources deleted; see the
+[Computers verification record](../../docs/sdk/computers-client-evidence.json).
+Earlier auth/history qualification used `4b5b70d72b1f1d142170417c283937876dc5734d`;
+its [verification record](../../docs/sdk/history-client-evidence.json) retains
+that revision and the dedicated-account public API reads.
 
 ```rust
 use openagents_sdk::{CancellationToken, Client, Deployment};

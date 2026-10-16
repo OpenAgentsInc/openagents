@@ -118,6 +118,12 @@ account-bound lifecycle, command output, waits, and binary file helpers; see the
 [Rust client guide](../../crates/openagents-sdk/README.md). The runnable
 `computers` example qualifies the public Boat workflow with dedicated test
 credentials and saves original request identities for recovery and cleanup.
+The [client verification record](computers-client-evidence.json) pins the Git
+consumer, 35 passing SDK tests, all 18 published operations, and a real
+production Boat workflow on the dedicated test account. Allocation, binary
+upload, command-side checksum, stop/wake persistence, file removal, and
+observed deletion passed in 189.288 seconds; final account and provider
+inventories contained no resources from the run.
 Publication and host/provider SDKs remain separate work.
 Generated bindings have no implicit network effects. Their debug output omits
 values, and response objects preserve unknown fields. Enum values remain strings
