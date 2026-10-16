@@ -8,8 +8,9 @@
 //! * each state's unroll key is generated, used once to pre-sign that
 //!   state's unroll, and erased; `ephemeral_keys_held` lets tests see it.
 //!
-//! What it cannot model: memory encryption, the hardware report, sealing,
-//! side channels. Those are in the spec's threat model.
+//! The core model supplies no hardware protection or report. The opt-in
+//! `gcp-sealing` module adds image-gated restart recovery; hardware evidence
+//! and side-channel assumptions remain explicit in the spec.
 
 use bitcoin::key::{Keypair, TapTweak, XOnlyPublicKey};
 use bitcoin::secp256k1::{All, Message, Secp256k1, SecretKey, schnorr::Signature};

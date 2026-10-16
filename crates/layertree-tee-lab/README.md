@@ -303,3 +303,86 @@ chain, audience, validity, image digest, and recomputed key/parameter hash;
 passed and its VM was deleted. Key sealing and the real signing service
 remain #11790 and #11789. The [route decision](../../docs/research/layertree/2026-10-16-attestation-routes.md)
 states the Google trust boundary and the unqualified SNP alternative.
+
+## Key generation and restart recovery on TDX
+
+The `gcp-sealing` feature generates `Q` inside the guest and seals it
+without exporting its plaintext. AES-256-GCM encrypts the enclave key
+locally with a fresh random envelope key. Cloud KMS wraps that envelope
+key under the key for this research release, `enclave-envelope-v2`. The
+sealed record binds the public key, every report-data parameter, and the
+unroll radix. A restored key starts with no tree state; the service must
+reload the chain, mirrors, exit requests, and HALT before accepting work.
+
+Cloud KMS admits only the approved image's federated identity. The
+workload service account has no direct decrypt grant. The identity pool
+requires production Confidential Space, TDX, debug disabled since boot,
+and our project. This route trusts Google attestation, KMS, and the IAM
+administrators who can change its policy. A service upgrade needs a new
+wrapping key and policy; it does not gain the previous image's key.
+
+The October 16 hardware check used source
+`a4fb41ec1f4e2f3ba8a281ad1cb9881c872d7632` and image
+`sha256:79bf22d374f8c33a58f4c126ce36da9f729501d881ac80b48707d007653bf100`.
+Two build machines produced that digest. Two separate production-mode
+TDX boots reported the same public key:
+
+```text
+a90d75983b148a0d5f684e6bcc018bd55a95237854ca0c8ab77ec4df57438c0d
+```
+
+The first boot generated it; the second recovered it from the encrypted
+record. Both Google tokens pass Rust verification and independently
+recomputed parameter binding. Both workloads ran a synthetic refresh
+through the real predicate and reported zero ephemeral keys afterward.
+A derivative image with only a changed label was refused by the key
+service when it tried to recover the same record. These are test keys;
+no tree on signet or mainnet uses them.
+
+[Public key-recovery evidence](../../docs/research/layertree/evidence/key-recovery-2026-10-16.tar.gz)
+contains both boots, the refusal, KMS and identity policies, independent
+build records, and release evidence. Rekor entry **3276247676** logs the
+release `4963b7fcc2180c2a1afa4fe28fd5a0ced13b6527a7ad75c8ea0eb72b98274552`
+for workload `layertree-signet-key-probe`; `att-release verify` checks its
+proof and both rebuild statements offline. Use the research publisher
+above and the archive's head and release, with recorded time `1792139163`.
+
+An initial prototype's JSON-formatted environment allowlist prevented
+its second workload from launching. The corrected image uses the
+comma-separated launch-policy format. That failure is retained, its
+unfunded wrapping key is disabled, and all five key-experiment VMs were
+deleted. Estimated probe compute is below $1 at the issue's approximate
+rate, excluding the builder, storage, logs, registry, and KMS; this is not
+a billing export.
+
+The rollback check uses a separate Bitcoin Core 30.2 regtest node. It
+recovers the key, deliberately supplies old public tree state, and signs
+a different refresh with its own unspent fee coin. Core accepts the
+transaction before the tree input is spent. After another valid refresh
+confirms, Core rejects it as `missing-inputs` while its fee coin remains
+unspent. Bitcoin's spent output prevents the stale state from taking
+effect. The local envelope in this unit test checks rollback separately
+from the real KMS and hardware checks above.
+
+```sh
+cargo test --locked --manifest-path crates/layertree-tee-lab/Cargo.toml --features gcp-sealing
+LAYERTREE_ROLLBACK_ROOT="$(openagents scratch)/layertree-key-rollback" \
+  scripts/layertree/sealing-rollback.sh
+cargo test -p oa-att --test layertree_probe
+```
+
+To reproduce the hardware check, run
+`LAYERTREE_EXAMPLE=key_lifecycle_probe scripts/layertree/build-image.sh a4fb41ec1f4e2f3ba8a281ad1cb9881c872d7632 "$out/keys"`, then run
+`scripts/layertree/sealing-policy.sh setup`, and admit the matching digest
+with `sealing-policy.sh admit sha256:...`. Launch and collect the first
+probe as above with `LAYERTREE_ISSUE=11790`. Save its `sealed` JSON field
+to a scratch file, delete the VM, then set `LAYERTREE_SEALED_BLOB_FILE`
+to that file before launching the second VM with the same image. Delete
+that VM after collection. A different-image check uses the same encrypted
+record and a derivative image that has no KMS admission. Never add that
+image to the key policy. The saved tokens, key equality, and refusal must
+all be checked before calling recovery successful.
+
+This probe accepts no external signing requests. The actual signet
+service, current-chain restoration, attested client channel, and public
+tree runs remain #11789, #11792, and #11793.

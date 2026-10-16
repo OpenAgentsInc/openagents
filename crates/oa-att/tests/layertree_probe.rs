@@ -6,7 +6,7 @@ fn fixture() -> Value {
     serde_json::from_str(include_str!("fixtures/layertree-tdx-probe.json")).unwrap()
 }
 
-fn verify_probe(probe: Value, digest: &str, now: u64) {
+fn verify_probe(probe: Value, digest: &str, now: u64) -> oa_att::token::Claims {
     let claims = oa_att::token::verify(
         probe["token"].as_str().unwrap(),
         "openagents.layertree.route.v1",
@@ -17,6 +17,7 @@ fn verify_probe(probe: Value, digest: &str, now: u64) {
     assert_eq!(claims.image_digest, digest);
     assert_eq!(claims.nonces, [probe["nonce"].as_str().unwrap()]);
     assert_eq!(claims.dbgstat, "disabled-since-boot");
+    assert!(claims.support.iter().any(|value| value == "STABLE"));
     assert_eq!(
         &probe["report_data"].as_str().unwrap()[..64],
         probe["nonce"].as_str().unwrap()
@@ -45,7 +46,13 @@ fn verify_probe(probe: Value, digest: &str, now: u64) {
         &probe["report_data"].as_str().unwrap()[64..],
         "0".repeat(64)
     );
-    assert!(!probe["transaction_signing"].as_bool().unwrap());
+    if let Some(signing) = probe["transaction_signing"].as_bool() {
+        assert!(!signing);
+    } else {
+        assert!(!probe["accepts_external_transactions"].as_bool().unwrap());
+        assert_eq!(probe["ephemeral_keys_after_signing"], 0);
+    }
+    claims
 }
 
 #[test]
@@ -83,4 +90,38 @@ fn the_reproduced_image_reports_its_logged_digest() {
         "sha256:97ebee658897e3e655c18e01c043b6ab9394ff63ab06b056aea6a6db0127671f",
         1_792_136_800,
     );
+}
+
+#[test]
+fn a_guest_generated_key_is_bound_to_the_sealing_image() {
+    let probe: Value =
+        serde_json::from_str(include_str!("fixtures/layertree-key-first-tdx.json")).unwrap();
+    assert_eq!(probe["restored"], false);
+    assert_eq!(
+        probe["enclave_key"],
+        "a90d75983b148a0d5f684e6bcc018bd55a95237854ca0c8ab77ec4df57438c0d"
+    );
+    verify_probe(
+        probe,
+        "sha256:79bf22d374f8c33a58f4c126ce36da9f729501d881ac80b48707d007653bf100",
+        1_792_138_800,
+    );
+}
+
+#[test]
+fn another_boot_recovers_the_same_attested_key() {
+    let first: Value =
+        serde_json::from_str(include_str!("fixtures/layertree-key-first-tdx.json")).unwrap();
+    let restored: Value =
+        serde_json::from_str(include_str!("fixtures/layertree-key-restored-tdx.json")).unwrap();
+    assert_eq!(restored["restored"], true);
+    assert_eq!(first["enclave_key"], restored["enclave_key"]);
+    assert_eq!(first["report_data"], restored["report_data"]);
+    assert_ne!(first["token"], restored["token"]);
+    let claims = verify_probe(
+        restored,
+        "sha256:79bf22d374f8c33a58f4c126ce36da9f729501d881ac80b48707d007653bf100",
+        1_792_138_800,
+    );
+    assert!(claims.iat > 1_792_138_342);
 }

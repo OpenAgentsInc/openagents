@@ -438,7 +438,12 @@ harmless, because Bitcoin is the monotonic counter. An enclave restored to
 an old state can only sign spends of outpoints that are already spent.
 
 **Upgrades.** New code means a new measurement, and so a new key: sealing
-is bound to the measurement, by design. An upgrade is a `Rotate` transition,
+is bound to the measurement, by design. The TDX restart experiment uses
+local envelope encryption and an exact-image Cloud KMS grant, and therefore
+also trusts KMS and its IAM administrators. The [captured two-boot, wrong-image,
+and rollback checks](../../../crates/layertree-tee-lab/README.md#key-generation-and-restart-recovery-on-tdx)
+cover key recovery; the live service still must restore current chain and HALT
+state. An upgrade is a `Rotate` transition,
 the same mechanism as the sandbox's `Migrate`:
 
 1. Publish the new release and its log entry, then launch the new enclave

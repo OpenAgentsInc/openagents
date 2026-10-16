@@ -2,8 +2,9 @@
 //!
 //! Spec: `docs/research/layertree/2026-10-15-mainnet-tee-spec.md`.
 //! Written from LayerTree spec v0.15.2 and the paper; no upstream code is
-//! copied (the upstream repository has no licence). Research only: no
-//! network, no real keys, no money. Outside the monorepo's default build.
+//! copied (the upstream repository has no licence). Research only, outside
+//! the monorepo's default build. Opt-in probes use real guest keys and
+//! hardware evidence; transaction experiments use regtest or signet.
 //!
 //! * `tree`: the Merkle-sum tree, proofs, vouchers, path maintenance.
 //! * `codec`: byte decoders for leaves, records, `enc64` and unroll packages.

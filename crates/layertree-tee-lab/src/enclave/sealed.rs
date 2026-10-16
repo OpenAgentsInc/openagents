@@ -327,3 +327,7 @@ mod tests {
         assert!(Enclave::restore_with_envelope(config(), &bad, &[7; 32]).is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "sealed/rollback.rs"]
+mod rollback;
