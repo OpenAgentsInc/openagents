@@ -46,6 +46,7 @@ These are OpenAgents draft assignments, not upstream registrations.
 | Kind | Class | Record |
 | --- | --- | --- |
 | `3202` | Regular | Attested workload release |
+| `3203` | Regular | Independent rebuild statement |
 | `30202` | Addressable | Release head: the admitted releases of one workload |
 | `30203` | Addressable | Attested endpoint: one instance's key and evidence |
 
@@ -130,7 +131,22 @@ Content (JCS JSON):
   lets a reader match a rebuilt binary, such as the inference engine,
   without unpacking the image. Absent means empty.
 - `rebuilds` are independent builders' results. A client policy MAY require
-  at least one independent rebuild with an equal digest.
+  at least one independent rebuild with an equal digest. Each listed builder
+  publishes a `3203` statement (below).
+- `transparency` names the release's Rekor entry by its log index. The
+  entry is a `hashedrekord` whose `spec.data.hash` is `{algorithm: "sha256",
+  value}` where `value` is the SHA-256 of the JCS release body with
+  `transparency` set to `[]` (the index cannot be inside the bytes it logs).
+  A client that requires transparency verifies, under the log key it pins:
+  the signed entry timestamp over `{body, integratedTime, logID, logIndex}`;
+  the RFC 9162 inclusion proof from `SHA-256(0x00 || body)` to the proof's
+  root; the checkpoint (a signed note: origin, size, base64 root, then
+  `— <log name> base64(key hash[4] || ECDSA signature)`) for that size and
+  root; and that `integratedTime` is no later than the release's
+  `effective_at`, so the release was public during its notice delay. The
+  client keeps the largest checkpoint it has seen per log and refuses a
+  smaller one (stale), another root for the same size (fork), and a larger
+  one without an RFC 9162 consistency proof from the one it kept.
 - `changes` is shown to people when they are notified.
 
 ## Release head — kind `30202`
@@ -163,9 +179,41 @@ release.
   for each workload and refuses a lower one (rollback).
 - A client MAY keep a **personal approval set**. With it on, a release is
   admitted only if it is also in that set. The set is private, stored as a
-  self-addressed `3188` artifact or on the device.
+  self-addressed `3188` artifact (schema `openagents.att-approvals.v1`:
+  `{v, requires: [], generation, approvals: [{release, workload,
+  approved_at, revoked_at}]}`) or on the device. `generation` grows with
+  every change and a lower one is refused. Approval never shortens the
+  head's notice delay or overrides a retirement. A release the head admits
+  but the person has not approved waits for them, shown more urgently when
+  it is the head's emergency release. A revoked approval refuses the
+  release at once, even while the head still admits it.
 - Clients SHOULD notify people when a new release appears for a workload
   they rely on, using `changes`.
+
+## Independent rebuild — kind `3203`
+
+A builder other than the publisher rebuilds the release's source with its
+recipe and signs what it got. Tags: `t oa:att-rebuild:v1`; `w` the
+workload; `x` the SHA-256 of the content bytes. Content (JCS JSON):
+
+```json
+{
+  "v": "openagents.att-rebuild.v1",
+  "requires": [],
+  "workload": "vault",
+  "source": { "repo": "…", "commit": "<40 hex>", "recipe": "…", "recipe_digest": "sha256:<64 hex>" },
+  "image_digest": "sha256:<64 hex>",
+  "components": [],
+  "built_at": 0
+}
+```
+
+A client counts a statement only when its signer is listed in the
+release's `rebuilds` and is not the publisher, and its `workload` and
+`source` equal the release's. A listed builder whose `image_digest` (or
+nonempty `components`) differs from the release refuses the release: the
+build changed. The client's policy sets how many distinct builders must
+match.
 
 ## Attested endpoint — kind `30203`
 
@@ -384,7 +432,15 @@ A NIP-PYLON `3201` receipt for a sealed job:
   event contents, never the plaintext, because a plaintext digest of a short
   or templated prompt can be guessed;
 - adds `attested: {endpoint, release, level, measurement}`, where `measurement`
-  is the image digest or the primary register value.
+  is the image digest or the primary register value. In Pylon v2 terms the
+  receipt has `requires: ["openagents.attested.v1"]` and exactly
+  `meta: {attested: {…}}`; `level` is `tee` or `tee-cloud`;
+- references its ciphertext: `request` is the request event (or rumor) ID
+  and the digests are of those exact contents, so a reader holding the
+  events checks them; the result is signed by the endpoint key;
+- reports payment only as Pylon v2 does: an opaque settlement reference and
+  the provider's signed acknowledgment, never an invoice, payment hash,
+  preimage or other payment proof.
 
 A gateway or broker that pays for a job sees only these receipts and the
 event metadata. Billing uses `units` from the signed result.
@@ -481,11 +537,20 @@ refusal, and per-chunk streamed output. Its suite is checked against the
 RFC 9180 test vectors, and its local fixtures verify an SEV-SNP endpoint
 with `att-platforms` before admitting its key.
 
+Implemented (2026-10-15, #11747), library and `att-release` CLI, not yet
+in the gateway or the apps: `crates/att-release` verifies Rekor entries
+(signed entry timestamp, inclusion, signed checkpoint, a witness that
+refuses stale and forked views and needs consistency proofs for growth)
+under a pinned key, with Sigstore's Rekor key shipped and a real Rekor
+entry as a test vector; checks `3203` rebuild statements; keeps the
+personal approval set (sealed as a self-addressed `3188`); and builds and
+verifies sealed-job `3201` receipts over ciphertext. `crates/nostr` admits
+the sealed-job receipt form and registers `3203`.
+
 Not yet: an attested workload image that emits raw quotes or NRAS
 evidence or serves HPKE carriage, collateral fetching from Intel PCS, AMD
-KDS and NRAS, Rekor entries and independent rebuilds in the release, the
-personal approval set, and the public `3201`
-receipt for sealed jobs. The [private inference](../../docs/security/private-inference.md)
+KDS and NRAS, publishing a real release to Rekor, and these checks in the
+gateway and apps. The [private inference](../../docs/security/private-inference.md)
 milestones P2–P4 track them.
 
 ## Conformance
@@ -500,10 +565,16 @@ Fixtures must cover:
 - a head rollback;
 - a release inside its notice delay, an emergency release, and a release
   missing from a personal approval set;
+- a missing, stale or forked transparency entry, an entry logging other
+  bytes, and an entry logged after the release took effect;
+- a rebuild with a different image, from an unlisted builder, or from the
+  publisher, and too few matching rebuilds;
+- a revoked approval, and an approval set rolled back to a lower
+  generation;
 - a sealed job to an endpoint whose level is too low;
 - a receipt carrying a plaintext digest, which must be refused as malformed
   for a sealed job.
 
 Advertise `nip-att-v1` in NIP-11 `supported_extensions` only for a relay that
-stores `3202`, `30202` and `30203`. Keep this draft name out of numeric
+stores `3202`, `3203`, `30202` and `30203`. Keep this draft name out of numeric
 `supported_nips`.

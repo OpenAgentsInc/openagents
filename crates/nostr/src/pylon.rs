@@ -751,6 +751,43 @@ impl BeaconBook {
     }
 }
 
+/// A NIP-ATT sealed-job receipt (`requires: ["openagents.attested.v1"]`)
+/// carries exactly `meta: {attested: {endpoint, release, level,
+/// measurement}}`, and its digests are over ciphertext.
+fn sealed_meta(meta: Option<&Value>) -> Result<(), String> {
+    let meta = meta
+        .and_then(Value::as_object)
+        .ok_or("a sealed-job receipt needs its attested block")?;
+    if meta.len() != 1 {
+        return Err("a sealed-job receipt carries only its attested block".into());
+    }
+    let block = meta
+        .get("attested")
+        .and_then(Value::as_object)
+        .ok_or("a sealed-job receipt needs its attested block")?;
+    let mut keys: Vec<&str> = block.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    if keys != ["endpoint", "level", "measurement", "release"] {
+        return Err("the attested block has unknown or missing fields".into());
+    }
+    let text = |key: &str| block.get(key).and_then(Value::as_str).unwrap_or_default();
+    let endpoint: Vec<&str> = text("endpoint").split(':').collect();
+    if endpoint.len() != 3 || endpoint[0] != crate::att::ENDPOINT_KIND.to_string() {
+        return Err("the attested endpoint is not an endpoint address".into());
+    }
+    hex64(endpoint[1], "attested endpoint key")?;
+    hex64(endpoint[2], "attested endpoint instance")?;
+    hex64(text("release"), "attested release")?;
+    if !matches!(text("level"), "tee" | "tee-cloud") {
+        return Err("a sealed-job receipt is at level tee or tee-cloud".into());
+    }
+    let measurement = text("measurement");
+    if measurement.is_empty() || measurement.len() > 256 {
+        return Err("the attested measurement is empty or too long".into());
+    }
+    Ok(())
+}
+
 impl Receipt {
     /// Check the body on its own, as a buyer must before signing.
     ///
@@ -761,7 +798,8 @@ impl Receipt {
         if self.v != RECEIPT_V {
             return Err("unknown receipt version".into());
         }
-        if !self.requires.is_empty() {
+        let sealed = self.requires.len() == 1 && self.requires[0] == crate::att::ATTESTED_FEATURE;
+        if !self.requires.is_empty() && !sealed {
             return Err("receipt requires an unknown feature".into());
         }
         hex64(&self.buyer, "buyer")?;
@@ -781,7 +819,9 @@ impl Receipt {
         if self.capability.is_empty() || self.capability.len() > 256 {
             return Err("capability is empty or too long".into());
         }
-        if self
+        if sealed {
+            sealed_meta(self.meta.as_ref())?;
+        } else if self
             .meta
             .as_ref()
             .is_some_and(|v| v.as_object().is_none_or(|m| !m.is_empty()))

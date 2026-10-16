@@ -496,7 +496,7 @@ node is the first step, not a fleet.
 | # | Milestone | Gate |
 | --- | --- | --- |
 | P0 | NIP-ATT types and validators in `crates/nostr`, and a Confidential Space PKI token verifier (Rust and WASM). | Fixtures: valid, debug image, wrong digest, binding mismatch, expired, head rollback. |
-| P1 | Reproducible inference image (Psionic plus one open model), Rekor entry, `3202`/`30202` publishing, and two independent builders matching. | A second builder reproduces the digest. |
+| P1 | Reproducible inference image (Psionic plus one open model), Rekor entry, `3202`/`30202` publishing, and two independent builders matching. | A second builder reproduces the digest. Verification of Rekor entries, `3203` rebuild statements, the personal approval set and sealed `3201` receipts is in `crates/att-release` (#11747); publishing a real release to Rekor and a second real builder remain. |
 | P2 | One spot `a3-highgpu-1g` Confidential Space node publishing `30203` and serving `openagents.attested.v1` decisions and chat. | **Canary test**: a sealed prompt's canary never appears in the gateway, relay or Cloud Logging. A debug-image node is refused by the client. |
 | P3 | Gateway pass-through, level-based routing, ciphertext-digest receipts, and web and app verification. | A vault Private turn end to end on production, with the receipt naming the measurement. |
 | P4 | Third-party `tee` Pylons (raw TDX, SEV-SNP and NVIDIA evidence), and a `hardened` level for Macs. | Level computed only from evidence. Each provider class shows the right label. Client verification of the three evidence types is in `crates/att-platforms` (#11745), tested on synthetic chains; the provider image that emits them and a live hardware run remain. |

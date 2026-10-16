@@ -661,3 +661,36 @@ fn paid_totals_require_trusted_issuers_and_deduplicate_settlements() {
         0
     );
 }
+
+#[test]
+fn a_sealed_job_receipt_carries_exactly_its_attested_block() {
+    let (buyer, provider) = (signer(1), signer(2));
+    let mut body = receipt(&buyer, &provider, &"ab".repeat(32), NOW);
+    let block = serde_json::json!({"attested": {
+        "endpoint": format!("30203:{}:{}", "cd".repeat(32), "ef".repeat(32)),
+        "release": "12".repeat(32), "level": "tee-cloud", "measurement": format!("sha256:{}", "34".repeat(32))}});
+    // The block without the feature, and the feature without the block, refuse.
+    body.meta = Some(block.clone());
+    assert!(body.validate().is_err());
+    body.meta = None;
+    body.requires = vec![crate::att::ATTESTED_FEATURE.into()];
+    assert!(body.validate().is_err());
+    body.meta = Some(block.clone());
+    body.validate().unwrap();
+    let event = receipt_event(&buyer, &body, NOW).unwrap();
+    assert_eq!(parse_receipt(&event, None).unwrap(), body);
+    // Extra fields, a lower level, and a malformed endpoint refuse.
+    for broken in [
+        serde_json::json!({"attested": {"endpoint": block["attested"]["endpoint"], "release": "12".repeat(32), "level": "tee", "measurement": "m", "prompt_digest": "x"}}),
+        serde_json::json!({"attested": {"endpoint": block["attested"]["endpoint"], "release": "12".repeat(32), "level": "open", "measurement": "m"}}),
+        serde_json::json!({"attested": {"endpoint": "30202:x:y", "release": "12".repeat(32), "level": "tee", "measurement": "m"}}),
+        serde_json::json!({"attested": block["attested"], "other": 1}),
+    ] {
+        body.meta = Some(broken);
+        assert!(body.validate().is_err());
+    }
+    // Another feature is still unknown.
+    body.meta = Some(block);
+    body.requires = vec!["openagents.other.v1".into()];
+    assert!(body.validate().is_err());
+}

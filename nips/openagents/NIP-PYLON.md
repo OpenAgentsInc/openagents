@@ -217,7 +217,12 @@ NIP-01 event, not separately published: kind `3201`, exactly the tags
 with only `payment.acknowledgment` set to null. Its signer must be the provider
 (seller) or buyer (broker). Verify the signature, exact content, kind, tags,
 time, network, amount, and settlement reference before accepting the receipt.
-Nonempty receipt `meta` is unsupported in this version. Older receipt and
+Nonempty receipt `meta` is unsupported in this version, with one
+exception: a [NIP-ATT](NIP-ATT.md#receipts) sealed-job receipt has
+`requires` exactly `["openagents.attested.v1"]` and `meta` exactly
+`{attested: {endpoint, release, level, measurement}}`, with `level` `tee`
+or `tee-cloud`, and its digests are over ciphertext. Readers that do not
+know the feature refuse such receipts. Older receipt and
 aggregate formats are refused; no compatibility producer is required.
 
 The direct seller issues this acknowledgment only after its private X402
