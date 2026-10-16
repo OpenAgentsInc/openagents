@@ -689,6 +689,7 @@ fn settings_open_route(route: &str, remembered: SettingsSection) -> Option<Setti
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Route {
     Chat,
+    SavedHistory,
     PullRequests,
     Settings(SettingsSection),
 }
@@ -843,6 +844,7 @@ impl SessionPanels {
 /// history — every route the user visited, browser-style).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NavEntry {
+    SavedHistory(coder_account::openagents::ChatSummary),
     /// A chat route; the id of the selected chat ("" = the new-chat canvas).
     Chat(String),
     PullRequests,
@@ -894,6 +896,19 @@ impl NavHistory {
     /// `/` into the last-used chat leaves no dead Back target behind).
     pub fn replace(&mut self, entry: NavEntry) {
         self.entries[self.index] = entry;
+    }
+
+    fn clear_saved_history(&mut self) {
+        let before = self.entries[..=self.index]
+            .iter()
+            .filter(|entry| !matches!(entry, NavEntry::SavedHistory(_)))
+            .count();
+        self.entries
+            .retain(|entry| !matches!(entry, NavEntry::SavedHistory(_)));
+        if self.entries.is_empty() {
+            self.entries.push(NavEntry::Chat(String::new()));
+        }
+        self.index = before.saturating_sub(1).min(self.entries.len() - 1);
     }
 
     pub fn can_back(&self) -> bool {
@@ -1939,6 +1954,9 @@ enum PendingExit {
 }
 
 pub struct Shell {
+    saved_history: Option<Entity<crate::openagents_history::HistoryPanel>>,
+    _saved_history_events: Option<Subscription>,
+    _saved_history_observation: Option<Subscription>,
     state: Entity<AppState>,
     sidebar_pane: Entity<SidebarPane>,
     transcript: Entity<Transcript>,
@@ -2491,8 +2509,18 @@ impl Shell {
             )),
             _ => None,
         };
+        let saved_account = crate::openagents_account::AppAccount::global(cx)
+            .and_then(|account| account.read(cx).controller.clone());
+        let saved_history = saved_account
+            .map(|account| cx.new(|cx| crate::openagents_history::HistoryPanel::new(account, cx)));
+        let saved_history_events = saved_history
+            .as_ref()
+            .map(|panel| cx.subscribe(panel, Self::on_saved_history_event));
+        let saved_history_observation = saved_history
+            .as_ref()
+            .map(|panel| cx.observe(panel, |_, _, cx| cx.notify()));
         let nav = NavHistory::new(match route {
-            Route::Chat => NavEntry::Chat(String::new()),
+            Route::Chat | Route::SavedHistory => NavEntry::Chat(String::new()),
             Route::PullRequests => NavEntry::PullRequests,
             Route::Settings(section) => NavEntry::Settings(section),
         });
@@ -2507,6 +2535,9 @@ impl Shell {
             _observation: cx.observe(&shell, |_, _, cx| cx.notify()),
         });
         Self {
+            saved_history,
+            _saved_history_events: saved_history_events,
+            _saved_history_observation: saved_history_observation,
             state,
             sidebar_pane,
             transcript,
@@ -5511,6 +5542,11 @@ impl Shell {
     fn apply_nav(&mut self, entry: NavEntry, cx: &mut Context<Self>) {
         self.suspend_file_images(cx);
         match entry {
+            NavEntry::SavedHistory(summary) => {
+                if let Some(panel) = self.saved_history.clone() {
+                    panel.update(cx, |panel, cx| panel.reopen(summary, cx));
+                }
+            }
             NavEntry::Chat(chat_id) => {
                 self.set_route(Route::Chat, cx);
                 self.focus_composer(cx);
@@ -7152,6 +7188,15 @@ impl Shell {
     /// The session titlebar, or on the Pull requests route the bar carrying
     /// the pull request pane's tabs.
     fn render_title_bar(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        if matches!(self.route, Route::SavedHistory) {
+            return self
+                .titlebar_drag_region(
+                    "saved-history-titlebar",
+                    div().w_full().h(px(Theme::TITLEBAR_HEIGHT)),
+                    cx,
+                )
+                .into_any_element();
+        }
         if !matches!(self.route, Route::PullRequests) {
             return self.render_session_title_bar(cx);
         }
@@ -8948,6 +8993,57 @@ impl Shell {
         )
     }
 
+    #[cfg(feature = "account-fixture")]
+    pub fn fixture_saved_history(
+        &self,
+    ) -> (
+        Option<Entity<crate::openagents_history::HistoryPanel>>,
+        Route,
+    ) {
+        (self.saved_history.clone(), self.route)
+    }
+
+    fn on_saved_history_event(
+        &mut self,
+        _: Entity<crate::openagents_history::HistoryPanel>,
+        event: &crate::openagents_history::HistoryEvent,
+        cx: &mut Context<Self>,
+    ) {
+        use crate::openagents_history::HistoryEvent;
+        match event {
+            HistoryEvent::Open(target) if target.is_current() => {
+                let entry = NavEntry::SavedHistory(target.summary.clone());
+                self.set_route(Route::SavedHistory, cx);
+                self.close_chat_menu(cx);
+                self.close_user_menu(cx);
+                if self.nav.current() != &entry {
+                    self.nav.push(entry);
+                }
+            }
+            HistoryEvent::Reset => {
+                self.nav.clear_saved_history();
+                if matches!(self.settings_return_route, Route::SavedHistory) {
+                    self.settings_return_route = Route::Chat;
+                }
+                if matches!(self.route, Route::SavedHistory) {
+                    self.set_route(Route::Chat, cx);
+                }
+            }
+            HistoryEvent::Close => {
+                self.set_route(Route::Chat, cx);
+                self.nav.push(NavEntry::Chat(
+                    self.state
+                        .read(cx)
+                        .selected_chat
+                        .clone()
+                        .unwrap_or_default(),
+                ));
+            }
+            _ => {}
+        }
+        cx.notify();
+    }
+
     fn render_chat_sidebar(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         if self.sidebar_session_transfer.as_ref().is_some_and(|drag| {
             !cx.has_active_drag() || !self.sidebar_session_transfer_is_valid(&drag.payload, cx)
@@ -9272,52 +9368,72 @@ impl Shell {
             SIDEBAR_GLASS_FADE_BAND,
             true,
             true,
-            div().relative().flex_1().min_h_0().child(crate::overscroll::overscroll(
-                "sidebar-overscroll",
-                crate::overscroll::OverscrollSource::Handle(self.sidebar_scroll.clone()),
-                div()
-                    .id("sidebar-lists")
-                    .relative()
-                    .size_full()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.sidebar_scroll)
-                    .on_drag_move::<SidebarSessionDrag>(cx.listener(
-                        move |this, event: &gpui::DragMoveEvent<SidebarSessionDrag>, _, cx| {
-                            if let Some(transfer) = this.sidebar_session_transfer.as_mut() {
-                                transfer.viewport = Some(event.bounds);
-                            }
-                            if !event.bounds.contains(&event.event.position) {
+            div()
+                .relative()
+                .flex_1()
+                .min_h_0()
+                .child(crate::overscroll::overscroll(
+                    "sidebar-overscroll",
+                    crate::overscroll::OverscrollSource::Handle(self.sidebar_scroll.clone()),
+                    div()
+                        .id("sidebar-lists")
+                        .relative()
+                        .size_full()
+                        .overflow_y_scroll()
+                        .track_scroll(&self.sidebar_scroll)
+                        .on_drag_move::<SidebarSessionDrag>(cx.listener(
+                            move |this, event: &gpui::DragMoveEvent<SidebarSessionDrag>, _, cx| {
                                 if let Some(transfer) = this.sidebar_session_transfer.as_mut() {
-                                    transfer.preview = None;
+                                    transfer.viewport = Some(event.bounds);
                                 }
-                                return;
-                            }
-                            let payload = event.drag(cx).clone();
-                            this.track_pinned_session_drag_pointer(
-                                payload,
-                                f32::from(event.event.position.y),
-                                f32::from(event.bounds.top()),
-                                f32::from(event.bounds.bottom()),
-                                cx,
-                            );
-                        },
-                    ))
-                    // Empty space and Archived are not transfer targets.
-                    .on_drop::<SidebarSessionDrag>(cx.listener(
-                        |this, _: &SidebarSessionDrag, _, cx| {
-                            this.cancel_sidebar_session_transfer(cx);
-                        },
-                    ))
-                    .px(px(Theme::SPACE_SM))
-                    .flex()
-                    .flex_col()
-                    // No "Sessions" header (user request) — the list
-                    // is the whole column; a little air stands in.
-                    .pt(px(SIDEBAR_LIST_PAD_TOP))
-                    .child(active_list)
-                    .children(archived_section)
-                    .children(moving_row),
-            )),
+                                if !event.bounds.contains(&event.event.position) {
+                                    if let Some(transfer) = this.sidebar_session_transfer.as_mut() {
+                                        transfer.preview = None;
+                                    }
+                                    return;
+                                }
+                                let payload = event.drag(cx).clone();
+                                this.track_pinned_session_drag_pointer(
+                                    payload,
+                                    f32::from(event.event.position.y),
+                                    f32::from(event.bounds.top()),
+                                    f32::from(event.bounds.bottom()),
+                                    cx,
+                                );
+                            },
+                        ))
+                        // Empty space and Archived are not transfer targets.
+                        .on_drop::<SidebarSessionDrag>(cx.listener(
+                            |this, _: &SidebarSessionDrag, _, cx| {
+                                this.cancel_sidebar_session_transfer(cx);
+                            },
+                        ))
+                        .px(px(Theme::SPACE_SM))
+                        .flex()
+                        .flex_col()
+                        // No "Sessions" header (user request) — the list
+                        // is the whole column; a little air stands in.
+                        .pt(px(SIDEBAR_LIST_PAD_TOP))
+                        .children(self.saved_history.clone())
+                        .when(
+                            self.saved_history.is_some() && !self.state.read(cx).chats.is_empty(),
+                            |el| {
+                                el.child(
+                                    div()
+                                        .pt(px(12.))
+                                        .pb(px(6.))
+                                        .text_color(theme.text_muted)
+                                        .child("On this computer"),
+                                )
+                            },
+                        )
+                        .when(
+                            self.saved_history.is_none() || !self.state.read(cx).chats.is_empty(),
+                            |el| el.child(active_list),
+                        )
+                        .children(archived_section)
+                        .children(moving_row),
+                )),
         )
         .fade_overflow_y(&self.sidebar_scroll);
 
@@ -10917,6 +11033,13 @@ impl Shell {
         let theme = &theme_owned;
         let (border, text, faint) = (theme.border, theme.text, theme.text_faint);
 
+        if matches!(self.route, Route::SavedHistory) {
+            return self
+                .saved_history
+                .clone()
+                .map(|panel| panel.update(cx, |panel, cx| panel.render_selected(cx)))
+                .unwrap_or_else(|| Empty.into_any_element());
+        }
         if matches!(self.route, Route::PullRequests) {
             if self.pull_requests_page.is_none() {
                 self.pull_requests_page =

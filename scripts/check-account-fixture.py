@@ -17,6 +17,7 @@ import websocket
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--history", action="store_true")
     parser.add_argument("binary", type=Path)
     parser.add_argument("scratch", type=Path)
     args = parser.parse_args()
@@ -41,7 +42,7 @@ def main():
     subprocess.run(["codesign", "--force", "--sign", "-", str(app)], check=True)
     output = root / "captures"
     with (root / "native.log").open("w") as log:
-        native = subprocess.Popen([str(executable), str(output)], stdout=log, stderr=log)
+        native = subprocess.Popen([str(executable), str(output)] + (["--history"] if args.history else []), stdout=log, stderr=log)
         try:
             deadline = time.monotonic() + 100
             while not (output / "waiting.png").exists():
@@ -84,7 +85,10 @@ def main():
             connection.close()
             if status != 0:
                 raise RuntimeError(f"native fixture exited {status}")
-            for name in ("waiting", "signed-in", "signed-out"):
+            captures = ["waiting", "signed-in", "signed-out"]
+            if args.history:
+                captures += ["sidebar-200", "sidebar-205-pinned", "selected-existing", "archived", "shared-project", "offline-retry"]
+            for name in captures:
                 if not (output / f"{name}.png").is_file():
                     raise RuntimeError(f"missing native capture: {name}")
         finally:

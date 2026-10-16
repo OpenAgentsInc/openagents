@@ -37,3 +37,15 @@ example through the browser helper (requires Python's `websocket-client`):
 openagents browser run -- python3 scripts/check-account-fixture.py \
   /path/to/target/debug/examples/account-fixture /path/to/new/scratch-directory
 ```
+
+`history::History` reads one owned or shared-project index at a time, with at
+most 200 summaries per explicit page. Project names have separate bounded
+pages. Its memory-only index keeps pins, archives, source, and existing IDs;
+refresh replaces old rows after the first successful page. Failed reads retain
+an explicitly stale list, while access refusals clear it. Disposing the view or
+changing accounts cancels old reads. Nothing creates a document or starts work.
+
+The sidebar's saved-chat route carries `ExistingChat`, including its account
+lease, independently of local engine navigation. The native fixture's
+`--history` option checks 205 rows, archive/shared views, retry, selection without
+an engine, and removal of private rows and navigation on sign-out.

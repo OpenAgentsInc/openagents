@@ -11,6 +11,7 @@ use std::{
     sync::{Arc, Mutex, Weak},
 };
 use tokio::sync::watch;
+pub mod history;
 mod platform;
 pub use platform::PlatformStore;
 
