@@ -1737,7 +1737,3 @@ async fn round(
 
 #[cfg(test)]
 mod tests;
-
-/// The separately deployed phone sync server; absent from frozen Coder builds.
-#[cfg(feature = "server")]
-pub mod server;

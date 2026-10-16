@@ -1,6 +1,8 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
+type Quotas = HashMap<(Room, String), (std::time::Instant, usize, usize)>;
+
 type Job = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -12,7 +14,11 @@ pub enum Room {
 
 /// One bounded mailbox and writer task per room in this process.
 #[derive(Clone, Default)]
-pub struct Rooms(Arc<Mutex<HashMap<Room, mpsc::Sender<Job>>>>);
+pub struct Rooms(
+    Arc<Mutex<HashMap<Room, mpsc::Sender<Job>>>>,
+    Arc<Mutex<HashMap<Room, tokio::sync::broadcast::Sender<(uuid::Uuid, Vec<u8>)>>>>,
+    Arc<Mutex<Quotas>>,
+);
 
 #[derive(Debug, thiserror::Error)]
 pub enum RoomError {
@@ -23,6 +29,31 @@ pub enum RoomError {
 }
 
 impl Rooms {
+    pub async fn admit_push(&self, room: Room, device: &str, bytes: usize) -> bool {
+        let mut quotas = self.2.lock().await;
+        let now = std::time::Instant::now();
+        quotas.retain(|_, (at, _, _)| now.duration_since(*at).as_secs() < 60);
+        let key = (room, device.to_owned());
+        if quotas.len() >= 65536 && !quotas.contains_key(&key) {
+            return false;
+        }
+        let entry = quotas.entry(key).or_insert((now, 0, 0));
+        entry.1 = entry.1.saturating_add(1);
+        entry.2 = entry.2.saturating_add(bytes);
+        entry.1 <= 300 && entry.2 <= 8 * 1024 * 1024
+    }
+
+    pub async fn events(
+        &self,
+        room: Room,
+    ) -> tokio::sync::broadcast::Sender<(uuid::Uuid, Vec<u8>)> {
+        self.1
+            .lock()
+            .await
+            .entry(room)
+            .or_insert_with(|| tokio::sync::broadcast::channel(64).0)
+            .clone()
+    }
     pub async fn run<T, F>(&self, room: Room, job: F) -> Result<T, RoomError>
     where
         T: Send + 'static,

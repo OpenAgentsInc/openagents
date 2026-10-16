@@ -21,6 +21,8 @@ path = "../../crates/coder-sync/src/main.rs"
 server = []
 
 [dependencies]
+zeron-sync = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "9c58d1af0eb2e8cc750b65b5bafc435392010f15" }
+base64 = "0.22"
 axum = { version = "0.8", features = ["ws"] }
 bytes = { version = "1" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
@@ -32,3 +34,21 @@ tokio-postgres = { version = "0.7.18" }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1", features = ["v4"] }
+
+[[test]]
+name = "service"
+path = "tests/service.rs"
+
+[[test]]
+name = "chat"
+path = "tests/chat.rs"
+
+[[test]]
+name = "chat_model"
+path = "tests/chat_model.rs"
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+stateright = "0.31"
+futures = "0.3"
+tokio-tungstenite = "0.24"

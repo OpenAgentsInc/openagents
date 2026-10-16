@@ -1,5 +1,3 @@
-#![cfg(feature = "server")]
-
 use axum::{
     body::Body,
     http::{Request, StatusCode},

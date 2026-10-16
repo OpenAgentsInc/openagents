@@ -30,6 +30,9 @@ impl Database {
         client
             .batch_execute(include_str!("../../migrations/0001_rooms.sql"))
             .await?;
+        client
+            .batch_execute(include_str!("../../migrations/0002_chat_protocol.sql"))
+            .await?;
         client.batch_execute("COMMIT").await
     }
 

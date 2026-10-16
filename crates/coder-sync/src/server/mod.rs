@@ -1,3 +1,4 @@
+pub mod chat;
 pub mod config;
 pub mod db;
 pub mod rooms;
@@ -51,6 +52,14 @@ pub fn authenticate(mode: AuthMode, token: &str) -> Option<Identity> {
 pub fn router(state: StateData) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/chat2/{id}", get(chat::websocket))
+        .route("/chat2/{id}/ws", get(chat::websocket))
+        .route("/chat2/{id}/rows", get(chat::rows).post(chat::push))
+        .route(
+            "/chat2/{id}/checkpoint",
+            get(chat::checkpoint).post(chat::publish_checkpoint),
+        )
+        .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024))
         .fallback(protected)
         .with_state(Arc::new(state))
         .layer(middleware::from_fn(request_id))

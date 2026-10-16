@@ -22,4 +22,4 @@ export CODER_SYNC_TEST_DATABASE_URL="host=127.0.0.1 port=$port user=coder_sync_t
 export RUSTUP_TOOLCHAIN=${RUSTUP_TOOLCHAIN:-1.98.1}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$HOME/work/openagents-target-agent1}
 cd "$root"
-cargo test -p coder-sync --features server "$@"
+cargo test --manifest-path deploy/coder-sync/Cargo.toml --features server "$@"

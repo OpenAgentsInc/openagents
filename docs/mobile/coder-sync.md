@@ -9,17 +9,17 @@ Clients reconnect when Cloud Run closes a WebSocket.
 
 The existing `crates/coder-sync` library uploads the frozen Coder's chats to
 OpenAgents. Keep that library and its default dependencies intact. The phone
-server lives in `src/server`, behind the `server` feature, with a separate
-`coder-sync` executable. Nothing here requires rebuilding a Coder 1.0 program.
+server lives in `crates/coder-sync/src/server`, built by the standalone
+`deploy/coder-sync` workspace as the `coder-sync` executable. Nothing here requires rebuilding a Coder 1.0 program.
 
 Use Rust 1.98.1 and a Cargo target directory outside the worktree:
 
 ```sh
 export RUSTUP_TOOLCHAIN=1.98.1
 export CARGO_TARGET_DIR="$HOME/work/openagents-target-agent1"
-cargo fmt -p coder-sync --check
+cargo fmt --manifest-path deploy/coder-sync/Cargo.toml --check
 scripts/coder-sync/test.sh
-cargo build -p coder-sync --features server
+cargo build --locked --manifest-path deploy/coder-sync/Cargo.toml --features server
 ```
 
 The test script starts its own Postgres cluster under `openagents scratch`,
@@ -39,9 +39,10 @@ cargo build --locked --manifest-path deploy/coder-sync/Cargo.toml --features ser
 ```
 
 `deploy/coder-sync/Cargo.toml` and its lockfile package the same server source
-for the image. When changing server dependencies, update both manifests and
-regenerate the package lockfile. No application code is copied into that
-package.
+for the image. The pinned fork client uses SQLite 0.32, while the frozen monorepo uses
+0.31. The separate workspace avoids a native-library conflict without changing
+those clients. Update the standalone manifest and lockfile for server
+dependencies. No application code is copied into that package.
 
 ## Configuration
 
@@ -139,8 +140,31 @@ sequence allocation, deduplication, and checkpoints in Postgres transactions:
 Cloud Run can overlap revisions during a deployment even with a one-instance
 setting. Additional instances require the planned room leases and fan-out.
 
-The initial migration creates chat ownership and rows, checkpoints, registry
-heads and rows, devices and connections, and blob metadata. Protocol handlers
-and client conformance land in #11843–#11847. Runbook statements about their
-ordering, account checks, and compaction must be verified as those handlers
-land; the skeleton does not expose room reads or writes.
+Chat routes now implement `/chat2/{id}/ws` (and the base-path alias),
+`/rows` GET/POST, and `/checkpoint` GET/POST. The first authenticated account
+claims the chat. PostgreSQL locks that ownership row for every operation;
+row insertion, batch deduplication, and head advancement commit together.
+Batch records survive compaction, so a delayed retry cannot append twice.
+
+The wire codec and client come from `zeron-sync` at fork commit
+`9c58d1af0eb2e8cc750b65b5bafc435392010f15`. The server treats payloads as
+opaque. As in the edge, clients decide when to post checkpoints (more than
+200 rows or 512 KiB); the server validates the covered sequence and frontier,
+stores an immutable bucket object, then atomically publishes its metadata
+and deletes covered rows. A failed transaction never publishes a sequence
+or checkpoint. Old checkpoint objects remain readable for in-flight downloads;
+object retention and garbage collection need a later storage policy.
+
+HTTP replay pages stay below 4 MiB and omit `rowsDone` when more rows remain.
+WebSocket replay streams those pages, then sends `rowsDone`. Broadcast queues
+are bounded; lagging sockets disconnect and recover using their cursor.
+Pushes retain the edge's per-device 300 pushes/8 MiB per minute limits,
+1 MiB row cap, and 32 MiB checkpoint cap. Presence stays in memory.
+
+The integration suite runs the pinned client through checkpoint loading,
+push, duplicate replay after reconnect, live delivery, and HTTP fallback. It
+also checks account isolation, range downloads, multi-page replay, and a SQL
+failure after row insertion but before head advancement. A bounded Stateright
+model checks two writers, two readers, two attempts per batch, two crashes,
+and checkpoint compaction (8,796 states). These bounds do not prove behavior
+for arbitrary fleets or failed storage systems.
