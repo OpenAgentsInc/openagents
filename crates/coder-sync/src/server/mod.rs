@@ -1,6 +1,7 @@
 pub mod chat;
 pub mod config;
 pub mod db;
+pub mod registry;
 pub mod rooms;
 pub mod storage;
 
@@ -52,6 +53,24 @@ pub fn authenticate(mode: AuthMode, token: &str) -> Option<Identity> {
 pub fn router(state: StateData) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route("/registry/{org}/ws", get(registry::websocket))
+        .route("/registry/{org}/rows", get(registry::rows))
+        .route(
+            "/registry/{org}/push",
+            axum::routing::post(registry::push)
+                .layer(axum::extract::DefaultBodyLimit::max(2 * 1024 * 1024)),
+        )
+        .route("/registry/{org}/stats", get(registry::stats))
+        .route(
+            "/registry/{org}/reset",
+            axum::routing::post(registry::reset),
+        )
+        .route(
+            "/registry/{org}/push-target",
+            axum::routing::post(registry::push_target)
+                .delete(registry::delete_target)
+                .layer(axum::extract::DefaultBodyLimit::max(16384)),
+        )
         .route("/chat2/{id}", get(chat::websocket))
         .route("/chat2/{id}/ws", get(chat::websocket))
         .route("/chat2/{id}/rows", get(chat::rows).post(chat::push))

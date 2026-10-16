@@ -60,7 +60,7 @@ Do not use personal accounts. Production refuses dev auth even when the
 command-line flag is set. Until #11848, production health works but no account
 can open a room. There is no WorkOS server or Cloudflare deployment.
 
-Startup applies migrations under a Postgres advisory lock and checks bucket
+Startup applies each migration once under a Postgres advisory lock and checks bucket
 read/write access with a short-lived test object. `/health` checks Postgres
 and returns the revision and auth mode. It returns 503 when Postgres is
 unavailable. Every response includes a generated `x-request-id`; structured
@@ -169,3 +169,22 @@ failure after row insertion but before head advancement. A bounded Stateright
 model checks two writers, two readers, two attempts per batch, two crashes,
 and checkpoint compaction (8,796 states). These bounds do not prove behavior
 for arbitrary fleets or failed storage systems.
+
+
+## Account registry
+
+`/registry/{org}` exposes WebSocket sync, HTTP rows/push, stats, reset, and
+push-target registration. The path must match the authenticated account or
+workspace; storage and room keys always use the account. Workspace aliases
+never share private rows across accounts. The pinned `zeron-doc` types and
+merge core preserve per-field clocks, tombstones, original clocks on re-seed,
+and atomic batches such as deleting a space with its chats and sessions.
+Rows and sender acknowledgments use one ordered queue, with merged rows first.
+
+Presence expires after 30 seconds of inactivity and is never stored in
+Postgres. Tombstones remain stored; `gcFloor` stays zero until a retention
+policy is added. Push targets stay private to the account, stats omit tokens,
+and registration sends no notifications in this release. Reset closes sockets;
+the pinned client reconnects and re-seeds its rows with their original clocks.
+The tests cover that recovery, account isolation, sender ordering, failed-batch
+rollback, and migration startup while a registry writer holds a row lock.

@@ -22,7 +22,7 @@ const ROW_LIMIT: usize = 1024 * 1024;
 const CHECKPOINT_LIMIT: usize = 32 * 1024 * 1024;
 type Result<T> = std::result::Result<T, Failure>;
 #[derive(Debug)]
-pub struct Failure(StatusCode, &'static str);
+pub struct Failure(pub(crate) StatusCode, pub(crate) &'static str);
 impl IntoResponse for Failure {
     fn into_response(self) -> Response {
         (self.0, Json(json!({"error":self.1}))).into_response()
@@ -36,7 +36,7 @@ impl From<tokio_postgres::Error> for Failure {
 fn bad(code: &'static str) -> Failure {
     Failure(StatusCode::BAD_REQUEST, code)
 }
-fn identity(
+pub(crate) fn identity(
     state: &StateData,
     headers: &HeaderMap,
     query: &HashMap<String, String>,

@@ -21,6 +21,7 @@ path = "../../crates/coder-sync/src/main.rs"
 server = []
 
 [dependencies]
+zeron-doc = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "9c58d1af0eb2e8cc750b65b5bafc435392010f15" }
 zeron-sync = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "9c58d1af0eb2e8cc750b65b5bafc435392010f15" }
 base64 = "0.22"
 axum = { version = "0.8", features = ["ws"] }
@@ -46,6 +47,14 @@ path = "tests/chat.rs"
 [[test]]
 name = "chat_model"
 path = "tests/chat_model.rs"
+
+[[test]]
+name = "registry_core"
+path = "tests/registry_core.rs"
+
+[[test]]
+name = "registry"
+path = "tests/registry.rs"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

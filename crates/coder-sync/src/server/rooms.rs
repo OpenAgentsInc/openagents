@@ -18,6 +18,7 @@ pub struct Rooms(
     Arc<Mutex<HashMap<Room, mpsc::Sender<Job>>>>,
     Arc<Mutex<HashMap<Room, tokio::sync::broadcast::Sender<(uuid::Uuid, Vec<u8>)>>>>,
     Arc<Mutex<Quotas>>,
+    Arc<Mutex<HashMap<Room, HashMap<String, (i64, std::time::Instant)>>>>,
 );
 
 #[derive(Debug, thiserror::Error)]
@@ -29,6 +30,22 @@ pub enum RoomError {
 }
 
 impl Rooms {
+    pub async fn presence(&self, room: Room, beat: Option<(String, i64)>) -> HashMap<String, i64> {
+        let now = std::time::Instant::now();
+        let mut rooms = self.3.lock().await;
+        let presence = rooms.entry(room).or_default();
+        presence.retain(|_, (_, seen)| now.duration_since(*seen).as_secs() < 30);
+        if let Some((device, at)) = beat {
+            if presence.len() < 4096 || presence.contains_key(&device) {
+                presence.insert(device, (at, now));
+            }
+        }
+        presence
+            .iter()
+            .map(|(device, (at, _))| (device.clone(), *at))
+            .collect()
+    }
+
     pub async fn admit_push(&self, room: Room, device: &str, bytes: usize) -> bool {
         let mut quotas = self.2.lock().await;
         let now = std::time::Instant::now();
