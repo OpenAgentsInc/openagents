@@ -282,7 +282,8 @@ A CPFP that carries a full 5,604 vB level costs 5,757 sat at 1 sat/vB,
 57,570 at 10 and 287,850 at 50.
 - **Two-phase signing.** In production, the enclave returns the unsigned
   transition and the new unroll first, and the owner signs only after its
-  client has checked the unroll. The sandbox does it in one call.
+  client has checked the unroll. The sandbox does the same
+  (`Enclave::prepare`, then `Enclave::finish`).
 
 **Option for small trees: pre-signed solo exits.** For trees of up to about
 256 members, the enclave can also pre-sign each member's *solo* exit for
@@ -724,12 +725,33 @@ crate is its own workspace and is listed in the monorepo's `exclude`.
 - A light client follows exits, joins, claims and heartbeats, keeps its
   path equal to the full tree's, and catches a broken enclave's theft in
   the next block.
+- The liveness and publication rules (#11786), one test each, and the
+  property tests above pass with them switched on:
+  - two-phase signing: `prepare` checks everything but the parties'
+    signatures, pre-signs the new unroll and erases its key; a member whose
+    check of that unroll fails does not sign, and `finish` has nothing to
+    sign with;
+  - forced inclusion: once a member's signed exit request has waited `X`
+    blocks (6 by default), every non-exit transition is refused
+    (`ExitCensored`) until the exit is included;
+  - mirror receipts: no signature until `m` of `M` configured mirrors sign
+    receipts over the record and unroll hashes (duplicates, strangers,
+    forged or mismatched receipts do not count);
+  - `HALT`: after the guardian's signed halt only exits are signed, and on
+    regtest the unroll then confirms exactly Δ blocks after the last exit.
+- On a real node (Bitcoin Core 30.2 on regtest in Docker,
+  `scripts/layertree-regtest.sh`): every transition confirms with the tree
+  output equal to the enclave's state, the unroll is refused one block
+  early and mined Δ blocks after the tree output at one, two and three
+  levels, light clients follow by BIP-158 filters and raise every alarm,
+  and sizes and fees are measured (section 3.2).
 
 **It does not show:**
 
 - Real hardware attestation, sealing, or side-channel resistance.
-- Confirmation on a real node. bitcoind is not installed here, so P0's
-  next step is a Docker regtest harness that broadcasts a transition, mines
-  Δ blocks and broadcasts the unroll with an anchor CPFP.
+- Anything on signet or mainnet, or under real fee pressure: regtest
+  mines whatever pays the minimum.
+- Exit requests and receipts over a real attested channel or real
+  mirrors; the lab's are in-process.
 - MuSig2 or FROST across enclaves. rust-secp256k1 0.29 has no MuSig2, so
   the sandbox models one enclave.

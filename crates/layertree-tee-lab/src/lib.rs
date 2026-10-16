@@ -9,7 +9,9 @@
 //! * `codec`: byte decoders for leaves, records, `enc64` and unroll packages.
 //! * `output`: the tree output (root-committed key path, unroll leaf).
 //! * `rules`: the predicate the enclave enforces.
-//! * `enclave`: the in-process co-signer; it signs only what passes.
+//! * `enclave`: the in-process co-signer; it signs only what passes, in two
+//!   phases, with forced inclusion, mirror receipts and the `HALT` switch.
+//! * `mirror`: record mirrors and the receipts the enclave waits for.
 //! * `unroll`: the pre-signed, delayed exit that needs no enclave.
 //! * `attest`: a fake report and the light client's check.
 //! * `light`: a member following the tree from chain data and records.
@@ -24,6 +26,7 @@ pub mod enclave;
 pub mod events;
 pub mod follow;
 pub mod light;
+pub mod mirror;
 pub mod output;
 pub mod rules;
 pub mod tree;

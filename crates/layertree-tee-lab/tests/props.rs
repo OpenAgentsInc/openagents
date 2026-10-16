@@ -30,8 +30,8 @@ proptest! {
     #![proptest_config(ProptestConfig { cases: 24, .. ProptestConfig::default() })]
 
     #[test]
-    fn random_histories_conserve_and_stay_exitable(acts in prop::collection::vec(act(), 1..10)) {
-        let mut w = World::new(6, 3, None);
+    fn random_histories_conserve_and_stay_exitable(acts in prop::collection::vec(act(), 1..10), rules_on in any::<bool>()) {
+        let mut w = World::with_rules(6, 3, None, rules_on);
         let mut next_member = 100u32;
         for a in acts {
             let Some(st) = w.enclave.state().cloned() else { break };

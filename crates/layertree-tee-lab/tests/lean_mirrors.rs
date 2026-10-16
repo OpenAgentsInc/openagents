@@ -116,8 +116,8 @@ proptest! {
     /// the tree, output 0 carries no tree value and is free, spec 7.8; the
     /// tree's part of it is then 0.)
     #[test]
-    fn ExitK_no_inflation(n in 2u32..12, k in 1usize..6, bump in 1u64..10_000) {
-        let mut w = World::new(n, 128, None);
+    fn ExitK_no_inflation(n in 2u32..12, k in 1usize..6, bump in 1u64..10_000, rules_on in any::<bool>()) {
+        let mut w = World::with_rules(n, 128, None, rules_on);
         let r_sum = w.enclave.state().unwrap().amount();
         let mut paid = 0u64;
         let mut out0 = r_sum;
@@ -144,8 +144,8 @@ proptest! {
     /// accepted sequence of steps, the published records' old and new
     /// nodes account for every change of the root's sum.
     #[test]
-    fn Steps_sum(acts in prop::collection::vec(act(), 1..12)) {
-        let mut w = World::new(6, 128, None);
+    fn Steps_sum(acts in prop::collection::vec(act(), 1..12), rules_on in any::<bool>()) {
+        let mut w = World::with_rules(6, 128, None, rules_on);
         let r0 = w.enclave.state().unwrap().tree.root().unwrap().sum;
         let (mut old_sum, mut new_sum, mut fresh) = (0u64, 0u64, 1_000u32);
         let mut r_last = r0;
@@ -166,8 +166,8 @@ proptest! {
     /// what left by exit, carve residue or update decrease, plus what stays,
     /// equals what was there plus what joined or was added.
     #[test]
-    fn Reachable_ledger(acts in prop::collection::vec(act(), 1..12)) {
-        let mut w = World::new(6, 128, None);
+    fn Reachable_ledger(acts in prop::collection::vec(act(), 1..12), rules_on in any::<bool>()) {
+        let mut w = World::with_rules(6, 128, None, rules_on);
         let t0 = w.enclave.state().unwrap().tree.total();
         let (mut removed, mut added, mut fresh) = (0u64, 0u64, 2_000u32);
         for a in &acts {
@@ -215,8 +215,8 @@ proptest! {
     /// paying exactly `l.amount` to `P2TR(l.exit_key)` and leaving output 0
     /// at `root.sum − l.amount`.
     #[test]
-    fn exit_available(n in 1u32..16, pick in any::<usize>(), evict in any::<bool>()) {
-        let mut w = World::new(n, 128, None);
+    fn exit_available(n in 1u32..16, pick in any::<usize>(), evict in any::<bool>(), rules_on in any::<bool>()) {
+        let mut w = World::with_rules(n, 128, None, rules_on);
         let st = w.enclave.state().unwrap().clone();
         let occ: Vec<u64> = st.tree.leaves().keys().copied().collect();
         let p = occ[pick % occ.len()];
@@ -234,8 +234,8 @@ proptest! {
     /// message never verifies again, whatever amount the leaf carries; the
     /// predicate refuses the replay.
     #[test]
-    fn voucher_no_replay(amt in 330u64..9_000, acts in prop::collection::vec(act(), 0..8)) {
-        let mut w = World::new(5, 128, None);
+    fn voucher_no_replay(amt in 330u64..9_000, acts in prop::collection::vec(act(), 0..8), rules_on in any::<bool>()) {
+        let mut w = World::with_rules(5, 128, None, rules_on);
         let src = w.leaf(4); // 50,000 sat
         let mut c = w.member_leaf(900, amt);
         c.evictor_key = src.evictor_key;
@@ -291,8 +291,8 @@ proptest! {
     /// `path_maintenance`, through the light client: a member that sees
     /// only the chain and the records keeps the same path as the full tree.
     #[test]
-    fn path_maintenance_light_client(acts in prop::collection::vec(act(), 1..10)) {
-        let mut w = World::new(6, 128, None);
+    fn path_maintenance_light_client(acts in prop::collection::vec(act(), 1..10), rules_on in any::<bool>()) {
+        let mut w = World::with_rules(6, 128, None, rules_on);
         let p = w.params();
         let st = w.enclave.state().unwrap().clone();
         let mut me = Member { pos: 0, leaf: st.tree.get(0).copied(), path: st.tree.path(0, 0).unwrap(),

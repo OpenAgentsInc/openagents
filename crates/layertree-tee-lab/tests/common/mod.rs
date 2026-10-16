@@ -17,6 +17,7 @@ use bitcoin::{
 
 use layertree_tee_lab::attest::{FakeVendor, Platform, Report};
 use layertree_tee_lab::enclave::{Config, Enclave, Signed};
+use layertree_tee_lab::mirror::{self, MemMirror, Mirror, MirrorPolicy};
 use layertree_tee_lab::output::{TreeOutput, ccv_tree_spk};
 use layertree_tee_lab::rules::{self, Op, Reject, TreeParams};
 use layertree_tee_lab::tree::{DUST_MIN, Leaf, Tree, tree_id, voucher_msg};
@@ -44,6 +45,14 @@ pub struct World {
     pub genesis_unroll: UnrollPackage,
     pub last_unroll: Option<UnrollPackage>,
     fee_counter: u32,
+    /// With the liveness rules on (`World::with_rules`): the mirrors whose
+    /// receipts the enclave waits for. Empty: one-call `authorize`.
+    pub mirrors: Vec<MemMirror>,
+}
+
+/// The guardian's key in every world (it can sign `HALT`).
+pub fn guardian() -> SecretKey {
+    sk(2)
 }
 
 pub fn xonly(secp: &Secp256k1<All>, k: &SecretKey) -> [u8; 32] {
@@ -110,6 +119,7 @@ impl World {
             },
             last_unroll: None,
             fee_counter: 1_000,
+            mirrors: Vec::new(),
         };
         let mut tree = Tree::new(DEPTH).unwrap();
         for i in 0..n {
@@ -120,6 +130,27 @@ impl World {
         let pkg = w.enclave.open(tree, fake_outpoint(1)).unwrap();
         w.genesis_unroll = pkg.clone();
         w.last_unroll = Some(pkg);
+        w
+    }
+
+    /// `World::new`, and with `on` the spec's liveness rules switched on:
+    /// two-phase signing through 2-of-3 mirror receipts (one mirror down),
+    /// a guardian who could halt, and the forced-inclusion deadline, with
+    /// the height advancing a block per step.
+    pub fn with_rules(n: u32, radix: usize, migration_m: Option<[u8; 32]>, on: bool) -> World {
+        let mut w = World::new(n, radix, migration_m);
+        if on {
+            w.mirrors = (0..3).map(|i| MemMirror::new(&sk(900 + i))).collect();
+            w.mirrors[2].up = false;
+            let keys = w.mirrors.iter().map(Mirror::key).collect();
+            w.enclave.set_mirror_policy(MirrorPolicy {
+                mirrors: keys,
+                m: 2,
+            });
+            let g = XOnlyPublicKey::from(guardian().public_key(&w.secp));
+            w.enclave.set_guardian(g);
+            w.enclave.set_height(100);
+        }
         w
     }
 
@@ -226,10 +257,21 @@ impl World {
         )
     }
 
-    /// Build, sign and authorize.
+    /// Build, sign and authorize: in one call, or with the rules on in two
+    /// phases with the mirrors' receipts.
     pub fn step(&mut self, op: Op) -> Result<Signed, Reject> {
         let (tx, prevouts, sigs) = self.build(&op);
-        let r = self.enclave.authorize(tx, &prevouts, &op, &sigs);
+        let r = if self.mirrors.is_empty() {
+            self.enclave.authorize(tx, &prevouts, &op, &sigs)
+        } else {
+            let h = self.fee_counter;
+            self.enclave.set_height(h);
+            self.enclave.prepare(tx, &prevouts, &op).and_then(|prep| {
+                let receipts =
+                    mirror::collect(&prep.record, prep.unroll.as_ref(), &mut self.mirrors);
+                self.enclave.finish(&sigs, &receipts)
+            })
+        };
         if let Ok(s) = &r {
             self.last_unroll = s.unroll.clone();
         }

@@ -41,14 +41,14 @@ use serde_json::{Value, json};
 
 use common::{DELAY, DEPTH, LEASE, MEASUREMENT, sk, xonly};
 use layertree_tee_lab::attest::{FakeVendor, LogEntry, Platform, Policy, verify};
-use layertree_tee_lab::enclave::{Config, Enclave, Signed};
+use layertree_tee_lab::enclave::{Config, Enclave, Signed, halt_msg};
 use layertree_tee_lab::events::{Body, Network, Writer, read};
 use layertree_tee_lab::follow::{
     ChainSource, DirSource, Follower, HttpMirror, RecordSource, Seen, record_name, unroll_name,
 };
 use layertree_tee_lab::light::{LightError, Member};
 use layertree_tee_lab::output::{TreeOutput, p2a_script, p2tr_raw};
-use layertree_tee_lab::rules::{self, Op, Record, TreeParams, TreeState};
+use layertree_tee_lab::rules::{self, Op, Record, Reject, TreeParams, TreeState};
 use layertree_tee_lab::tree::{DUST_MIN, Leaf, Tree, tree_id, voucher_msg};
 use layertree_tee_lab::unroll::{UnrollPackage, verify_package};
 
@@ -1459,4 +1459,42 @@ fn unroll_timing_sizes_and_heartbeat_fees_measured() {
     if let Some(dir) = std::env::var_os("LAYERTREE_REGTEST_ROOT") {
         std::fs::write(PathBuf::from(dir).join("measurements.md"), &report).unwrap();
     }
+}
+
+// ------------------------------------------------------------- HALT (#11786)
+
+#[test]
+#[ignore = "needs bitcoind on regtest; scripts/layertree-regtest.sh"]
+fn after_halt_only_exits_are_signed_and_the_unroll_confirms_delta_later() {
+    let mut run = Run::open(6, 128);
+    run.step(Op::Refresh);
+    let secp = run.chain.secp.clone();
+    let g = sk(2);
+    run.enclave
+        .set_guardian(XOnlyPublicKey::from(g.public_key(&secp)));
+    let msg = Message::from_digest(halt_msg(&run.params().tree_id));
+    run.enclave
+        .halt(&secp.sign_schnorr(&msg, &Keypair::from_secret_key(&secp, &g)))
+        .unwrap();
+
+    // The heartbeat is refused from now on.
+    let op = Op::Refresh;
+    let b = run.build(&op, 0);
+    assert_eq!(
+        run.enclave
+            .authorize(b.tx, &b.prevouts, &op, &b.sigs)
+            .unwrap_err(),
+        Reject::Halted
+    );
+    run.log.push(None, Body::rejected(&op, &Reject::Halted));
+    // An exit is still signed and mined.
+    run.step(Op::Exit {
+        pos: 1,
+        evict: false,
+    });
+    // No more heartbeats: the unroll of the exit's state is mined exactly
+    // Δ blocks after it, and pays everyone left.
+    let stats = run.unroll_with_enclave_gone("regtest-halt");
+    assert_eq!(stats.blocks_to_accept, u32::from(DELAY));
+    assert_eq!(stats.levels, 1);
 }

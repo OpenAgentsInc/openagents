@@ -130,6 +130,14 @@ pub enum Reject {
     SlotNotEmpty,
     /// A transition this tree's parameters do not allow.
     NotAllowed,
+    /// A non-exit transition while a member's exit request has waited
+    /// longer than the deadline (forced inclusion, spec 2.2 item 7).
+    ExitCensored,
+    /// The owner signed `HALT`: only exits are signed now (spec 5).
+    Halted,
+    /// Fewer than `m` of the `M` mirrors returned a valid receipt for the
+    /// record and unroll (spec 4.1).
+    MissingReceipts,
 }
 
 impl From<TreeError> for Reject {
@@ -362,16 +370,15 @@ pub fn record(state: &TreeState, fx: &Effects, op: &Op, next_unroll_key: XOnlyPu
     }
 }
 
-/// The whole predicate. On success returns the effects and the record;
-/// the caller (the enclave) may then sign. Every refusal is a `Reject`.
-pub fn check<C: Verification>(
+/// Everything but the parties' signatures: what the enclave checks before
+/// it hands a transaction out for signing (two-phase signing, spec 3.2).
+pub fn check_unsigned<C: Verification>(
     secp: &Secp256k1<C>,
     p: &TreeParams,
     state: &TreeState,
     tx: &Transaction,
     prevouts: &[TxOut],
     op: &Op,
-    sigs: &[Signature],
     next_unroll_key: XOnlyPublicKey,
 ) -> Result<(Effects, Record), Reject> {
     // Rule 7.1.1: input 0 spends the tree output, and nothing else does.
@@ -430,16 +437,46 @@ pub fn check<C: Verification>(
             return Err(Reject::Lease);
         }
     }
-    // Signatures over this exact transaction.
+    Ok((fx, rec))
+}
+
+/// The signatures `op` needs, each over `digest` (the key-path sighash of
+/// input 0 of the exact transaction), in `signers` order.
+pub fn check_signatures<C: Verification>(
+    secp: &Secp256k1<C>,
+    p: &TreeParams,
+    state: &TreeState,
+    op: &Op,
+    digest: [u8; 32],
+    sigs: &[Signature],
+) -> Result<(), Reject> {
     let want = signers(p, state, op)?;
     if want.len() != sigs.len() {
         return Err(Reject::SignatureCount);
     }
-    let msg = Message::from_digest(sighash(tx, prevouts));
+    let msg = Message::from_digest(digest);
     for (k, s) in want.iter().zip(sigs) {
         let key = XOnlyPublicKey::from_slice(k).map_err(|_| Reject::BadSignature("signer key"))?;
         secp.verify_schnorr(s, &msg, &key)
             .map_err(|_| Reject::BadSignature("transaction"))?;
     }
-    Ok((fx, rec))
+    Ok(())
+}
+
+/// The whole predicate. On success returns the effects and the record;
+/// the caller (the enclave) may then sign. Every refusal is a `Reject`.
+#[allow(clippy::too_many_arguments)]
+pub fn check<C: Verification>(
+    secp: &Secp256k1<C>,
+    p: &TreeParams,
+    state: &TreeState,
+    tx: &Transaction,
+    prevouts: &[TxOut],
+    op: &Op,
+    sigs: &[Signature],
+    next_unroll_key: XOnlyPublicKey,
+) -> Result<(Effects, Record), Reject> {
+    let out = check_unsigned(secp, p, state, tx, prevouts, op, next_unroll_key)?;
+    check_signatures(secp, p, state, op, sighash(tx, prevouts), sigs)?;
+    Ok(out)
 }

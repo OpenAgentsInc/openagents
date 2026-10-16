@@ -27,7 +27,8 @@ LAYERTREE_VECTORS=~/work/projects/repos/layertree/spec/test-vectors.json \
 | `codec` | byte decoders: `dec64`, `Leaf::parse`, `Record::decode`/`encode` (the bytes the anchored hash covers), the unroll package wire form |
 | `output` | the tree output: `Q + H_state(r)·G` key path, the unroll tapleaf, `TREE_SPK_CCV` |
 | `rules` | the predicate the enclave enforces (spec 7.1 to 7.5), with one `Reject` per rule |
-| `enclave` | the in-process co-signer: its key never leaves, and it signs only what passes |
+| `enclave` | the in-process co-signer: its key never leaves, and it signs only what passes; two-phase signing (`prepare`, `finish`), forced inclusion of exit requests, mirror receipts before any signature, and the guardian's `HALT` |
+| `mirror` | record mirrors: the `Mirror` trait, an in-memory mirror, and the `m`-of-`M` receipt policy |
 | `unroll` | the delayed exit with deleted intermediate keys, checked with public data only |
 | `attest` | a fake hardware report and the light client's attestation check |
 | `light` | a member following the tree from chain data and anchored records |
