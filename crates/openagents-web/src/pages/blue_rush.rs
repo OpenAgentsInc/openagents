@@ -25,7 +25,7 @@
 use std::sync::LazyLock;
 
 use axum::Router;
-use axum::extract::Path;
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -63,7 +63,7 @@ pub(crate) const STUDIO_HEADER: HeaderName = HeaderName::from_static("x-openagen
 
 /// The homepage's policy: the site's, plus scripts from this site.
 pub(crate) const POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; \
-img-src 'self'; script-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 /// The guide's policy: the site's, with no script at all.
 pub(crate) const GUIDE_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; \
@@ -262,7 +262,20 @@ fn site(headers: &HeaderMap) -> &'static Site {
     }
 }
 
-async fn asset(Path(file): Path<String>) -> Response {
+async fn asset(State(app): State<App>, Path(file): Path<String>, request: HeaderMap) -> Response {
+    if matches!(file.as_str(), "sand_garden.js" | "sand_garden_bg.wasm") {
+        let kind = if file.ends_with(".wasm") {
+            "application/wasm"
+        } else {
+            "text/javascript; charset=utf-8"
+        };
+        let mut response =
+            super::everglade::serve_build(&app.config.sand_build, &file, kind, &request).await;
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+        return response;
+    }
     let (content_type, cache, body): (&str, &str, &'static [u8]) = match file.as_str() {
         "bluerush.css" => ("text/css; charset=utf-8", IMMUTABLE, CSS.as_bytes()),
         "bluerush.js" => ("text/javascript; charset=utf-8", IMMUTABLE, JS.as_bytes()),
@@ -555,16 +568,74 @@ fn render(site: &Site) -> Markup {
                     section class="br-garden" id="garden" aria-labelledby="garden-title" {
                         div class="br-wrap" {
                             h2 class="br-h2" id="garden-title" { "Sand garden" }
-                            p class="br-lede" { "Drag to rake the sand. Tap to set a stone. Turn on Mandala to make patterns." }
+                            p class="br-lede" { "Shape the sand. Gather little treasures. Leave your own mark." }
                             div class="br-garden-frame" {
+                                div class="br-garden-top" {
+                                    span class="br-garden-caption" { "Your little stretch of beach" }
+                                    span class="br-garden-caption" { "Blue Rush · Low tide" }
+                                }
                                 canvas class="br-sand" id="br-sand" tabindex="0" role="application" aria-roledescription="sand garden"
-                                    aria-label="Sand garden. Use the arrow keys to move the rake, hold Space to rake, and press Enter to set a stone." {}
+                                    aria-label="Sand garden. Choose a tool below. Drag to draw or tap to place a beach find. With a keyboard, Space starts or stops a mark, and arrow keys move it." {}
+                                div class="br-garden-tools" id="br-garden-tools" hidden {
+                                    div class="br-tool-tray" role="group" aria-label="Sand tools and beach finds" {
+                                        @for (tool, label, icon) in [("rake", "Rake", "≋"), ("finger", "Finger", "〰"), ("smooth", "Smooth", "◯"), ("conch", "Conch", ""), ("stone", "Stone", ""), ("glass", "Sea glass", ""), ("tooth", "Shark tooth", "")] {
+                                            button class="br-tool br-material" type="button" id=(format!("br-tool-{tool}")) aria-pressed=(if tool == "rake" { "true" } else { "false" }) {
+                                                @if !icon.is_empty() { span class="br-tool-symbol" aria-hidden="true" { (icon) } }
+                                                span { (label) }
+                                            }
+                                        }
+                                    }
+                                    div class="br-tool-options" {
+                                        label for="br-size" { "Size" input id="br-size" type="range" min="0.6" max="1.8" step="0.1" value="1"; }
+                                        button class="br-tool" type="button" id="br-rotate" { "Turn find ↻" }
+                                        button class="br-tool" type="button" id="br-mandala" aria-pressed="false" { "Mandala" }
+                                        button class="br-tool" type="button" id="br-undo" disabled { "Undo" }
+                                        button class="br-tool" type="button" id="br-redo" disabled { "Redo" }
+                                        button class="br-tool" type="button" id="br-clear" { "Clear" }
+                                    }
+                                    div class="br-garden-bottom" {
+                                        p id="br-status" role="status" { "Loading your beach…" }
+                                        div class="br-garden-actions" {
+                                            button class="br-tool" type="button" id="br-download" { "Save image" }
+                                            button class="br-tool" type="button" id="br-gallery-open" { "Gallery" }
+                                            button class="br-tool br-share" type="button" id="br-share-open" { "Share creation ↑" }
+                                        }
+                                    }
+                                }
+                                p class="br-keys" id="br-load-status" role="status" { "Loading your beach…" }
+                                noscript { p class="br-keys" { "Turn on JavaScript to shape the sand." } }
+                                dialog class="br-garden-card br-gallery" id="br-gallery" aria-labelledby="br-gallery-title" {
+                                    div class="br-card-heading" {
+                                        div { span class="br-eyebrow" { "Made at low tide" } h3 id="br-gallery-title" { "Little stretches of beach" } }
+                                        button class="br-tool" type="button" id="br-gallery-close" aria-label="Close gallery" { "Close ×" }
+                                    }
+                                    p id="br-gallery-status" role="status" {}
+                                    div class="br-gallery-grid" id="br-gallery-grid" {}
+                                    div class="br-gallery-pagination" {
+                                        button class="br-tool" type="button" id="br-gallery-prev" { "Previous" }
+                                        span id="br-gallery-page" {}
+                                        button class="br-tool" type="button" id="br-gallery-next" { "Next" }
+                                        button class="br-tool" type="button" id="br-gallery-retry" { "Refresh" }
+                                    }
+                                    a class="br-manage" href="https://openagents.com/login?return_to=%2Fstudios%2Fblue-rush%23garden" target="_blank" rel="noopener" { "Studio sign-in" }
+                                }
+                                dialog class="br-garden-card br-share-card" id="br-share-card" aria-labelledby="br-share-title" {
+                                    div class="br-card-heading" { h3 id="br-share-title" { "Share your beach" } button class="br-tool" type="button" id="br-share-close" aria-label="Close sharing" { "Close ×" } }
+                                    canvas id="br-share-preview" class="br-preview" role="img" aria-label="Your sand design" {}
+                                    label for="br-title" { "Name your creation" }
+                                    input id="br-title" type="text" maxlength="48" placeholder="A pocketful of sea glass" autocomplete="off";
+                                    p { "Everyone can see and upvote it. You can delete it from this browser." }
+                                    p id="br-share-status" role="status" {}
+                                    button class="br-tool br-share" type="button" id="br-publish" { "Upload to gallery ↑" }
+                                }
+                                dialog class="br-garden-card br-clear-card" id="br-clear-card" aria-labelledby="br-clear-title" {
+                                    h3 id="br-clear-title" { "Start with fresh sand?" }
+                                    p { "This clears your beach here. Your shared creations stay in the gallery." }
+                                    button class="br-tool" type="button" id="br-clear-cancel" { "Keep drawing" }
+                                    button class="br-tool" type="button" id="br-clear-confirm" { "Clear the sand" }
+                                }
                             }
-                            div class="br-garden-tools" {
-                                button class="br-tool" type="button" id="br-mandala" aria-pressed="false" { "Mandala" }
-                                button class="br-tool" type="button" id="br-smooth" { "Smooth the sand" }
-                            }
-                            p class="br-keys" { "On a keyboard: arrows move the rake, hold Space to rake, Enter sets a stone." }
+                            p class="br-keys" { "Drag to shape · Tap to place · Space and arrows work, too" }
                         }
                     }
                 }

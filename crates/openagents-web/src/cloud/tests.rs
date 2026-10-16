@@ -28,6 +28,9 @@ mod connections_api;
 #[path = "cad_gate_tests.rs"]
 mod cad_gate;
 
+#[path = "sand_gallery_tests.rs"]
+mod sand_gallery;
+
 const HOST: &str = "127.0.0.1:4300";
 const ORIGIN: &str = "http://127.0.0.1:4300";
 const CANARY: &str = "synthetic-native-private-canary";

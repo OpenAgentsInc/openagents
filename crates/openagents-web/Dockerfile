@@ -120,6 +120,8 @@ RUN scripts/build-att-web.sh /build/att \
     && test -s /build/att/start.js \
     && test -s /build/att/att.css
 
+RUN scripts/build-sand-garden.sh /build/sand
+
 # The CAD engine for the browser (crates/cad-wasm), which /cad loads
 # (#11649): its own stage, so it builds beside the others. wasm-opt
 # (binaryen) shrinks it; brotli and gzip copies ride beside each file.
@@ -164,6 +166,7 @@ COPY --from=everglade /build/robot /srv/robot
 ENV OPENAGENTS_ROBOT_BUILD=/srv/robot
 COPY --from=everglade /build/att /srv/att
 COPY --from=cadweb /build/cad /srv/cad
+COPY --from=everglade /build/sand /srv/sand
 
 USER 10001:10001
 EXPOSE 8080

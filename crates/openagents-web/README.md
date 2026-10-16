@@ -353,3 +353,11 @@ bwrap --die-with-parent --ro-bind / / --dev /dev --proc /proc \
   --setenv TMPDIR "$S" --setenv CARGO_TARGET_DIR "$T" -- \
   cargo test -p openagents-web
 ```
+
+## Blue Rush sand garden
+
+Build the editor with `scripts/build-sand-garden.sh OUTDIR`, then start the
+site with `--sand-build OUTDIR`. The production image includes it at
+`/srv/sand`. Shared drawings and votes use the site's chat storage under
+`sand-garden/gallery.json`. Creators can delete from their original browser;
+site admins can sign in on openagents.com and delete any gallery entry.

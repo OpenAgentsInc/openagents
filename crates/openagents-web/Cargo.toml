@@ -19,6 +19,7 @@ qrcodegen = "1.8"
 zip = { version = "3", default-features = false, features = ["deflate"] }
 robot-lab = { path = "../robot-lab" }
 user-home = { path = "../user-home" }
+sand-garden = { path = "../sand-garden" }
 openagents-ui = { path = "../openagents-ui" }
 # The actor runtime (#11253): the store, its workers, and its routes.
 actors = { path = "../actors" }

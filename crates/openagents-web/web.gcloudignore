@@ -24,6 +24,7 @@
 !/scripts/build-att-web.sh
 !/scripts/build-cad-web.sh
 !/scripts/build-robot-web.sh
+!/scripts/build-sand-garden.sh
 !/scripts/install/
 /scripts/install/*
 !/scripts/install/coder.sh

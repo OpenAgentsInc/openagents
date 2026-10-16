@@ -49,6 +49,7 @@ mod device;
 mod docs_mcp;
 mod door_route;
 mod environments;
+mod sand_gallery;
 /// Staging's stand-in for a GitHub App (#11226).
 pub use environments::push::StandIn as StagingPush;
 mod cad_gate;
@@ -321,6 +322,8 @@ pub struct Config {
     pub chat_store: Arc<chat_store::Store>,
     /// Small Rust/Wasm input and scroll adapter.
     pub chat_build: Option<PathBuf>,
+    /// The sand garden browser build.
+    pub sand_build: PathBuf,
     /// Where vault ciphertext is kept (#11240): a bucket with no soft
     /// delete and no object versions, so a deleted key index is gone.
     /// `None` keeps it beside the chats (local and test servers).
@@ -458,6 +461,7 @@ impl Config {
             project_uploads: ProjectUploadPolicy::default(),
             chat_store: Arc::new(chat_store::Store::local(store.with_file_name("web-chats"))),
             chat_build: None,
+            sand_build: PathBuf::from("/srv/sand"),
             vault_store: None,
             store,
             customer: None,
@@ -559,6 +563,7 @@ pub fn router(config: Config) -> Router {
         .route("/favicon.svg", get(favicon))
         .route("/favicon.ico", get(favicon))
         .merge(pages::routes())
+        .merge(sand_gallery::routes())
         .merge(purchases::routes())
         .merge(components::routes())
         .merge(chat_html::routes())
