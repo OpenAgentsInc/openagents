@@ -147,8 +147,8 @@ A zero retention limit starts cleanup after an observed stop. An uncertain stop
 keeps its allocation until the provider confirms cleanup. Unknown shapes refuse
 bounded shape or boot allowances. A policy change cannot lower a limit below committed allocations.
 Migration preserves existing allocations as unknown. Older service writers
-cannot change lifecycle records, allocation intent, or command queues after this
-migration; use a compatible service build when rolling back. The public client contract
+cannot change computer rows, job leases, or command queues after the upgrade;
+use a compatible service build when rolling back. The public client contract
 does not change. Account usage reads are available through
 [`GET /v1/computer-usage`](../sdk/computers.md). Storage byte quotas,
 account-deletion cleanup, service cost measurements, and priced settlement remain

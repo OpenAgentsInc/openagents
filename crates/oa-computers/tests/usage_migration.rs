@@ -125,6 +125,90 @@ async fn migration_preserves_unknown_allocation_and_recovers_with_the_new_writer
     assert_eq!(migrated["allocation_allowance"]["unknown_allowances"], 1);
     assert_eq!(migrated["allocation_allowance"]["unresolved_allowances"], 1);
 
+    // Old workers must not keep taking jobs or extending an existing lease.
+    assert!(
+        old.query_opt(
+            "UPDATE computers.computers SET lease_holder='old-worker',
+         lease_until=now()+interval '30 seconds',binding_lease_until=now()+interval '30 seconds'
+         WHERE id=(SELECT id FROM computers.computers WHERE NOT done AND next_attempt_at<=now()
+             AND (lease_until IS NULL OR lease_until<now()) ORDER BY next_attempt_at
+             LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING id",
+            &[],
+        )
+        .await
+        .unwrap()
+        .is_none()
+    );
+    let old_holder = "old-worker";
+    let held = store
+        .claim(old_holder, Duration::from_secs(30))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(held.id, unknown.id);
+    let before: serde_json::Value = old
+        .query_one(
+            "SELECT to_jsonb(c) FROM computers.computers c WHERE id=$1",
+            &[&unknown.id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        old.execute(
+            "UPDATE computers.computers SET lease_until=now()+interval '1 hour'
+         WHERE id=$1 AND lease_holder=$2",
+            &[&unknown.id, &old_holder],
+        )
+        .await
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        old.execute(
+            "UPDATE computers.computers SET lease_holder=NULL,lease_until=NULL,
+         next_attempt_at=GREATEST(next_attempt_at,now()+interval '1 hour'),
+         attempts=9,last_error='old-worker',done=true,updated_at=now()
+         WHERE id=$1 AND lease_holder=$2",
+            &[&unknown.id, &old_holder],
+        )
+        .await
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        old.execute(
+            "UPDATE computers.computers SET next_attempt_at=now() WHERE id=$1 AND NOT done",
+            &[&unknown.id],
+        )
+        .await
+        .unwrap(),
+        0
+    );
+    let after: serde_json::Value = old
+        .query_one(
+            "SELECT to_jsonb(c) FROM computers.computers c WHERE id=$1",
+            &[&unknown.id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        after, before,
+        "old lease and scheduling writes must change nothing"
+    );
+    assert!(
+        store
+            .renew(&unknown.id, old_holder, Duration::from_secs(30))
+            .await
+            .unwrap()
+    );
+    store
+        .release(&unknown.id, old_holder, Duration::ZERO, 0, None, false)
+        .await
+        .unwrap();
+    store.poke(&unknown.id).await.unwrap();
+
     assert_eq!(
         old.execute(
             "UPDATE computers.computers SET revision=revision+1,
