@@ -1,0 +1,27 @@
+[package]
+name = "att-seal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "NIP-ATT sealed-job carriage: attestation-bound HPKE key admission and rotation, HPKE requests (optionally gift-wrapped), and separately verified per-chunk sealed output."
+
+[dependencies]
+oa-att = { path = "../oa-att" }
+nostr = { path = "../nostr" }
+hpke = { version = "0.12", default-features = false, features = ["alloc", "x25519"] }
+aes-gcm = { version = "0.10.3", default-features = false, features = ["aes", "alloc"] }
+base64 = "0.22"
+getrandom = "0.3"
+secp256k1 = "0.31.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+zeroize = "1.8"
+
+[dev-dependencies]
+att-platforms = { path = "../att-platforms" }
+p384 = { version = "0.13", features = ["ecdsa", "pkcs8", "pem"] }
+
+[lints]
+workspace = true

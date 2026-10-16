@@ -1,0 +1,56 @@
+{
+ "source": "https://github.com/cfrg/draft-irtf-cfrg-hpke/blob/master/test-vectors.json (RFC 9180), mode_base, DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, AES-256-GCM; first three encryptions and exports",
+ "mode": 0,
+ "kem_id": 32,
+ "kdf_id": 1,
+ "aead_id": 2,
+ "info": "4f6465206f6e2061204772656369616e2055726e",
+ "ikmE": "2cd7c601cefb3d42a62b04b7a9041494c06c7843818e0ce28a8f704ae7ab20f9",
+ "ikmR": "dac33b0e9db1b59dbbea58d59a14e7b5896e9bdf98fad6891e99d1686492b9ee",
+ "pkEm": "6c93e09869df3402d7bf231bf540fadd35cd56be14f97178f0954db94b7fc256",
+ "skEm": "179d4b53b6365c45b600c4163b61d95cbc2f4d9e36f1695558dce265ab8bab11",
+ "pkRm": "430f4b9859665145a6b1ba274024487bd66f03a2dd577d7753c68d7d7d00c00c",
+ "skRm": "497b4502664cfea5d5af0b39934dac72242a74f8480451e1aee7d6a53320333d",
+ "enc": "6c93e09869df3402d7bf231bf540fadd35cd56be14f97178f0954db94b7fc256",
+ "shared_secret": "3101c54c3a4f87439eaac080699ed9bbcc726ffe44e860c0424ccb7e3e2ead7b",
+ "key": "f50b0609186798729ed0564b36ef2ef8044f1f9d05636874d1f46c819c7a669f",
+ "base_nonce": "151d9929e2449747889bc923",
+ "exporter_secret": "86017151bbff6a1940e8abae2ac9e0e7032e33df1eaaecc02ca6259b130d62df",
+ "encryptions": [
+  {
+   "aad": "436f756e742d30",
+   "ct": "e5d84cd531cfb583096e7cfa9641bd3079cf3a91cda813c52deb5f512be9931980a41de125a925cdad859d5b7a",
+   "nonce": "151d9929e2449747889bc923",
+   "pt": "4265617574792069732074727574682c20747275746820626561757479"
+  },
+  {
+   "aad": "436f756e742d31",
+   "ct": "2c43aff25343fdbff864506f0818b9d87df84ea01b1a2144d23b4d40c26bf655fdf197fe40297a8aebeed5cc2d",
+   "nonce": "151d9929e2449747889bc922",
+   "pt": "4265617574792069732074727574682c20747275746820626561757479"
+  },
+  {
+   "aad": "436f756e742d32",
+   "ct": "e0a8f2cf92ff61215edbb8c55dc31fe9e2eb42a5685867bb6854211542099f9e940c4b41c192bc390835b1a5f7",
+   "nonce": "151d9929e2449747889bc921",
+   "pt": "4265617574792069732074727574682c20747275746820626561757479"
+  }
+ ],
+ "exports": [
+  {
+   "exporter_context": "",
+   "L": 32,
+   "exported_value": "ded6cffafaea6b812cbf3e241e88332adbc077aca81512914213810ee291770a"
+  },
+  {
+   "exporter_context": "00",
+   "L": 32,
+   "exported_value": "04d3cb6cc116b28ffd22ad5bc276c60d31fec71ceb87ae24db811c64b7507339"
+  },
+  {
+   "exporter_context": "54657374436f6e74657874",
+   "L": 32,
+   "exported_value": "7c5ded445732c14fe09727d29b4251c0fd38455fe8440571e687f0886aac94d2"
+  }
+ ]
+}

@@ -397,7 +397,8 @@ ordinary chat can go to any Pylon.
 
 - **`crates/nostr`**: NIP-ATT types and validators, a verifier for
   Confidential Space PKI tokens, and later TDX, SEV-SNP and NVIDIA evidence
-  (client verification now in `crates/att-platforms`).
+  (client verification now in `crates/att-platforms`). HPKE carriage of
+  sealed requests and per-chunk streamed output is in `crates/att-seal`.
   The `openagents.attested.v1` feature for CJ and DEC, with the receipt
   fields.
 - **`crates/pylon`**: a `--attested` serve mode that only runs inside the

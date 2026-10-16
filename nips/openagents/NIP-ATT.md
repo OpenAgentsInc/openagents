@@ -286,7 +286,8 @@ A CJ or DEC request with `openagents.attested.v1` in `requires`:
   the client's view at send time. The worker refuses if it is not that
   endpoint or not that release.
 - Asks for streamed output sealed per chunk, as NIP-44 to the caller's key,
-  inside CJ progress events. Chunk boundaries are visible; their content is
+  inside CJ progress events (or, to an endpoint with an HPKE key, as in
+  [HPKE carriage](#hpke-carriage)). Chunk boundaries are visible; their content is
   not.
 - MAY be gift-wrapped (NIP-59 `1059`, recipient `p` = the endpoint key). The
   relay then sees the endpoint and the size, but not the caller.
@@ -302,6 +303,62 @@ disk unless the disk is encrypted with a key that never leaves the TEE, and
 zeroes request buffers when the job ends. It writes no prompt or output to
 any log. The release's source is the evidence for these claims; the
 attestation proves only that this source is what runs.
+
+### HPKE carriage
+
+An endpoint that publishes `hpke` accepts sealed jobs under that key instead
+of NIP-44 to its Nostr key. The suite is RFC 9180 `mode_base` with
+DHKEM(X25519, HKDF-SHA256), HKDF-SHA256 and AES-256-GCM.
+
+- **Key admission.** A client seals only to an HPKE key from an endpoint
+  record it verified, whose binding covers that key. A newer record of the
+  same endpoint replaces the key (rotation). An older record, a different
+  key with the same `issued_at`, or an expired record is refused. A worker
+  that rotates keeps opening requests to the previous key until the record
+  that published it expires, then refuses them.
+- **Request.** The content of the `25910` request (or of the rumor inside a
+  NIP-59 gift wrap to the endpoint key) is:
+
+```json
+{
+  "v": "openagents.att-sealed-request.v1",
+  "suite": "x25519-hkdf-sha256/hkdf-sha256/aes-256-gcm",
+  "endpoint": "<30203 address>",
+  "release": "<release event id>",
+  "recipient": "<endpoint Nostr key>",
+  "key": "<HPKE public key, hex>",
+  "request": "<fresh 32-byte id, hex>",
+  "reply_to": "<caller Nostr key>",
+  "expires_at": 0,
+  "max_output_bytes": 0,
+  "enc": "<base64 encapsulated key>",
+  "ct": "<base64 ciphertext>"
+}
+```
+
+  The HPKE `info` is `"openagents.att.v1/request\0" || binding` (32 raw
+  bytes), and the AAD is `"openagents.att.v1/request-aad\0"` followed by
+  the JSON of every field except `ct`, in the order above. `reply_to` MUST
+  be the author of the event or rumor. `expires_at` is at most 600 seconds
+  ahead. The worker refuses another endpoint, release or recipient, a key
+  it does not hold or has retired, an expired request, a request ID it has
+  already opened, and more `max_output_bytes` than it allows.
+- **Streamed output.** Each chunk is a `27020` event signed by the endpoint
+  key, tagged `e` with the request event or rumor ID and `p` with
+  `reply_to`, whose content is
+  `{"v": "openagents.att-chunk.v1", "request", "seq", "last", "ct"}`.
+  The key and base nonce are the 44 bytes the request's HPKE context
+  exports under `"openagents.att.v1/stream\0"`; the nonce is the base nonce
+  with `seq` (big-endian) XORed into its last four bytes; the AAD is
+  `"openagents.att.v1/chunk\0"`, then `endpoint`, `release`, `recipient`,
+  `request` and `reply_to` each followed by a zero byte, then `seq`
+  (4 bytes, big-endian) and `last` (1 byte). The plaintext is
+  `{"text": "...", "stop": null}`, and on the last chunk `stop` is one of
+  `complete`, `length`, `refused` or `cancelled`. A reader accepts chunks
+  only in order from `seq` 0, and refuses a gap, a repeat, a chunk after
+  the last one, a chunk that does not open under its request's key, an
+  unknown stop, a stop on a chunk not marked `last`, more text than
+  `max_output_bytes`, and chunks after `expires_at`.
 
 ### Sealed answers
 
@@ -416,10 +473,18 @@ no parsed or synthetic report counts as live platform attestation. Running
 it against a live TDX, SEV-SNP and H100 host is recorded in
 `NEEDS_OWNER.md`.
 
+Implemented (2026-10-15, #11746), client and worker library, not yet in
+a deployed workload: `crates/att-seal` carries sealed jobs over the
+endpoint's HPKE key as in [HPKE carriage](#hpke-carriage), with key
+admission and rotation, signed or gift-wrapped requests, replay and expiry
+refusal, and per-chunk streamed output. Its suite is checked against the
+RFC 9180 test vectors, and its local fixtures verify an SEV-SNP endpoint
+with `att-platforms` before admitting its key.
+
 Not yet: an attested workload image that emits raw quotes or NRAS
-evidence, collateral fetching from Intel PCS, AMD KDS and NRAS, HPKE keys, Rekor
-entries and independent rebuilds in the release, gift-wrapped requests,
-per-chunk streamed output, the personal approval set, and the public `3201`
+evidence or serves HPKE carriage, collateral fetching from Intel PCS, AMD
+KDS and NRAS, Rekor entries and independent rebuilds in the release, the
+personal approval set, and the public `3201`
 receipt for sealed jobs. The [private inference](../../docs/security/private-inference.md)
 milestones P2–P4 track them.
 
