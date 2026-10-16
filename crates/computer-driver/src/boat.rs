@@ -177,8 +177,26 @@ impl Driver for BoatDriver {
     }
 
     async fn start_command(&self, computer: &str, spec: &CommandSpec) -> Outcome<String> {
+        if spec
+            .credential_names
+            .iter()
+            .any(|name| !env_name_ok(name) || !spec.env.contains_key(name))
+        {
+            return Outcome::failed("invalid command credentials");
+        }
+        let mut public = spec.clone();
+        let mut credentials = serde_json::Map::new();
+        for name in &spec.credential_names {
+            if let Some(value) = public.env.remove(name) {
+                credentials.insert(name.clone(), serde_json::Value::String(value));
+            }
+        }
         let script =
-            identified::bounded_command_script("/tmp/oa-public-commands", "workspace", spec);
+            identified::bounded_command_script("/tmp/oa-public-commands", "workspace", &public);
+        let mut extra = BTreeMap::new();
+        if !credentials.is_empty() {
+            extra.insert("env".into(), serde_json::Value::Object(credentials));
+        }
         match self
             .client
             .exec_detached(
@@ -186,6 +204,7 @@ impl Driver for BoatDriver {
                 CommandRequest {
                     command: script,
                     timeout_seconds: Some(600),
+                    extra,
                     ..Default::default()
                 },
             )
@@ -467,5 +486,96 @@ fn file_error(error: &Error, write: bool) -> computer_files::FileError {
         501 => F::Unsupported,
         _ if write => F::WriteUncertain,
         _ => F::Unavailable,
+    }
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[tokio::test]
+    async fn detached_credentials_use_stdin_environment_and_never_command_metadata() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut bytes = Vec::new();
+            let (header_end, size) = loop {
+                let mut chunk = [0; 4096];
+                let n = stream.read(&mut chunk).await.unwrap();
+                assert!(n > 0 && bytes.len() + n < 131072);
+                bytes.extend_from_slice(&chunk[..n]);
+                if let Some(end) = bytes.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&bytes[..end]);
+                    let size = headers
+                        .lines()
+                        .find_map(|line| {
+                            line.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse::<usize>().unwrap())
+                        })
+                        .unwrap();
+                    break (end + 4, size);
+                }
+            };
+            while bytes.len() < header_end + size {
+                let mut chunk = [0; 4096];
+                let n = stream.read(&mut chunk).await.unwrap();
+                assert!(n > 0);
+                bytes.extend_from_slice(&chunk[..n]);
+            }
+            let body: serde_json::Value =
+                serde_json::from_slice(&bytes[header_end..header_end + size]).unwrap();
+            assert_eq!(body["env"]["ANTHROPIC_API_KEY"], "synthetic-private-value");
+            assert!(
+                !body["command"]
+                    .as_str()
+                    .unwrap()
+                    .contains("synthetic-private-value")
+            );
+            assert_eq!(body["detached"], true);
+            let reply = serde_json::to_vec(&CommandStartedResponse {
+                ok: true,
+                success: true,
+                type_: "started".into(),
+                process_id: 42,
+                pid: 42,
+                command: body["command"].as_str().unwrap().into(),
+                started_at: "2026-10-16T00:00:00Z".into(),
+                ..Default::default()
+            })
+            .unwrap();
+            let headers = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                reply.len()
+            );
+            stream.write_all(headers.as_bytes()).await.unwrap();
+            stream.write_all(&reply).await.unwrap();
+        });
+        let client =
+            ::boat::Client::builder(::boat::ApiKey::new("synthetic-service-credential").unwrap())
+                .base_url(base)
+                .build()
+                .unwrap();
+        let driver = BoatDriver::with_capabilities(
+            client,
+            Capabilities::new("fixture", Profile::ALL, &["small"]),
+        );
+        let spec = CommandSpec {
+            id: "trn_0123456789abcdef0123".into(),
+            command: "test -n \"$ANTHROPIC_API_KEY\"".into(),
+            cwd: ".".into(),
+            credential_names: BTreeSet::from(["ANTHROPIC_API_KEY".into()]),
+            env: BTreeMap::from([("ANTHROPIC_API_KEY".into(), "synthetic-private-value".into())]),
+            timeout_seconds: 600,
+            digest: "a".repeat(64),
+        };
+        assert!(!format!("{spec:?}").contains("synthetic-private-value"));
+        assert!(matches!(
+            driver.start_command("computer-fixture", &spec).await,
+            Outcome::Done { .. }
+        ));
+        server.await.unwrap();
     }
 }

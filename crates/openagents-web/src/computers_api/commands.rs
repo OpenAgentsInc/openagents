@@ -4,6 +4,28 @@ use axum::extract::Query;
 use base64::Engine;
 use std::collections::BTreeMap;
 
+/// The web prepares values after authenticating the caller and checking its
+/// environment. Only this trusted boundary uses the lifecycle service token.
+pub(crate) async fn prepare_web_credentials(
+    owner: &str,
+    computer: &str,
+    reference: &str,
+    request: &str,
+    command: &str,
+    values: &[(String, String)],
+) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    let client = crate::computers::client().ok_or("Cloud computers aren't available right now.")?;
+    let values: BTreeMap<_, _> = values.iter().cloned().collect();
+    let (status, _) = client.call(reqwest::Method::POST, &format!("/v1/computers/{computer}/command-credentials"), owner,
+        Some(json!({"reference":reference,"request":request,"command_sha256":format!("{:x}", Sha256::digest(command.as_bytes())),"values":values}))).await?;
+    if status == 201 {
+        Ok(())
+    } else {
+        Err("We couldn't authorize this task. Try again.".into())
+    }
+}
+
 fn valid_id(id: &str) -> bool {
     id.strip_prefix("trn_")
         .is_some_and(|s| s.len() == 20 && s.bytes().all(|b| b.is_ascii_hexdigit()))
@@ -56,6 +78,8 @@ struct Create {
     #[serde(default)]
     env: BTreeMap<String, String>,
     idempotency_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    credential_ref: Option<String>,
 }
 
 fn view(v: &Value, computer: &str, id: Option<&str>) -> Option<Value> {
@@ -226,6 +250,17 @@ pub(crate) async fn create(
         }
         request.idempotency_key = Some(key.into());
     }
+    if request.credential_ref.as_deref().is_some_and(|r| {
+        r.len() > 128
+            || !r.strip_prefix("cred_").is_some_and(|tail| {
+                !tail.is_empty()
+                    && tail
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(&b))
+            })
+    }) {
+        return invalid();
+    }
     if request.idempotency_key.is_none() {
         return invalid();
     }
@@ -329,7 +364,8 @@ pub(super) fn extend_openapi(document: &mut Value) {
             "cwd":{"type":"string","default":".","maxLength":1024,"description":"Existing directory relative to the computer workspace; traversal and symlink escape refuse."},
             "timeout_seconds":{"type":"integer","minimum":1,"maximum":3600,"default":600},
             "env":{"type":"object","maxProperties":16,"additionalProperties":{"type":"string","maxLength":4096},"description":"Non-secret values only. Names: LANG, LC_ALL, TZ, CI, TERM, or OA_PARAM_*; credential fields refuse."},
-            "idempotency_key":{"type":"string","minLength":1,"maxLength":128,"description":"Required here or as Idempotency-Key. Reuse across retries."}
+            "idempotency_key":{"type":"string","minLength":1,"maxLength":128,"description":"Required here or as Idempotency-Key. Reuse across retries."},
+            "credential_ref":{"type":"string","pattern":"^cred_[a-zA-Z0-9_-]+$","maxLength":128,"description":"Optional reference prepared by the server for this account, computer, command, and request key. Credential values cannot be sent here. It expires after ten minutes. Credentials stay in memory; a restart can make a waiting command fail."}
         }},
         "AppCommand":{"type":"object","required":["id","computer","state","digest","exit_code","cancel_requested","output_expires_unix","output_limit_bytes","stdout_truncated","stderr_truncated"],"properties":{
             "id":{"type":"string","pattern":"^trn_[0-9a-fA-F]{20}$"},"computer":{"type":"string"},

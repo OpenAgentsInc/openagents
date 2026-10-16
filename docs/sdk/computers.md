@@ -118,6 +118,33 @@ account-bound lifecycle, command output, waits, and binary file helpers; see the
 [Rust client guide](../../crates/openagents-sdk/README.md). The runnable
 `computers` example qualifies the public Boat workflow with dedicated test
 credentials and saves original request identities for recovery and cleanup.
+
+### Web chat client
+
+The web integration in [#11806](https://github.com/OpenAgentsInc/openagents/issues/11806)
+uses this client with the browser's authenticated session. Its live qualification
+is in progress. Saved environments owned by that account can be selected without
+a project; project selections retain their repository checks.
+
+The web saves each create request, command request, and output reader before
+sending or advancing it. Recovery uses the same keys and computer. Existing
+`cmp_.trn_` task IDs still work. Unknown results, missing answers, expired output,
+and truncated output do not produce a successful chat answer.
+
+A server-prepared `credential_ref` binds one command's credentials to its
+account, computer, command text, and request key for at most ten minutes before
+execution. Values stay in memory at the trusted service boundary. The web saves
+that preparation before submitting the command and does not prepare it again
+during recovery. A restart that loses waiting credentials fails that command.
+This is the web's first delivery slice; the general credential-reference API and
+network policies remain [#11813](https://github.com/OpenAgentsInc/openagents/issues/11813).
+
+Attachments up to 4 MiB use SDK file writes with saved hashes. Larger existing
+attachment requests keep their previous path. Setting
+`OPENAGENTS_WEB_PUBLIC_COMPUTERS=legacy` restores the previous path for new web
+runs. Existing public runs keep their saved SDK readers and cancellation path;
+the switch never changes a computer's backend. Archiving a chat requests deletion
+through the public client. Private run records are removed with the chat's files.
 The [client verification record](computers-client-evidence.json) pins the Git
 consumer, 35 passing SDK tests, all 18 published operations, and a real
 production Boat workflow on the dedicated test account. Allocation, binary

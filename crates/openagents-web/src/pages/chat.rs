@@ -715,6 +715,60 @@ async fn start_claude(
             "Claude Code can't run there now. Pick where it runs again.",
         );
     };
+    let mut record = Conversation {
+        id: id.to_owned(),
+        owner: owner.to_owned(),
+        revision: 1,
+        title: text.chars().take(64).collect(),
+        messages: vec![Message {
+            role: Role::User,
+            text: text.clone(),
+            request_id: Some(id.to_owned()),
+        }],
+        pending: None,
+        requests: vec![Request {
+            id: id.to_owned(),
+            digest,
+            outcome: Outcome::Answered,
+            selection: None,
+            cloud: None,
+            files,
+            reply: None,
+        }],
+        selection: None,
+        updated_unix: now(),
+        pinned_unix: None,
+        archived_unix: None,
+        project: picked.project.as_ref().map(|project| project.id.clone()),
+        terminal: None,
+        environment: None,
+        tasks: Vec::new(),
+        opened_unix: None,
+        branch: picked.branch.clone(),
+        filed: false,
+    };
+    let loaded = match app.config.chat_store.create(&record).await {
+        Ok(loaded) => loaded,
+        Err(Error::Conflict) => match app.config.chat_store.load(owner, id).await {
+            Ok(Some(loaded))
+                if loaded.conversation.tasks.is_empty()
+                    && !loaded.conversation.deleted()
+                    && loaded.conversation.archived_unix.is_none()
+                    && loaded.conversation.requests.iter().any(|request| {
+                        request.id == id && request.digest == record.requests[0].digest
+                    }) =>
+            {
+                record = loaded.conversation.clone();
+                loaded
+            }
+            _ => {
+                return crate::chat_html::protect(
+                    Redirect::to(&format!("/chat/{id}")).into_response(),
+                );
+            }
+        },
+        Err(error) => return unavailable(error),
+    };
     // Issues the message names go to the briefed agent (#11258).
     let named = work::issues_named(&text, Some(&env.repository));
     let working = if named.is_empty() {
@@ -742,6 +796,7 @@ async fn start_claude(
             headers,
             owner,
             id,
+            id,
             &env,
             picked.branch.as_deref(),
             &[],
@@ -754,57 +809,27 @@ async fn start_claude(
             Err(message) => return refusal(StatusCode::CONFLICT, &message),
         }
     };
-    let mut record = Conversation {
-        id: id.to_owned(),
-        owner: owner.to_owned(),
-        revision: 1,
-        title: text.chars().take(64).collect(),
-        messages: vec![Message {
-            role: Role::User,
-            text,
-            request_id: Some(id.to_owned()),
-        }],
-        pending: None,
-        requests: vec![Request {
-            id: id.to_owned(),
-            digest,
-            outcome: Outcome::Answered,
-            selection: None,
-            cloud: None,
-            files,
-            reply: None,
-        }],
-        selection: None,
-        updated_unix: now(),
-        pinned_unix: None,
-        archived_unix: None,
-        project: picked.project.as_ref().map(|project| project.id.clone()),
-        terminal: None,
-        environment: None,
-        tasks: Vec::new(),
-        opened_unix: None,
-        branch: picked.branch.clone(),
-        filed: false,
-    };
+
     if let (Some(environment), Some(task)) = (environment, task.clone()) {
         work::record(&mut record, environment, task);
     }
     if let Some(tasks) = working {
         work::record_work(&mut record, tasks);
     }
-    match app.config.chat_store.create(&record).await {
+
+    record.revision += 1;
+    match app
+        .config
+        .chat_store
+        .compare_and_swap(&loaded, &record)
+        .await
+    {
         Ok(_) => note_shared(app, picked.project.as_ref(), owner, &record).await,
-        Err(Error::Conflict) => {
+        Err(error) => {
             if let Some(task) = &task {
-                work::abandon(app, task);
+                work::abandon(app, owner, task);
             }
-            return crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response());
-        }
-        Err(e) => {
-            if let Some(task) = &task {
-                work::abandon(app, task);
-            }
-            return unavailable(e);
+            return unavailable(error);
         }
     }
     work::watch(app.clone(), owner.to_owned(), id.to_owned());
@@ -1004,7 +1029,7 @@ async fn claude_environment(
         return None;
     };
     let choices = crate::composer_row::choices(app, headers, owner).await?;
-    let env = choices.environment(picked.project.as_ref()?)?;
+    let env = choices.chosen_environment(picked.project.as_ref(), id)?;
     (env.id == *id).then(|| env.clone())
 }
 
@@ -1012,6 +1037,17 @@ pub(crate) async fn load(app: &App, headers: &HeaderMap, id: &str) -> Result<Loa
     let Some(owner) = reader(app, headers).await else {
         return Err(missing());
     };
+    if crate::computers::client().is_some() && app.config.cloud.is_some() {
+        if crate::computer_runs::authorize(app, headers, &owner)
+            .await
+            .is_err()
+        {
+            crate::computer_runs::forget(&owner);
+        }
+    }
+    if crate::computer_runs::observer(&owner).is_some() {
+        let _ = crate::computer_runs::recover(app, &owner, id).await;
+    }
     match load_owned(app, &owner, id).await {
         Err(response) if response.status() == StatusCode::NOT_FOUND => {
             // A chat someone else started in a shared project the person
@@ -2079,6 +2115,49 @@ async fn follow_claude(
             "Claude Code can't run there now. Pick where it runs again.",
         );
     };
+    let public_computer = crate::computer_runs::enabled()
+        && crate::computers::client().is_some()
+        && app.config.cloud.is_some()
+        && attached
+            .iter()
+            .all(|file| file.bytes.len() <= 4 * 1024 * 1024)
+        && work::issues_named(&text, Some(&env.repository)).is_empty();
+    let loaded = if public_computer {
+        let mut next = loaded.conversation.clone();
+        next.revision += 1;
+        next.updated_unix = now();
+        if let Some((project, branch)) = place.clone() {
+            next.project = project;
+            next.branch = branch;
+        }
+        next.environment = Some(crate::chat_store::ChatEnvironment {
+            id: env.id.clone(),
+            repository: env.repository.clone(),
+            version: Some(env.version),
+            removed: false,
+        });
+        next.messages.push(Message {
+            role: Role::User,
+            text: text.clone(),
+            request_id: Some(request_id.into()),
+        });
+        next.requests.push(Request {
+            id: request_id.into(),
+            digest: digest.clone(),
+            outcome: Outcome::Answered,
+            selection: chat.selection.clone(),
+            cloud: None,
+            files: files.clone(),
+            reply: None,
+        });
+        match app.config.chat_store.compare_and_swap(&loaded, &next).await {
+            Ok(saved) => saved,
+            Err(error) => return unavailable(error),
+        }
+    } else {
+        loaded
+    };
+    let chat = &loaded.conversation;
     // Issues the message names go to the briefed agent (#11258).
     let named = work::issues_named(&text, Some(&env.repository));
     let working = if named.is_empty() {
@@ -2106,9 +2185,14 @@ async fn follow_claude(
             headers,
             &chat.owner,
             &chat.id,
+            request_id,
             &env,
             picked.branch.as_deref(),
-            &chat.messages,
+            if public_computer {
+                &chat.messages[..chat.messages.len().saturating_sub(1)]
+            } else {
+                &chat.messages
+            },
             &text,
             attached,
         )
@@ -2124,20 +2208,22 @@ async fn follow_claude(
         next.project = project;
         next.branch = branch;
     }
-    next.messages.push(Message {
-        role: Role::User,
-        text,
-        request_id: Some(request_id.to_owned()),
-    });
-    next.requests.push(Request {
-        id: request_id.to_owned(),
-        digest,
-        outcome: Outcome::Answered,
-        selection: chat.selection.clone(),
-        cloud: None,
-        files,
-        reply: None,
-    });
+    if !public_computer {
+        next.messages.push(Message {
+            role: Role::User,
+            text,
+            request_id: Some(request_id.to_owned()),
+        });
+        next.requests.push(Request {
+            id: request_id.to_owned(),
+            digest,
+            outcome: Outcome::Answered,
+            selection: chat.selection.clone(),
+            cloud: None,
+            files,
+            reply: None,
+        });
+    }
     if let (Some(environment), Some(task)) = (environment, task.clone()) {
         work::record(&mut next, environment, task);
     }
@@ -2148,7 +2234,7 @@ async fn follow_claude(
         Ok(saved) => saved,
         Err(e) => {
             if let Some(task) = &task {
-                work::abandon(app, task);
+                work::abandon(app, &chat.owner, task);
             }
             return unavailable(e);
         }

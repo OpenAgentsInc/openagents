@@ -153,7 +153,7 @@ fn a_project_brings_its_default_branch_and_its_environment() {
 }
 
 #[test]
-fn claude_code_is_offered_only_for_the_project_with_the_environment() {
+fn a_project_can_use_only_its_environment_and_standalone_chats_can_choose_owned_environments() {
     let choices = choices();
     // Another project: its repository has no environment.
     let picked = choices.resolve(&wanted(OTHER, "", "claude:env-1"));
@@ -164,9 +164,9 @@ fn claude_code_is_offered_only_for_the_project_with_the_environment() {
         .map(|(_, label)| label)
         .collect();
     assert_eq!(labels, ["Answer here", "Coder on studio-mac"]);
-    // No project: no Claude Code.
+    // An owned saved environment can also run without a project.
     let picked = choices.resolve(&wanted("", "", "claude:env-1"));
-    assert_eq!(picked.target, Target::Chat);
+    assert_eq!(picked.target, Target::Claude("env-1".into()));
     assert_eq!(picked.branch, None);
     // An unknown project is no project.
     let picked = choices.resolve(&wanted("prj_1111111111111111", "dev", ""));
@@ -236,7 +236,8 @@ fn an_existing_chat_offers_no_coder_on_a_computer() {
     assert!(!html.contains("Coder on"), "{html}");
     let picked = choices.resolve(&wanted("", "", ""));
     let html = render(Some(&choices), &picked);
-    assert!(!html.contains("Where it runs"), "{html}");
+    assert!(html.contains("Where it runs: Answer here"), "{html}");
+    assert!(!html.contains("Coder on"), "{html}");
     for label in ["Chat", "Work", "Code"] {
         assert!(
             !html.contains(&format!("Where it runs: {label}\"")),
@@ -466,4 +467,26 @@ fn solver_in_the_cloud_is_offered_with_a_projects_repository_in_any_chat() {
     );
     assert!(panel.contains("target=solver"), "{panel}");
     crate::copy_guard::assert_plain("/composer/row/target", &panel);
+}
+
+#[test]
+fn saved_environments_can_run_without_a_project_and_removed_projects_stay_refused() {
+    let mut available = choices();
+    available.projects.clear();
+    available.connected = false;
+    let picked = available.resolve(&wanted("", "", "claude:env-1"));
+    assert_eq!(picked.target, Target::Claude("env-1".into()));
+    assert!(picked.project.is_none());
+    assert!(available.chosen_environment(None, "env-1").is_some());
+    assert!(available.chosen_environment(None, "env-foreign").is_none());
+    let html = render(Some(&available), &picked);
+    assert!(html.contains("Claude Code in acme/app v3"));
+    let stale = available.resolve(&wanted(APP, "", "claude:env-1"));
+    assert_eq!(stale.target, Target::Chat);
+    let other = project(OTHER, "acme/other");
+    assert!(
+        available
+            .chosen_environment(Some(&other), "env-1")
+            .is_none()
+    );
 }

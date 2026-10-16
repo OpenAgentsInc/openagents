@@ -568,6 +568,12 @@
             "type": "string",
             "x-max-utf8-bytes": 65536
           },
+          "credential_ref": {
+            "description": "Optional reference prepared by the server for this account, computer, command, and request key. Credential values cannot be sent here. It expires after ten minutes. Credentials stay in memory; a restart can make a waiting command fail.",
+            "maxLength": 128,
+            "pattern": "^cred_[a-zA-Z0-9_-]+$",
+            "type": "string"
+          },
           "cwd": {
             "default": ".",
             "description": "Existing directory relative to the computer workspace; traversal and symlink escape refuse.",

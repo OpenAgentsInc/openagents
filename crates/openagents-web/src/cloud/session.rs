@@ -212,6 +212,33 @@ impl Drop for CloudSession {
 }
 
 impl CloudSession {
+    /// Import the request's own browser session into the public client. The
+    /// account is checked again by the public API; no service identity is used.
+    pub(crate) async fn computer_session(
+        &self,
+        headers: &HeaderMap,
+        client: &openagents_sdk::Client,
+    ) -> Result<openagents_sdk::Session> {
+        let viewer = self.authenticate(headers).await?;
+        let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
+        let session = client
+            .authenticate(&token)
+            .await
+            .map_err(|error| match error {
+                openagents_sdk::Error::Unauthorized
+                | openagents_sdk::Error::InvalidCredential
+                | openagents_sdk::Error::ExpiredSession => SessionError::Unauthenticated,
+                openagents_sdk::Error::Forbidden
+                | openagents_sdk::Error::WrongAccount
+                | openagents_sdk::Error::Denied => SessionError::Forbidden,
+                _ => SessionError::Unavailable,
+            })?;
+        if session.account().id != viewer.account_id {
+            return Err(SessionError::Forbidden);
+        }
+        Ok(session)
+    }
+
     pub fn load(path: &Path) -> std::result::Result<Self, String> {
         let (config, bytes) = ProtectedFile::open(path, 16 * 1024)?;
         let declared: Configuration = serde_json::from_slice(&bytes)

@@ -43,6 +43,8 @@ pub struct Request {
     #[serde(default)]
     pub env: BTreeMap<String, String>,
     pub idempotency_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential_ref: Option<String>,
 }
 fn default_cwd() -> String {
     ".".into()
@@ -53,7 +55,11 @@ fn default_timeout() -> u64 {
 
 impl Request {
     pub fn valid(&self) -> bool {
-        !self.command.trim().is_empty()
+        self.credential_ref
+            .as_deref()
+            .is_none_or(crate::command_credentials::valid_reference)
+            && (self.credential_ref.is_none() || (self.env.is_empty() && self.cwd == "."))
+            && !self.command.trim().is_empty()
             && self.command.len() <= 65536
             && !self.command.contains('\0')
             && !self.cwd.is_empty()
@@ -189,7 +195,7 @@ impl Store {
             bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
         );
         tx.execute("INSERT INTO computers.turns(id,computer,owner,state,command,cwd,timeout_seconds) VALUES($1,$2,$3,'command_queued',$4,$5,$6)", &[&id,&computer,&owner,&request.command,&request.cwd,&(request.timeout_seconds as i32)]).await.map_err(|_| "unavailable")?;
-        let options = json!({"env":request.env});
+        let options = json!({"env":request.env,"credential_ref":request.credential_ref,"request_key":request.idempotency_key});
         tx.execute("INSERT INTO computers.commands(turn,owner,computer,request_key,digest,options,status) VALUES($1,$2,$3,$4,$5,$6,'queued')", &[&id,&owner,&computer,&request.idempotency_key,&digest,&options]).await.map_err(|_| "unavailable")?;
         tx.execute("UPDATE computers.computers SET desired='running',next_attempt_at=now(),attempts=0 WHERE id=$1", &[&computer]).await.map_err(|_| "unavailable")?;
         tx.commit().await.map_err(|_| "unavailable")?;
@@ -378,6 +384,10 @@ pub(crate) async fn cancel(
 }
 pub fn routes() -> Router<Arc<Api>> {
     Router::new()
+        .route(
+            "/v1/computers/{id}/command-credentials",
+            post(crate::command_credentials::prepare),
+        )
         .route("/v1/computers/{id}/commands", post(create))
         .route("/v1/computers/{id}/commands/{command}", get(read))
         .route("/v1/computers/{id}/commands/{command}/output", get(output))
@@ -388,6 +398,7 @@ pub fn routes() -> Router<Arc<Api>> {
 /// recovery may read and cancel, but may never start the command again.
 pub async fn run<D: Driver + Clone + 'static>(
     store: &Store,
+    secrets: &crate::turns::Secrets,
     p: &OnDriver<D>,
     lease: &PgLease,
     e: &Entry,
@@ -466,16 +477,31 @@ pub async fn run<D: Driver + Clone + 'static>(
                      WHERE turn=$1 AND status='queued' AND NOT cancel_requested",
                     &[&t.id,&resource]).await.map_err(|x| io(x.into()))?;
                 if claimed == 1 {
-                    let env: BTreeMap<String,String> = serde_json::from_value(r.options["env"].clone())
+                    let mut env: BTreeMap<String,String> = serde_json::from_value(r.options["env"].clone())
                         .map_err(|_| io(DbError("options".into())))?;
-                    let spec = CommandSpec {
+                    let mut credential_names = BTreeSet::new();
+                    if let Some(reference) = r.options["credential_ref"].as_str() {
+                        let Some(values) = secrets.2.take(reference, &e.owner, &e.id, r.options["request_key"].as_str().unwrap_or_default(), &format!("{:x}", Sha256::digest(t.command.as_bytes()))) else {
+                            store.command_end(&t.id,"failed",None).await.map_err(io)?;
+                            return Ok(());
+                        };
+                        for (name, value) in &values {
+                            credential_names.insert(name.clone());
+                            env.insert(name.clone(), value.expose().to_owned());
+                        }
+                    }
+                    let mut spec = CommandSpec {
                         id:t.id.clone(), command:t.command.clone(),
                         cwd:t.cwd.clone().unwrap_or_else(default_cwd),
                         timeout_seconds:t.timeout_seconds as u64, env,
-                        credential_names:BTreeSet::new(), digest:r.digest.clone(),
+                        credential_names, digest:r.digest.clone(),
                     };
                     // A lost reply leaves the dispatch marker in place.
-                    match p.driver.start_command(&resource, &spec).await {
+                    let dispatched = p.driver.start_command(&resource, &spec).await;
+                    for name in &spec.credential_names {
+                        if let Some(value) = spec.env.remove(name) { drop(computer_driver::Secret::new(value)); }
+                    }
+                    match dispatched {
                         Outcome::Done {value} => {
                             c.execute("UPDATE computers.commands SET status='running',provider_reference=$2
                                 WHERE turn=$1 AND status='dispatching'", &[&t.id,&value])
@@ -601,6 +627,7 @@ mod tests {
             .unwrap();
         let computer = computer["id"].as_str().unwrap();
         let request = Request {
+            credential_ref: None,
             command: "true".into(),
             cwd: ".".into(),
             timeout_seconds: 10,

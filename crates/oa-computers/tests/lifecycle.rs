@@ -1207,7 +1207,7 @@ async fn command_owner_restart_observes_the_same_execution_and_never_replays_abs
         wait_for(&base,"acct-a",&id,|v|v["state"]=="stopped" && v["desired"]=="stopped").await;
         db.client().await.unwrap().execute("UPDATE computers.computers SET lease_holder='paused-crash-window',lease_until=now()+interval '1 hour' WHERE id=$1",&[&id]).await.unwrap();
         // Simulate death after durable dispatch ownership, before any wire send.
-        let request=oa_computers::commands::Request{command:"echo must-not-run >> counter".into(),cwd:".".into(),timeout_seconds:10,env:Default::default(),idempotency_key:"absent-dispatch".into()};
+        let request=oa_computers::commands::Request{credential_ref:None,command:"echo must-not-run >> counter".into(),cwd:".".into(),timeout_seconds:10,env:Default::default(),idempotency_key:"absent-dispatch".into()};
         let (absent,_)=store.add_command("acct-a",&id,&request).await.unwrap();
         // This is the query shipped by the pre-command worker. It must never
         // see a public command as a legacy foreground turn during rollout.
@@ -1336,5 +1336,57 @@ async fn bounded_files_share_owner_and_never_wake_or_recreate_computers() {
         call(reqwest::Method::DELETE,format!("{base}/v1/computers/{id}"),"acct-files",None).await;wait_for(&base,"acct-files",id,|v|v["state"]=="deleted").await;
         assert_eq!(get("acct-files").send().await.unwrap().status(),404);
         assert_eq!(fake.0.lock().unwrap().instances.len(),0);
+    }).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn public_command_credentials_are_scoped_ephemeral_and_never_replayed() {
+    let Some(admin) = admin() else {
+        return;
+    };
+    let (db, _) = Db::scratch(&admin).await.unwrap();
+    let store = Store::new(db);
+    let dir = tempfile::tempdir().unwrap();
+    let fake = FakeDriver::new(dir.path());
+    let secrets = Secrets::default();
+    let base = api_with(store.clone(), fake.capabilities(), secrets.clone()).await;
+    let local = tokio::task::LocalSet::new();
+    local.spawn_local(
+        Rc::new(Reconciler {
+            store: store.clone(),
+            driver: fake.clone(),
+            settings: fast("credentials"),
+            turns: secrets,
+        })
+        .run(),
+    );
+    local.run_until(async {
+        let (_, computer) = call(reqwest::Method::POST,format!("{base}/v1/computers"),"acct-a",Some(json!({"idempotency_key":"credentials-computer"}))).await;
+        let id = computer["id"].as_str().unwrap();
+        let up = wait_for(&base,"acct-a",id,|v|v["state"]=="awake").await;
+        let command = "test -n \"$OA_TEST_CREDENTIAL\" || exit 1; echo once >> credential-counter; echo finished";
+        let prepare = json!({"reference":"cred_one","request":"credential-command","command_sha256":computer_files::digest(command.as_bytes()),"values":{"OA_TEST_CREDENTIAL":"synthetic-private-value"}});
+        let private_path = format!("{base}/v1/computers/{id}/command-credentials");
+        assert_eq!(call(reqwest::Method::POST,private_path.clone(),"acct-b",Some(prepare.clone())).await.0,404);
+        assert_eq!(call(reqwest::Method::POST,private_path,"acct-a",Some(prepare)).await.0,201);
+        let request = json!({"command":command,"credential_ref":"cred_one","idempotency_key":"credential-command"});
+        let path = format!("{base}/v1/computers/{id}/commands");
+        fake.inject("start_command",computer_driver::fake::Inject::LoseReply);
+        let (status, accepted) = call(reqwest::Method::POST,path.clone(),"acct-a",Some(request.clone())).await;
+        assert_eq!(status,202);
+        let turn = accepted["id"].as_str().unwrap();
+        let result = wait_command(&base,id,turn,terminal_command).await;
+        assert_eq!(result["state"],"succeeded","{result}");
+        let saved = store.command("acct-a",id,turn).await.unwrap().unwrap();
+        assert!(!saved.options.to_string().contains("synthetic-private-value"));
+        assert_eq!(call(reqwest::Method::POST,path.clone(),"acct-a",Some(request)).await.1["id"],turn);
+        let missing = json!({"command":"echo must-not-run >> credential-counter","credential_ref":"cred_lost_on_restart","idempotency_key":"missing-credentials"});
+        let (_, accepted) = call(reqwest::Method::POST,path,"acct-a",Some(missing)).await;
+        assert_eq!(wait_command(&base,id,accepted["id"].as_str().unwrap(),terminal_command).await["state"],"failed");
+        assert_eq!(fake.calls().iter().filter(|s|s.starts_with("start_command:")).count(),1);
+        let resource = up["resource"].as_str().unwrap();
+        assert_eq!(std::fs::read_to_string(dir.path().join(resource).join("credential-counter")).unwrap(),"once\n");
+        call(reqwest::Method::DELETE,format!("{base}/v1/computers/{id}"),"acct-a",None).await;
+        wait_for(&base,"acct-a",id,|v|v["state"]=="deleted").await;
     }).await;
 }

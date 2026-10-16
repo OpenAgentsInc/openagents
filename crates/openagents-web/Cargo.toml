@@ -8,6 +8,7 @@ description = "The OpenAgents website: public pages, legal documents, the instal
 default-run = "openagents-web"
 
 [dependencies]
+openagents-sdk = { path = "../openagents-sdk" }
 computer-files = { path = "../computer-files" }
 # Referral links and campaign words for attribution (#11698).
 tenancy = { path = "../tenancy" }

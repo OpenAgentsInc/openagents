@@ -451,7 +451,7 @@ pub(super) async fn sync(app: &App, loaded: Loaded) -> Loaded {
             worked.insert(task.id.clone(), work_seen(&run));
         }
     }
-    // Turns on the chat's own computer (#11624) are read from oa-computers.
+    // Saved SDK handles observe public runs; older turns keep their read path.
     if let Some(client) = crate::computers::client() {
         for task in loaded
             .conversation
@@ -459,6 +459,14 @@ pub(super) async fn sync(app: &App, loaded: Loaded) -> Loaded {
             .iter()
             .filter(|task| task.kind == TaskKind::Computer && !task.state.finished())
         {
+            match crate::computer_runs::observe(app, &loaded.conversation.owner, &task.id).await {
+                Ok(Some(read)) => {
+                    worked.insert(task.id.clone(), computer_seen(&read));
+                    continue;
+                }
+                Err(_) => continue,
+                Ok(None) => {}
+            }
             if let Some((computer, turn)) = crate::computers::split_task_id(&task.id)
                 && let Ok(Some(read)) =
                     crate::computers::read_turn(client, &loaded.conversation.owner, computer, turn)
@@ -751,6 +759,7 @@ pub(super) async fn begin(
     headers: &HeaderMap,
     owner: &str,
     chat: &str,
+    request: &str,
     env: &crate::composer_row::Environment,
     branch: Option<&str>,
     prior: &[Message],
@@ -760,7 +769,58 @@ pub(super) async fn begin(
     let studio = studio(app)
         .cloned()
         .ok_or_else(|| "Claude Code can't run on this server.".to_owned())?;
-    let prompt = composer_prompt(env, branch, prior, text);
+    let mut prompt = composer_prompt(env, branch, prior, text);
+    if crate::computer_runs::enabled()
+        && crate::computers::client().is_some()
+        && files.iter().all(|file| file.bytes.len() <= 4 * 1024 * 1024)
+        && app.config.cloud.is_some()
+    {
+        for (i, file) in files.iter().enumerate() {
+            prompt.push_str(&format!(
+                "\nAttached file {:?} is at ~/workspace/{}. Read it there.\n",
+                file.name,
+                crate::computer_runs::upload_path(request, i, &file.name)
+            ));
+        }
+        let own = crate::cloud::byo::release_turn(app, headers).await;
+        let push = crate::environments::push::access(app, headers, &studio, &env.id).await;
+        let mut turn = studio.chat_turn(&env.id, &prompt, own, push, chat)?;
+        turn.command = crate::computer_runs::bounded_agent_command(&turn.command);
+        eprintln!("openagents-web: chat computer transport=public");
+        let task = crate::computer_runs::start(
+            app,
+            headers,
+            owner,
+            chat,
+            request,
+            &turn,
+            &title(text),
+            &env.repository,
+            &files,
+        )
+        .await?;
+        return Ok((
+            ChatEnvironment {
+                id: env.id.clone(),
+                repository: env.repository.clone(),
+                version: Some(turn.version),
+                removed: false,
+            },
+            ChatTask {
+                id: task,
+                kind: TaskKind::Computer,
+                environment: env.id.clone(),
+                title: title(text),
+                state: TaskState::Working,
+                started_unix: now(),
+                after_message: 0,
+                version: Some(turn.version),
+                finished_unix: None,
+                agent: None,
+                steps: Vec::new(),
+            },
+        ));
+    }
     if let Some(client) = crate::computers::client()
         && files.is_empty()
         && crate::agent_work::scope(app, headers).await.is_some()
@@ -886,7 +946,18 @@ pub(super) fn computer_seen(turn: &crate::computers::Turn) -> Seen {
 
 /// Asks a run that was started but couldn't be recorded on its chat to
 /// stop, so nothing runs that no chat shows.
-pub(super) fn abandon(app: &App, task: &ChatTask) {
+pub(super) fn abandon(app: &App, owner: &str, task: &ChatTask) {
+    if task.kind == TaskKind::Computer {
+        let app = app.clone();
+        let task = task.id.clone();
+        let owner = owner.to_owned();
+        tokio::spawn(async move {
+            // The index binds the task to its original owner. Never substitute
+            // a service identity when its account session is unavailable.
+            crate::computer_runs::abandon(&app, &owner, &task).await;
+        });
+        return;
+    }
     if let Some(studio) = studio(app) {
         let _ = studio.stop_claude(&task.environment, &task.id);
     }
@@ -1225,7 +1296,7 @@ async fn run_agents(
             Ok(run) => run,
             Err(error) => {
                 for task in &tasks {
-                    abandon(&app, task);
+                    abandon(&app, &owner, task);
                 }
                 return run_form(
                     &app,
@@ -1271,7 +1342,7 @@ async fn run_agents(
     .await;
     if let Err(response) = recorded {
         for task in &tasks {
-            abandon(&app, task);
+            abandon(&app, &owner, task);
         }
         return response;
     }

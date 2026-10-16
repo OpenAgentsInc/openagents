@@ -9293,6 +9293,12 @@
             "minLength": 1,
             "maxLength": 128,
             "description": "Required here or as Idempotency-Key. Reuse across retries."
+          },
+          "credential_ref": {
+            "type": "string",
+            "pattern": "^cred_[a-zA-Z0-9_-]+$",
+            "maxLength": 128,
+            "description": "Optional reference prepared by the server for this account, computer, command, and request key. Credential values cannot be sent here. It expires after ten minutes. Credentials stay in memory; a restart can make a waiting command fail."
           }
         },
         "examples": [

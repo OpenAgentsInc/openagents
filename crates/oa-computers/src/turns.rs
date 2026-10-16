@@ -49,6 +49,7 @@ pub const MAX_SECONDS: u64 = 3600;
 pub struct Secrets(
     Arc<Mutex<HashMap<String, BTreeMap<String, Secret>>>>,
     Arc<Mutex<std::collections::HashSet<String>>>,
+    pub(crate) crate::command_credentials::Pending,
 );
 impl Secrets {
     /// Ask a running turn to stop.
@@ -530,7 +531,7 @@ pub async fn run_next<D: Driver + Clone + 'static>(
         return Ok(Settled::Idle(awake));
     };
     if t.api_command {
-        return crate::commands::run(store, p, lease, e, awake, t, heartbeat).await;
+        return crate::commands::run(store, secrets, p, lease, e, awake, t, heartbeat).await;
     }
     let resource = awake.resource().unwrap_or_default().to_owned();
     if t.state == "running" {

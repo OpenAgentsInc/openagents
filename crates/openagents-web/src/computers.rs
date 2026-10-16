@@ -1,5 +1,10 @@
-//! Chats on their own computers, through `oa-computers` (#11624,
+//! Trusted `oa-computers` transport and legacy chat turns (#11624,
 //! `docs/cloud/computers.md`).
+//!
+//! New authenticated chat runs use the public SDK in `computer_runs`. The
+//! service token stays at the API boundary. These legacy turn helpers remain
+//! for existing tasks, requests above the public file limit, and an explicit
+//! `OPENAGENTS_WEB_PUBLIC_COMPUTERS=legacy` rollback for new runs.
 //!
 //! When this server is given `--computers-url URL` (or
 //! `OPENAGENTS_WEB_COMPUTERS_URL`) and the service token (`--computers-token
