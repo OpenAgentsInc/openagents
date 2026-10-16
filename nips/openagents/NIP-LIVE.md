@@ -295,6 +295,11 @@ credentials remain in separately authorized host-owned channels. Untrusted
 page/screen content stays evidence rather than instructions that can broaden
 the task or its grants.
 
+The Rust device boundary receives the exact observation, binding, resolved
+preconditions, and original monotonic capture deadline. Its checked input
+method refuses by default and cannot fall back to unchecked input. A host
+restart that loses the original capture clock requires a new observation.
+
 The host journals dispatch before applying input and retains observed results
 afterward. It must not blindly retry a click, send, or purchase after a lost
 reply. The operation's reconciliation contract determines whether the effect

@@ -5,7 +5,7 @@
 //! with fresh observation preconditions. It never replays input or speech.
 use crate::{
     Result,
-    media::{Applied, Broker, Device, Grant, Revocation, Source, token_digest},
+    media::{Applied, Broker, Device, Grant, InputGuard, Revocation, Source, token_digest},
 };
 use nostr::{
     contracts::{self, digest_bytes},
@@ -132,6 +132,7 @@ pub struct Controller {
     secret: SecretKey,
     adapters: RefCell<Adapters>,
     delivery: RefCell<BTreeMap<(String, String), String>>,
+    pub(crate) capture_clocks: RefCell<BTreeMap<String, std::time::Instant>>,
 }
 
 fn refuse(code: &str, detail: &str) -> String {
@@ -212,6 +213,7 @@ impl Controller {
             secret,
             adapters: RefCell::new(adapters),
             delivery: RefCell::new(BTreeMap::new()),
+            capture_clocks: RefCell::new(BTreeMap::new()),
         };
         controller.state()?;
         Ok(controller)
@@ -534,6 +536,12 @@ impl Controller {
             if !status_read {
                 session.revision += 1;
             }
+            let refusal = value
+                .as_ref()
+                .filter(|_| status == "refused")
+                .map(|reference| self.store.json(reference))
+                .transpose()?
+                .and_then(|record| record["reason"].as_str().map(str::to_owned));
             let owner = session.owner.clone();
             let result = self.result(
                 state,
@@ -541,7 +549,7 @@ impl Controller {
                 input,
                 Some(&session),
                 status,
-                None,
+                refusal.as_deref(),
                 value,
                 receipts,
                 now,
@@ -1210,6 +1218,10 @@ impl Controller {
         body: &Value,
         now: u64,
     ) -> Result<(Option<Value>, Vec<Value>, &'static str)> {
+        let captured_start = std::time::Instant::now();
+        if self.capture_clocks.borrow().len() >= 65_536 {
+            return Err("limit_exceeded: live observation clocks".into());
+        }
         if signer != session.owner {
             return Err(refuse("not_admitted", "capture control"));
         }
@@ -1296,6 +1308,9 @@ impl Controller {
             "evidence":null,"format":self.store.put_json(&json!({"media":track["media"]}))?,"geometry":geometry,
             "interval":interval,"freshness":freshness});
         let observation = self.sign(state, &observation, &session.owner.clone(), now)?;
+        self.capture_clocks
+            .borrow_mut()
+            .insert(digest_of(&observation).into(), captured_start);
         session.observations.insert(capture, observation.clone());
         self.record(
             session,
@@ -1349,13 +1364,25 @@ impl Controller {
         let observation = self.body(observation_ref, "openagents.live-observation.v1")?;
         let freshness = self.body(&observation["freshness"], "openagents.live-freshness.v1")?;
         let (generation, focus) = self.adapters.borrow().device.state();
-        let age_ms =
-            now.saturating_sub(live::number(&observation, "captured_at").map_err(contract)?) * 1000;
-        if age_ms > freshness["max_age_ms"].as_u64().unwrap_or(0)
+        let captured_at = live::number(&observation, "captured_at").map_err(contract)?;
+        let age_ms = now.saturating_sub(captured_at).saturating_mul(1000);
+        let max_age = freshness["max_age_ms"]
+            .as_u64()
+            .ok_or("malformed: observation age")?;
+        let focus_version = freshness["focus_version"]
+            .as_u64()
+            .ok_or("cannot_enforce: focus version required")?;
+        let original = *self
+            .capture_clocks
+            .borrow()
+            .get(digest_of(observation_ref))
+            .ok_or("cannot_enforce: capture clock is unavailable; obtain a new observation")?;
+        let started = std::time::Instant::now();
+        if original.elapsed().as_millis() >= u128::from(max_age)
+            || captured_at > now
+            || age_ms >= max_age
             || observation["host_generation"] != generation
-            || freshness["focus_version"]
-                .as_u64()
-                .is_some_and(|f| f != focus)
+            || focus_version != focus
         {
             return Err(refuse(
                 "stale",
@@ -1377,6 +1404,27 @@ impl Controller {
             self.bytes(approval)?;
         }
         let input_bytes = self.bytes(&proposal["input"])?;
+        let guard = InputGuard {
+            generation,
+            focus,
+            deadline: original
+                .checked_add(std::time::Duration::from_millis(max_age))
+                .ok_or("limit_exceeded: device input deadline")?
+                .min(
+                    started
+                        .checked_add(std::time::Duration::from_millis(max_age - age_ms))
+                        .ok_or("limit_exceeded: device input deadline")?,
+                ),
+            observation: observation.clone(),
+            binding: self.bytes(&proposal["binding"])?,
+            preconditions: proposal["preconditions"]
+                .as_array()
+                .ok_or("malformed: input preconditions")?
+                .iter()
+                .map(|reference| self.bytes(reference))
+                .collect::<Result<Vec<_>>>()?,
+        };
+
         // Journal dispatch durably before applying the input.
         self.record(
             session,
@@ -1405,20 +1453,24 @@ impl Controller {
         snapshot.signers.extend(state.signers.clone());
         snapshot.declarations.extend(state.declarations.clone());
         self.save(&snapshot)?;
-        let applied = self.adapters.borrow_mut().device.apply(
+        let applied = self.adapters.borrow_mut().device.apply_checked(
             proposal["operation"]["id"].as_str().unwrap_or_default(),
             &input_bytes,
+            &guard,
         );
-        let (outcome, observed, status) = match applied {
+        let (outcome, observed, status, dispatched, reason) = match applied {
             Applied::Applied(bytes) => (
                 "applied",
                 Some(self.store.put(&bytes, "application/json", None)?),
                 "accepted",
+                true,
+                None,
             ),
-            Applied::Unknown => ("unknown", None, "unknown"),
+            Applied::Refused(code) => ("refused", None, "refused", false, Some(code)),
+            Applied::Unknown => ("unknown", None, "unknown", true, None),
         };
-        let record = json!({"v":"openagents.live-input-outcome.v1","requires":[],"admission":input,"dispatched":true,
-            "outcome":outcome,"observed":observed,"reason":null});
+        let record = json!({"v":"openagents.live-input-outcome.v1","requires":[],"admission":input,"dispatched":dispatched,
+            "outcome":outcome,"observed":observed,"reason":reason});
         let record = self.sign(state, &record, &session.owner.clone(), now)?;
         let kind = if status == "unknown" {
             "unknown"

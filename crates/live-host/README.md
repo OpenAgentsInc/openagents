@@ -71,6 +71,13 @@ broker, capture source, and device behind the same roles.
   journaled before the input is applied. A lost reply stays `unknown` and is
   never re-applied. A changed admission for the same proposal is refused until
   the original is reconciled.
+  The actual input call receives the frozen observation, binding, all input
+  preconditions, and an absolute deadline. `Device::apply_checked` refuses by
+  default; it never falls back to unchecked input. Adapters check generation,
+  focus, and every supported condition at the write boundary. A known refusal
+  records that no input was sent. Capture clocks start before capture and cannot
+  be renewed by saving state, a later request, or restart; a new controller
+  requires a new observation before device input.
 
 All fixtures use synthetic devices, throwaway keys, and local state; no media
 leaves the process and no money moves. Production media transports, platform

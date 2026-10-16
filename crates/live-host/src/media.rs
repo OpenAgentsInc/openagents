@@ -155,14 +155,32 @@ impl Source for SyntheticSource {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Applied {
     Applied(Vec<u8>),
+    /// The adapter proved that it sent no input.
+    Refused(&'static str),
     /// The reply was lost after dispatch.
     Unknown,
+}
+
+/// Conditions checked by the native adapter immediately before sending input.
+/// Reading `Device::state` earlier cannot replace this boundary check.
+pub struct InputGuard {
+    pub generation: u64,
+    pub focus: u64,
+    pub deadline: std::time::Instant,
+    pub observation: serde_json::Value,
+    pub binding: Vec<u8>,
+    pub preconditions: Vec<Vec<u8>>,
 }
 
 pub trait Device {
     /// Current device generation and focus/navigation version.
     fn state(&self) -> (u64, u64);
     fn apply(&mut self, operation: &str, input: &[u8]) -> Applied;
+    /// Refuse unless this adapter can enforce every condition at the actual
+    /// input boundary. The unchecked method is never a fallback.
+    fn apply_checked(&mut self, _operation: &str, _input: &[u8], _guard: &InputGuard) -> Applied {
+        Applied::Refused("unsupported_feature")
+    }
 }
 
 /// Synthetic pointer/keyboard device. It counts applied inputs.
@@ -178,6 +196,17 @@ pub struct SyntheticDevice {
 impl Device for SyntheticDevice {
     fn state(&self) -> (u64, u64) {
         (self.generation, self.focus)
+    }
+    fn apply_checked(&mut self, operation: &str, input: &[u8], guard: &InputGuard) -> Applied {
+        if std::time::Instant::now() >= guard.deadline
+            || self.state() != (guard.generation, guard.focus)
+        {
+            return Applied::Refused("stale");
+        }
+        if !guard.preconditions.is_empty() {
+            return Applied::Refused("unsupported_feature");
+        }
+        self.apply(operation, input)
     }
     fn apply(&mut self, operation: &str, input: &[u8]) -> Applied {
         self.applied.push(input.to_vec());

@@ -701,3 +701,91 @@ fn replacement_plans_advance_the_epoch_and_fence_old_admissions() {
     let c2 = fx2.controller();
     assert_eq!(fx2.send(&c2, OWNER, &body)["reason"], "stale");
 }
+
+#[test]
+fn input_checks_at_the_native_boundary_and_never_falls_back_to_unchecked_input() {
+    use crate::media::{Applied, Device, InputGuard};
+    use std::{cell::RefCell, rc::Rc};
+    struct Racing(Rc<RefCell<SyntheticDevice>>);
+    impl Device for Racing {
+        fn state(&self) -> (u64, u64) {
+            self.0.borrow().state()
+        }
+        fn apply(&mut self, _operation: &str, _input: &[u8]) -> Applied {
+            panic!("unchecked input")
+        }
+        fn apply_checked(&mut self, operation: &str, input: &[u8], guard: &InputGuard) -> Applied {
+            let mut device = self.0.borrow_mut();
+            device.focus += 1;
+            device.apply_checked(operation, input, guard)
+        }
+    }
+    struct Unchecked;
+    impl Device for Unchecked {
+        fn state(&self) -> (u64, u64) {
+            (0, 0)
+        }
+        fn apply(&mut self, _operation: &str, _input: &[u8]) -> Applied {
+            panic!("unchecked input")
+        }
+    }
+    for racing in [false, true] {
+        let mut fx = Fx::new();
+        let c = fx.controller();
+        fx.active(&c);
+        let observation = fx.capture(&c, "screen", "observation")["value"].clone();
+        let device = Rc::new(RefCell::new(SyntheticDevice::default()));
+        c.with_adapters(|a| {
+            a.device = if racing {
+                Box::new(Racing(device.clone()))
+            } else {
+                Box::new(Unchecked)
+            }
+        });
+        let (proposal, action) = proposal(&mut fx, &c, &observation, br#"{"click":[10,20]}"#);
+        let body = admission(&mut fx, &c, &proposal, &action, b"approval");
+        let result = fx.send(&c, OWNER, &body);
+        assert_eq!(result["status"], "refused", "{result}");
+        let outcome = c.store().json(&result["value"]).unwrap();
+        assert_eq!(outcome["dispatched"], false);
+        assert_eq!(outcome["outcome"], "refused");
+        assert_eq!(
+            outcome["reason"],
+            if racing {
+                "stale"
+            } else {
+                "unsupported_feature"
+            }
+        );
+        let _ = fx.send(&c, OWNER, &body);
+        assert!(device.borrow().applied.is_empty());
+        assert_eq!(device.borrow().focus, if racing { 1 } else { 0 });
+    }
+}
+
+#[test]
+fn device_input_cannot_refresh_a_capture_clock_by_restart_or_wall_time() {
+    for restart in [false, true] {
+        let mut fx = Fx::new();
+        let c = fx.controller();
+        fx.active(&c);
+        let observation = fx.capture(&c, "screen", "observation")["value"].clone();
+        let (proposal, action) = proposal(&mut fx, &c, &observation, br#"{"click":[10,20]}"#);
+        let c = if restart {
+            drop(c);
+            fx.controller()
+        } else {
+            for clock in c.capture_clocks.borrow_mut().values_mut() {
+                *clock = std::time::Instant::now() - std::time::Duration::from_secs(31);
+            }
+            c
+        };
+        let body = admission(&mut fx, &c, &proposal, &action, b"approval");
+        let result = fx.send(&c, OWNER, &body);
+        assert_eq!(result["status"], "refused", "{result}");
+        assert_eq!(
+            result["reason"],
+            if restart { "cannot_enforce" } else { "stale" }
+        );
+    }
+}
