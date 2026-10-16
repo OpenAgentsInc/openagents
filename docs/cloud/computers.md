@@ -165,3 +165,7 @@ Warm pool, activity-based suspend beyond the idle bound, billing, the
 own-machine and Pylon drivers, Kubernetes agent-sandbox and production SPACE
 support, signed enrollment for cloud computers (see the design's build
 order).
+
+The [SPACE integration roadmap](space-integration-roadmap.md) defines the
+remaining work and acceptance checks for a supported SPACE backend alongside
+Boat.

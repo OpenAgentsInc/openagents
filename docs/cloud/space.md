@@ -6,6 +6,10 @@ defines the measured spike. SPACE runs as a separate service, pinned to
 [`de87b436`](https://github.com/perplexityai/SPACE/commit/de87b436c35dac056564bdd5b2a113c9046e189b).
 Production continues to use Boat.
 
+The [integration roadmap](space-integration-roadmap.md) details the remaining
+API, environment, lifecycle, credential, GCloud, accounting, and rollout work
+needed for first-class production support.
+
 ## Measured result
 
 The [2026-10-15 evidence](evidence/2026-10-space-spike.json) records twenty
