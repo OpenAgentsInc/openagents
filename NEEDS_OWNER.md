@@ -1,3 +1,12 @@
+## Review the Blue Rush sand garden before publishing (#11834)
+
+The editor and shared gallery are on `main` in `73130597ad`. Review them at
+`http://127.0.0.1:4390/studios/blue-rush#garden`; production stays unchanged
+at the owner's request. Production image build
+`1d411e0f-8e48-45eb-985d-74933cbdf0da` uses tag `sand-73130597ad`.
+After review, check that build and deploy its image with the normal website
+promotion process.
+
 ## Qualify a paid labor order between separately run parties (#11748)
 
 Labor orders with a separate worker, reviewer, buyer and dispute resolver
