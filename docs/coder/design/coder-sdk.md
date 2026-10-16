@@ -401,6 +401,28 @@ it runs. A background Codex agent with full access uses app-server too;
 start, and for read-only and workspace-write runs, whose sandbox Codex
 enforces itself.
 
+`coder_sdk::codex::managed` (#11859) provides a separate explicit I/O port for
+managed-session hosts. Reads return original frames, correlated native replies,
+notifications, or pending permission requests. They never send a permission
+reply, steering, or another turn. Callers save their delivery intent and hold
+their own admission through each write; a queued control is not a native
+acknowledgment. Permission replies cover one unchanged request on its original
+connection. Partial writes and lost acknowledgments cannot repeat delivery;
+later reads can observe a matching acknowledgment. Required-method faults stay
+faulted even after terminal evidence.
+
+The port bounds frames to 1 MiB, captured frames to 4 MiB and 256 entries,
+outstanding calls and reverse requests to 16 each, and answered reverse IDs to
+256 per turn. One call slot is reserved for stopping. A stop request blocks new
+input; its acknowledgment does not replace native terminal evidence. The port
+preserves partial reads across cancellation, rejects duplicate
+JSON keys, and exposes incomplete captures without discarding their bytes.
+Raw captures stay private and need the caller's disclosure policy; debug output
+shows no message contents. This port owns no process, credentials, environment,
+or budget. It does not by itself implement a NIP-SESS engine or enforce native
+configuration options. Existing hook-driven Codex sessions keep their current
+interface.
+
 Built (#11508): every ACP agent the ACP Subagents plugin delegates to runs
 on `coder_sdk::acp`, with the same hooks as Codex (`sdk_hooks::acp`: the
 fence, the floors, the gate and conditional context when Token savers is

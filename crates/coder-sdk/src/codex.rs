@@ -45,6 +45,8 @@ use super::outcome::{Context, Permission, Stop};
 use super::registry::Registry;
 use super::tools::ToolServer;
 
+pub mod managed;
+
 /// The approval policy a Coder thread runs under: Codex asks before every
 /// call it doesn't know to be safe, and the hooks answer.
 pub const APPROVAL_POLICY: &str = "untrusted";
