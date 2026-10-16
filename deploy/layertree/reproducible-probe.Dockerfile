@@ -24,7 +24,7 @@ ARG SOURCE_COMMIT
 LABEL org.opencontainers.image.source="https://github.com/OpenAgentsInc/openagents" \
     org.opencontainers.image.revision="${SOURCE_COMMIT}" \
     tee.launch_policy.log_redirect="always" \
-    tee.launch_policy.allow_env_override="[\"LAYERTREE_SEALED_BLOB\"]"
+    tee.launch_policy.allow_env_override="LAYERTREE_SEALED_BLOB"
 COPY --from=builder /attestation_probe /usr/local/bin/attestation_probe
 USER 65532:65532
 ENTRYPOINT ["/usr/local/bin/attestation_probe"]

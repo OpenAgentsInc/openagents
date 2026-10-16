@@ -22,7 +22,7 @@ use super::{Config, Enclave};
 use crate::attest::report_data;
 
 const SCHEMA: &str = "openagents.layertree.sealed-key.v1";
-const KMS_KEY: &str = "projects/openagentsgemini/locations/us-central1/keyRings/layertree-signet/cryptoKeys/enclave-envelope";
+const KMS_KEY: &str = "projects/openagentsgemini/locations/us-central1/keyRings/layertree-signet/cryptoKeys/enclave-envelope-v2";
 const PROVIDER: &str = "//iam.googleapis.com/projects/157437760789/locations/global/workloadIdentityPools/layertree-signet/providers/attestation-verifier";
 const CRC: crc::Crc<u32> = crc::Crc::<u32>::new(&crc::CRC_32_ISCSI);
 type Result<T> = std::result::Result<T, &'static str>;

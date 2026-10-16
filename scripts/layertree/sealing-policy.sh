@@ -3,7 +3,7 @@
 set -euo pipefail
 project=openagentsgemini
 keyring=layertree-signet
-key=enclave-envelope
+key=enclave-envelope-v2
 pool=layertree-signet
 region=us-central1
 case ${1:-} in
