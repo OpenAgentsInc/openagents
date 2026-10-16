@@ -8,7 +8,13 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
         case folder(String)
         case session(String)
         case header(String)
+        case savedChat(String)
+        case savedControl(SavedControl)
     }
+
+    enum SavedControl: Hashable { case refresh, archived, projects, more, myChats, login, notice }
+    var showsSavedChats: Bool { false }
+    private var savedRows: [String: SavedChatRow] = [:]
 
     let app: AppModel
     var collectionView: UICollectionView!
@@ -64,6 +70,27 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
             cell.isCurrent = id == self.currentChatId
             cell.accessories = self.reorderable ? [.reorder(displayed: .whenEditing)] : []
         }
+        let savedReg = UICollectionView.CellRegistration<UICollectionViewListCell, String> { [weak self] cell, _, id in
+            guard let row = self?.savedRows[id] else { return }
+            var c = UIListContentConfiguration.subtitleCell()
+            c.text = row.title
+            c.secondaryText = row.group + " · " + row.subtitle
+            c.textProperties.numberOfLines = 1
+            c.textProperties.color = Palette.text
+            c.secondaryTextProperties.color = Palette.secondary
+            cell.contentConfiguration = c
+            cell.accessories = [.disclosureIndicator()]
+            cell.accessibilityIdentifier = "saved-chat-" + id
+        }
+        let savedControlReg = UICollectionView.CellRegistration<UICollectionViewListCell, SavedControl> { [weak self] cell, _, item in
+            var c = UIListContentConfiguration.cell()
+            c.text = self?.savedControlTitle(item)
+            c.textProperties.color = item == .notice ? Palette.secondary : Palette.accent
+            c.textProperties.numberOfLines = 0
+            cell.contentConfiguration = c
+            cell.accessories = []
+            cell.accessibilityIdentifier = "saved-" + String(describing: item)
+        }
         let folderReg = UICollectionView.CellRegistration<FolderCell, String> { [weak self] cell, _, id in
             guard let vm = self?.folders[id] else { return }
             cell.configure(vm)
@@ -86,6 +113,8 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
         dataSource = UICollectionViewDiffableDataSource(collectionView: collectionView) { [weak self] cv, path, item in
             switch item {
             case let .session(id): cv.dequeueConfiguredReusableCell(using: sessionReg, for: path, item: id)
+            case let .savedChat(id): cv.dequeueConfiguredReusableCell(using: savedReg, for: path, item: id)
+            case let .savedControl(item): cv.dequeueConfiguredReusableCell(using: savedControlReg, for: path, item: item)
             case let .folder(id): cv.dequeueConfiguredReusableCell(using: folderReg, for: path, item: id)
             case let .header(id) where self?.collapsible == true: cv.dequeueConfiguredReusableCell(using: sectionReg, for: path, item: id)
             case let .header(id): cv.dequeueConfiguredReusableCell(using: headerReg, for: path, item: id)
@@ -155,6 +184,8 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
             }
             snapshot.appendItems(items, toSection: s.id)
         }
+        appendSavedChats(to: &snapshot)
+        changed += snapshot.itemIdentifiers.filter { if case .header("oa-saved-history") = $0 { return dataSource.snapshot().itemIdentifiers.contains($0) }; if case .savedChat = $0 { return dataSource.snapshot().itemIdentifiers.contains($0) }; if case .savedControl = $0 { return dataSource.snapshot().itemIdentifiers.contains($0) }; return false }
         sessions = nextSessions
         folders = nextFolders
         let present = Set(snapshot.itemIdentifiers)
@@ -169,6 +200,62 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
         listDidScroll(scrollView)
     }
 
+    private func appendSavedChats(to snapshot: inout NSDiffableDataSourceSnapshot<String, Item>) {
+        savedRows = [:]
+        guard showsSavedChats, let state = app.savedSnapshot, state.signedIn else { return }
+        let section = "oa-saved-history"
+        snapshot.appendSections([section])
+        headers[section] = "OpenAgents chats"
+        headerStates[section] = .init(id: section, title: "OpenAgents chats", count: state.rows.count, collapsed: collapsed.contains(section), live: nil)
+        snapshot.appendItems([.header(section)], toSection: section)
+        guard !collapsed.contains(section) else { return }
+        var controls: [Item] = [.savedControl(.refresh), .savedControl(.archived), .savedControl(.projects)]
+        if state.hasMore { controls.append(.savedControl(.more)) }
+        if state.project != nil { controls.append(.savedControl(.myChats)) }
+        if state.loginRequired { controls.append(.savedControl(.login)) }
+        snapshot.appendItems(controls, toSection: section)
+        savedRows = Dictionary(uniqueKeysWithValues: state.rows.map { ($0.id, $0) })
+        snapshot.appendItems(state.rows.map { .savedChat($0.id) }, toSection: section)
+        if case .loading = state.state { snapshot.appendItems([.savedControl(.notice)], toSection: section) }
+        else if case .failed = state.state { snapshot.appendItems([.savedControl(.notice)], toSection: section) }
+        else if state.rows.isEmpty { snapshot.appendItems([.savedControl(.notice)], toSection: section) }
+
+    }
+
+    private func savedControlTitle(_ item: SavedControl) -> String {
+        switch item {
+        case .refresh: return "Refresh chats"
+        case .archived: return app.savedSnapshot?.archived == true ? "Active chats" : "Archived chats"
+        case .projects: return "Shared projects"
+        case .more: return "Load more chats"
+        case .myChats: return "My chats"
+        case .login: return "Sign in again"
+        case .notice:
+            if let state = app.savedSnapshot?.state {
+                switch state {
+                case .loading: return "Loading chats…"
+                case let .failed(message, stale): return (stale ? "Couldn’t refresh. Showing saved results.\n" : "") + message
+                default: break
+                }
+            }
+            return "No chats here yet."
+        }
+    }
+
+    private func savedControl(_ item: SavedControl) {
+        do {
+            switch item {
+            case .refresh: try app.savedHistory?.action(action: .refreshChats)
+            case .archived: try app.savedHistory?.action(action: .toggleArchived)
+            case .more: try app.savedHistory?.action(action: .moreChats)
+            case .myChats: try app.savedHistory?.action(action: .selectProject(id: nil))
+            case .projects: navigationController?.pushViewController(SavedProjectsController(app: app), animated: true)
+            case .login: app.restoreAccount()
+            case .notice: break
+            }
+        } catch { Toast.show("Couldn’t load your chats. Try again.", in: view.window) }
+    }
+
     // MARK: Navigation
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
@@ -178,6 +265,13 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
             openSession(id)
         case let .folder(id):
             openFolder(id)
+        case let .savedChat(id):
+            do {
+                try app.savedHistory?.action(action: .open(id: id))
+                navigationController?.pushViewController(SavedTranscriptController(app: app), animated: true)
+            } catch { Toast.show("Couldn’t open this chat. Refresh and try again.", in: view.window) }
+        case let .savedControl(control):
+            savedControl(control)
         case let .header(id) where collapsible:
             toggleSection(id)
         default:
@@ -186,6 +280,7 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
     }
 
     func collectionView(_ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath) -> Bool {
+        if case .savedControl(.notice) = dataSource.itemIdentifier(for: indexPath) { return false }
         if case .header = dataSource.itemIdentifier(for: indexPath) { return collapsible }
         return true
     }
@@ -333,6 +428,7 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
 /// sections inline as foldable groups, then everything else under Recent.
 /// Fold state persists; long-press a header for its actions.
 class SessionsViewController: SessionListController {
+    override var showsSavedChats: Bool { true }
     /// Search from the iPad sidebar: non-empty shows matches instead of sections.
     var query = "" { didSet { if query != oldValue { reload(animated: true) } } }
 

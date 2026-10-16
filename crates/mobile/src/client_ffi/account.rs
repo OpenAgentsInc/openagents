@@ -147,6 +147,18 @@ impl CoreAccount {
 }
 #[uniffi::export]
 impl CoreAccount {
+    /// Read the same account history as the desktop without starting an engine.
+    pub fn saved_history(
+        &self,
+        listener: Arc<dyn super::SavedHistoryListener>,
+    ) -> CoreResult<Arc<super::CoreSavedHistory>> {
+        let lease = self.controller.lease().ok_or_else(auth_error)?;
+        Ok(super::CoreSavedHistory::new(
+            lease,
+            self.controller.watch(),
+            listener,
+        ))
+    }
     #[uniffi::constructor]
     pub fn new(
         data_dir: String,

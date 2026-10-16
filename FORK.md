@@ -290,3 +290,13 @@ advancing the server conformance pin.
 - Upload is a separate, explicitly authorized operation; archive preparation
   continues to stop before export or upload. Active worktrees, the owner’s
   desktop app, and its data are outside the release workflow.
+
+## Account chats on the phone (#11851)
+
+The Sessions list includes **OpenAgents chats**, using the desktop's public
+SDK history and account-bound reader. Rust shares ordering, explicit paging,
+full text parts, and on-demand file access; UIKit draws the controls. Local
+Coder sessions stay separate. Sign-out clears both views. Run
+`scripts/ios/check-history.py` for the isolated native paging, file, archive,
+project, and sign-out check; `--public-history` accepts only disposable chat
+IDs supplied by the monorepo's `scripts/smoke/sdk-history.py`.

@@ -1233,6 +1233,11 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
      */
     func revalidate() 
     
+    /**
+     * Read the same account history as the desktop without starting an engine.
+     */
+    func savedHistory(listener: SavedHistoryListener) throws  -> CoreSavedHistory
+    
     func signIn(deviceName: String) 
     
     /**
@@ -1365,6 +1370,19 @@ open func revalidate()  {try! rustCall() {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * Read the same account history as the desktop without starting an engine.
+     */
+open func savedHistory(listener: SavedHistoryListener)throws  -> CoreSavedHistory  {
+    return try  FfiConverterTypeCoreSavedHistory_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreaccount_saved_history(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeSavedHistoryListener_lower(listener),uniffiCallStatus
+    )
+})
 }
     
 open func signIn(deviceName: String)  {try! rustCall() {
@@ -2562,6 +2580,180 @@ public func FfiConverterTypeCoreClient_lower(_ value: CoreClient) -> UInt64 {
 
 
 
+public protocol CoreSavedHistoryProtocol: AnyObject, Sendable {
+    
+    func action(action: SavedHistoryAction) throws 
+    
+    func downloadedFile() throws  -> SavedFileBytes
+    
+    func downloadedFilePart(part: UInt64) throws  -> SavedFilePart
+    
+    func message(id: String, part: UInt64) throws  -> SavedMessagePart
+    
+    func shutdown() 
+    
+    func snapshot()  -> SavedHistorySnapshot
+    
+}
+open class CoreSavedHistory: CoreSavedHistoryProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_zeron_mobile_fn_clone_coresavedhistory(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_zeron_mobile_fn_free_coresavedhistory(handle, $0) }
+    }
+
+    
+
+    
+open func action(action: SavedHistoryAction)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coresavedhistory_action(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeSavedHistoryAction_lower(action),uniffiCallStatus
+    )
+}
+}
+    
+open func downloadedFile()throws  -> SavedFileBytes  {
+    return try  FfiConverterTypeSavedFileBytes_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coresavedhistory_downloaded_file(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func downloadedFilePart(part: UInt64)throws  -> SavedFilePart  {
+    return try  FfiConverterTypeSavedFilePart_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coresavedhistory_downloaded_file_part(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(part),uniffiCallStatus
+    )
+})
+}
+    
+open func message(id: String, part: UInt64)throws  -> SavedMessagePart  {
+    return try  FfiConverterTypeSavedMessagePart_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coresavedhistory_message(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),
+        FfiConverterUInt64.lower(part),uniffiCallStatus
+    )
+})
+}
+    
+open func shutdown()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coresavedhistory_shutdown(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func snapshot() -> SavedHistorySnapshot  {
+    return try!  FfiConverterTypeSavedHistorySnapshot_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coresavedhistory_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreSavedHistory: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreSavedHistory
+
+    public static func lift(_ handle: UInt64) throws -> CoreSavedHistory {
+        return CoreSavedHistory(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreSavedHistory) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreSavedHistory {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreSavedHistory, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreSavedHistory_lift(_ handle: UInt64) throws -> CoreSavedHistory {
+    return try FfiConverterTypeCoreSavedHistory.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreSavedHistory_lower(_ value: CoreSavedHistory) -> UInt64 {
+    return FfiConverterTypeCoreSavedHistory.lower(value)
+}
+
+
+
+
+
+
 /**
  * An immutable, fully measured transcript at one width.
  */
@@ -3525,6 +3717,201 @@ public func FfiConverterTypePlatformMeasurer_lift(_ handle: UInt64) throws -> Pl
 #endif
 public func FfiConverterTypePlatformMeasurer_lower(_ value: PlatformMeasurer) -> UInt64 {
     return FfiConverterTypePlatformMeasurer.lower(value)
+}
+
+
+
+
+
+
+public protocol SavedHistoryListener: AnyObject, Sendable {
+    
+    func onSavedHistoryChanged() 
+    
+}
+open class SavedHistoryListenerImpl: SavedHistoryListener, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_zeron_mobile_fn_clone_savedhistorylistener(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_zeron_mobile_fn_free_savedhistorylistener(handle, $0) }
+    }
+
+    
+
+    
+open func onSavedHistoryChanged()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_savedhistorylistener_on_saved_history_changed(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceSavedHistoryListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceSavedHistoryListener = UniffiVTableCallbackInterfaceSavedHistoryListener(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeSavedHistoryListener.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface SavedHistoryListener: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeSavedHistoryListener.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface SavedHistoryListener: handle missing in uniffiClone")
+            }
+        },
+        onSavedHistoryChanged: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeSavedHistoryListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onSavedHistoryChanged(
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceSavedHistoryListener> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceSavedHistoryListener>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitSavedHistoryListener() {
+    uniffi_zeron_mobile_fn_init_callback_vtable_savedhistorylistener(UniffiCallbackInterfaceSavedHistoryListener.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedHistoryListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<SavedHistoryListener>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = SavedHistoryListener
+
+    public static func lift(_ handle: UInt64) throws -> SavedHistoryListener {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return SavedHistoryListenerImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: SavedHistoryListener) -> UInt64 {
+         if let rustImpl = value as? SavedHistoryListenerImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedHistoryListener {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: SavedHistoryListener, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedHistoryListener_lift(_ handle: UInt64) throws -> SavedHistoryListener {
+    return try FfiConverterTypeSavedHistoryListener.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedHistoryListener_lower(_ value: SavedHistoryListener) -> UInt64 {
+    return FfiConverterTypeSavedHistoryListener.lower(value)
 }
 
 
@@ -9309,6 +9696,608 @@ public func FfiConverterTypeRowPlacement_lower(_ value: RowPlacement) -> RustBuf
 }
 
 
+public struct SavedAttachment: Equatable, Hashable {
+    public var key: String
+    public var name: String
+    public var available: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(key: String, name: String, available: Bool) {
+        self.key = key
+        self.name = name
+        self.available = available
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedAttachment: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedAttachment: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedAttachment {
+        return
+            try SavedAttachment(
+                key: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                available: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedAttachment, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.available, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedAttachment_lift(_ buf: RustBuffer) throws -> SavedAttachment {
+    return try FfiConverterTypeSavedAttachment.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedAttachment_lower(_ value: SavedAttachment) -> RustBuffer {
+    return FfiConverterTypeSavedAttachment.lower(value)
+}
+
+
+public struct SavedChatRow: Equatable, Hashable {
+    public var id: String
+    public var title: String
+    public var subtitle: String
+    public var group: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String, subtitle: String, group: String) {
+        self.id = id
+        self.title = title
+        self.subtitle = subtitle
+        self.group = group
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedChatRow: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedChatRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedChatRow {
+        return
+            try SavedChatRow(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                subtitle: FfiConverterString.read(from: &buf), 
+                group: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedChatRow, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.subtitle, into: &buf)
+        FfiConverterString.write(value.group, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedChatRow_lift(_ buf: RustBuffer) throws -> SavedChatRow {
+    return try FfiConverterTypeSavedChatRow.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedChatRow_lower(_ value: SavedChatRow) -> RustBuffer {
+    return FfiConverterTypeSavedChatRow.lower(value)
+}
+
+
+public struct SavedFileBytes: Equatable, Hashable {
+    public var name: String
+    public var bytes: Data
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, bytes: Data) {
+        self.name = name
+        self.bytes = bytes
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedFileBytes: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedFileBytes: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedFileBytes {
+        return
+            try SavedFileBytes(
+                name: FfiConverterString.read(from: &buf), 
+                bytes: FfiConverterData.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedFileBytes, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterData.write(value.bytes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedFileBytes_lift(_ buf: RustBuffer) throws -> SavedFileBytes {
+    return try FfiConverterTypeSavedFileBytes.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedFileBytes_lower(_ value: SavedFileBytes) -> RustBuffer {
+    return FfiConverterTypeSavedFileBytes.lower(value)
+}
+
+
+public struct SavedFilePart: Equatable, Hashable {
+    public var text: String?
+    public var part: UInt64
+    public var parts: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(text: String?, part: UInt64, parts: UInt64) {
+        self.text = text
+        self.part = part
+        self.parts = parts
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedFilePart: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedFilePart: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedFilePart {
+        return
+            try SavedFilePart(
+                text: FfiConverterOptionString.read(from: &buf), 
+                part: FfiConverterUInt64.read(from: &buf), 
+                parts: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedFilePart, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.text, into: &buf)
+        FfiConverterUInt64.write(value.part, into: &buf)
+        FfiConverterUInt64.write(value.parts, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedFilePart_lift(_ buf: RustBuffer) throws -> SavedFilePart {
+    return try FfiConverterTypeSavedFilePart.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedFilePart_lower(_ value: SavedFilePart) -> RustBuffer {
+    return FfiConverterTypeSavedFilePart.lower(value)
+}
+
+
+public struct SavedHistorySnapshot: Equatable, Hashable {
+    public var signedIn: Bool
+    public var loginRequired: Bool
+    public var archived: Bool
+    public var project: String?
+    public var rows: [SavedChatRow]
+    public var projects: [SavedProjectRow]
+    public var hasMore: Bool
+    public var moreProjects: Bool
+    public var state: SavedLoadState
+    public var projectsState: SavedLoadState
+    public var transcript: SavedTranscript
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(signedIn: Bool, loginRequired: Bool, archived: Bool, project: String?, rows: [SavedChatRow], projects: [SavedProjectRow], hasMore: Bool, moreProjects: Bool, state: SavedLoadState, projectsState: SavedLoadState, transcript: SavedTranscript) {
+        self.signedIn = signedIn
+        self.loginRequired = loginRequired
+        self.archived = archived
+        self.project = project
+        self.rows = rows
+        self.projects = projects
+        self.hasMore = hasMore
+        self.moreProjects = moreProjects
+        self.state = state
+        self.projectsState = projectsState
+        self.transcript = transcript
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedHistorySnapshot: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedHistorySnapshot: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedHistorySnapshot {
+        return
+            try SavedHistorySnapshot(
+                signedIn: FfiConverterBool.read(from: &buf), 
+                loginRequired: FfiConverterBool.read(from: &buf), 
+                archived: FfiConverterBool.read(from: &buf), 
+                project: FfiConverterOptionString.read(from: &buf), 
+                rows: FfiConverterSequenceTypeSavedChatRow.read(from: &buf), 
+                projects: FfiConverterSequenceTypeSavedProjectRow.read(from: &buf), 
+                hasMore: FfiConverterBool.read(from: &buf), 
+                moreProjects: FfiConverterBool.read(from: &buf), 
+                state: FfiConverterTypeSavedLoadState.read(from: &buf), 
+                projectsState: FfiConverterTypeSavedLoadState.read(from: &buf), 
+                transcript: FfiConverterTypeSavedTranscript.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedHistorySnapshot, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.signedIn, into: &buf)
+        FfiConverterBool.write(value.loginRequired, into: &buf)
+        FfiConverterBool.write(value.archived, into: &buf)
+        FfiConverterOptionString.write(value.project, into: &buf)
+        FfiConverterSequenceTypeSavedChatRow.write(value.rows, into: &buf)
+        FfiConverterSequenceTypeSavedProjectRow.write(value.projects, into: &buf)
+        FfiConverterBool.write(value.hasMore, into: &buf)
+        FfiConverterBool.write(value.moreProjects, into: &buf)
+        FfiConverterTypeSavedLoadState.write(value.state, into: &buf)
+        FfiConverterTypeSavedLoadState.write(value.projectsState, into: &buf)
+        FfiConverterTypeSavedTranscript.write(value.transcript, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedHistorySnapshot_lift(_ buf: RustBuffer) throws -> SavedHistorySnapshot {
+    return try FfiConverterTypeSavedHistorySnapshot.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedHistorySnapshot_lower(_ value: SavedHistorySnapshot) -> RustBuffer {
+    return FfiConverterTypeSavedHistorySnapshot.lower(value)
+}
+
+
+public struct SavedMessagePart: Equatable, Hashable {
+    public var role: String
+    public var text: String
+    public var part: UInt64
+    public var parts: UInt64
+    public var files: [SavedAttachment]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(role: String, text: String, part: UInt64, parts: UInt64, files: [SavedAttachment]) {
+        self.role = role
+        self.text = text
+        self.part = part
+        self.parts = parts
+        self.files = files
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedMessagePart: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedMessagePart: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedMessagePart {
+        return
+            try SavedMessagePart(
+                role: FfiConverterString.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf), 
+                part: FfiConverterUInt64.read(from: &buf), 
+                parts: FfiConverterUInt64.read(from: &buf), 
+                files: FfiConverterSequenceTypeSavedAttachment.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedMessagePart, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.role, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterUInt64.write(value.part, into: &buf)
+        FfiConverterUInt64.write(value.parts, into: &buf)
+        FfiConverterSequenceTypeSavedAttachment.write(value.files, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedMessagePart_lift(_ buf: RustBuffer) throws -> SavedMessagePart {
+    return try FfiConverterTypeSavedMessagePart.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedMessagePart_lower(_ value: SavedMessagePart) -> RustBuffer {
+    return FfiConverterTypeSavedMessagePart.lower(value)
+}
+
+
+public struct SavedMessageRow: Equatable, Hashable {
+    public var id: String
+    public var role: String
+    public var preview: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, role: String, preview: String) {
+        self.id = id
+        self.role = role
+        self.preview = preview
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedMessageRow: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedMessageRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedMessageRow {
+        return
+            try SavedMessageRow(
+                id: FfiConverterString.read(from: &buf), 
+                role: FfiConverterString.read(from: &buf), 
+                preview: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedMessageRow, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.role, into: &buf)
+        FfiConverterString.write(value.preview, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedMessageRow_lift(_ buf: RustBuffer) throws -> SavedMessageRow {
+    return try FfiConverterTypeSavedMessageRow.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedMessageRow_lower(_ value: SavedMessageRow) -> RustBuffer {
+    return FfiConverterTypeSavedMessageRow.lower(value)
+}
+
+
+public struct SavedProjectRow: Equatable, Hashable {
+    public var id: String
+    public var name: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedProjectRow: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedProjectRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedProjectRow {
+        return
+            try SavedProjectRow(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedProjectRow, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedProjectRow_lift(_ buf: RustBuffer) throws -> SavedProjectRow {
+    return try FfiConverterTypeSavedProjectRow.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedProjectRow_lower(_ value: SavedProjectRow) -> RustBuffer {
+    return FfiConverterTypeSavedProjectRow.lower(value)
+}
+
+
+public struct SavedTranscript: Equatable, Hashable {
+    public var title: String?
+    public var messages: [SavedMessageRow]
+    public var captures: [SavedAttachment]
+    public var first: UInt64
+    public var received: UInt64
+    public var hasMore: Bool
+    public var continueRequired: Bool
+    public var smallerPage: Bool
+    public var reloadRequired: Bool
+    public var loginRequired: Bool
+    public var accessLost: Bool
+    public var state: SavedLoadState
+    public var downloadName: String?
+    public var downloadState: SavedLoadState
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(title: String?, messages: [SavedMessageRow], captures: [SavedAttachment], first: UInt64, received: UInt64, hasMore: Bool, continueRequired: Bool, smallerPage: Bool, reloadRequired: Bool, loginRequired: Bool, accessLost: Bool, state: SavedLoadState, downloadName: String?, downloadState: SavedLoadState) {
+        self.title = title
+        self.messages = messages
+        self.captures = captures
+        self.first = first
+        self.received = received
+        self.hasMore = hasMore
+        self.continueRequired = continueRequired
+        self.smallerPage = smallerPage
+        self.reloadRequired = reloadRequired
+        self.loginRequired = loginRequired
+        self.accessLost = accessLost
+        self.state = state
+        self.downloadName = downloadName
+        self.downloadState = downloadState
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedTranscript: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedTranscript: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedTranscript {
+        return
+            try SavedTranscript(
+                title: FfiConverterOptionString.read(from: &buf), 
+                messages: FfiConverterSequenceTypeSavedMessageRow.read(from: &buf), 
+                captures: FfiConverterSequenceTypeSavedAttachment.read(from: &buf), 
+                first: FfiConverterUInt64.read(from: &buf), 
+                received: FfiConverterUInt64.read(from: &buf), 
+                hasMore: FfiConverterBool.read(from: &buf), 
+                continueRequired: FfiConverterBool.read(from: &buf), 
+                smallerPage: FfiConverterBool.read(from: &buf), 
+                reloadRequired: FfiConverterBool.read(from: &buf), 
+                loginRequired: FfiConverterBool.read(from: &buf), 
+                accessLost: FfiConverterBool.read(from: &buf), 
+                state: FfiConverterTypeSavedLoadState.read(from: &buf), 
+                downloadName: FfiConverterOptionString.read(from: &buf), 
+                downloadState: FfiConverterTypeSavedLoadState.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedTranscript, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.title, into: &buf)
+        FfiConverterSequenceTypeSavedMessageRow.write(value.messages, into: &buf)
+        FfiConverterSequenceTypeSavedAttachment.write(value.captures, into: &buf)
+        FfiConverterUInt64.write(value.first, into: &buf)
+        FfiConverterUInt64.write(value.received, into: &buf)
+        FfiConverterBool.write(value.hasMore, into: &buf)
+        FfiConverterBool.write(value.continueRequired, into: &buf)
+        FfiConverterBool.write(value.smallerPage, into: &buf)
+        FfiConverterBool.write(value.reloadRequired, into: &buf)
+        FfiConverterBool.write(value.loginRequired, into: &buf)
+        FfiConverterBool.write(value.accessLost, into: &buf)
+        FfiConverterTypeSavedLoadState.write(value.state, into: &buf)
+        FfiConverterOptionString.write(value.downloadName, into: &buf)
+        FfiConverterTypeSavedLoadState.write(value.downloadState, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedTranscript_lift(_ buf: RustBuffer) throws -> SavedTranscript {
+    return try FfiConverterTypeSavedTranscript.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedTranscript_lower(_ value: SavedTranscript) -> RustBuffer {
+    return FfiConverterTypeSavedTranscript.lower(value)
+}
+
+
 /**
  * A horizontally scrolling viewport (code blocks, wide tables). Primitives
  * that reference it are positioned in its content coordinates, whose origin
@@ -13851,6 +14840,249 @@ public func FfiConverterTypeSandboxLevel_lower(_ value: SandboxLevel) -> RustBuf
 
 
 
+public enum SavedHistoryAction: Equatable, Hashable {
+    
+    case moreChats
+    case refreshChats
+    case toggleArchived
+    case moreProjects
+    case refreshProjects
+    case selectProject(id: String?
+    )
+    case `open`(id: String
+    )
+    case close
+    case moreMessages
+    case refreshMessages
+    case continueReading
+    case smallerPage
+    case download(key: String
+    )
+    case closeDownload
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SavedHistoryAction: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedHistoryAction: FfiConverterRustBuffer {
+    typealias SwiftType = SavedHistoryAction
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedHistoryAction {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .moreChats
+        
+        case 2: return .refreshChats
+        
+        case 3: return .toggleArchived
+        
+        case 4: return .moreProjects
+        
+        case 5: return .refreshProjects
+        
+        case 6: return .selectProject(id: try FfiConverterOptionString.read(from: &buf)
+        )
+        
+        case 7: return .`open`(id: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 8: return .close
+        
+        case 9: return .moreMessages
+        
+        case 10: return .refreshMessages
+        
+        case 11: return .continueReading
+        
+        case 12: return .smallerPage
+        
+        case 13: return .download(key: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 14: return .closeDownload
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SavedHistoryAction, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .moreChats:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .refreshChats:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .toggleArchived:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .moreProjects:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .refreshProjects:
+            writeInt(&buf, Int32(5))
+        
+        
+        case let .selectProject(id):
+            writeInt(&buf, Int32(6))
+            FfiConverterOptionString.write(id, into: &buf)
+            
+        
+        case let .`open`(id):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(id, into: &buf)
+            
+        
+        case .close:
+            writeInt(&buf, Int32(8))
+        
+        
+        case .moreMessages:
+            writeInt(&buf, Int32(9))
+        
+        
+        case .refreshMessages:
+            writeInt(&buf, Int32(10))
+        
+        
+        case .continueReading:
+            writeInt(&buf, Int32(11))
+        
+        
+        case .smallerPage:
+            writeInt(&buf, Int32(12))
+        
+        
+        case let .download(key):
+            writeInt(&buf, Int32(13))
+            FfiConverterString.write(key, into: &buf)
+            
+        
+        case .closeDownload:
+            writeInt(&buf, Int32(14))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedHistoryAction_lift(_ buf: RustBuffer) throws -> SavedHistoryAction {
+    return try FfiConverterTypeSavedHistoryAction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedHistoryAction_lower(_ value: SavedHistoryAction) -> RustBuffer {
+    return FfiConverterTypeSavedHistoryAction.lower(value)
+}
+
+
+
+
+public enum SavedLoadState: Equatable, Hashable {
+    
+    case idle
+    case loading
+    case ready
+    case failed(message: String, stale: Bool
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SavedLoadState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedLoadState: FfiConverterRustBuffer {
+    typealias SwiftType = SavedLoadState
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedLoadState {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .idle
+        
+        case 2: return .loading
+        
+        case 3: return .ready
+        
+        case 4: return .failed(message: try FfiConverterString.read(from: &buf), stale: try FfiConverterBool.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SavedLoadState, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .idle:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .loading:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .ready:
+            writeInt(&buf, Int32(3))
+        
+        
+        case let .failed(message,stale):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(message, into: &buf)
+            FfiConverterBool.write(stale, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedLoadState_lift(_ buf: RustBuffer) throws -> SavedLoadState {
+    return try FfiConverterTypeSavedLoadState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedLoadState_lower(_ value: SavedLoadState) -> RustBuffer {
+    return FfiConverterTypeSavedLoadState.lower(value)
+}
+
+
+
+
 public enum SearchField: Equatable, Hashable {
     
     case title
@@ -16752,6 +17984,106 @@ fileprivate struct FfiConverterSequenceTypeRowPlacement: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeSavedAttachment: FfiConverterRustBuffer {
+    typealias SwiftType = [SavedAttachment]
+
+    public static func write(_ value: [SavedAttachment], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSavedAttachment.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SavedAttachment] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SavedAttachment]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSavedAttachment.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeSavedChatRow: FfiConverterRustBuffer {
+    typealias SwiftType = [SavedChatRow]
+
+    public static func write(_ value: [SavedChatRow], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSavedChatRow.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SavedChatRow] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SavedChatRow]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSavedChatRow.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeSavedMessageRow: FfiConverterRustBuffer {
+    typealias SwiftType = [SavedMessageRow]
+
+    public static func write(_ value: [SavedMessageRow], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSavedMessageRow.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SavedMessageRow] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SavedMessageRow]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSavedMessageRow.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeSavedProjectRow: FfiConverterRustBuffer {
+    typealias SwiftType = [SavedProjectRow]
+
+    public static func write(_ value: [SavedProjectRow], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSavedProjectRow.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SavedProjectRow] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SavedProjectRow]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSavedProjectRow.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeScroller: FfiConverterRustBuffer {
     typealias SwiftType = [Scroller]
 
@@ -17794,6 +19126,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_zeron_mobile_checksum_method_coreaccount_revalidate() != 30946) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_zeron_mobile_checksum_method_coreaccount_saved_history() != 42767) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_zeron_mobile_checksum_method_coreaccount_sign_in() != 12969) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -17807,6 +19142,27 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_method_coreaccount_stored_login_present() != 30984) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coresavedhistory_action() != 49118) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coresavedhistory_downloaded_file() != 5968) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coresavedhistory_downloaded_file_part() != 47197) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coresavedhistory_message() != 12292) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coresavedhistory_shutdown() != 19879) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coresavedhistory_snapshot() != 26554) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_savedhistorylistener_on_saved_history_changed() != 22695) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_method_sessionhandle_begin_queued_edit() != 9014) {
@@ -18027,6 +19383,7 @@ private let initializationResult: InitializationResult = {
     uniffiCallbackInitClientListener()
     uniffiCallbackInitLayoutListener()
     uniffiCallbackInitPlatformMeasurer()
+    uniffiCallbackInitSavedHistoryListener()
     uniffiCallbackInitUploadProgress()
     uniffiCallbackInitVisualListener()
     uniffiCallbackInitVoiceMediaListener()

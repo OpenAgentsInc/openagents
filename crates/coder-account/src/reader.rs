@@ -493,3 +493,19 @@ fn message_bytes(m: &SavedMessage) -> usize {
             .fold(0usize, usize::saturating_add),
     )
 }
+
+/// Read a bounded UTF-8 part without losing characters at a boundary.
+pub fn text_part(text: &str, part: usize) -> (String, usize, usize) {
+    const SIZE: usize = 64 * 1024;
+    let count = text.len().div_ceil(SIZE).max(1);
+    let part = part.min(count - 1);
+    let mut start = (part * SIZE).min(text.len());
+    let mut end = ((part + 1) * SIZE).min(text.len());
+    while !text.is_char_boundary(start) {
+        start -= 1;
+    }
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    (text[start..end].to_owned(), count, part)
+}
