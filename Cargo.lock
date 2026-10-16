@@ -5935,10 +5935,12 @@ version = "1.0.0"
 dependencies = [
  "coder-ssh",
  "coordination-host",
+ "libc",
  "nostr",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tempfile",
  "workspace-host",
 ]

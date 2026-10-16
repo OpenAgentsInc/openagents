@@ -80,9 +80,45 @@ separate and does not count an identical receipt twice.
 - `ssh::SshEnvironments` maps the existing `coder-ssh` launcher. The remote
   account's records decide managed versus external: a managed host maps to a
   created resource; an external host is never relabeled as created. Destroy
-  stops only the recorded process; detach leaves the host running. The launcher
-  has no side-effect-free probe, so SSH adoption and lost-create lookup refuse
-  or stay unknown. Client exit and tunnel loss remain observational.
+  requires an atomic stop of the exact ownership generation. The legacy
+  launcher cannot enforce that condition, so this adapter refuses teardown
+  without calling its unguarded remove. Detach leaves the host running. SSH
+  adoption and lost-create lookup also refuse or stay unknown until a provider
+  supplies read-only observation. Client exit and tunnel loss remain
+  observational.
+
+`ssh_native::NativeSsh` is the Linux process provider. Install the standalone
+`env-host` helper on the SSH account and supply a private `RemoteConfig` with
+absolute `root`, `executable`, and `runtime` paths, the SSH `account`, fixed
+`arguments`, and the installed executable's `executable_digest`. The arguments
+must run the host in the foreground and select the configured runtime record.
+The helper starts that installed executable; it does not download a release.
+
+Run `env-host ssh-profile --config PRIVATE_CONFIG` on the account to get its
+configuration digest. The client's `ClientConfig` contains `destination`,
+absolute `helper` and `configuration` paths, and that `configuration_digest`.
+Use `--ssh-config CLIENT_CONFIG` in place of `--provider-root` for allocator
+commands. `ssh-observe --ssh-config CLIENT_CONFIG` observes an existing host
+without creating a lease or starting a process. Its exact ownership bytes can
+be supplied in an adopt request; adopted hosts are only detached.
+
+The remote book saves the create key before launch and the child's boot/start
+identity before exec. Lost-create lookup is read-only and never launches.
+Destroy holds the book lock, validates the full ownership generation, and
+signals a Linux process descriptor, so PID reuse cannot stop a replacement.
+An uncertain stop is only observed afterward. The private book keeps its
+terminal entries; it never removes another launcher's runtime record. Kernel
+support for process descriptors is required before create. Client exit and
+tunnel loss leave the process running.
+
+`ssh-profile` and `ssh-observe` return the native executable component and
+its ArtifactRef. Supply those exact descriptor bytes as the component, rather
+than uploading a large installed binary. Materialization checks the actual
+running executable against that descriptor's binary and configuration pins;
+arbitrary components refuse.
+Retained output files belong in the provider root's private `outputs`
+directory: at most 64 regular files and 128 KiB total. Unknown costs keep their
+holds. This profile does not enable arbitrary bootstrap or grant host access.
 
 `transport` publishes the allocator's exact native CAP, lock, context, and
 requirements. `invoke` signs a management CJ request using the caller's key;
@@ -130,7 +166,7 @@ The request must supply or already own every referenced artifact. A cached
 hash from another owner grants no access. Attachments also require the exact
 frame of the live COORD claim.
 
-Cloud-VM placement and complete SSH recovery remain in #11736. All fixtures
+Cloud-VM placement remains in #11736. All fixtures
 use throwaway keys, local directories, and fake allowance units; nothing here
 moves money.
 

@@ -998,6 +998,15 @@ mod ssh {
             Ok(self.host.clone())
         }
         fn remove(&mut self) -> Result<Removal, String> {
+            panic!("unguarded remove must never be called")
+        }
+        fn remove_exact(&mut self, resource: &Realized) -> Result<Removal, String> {
+            if self.host.ownership == Ownership::External {
+                return Ok(Removal::Detached { pid: self.host.pid });
+            }
+            if resource.generation != format!("{}:{}", self.host.version, self.host.pid) {
+                return Err("identity_mismatch: replacement host keeps running".into());
+            }
             Ok(self.removal)
         }
     }
@@ -1046,6 +1055,9 @@ mod ssh {
             Teardown::Confirmed(..)
         ));
         assert!(matches!(managed.lookup("dev@box", "k"), Lookup::Unknown(_)));
+        let mut replaced = realized.clone();
+        replaced.generation = "another-generation".into();
+        assert!(matches!(managed.destroy(&replaced), Teardown::Unknown(_)));
         let mut external = SshEnvironments::new(
             Fake {
                 host: host(Ownership::External, Start::Adopted),

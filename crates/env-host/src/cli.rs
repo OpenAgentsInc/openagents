@@ -21,6 +21,11 @@ pub const USAGE: &str = "usage: env-host ACTION --state DIR --key-file KEY [opti
   run          --provider-root DIR --coordinator-state DIR --coordinator-key-file KEY
                --worker-state DIR --worker-key-file KEY --input BUNDLE
   bootstrap-binding --provider-root DIR --input CONFIG
+  ssh-profile  --config PRIVATE_CONFIG   show the pinned remote configuration
+  ssh-observe  --ssh-config CLIENT_CONFIG   observe without starting a host
+  ssh-remote   --config PRIVATE_CONFIG   remote Linux provider helper
+  ssh-child    --config PRIVATE_CONFIG --request ID   internal detached child
+  Use --ssh-config CLIENT_CONFIG instead of --provider-root for native SSH.
   transport    --provider-root DIR       show the exact controller endpoint
   invoke       --input REQUEST          sign with the caller key; no state needed
   serve|recover --provider-root DIR --input BUNDLE";
@@ -63,6 +68,35 @@ pub fn run(args: Vec<String>) -> Result<Value> {
             .ok_or_else(|| format!("malformed: missing value for {name}"))
     };
     let action = args[0].as_str();
+    #[cfg(target_os = "linux")]
+    if matches!(action, "ssh-remote" | "ssh-child" | "ssh-profile") {
+        let owner = crate::ssh_native::RemoteOwner::open(PathBuf::from(option("--config")?))?;
+        if action == "ssh-profile" {
+            return Ok(owner.profile());
+        }
+        if action == "ssh-child" {
+            owner.child(&option("--request")?)?;
+            return Err("unavailable: host did not start".into());
+        }
+        use std::io::Read;
+        let mut bytes = Vec::new();
+        std::io::stdin()
+            .take(2 * 1048576 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        let input = nostr::contracts::parse_strict_bounded(&bytes, 2 * 1048576)
+            .map_err(|e| e.to_string())?;
+        return Ok(match owner.handle(&input) {
+            Ok(v) => v,
+            Err(e) => json!({"error":e}),
+        });
+    }
+    #[cfg(target_os = "linux")]
+    if action == "ssh-observe" {
+        let config = serde_json::from_value(json_file(&option("--ssh-config")?)?)
+            .map_err(|_| "malformed: SSH client configuration")?;
+        return crate::ssh_native::NativeSsh::new(config)?.observe();
+    }
     let secret = read_secret(Path::new(&option("--key-file")?))?;
     if action == "invoke" {
         let input = json_file(&option("--input")?)?;
@@ -83,8 +117,23 @@ pub fn run(args: Vec<String>) -> Result<Value> {
         Allocator::initialize(root, secret, policy)?;
         return Ok(json!({"created":true}));
     }
-    let provider = LocalDirectories::new(PathBuf::from(option("--provider-root")?))?;
-    let mut allocator = Allocator::open(root, secret, Box::new(provider))?;
+    let provider: Box<dyn crate::provider::Provider> = if args.iter().any(|a| a == "--ssh-config") {
+        #[cfg(target_os = "linux")]
+        {
+            let config = serde_json::from_value(json_file(&option("--ssh-config")?)?)
+                .map_err(|_| "malformed: SSH client configuration")?;
+            Box::new(crate::ssh_native::NativeSsh::new(config)?)
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            return Err("unsupported_feature: native SSH process provider requires Linux".into());
+        }
+    } else {
+        Box::new(LocalDirectories::new(PathBuf::from(option(
+            "--provider-root",
+        )?))?)
+    };
+    let mut allocator = Allocator::open(root, secret, provider)?;
     if args.iter().any(|a| a == "--coordinator-state") {
         allocator = allocator.with_claims(Box::new(coordination_host::book::Coordinator::open(
             PathBuf::from(option("--coordinator-state")?),

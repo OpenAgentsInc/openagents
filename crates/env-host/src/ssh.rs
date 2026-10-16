@@ -14,6 +14,11 @@ use serde_json::json;
 pub trait SshHosts {
     fn up(&mut self) -> std::result::Result<Host, String>;
     fn remove(&mut self) -> std::result::Result<Removal, String>;
+    /// Compare the full current ownership generation and stop that same process
+    /// atomically. A separate probe followed by `remove` cannot implement this.
+    fn remove_exact(&mut self, _resource: &Realized) -> std::result::Result<Removal, String> {
+        Err("cannot_enforce: the SSH launcher cannot stop an exact lease generation".into())
+    }
 }
 
 impl SshHosts for Launcher {
@@ -132,12 +137,12 @@ impl<H: SshHosts> Provider for SshEnvironments<H> {
             Ok(pid) => pid,
             Err(e) => return Teardown::Failed(e),
         };
-        match self.hosts.remove() {
+        match self.hosts.remove_exact(resource) {
             Ok(Removal::Stopped { pid }) if pid == expected => {
                 Teardown::Confirmed(self.receipt("destroy", resource, "stopped"), Cost::Unknown)
             }
             Ok(Removal::Stopped { pid }) => Teardown::Unknown(format!(
-                "a different managed host ({pid}) was stopped; the leased one is unaccounted"
+                "SSH provider violated the exact-generation stop contract ({pid})"
             )),
             Ok(Removal::Detached { .. }) => {
                 Teardown::Failed("the host is external; it keeps running".into())

@@ -642,3 +642,51 @@ An artifact hash is not a read grant. The allocator accepts a request closure
 only from bytes supplied by that owner or explicitly shared with that owner.
 Refusals do not disclose another owner's lease or state. An attachment's frame
 must equal the actual live COORD claim's frame.
+
+The legacy `coder-ssh` mapping cannot condition removal on the full ENV
+ownership generation. Its ENV adapter must refuse destruction without calling
+unguarded removal. Comparing the stopped process afterward is too late;
+checking first and calling an unconditional remove also leaves a race.
+
+### Native SSH process provider
+
+A separately installed `env-host` helper can own one configured Linux host
+process on an SSH account. Its private operator configuration pins the host
+executable bytes, fixed arguments, runtime record path, account, and private
+resource directory. An ENV caller cannot choose a program or command. This
+profile starts an already installed executable; it does not install a release
+or change the Coder update channel.
+
+Before starting a process, the helper saves the exact create key and a fresh
+ownership generation. Its child saves its boot ID, process start time, and
+process ID before replacing itself with the pinned executable. A lost create
+is observed by that original key without starting another process. An intent
+without sufficient process evidence stays unknown. A missing intent alone
+cannot establish that a remote operation never ran.
+
+The helper recognizes readiness only when the configured runtime record names
+the same live process running the pinned executable. Existing external hosts
+can be observed and adopted but never relabeled or stopped. Destroy holds the
+provider lock, compares the exact saved ownership generation, opens a Linux
+process descriptor, and checks the process identity through that descriptor
+before signaling it. The signal addresses that descriptor rather than a
+possibly reused process ID. Recovery only observes the original process and
+stop intent. It never signals a replacement or repeats an uncertain stop.
+Unsupported kernels and platforms refuse the operation.
+
+The native SSH provider identity includes the digest of the full operator
+configuration. The client pins that digest, and every helper request must
+match it. Changing the executable, arguments, paths, or account requires new
+pins. The supported component is the exact native executable descriptor returned
+by the helper. Its `openagents.environment-native-executable.v1` body contains
+`requires: []`, the installed binary SHA-256 in `executable`, and the operator
+configuration SHA-256 in `configuration`. The helper compares the live process's
+executable bytes before reporting that component as materialized. The descriptor
+avoids uploading a large installed executable as a control artifact.
+The configured private `outputs` directory holds at most 64 retained regular
+files and 128 KiB total; larger or unsupported outputs refuse collection before
+teardown. The helper retains terminal ownership entries and does not unlink
+another launcher's runtime record. This is a separate process-owner profile;
+it does not implement host enrollment or claim that a process is a trusted
+NIP-HOST identity. A provider that cannot determine cost retains unknown
+accounting after a confirmed process stop.

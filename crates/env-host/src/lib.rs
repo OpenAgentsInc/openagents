@@ -27,3 +27,6 @@ mod tests;
 pub mod transport;
 
 pub mod claims;
+
+#[cfg(target_os = "linux")]
+pub mod ssh_native;
