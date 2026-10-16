@@ -142,6 +142,14 @@ impl Leaf {
     /// Spec 5.2 checks: amount in range, lease is a block height, every
     /// key is a valid x-only point.
     pub fn validate(&self) -> Result<(), TreeError> {
+        self.validate_with(|key| XOnlyPublicKey::from_slice(key).is_ok())
+    }
+
+    /// Validate amounts and lease terms with an injected BIP-340 key check.
+    pub fn validate_with(
+        &self,
+        mut valid_key: impl FnMut(&[u8; 32]) -> bool,
+    ) -> Result<(), TreeError> {
         if self.amount == 0 || self.amount >= MAX_AMOUNT {
             return Err(TreeError::InvalidLeaf("amount out of range"));
         }
@@ -149,7 +157,9 @@ impl Leaf {
             return Err(TreeError::InvalidLeaf("evict_after must be a height"));
         }
         for k in [&self.exit_key, &self.owner_key, &self.evictor_key] {
-            XOnlyPublicKey::from_slice(k).map_err(|_| TreeError::InvalidLeaf("bad x-only key"))?;
+            if !valid_key(k) {
+                return Err(TreeError::InvalidLeaf("bad x-only key"));
+            }
         }
         Ok(())
     }
@@ -269,6 +279,23 @@ impl Tree {
             }
         }
         Ok(())
+    }
+
+    pub fn occupied(&self, height: u32, index: u64) -> Result<bool, TreeError> {
+        if height > self.depth || index >= (self.capacity() >> height) {
+            return Err(TreeError::PositionOutOfRange);
+        }
+        Ok(self
+            .leaves
+            .range((index << height)..((index + 1) << height))
+            .next()
+            .is_some())
+    }
+
+    pub fn checked_total(&self) -> Result<u64, TreeError> {
+        self.leaves.values().try_fold(0u64, |sum, leaf| {
+            sum.checked_add(leaf.amount).ok_or(TreeError::SumOverflow)
+        })
     }
 
     /// The node at `(height, index)`, covering positions

@@ -211,7 +211,11 @@ The predicate approves nothing these forbid.
 **Tools:**
 - **proptest** properties named after each theorem (in the lab crate,
   `crates/layertree-tee-lab`).
-- Then **Kani** proofs on the Rust predicate itself.
+- **Kani** proofs on the production monetary core (#11783): exact payouts,
+  no inflation, conservation over three edits, voucher sequences, checked
+  node addition, and script byte equality. The lab README states the bounds;
+  tree lookup, Merkle witnesses, and real cryptography are outside the proof
+  boundary. Run `scripts/layertree-kani.sh` and its mutation check.
 - **cargo-fuzz** and Kani on the attestation report parser. cargo-fuzz
   targets now cover the lab's leaf, `enc64`, record and unroll-package
   decoders and the SEV-SNP and TDX parse layers in `crates/att-platforms`

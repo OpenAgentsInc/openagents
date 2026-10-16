@@ -8,7 +8,8 @@
 //! * `tree`: the Merkle-sum tree, proofs, vouchers, path maintenance.
 //! * `codec`: byte decoders for leaves, records, `enc64` and unroll packages.
 //! * `output`: the tree output (root-committed key path, unroll leaf).
-//! * `rules`: the predicate the enclave enforces.
+//! * `predicate`: pure transition and exact-payout checks, shared with Kani.
+//! * `rules`: the Bitcoin and BIP-340 adapter for that predicate.
 //! * `enclave`: the in-process co-signer; it signs only what passes, in two
 //!   phases, with forced inclusion, mirror receipts and the `HALT` switch.
 //! * `mirror`: record mirrors and the receipts the enclave waits for.
@@ -28,6 +29,9 @@ pub mod follow;
 pub mod light;
 pub mod mirror;
 pub mod output;
+pub mod predicate;
+#[cfg(kani)]
+mod proofs;
 pub mod rules;
 pub mod tree;
 pub mod unroll;

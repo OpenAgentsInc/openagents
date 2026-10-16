@@ -1,0 +1,17 @@
+# Submit manually: gcloud builds submit --config deploy/layertree/kani-cloudbuild.yaml .
+steps:
+  - name: rust:1.97.1
+    entrypoint: bash
+    env:
+      - CARGO_TARGET_DIR=/builder/layertree-target
+      - CARGO_BUILD_JOBS=2
+    args:
+      - -ceu
+      - |
+        cargo install --locked kani-verifier --version 0.68.0
+        cargo kani setup
+        scripts/layertree-kani.sh
+        scripts/layertree-kani-mutation.sh
+options:
+  machineType: E2_HIGHCPU_8
+timeout: 3600s

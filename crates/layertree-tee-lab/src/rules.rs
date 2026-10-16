@@ -13,7 +13,7 @@ use bitcoin::sighash::{Prevouts, SighashCache, TapSighashType};
 use bitcoin::{Amount, OutPoint, ScriptBuf, Transaction, TxOut, absolute::LockTime};
 
 use crate::output::{TreeOutput, ccv_tree_spk, p2tr_raw};
-use crate::tree::{Leaf, Node, PathStep, SEQ_FINAL, Tree, TreeError, tagged_hash, voucher_msg};
+use crate::tree::{Leaf, Node, Tree, TreeError, tagged_hash};
 
 /// Tag of the transition record hash carried in an `OP_RETURN`.
 pub const TAG_RECORD: &str = "LayerTreeTEE/record";
@@ -98,63 +98,15 @@ pub enum Op {
     Migrate { m: [u8; 32] },
 }
 
-/// Why the enclave refused to sign.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Reject {
-    Tree(TreeError),
-    /// Input 0 does not spend the current tree output (spec 7.1 rule 1).
-    WrongInput,
-    /// The supplied prevout for input 0 is not the tree output.
-    PrevoutMismatch,
-    /// Output 0 is not the tree output for the new root, or its amount is
-    /// not the new sum (spec 7.1 rules 2 and 5).
-    OutputZero,
-    /// A payout output is wrong (spec 7.2 rule 2 and 6).
-    Payout,
-    /// No `OP_RETURN` carries the transition record's hash.
-    MissingRecord,
-    /// Wrong number of signatures for the transition.
-    SignatureCount,
-    BadSignature(&'static str),
-    /// Eviction before `evict_after`, or lock time not enabled (7.2 rule 4).
-    Lease,
-    /// A carve wrote a leaf easier to keep than its source (7.5 rule 5).
-    EvictionTerms,
-    /// A carve wrote or left less than `DUST_MIN` (7.5 rule 6).
-    Dust,
-    /// The source leaf is at `SEQ_FINAL` (spec 5.2).
-    SeqFinal,
-    /// Claim larger than the source leaf.
-    Underflow,
-    /// A graft over a non-empty slot, or leaves outside it.
-    SlotNotEmpty,
-    /// A transition this tree's parameters do not allow.
-    NotAllowed,
-    /// A non-exit transition while a member's exit request has waited
-    /// longer than the deadline (forced inclusion, spec 2.2 item 7).
-    ExitCensored,
-    /// The owner signed `HALT`: only exits are signed now (spec 5).
-    Halted,
-    /// Fewer than `m` of the `M` mirrors returned a valid receipt for the
-    /// record and unroll (spec 4.1).
-    MissingReceipts,
-}
+pub use crate::predicate::Reject;
 
-impl From<TreeError> for Reject {
-    fn from(e: TreeError) -> Self {
-        Reject::Tree(e)
-    }
-}
-
-/// One leaf change, with the changed position's sibling path in the tree
-/// as it was just before the change. This is what a covenant witness
-/// publishes (spec 9.7) and what lets a light client follow the tree.
+/// One leaf change and its sibling path immediately before the edit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Change {
     pub pos: u64,
     pub old: Option<Leaf>,
     pub new: Option<Leaf>,
-    pub path: Vec<PathStep>,
+    pub path: Vec<crate::tree::PathStep>,
 }
 
 impl Change {
@@ -189,148 +141,125 @@ impl Record {
     }
 }
 
-/// The effects of an `Op` on the tree, before any transaction exists.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Effects {
-    pub tree: Tree,
-    pub changes: Vec<Change>,
-    /// Required payouts, in output order from output 1.
-    pub payouts: Vec<TxOut>,
-    /// `Some(height)` when the transaction must have this lock time or later.
-    pub min_locktime: Option<u32>,
-    /// The new root is `E_D`: output 0 is free (spec 7.8).
-    pub terminal: bool,
-}
-
-fn change(tree: &mut Tree, pos: u64, new: Option<Leaf>) -> Result<Change, Reject> {
-    let old = tree.get(pos).copied();
-    let path = tree.path(pos, 0)?;
-    match (old, new) {
-        (None, Some(l)) => tree.insert(pos, l)?,
-        (Some(_), n) => tree.set(pos, n)?,
-        (None, None) => return Err(Reject::Tree(TreeError::PositionEmpty)),
-    }
-    Ok(Change {
-        pos,
-        old,
-        new,
-        path,
-    })
-}
-
-/// What `op` does to `state`'s tree. Checks every rule that does not need
-/// the transaction or a transaction signature.
+/// Apply the pure predicate with real BIP-340 key and voucher checks.
 pub fn effects<C: Verification>(
     secp: &Secp256k1<C>,
     p: &TreeParams,
     state: &TreeState,
     op: &Op,
 ) -> Result<Effects, Reject> {
-    let mut tree = state.tree.clone();
-    let mut changes = Vec::new();
-    let mut payouts = Vec::new();
-    let mut min_locktime = None;
-    match op {
-        Op::Exit { pos, evict } => {
-            let leaf = *tree.get(*pos).ok_or(TreeError::PositionEmpty)?;
-            if *evict {
-                min_locktime = Some(leaf.evict_after);
-            }
-            payouts.push(TxOut {
-                value: Amount::from_sat(leaf.amount),
-                script_pubkey: p2tr_raw(&leaf.exit_key),
-            });
-            changes.push(change(&mut tree, *pos, None)?);
+    let fx = crate::predicate::effects(&Crypto(secp), &core_params(p), &state.tree, &core_op(op))?;
+    bitcoin_effects(&state.tree, &fx)
+}
+
+fn bitcoin_effects(current: &Tree, fx: &crate::predicate::Effects) -> Result<Effects, Reject> {
+    let mut witness_tree = current.clone();
+    let mut changes = Vec::with_capacity(fx.changes.len());
+    for edit in fx.changes.iter() {
+        let path = witness_tree.path(edit.pos, 0)?;
+        match edit.new {
+            Some(leaf) => witness_tree.set(edit.pos, Some(leaf))?,
+            None => witness_tree.set(edit.pos, None)?,
         }
+        changes.push(Change {
+            pos: edit.pos,
+            old: edit.old,
+            new: edit.new,
+            path,
+        });
+    }
+    // Merkle-sum construction also checks every internal addition.
+    let tree = witness_tree;
+    if tree.root()?.sum != fx.sum {
+        return Err(Reject::OutputZero);
+    }
+    Ok(Effects {
+        tree,
+        changes,
+        payouts: fx
+            .payouts
+            .iter()
+            .map(|p| TxOut {
+                value: Amount::from_sat(p.amount),
+                script_pubkey: p2tr_raw(&p.exit_key),
+            })
+            .collect(),
+        min_locktime: fx.min_locktime,
+        terminal: fx.terminal,
+    })
+}
+
+/// Bitcoin outputs for the effects of the pure predicate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Effects {
+    pub tree: Tree,
+    pub changes: Vec<Change>,
+    pub payouts: Vec<TxOut>,
+    pub min_locktime: Option<u32>,
+    pub terminal: bool,
+}
+
+struct Crypto<'a, C: Verification>(&'a Secp256k1<C>);
+impl<C: Verification> crate::predicate::Oracle for Crypto<'_, C> {
+    fn valid_key(&self, key: &[u8; 32]) -> bool {
+        XOnlyPublicKey::from_slice(key).is_ok()
+    }
+    fn voucher(&self, key: &[u8; 32], digest: [u8; 32], signature: &[u8; 64]) -> bool {
+        XOnlyPublicKey::from_slice(key).ok().is_some_and(|key| {
+            self.0
+                .verify_schnorr(
+                    &Signature::from_slice(signature).expect("64-byte signature"),
+                    &Message::from_digest(digest),
+                    &key,
+                )
+                .is_ok()
+        })
+    }
+}
+
+fn core_params(p: &TreeParams) -> crate::predicate::Params {
+    crate::predicate::Params {
+        tree_id: p.tree_id,
+        depth: p.depth,
+        dust_min: p.dust_min,
+        migration_m: p.migration_m,
+    }
+}
+
+fn core_op(op: &Op) -> crate::predicate::Op {
+    use crate::predicate::Op as Core;
+    match op {
+        Op::Exit { pos, evict } => Core::Exit {
+            pos: *pos,
+            evict: *evict,
+        },
         Op::Join {
             height,
             index,
             leaves,
-        } => {
-            if leaves.is_empty() || *height > p.depth {
-                return Err(Reject::NotAllowed);
-            }
-            if tree.subtree(*height, *index)? != tree.empty_node(*height) {
-                return Err(Reject::SlotNotEmpty);
-            }
-            for (off, leaf) in leaves {
-                if *off >= (1u64 << height) {
-                    return Err(Reject::SlotNotEmpty);
-                }
-                leaf.validate()?;
-                changes.push(change(&mut tree, (index << height) + off, Some(*leaf))?);
-            }
-        }
-        Op::Update { pos, new_leaf } => {
-            tree.get(*pos).ok_or(TreeError::PositionEmpty)?;
-            new_leaf.validate()?;
-            changes.push(change(&mut tree, *pos, Some(*new_leaf))?);
-        }
+        } => Core::Join {
+            height: *height,
+            index: *index,
+            leaves: leaves.clone(),
+        },
+        Op::Update { pos, new_leaf } => Core::Update {
+            pos: *pos,
+            new_leaf: *new_leaf,
+        },
         Op::Claim {
             source_pos,
             claim_pos,
             claim_leaf,
             voucher_sig,
-        } => {
-            let src = *tree.get(*source_pos).ok_or(TreeError::PositionEmpty)?;
-            // Rule 1: the voucher, by the source's owner, over this tree_id.
-            let msg = Message::from_digest(voucher_msg(&p.tree_id, &src, claim_leaf));
-            let owner = XOnlyPublicKey::from_slice(&src.owner_key)
-                .map_err(|_| Reject::BadSignature("owner key"))?;
-            secp.verify_schnorr(voucher_sig, &msg, &owner)
-                .map_err(|_| Reject::BadSignature("voucher"))?;
-            claim_leaf.validate()?;
-            // Rule 2: no underflow; seq advances and must fit.
-            let residual = src
-                .amount
-                .checked_sub(claim_leaf.amount)
-                .ok_or(Reject::Underflow)?;
-            let seq = src.seq.checked_add(1).ok_or(Reject::SeqFinal)?;
-            debug_assert!(src.seq != SEQ_FINAL);
-            // Rule 5: nothing carved is harder to evict than its source.
-            if claim_leaf.evictor_key != src.evictor_key || claim_leaf.evict_after > src.evict_after
-            {
-                return Err(Reject::EvictionTerms);
-            }
-            // Rule 6: the dust floor on both sides.
-            if claim_leaf.amount < p.dust_min || (residual != 0 && residual < p.dust_min) {
-                return Err(Reject::Dust);
-            }
-            if tree.get(*claim_pos).is_some() || claim_pos == source_pos {
-                return Err(Reject::SlotNotEmpty);
-            }
-            let new_src = if residual == 0 {
-                None
-            } else {
-                Some(Leaf {
-                    amount: residual,
-                    seq,
-                    ..src
-                })
-            };
-            changes.push(change(&mut tree, *source_pos, new_src)?);
-            changes.push(change(&mut tree, *claim_pos, Some(*claim_leaf))?);
-        }
-        Op::Refresh => {}
-        Op::Migrate { m } => {
-            if p.migration_m != Some(*m) {
-                return Err(Reject::NotAllowed);
-            }
-        }
+        } => Core::Claim {
+            source_pos: *source_pos,
+            claim_pos: *claim_pos,
+            claim_leaf: *claim_leaf,
+            voucher_sig: voucher_sig.serialize(),
+        },
+        Op::Refresh => Core::Refresh,
+        Op::Migrate { m } => Core::Migrate { m: *m },
     }
-    // Only an exit may leave the tree empty (spec 7.8); output 0 is then free.
-    let empty = tree.root()? == tree.empty_node(p.depth);
-    let terminal = empty && matches!(op, Op::Exit { .. });
-    if empty && !terminal {
-        return Err(Reject::NotAllowed);
-    }
-    Ok(Effects {
-        tree,
-        changes,
-        payouts,
-        min_locktime,
-        terminal,
-    })
 }
 
 /// The keys that must sign the transaction (BIP-341 key-path sighash of
@@ -394,49 +323,50 @@ pub fn check_unsigned<C: Verification>(
     if prevouts.len() != tx.input.len() || prevouts[0] != state.txout(secp, p) {
         return Err(Reject::PrevoutMismatch);
     }
-    let fx = effects(secp, p, state, op)?;
+    let pure =
+        crate::predicate::effects(&Crypto(secp), &core_params(p), &state.tree, &core_op(op))?;
+    let fx = bitcoin_effects(&state.tree, &pure)?;
+    let root = fx.tree.root()?;
     let rec = record(state, &fx, op, next_unroll_key);
-
-    // Rules 7.1.2 and 7.1.5: output 0 under the new root, amount = new sum.
-    let out0 = tx.output.first().ok_or(Reject::OutputZero)?;
-    let new_root = fx.tree.root()?;
-    if let Op::Migrate { m } = op {
-        if out0.script_pubkey != ccv_tree_spk(secp, &new_root.hash, m)
-            || out0.value.to_sat() != new_root.sum
-        {
-            return Err(Reject::OutputZero);
-        }
-    } else if !fx.terminal {
-        let next = TreeOutput {
-            root_hash: new_root.hash,
-            unroll_key: next_unroll_key,
-        };
-        if out0.script_pubkey != next.script_pubkey(secp, &p.enclave_key, p.unroll_delay)
-            || out0.value.to_sat() != new_root.sum
-        {
-            return Err(Reject::OutputZero);
-        }
-    }
-    // Rule 7.1.6: payouts at outputs 1..K, exact.
-    for (i, want) in fx.payouts.iter().enumerate() {
-        if tx.output.get(i + 1) != Some(want) {
-            return Err(Reject::Payout);
-        }
-    }
-    // The record is anchored on chain.
-    if !tx.output.iter().any(|o| o.script_pubkey == rec.op_return()) {
-        return Err(Reject::MissingRecord);
-    }
-    // Rule 7.2.4: eviction waits for the lease, with lock time enabled.
-    if let Some(h) = fx.min_locktime {
-        let ok = match tx.lock_time {
-            LockTime::Blocks(b) => b.to_consensus_u32() >= h,
-            LockTime::Seconds(_) => false,
-        };
-        if !ok || tx.input[0].sequence.0 == u32::MAX {
-            return Err(Reject::Lease);
-        }
-    }
+    let expected_script = if let Op::Migrate { m } = op {
+        Some(ccv_tree_spk(secp, &root.hash, m))
+    } else if !pure.terminal {
+        Some(
+            TreeOutput {
+                root_hash: root.hash,
+                unroll_key: next_unroll_key,
+            }
+            .script_pubkey(secp, &p.enclave_key, p.unroll_delay),
+        )
+    } else {
+        None
+    };
+    let outputs: Vec<_> = tx
+        .output
+        .iter()
+        .map(|o| crate::predicate::Output {
+            amount: o.value.to_sat(),
+            script: o.script_pubkey.as_bytes(),
+        })
+        .collect();
+    let expected = expected_script
+        .as_ref()
+        .map(|script| crate::predicate::Output {
+            amount: root.sum,
+            script: script.as_bytes(),
+        });
+    let lock_height = match tx.lock_time {
+        LockTime::Blocks(b) => Some(b.to_consensus_u32()),
+        LockTime::Seconds(_) => None,
+    };
+    crate::predicate::check_outputs(
+        &pure.output_rules(),
+        &outputs,
+        expected,
+        rec.op_return().as_bytes(),
+        lock_height,
+        tx.input[0].sequence.0 != u32::MAX,
+    )?;
     Ok((fx, rec))
 }
 

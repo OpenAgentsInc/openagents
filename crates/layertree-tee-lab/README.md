@@ -26,7 +26,8 @@ LAYERTREE_VECTORS=~/work/projects/repos/layertree/spec/test-vectors.json \
 | `tree` | leaf, Merkle-sum nodes, dense tree, proofs, vouchers, path maintenance |
 | `codec` | byte decoders: `dec64`, `Leaf::parse`, `Record::decode`/`encode` (the bytes the anchored hash covers), the unroll package wire form |
 | `output` | the tree output: `Q + H_state(r)·G` key path, the unroll tapleaf, `TREE_SPK_CCV` |
-| `rules` | the predicate the enclave enforces (spec 7.1 to 7.5), with one `Reject` per rule |
+| `predicate` | pure edit accounting, voucher terms, and exact output checks shared with Kani |
+| `rules` | the Bitcoin and BIP-340 adapter, including Merkle witnesses and one `Reject` per rule |
 | `enclave` | the in-process co-signer: its key never leaves, and it signs only what passes; two-phase signing (`prepare`, `finish`), forced inclusion of exit requests, mirror receipts before any signature, and the guardian's `HALT` |
 | `mirror` | record mirrors: the `Mirror` trait, an in-memory mirror, and the `m`-of-`M` receipt policy |
 | `unroll` | the delayed exit with deleted intermediate keys, checked with public data only |
@@ -37,6 +38,43 @@ LAYERTREE_VECTORS=~/work/projects/repos/layertree/spec/test-vectors.json \
 `tests/lean_mirrors.rs` has property tests named after upstream's Lean
 theorems (`ExitK_no_inflation`, `Steps_sum`, `Reachable_ledger`, `payable`,
 `exit_available`, `voucher_no_replay`, `path_maintenance` and others).
+
+## Bounded proofs
+
+`src/proofs.rs` (#11783) checks the monetary functions that `predicate`
+uses before `rules` signs a Bitcoin transaction. Kani 0.68.0 verifies:
+
+| Harness | Scope |
+| --- | --- |
+| `ExitK_no_inflation` | Every valid leaf amount, arbitrary `u64` tree balance and proposed amounts, arbitrary 34-byte payout scripts; includes terminal exits |
+| `exit_available` | Exact amount and all 32 bytes of the exit key |
+| `Steps_sum_Reachable_ledger` | Up to three accepted edits, with arbitrary `u64` balances and old/new amounts |
+| `voucher_no_replay` | Every valid amount and `u32` sequence; a partial claim advances the sequence, a full claim removes the source, and the final sequence refuses |
+| `checked_addition_never_wraps` | Every pair of `u64` Merkle-node sums |
+| `script_equality_checks_every_byte` | Arbitrary 34-byte scripts and every byte position |
+
+The proof boundary excludes tree lookup, Merkle witness construction,
+Bitcoin script construction, and real cryptography. Hash results are
+unconstrained, and key and voucher validity are symbolic; the arithmetic
+proofs need no hash-injectivity assumption. The existing property tests
+still check tree roots, paths, and complete histories. The Bitcoin adapter
+replays the edits and refuses a resulting root sum that differs from the
+proved accounting. These are scoped proofs, not a proof of the entire signer.
+
+```sh
+cargo install --locked kani-verifier --version 0.68.0
+cargo kani setup
+scripts/layertree-kani.sh
+scripts/layertree-kani-mutation.sh
+# equivalent proof command:
+cargo kani --manifest-path crates/layertree-tee-lab/Cargo.toml --lib -Z stubbing
+```
+
+The mutation command copies the crate into the scratch directory, raises an
+exit payout by one satoshi, and requires the named no-inflation assertion
+to fail. It leaves the checked-out source unchanged. A manual Cloud Build
+job is scoped to these proofs and the mutation check in
+`deploy/layertree/kani-cloudbuild.yaml`; no GitHub automation is used.
 
 ## Fuzzing
 

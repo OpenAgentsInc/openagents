@@ -35,3 +35,6 @@ hex = "=0.4.3"
 [[example]]
 name = "attestation_probe"
 required-features = ["events"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

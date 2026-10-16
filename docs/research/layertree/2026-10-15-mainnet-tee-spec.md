@@ -545,28 +545,24 @@ transitions: the cohort theorems (`rewrite_sound`, `detach_sound`) and the
 receive theorems (`merge_sound`, `reclaim_sound`, `Reachable.exit_value`).
 Each one gets its mirror test when its transition lands.
 
-### 7.3 Next steps (planned, not done)
+<a id="73-next-steps-planned-not-done"></a>
 
-1. **Kani proofs on the Rust predicate.** Kani is the CBMC-based model
-   checker for Rust. Proving the table above about the Rust code itself
-   closes the gap LayerTree leaves between its model and its bytecode. It
-   is the main advantage of a predicate in Rust over a script in tapscript.
-   The plan:
-   - **Split the predicate into a pure core.** `effects` plus an output
-     check over a small transaction view, with no secp256k1 and no
-     `bitcoin` types inside the proof boundary.
-   - **Stub the expensive parts.** Replace `tagged_hash` with an injective
-     uninterpreted function (Kani stubbing), which states the same
-     assumption as Lean's `HashModel`. Make signature checks a symbolic
-     oracle, as Lean's `authorised` is.
-   - **Write bounded harnesses** (depth up to 4, symbolic amounts and
-     positions, sequences of up to 3 steps). Each proves one row of the
-     table: `check = Ok` implies no inflation; `check = Ok` implies the
-     payout is exactly `(exit_key, amount)`; accepted effects conserve;
-     `seq` strictly increases on a claim; `maintain_path` equals the
-     recomputed path; checked addition never wraps.
-   - **Effort:** about a week of agent work. Run the proofs in CI on this
-     crate only, as long as it stays outside the default build.
+### 7.3 Bounded proofs and remaining work
+
+1. **Kani proofs on the monetary core (#11783).** The production predicate
+   now calls pure functions for checked edit accounting, exact exit terms,
+   voucher validation, and output checks. Six harnesses verify no inflation,
+   exact exit-key payouts, conservation over up to three edits, voucher
+   sequence advancement, checked node addition, and byte equality. Balances
+   span `u64`; leaf amounts span the valid range; payout keys and scripts
+   are arbitrary. Hash results and cryptographic validity are abstract.
+   Tree lookup, Merkle paths, Bitcoin script construction, and real
+   signatures remain outside this proof boundary and have the existing
+   property and integration tests. The adapter checks the computed Merkle
+   sum against the pure accounting before signing. The crate README lists
+   each harness's bounds and commands, including a one-satoshi mutation
+   check and the separate, manually submitted Cloud Build job. Kani proofs
+   of path maintenance and the whole tree remain future work.
 2. **Differential testing against upstream, once a licence allows.** Today
    we only *read* upstream's published vectors (`tests/upstream_vectors.rs`).
    Once a LICENSE file lands, we would generate random transition sequences
