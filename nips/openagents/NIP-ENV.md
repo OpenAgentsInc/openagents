@@ -572,9 +572,9 @@ The profile pins these supporting records:
 Allocator records are retained with private `3188` declarations addressed to
 the owner or the requesting controller. A participant signs its own admission
 and fencing records. State `record` fields reference RUN records of the
-allocation run; the allocator is that run's controller. Bootstrap operations
-and cloud-VM placement are not part of this profile yet; a definition with a
-bootstrap step refuses.
+allocation run; the allocator is that run's controller. Cloud-VM placement
+requires a separately implemented provider. The fixed native manifest
+bootstrap is described below; other bootstrap operations refuse.
 
 
 The allocator's native management CAP/CJ endpoint pins the exact operation
@@ -604,3 +604,41 @@ to refuse ENV-bound executes. Drain, expiry, revocation, or token replacement
 prevents a queued native worker from starting. These checks do not enable a
 combined AUTO/ENV adapter or turn an engine enqueue acknowledgment into a
 terminal execution result.
+
+### Native manifest bootstrap
+
+A host that implements `environment/bootstrap-manifest` initializes an owned
+resource from its already placed exact components. This fixed Rust operation
+checks the expected component digests and writes an initialization manifest;
+it runs no repository shell command, model, or downloaded program. Other
+bootstrap bindings remain unsupported unless separately implemented.
+
+The pinned input names the owner, original environment create-request ID, and
+exact expected components. The allocator resolves that pair to its actual
+leased resource and ownership generation. It never treats a path or copied
+resource ID as authority. The original owner signs a separate CJ execute that
+matches every bootstrap pin and bound. No future materialization or attachment
+digest belongs in that input.
+
+The requirements carry the owner's original COORD auxiliary admission for
+one bootstrap call, its container, and the actual worker child claim. The
+budget authority checks that child and its ancestors, the reservation, and the
+exact request fingerprint before charging the shared container. Admission and
+the resource initialization boundary share the authority's current-claim
+fence. The allocator persists its bootstrap RUN intent before initialization;
+readiness requires a known successful terminal result. An interrupted operation
+keeps its original identity and allowance and can recover only an exact saved
+result or a read-only provider receipt. Recovery never initializes again.
+
+The native bootstrap plan admits one call, no spending, at most 30 seconds,
+and 1 MiB each for input and output. Its enforcement mechanisms are
+`native-ledger`, `native-response-deadline`, and `native-bytes`. The input
+budget covers the component bytes actually read and the input manifest.
+Readiness also requires a provider receipt completed before the CJ deadline.
+A failed initialization or missing receipt leaves the resource unavailable
+for attachment; a lost reply never authorizes a second initialization.
+
+An artifact hash is not a read grant. The allocator accepts a request closure
+only from bytes supplied by that owner or explicitly shared with that owner.
+Refusals do not disclose another owner's lease or state. An attachment's frame
+must equal the actual live COORD claim's frame.

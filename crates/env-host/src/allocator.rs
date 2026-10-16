@@ -24,6 +24,7 @@ use workspace_host::artifact::{Artifacts, token};
 /// At most this many leases are retained. Limits stop new admissions; they
 /// never discard history.
 pub const MAX_LEASES: usize = 64;
+mod bootstrap;
 
 /// Host policy. Owners, controllers, and readers are independently
 /// authorized here; a request cannot name itself into these sets.
@@ -94,6 +95,8 @@ struct Lease {
     cleanup_status: Option<String>,
     #[serde(default)]
     cleanup_intent: Option<Vec<Value>>,
+    #[serde(default)]
+    bootstrap: Option<Value>,
     run_records: Vec<Value>,
     generation: u64,
     hold_released: bool,
@@ -124,6 +127,8 @@ pub(crate) struct State {
     #[serde(default)]
     pub(crate) transport: Option<crate::transport::Transport>,
     holds: BTreeMap<String, u64>,
+    #[serde(default)]
+    known: BTreeMap<String, BTreeSet<String>>,
     priors: BTreeMap<String, Prior>,
     signers: BTreeMap<String, BTreeSet<String>>,
     declarations: BTreeMap<String, Value>,
@@ -150,6 +155,8 @@ pub struct MaterializeSpec {
     pub enforcement: Value,
     #[serde(default)]
     pub evidence: Vec<Value>,
+    #[serde(default)]
+    pub bootstrap: Option<Event>,
 }
 
 pub struct Allocator {
@@ -251,6 +258,7 @@ impl Allocator {
         attach: &Value,
         declaration: &Value,
         plaintext: &Value,
+        frame: &Value,
         now: u64,
     ) -> Result<()> {
         let reservation = self.body(&attach["reservation"], "openagents.reservation.v1")?;
@@ -264,8 +272,12 @@ impl Allocator {
                 declaration,
                 plaintext,
                 &reservation,
+                frame,
                 now,
             )
+    }
+    pub(crate) fn allocation_run_used(&self, state: &State, run: &str) -> bool {
+        state.leases.values().any(|l| l.run == run)
     }
     pub(crate) fn provider_binding(&self) -> String {
         self.provider.borrow().binding()
@@ -288,6 +300,7 @@ impl Allocator {
     fn sign(&self, state: &mut State, body: &Value, recipient: &str, now: u64) -> Result<Value> {
         env::validate(body).map_err(contract)?;
         let reference = self.store.put_json(body)?;
+        self.remember_input(state, recipient, &reference)?;
         let digest = digest_of(&reference).to_string();
         if !state.declarations.contains_key(&digest) {
             let event = workspace_host::host::request(&self.secret, recipient, body.clone(), now)?;
@@ -306,6 +319,123 @@ impl Allocator {
         Ok(reference)
     }
 
+    fn remember_input(&self, state: &mut State, principal: &str, reference: &Value) -> Result<()> {
+        let known = state.known.entry(principal.into()).or_default();
+        if known.len() >= 8192 && !known.contains(digest_of(reference)) {
+            return Err(refuse("limit_exceeded", "authorized artifact retention"));
+        }
+        known.insert(digest_of(reference).to_string());
+        Ok(())
+    }
+    fn check_request_closure(
+        &self,
+        state: &State,
+        owner: &str,
+        request: &Value,
+        definition: &Value,
+    ) -> Result<()> {
+        let mut shared = BTreeSet::new();
+        if !definition["bootstrap"].is_null() {
+            for key in ["target", "lock", "context", "requirements"] {
+                let r = if key == "target" {
+                    &definition["bootstrap"][key]["artifact"]
+                } else {
+                    &definition["bootstrap"][key]
+                };
+                shared.insert(digest_of(r).to_string());
+            }
+        }
+        if !state
+            .known
+            .get(owner)
+            .is_some_and(|k| k.contains(digest_of(&definition["requirements"])))
+        {
+            return Err(refuse(
+                "not_admitted",
+                "environment requirements were not supplied or shared",
+            ));
+        }
+        let requirements = self.body(
+            &definition["requirements"],
+            "openagents.environment-requirements.v1",
+        )?;
+        let recipients = requirements["recipients"].as_array().ok_or("recipients")?;
+        let mut queue = ["definition", "frame", "policy", "reservation", "resource"]
+            .iter()
+            .filter_map(|k| request.get(*k).filter(|r| !r.is_null()).cloned())
+            .map(|r| (r, 0usize))
+            .collect::<Vec<_>>();
+        let mut seen = BTreeSet::new();
+        let mut total = 0usize;
+        while let Some((reference, depth)) = queue.pop() {
+            let parsed = contracts::parse_artifact(&reference).map_err(contract)?;
+            if !seen.insert(parsed.digest.clone()) || shared.contains(&parsed.digest) {
+                continue;
+            }
+            if depth > 32 || seen.len() > 256 {
+                return Err(refuse("limit_exceeded", "environment artifact graph"));
+            }
+            if !state
+                .known
+                .get(owner)
+                .is_some_and(|k| k.contains(&parsed.digest))
+            {
+                return Err(refuse(
+                    "not_admitted",
+                    "referenced bytes were not supplied or shared with this owner",
+                ));
+            }
+            let bytes = self.bytes(&reference)?;
+            total = total
+                .checked_add(bytes.len())
+                .ok_or("artifact size overflow")?;
+            if total > 8 * 1048576 {
+                return Err(refuse("limit_exceeded", "environment artifact bytes"));
+            }
+            if matches!(
+                parsed.media_type.as_str(),
+                "application/json" | "application/schema+json"
+            ) {
+                let body = contracts::parse_strict(&bytes).map_err(contract)?;
+                if body["v"] == "openagents.evidence.v1" {
+                    let evidence = contracts::parse_evidence(&body).map_err(contract)?;
+                    if !contracts::may_read(&evidence, self.pubkey())
+                        || recipients
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .any(|p| !contracts::may_read(&evidence, p))
+                    {
+                        return Err(refuse(
+                            "not_admitted",
+                            "environment evidence excludes a required recipient",
+                        ));
+                    }
+                }
+                let mut stack = vec![&body];
+                let mut nodes = 0usize;
+                while let Some(value) = stack.pop() {
+                    nodes += 1;
+                    if nodes > 8192 {
+                        return Err(refuse("limit_exceeded", "environment artifact structure"));
+                    }
+                    if contracts::parse_artifact(value).is_ok() {
+                        queue.push((value.clone(), depth + 1));
+                        continue;
+                    }
+                    match value {
+                        Value::Array(a) => stack.extend(a),
+                        Value::Object(o) => stack.extend(
+                            o.iter()
+                                .filter(|(k, _)| k.as_str() != "meta")
+                                .map(|(_, v)| v),
+                        ),
+                        _ => {}
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
     pub(crate) fn cj_principal(&self, state: &State, principal: &str, input: &Value) -> bool {
         state.policy.owners.contains(principal)
             || state.policy.controllers.contains(principal)
@@ -313,7 +443,9 @@ impl Allocator {
             || input["participant"] == principal
                 && state.leases.values().any(|l| {
                     l.attachment.as_ref().is_some_and(|a| {
-                        a.grant == input["attachment"] && a.participants.contains(principal)
+                        a.participants.contains(principal)
+                            && (a.grant == input["attachment"]
+                                || input["v"] == "openagents.environment-participant-admission.v1")
                     })
                 })
     }
@@ -611,6 +743,21 @@ impl Allocator {
             self.authenticate(&mut state, declaration, now)?;
         }
         let (signer, body, input) = self.authenticate(&mut state, &bundle.event, now)?;
+        if !self.cj_principal(&state, &signer, &body) {
+            return Err(refuse(
+                "not_admitted",
+                "environment sender is not authorized",
+            ));
+        }
+        self.remember_input(&mut state, &signer, &input)?;
+        for (digest, bytes) in &bundle.artifacts {
+            let reference =
+                workspace_host::artifact::reference(bytes, "application/octet-stream", None);
+            if reference["digest"] != *digest {
+                return Err(refuse("identity_mismatch", "artifact bytes"));
+            }
+            self.remember_input(&mut state, &signer, &reference)?;
+        }
         if let Err(e) = env::validate(&body) {
             let reason = e.code.as_str();
             let result = self.result(
@@ -656,6 +803,7 @@ impl Allocator {
                 let mut fresh = self.state()?;
                 fresh.signers.extend(state.signers);
                 fresh.declarations.extend(state.declarations);
+                fresh.known.extend(state.known);
                 state = fresh;
                 let status = if code(&error) == "conflict" || code(&error) == "idempotency_conflict"
                 {
@@ -663,7 +811,17 @@ impl Allocator {
                 } else {
                     "refused"
                 };
-                let lease = self.lease_for(&state, &body).cloned();
+                let lease = self
+                    .lease_for(&state, &body)
+                    .filter(|l| {
+                        l.owner == signer
+                            || state.policy.controllers.contains(&signer)
+                            || state.policy.readers.contains(&signer)
+                            || l.attachment
+                                .as_ref()
+                                .is_some_and(|a| a.participants.contains(&signer))
+                    })
+                    .cloned();
                 self.result(
                     &mut state,
                     &signer,
@@ -743,25 +901,32 @@ impl Allocator {
         if body["allocator"] != self.pubkey() {
             return Err(refuse("not_admitted", "request names another allocator"));
         }
-        if state.leases.values().any(|l| body["run"] == l.run.as_str()) {
+        if state.leases.values().any(|l| body["run"] == l.run.as_str())
+            || state
+                .transport
+                .as_ref()
+                .is_some_and(|t| t.service.claims.values().any(|c| body["run"] == c.run))
+        {
             return Err(refuse("conflict", "allocation run is already used"));
         }
         if state.leases.len() >= MAX_LEASES {
             return Err(refuse("limit_exceeded", "lease retention limit"));
         }
-        let definition = self.body(&body["definition"], "openagents.environment-definition.v1")?;
-        self.body(
-            &definition["requirements"],
-            "openagents.environment-requirements.v1",
-        )?;
-        self.bytes(&body["frame"])?;
-        self.bytes(&body["policy"])?;
-        if !definition["bootstrap"].is_null() {
+        if !state
+            .known
+            .get(signer)
+            .is_some_and(|k| k.contains(digest_of(&body["definition"])))
+        {
             return Err(refuse(
-                "unsupported_feature",
-                "this allocator runs no bootstrap operation",
+                "not_admitted",
+                "environment definition was not supplied or shared",
             ));
         }
+        let definition = self.body(&body["definition"], "openagents.environment-definition.v1")?;
+        if !definition["bootstrap"].is_null() {
+            self.validate_bootstrap_plan(state, &definition, body)?;
+        }
+        self.check_request_closure(state, signer, body, &definition)?;
         if body["effects"]["spend"] == true {
             return Err(refuse(
                 "unsupported_feature",
@@ -862,6 +1027,7 @@ impl Allocator {
             cleanup: None,
             cleanup_status: None,
             cleanup_intent: None,
+            bootstrap: None,
             run_records: Vec::new(),
             generation: 0,
             hold_released: false,
@@ -937,6 +1103,7 @@ impl Allocator {
         let ownership = self
             .store
             .put(&realized.ownership, "application/json", None)?;
+        self.remember_input(state, &lease.owner, &ownership)?;
         let binding = self.binding.clone();
         let provider =
             json!({"id":binding,"artifact":self.store.put(binding.as_bytes(),"text/plain",None)?});
@@ -1132,12 +1299,16 @@ impl Allocator {
             wanted.push(("workspace".into(), self.bytes(&definition["workspace"])?));
         }
         let realized = lease.realized.clone().ok_or("realized resource")?;
-        let observed: BTreeMap<String, String> = self
-            .provider
-            .borrow_mut()
-            .materialize(&realized, &wanted)?
-            .into_iter()
-            .collect();
+        let observed: BTreeMap<String, String> = if lease.bootstrap.is_some() {
+            self.provider.borrow_mut().observe_components(
+                &realized,
+                &wanted.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>(),
+            )?
+        } else {
+            self.provider.borrow_mut().materialize(&realized, &wanted)?
+        }
+        .into_iter()
+        .collect();
         for (id, bytes) in &wanted {
             if observed.get(id) != Some(&digest_bytes(bytes)) {
                 return Err(refuse(
@@ -1236,12 +1407,24 @@ impl Allocator {
         if let Some(list) = components.as_array_mut() {
             list.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
         }
+        let bootstrap = if definition["bootstrap"].is_null() {
+            Value::Null
+        } else {
+            self.run_bootstrap(
+                state,
+                lease,
+                spec.bootstrap
+                    .as_ref()
+                    .ok_or("not_admitted: original bootstrap execute required")?,
+                now,
+            )?
+        };
         let body = json!({"v":"openagents.environment-materialization.v1","requires":[],
             "lease":lease.lease_ref,"definition":lease.request["definition"],
             "resource":lease.resource_ref,"generation":token(),"components":components,
             "runtime":definition["runtime"],"configuration":definition["configuration"],
             "model":definition["model"],"workspace":definition["workspace"],
-            "participants":spec.participants,"bootstrap":null,"enforcement":enforcement,
+            "participants":spec.participants,"bootstrap":bootstrap,"enforcement":enforcement,
             "evidence":spec.evidence,"observed_at":now});
         let reference = self.sign(state, &body, &lease.owner.clone(), now)?;
         lease.materialization = Some(reference.clone());
@@ -1490,7 +1673,7 @@ impl Allocator {
             return Err(refuse("identity_mismatch", "input digest"));
         }
         self.bytes(&body["claim"])?;
-        self.check_claim(body, &declaration, plaintext, now)?;
+        self.check_claim(body, &declaration, plaintext, &lease.request["frame"], now)?;
         let reservation = contracts::parse_reservation(
             &self.body(&body["reservation"], "openagents.reservation.v1")?,
         )
@@ -1870,7 +2053,13 @@ impl Allocator {
             "openagents.environment-execute.v1",
         )?;
         let plaintext = self.body(&declaration["body"], nostr::execution::SCHEMA)?;
-        self.check_claim(&current.request, &declaration, &plaintext, now)?;
+        self.check_claim(
+            &current.request,
+            &declaration,
+            &plaintext,
+            &lease.request["frame"],
+            now,
+        )?;
         Ok(())
     }
 

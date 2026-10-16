@@ -7,6 +7,12 @@ use nostr::{contracts, coordination, domain::Event};
 use serde_json::{Value, json};
 impl Coordinator {
     pub fn charge_auxiliary(&self, event: &Event, now: u64) -> Result<Value> {
+        let (actor, body) = self.auxiliary_request(event, now)?;
+        let _guard = self.store.lock()?;
+        let mut state = self.state()?;
+        self.charge_auxiliary_locked(&mut state, event, &actor, &body, now)
+    }
+    pub(crate) fn auxiliary_request(&self, event: &Event, now: u64) -> Result<(String, Value)> {
         let (actor, body) = self.authenticate(
             event,
             now,
@@ -38,9 +44,17 @@ impl Coordinator {
         ) {
             return Err("unsupported auxiliary purpose".into());
         }
-        let _guard = self.store.lock()?;
-        let mut state = self.state()?;
-        let id = self.scope_key(&state, &body["coordinator"])?;
+        Ok((actor, body))
+    }
+    pub(crate) fn charge_auxiliary_locked(
+        &self,
+        state: &mut crate::book::State,
+        event: &Event,
+        actor: &str,
+        body: &Value,
+        now: u64,
+    ) -> Result<Value> {
+        let id = self.scope_key(state, &body["coordinator"])?;
         let mut scope = state.scopes[&id].clone();
         self.check(&scope, &actor, "control", now)?;
         let fp = contracts::digest_value(&body).map_err(|e| e.to_string())?;
@@ -81,10 +95,10 @@ impl Coordinator {
         let reservation = parent.body["reservation"].clone();
         self.consume_call(&mut scope, &parent_key)?;
         scope.revision += 1;
-        let input = self.retain(&mut state, event, &body)?;
+        let input = self.retain(state, event, &body)?;
         let record=self.journal(&mut scope,"observed",None,json!({"evidence":[input],"sources":[],"complete":true,"provenance":{"operation":"auxiliary-call-charge","calls":1,"spend_microunits":0,"request":body["request"]}}),now)?;
         let receipt = json!({"v":"openagents.coordination-native-charge.v1","requires":[],"coordinator":scope.reference,"reservation":reservation,"request":body["request"],"fingerprint":body["fingerprint"],"calls":1,"spend_microunits":0,"record":record});
-        self.declare(&mut state, &receipt, &actor, now)?;
+        self.declare(state, &receipt, &actor, now)?;
         scope.requests.insert(
             key,
             Request {
@@ -92,7 +106,7 @@ impl Coordinator {
                 result: receipt.clone(),
             },
         );
-        self.save_scope(&mut state, id, scope)?;
+        self.save_scope(state, id, scope)?;
         Ok(receipt)
     }
 }

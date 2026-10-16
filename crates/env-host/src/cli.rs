@@ -20,6 +20,7 @@ pub const USAGE: &str = "usage: env-host ACTION --state DIR --key-file KEY [opti
   check        --provider-root DIR --attachment ID --fingerprint DIGEST
   run          --provider-root DIR --coordinator-state DIR --coordinator-key-file KEY
                --worker-state DIR --worker-key-file KEY --input BUNDLE
+  bootstrap-binding --provider-root DIR --input CONFIG
   transport    --provider-root DIR       show the exact controller endpoint
   invoke       --input REQUEST          sign with the caller key; no state needed
   serve|recover --provider-root DIR --input BUNDLE";
@@ -107,6 +108,17 @@ pub fn run(args: Vec<String>) -> Result<Value> {
             let (event, artifacts) =
                 worker.run_in_environment(&coordinator, &bundle.event, now, &allocator)?;
             Ok(json!({"event":event,"artifacts":artifacts}))
+        }
+        "bootstrap-binding" => {
+            let input = json_file(&option("--input")?)?;
+            let admission: nostr::domain::Event =
+                serde_json::from_value(input["admission"].clone())
+                    .map_err(|_| "bootstrap allowance")?;
+            allocator.bootstrap_binding(
+                &input["claim"],
+                &admission,
+                input["request"].as_str().ok_or("bootstrap request")?,
+            )
         }
         "transport" => allocator.transport(),
         "serve" | "recover" => {

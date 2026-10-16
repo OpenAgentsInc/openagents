@@ -57,6 +57,32 @@ impl LocalDirectories {
             ownership: bytes,
         })
     }
+    fn observe_component_bytes(
+        &self,
+        resource: &Realized,
+        ids: &[String],
+        limit: usize,
+    ) -> Result<Vec<(String, String)>> {
+        let path = self.exact(resource)?.join("components");
+        let mut remaining = limit;
+        ids.iter()
+            .map(|id| {
+                if id.is_empty()
+                    || id.len() > 64
+                    || !id
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+                {
+                    return Err("malformed: component name".into());
+                }
+                let bytes = read(&path.join(id), remaining)?;
+                remaining = remaining
+                    .checked_sub(bytes.len())
+                    .ok_or("component read bound")?;
+                Ok((id.clone(), digest_bytes(&bytes)))
+            })
+            .collect()
+    }
     /// The directory a realized resource occupies, for an attached worker.
     pub fn directory(&self, resource: &Realized) -> Result<PathBuf> {
         self.path(&resource.resource)
@@ -204,6 +230,89 @@ impl Provider for LocalDirectories {
             observed.push((id.clone(), digest_bytes(&read(&dir.join(id), MAX_BYTES)?)));
         }
         Ok(observed)
+    }
+    fn manifest_bootstrap(&self) -> bool {
+        true
+    }
+    fn observe_components(
+        &mut self,
+        resource: &Realized,
+        ids: &[String],
+    ) -> Result<Vec<(String, String)>> {
+        self.observe_component_bytes(resource, ids, MAX_BYTES)
+    }
+    fn bootstrap(&mut self, resource: &Realized, job: &str, input: &Value) -> Result<Vec<u8>> {
+        use std::io::Write;
+        let started = std::time::Instant::now();
+        if job.len() != 64 || !job.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err("malformed: bootstrap request".into());
+        }
+        let components = input["components"].as_array().ok_or("component manifest")?;
+        let ids = components
+            .iter()
+            .map(|c| {
+                c["id"]
+                    .as_str()
+                    .map(str::to_string)
+                    .ok_or("component id".to_string())
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let limit = MAX_BYTES
+            .checked_sub(jcs(input).map_err(|e| e.to_string())?.len())
+            .ok_or("bootstrap input bound")?;
+        let actual = self.observe_component_bytes(resource, &ids, limit)?;
+        for (component, (id, digest)) in components.iter().zip(&actual) {
+            if component["id"] != *id || component["artifact"]["digest"] != *digest {
+                return Err("identity_mismatch: bootstrap component differs".into());
+            }
+        }
+        let initialized = json!({"v":"openagents.environment-native-initialized.v1","requires":[],"request":job,"resource":resource.resource,"generation":resource.generation,"input":nostr::contracts::digest_value(input).map_err(|e|e.to_string())?,"components":components});
+        let initialized_bytes = jcs(&initialized).map_err(|e| e.to_string())?;
+        let path = self.exact(resource)?;
+        let write = |path: &Path, bytes: &[u8]| -> Result<()> {
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create_new(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut file = options.open(path).map_err(|_| {
+                "unknown: initialization record already exists or cannot be written".to_string()
+            })?;
+            file.write_all(bytes)
+                .and_then(|_| file.sync_all())
+                .map_err(|e| format!("unknown: {e}"))
+        };
+        write(
+            &path.join(format!(".initialized-{job}.json")),
+            &initialized_bytes,
+        )?;
+        let receipt = json!({"v":"openagents.environment-native-bootstrap-provider-receipt.v1","requires":[],"request":job,"resource":resource.resource,"generation":resource.generation,"input":nostr::contracts::digest_value(input).map_err(|e|e.to_string())?,"components":components,"initialized":digest_bytes(&initialized_bytes),"work_ms":u64::try_from(started.elapsed().as_millis()).map_err(|_|"bootstrap time overflow")?.max(1),"finished_at":crate::now()});
+        let bytes = jcs(&receipt).map_err(|e| e.to_string())?;
+        write(&path.join(format!(".bootstrap-{job}.json")), &bytes)?;
+        Ok(bytes)
+    }
+    fn bootstrap_result(&mut self, resource: &Realized, job: &str) -> Result<Option<Vec<u8>>> {
+        if job.len() != 64 || !job.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err("malformed: bootstrap request".into());
+        }
+        let path = self.exact(resource)?.join(format!(".bootstrap-{job}.json"));
+        if !path.exists() {
+            return Ok(None);
+        }
+        let bytes = read(&path, MAX_BYTES)?;
+        let receipt = nostr::contracts::parse_strict(&bytes).map_err(|e| e.to_string())?;
+        let initialized = read(
+            &self
+                .exact(resource)?
+                .join(format!(".initialized-{job}.json")),
+            MAX_BYTES,
+        )?;
+        if receipt["initialized"] != digest_bytes(&initialized) {
+            return Err("identity_mismatch: initialization receipt differs".into());
+        }
+        Ok(Some(bytes))
     }
     fn collect(&mut self, resource: &Realized) -> Result<Vec<(String, Vec<u8>)>> {
         files(&self.exact(resource)?.join("out"))

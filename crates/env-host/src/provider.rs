@@ -82,6 +82,22 @@ pub trait Provider {
         resource: &Realized,
         components: &[(String, Vec<u8>)],
     ) -> Result<Vec<(String, String)>>;
+    /// Whether this binding implements the fixed native manifest initializer.
+    fn manifest_bootstrap(&self) -> bool {
+        false
+    }
+    /// Observe already placed components without writing them again.
+    fn observe_components(&mut self, _: &Realized, _: &[String]) -> Result<Vec<(String, String)>> {
+        Err("unsupported_feature: component observation is not configured".into())
+    }
+    /// Execute exactly once; an interrupted call is recovered only by lookup.
+    fn bootstrap(&mut self, _: &Realized, _: &str, _: &serde_json::Value) -> Result<Vec<u8>> {
+        Err("unsupported_feature: native bootstrap is not configured".into())
+    }
+    /// Read the original initialization receipt. Missing evidence is not success.
+    fn bootstrap_result(&mut self, _: &Realized, _: &str) -> Result<Option<Vec<u8>>> {
+        Err("unavailable: native bootstrap receipt cannot be observed".into())
+    }
     /// Collect retained outputs before teardown. The allocator copies these
     /// bytes outside the resource before it may destroy it.
     fn collect(&mut self, resource: &Realized) -> Result<Vec<(String, Vec<u8>)>>;

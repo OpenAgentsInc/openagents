@@ -39,6 +39,10 @@ struct Faults {
     drop_component: Option<String>,
     creates: usize,
     destroys: usize,
+    bootstraps: usize,
+    placements: usize,
+    lose_bootstrap: bool,
+    fail_bootstrap: bool,
 }
 
 struct Faulty {
@@ -69,6 +73,7 @@ impl Provider for Faulty {
         resource: &Realized,
         components: &[(String, Vec<u8>)],
     ) -> crate::Result<Vec<(String, String)>> {
+        self.faults.borrow_mut().placements += 1;
         let drop = self.faults.borrow().drop_component.clone();
         let kept: Vec<_> = components
             .iter()
@@ -76,6 +81,30 @@ impl Provider for Faulty {
             .cloned()
             .collect();
         self.inner.materialize(resource, &kept)
+    }
+    fn manifest_bootstrap(&self) -> bool {
+        self.inner.manifest_bootstrap()
+    }
+    fn observe_components(
+        &mut self,
+        r: &Realized,
+        ids: &[String],
+    ) -> crate::Result<Vec<(String, String)>> {
+        self.inner.observe_components(r, ids)
+    }
+    fn bootstrap(&mut self, r: &Realized, job: &str, input: &Value) -> crate::Result<Vec<u8>> {
+        self.faults.borrow_mut().bootstraps += 1;
+        if self.faults.borrow().fail_bootstrap {
+            return Err("unknown: provider did not return an initialization result".into());
+        }
+        let bytes = self.inner.bootstrap(r, job, input)?;
+        if self.faults.borrow().lose_bootstrap {
+            return Err("unknown: initialization reply lost".into());
+        }
+        Ok(bytes)
+    }
+    fn bootstrap_result(&mut self, r: &Realized, job: &str) -> crate::Result<Option<Vec<u8>>> {
+        self.inner.bootstrap_result(r, job)
     }
     fn collect(&mut self, resource: &Realized) -> crate::Result<Vec<(String, Vec<u8>)>> {
         if self.faults.borrow().fail_collect {
@@ -110,6 +139,7 @@ impl crate::claims::ClaimAuthority for FixtureClaims {
         _: &Value,
         _: &Value,
         _: &Value,
+        _: &Value,
         _: u64,
     ) -> crate::Result<()> {
         Ok(())
@@ -123,13 +153,13 @@ struct Fixture {
     artifacts: BTreeMap<String, Vec<u8>>,
     definition: Value,
     reservation: Value,
+    frame: Value,
     now: u64,
 }
 
 fn put(map: &mut BTreeMap<String, Vec<u8>>, bytes: &[u8], schema: Option<&str>) -> Value {
     map.insert(digest_bytes(bytes), bytes.to_vec());
-    let mut value =
-        json!({"digest":digest_bytes(bytes),"size":bytes.len(),"media_type":"application/json"});
+    let mut value = json!({"digest":digest_bytes(bytes),"size":bytes.len(),"media_type":if schema.is_some(){"application/json"}else{"application/octet-stream"}});
     if let Some(schema) = schema {
         value["schema"] = json!(schema);
     }
@@ -149,11 +179,14 @@ fn bound(name: &str, ceiling: u64) -> Value {
 
 impl Fixture {
     fn new() -> Self {
+        Self::with_owners(BTreeSet::from([pk(OWNER)]))
+    }
+    fn with_owners(owners: BTreeSet<String>) -> Self {
         let temp = tempfile::tempdir().unwrap();
         let state = temp.path().join("state");
         let resources = temp.path().join("resources");
         let policy = Policy {
-            owners: BTreeSet::from([pk(OWNER)]),
+            owners,
             controllers: BTreeSet::from([pk(CONTROLLER)]),
             readers: BTreeSet::from([pk(READER)]),
             account: "local".into(),
@@ -187,7 +220,7 @@ impl Fixture {
             "parent":null,"currency":"SAT","ceiling_microunits":10_000,"spent_microunits":0,"unknown":false});
         put_json(&mut artifacts, &definition);
         put_json(&mut artifacts, &reservation);
-        put(&mut artifacts, b"frame", None);
+        let frame = put(&mut artifacts, b"frame", None);
         put(&mut artifacts, b"policy", None);
         put(&mut artifacts, b"claim", None);
         put(&mut artifacts, b"assurance", None);
@@ -199,6 +232,7 @@ impl Fixture {
             artifacts,
             definition,
             reservation,
+            frame,
             now: crate::now(),
         }
     }
@@ -217,7 +251,7 @@ impl Fixture {
             "request":format!("{:02x}",id).repeat(32),"run":format!("{:02x}",id.wrapping_add(100)).repeat(32),
             "owner":pk(OWNER),"allocator":pk(ALLOCATOR),
             "definition":put_json(&mut artifacts,&self.definition),
-            "frame":put(&mut artifacts,b"frame",None),"policy":put(&mut artifacts,b"policy",None),
+            "frame":self.frame,"policy":put(&mut artifacts,b"policy",None),
             "reservation":put_json(&mut artifacts,&self.reservation),"mode":"create","resource":null,
             "effects":{"reads":[],"writes":["workspace"],"network":[],"process":true,"delegates":false,"spend":false},
             "bounds":[bound("wall_ms",600_000),bound("spend_microunits",spend)],
@@ -250,6 +284,7 @@ impl Fixture {
             participants: self.participants(),
             enforcement: json!([bound("wall_ms", 600_000)]),
             evidence: Vec::new(),
+            bootstrap: None,
         }
     }
     /// Create a lease and materialize it; returns (lease ID, lease ref).
@@ -1229,6 +1264,20 @@ fn native_environment_job(
     Event,
     Value,
 ) {
+    let (h, scope, claim, event, payload, _) = native_environment_job_with_parent(fx, false);
+    (h, scope, claim, event, payload)
+}
+fn native_environment_job_with_parent(
+    fx: &mut Fixture,
+    with_parent: bool,
+) -> (
+    coordination_host::book::Coordinator,
+    Value,
+    Value,
+    Event,
+    Value,
+    Value,
+) {
     let h = coordination_host::book::Coordinator::initialize(
         fx._temp.path().join("coord"),
         secret(OWNER),
@@ -1236,23 +1285,26 @@ fn native_environment_job(
     .unwrap();
     let target = h.data_operation().unwrap();
     let effects = json!({"reads":["artifact"],"writes":[],"network":[],"process":false,"delegates":false,"spend":false});
+    let mut ceiling = effects.clone();
+    ceiling["delegates"] = json!(true);
+    let container = h.container_operation(ceiling.clone()).unwrap();
     let now = fx.now;
     let scope = h
         .create_scope(
             coordination_host::book::Policy {
                 recipients: BTreeSet::from([pk(OWNER), pk(WORKER), pk(INFERENCE)]),
                 checkers: BTreeSet::from([pk(INFERENCE)]),
-                calls: 2,
-                concurrency: 1,
+                calls: 4,
+                concurrency: 2,
                 max_claim_seconds: 300,
-                max_container_seconds: None,
+                max_container_seconds: Some(3600),
                 max_depth: 8,
                 until: now + 7200,
-                effects: effects.clone(),
+                effects: ceiling.clone(),
                 parent: None,
             },
             vec![],
-            vec![target.clone()],
+            vec![target.clone(), container.clone()],
             now,
         )
         .unwrap();
@@ -1277,8 +1329,21 @@ fn native_environment_job(
     let lock=h.put_local_json(&json!({"v":"openagents.lock.v1","requires":[],"root":target,"entries":[{"id":target["id"],"definition":target,"dependencies":[]}]})).unwrap();
     let descriptor: Value = serde_json::from_slice(&h.get_local_bytes(&scope).unwrap()).unwrap();
     let context=h.put_local_json(&json!({"v":"openagents.context.v1","requires":[],"task":task,"recipient":pk(WORKER),"policy":descriptor["policy"],"entries":[],"omissions":[],"coverage":"complete"})).unwrap();
-    let proposal=h.propose(&send(json!({"v":"openagents.task-proposal.v1","requires":[],"task":workspace_host::artifact::token(),"coordinator":scope,"frame":frame,"parent":null,"target":target,"lock":lock,"input":input,"context":context,"dependencies":[],"effects":effects,"bounds":[{"bound":"calls","ceiling":2,"assurance":"host","mechanism":"native-ledger"}],"acceptance":acceptance,"reuse":"never"})),&BTreeMap::new(),now).unwrap()["value"].clone();
-    let claim=h.claim(&send(json!({"v":"openagents.claim-request.v1","requires":[],"proposal":proposal,"worker":pk(WORKER),"resources":[],"expected_revision":h.scope(&scope).unwrap()["revision"],"requested_until":now+300,"reservation":h.scope(&scope).unwrap()["allowance"]})),now).unwrap()["value"].clone();
+    let mut parent_task = Value::Null;
+    let mut budget = Value::Null;
+    let mut parent_reservation = h.scope(&scope).unwrap()["allowance"].clone();
+    if with_parent {
+        parent_task = json!(workspace_host::artifact::token());
+        let parent_lock=h.put_local_json(&json!({"v":"openagents.lock.v1","requires":[],"root":container,"entries":[{"id":container["id"],"definition":container,"dependencies":[]}]})).unwrap();
+        let parent_context=h.put_local_json(&json!({"v":"openagents.context.v1","requires":[],"task":task,"recipient":pk(OWNER),"policy":descriptor["policy"],"entries":[],"omissions":[],"coverage":"complete"})).unwrap();
+        let proposal=h.propose(&send(json!({"v":"openagents.task-proposal.v1","requires":[],"task":parent_task,"coordinator":scope,"frame":frame,"parent":null,"target":container,"lock":parent_lock,"input":input,"context":parent_context,"dependencies":[],"effects":ceiling,"bounds":[{"bound":"calls","ceiling":4,"assurance":"host","mechanism":"native-ledger"}],"acceptance":acceptance,"reuse":"never"})),&BTreeMap::new(),now).unwrap()["value"].clone();
+        budget=h.claim(&send(json!({"v":"openagents.claim-request.v1","requires":[],"proposal":proposal,"worker":pk(OWNER),"resources":[],"expected_revision":h.scope(&scope).unwrap()["revision"],"requested_until":now+1800,"reservation":parent_reservation})),now).unwrap()["value"].clone();
+        let parent_body: Value =
+            serde_json::from_slice(&h.get_local_bytes(&budget).unwrap()).unwrap();
+        parent_reservation = parent_body["reservation"].clone();
+    }
+    let proposal=h.propose(&send(json!({"v":"openagents.task-proposal.v1","requires":[],"task":workspace_host::artifact::token(),"coordinator":scope,"frame":frame,"parent":parent_task,"target":target,"lock":lock,"input":input,"context":context,"dependencies":[],"effects":effects,"bounds":[{"bound":"calls","ceiling":2,"assurance":"host","mechanism":"native-ledger"}],"acceptance":acceptance,"reuse":"never"})),&BTreeMap::new(),now).unwrap()["value"].clone();
+    let claim=h.claim(&send(json!({"v":"openagents.claim-request.v1","requires":[],"proposal":proposal,"worker":pk(WORKER),"resources":[],"expected_revision":h.scope(&scope).unwrap()["revision"],"requested_until":now+300,"reservation":parent_reservation})),now).unwrap()["value"].clone();
     let dispatch = send(
         json!({"v":"openagents.coordination-native-dispatch.v1","requires":[],"coordinator":scope,"claim":claim}),
     );
@@ -1303,11 +1368,36 @@ fn native_environment_job(
         &h.get_local_bytes(&claim).unwrap(),
         Some("openagents.claim.v1"),
     );
-    (h, scope, claim, event, execute.payload)
+    fx.frame = frame.clone();
+    let mut queue = vec![frame];
+    let mut seen = BTreeSet::new();
+    while let Some(reference) = queue.pop() {
+        let digest = reference["digest"].as_str().unwrap().to_string();
+        if !seen.insert(digest.clone()) {
+            continue;
+        }
+        let bytes = h.get_local_bytes(&reference).unwrap();
+        fx.artifacts.insert(digest, bytes.clone());
+        if let Ok(body) = nostr::contracts::parse_strict(&bytes) {
+            let mut stack = vec![&body];
+            while let Some(value) = stack.pop() {
+                if nostr::contracts::parse_artifact(value).is_ok() {
+                    queue.push(value.clone());
+                    continue;
+                }
+                match value {
+                    Value::Object(o) => stack.extend(o.values()),
+                    Value::Array(a) => stack.extend(a),
+                    _ => {}
+                }
+            }
+        }
+    }
+    (h, scope, claim, event, execute.payload, budget)
 }
 #[test]
 fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() {
-    for mode in ["run", "revoke", "drain", "expired-claim"] {
+    for mode in ["run", "revoke", "drain", "expired-claim", "different-frame"] {
         let mut fx = Fixture::new();
         let (coordinator, scope, claim, event, payload) = native_environment_job(&mut fx);
         let mounted = coordination_host::book::Coordinator::open(
@@ -1318,6 +1408,10 @@ fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() 
         let allocator = fx.allocator().with_claims(Box::new(mounted));
         let mut request = fx.request_body(91, 0, 1800);
         request["bounds"][1]["currency"] = json!("USD");
+        if mode == "different-frame" {
+            request["frame"] =
+                workspace_host::artifact::reference(b"frame", "application/octet-stream", None);
+        }
         let result = allocator
             .submit(&fx.bundle(OWNER, &request), fx.now)
             .unwrap();
@@ -1342,6 +1436,12 @@ fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() 
         let mut bundle = fx.bundle(OWNER, &job.attach);
         bundle.declarations.push(job.declaration_event.clone());
         let result = allocator.submit(&bundle, fx.now).unwrap();
+        if mode == "different-frame" {
+            assert_eq!(result["status"], "refused");
+            assert_eq!(result["reason"], "identity_mismatch");
+            assert_eq!(coordinator.scope(&scope).unwrap()["calls"], 0);
+            continue;
+        }
         assert_eq!(result["status"], "accepted", "{result}");
         let grant = result["value"].clone();
         admit_all(&mut fx, &allocator, &job, &grant);
@@ -1441,4 +1541,261 @@ fn an_execute_deadline_cannot_outlive_the_attachment_lease() {
     let result = attach(&fx, &allocator, &job);
     assert_eq!(result["status"], "refused");
     assert_eq!(result["reason"], "cannot_enforce");
+}
+
+fn bootstrap_fixture(
+    fx: &mut Fixture,
+    bad_allowance: bool,
+) -> (
+    Allocator,
+    coordination_host::book::Coordinator,
+    Value,
+    String,
+    MaterializeSpec,
+) {
+    let (coordinator, scope, claim, _event, _payload, budget) =
+        native_environment_job_with_parent(fx, true);
+    let mounted =
+        coordination_host::book::Coordinator::open(fx._temp.path().join("coord"), secret(OWNER))
+            .unwrap();
+    let allocator = fx.allocator().with_claims(Box::new(mounted));
+    let create_id = format!("{:02x}", 96).repeat(32);
+    let request = workspace_host::artifact::token();
+    let mut components = fx.definition["components"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| json!({"id":c["id"],"artifact":c["artifact"]}))
+        .collect::<Vec<_>>();
+    components.push(json!({"id":"workspace","artifact":fx.definition["workspace"]}));
+    components.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
+    let input = json!({"v":"openagents.environment-native-bootstrap-input.v1","requires":[],"owner":pk(OWNER),"request":create_id,"components":components});
+    let input_ref = put_json(&mut fx.artifacts, &input);
+    let fingerprint = if bad_allowance {
+        digest_bytes(b"different input")
+    } else {
+        digest_value(&input).unwrap()
+    };
+    let admission=workspace_host::host::request(&secret(OWNER),&pk(OWNER),json!({"v":"openagents.coordination-native-auxiliary.v1","requires":[],"coordinator":scope,"claim":budget,"command":workspace_host::artifact::token(),"purpose":"prepare","request":request,"fingerprint":fingerprint}),fx.now).unwrap();
+    let binding = allocator
+        .bootstrap_binding(&claim, &admission, &request)
+        .unwrap();
+    let card: Value = serde_json::from_slice(
+        &allocator
+            .store()
+            .get(&binding["target"]["artifact"])
+            .unwrap(),
+    )
+    .unwrap();
+    nostr::cap::parse_definition(&card).unwrap();
+    let bounds = json!([
+        {"bound":"calls","ceiling":1,"assurance":"host","mechanism":"native-ledger"},
+        {"bound":"wall_ms","ceiling":30000,"assurance":"host","mechanism":"native-response-deadline"},
+        {"bound":"input_bytes","ceiling":1048576,"assurance":"host","mechanism":"native-bytes"},
+        {"bound":"output_bytes","ceiling":1048576,"assurance":"host","mechanism":"native-bytes"}
+    ]);
+    fx.definition["bootstrap"] = json!({"target":binding["target"],"lock":binding["lock"],"input":input_ref,"context":binding["context"],"requirements":binding["requirements"],"effects":binding["effects"],"bounds":bounds});
+    let mut request_body = fx.request_body(96, 0, 1800);
+    request_body["bounds"][1]["currency"] = json!("USD");
+    let result = allocator
+        .submit(&fx.bundle(OWNER, &request_body), fx.now)
+        .unwrap();
+    assert_eq!(result["status"], "accepted", "{result}");
+    let lease_id = allocator.store().json(&result["lease"]).unwrap()["lease"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let deadline = fx.now + 200;
+    let payload = json!({"v":execution::SCHEMA,"requires":[],"type":"execute","request":request,"attempt":1,"run":workspace_host::artifact::token(),"target":binding["target"],"lock":binding["lock"],"input":{"artifact":input_ref},"context":binding["context"],"requirements":binding["requirements"],"bounds":{"wall_ms":30000,"output_bytes":1048576,"jobs":1,"spend_microunits":0},"deadline":deadline,"retain_until":deadline+3600});
+    let signer = RelaySigner::from_secret_hex(&secret(OWNER).display_secret().to_string()).unwrap();
+    let event = execution::Seal {
+        signer: &signer,
+        conversation: nostr::nip44::conversation_key(
+            &secret(OWNER),
+            &pk(ALLOCATOR).parse().unwrap(),
+        ),
+        nonce: [8; 32],
+        created_at: fx.now,
+    }
+    .event(
+        execution::REQUEST_KIND,
+        vec![
+            Tag::new(vec!["p".into(), pk(ALLOCATOR)]),
+            Tag::new(vec!["expiration".into(), deadline.to_string()]),
+        ],
+        &payload,
+    )
+    .unwrap();
+    let mut spec = fx.spec();
+    spec.bootstrap = Some(event);
+    (allocator, coordinator, scope, lease_id, spec)
+}
+#[test]
+fn a_separately_signed_bootstrap_initializes_real_files_and_charges_the_actual_parent_once() {
+    let mut fx = Fixture::new();
+    let (allocator, coordinator, scope, lease_id, spec) = bootstrap_fixture(&mut fx, false);
+    assert_eq!(coordinator.scope(&scope).unwrap()["calls"], 0);
+    let result = allocator.materialize(&lease_id, &spec, fx.now).unwrap();
+    let materialization = allocator.store().json(&result["materialization"]).unwrap();
+    assert_eq!(
+        materialization["bootstrap"]["schema"],
+        nostr::run::RECORD_SCHEMA
+    );
+    let terminal = allocator
+        .store()
+        .json(&materialization["bootstrap"])
+        .unwrap();
+    assert_eq!(terminal["record"]["type"], "settled");
+    assert_eq!(terminal["record"]["data"]["outcome"], "completed");
+    let resource = allocator
+        .store()
+        .json(&materialization["resource"])
+        .unwrap();
+    let directory = fx.resources.join(resource["resource"].as_str().unwrap());
+    assert_eq!(
+        std::fs::read_dir(&directory)
+            .unwrap()
+            .filter(|e| e
+                .as_ref()
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".initialized-"))
+            .count(),
+        1
+    );
+    allocator.materialize(&lease_id, &spec, fx.now + 1).unwrap();
+    assert_eq!(fx.faults.borrow().bootstraps, 1);
+    assert_eq!(fx.faults.borrow().placements, 1);
+    assert_eq!(coordinator.scope(&scope).unwrap()["calls"], 1);
+    assert!(
+        allocator
+            .recover(spec.bootstrap.as_ref().unwrap(), fx.now + 1)
+            .unwrap_err()
+            .contains("management endpoint")
+    );
+}
+#[test]
+fn lost_bootstrap_result_recovers_only_original_provider_receipt_without_reinitializing() {
+    let mut fx = Fixture::new();
+    let (allocator, coordinator, scope, lease_id, spec) = bootstrap_fixture(&mut fx, false);
+    fx.faults.borrow_mut().lose_bootstrap = true;
+    assert!(allocator.materialize(&lease_id, &spec, fx.now).is_err());
+    let status = allocator.status(&lease_id).unwrap();
+    assert_eq!(status["status"], "provisioning");
+    assert!(allocator.store().json(&status["state"]).unwrap()["materialization"].is_null());
+    assert_eq!(fx.faults.borrow().bootstraps, 1);
+    drop(allocator);
+    let allocator = fx.allocator().with_claims(Box::new(
+        coordination_host::book::Coordinator::open(fx._temp.path().join("coord"), secret(OWNER))
+            .unwrap(),
+    ));
+    allocator.materialize(&lease_id, &spec, fx.now + 1).unwrap();
+    assert_eq!(allocator.status(&lease_id).unwrap()["status"], "ready");
+    assert_eq!(fx.faults.borrow().bootstraps, 1);
+    assert_eq!(fx.faults.borrow().placements, 1);
+    assert_eq!(coordinator.scope(&scope).unwrap()["calls"], 1);
+}
+#[test]
+fn missing_bootstrap_receipt_stays_unknown_and_a_refused_budget_never_initializes() {
+    for bad_allowance in [false, true] {
+        let mut fx = Fixture::new();
+        let (allocator, coordinator, scope, lease_id, spec) =
+            bootstrap_fixture(&mut fx, bad_allowance);
+        fx.faults.borrow_mut().fail_bootstrap = true;
+        assert!(allocator.materialize(&lease_id, &spec, fx.now).is_err());
+        assert!(allocator.materialize(&lease_id, &spec, fx.now + 1).is_err());
+        assert_ne!(allocator.status(&lease_id).unwrap()["status"], "ready");
+        assert_eq!(fx.faults.borrow().bootstraps, usize::from(!bad_allowance));
+        assert_eq!(
+            coordinator.scope(&scope).unwrap()["calls"],
+            u64::from(!bad_allowance)
+        );
+    }
+}
+#[test]
+fn another_owners_cached_component_is_not_read_permission_for_a_new_environment() {
+    let mut fx = Fixture::with_owners(BTreeSet::from([pk(OWNER), pk(7)]));
+    let allocator = fx.allocator();
+    let mut other_definition = fx.definition.clone();
+    let secret_bytes = b"private component for the other owner";
+    let secret_ref=reference(&json!({"v":"openagents.private-fixture.v1","requires":[],"secret":String::from_utf8_lossy(secret_bytes)})).unwrap();
+    let secret_body = json!({"v":"openagents.private-fixture.v1","requires":[],"secret":String::from_utf8_lossy(secret_bytes)});
+    other_definition["components"][0]["artifact"] = secret_ref.clone();
+    let mut other = fx.request_body(97, 4000, 1800);
+    other["owner"] = json!(pk(7));
+    let mut bundle = fx.bundle(7, &other);
+    let definition = put_json(&mut bundle.artifacts, &other_definition);
+    other["definition"] = definition;
+    bundle.event = envelope(&secret(7), allocator.pubkey(), &other, fx.now).unwrap();
+    put_json(&mut bundle.artifacts, &secret_body);
+    let accepted = allocator.submit(&bundle, fx.now).unwrap();
+    assert_eq!(accepted["status"], "accepted", "{accepted}");
+    assert_eq!(fx.faults.borrow().creates, 1);
+    fx.definition["components"][0]["artifact"] = secret_ref;
+    let request = fx.request_body(98, 4000, 1800);
+    let refused = allocator
+        .submit(&fx.bundle(OWNER, &request), fx.now)
+        .unwrap();
+    assert_eq!(refused["status"], "refused");
+    assert_eq!(refused["reason"], "not_admitted");
+    assert_eq!(fx.faults.borrow().creates, 1);
+}
+#[test]
+fn refused_cross_owner_status_does_not_disclose_the_other_lease_state() {
+    let mut fx = Fixture::with_owners(BTreeSet::from([pk(OWNER), pk(7)]));
+    let allocator = fx.allocator();
+    let mut request = fx.request_body(99, 4000, 1800);
+    request["owner"] = json!(pk(7));
+    let result = allocator.submit(&fx.bundle(7, &request), fx.now).unwrap();
+    assert_eq!(result["status"], "accepted");
+    let lease_id = allocator.store().json(&result["lease"]).unwrap()["lease"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let status = allocator.status(&lease_id).unwrap();
+    let command = json!({"v":"openagents.environment-control.v1","requires":[],"lease":result["lease"],"command":workspace_host::artifact::token(),"expected_revision":status["revision"],"action":"status","requested_until":null,"evidence":[]});
+    let refused = allocator
+        .submit(&fx.bundle(OWNER, &command), fx.now)
+        .unwrap();
+    assert_eq!(refused["status"], "refused");
+    assert!(refused["lease"].is_null());
+    assert!(refused["state"].is_null());
+    let event = crate::transport::invoke(
+        &secret(OWNER),
+        allocator.pubkey(),
+        &allocator.transport().unwrap(),
+        command,
+        workspace_host::artifact::token(),
+        fx.now,
+    )
+    .unwrap();
+    let (_, files) = allocator
+        .serve(&event, &BTreeMap::new(), &[], fx.now)
+        .unwrap();
+    assert!(!files.contains_key(status["state"]["digest"].as_str().unwrap()));
+    assert!(!files.contains_key(result["lease"]["digest"].as_str().unwrap()));
+}
+#[test]
+fn observing_components_enforces_the_total_read_bound_after_files_change() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut provider = LocalDirectories::new(temp.path().to_path_buf()).unwrap();
+    let Create::Created(resource, _) = provider.create("local", &workspace_host::artifact::token())
+    else {
+        panic!()
+    };
+    provider
+        .materialize(
+            &resource,
+            &[("a".into(), vec![1; 262144]), ("b".into(), vec![2; 262144])],
+        )
+        .unwrap();
+    let path = provider.directory(&resource).unwrap().join("components");
+    std::fs::write(path.join("a"), vec![1; 700000]).unwrap();
+    std::fs::write(path.join("b"), vec![2; 700000]).unwrap();
+    assert!(
+        provider
+            .observe_components(&resource, &["a".into(), "b".into()])
+            .is_err()
+    );
 }

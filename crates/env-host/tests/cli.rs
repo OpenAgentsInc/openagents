@@ -21,8 +21,7 @@ fn pk(secret: &SecretKey) -> String {
 }
 fn put(map: &mut BTreeMap<String, Vec<u8>>, bytes: &[u8], schema: Option<&str>) -> Value {
     map.insert(digest_bytes(bytes), bytes.to_vec());
-    let mut value =
-        json!({"digest":digest_bytes(bytes),"size":bytes.len(),"media_type":"application/json"});
+    let mut value = json!({"digest":digest_bytes(bytes),"size":bytes.len(),"media_type":if schema.is_some(){"application/json"}else{"application/octet-stream"}});
     if let Some(schema) = schema {
         value["schema"] = json!(schema);
     }

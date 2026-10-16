@@ -114,8 +114,25 @@ revocation, expiry, or token replacement prevents new intake. Exact saved worker
 replies remain readable without another execution. Combined AUTO/ENV targets
 remain unsupported; they require a separately wired adapter.
 
-Cloud-VM placement and admitted bootstrap operations remain in #11736. All fixtures use throwaway keys, local directories, and fake allowance
-units; nothing here moves money.
+`bootstrap-binding` takes the actual worker claim, the owner's signed COORD
+auxiliary admission, and the bootstrap request ID. It returns pins for
+`environment/bootstrap-manifest`, a fixed Rust initializer that verifies the
+placed components and writes an initialization manifest. Supply the owner's
+separate signed bootstrap CJ event in `MaterializeSpec.bootstrap`. The plan
+requires one call, at most 30 seconds, and 1 MiB each for input and output,
+using `native-ledger`, `native-response-deadline`, and `native-bytes` enforcement.
+The actual COORD container pays the call before initialization, under the same
+current-claim fence. Readiness requires the successful terminal RUN result.
+Recovery reads the original provider receipt; it never repeats initialization,
+component placement, or the parent charge. Other bootstrap targets refuse.
+
+The request must supply or already own every referenced artifact. A cached
+hash from another owner grants no access. Attachments also require the exact
+frame of the live COORD claim.
+
+Cloud-VM placement and complete SSH recovery remain in #11736. All fixtures
+use throwaway keys, local directories, and fake allowance units; nothing here
+moves money.
 
 The store retains at most 64 leases, plus the shared artifact limits from
 `workspace-host`. Limits stop new admissions; they never discard history.

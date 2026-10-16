@@ -10,8 +10,27 @@ pub trait ClaimAuthority {
         declaration: &Value,
         plaintext: &Value,
         reservation: &Value,
+        frame: &Value,
         now: u64,
     ) -> Result<()>;
+    fn bootstrap_receipt(&self, _: &nostr::domain::Event, _: &str, _: u64) -> Result<Value> {
+        Err("unavailable: bootstrap accounting cannot be observed".into())
+    }
+    fn bootstrap(
+        &self,
+        _: &nostr::domain::Event,
+        _: &str,
+        _: &Value,
+        _: &Value,
+        _: &str,
+        _: &str,
+        _: &Value,
+        _: u64,
+        _: u64,
+        _: &mut dyn FnMut() -> Result<Value>,
+    ) -> Result<(Value, Value)> {
+        Err("unsupported_feature: bootstrap accounting is not configured".into())
+    }
 }
 impl ClaimAuthority for coordination_host::book::Coordinator {
     fn check(
@@ -22,6 +41,7 @@ impl ClaimAuthority for coordination_host::book::Coordinator {
         declaration: &Value,
         plaintext: &Value,
         reservation: &Value,
+        frame: &Value,
         now: u64,
     ) -> Result<()> {
         self.environment_claim(
@@ -31,7 +51,42 @@ impl ClaimAuthority for coordination_host::book::Coordinator {
             declaration,
             plaintext,
             reservation,
+            frame,
             now,
+        )
+    }
+    fn bootstrap_receipt(
+        &self,
+        event: &nostr::domain::Event,
+        owner: &str,
+        now: u64,
+    ) -> Result<Value> {
+        self.environment_bootstrap_receipt(event, owner, now)
+    }
+    fn bootstrap(
+        &self,
+        admission: &nostr::domain::Event,
+        owner: &str,
+        claim: &Value,
+        reservation: &Value,
+        request: &str,
+        fingerprint: &str,
+        frame: &Value,
+        deadline: u64,
+        now: u64,
+        effect: &mut dyn FnMut() -> Result<Value>,
+    ) -> Result<(Value, Value)> {
+        self.environment_bootstrap(
+            admission,
+            owner,
+            claim,
+            reservation,
+            request,
+            fingerprint,
+            frame,
+            deadline,
+            now,
+            effect,
         )
     }
 }

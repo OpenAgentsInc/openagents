@@ -15,13 +15,13 @@ pub type Reply = (Event, BTreeMap<String, Vec<u8>>);
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Transport {
-    service: execution::Service,
-    replies: BTreeMap<String, Event>,
-    files: BTreeMap<String, Vec<Value>>,
-    outcomes: BTreeMap<String, Value>,
+    pub(crate) service: execution::Service,
+    pub(crate) replies: BTreeMap<String, Event>,
+    pub(crate) files: BTreeMap<String, Vec<Value>>,
+    pub(crate) outcomes: BTreeMap<String, Value>,
 }
 impl Allocator {
-    fn ensure_transport(&self, state: &mut State) {
+    pub(crate) fn ensure_transport(&self, state: &mut State) {
         state.transport.get_or_insert_with(|| Transport {
             service: execution::Service::new(self.pubkey(), 1, 9_007_199_254_740_991),
             replies: BTreeMap::new(),
@@ -140,7 +140,11 @@ impl Allocator {
             }
         }
     }
-    fn cached_files(&self, state: &State, key: &str) -> Result<BTreeMap<String, Vec<u8>>> {
+    pub(crate) fn cached_files(
+        &self,
+        state: &State,
+        key: &str,
+    ) -> Result<BTreeMap<String, Vec<u8>>> {
         state
             .transport
             .as_ref()
@@ -155,7 +159,7 @@ impl Allocator {
             })
             .collect()
     }
-    fn finish_cj(
+    pub(crate) fn finish_cj(
         &self,
         state: &mut State,
         event: &Event,
@@ -192,6 +196,10 @@ impl Allocator {
             if contracts::parse_artifact(&value[field]).is_ok() {
                 refs.push(value[field].clone());
             }
+        }
+        if value["v"] == "openagents.environment-native-bootstrap-result.v1" {
+            refs.push(value["manifest"].clone());
+            refs.push(value["accounting"].clone());
         }
         let resolved=nostr::run::append_envelope(&mut records,self.pubkey(),"resolved",json!({"outcome":"completed","dispatched":true,"output":output,"receipts":[],"usage":{"spend_microunits":0},"verification":"not_run","integration":"not_requested"}),now).map_err(|e|e.to_string())?;
         let settled=nostr::run::append_envelope(&mut records,self.pubkey(),"settled",json!({"outcome":"completed","unknowns":[],"verification":"not_run","integration":"not_requested","results":[output],"reservations":[]}),now).map_err(|e|e.to_string())?;
@@ -266,6 +274,9 @@ impl Allocator {
         let execution::Body::Execute(execute) = &opened.body else {
             return Err("environment execute required".into());
         };
+        if execute.payload["target"]["id"] != format!("{}:environment/controller", self.pubkey()) {
+            return Err("unsupported_feature: management endpoint target differs".into());
+        }
         let key;
         {
             let _guard = self.store.lock()?;
@@ -302,10 +313,12 @@ impl Allocator {
             )
             .map_err(|e| format!("{e:?}"))?;
             self.check_cj(&state, &opened, execute)?;
+            let allocation_run_used = self.allocation_run_used(&state, &execute.run);
             let book = state.transport.as_mut().ok_or("transport")?;
             if book.service.claims.len() >= 4096
                 || book.service.claims.values().any(|c| c.run == execute.run)
                 || execute.input["run"] == execute.run
+                || allocation_run_used
             {
                 return Err("conflict: environment RUN identity or retention bound".into());
             }
@@ -370,6 +383,9 @@ impl Allocator {
         let execution::Body::Execute(execute) = &opened.body else {
             return Err("environment execute required".into());
         };
+        if execute.payload["target"]["id"] != format!("{}:environment/controller", self.pubkey()) {
+            return Err("unsupported_feature: management endpoint target differs".into());
+        }
         let _guard = self.store.lock()?;
         let mut state = self.state()?;
         let book = state
