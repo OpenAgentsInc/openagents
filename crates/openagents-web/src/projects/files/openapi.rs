@@ -53,7 +53,7 @@ pub(crate) fn extend(doc: &mut Value) {
         "AppFileDeleted":{"type":"object","required":["id","object"],"properties":{"id":{"type":"string"},"object":{"const":"file.deleted"}}},
         "AppFileAttachmentDeleted":{"type":"object","required":["id","object"],"properties":{"id":{"type":"string"},"object":{"const":"attachment.deleted"}}},
         "AppFileUploadRequest":{"type":"object","additionalProperties":false,"required":["request_id","project","filename","size_bytes","sha256"],"properties":{
-            "request_id":{"type":"string","pattern":"^[0-9a-f]{64}$","description":"One stable request ID per logical upload, retained across retries and restarts."},"project":{"type":"string"},"filename":{"type":"string"},"size_bytes":{"type":"integer","minimum":1},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}
+            "request_id":{"type":"string","pattern":"^[0-9a-f]{64}$","description":"Use the same request ID when retrying or resuming an upload after a restart."},"project":{"type":"string"},"filename":{"type":"string"},"size_bytes":{"type":"integer","minimum":1},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"}
         }},
         "AppFileUpload":{"type":"object","required":["id","object","file","project","size_bytes","sha256","part_bytes","uploaded_bytes","next_part","expires_at","complete"],"properties":{
             "id":{"type":"string","pattern":"^upl_[0-9a-f]{24}$"},"object":{"const":"file.upload"},"file":{"type":"string","pattern":"^file_[0-9a-f]{24}$"},"project":{"type":"string"},"size_bytes":{"type":"integer","minimum":1},"sha256":{"type":"string","pattern":"^[0-9a-f]{64}$"},"part_bytes":{"type":"integer","const":uploads::PART_BYTES},"uploaded_bytes":{"type":"integer","minimum":0},"next_part":{"type":"integer","minimum":0},"expires_at":{"type":"integer","minimum":0,"description":"Unix seconds; not an RFC 3339 string. Completed or finalizing uploads can be inspected after this time, subject to current permissions and limits."},"complete":{"type":"boolean"}
@@ -114,7 +114,7 @@ pub(crate) fn extend(doc: &mut Value) {
             "",
             "binary",
             "200",
-            "Download the entire original file, with its MIME type, attachment filename and Digest: sha-256=<lowercase hex>. This header uses hex, not base64. Large files stream; a later part failure can terminate an already-started response. Verify size and SHA-256 before replacing a local destination. No byte-range contract is offered.",
+            "Download the entire original file, with its MIME type, attachment filename and a SHA-256 checksum header. This header uses hex, not base64. Large files stream; a later part failure can terminate an already-started response. Verify size and SHA-256 before replacing a local destination. No byte-range contract is offered.",
         ),
         (
             "/v1/projects/{project}/attachments",
@@ -205,7 +205,7 @@ pub(crate) fn extend(doc: &mut Value) {
             }
         }
         if path.contains("{upload}") {
-            parameters.push(json!({"name":"project","in":"query","required":true,"schema":{"type":"string"},"description":"Project ID or name:NAME. Use the canonical ID returned when starting the upload."}));
+            parameters.push(json!({"name":"project","in":"query","required":true,"schema":{"type":"string"},"description":"Project ID or name:NAME. Use the ID returned when starting the upload."}));
         } else if path.starts_with("/v1/files/{id}") {
             parameters.push(json!({"name":"project","in":"query","schema":{"type":"string"},"description":"Read or mutate through current project membership; required for files in another account's project storage."}));
         }
@@ -239,7 +239,7 @@ pub(crate) fn extend(doc: &mut Value) {
         for status in [
             "400", "401", "403", "404", "409", "410", "413", "415", "422", "429", "502", "503",
         ] {
-            op["responses"][status] = json!({"description":"Invalid request/cursor, empty, looks_like_a_secret, signed_out, project_role, not_found/not_in_vault, full/only_me_project/in_another_project/upload_conflict/storage_full, upload_expired, too_large, digest_mismatch, upstream refusal or unavailable. Codes remain strings; errors are not empty successes.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/AppAccountError"}}}});
+            op["responses"][status] = json!({"description":"Invalid request or `after` value; empty input; `looks_like_a_secret`, `signed_out`, `project_role`, `not_found`, `not_in_vault`, `full`, `only_me_project`, `in_another_project`, `upload_conflict`, `storage_full`, `upload_expired`, `too_large` or `digest_mismatch`; a service refused or could not complete the request. Codes remain strings; an error never means the request succeeded.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/AppAccountError"}}}});
             if matches!(status, "400" | "413" | "415" | "422") {
                 op["responses"][status]["content"]["text/plain"] = json!({"schema":{"type":"string"},"description":"Framework query/JSON/body-limit failure before the handler."});
             }

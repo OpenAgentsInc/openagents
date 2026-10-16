@@ -542,7 +542,7 @@ pub(crate) fn extend_openapi(document: &mut Value) {
             "chat":{"type":["string","null"],"description":"An existing chat owned by this account."},"size":{"type":["string","null"],"default":"small"},
             "environment":{"type":["string","null"]},"version":{"type":["string","null"],"description":"The saved version number, paired with environment."},
             "idempotency_key":{"type":["string","null"],"description":"Required here or as Idempotency-Key; when both are supplied they must match."},
-            "placement":{"type":["string","null"],"enum":[null,"auto","our-cloud","fast-sandbox","enrolled"],"description":"An explicit kind of computer is required or refused; it never falls back to another kind. Enrolled computers are not yet supported for creation."},
+            "placement":{"type":["string","null"],"enum":[null,"auto","our-cloud","fast-sandbox","enrolled"],"description":"The service uses the kind you choose or refuses the request. You cannot add a computer you already own here yet."},
             "needs": {"anyOf":[reference("ComputerNeeds"),{"type":"null"}]},
             "egress_profile":{"type":["string","null"],"description":"Reserved. Non-null profiles are refused until their network rules are supported."},
             "enrolled_host":{"type":["string","null"],"description":"Reserved. Non-null host selections are currently refused."}

@@ -60,7 +60,7 @@ pub(crate) fn extend(doc: &mut Value) {
             "post",
             "createAccountKey",
             "Created",
-            "Create a key and return its secret once. Creation is not idempotent: an Idempotency-Key header does not deduplicate it. Do not automatically retry an uncertain result. The sign-in limit is 50 working keys per account. API keys belong to the first workspace where the account is an owner (normally its personal workspace), do not expire, and receive only responses, models:read, usage:read scopes; this is not arbitrary workspace key administration.",
+            "Create a key and return its secret once. Repeating this request can create another key, even with the same `Idempotency-Key` header. Do not automatically retry an uncertain result. The sign-in limit is 50 working keys per account. API keys belong to the first workspace where the account is an owner (normally its personal workspace), do not expire, and receive only responses, models:read, usage:read scopes; this is not arbitrary workspace key administration.",
         ),
         (
             "/v1/keys/{id}",

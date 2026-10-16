@@ -200,7 +200,8 @@ const NOT_COPY_CALLS: &[&str] = &[
 
 /// The string literals in Rust `src` that could be copy: comments, items
 /// under `#[cfg(test)]`, attribute arguments, and arguments to logging,
-/// panic and assertion macros are skipped. Raw and byte strings count;
+/// panic and assertion macros are skipped, as are object identifier keys.
+/// Raw and byte strings count;
 /// escapes stay as written.
 #[must_use]
 pub fn source_strings(src: &str) -> Vec<SourceString> {
@@ -283,7 +284,9 @@ pub fn source_strings(src: &str) -> Vec<SourceString> {
                 let text = &src[start..close.min(src.len())];
                 let at = line;
                 line += text.matches('\n').count();
-                if keep(src, i, pending_test, skip_until_depth, attr_depth) {
+                if keep(src, i, pending_test, skip_until_depth, attr_depth)
+                    && !object_identifier_key(src, close + 1 + hashes, text)
+                {
                     out.push(SourceString {
                         line: at,
                         text: text.to_owned(),
@@ -307,7 +310,9 @@ pub fn source_strings(src: &str) -> Vec<SourceString> {
             let at = line;
             line += text.matches('\n').count();
             let lit_start = if i > 0 && b[i - 1] == b'b' { i - 1 } else { i };
-            if keep(src, lit_start, pending_test, skip_until_depth, attr_depth) {
+            if keep(src, lit_start, pending_test, skip_until_depth, attr_depth)
+                && !object_identifier_key(src, close + 1, text)
+            {
                 out.push(SourceString {
                     line: at,
                     text: text.to_owned(),
@@ -378,6 +383,18 @@ pub fn source_strings(src: &str) -> Vec<SourceString> {
         i += 1;
     }
     out
+}
+
+// Object identifier keys name protocol fields and headers, such as Digest.
+// Values and keys containing prose still go through the copy checks.
+fn object_identifier_key(src: &str, end: usize, text: &str) -> bool {
+    !text.is_empty()
+        && text
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-'))
+        && src
+            .get(end..)
+            .is_some_and(|rest| rest.trim_start().starts_with(':'))
 }
 
 fn keep(
@@ -626,6 +643,19 @@ fn after() -> &'static str { "Still scanned after tests" }
         assert!(looks_like_copy("Retained"));
         assert!(!looks_like_copy("work.dispatch"));
         assert!(!looks_like_copy("dispatch"));
+    }
+
+    #[test]
+    fn object_identifier_keys_are_protocol_names_and_values_remain_copy() {
+        let src = r##"json!({"headers": {"Digest": {"description": "The digest is ready."}},
+            r#"Retained"#: true, "label": "Retained", "Retained for later": true,
+            "description": "Use the canonical ID."});"##;
+        let terms: Vec<_> = source_violations(src, &[])
+            .into_iter()
+            .map(|(_, hit)| hit.term)
+            .collect();
+        assert_eq!(terms, ["digest", "retained", "retained", "canonical"]);
+        assert_eq!(source_violations(r#"let label = "Digest";"#, &[]).len(), 1);
     }
 
     #[test]

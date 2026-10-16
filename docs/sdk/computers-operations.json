@@ -1,7 +1,7 @@
 {
   "format": "openagents.computers.operations.v1",
   "generator_version": 1,
-  "schema_sha256": "19dcf5d6bca65a0874c4abd385b54e556619a079e84499fa925c3e031687b769",
+  "schema_sha256": "80bef4aa48aa9a1f64c8d5b7cb3eb7ad91919e54b230bf217b88cf407b0691c0",
   "operations": [
     {
       "operation_id": "getAccount",

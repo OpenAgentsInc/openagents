@@ -747,7 +747,7 @@
             ]
           },
           "placement": {
-            "description": "An explicit kind of computer is required or refused; it never falls back to another kind. Enrolled computers are not yet supported for creation.",
+            "description": "The service uses the kind you choose or refuses the request. You cannot add a computer you already own here yet.",
             "enum": [
               null,
               "auto",

@@ -78,7 +78,7 @@ pub(crate) fn extend(doc: &mut Value) {
             "",
             "List",
             "200",
-            "List owned and currently shared projects, oldest first. This is not a snapshot. Limit defaults to 100 and clamps to 1–200. An after cursor must name an entry still present in this account's list; otherwise restart after 400 invalid_cursor.",
+            "List owned and currently shared projects, oldest first. This is not a snapshot. Limit defaults to 100 and clamps to 1–200. The `after` value must name an entry still present in this account's list; after a `400 invalid_cursor` response, restart the list.",
         ),
         (
             "/v1/projects",
@@ -249,7 +249,7 @@ pub(crate) fn extend(doc: &mut Value) {
             ),
             (
                 "502",
-                "github_unavailable: the upstream GitHub/account call failed.",
+                "`github_unavailable`: GitHub or the account service could not complete the request.",
             ),
             (
                 "503",
