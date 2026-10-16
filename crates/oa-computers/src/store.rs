@@ -304,15 +304,22 @@ impl Store {
     /// computer's intent never changes back.
     pub async fn set_desired(&self, owner: &str, id: &str, d: Desired) -> Result<bool, DbError> {
         let c = self.db.client().await?;
-        let n = c
-            .execute(
-                "UPDATE computers.computers
-                 SET desired = $3, next_attempt_at = now(), attempts = 0, updated_at = now()
-                 WHERE id = $1 AND owner = $2 AND (desired <> 'deleted' OR $3 = 'deleted')",
-                &[&id, &owner, &d.as_str()],
-            )
-            .await?;
-        Ok(n == 1)
+        let row = c.query_one(
+            "WITH changed AS (
+                UPDATE computers.computers SET desired=$3,next_attempt_at=now(),attempts=0,updated_at=now()
+                WHERE id=$1 AND owner=$2 AND (desired<>'deleted' OR $3='deleted') RETURNING id
+             ), cancelled AS (
+                UPDATE computers.commands SET cancel_requested=true,
+                    status=CASE WHEN status='queued' THEN 'cancelled' ELSE status END,
+                    finished_at=CASE WHEN status='queued' THEN now() ELSE finished_at END
+                WHERE computer IN (SELECT id FROM changed) AND $3<>'running' AND finished_at IS NULL
+                RETURNING turn,status
+             ), ended AS (
+                UPDATE computers.turns SET state='failed',finished_at=now()
+                WHERE id IN (SELECT turn FROM cancelled WHERE status='cancelled') RETURNING id
+             ) SELECT count(*)::bigint FROM changed",
+            &[&id,&owner,&d.as_str()]).await?;
+        Ok(row.get::<_, i64>(0) == 1)
     }
 
     /// The reconciler's own intent change (a lifecycle policy stopped it).

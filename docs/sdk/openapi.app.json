@@ -1908,6 +1908,621 @@
           }
         }
       }
+    },
+    "/v1/computers/{id}/commands": {
+      "post": {
+        "operationId": "createComputerCommand",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^cmp_[0-9a-fA-F]{20}$"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "description": "Required in the header or body; when both are sent they must match."
+          }
+        ],
+        "description": "Account-authenticated Boat commands. Creation queues execution with output capture already configured. Attach reads saved output and never starts or cancels work. Poll from the returned byte offsets; each request checks current authority. No URL tokens. Unknown execution is never replayed. Output expires seven days after creation; each stream retains its first 256 KiB and reports discarded bytes with gaps. Cancellation is intent until an observed exit. Origin, if supplied, must match this deployment.",
+        "responses": {
+          "200": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppCommand"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppCommand"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppCreateCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/computers/{id}/commands/{command}": {
+      "get": {
+        "operationId": "getComputerCommand",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^cmp_[0-9a-fA-F]{20}$"
+            }
+          },
+          {
+            "name": "command",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^trn_[0-9a-fA-F]{20}$"
+            }
+          }
+        ],
+        "description": "Account-authenticated Boat commands. Creation queues execution with output capture already configured. Attach reads saved output and never starts or cancels work. Poll from the returned byte offsets; each request checks current authority. No URL tokens. Unknown execution is never replayed. Output expires seven days after creation; each stream retains its first 256 KiB and reports discarded bytes with gaps. Cancellation is intent until an observed exit. Origin, if supplied, must match this deployment.",
+        "responses": {
+          "200": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppCommand"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/computers/{id}/commands/{command}/output": {
+      "get": {
+        "operationId": "attachComputerCommand",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^cmp_[0-9a-fA-F]{20}$"
+            }
+          },
+          {
+            "name": "command",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^trn_[0-9a-fA-F]{20}$"
+            }
+          },
+          {
+            "name": "stdout",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 262144,
+              "default": 0
+            }
+          },
+          {
+            "name": "stderr",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 262144,
+              "default": 0
+            }
+          },
+          {
+            "name": "max_bytes",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65536,
+              "default": 65536
+            }
+          },
+          {
+            "name": "wait_ms",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000,
+              "default": 0
+            }
+          }
+        ],
+        "description": "Account-authenticated Boat commands. Creation queues execution with output capture already configured. Attach reads saved output and never starts or cancels work. Poll from the returned byte offsets; each request checks current authority. No URL tokens. Unknown execution is never replayed. Output expires seven days after creation; each stream retains its first 256 KiB and reports discarded bytes with gaps. Cancellation is intent until an observed exit. Origin, if supplied, must match this deployment.",
+        "responses": {
+          "200": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppCommandOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/computers/{id}/commands/{command}/cancel": {
+      "post": {
+        "operationId": "cancelComputerCommand",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^cmp_[0-9a-fA-F]{20}$"
+            }
+          },
+          {
+            "name": "command",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^trn_[0-9a-fA-F]{20}$"
+            }
+          }
+        ],
+        "description": "Account-authenticated Boat commands. Creation queues execution with output capture already configured. Attach reads saved output and never starts or cancels work. Poll from the returned byte offsets; each request checks current authority. No URL tokens. Unknown execution is never replayed. Output expires seven days after creation; each stream retains its first 256 KiB and reports discarded bytes with gaps. Cancellation is intent until an observed exit. Origin, if supplied, must match this deployment.",
+        "responses": {
+          "200": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppCommand"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "The command or saved output.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppCommand"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2671,6 +3286,206 @@
                 "const": 20
               }
             }
+          }
+        }
+      },
+      "AppCreateCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536,
+            "description": "Shell command. Do not put credentials in command text."
+          },
+          "cwd": {
+            "type": "string",
+            "default": ".",
+            "maxLength": 1024,
+            "description": "Existing directory relative to /workspace; traversal and symlink escape refuse."
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3600,
+            "default": 600
+          },
+          "env": {
+            "type": "object",
+            "maxProperties": 16,
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "description": "Non-secret values only. Names: LANG, LC_ALL, TZ, CI, TERM, or OA_PARAM_*; credential fields refuse."
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Required here or as Idempotency-Key. Reuse across retries."
+          }
+        }
+      },
+      "AppCommand": {
+        "type": "object",
+        "required": [
+          "id",
+          "computer",
+          "state",
+          "digest",
+          "exit_code",
+          "cancel_requested",
+          "output_expires_unix",
+          "output_limit_bytes",
+          "stdout_truncated",
+          "stderr_truncated"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^trn_[0-9a-fA-F]{20}$"
+          },
+          "computer": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "dispatching",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "timed_out",
+              "unknown"
+            ]
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "exit_code": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "cancel_requested": {
+            "type": "boolean"
+          },
+          "created_unix": {
+            "type": "integer"
+          },
+          "started_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "finished_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "output_expires_unix": {
+            "type": "integer"
+          },
+          "output_limit_bytes": {
+            "const": 262144
+          },
+          "stdout_truncated": {
+            "type": "boolean"
+          },
+          "stderr_truncated": {
+            "type": "boolean"
+          },
+          "stdout_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 262144
+          },
+          "stderr_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 262144
+          }
+        }
+      },
+      "AppCommandOutput": {
+        "type": "object",
+        "required": [
+          "command",
+          "encoding",
+          "stdout",
+          "stderr",
+          "next_cursor",
+          "gaps",
+          "terminal",
+          "has_more"
+        ],
+        "properties": {
+          "command": {
+            "$ref": "#/components/schemas/AppCommand"
+          },
+          "encoding": {
+            "const": "base64"
+          },
+          "stdout": {
+            "type": "string",
+            "contentEncoding": "base64",
+            "maxLength": 87384
+          },
+          "stderr": {
+            "type": "string",
+            "contentEncoding": "base64",
+            "maxLength": 87384
+          },
+          "next_cursor": {
+            "type": "object",
+            "required": [
+              "stdout",
+              "stderr"
+            ],
+            "properties": {
+              "stdout": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 262144
+              },
+              "stderr": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 262144
+              }
+            }
+          },
+          "gaps": {
+            "type": "object",
+            "required": [
+              "stdout",
+              "stderr"
+            ],
+            "properties": {
+              "stdout": {
+                "type": "boolean"
+              },
+              "stderr": {
+                "type": "boolean"
+              }
+            }
+          },
+          "terminal": {
+            "type": "boolean"
+          },
+          "has_more": {
+            "type": "boolean"
           }
         }
       }

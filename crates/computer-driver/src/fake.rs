@@ -293,6 +293,98 @@ impl Driver for FakeDriver {
         Outcome::done(result)
     }
 
+    async fn start_command(&self, computer: &str, spec: &CommandSpec) -> Outcome<String> {
+        let fault = self.fault("start_command", computer);
+        if matches!(fault, Some(Inject::LoseRequest)) {
+            return Outcome::unknown("injected lost request");
+        }
+        if matches!(fault, Some(Inject::Fail)) {
+            return Outcome::failed("injected failure");
+        }
+        let dir = match self.running_dir(computer) {
+            Ok(d) => d,
+            Err(o) => return o.map(|()| String::new()),
+        };
+        let script = crate::identified::bounded_command_script(
+            dir.join(".oa-commands").to_str().unwrap(),
+            dir.to_str().unwrap(),
+            spec,
+        );
+        let child = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(script)
+            .env_clear()
+            .env("HOME", &dir)
+            .env("PATH", std::env::var("PATH").unwrap_or_default())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+        match child {
+            Ok(mut child) => {
+                tokio::spawn(async move {
+                    let _ = child.wait().await;
+                });
+                if matches!(fault, Some(Inject::LoseReply)) {
+                    Outcome::unknown("injected lost reply")
+                } else {
+                    Outcome::done(spec.id.clone())
+                }
+            }
+            Err(_) => Outcome::failed("The command could not start."),
+        }
+    }
+    async fn read_command(
+        &self,
+        computer: &str,
+        id: &str,
+        cursor: CommandCursor,
+        max_bytes: u64,
+    ) -> Outcome<CommandRead> {
+        let dir = match self.running_dir(computer) {
+            Ok(d) => d,
+            Err(o) => return o.map(|()| unreachable!()),
+        };
+        let script = crate::identified::read_script(
+            dir.join(".oa-commands").to_str().unwrap(),
+            id,
+            cursor,
+            max_bytes.clamp(1, 65536),
+        );
+        match self.exec(computer, &Exec::new(script)).await {
+            Outcome::Done { value } => match crate::identified::parse_read(&value.stdout) {
+                Ok(r) => Outcome::done(r),
+                Err(e) => Outcome::unknown(e),
+            },
+            _ => Outcome::unknown("The command output is unavailable."),
+        }
+    }
+    async fn stop_command(&self, computer: &str, id: &str) -> Outcome<String> {
+        let fault = self.fault("stop_command", computer);
+        if matches!(fault, Some(Inject::LoseRequest)) {
+            return Outcome::unknown("injected lost request");
+        }
+        let dir = match self.running_dir(computer) {
+            Ok(d) => d,
+            Err(o) => return o.map(|()| String::new()),
+        };
+        let result = self
+            .exec(
+                computer,
+                &Exec::new(crate::identified::bounded_stop_script(
+                    dir.join(".oa-commands").to_str().unwrap(),
+                    id,
+                )),
+            )
+            .await
+            .map(|o| o.stdout);
+        if matches!(fault, Some(Inject::LoseReply)) {
+            Outcome::unknown("injected lost reply")
+        } else {
+            result
+        }
+    }
+
     async fn put_file(&self, computer: &str, path: &str, bytes: &[u8]) -> Outcome<()> {
         let fault = self.fault("put_file", computer);
         wrap(fault, || {

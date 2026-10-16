@@ -176,6 +176,62 @@ impl Driver for BoatDriver {
         }
     }
 
+    async fn start_command(&self, computer: &str, spec: &CommandSpec) -> Outcome<String> {
+        let script =
+            identified::bounded_command_script("/tmp/oa-public-commands", "/workspace", spec);
+        match self
+            .client
+            .exec_detached(
+                computer,
+                CommandRequest {
+                    command: script,
+                    timeout_seconds: Some(600),
+                    ..Default::default()
+                },
+            )
+            .await
+        {
+            Ok(r) => Outcome::done(format!("boat-process:{}", r.process_id)),
+            Err(e) => mutation(e),
+        }
+    }
+
+    async fn read_command(
+        &self,
+        computer: &str,
+        id: &str,
+        cursor: CommandCursor,
+        max_bytes: u64,
+    ) -> Outcome<CommandRead> {
+        let script = identified::read_script(
+            "/tmp/oa-public-commands",
+            id,
+            cursor,
+            max_bytes.clamp(1, 65536),
+        );
+        match self.exec(computer, &Exec::new(script)).await {
+            Outcome::Done { value } if value.code == 0 => {
+                match identified::parse_read(&value.stdout) {
+                    Ok(r) => Outcome::done(r),
+                    Err(e) => Outcome::unknown(e),
+                }
+            }
+            _ => Outcome::unknown("The command output is unavailable."),
+        }
+    }
+
+    async fn stop_command(&self, computer: &str, id: &str) -> Outcome<String> {
+        self.exec(
+            computer,
+            &Exec::new(identified::bounded_stop_script(
+                "/tmp/oa-public-commands",
+                id,
+            )),
+        )
+        .await
+        .map(|o| o.stdout)
+    }
+
     async fn put_file(&self, computer: &str, path: &str, bytes: &[u8]) -> Outcome<()> {
         match self.client.write_bytes(computer, path, bytes).await {
             Ok(_) => Outcome::done(()),

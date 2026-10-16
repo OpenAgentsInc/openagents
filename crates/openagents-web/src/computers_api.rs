@@ -1,6 +1,8 @@
 //! Account-authenticated computer lifecycle. Provider tokens and owner headers
 //! are constructed only at the trusted service boundary.
 
+pub(crate) mod commands;
+
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode, header};
@@ -509,4 +511,5 @@ pub(crate) fn extend_openapi(document: &mut Value) {
     document["paths"]["/v1/computers/capabilities"] = json!({
         "get":operation("getComputerCapabilities","ComputerCapabilities"), "delete":remove_named
     });
+    commands::extend_openapi(document);
 }

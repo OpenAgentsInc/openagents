@@ -106,6 +106,8 @@ def main():
         secret("openagents-vertex-sa-key", "VERTEX_SA_JSON"),
         # Work hosts that take "work on this issue" runs (#11258).
         secret("openagents-work-host-token", "OPENAGENTS_WORK_HOST_TOKEN"),
+        # Admit the dedicated production test account, preserving the general gate.
+        plain("OPENAGENTS_WEB_AGENT_ACCOUNTS", "acct_83d16a35955ef908"),
         # Chats on their own computers through oa-computers (#11624).
         plain("OPENAGENTS_WEB_COMPUTERS_URL", "https://oa-computers-157437760789.us-central1.run.app"),
         secret("oa-computers-token", "OPENAGENTS_WEB_COMPUTERS_TOKEN"),

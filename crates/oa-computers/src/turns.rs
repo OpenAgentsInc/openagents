@@ -99,10 +99,12 @@ pub struct Turn {
     pub stdout: Option<String>,
     pub stderr: Option<String>,
     pub error: Option<String>,
+    pub api_command: bool,
 }
 
 const TURN_COLUMNS: &str = "id, computer, state, generation, command, cwd, timeout_seconds, \
-     env_names, exit_code, stdout, stderr, error";
+     env_names, exit_code, stdout, stderr, error, \
+     EXISTS (SELECT 1 FROM computers.commands c WHERE c.turn = computers.turns.id)";
 
 fn turn(row: &tokio_postgres::Row) -> Turn {
     Turn {
@@ -118,6 +120,7 @@ fn turn(row: &tokio_postgres::Row) -> Turn {
         stdout: row.get(9),
         stderr: row.get(10),
         error: row.get(11),
+        api_command: row.get(12),
     }
 }
 
@@ -136,7 +139,7 @@ pub fn view(t: &Turn) -> Value {
     json!({
         "id": t.id,
         "computer": t.computer,
-        "state": t.state,
+        "state": match t.state.as_str() {"command_queued"=>"queued","command_running"=>"running",other=>other},
         "generation": t.generation,
         "env_names": t.env_names,
         "exit_code": t.exit_code,
@@ -195,7 +198,7 @@ impl Store {
         Ok(c.query_opt(
             &format!(
                 "SELECT {TURN_COLUMNS} FROM computers.turns
-                     WHERE computer = $1 AND state IN ('queued', 'running')
+                     WHERE computer = $1 AND state IN ('queued', 'running', 'command_queued', 'command_running')
                      ORDER BY created_at LIMIT 1"
             ),
             &[&computer],
@@ -204,18 +207,22 @@ impl Store {
         .map(|r| turn(&r)))
     }
 
-    async fn turn_running(&self, id: &str, generation: u64) -> Result<(), crate::db::DbError> {
+    pub(crate) async fn turn_running(
+        &self,
+        id: &str,
+        generation: u64,
+    ) -> Result<(), crate::db::DbError> {
         let c = self.db.client().await?;
         c.execute(
-            "UPDATE computers.turns SET state = 'running', generation = $2, started_at = now()
-             WHERE id = $1 AND state = 'queued'",
+            "UPDATE computers.turns SET state = CASE WHEN state='command_queued' THEN 'command_running' ELSE 'running' END, generation = $2, started_at = now()
+             WHERE id = $1 AND state IN ('queued','command_queued')",
             &[&id, &(generation as i64)],
         )
         .await?;
         Ok(())
     }
 
-    async fn turn_ended(
+    pub(crate) async fn turn_ended(
         &self,
         id: &str,
         ok: bool,
@@ -229,7 +236,7 @@ impl Store {
         c.execute(
             "UPDATE computers.turns
              SET state = $2, exit_code = $3, stdout = $4, stderr = $5, error = $6, finished_at = now()
-             WHERE id = $1 AND state IN ('queued', 'running')",
+             WHERE id = $1 AND state IN ('queued', 'running', 'command_queued', 'command_running')",
             &[&id, &state, &exit, &stdout.map(cap), &stderr.map(cap), &error],
         )
         .await?;
@@ -241,7 +248,7 @@ impl Store {
         let c = self.db.client().await?;
         c.execute(
             "UPDATE computers.turns SET state = 'failed', error = $2, finished_at = now()
-             WHERE computer = $1 AND state IN ('queued', 'running')",
+             WHERE computer = $1 AND state IN ('queued', 'running', 'command_queued', 'command_running')",
             &[&computer, &why],
         )
         .await?;
@@ -404,7 +411,27 @@ async fn read(
         );
     };
     match api.store.turn(&owner, &id, &turn).await {
-        Ok(Some(t)) => Json(view(&t)).into_response(),
+        Ok(Some(mut t)) => {
+            if t.api_command {
+                match api.store.command(&owner, &id, &turn).await {
+                    Ok(Some(r)) if !r.expired => {
+                        t.stdout = Some(String::from_utf8_lossy(&r.stdout).into_owned());
+                        t.stderr = Some(String::from_utf8_lossy(&r.stderr).into_owned());
+                        t.error = match r.status.as_str() {
+                            "unknown" => {
+                                Some("We couldn't confirm whether this command finished.".into())
+                            }
+                            "cancelled" => Some(STOPPED.into()),
+                            "timed_out" => Some("This command timed out.".into()),
+                            _ => None,
+                        };
+                    }
+                    Ok(Some(_)) => t.error = Some("This command's output has expired.".into()),
+                    _ => return err(StatusCode::SERVICE_UNAVAILABLE, "unavailable", "Try again."),
+                }
+            }
+            Json(view(&t)).into_response()
+        }
         Ok(None) => err(StatusCode::NOT_FOUND, "not_found", "No such turn."),
         Err(e) => {
             eprintln!("oa-computers: read turn: {e}");
@@ -415,7 +442,8 @@ async fn read(
 
 /// `POST /v1/computers/{id}/turns/{turn}/stop`: a queued turn ends at
 /// once; a running one's command is abandoned (its connection to the
-/// computer closed) and the turn ends as stopped.
+/// computer closed) and the turn ends as stopped. Identified command IDs use
+/// their durable cancellation and expose the legacy turn result shape.
 async fn stop(
     State(api): State<Arc<Api>>,
     headers: HeaderMap,
@@ -429,6 +457,22 @@ async fn stop(
         );
     };
     match api.store.turn(&owner, &id, &turn).await {
+        Ok(Some(t)) if t.api_command => {
+            let cancelled = crate::commands::cancel(
+                State(api.clone()),
+                headers.clone(),
+                Path((id.clone(), turn.clone())),
+            )
+            .await;
+            if !cancelled.status().is_success() {
+                return cancelled;
+            }
+            let mut response = read(State(api), headers, Path((id, turn))).await;
+            if response.status() == StatusCode::OK {
+                *response.status_mut() = StatusCode::ACCEPTED;
+            }
+            response
+        }
         Ok(Some(t)) if t.state == "queued" => {
             api.turns.take(&turn);
             let _ = api
@@ -485,6 +529,9 @@ pub async fn run_next<D: Driver + Clone + 'static>(
     let Some(t) = store.next_turn(&e.id).await.map_err(io)? else {
         return Ok(Settled::Idle(awake));
     };
+    if t.api_command {
+        return crate::commands::run(store, p, lease, e, awake, t, heartbeat).await;
+    }
     let resource = awake.resource().unwrap_or_default().to_owned();
     if t.state == "running" {
         // A turn that was running when a process stopped: its process and

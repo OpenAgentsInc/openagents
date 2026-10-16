@@ -33,6 +33,8 @@
 //! not in a file, not in the computer's per-boot environment, not in a
 //! snapshot. The value is zeroed when the request is dropped.
 
+pub mod identified;
+
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -299,6 +301,9 @@ pub enum CommandProgress {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CommandRead {
+    /// The wrapper observed its deadline, rather than a shell exit with that code.
+    #[serde(default)]
+    pub timed_out: bool,
     pub progress: CommandProgress,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub digest: Option<String>,
@@ -452,6 +457,22 @@ pub trait Driver {
     async fn create(&self, request: &CreateRequest) -> Outcome<String>;
     async fn observe(&self, computer: &str) -> Outcome<Observation>;
     async fn exec(&self, computer: &str, exec: &Exec) -> Outcome<ExecOutput>;
+    /// Start one identity-bound command. Retry by observation, never by a new ID.
+    async fn start_command(&self, _computer: &str, _spec: &CommandSpec) -> Outcome<String> {
+        Outcome::failed("identified commands are unsupported")
+    }
+    async fn read_command(
+        &self,
+        _computer: &str,
+        _id: &str,
+        _cursor: CommandCursor,
+        _max_bytes: u64,
+    ) -> Outcome<CommandRead> {
+        Outcome::failed("identified commands are unsupported")
+    }
+    async fn stop_command(&self, _computer: &str, _id: &str) -> Outcome<String> {
+        Outcome::failed("identified commands are unsupported")
+    }
     async fn put_file(&self, computer: &str, path: &str, bytes: &[u8]) -> Outcome<()>;
     async fn get_file(&self, computer: &str, path: &str) -> Outcome<Vec<u8>>;
     async fn meter(&self, computer: &str) -> Outcome<Meter>;
@@ -499,6 +520,21 @@ impl<D: Driver> Driver for std::sync::Arc<D> {
     }
     async fn exec(&self, c: &str, e: &Exec) -> Outcome<ExecOutput> {
         (**self).exec(c, e).await
+    }
+    async fn start_command(&self, c: &str, s: &CommandSpec) -> Outcome<String> {
+        (**self).start_command(c, s).await
+    }
+    async fn read_command(
+        &self,
+        c: &str,
+        id: &str,
+        cursor: CommandCursor,
+        max: u64,
+    ) -> Outcome<CommandRead> {
+        (**self).read_command(c, id, cursor, max).await
+    }
+    async fn stop_command(&self, c: &str, id: &str) -> Outcome<String> {
+        (**self).stop_command(c, id).await
     }
     async fn put_file(&self, c: &str, p: &str, b: &[u8]) -> Outcome<()> {
         (**self).put_file(c, p, b).await

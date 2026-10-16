@@ -14,6 +14,7 @@ path = "src/main.rs"
 space = ["computer-driver/space"]
 
 [dependencies]
+base64 = "0.22"
 axum = { version = "0.8", features = ["json", "query", "tokio", "http1"] }
 boat = { path = "../boat" }
 coder-environment = { path = "../coder-environment" }

@@ -7,6 +7,7 @@ use std::sync::{
 };
 
 const ID: &str = "cmp_0123456789abcdef0123";
+const COMMAND: &str = "trn_0123456789abcdef0123";
 const CANARY: &str = "private-provider-token-and-address";
 
 fn token(who: &str) -> String {
@@ -79,6 +80,7 @@ async fn provider(State(state): State<Arc<Native>>, request: Request) -> Respons
     // before the request reaches the application.
     if method == "POST"
         && path != "/v1/computers"
+        && !path.ends_with("/commands")
         && request
             .headers()
             .get(header::CONTENT_LENGTH)
@@ -109,6 +111,39 @@ async fn provider(State(state): State<Arc<Native>>, request: Request) -> Respons
     }
     if owner != crate::chat_store::account_owner("alice") {
         return (StatusCode::NOT_FOUND, Json(json!({"message":CANARY}))).into_response();
+    }
+    if path.contains("/commands") {
+        let command = json!({"id":COMMAND,"computer":ID,"state":"succeeded","digest":"a".repeat(64),"exit_code":0,"provider_reference":CANARY,"owner":CANARY,"cancel_requested":false,"created_unix":1,"started_unix":2,"finished_unix":3,"output_expires_unix":604801,"output_limit_bytes":262144,"stdout_truncated":false,"stderr_truncated":false,"stdout_bytes":5,"stderr_bytes":5});
+        if path.ends_with("/output") {
+            if request
+                .uri()
+                .query()
+                .is_some_and(|q| q.contains("max_bytes=13"))
+            {
+                return (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    Json(json!({"error":CANARY})),
+                )
+                    .into_response();
+            }
+            if request
+                .uri()
+                .query()
+                .is_some_and(|q| q.contains("stdout=262144"))
+            {
+                return (StatusCode::GONE, Json(json!({"error":CANARY}))).into_response();
+            }
+            return Json(json!({"command":command,"encoding":"base64","stdout":"ZWFybHk=","stderr":"ZXJyb3I=","next_cursor":{"stdout":5,"stderr":5},"gaps":{"stdout":false,"stderr":false},"terminal":true,"has_more":false,"provider":CANARY})).into_response();
+        }
+        return (
+            if method == "POST" {
+                StatusCode::ACCEPTED
+            } else {
+                StatusCode::OK
+            },
+            Json(command),
+        )
+            .into_response();
     }
     if path.ends_with("/stop") {
         row["desired"] = json!("stopped");
@@ -315,6 +350,65 @@ async fn public_lifecycle_uses_current_account_authority_and_keeps_service_crede
         204
     );
 
+    let commands = format!("{base}/v1/computers/{ID}/commands");
+    let r = http
+        .post(&commands)
+        .bearer_auth(token("alice"))
+        .header("Idempotency-Key", "command-1")
+        .json(&json!({"command":"printf early"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 202);
+    assert_eq!(r.json::<Value>().await.unwrap()["id"], COMMAND);
+    for suffix in [format!("/{COMMAND}"), format!("/{COMMAND}/output")] {
+        let r = http
+            .get(format!("{commands}{suffix}"))
+            .bearer_auth(token("alice"))
+            .header("x-openagents-account", "foreign")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 200);
+        let body = r.text().await.unwrap();
+        assert!(!body.contains(CANARY));
+        assert!(!body.contains("provider_reference"));
+        assert_eq!(
+            http.get(format!("{commands}{suffix}"))
+                .bearer_auth(token("bob"))
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            404
+        );
+    }
+    let r = http
+        .post(format!("{commands}/{COMMAND}/cancel"))
+        .bearer_auth(token("alice"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 202);
+    assert!(!r.text().await.unwrap().contains(CANARY));
+    let r = http
+        .get(format!("{commands}/{COMMAND}/output?stdout=262144"))
+        .bearer_auth(token("alice"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 410);
+    let v = r.text().await.unwrap();
+    assert!(v.contains("expired"));
+    assert!(!v.contains(CANARY));
+    let r = http
+        .get(format!("{commands}/{COMMAND}/output?max_bytes=13"))
+        .bearer_auth(token("alice"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 503);
+    assert!(!r.text().await.unwrap().contains(CANARY));
     let before = state.calls.lock().unwrap().len();
     let too_large = http
         .post(format!("{base}/v1/computers"))
@@ -387,9 +481,36 @@ async fn public_lifecycle_uses_current_account_authority_and_keeps_service_crede
             .status(),
         401
     );
+    for request in [
+        http.get(format!("{commands}/{COMMAND}/output"))
+            .bearer_auth(token("alice"))
+            .header("Origin", "https://hostile.example"),
+        http.get(format!(
+            "{commands}/{COMMAND}/output?token=untrusted-attach-token"
+        ))
+        .bearer_auth(token("alice")),
+        http.get(format!("{commands}/{COMMAND}/output?max_bytes=65537"))
+            .bearer_auth(token("alice")),
+        http.post(&commands)
+            .bearer_auth(token("alice"))
+            .json(&json!({"command":"true","credentials":["foreign"],"idempotency_key":"x"})),
+    ] {
+        let r = request.send().await.unwrap();
+        assert!(matches!(r.status().as_u16(), 400 | 403));
+        assert!(!r.text().await.unwrap().contains(CANARY));
+    }
     state.revoked.store(true, Ordering::SeqCst);
     assert_eq!(
         http.get(format!("{base}/v1/computers/{ID}"))
+            .bearer_auth(token("alice"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        401
+    );
+    assert_eq!(
+        http.get(format!("{commands}/{COMMAND}/output"))
             .bearer_auth(token("alice"))
             .send()
             .await

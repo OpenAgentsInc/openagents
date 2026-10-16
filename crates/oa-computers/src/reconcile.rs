@@ -109,7 +109,12 @@ impl<D: Driver + Clone + 'static> Reconciler<D> {
     /// once. Call inside a `LocalSet`.
     pub async fn run(self: Rc<Self>) {
         let busy = Rc::new(Cell::new(0usize));
+        let mut pruned = tokio::time::Instant::now() - Duration::from_secs(60);
         loop {
+            if pruned.elapsed() >= Duration::from_secs(60) {
+                let _ = self.store.prune_command_output().await;
+                pruned = tokio::time::Instant::now();
+            }
             let mut claimed = false;
             while busy.get() < self.settings.parallel {
                 match self
@@ -182,11 +187,36 @@ impl<D: Driver + Clone + 'static> Reconciler<D> {
             e.desired = Desired::Deleted;
         }
         let woke = e.desired == Desired::Running && wakes_from(&e.record.phase);
-        let result = match e.desired {
-            Desired::Deleted => driver::delete(&p, &lease, now).await,
-            Desired::Stopped => driver::stop(&p, &lease, now).await,
-            Desired::Running if woke => driver::settle(&p, &lease, Trigger::Wake, now).await,
-            Desired::Running => driver::tick(&p, &lease, false, now).await,
+        // Recover public commands before the legacy lifecycle tick can expire a
+        // turn after a service restart. Recovery observes the same identity.
+        let active_command = if matches!(e.record.phase, Phase::Turn { .. }) {
+            self.store
+                .next_turn(&e.id)
+                .await
+                .ok()
+                .flatten()
+                .filter(|t| t.api_command)
+        } else {
+            None
+        };
+        let result = if let Some(t) = active_command {
+            crate::commands::run(
+                &self.store,
+                &p,
+                &lease,
+                &e,
+                e.record.clone(),
+                t,
+                self.settings.heartbeat,
+            )
+            .await
+        } else {
+            match e.desired {
+                Desired::Deleted => driver::delete(&p, &lease, now).await,
+                Desired::Stopped => driver::stop(&p, &lease, now).await,
+                Desired::Running if woke => driver::settle(&p, &lease, Trigger::Wake, now).await,
+                Desired::Running => driver::tick(&p, &lease, false, now).await,
+            }
         };
         // A waiting turn runs once the computer is awake.
         let result = match result {

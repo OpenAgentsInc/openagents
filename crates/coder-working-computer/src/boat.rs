@@ -32,11 +32,10 @@
 //! running the command again.
 
 use crate::provider::{
-    CheckpointEvidence, CommandCursor, CommandProgress, CommandRead, CommandSpec, Commands,
-    ImageRecord, ImageState, Images, Inspection, Meter, Outcome, Provider,
+    CheckpointEvidence, CommandCursor, CommandRead, CommandSpec, Commands, ImageRecord, ImageState,
+    Images, Inspection, Meter, Outcome, Provider,
 };
 use crate::{Checkpoint, Computer, Health, ServiceDecl};
-use base64::Engine;
 use boat::{Client, Nullable, WaitOptions, models::*, shell_quote};
 use coder_cloud::runtime::Credentials;
 use std::time::Duration;
@@ -51,105 +50,7 @@ const CREATOR_LOGIN_READS: u32 = 15;
 /// The longest command timeout Boat accepts (`invalid_timeout` above it).
 pub const BOAT_COMMAND_SECONDS: i64 = 600;
 
-fn join_dir(workdir: &str, cwd: &str) -> String {
-    if cwd == "." {
-        workdir.to_owned()
-    } else {
-        format!("{workdir}/{cwd}")
-    }
-}
-
-/// The detached wrapper for one identified command. `unset` lists the
-/// selected credentials this command did not name.
-pub fn command_script(root: &str, workdir: &str, spec: &CommandSpec, unset: &[&str]) -> String {
-    let d = shell_quote(&format!("{root}/{}", spec.id));
-    let mut env = vec!["env".to_owned()];
-    env.extend(unset.iter().map(|n| format!("-u {n}")));
-    env.extend(
-        spec.env
-            .iter()
-            .map(|(k, v)| format!("{k}={}", shell_quote(v))),
-    );
-    format!(
-        "mkdir -p {root} && mkdir {d} 2>/dev/null || exit {ALREADY_CLAIMED}\n\
-         printf %s {digest} > {d}/spec\n\
-         mkdir -p {workdir}\n\
-         cd {cwd} || {{ echo 126 > {d}/exit.tmp; mv {d}/exit.tmp {d}/exit; exit 126; }}\n\
-         {env} sh -c {command} </dev/null >{d}/stdout 2>{d}/stderr &\n\
-         echo $! > {d}/pid\n\
-         wait $!\n\
-         code=$?\n\
-         echo $code > {d}/exit.tmp && mv {d}/exit.tmp {d}/exit\n\
-         exit $code",
-        root = shell_quote(root),
-        digest = shell_quote(&spec.digest),
-        workdir = shell_quote(workdir),
-        cwd = shell_quote(&join_dir(workdir, &spec.cwd)),
-        env = env.join(" "),
-        command = shell_quote(&spec.command),
-    )
-}
-
-/// A read-only probe: state line, spec digest line, then base64 stdout
-/// and stderr from the cursor. State is read before output, so an `exit`
-/// state means the output that follows is final.
-pub fn read_script(root: &str, id: &str, cursor: CommandCursor, max_bytes: u64) -> String {
-    let d = shell_quote(&format!("{root}/{id}"));
-    format!(
-        "d={d}\n\
-         if [ ! -d \"$d\" ]; then echo absent; echo; echo; echo; exit 0; fi\n\
-         if [ -f \"$d/exit\" ]; then echo \"exit $(cat \"$d/exit\")\"\n\
-         elif [ ! -f \"$d/pid\" ]; then echo running\n\
-         elif kill -0 \"$(cat \"$d/pid\")\" 2>/dev/null; then echo running\n\
-         else sleep 1; if [ -f \"$d/exit\" ]; then echo \"exit $(cat \"$d/exit\")\"; else echo lost; fi; fi\n\
-         cat \"$d/spec\" 2>/dev/null; echo\n\
-         for s in stdout:{o} stderr:{e}; do f=\"$d/${{s%%:*}}\"; n=${{s##*:}}; \
-         if [ -f \"$f\" ]; then tail -c +$((n+1)) \"$f\" | head -c {max_bytes} | base64 | tr -d '\\n'; fi; echo; done",
-        o = cursor.stdout,
-        e = cursor.stderr,
-    )
-}
-
-/// Parse [`read_script`] output.
-pub fn parse_read(stdout: &str) -> Result<CommandRead, &'static str> {
-    let mut lines = stdout.split('\n');
-    let state = lines.next().unwrap_or_default().trim();
-    let digest = lines.next().unwrap_or_default().trim();
-    let decode = |line: Option<&str>| {
-        base64::engine::general_purpose::STANDARD
-            .decode(line.unwrap_or_default().trim())
-            .map_err(|_| "The command output did not decode.")
-    };
-    let stdout = decode(lines.next())?;
-    let stderr = decode(lines.next())?;
-    let progress = match state {
-        "absent" => CommandProgress::Absent,
-        "running" => CommandProgress::Running,
-        "lost" => CommandProgress::Lost,
-        _ => match state.strip_prefix("exit ").map(|c| c.trim().parse::<i64>()) {
-            Some(Ok(code)) => CommandProgress::Exited { code },
-            _ => return Err("The command state is not recognized."),
-        },
-    };
-    Ok(CommandRead {
-        progress,
-        digest: (!digest.is_empty()).then(|| digest.to_owned()),
-        stdout,
-        stderr,
-    })
-}
-
-/// Signal a command's process tree; the wrapper then records exit 143.
-pub fn stop_script(root: &str, id: &str) -> String {
-    let d = shell_quote(&format!("{root}/{id}"));
-    format!(
-        "d={d}\n\
-         if [ -f \"$d/exit\" ]; then echo exited; exit 0; fi\n\
-         if [ ! -f \"$d/pid\" ]; then echo absent; exit 0; fi\n\
-         t() {{ echo \"$1\"; for c in $(pgrep -P \"$1\"); do t \"$c\"; done; }}\n\
-         p=$(cat \"$d/pid\"); kill -s TERM $(t \"$p\") 2>/dev/null; echo stopped"
-    )
-}
+pub use computer_driver::identified::{command_script, parse_read, read_script, stop_script};
 
 pub struct BoatProvider {
     pub client: Client,

@@ -767,6 +767,7 @@ pub mod fake {
                 let m = &s.machines[r];
                 let Some(p) = m.processes.get(id) else {
                     return Outcome::done(CommandRead {
+                        timed_out: false,
                         progress: CommandProgress::Absent,
                         digest: None,
                         stdout: vec![],
@@ -784,6 +785,7 @@ pub mod fake {
                     None => CommandProgress::Running,
                 };
                 Outcome::done(CommandRead {
+                    timed_out: false,
                     progress,
                     digest: p.spec.as_ref().map(|s| s.digest.clone()),
                     stdout: slice(&p.stdout, cursor.stdout),

@@ -471,6 +471,7 @@ pub fn router(api: Arc<Api>) -> Router {
         .route("/v1/computers/{id}/stop", post(stop))
         .route("/v1/computers/{id}/wake", post(wake))
         .merge(crate::turns::routes())
+        .merge(crate::commands::routes())
         .layer(middleware::from_fn_with_state(api.clone(), auth))
         .with_state(api)
 }

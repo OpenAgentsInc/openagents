@@ -118,6 +118,22 @@ pub(crate) fn routes() -> Router<App> {
             "/v1/computers/{name}/wake",
             post(crate::computers_api::wake),
         )
+        .route(
+            "/v1/computers/{name}/commands",
+            post(crate::computers_api::commands::create),
+        )
+        .route(
+            "/v1/computers/{name}/commands/{command}",
+            get(crate::computers_api::commands::read),
+        )
+        .route(
+            "/v1/computers/{name}/commands/{command}/output",
+            get(crate::computers_api::commands::output),
+        )
+        .route(
+            "/v1/computers/{name}/commands/{command}/cancel",
+            post(crate::computers_api::commands::cancel),
+        )
         .route("/v1/computers/{name}/sync", get(sync_get).put(sync_put))
         .route("/v1/computers/{name}/activity", post(activity))
         .route("/v1/agents", get(agents))

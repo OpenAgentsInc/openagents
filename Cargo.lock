@@ -4406,6 +4406,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tokio-tungstenite 0.30.0",
  "uuid",
@@ -10936,6 +10937,7 @@ name = "oa-computers"
 version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
+ "base64 0.22.1",
  "boat",
  "coder-environment",
  "coder-working-computer",

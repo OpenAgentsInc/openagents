@@ -299,6 +299,51 @@ async fn the_reconciler_brings_a_computer_up_and_deletes_it() {
         .await;
 }
 
+#[derive(Clone)]
+struct CommandGuest(oa_boat::remote::Local);
+impl CommandGuest {
+    fn map(&self, host: &str, script: &str) -> String {
+        let root = self.0.root.join(host);
+        script
+            .replace(
+                "/tmp/oa-public-commands",
+                root.join("commands").to_str().unwrap(),
+            )
+            .replace("/workspace", root.join("workspace").to_str().unwrap())
+    }
+}
+impl oa_boat::remote::Remote for CommandGuest {
+    async fn run(
+        &self,
+        host: &str,
+        script: &str,
+        stdin: Vec<u8>,
+        limit: Duration,
+        cap: usize,
+    ) -> oa_boat::remote::Output {
+        let output = self
+            .0
+            .run(host, &self.map(host, script), stdin, limit, cap)
+            .await;
+        if script.contains("oa-public-commands") && script.contains("nohup") {
+            // Lose the start reply after the guest has already made effects.
+            tokio::time::sleep(Duration::from_secs(8)).await;
+        }
+        output
+    }
+    async fn stream(
+        &self,
+        host: &str,
+        script: &str,
+        limit: Duration,
+    ) -> tokio::sync::mpsc::Receiver<oa_boat::remote::Chunk> {
+        self.0.stream(host, &self.map(host, script), limit).await
+    }
+    async fn forget(&self, host: &str) {
+        self.0.forget(host).await
+    }
+}
+
 /// The real binary on a real oa-boat (loopback, Compute Engine faked with a
 /// slow insert), killed while the computer boots, then restarted.
 #[tokio::test(flavor = "multi_thread")]
@@ -321,9 +366,9 @@ async fn a_process_killed_mid_provision_finishes_the_same_computer_after_restart
     let service = oa_boat::Service::new(
         oa_boat::Config::for_tests(),
         fake.clone(),
-        oa_boat::remote::Local {
+        CommandGuest(oa_boat::remote::Local {
             root: boat_dir.path().to_owned(),
-        },
+        }),
     );
     let boat_token = "boat-test-token-0123456789abcdef";
     let app = oa_boat::api::router(service, oa_boat::api::Token::new(boat_token));
@@ -409,6 +454,78 @@ async fn a_process_killed_mid_provision_finishes_the_same_computer_after_restart
     let sandboxes = boat.sandboxes(&Default::default()).await.unwrap();
     assert_eq!(sandboxes.sandboxes.len(), 1, "exactly one sandbox");
     assert_eq!(up["resource"], sandboxes.sandboxes[0].id.as_str());
+
+    // Kill the real API while its detached start reply is still in flight.
+    // The guest has made its effect; no provider reply has been committed.
+    let command_request = json!({"command":"echo effect >> counter; printf initial; sleep 4; printf final","idempotency_key":"process-death"});
+    let command_path = format!("{base}/v1/computers/{id}/commands");
+    let (status, command) = call(
+        reqwest::Method::POST,
+        command_path.clone(),
+        "acct-k",
+        Some(command_request.clone()),
+    )
+    .await;
+    assert_eq!(status, 202, "{command}");
+    let command_id = command["id"].as_str().unwrap();
+    let until = Instant::now() + Duration::from_secs(20);
+    loop {
+        let retained = store
+            .command("acct-k", &id, command_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let effect = std::fs::read_dir(boat_dir.path())
+            .unwrap()
+            .any(|e| e.is_ok_and(|e| e.path().join("workspace/counter").exists()));
+        if effect {
+            assert_eq!(
+                retained.status, "dispatching",
+                "the start reply arrived before the crash"
+            );
+            break;
+        }
+        assert!(
+            Instant::now() < until,
+            "command produced no output: {}",
+            retained.status
+        );
+        tokio::time::sleep(Duration::from_millis(30)).await;
+    }
+    second.kill().unwrap();
+    second.wait().unwrap();
+    let mut second = start();
+    ready(base.clone()).await;
+    let (status, retry) = call(
+        reqwest::Method::POST,
+        command_path.clone(),
+        "acct-k",
+        Some(command_request),
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(retry["id"], command_id);
+    let until = Instant::now() + Duration::from_secs(20);
+    loop {
+        let (_, result) = call(
+            reqwest::Method::GET,
+            format!("{command_path}/{command_id}"),
+            "acct-k",
+            None,
+        )
+        .await;
+        if terminal_command(&result) {
+            assert_eq!(result["state"], "succeeded", "{result}");
+            break;
+        }
+        assert!(Instant::now() < until, "command did not recover: {result}");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let counters = std::fs::read_dir(boat_dir.path())
+        .unwrap()
+        .filter_map(|e| std::fs::read_to_string(e.ok()?.path().join("workspace/counter")).ok())
+        .collect::<Vec<_>>();
+    assert_eq!(counters, vec!["effect\n".to_owned()]);
 
     // Clean up through the same API: nothing is left on oa-boat.
     call(
@@ -509,7 +626,10 @@ async fn turns_run_on_the_chats_computer_with_credentials_in_memory_only() {
             );
             assert_eq!(one["env_names"], json!(["CLAUDE_CODE_OAUTH_TOKEN"]));
             // The computer checkpointed by stopping, and is not woken again.
-            let stopped = wait_for(&base, "acct-t", &id, |v| v["state"] == "stopped").await;
+            let stopped = wait_for(&base, "acct-t", &id, |v| {
+                v["state"] == "stopped" && v["desired"] == "stopped"
+            })
+            .await;
             assert_eq!(stopped["desired"], "stopped");
             assert_eq!(stopped["turns"], 1);
 
@@ -911,4 +1031,196 @@ async fn create_retries_preserve_settings_keys_and_atomic_account_limits() {
     )
     .await;
     assert_eq!(status, 400);
+}
+
+async fn wait_command(
+    base: &str,
+    computer: &str,
+    command: &str,
+    predicate: impl Fn(&Value) -> bool,
+) -> Value {
+    let until = Instant::now() + Duration::from_secs(40);
+    loop {
+        let (status, v) = call(
+            reqwest::Method::GET,
+            format!("{base}/v1/computers/{computer}/commands/{command}"),
+            "acct-a",
+            None,
+        )
+        .await;
+        assert_eq!(status, 200, "{v}");
+        if predicate(&v) {
+            return v;
+        }
+        assert!(Instant::now() < until, "command timed out: {v}");
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+fn terminal_command(v: &Value) -> bool {
+    matches!(
+        v["state"].as_str(),
+        Some("succeeded" | "failed" | "cancelled" | "timed_out" | "unknown")
+    )
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn public_commands_retain_output_resume_cancel_and_refuse_foreign_or_invalid_requests() {
+    use base64::Engine;
+    let Some(admin) = admin() else { return };
+    let (db, _) = Db::scratch(&admin).await.unwrap();
+    let store = Store::new(db.clone());
+    let dir = tempfile::tempdir().unwrap();
+    let fake = FakeDriver::new(dir.path());
+    let base = api(store.clone(), fake.capabilities()).await;
+    let r = Rc::new(Reconciler {
+        store: store.clone(),
+        driver: fake.clone(),
+        settings: fast("commands"),
+        turns: Secrets::default(),
+    });
+    let local = tokio::task::LocalSet::new();
+    local.spawn_local(r.run());
+    local.run_until(async {
+        let (_,computer)=call(reqwest::Method::POST,format!("{base}/v1/computers"),"acct-a",Some(json!({"idempotency_key":"public-commands"}))).await;
+        let id=computer["id"].as_str().unwrap();
+        let up=wait_for(&base,"acct-a",id,|v|v["state"]=="awake").await;
+        let resource=up["resource"].as_str().unwrap();
+        let path=format!("{base}/v1/computers/{id}/commands");
+        let request=json!({"command":"echo one >> counter; printf early; printf error >&2","idempotency_key":"first"});
+        fake.inject("start_command",computer_driver::fake::Inject::LoseReply);
+        let (status,accepted)=call(reqwest::Method::POST,path.clone(),"acct-a",Some(request.clone())).await;
+        assert_eq!(status,202,"{accepted}");let command=accepted["id"].as_str().unwrap();
+        // Simulate a lost create response: repeat the exact request.
+        let (status,retry)=call(reqwest::Method::POST,path.clone(),"acct-a",Some(request)).await;
+        assert_eq!(status,200);assert_eq!(retry["id"],command);
+        let final_state=wait_command(&base,id,command,terminal_command).await;
+        assert_eq!(final_state["state"],"succeeded","{final_state}");assert_eq!(final_state["exit_code"],0);
+        let (_,legacy)=call(reqwest::Method::GET,format!("{base}/v1/computers/{id}/turns/{command}"),"acct-a",None).await;
+        assert_eq!(legacy["state"],"done");assert_eq!(legacy["stdout"],"early");assert_eq!(legacy["stderr"],"error");
+        let (_,output)=call(reqwest::Method::GET,format!("{path}/{command}/output?max_bytes=2"),"acct-a",None).await;
+        let b64=base64::engine::general_purpose::STANDARD;
+        assert_eq!(b64.decode(output["stdout"].as_str().unwrap()).unwrap(),b"ea");
+        assert_eq!(output["next_cursor"]["stdout"],2);
+        let (_,tail)=call(reqwest::Method::GET,format!("{path}/{command}/output?stdout=2&stderr=2"),"acct-a",None).await;
+        assert_eq!(b64.decode(tail["stdout"].as_str().unwrap()).unwrap(),b"rly");
+        assert_eq!(b64.decode(tail["stderr"].as_str().unwrap()).unwrap(),b"ror");
+        let (status,_)=call(reqwest::Method::GET,format!("{path}/{command}/output"),"acct-b",None).await;assert_eq!(status,404);
+        let (status,_)=call(reqwest::Method::POST,path.clone(),"acct-a",Some(json!({"command":"echo changed","idempotency_key":"first"}))).await;assert_eq!(status,409);
+        assert_eq!(std::fs::read_to_string(dir.path().join(resource).join("counter")).unwrap(),"one\n");
+        assert_eq!(fake.calls().iter().filter(|s|s.starts_with("start_command:")).count(),1);
+        for bad in [json!({"command":"true","cwd":"../outside","idempotency_key":"bad"}),json!({"command":"true","cwd":"/etc","idempotency_key":"bad"}),json!({"command":"true","timeout_seconds":0,"idempotency_key":"bad"}),json!({"command":"true","env":{"API_KEY":"secret-canary"},"idempotency_key":"bad"}),json!({"command":"true","credentials":["foreign"],"idempotency_key":"bad"})] {
+            let (status,v)=call(reqwest::Method::POST,path.clone(),"acct-a",Some(bad)).await;assert_eq!(status,400,"{v}");assert!(!v.to_string().contains("secret-canary"));
+        }
+        let leaked:i64=db.client().await.unwrap().query_one("SELECT count(*) FROM computers.commands WHERE options::text LIKE '%secret-canary%'",&[]).await.unwrap().get(0);
+        assert_eq!(leaked,0,"rejected credentials must not enter command metadata");
+        // Lost cancellation reply: the worker must observe exit, not trust its ack.
+        let (_,accepted)=call(reqwest::Method::POST,path.clone(),"acct-a",Some(json!({"command":"echo $$ > parent; trap '' TERM; sleep 100 & echo $! > child; wait","idempotency_key":"cancel"}))).await;
+        let cancel_id=accepted["id"].as_str().unwrap();
+        wait_command(&base,id,cancel_id,|v|v["state"]=="running").await;
+        let until=Instant::now()+Duration::from_secs(5);
+        while !dir.path().join(resource).join("child").exists(){assert!(Instant::now()<until);tokio::time::sleep(Duration::from_millis(20)).await;}
+        fake.inject("stop_command",computer_driver::fake::Inject::LoseReply);
+        let (status,_) =call(reqwest::Method::POST,format!("{path}/{cancel_id}/cancel"),"acct-a",None).await;assert_eq!(status,202);
+        assert_eq!(wait_command(&base,id,cancel_id,terminal_command).await["state"],"cancelled");
+        for name in ["parent","child"] {
+            let pid=std::fs::read_to_string(dir.path().join(resource).join(name)).unwrap();
+            assert!(std::fs::read_to_string(format!("/proc/{}/stat",pid.trim())).ok().is_none_or(|s|s.contains(") Z ")));
+        }
+        // A non-reading client does not grow the guest or database output.
+        let (_,accepted)=call(reqwest::Method::POST,path.clone(),"acct-a",Some(json!({"command":"head -c 8388608 /dev/zero; head -c 8388608 /dev/zero >&2","idempotency_key":"flood"}))).await;
+        let flood=accepted["id"].as_str().unwrap();
+        let result=wait_command(&base,id,flood,terminal_command).await;assert_eq!(result["state"],"succeeded");assert_eq!(result["stdout_truncated"],true);assert_eq!(result["stderr_truncated"],true);
+        let record=store.command("acct-a",id,flood).await.unwrap().unwrap();assert_eq!(record.stdout.len(),262144);assert_eq!(record.stderr.len(),262144);
+        let (_,first_chunk)=call(reqwest::Method::GET,format!("{path}/{flood}/output"),"acct-a",None).await;
+        assert_eq!(first_chunk["terminal"],true);assert_eq!(first_chunk["has_more"],true);
+        assert_eq!(b64.decode(first_chunk["stdout"].as_str().unwrap()).unwrap().len(),65536);
+        let (_,output)=call(reqwest::Method::GET,format!("{path}/{flood}/output?stdout=262144&stderr=262144"),"acct-a",None).await;assert_eq!(output["gaps"]["stdout"],true);
+        assert_eq!(output["has_more"],false);
+        db.client().await.unwrap().execute("UPDATE computers.commands SET expires_at=now()-interval '1 second' WHERE turn=$1",&[&flood]).await.unwrap();
+        assert_eq!(call(reqwest::Method::GET,format!("{path}/{flood}/output"),"acct-a",None).await.0,410);
+        assert!(store.command("acct-a",id,flood).await.unwrap().unwrap().stdout.is_empty());
+        let (_,accepted)=call(reqwest::Method::POST,path.clone(),"acct-a",Some(json!({"command":"sleep 100","timeout_seconds":1,"idempotency_key":"deadline"}))).await;
+        assert_eq!(wait_command(&base,id,accepted["id"].as_str().unwrap(),terminal_command).await["state"],"timed_out");
+        let (_,active)=call(reqwest::Method::POST,path.clone(),"acct-a",Some(json!({"command":"sleep 100","idempotency_key":"computer-stop-active"}))).await;
+        let active=active["id"].as_str().unwrap();
+        wait_command(&base,id,active,|v|v["state"]=="running").await;
+        let (_,queued)=call(reqwest::Method::POST,path.clone(),"acct-a",Some(json!({"command":"echo forbidden >> counter","idempotency_key":"computer-stop-queued"}))).await;
+        let queued=queued["id"].as_str().unwrap();
+        let (status,legacy)=call(reqwest::Method::POST,format!("{base}/v1/computers/{id}/turns/{queued}/stop"),"acct-a",None).await;
+        assert_eq!(status,202);assert_eq!(legacy["state"],"failed");
+        let (_,queued)=call(reqwest::Method::POST,path.clone(),"acct-a",Some(json!({"command":"echo forbidden >> counter","idempotency_key":"computer-stop-queued-2"}))).await;
+        let queued=queued["id"].as_str().unwrap();
+        assert_eq!(call(reqwest::Method::POST,format!("{base}/v1/computers/{id}/stop"),"acct-a",None).await.0,202);
+        assert_eq!(wait_command(&base,id,queued,terminal_command).await["state"],"cancelled");
+        assert_eq!(wait_command(&base,id,active,terminal_command).await["state"],"cancelled");
+        wait_for(&base,"acct-a",id,|v|v["state"]=="stopped" && v["desired"]=="stopped").await;
+        assert_eq!(std::fs::read_to_string(dir.path().join(resource).join("counter")).unwrap(),"one\n");
+        call(reqwest::Method::DELETE,format!("{base}/v1/computers/{id}"),"acct-a",None).await;
+        wait_for(&base,"acct-a",id,|v|v["state"]=="deleted").await;
+    }).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn command_owner_restart_observes_the_same_execution_and_never_replays_absent_dispatch() {
+    let Some(admin) = admin() else { return };
+    let (db, _) = Db::scratch(&admin).await.unwrap();
+    let store = Store::new(db.clone());
+    let dir = tempfile::tempdir().unwrap();
+    let fake = FakeDriver::new(dir.path());
+    let base = api(store.clone(), fake.capabilities()).await;
+    let (id, command, resource) = {
+        let local = tokio::task::LocalSet::new();
+        local.spawn_local(
+            Rc::new(Reconciler {
+                store: store.clone(),
+                driver: fake.clone(),
+                settings: fast("before-crash"),
+                turns: Secrets::default(),
+            })
+            .run(),
+        );
+        local.run_until(async {
+            let (_,computer)=call(reqwest::Method::POST,format!("{base}/v1/computers"),"acct-a",Some(json!({"idempotency_key":"restart-command"}))).await;
+            let id=computer["id"].as_str().unwrap().to_owned();
+            let up=wait_for(&base,"acct-a",&id,|v|v["state"]=="awake").await;
+            let (_,accepted)=call(reqwest::Method::POST,format!("{base}/v1/computers/{id}/commands"),"acct-a",Some(json!({"command":"echo effect >> counter; echo initial; sleep 4; echo final","idempotency_key":"once"}))).await;
+            let command=accepted["id"].as_str().unwrap().to_owned();
+            wait_command(&base,&id,&command,|v|v["state"]=="running").await;
+            (id,command,up["resource"].as_str().unwrap().to_owned())
+        }).await
+        // Dropping LocalSet aborts the owner, heartbeat, and lease renewer;
+        // the separately detached shell is still running.
+    };
+    tokio::time::sleep(Duration::from_millis(2200)).await;
+    let local = tokio::task::LocalSet::new();
+    local.spawn_local(
+        Rc::new(Reconciler {
+            store: store.clone(),
+            driver: fake.clone(),
+            settings: fast("after-crash"),
+            turns: Secrets::default(),
+        })
+        .run(),
+    );
+    local.run_until(async {
+        assert_eq!(wait_command(&base,&id,&command,terminal_command).await["state"],"succeeded");
+        assert_eq!(std::fs::read_to_string(dir.path().join(&resource).join("counter")).unwrap(),"effect\n");
+        assert_eq!(fake.calls().iter().filter(|s|s.starts_with("start_command:")).count(),1);
+        wait_for(&base,"acct-a",&id,|v|v["state"]=="stopped" && v["desired"]=="stopped").await;
+        db.client().await.unwrap().execute("UPDATE computers.computers SET lease_holder='paused-crash-window',lease_until=now()+interval '1 hour' WHERE id=$1",&[&id]).await.unwrap();
+        // Simulate death after durable dispatch ownership, before any wire send.
+        let request=oa_computers::commands::Request{command:"echo must-not-run >> counter".into(),cwd:".".into(),timeout_seconds:10,env:Default::default(),idempotency_key:"absent-dispatch".into()};
+        let (absent,_)=store.add_command("acct-a",&id,&request).await.unwrap();
+        // This is the query shipped by the pre-command worker. It must never
+        // see a public command as a legacy foreground turn during rollout.
+        let legacy_count:i64=db.client().await.unwrap().query_one("SELECT count(*) FROM computers.turns WHERE computer=$1 AND state IN ('queued','running')",&[&id]).await.unwrap().get(0);
+        assert_eq!(legacy_count,0);
+        db.client().await.unwrap().execute("UPDATE computers.commands SET status='dispatching',dispatched_at=now() WHERE turn=$1",&[&absent]).await.unwrap();
+        db.client().await.unwrap().execute("UPDATE computers.computers SET lease_holder=NULL,lease_until=NULL WHERE id=$1",&[&id]).await.unwrap();
+        assert_eq!(wait_command(&base,&id,&absent,terminal_command).await["state"],"unknown");
+        assert_eq!(fake.calls().iter().filter(|s|s.starts_with("start_command:")).count(),1);
+        assert_eq!(std::fs::read_to_string(dir.path().join(&resource).join("counter")).unwrap(),"effect\n");
+        call(reqwest::Method::DELETE,format!("{base}/v1/computers/{id}"),"acct-a",None).await;
+        wait_for(&base,"acct-a",&id,|v|v["state"]=="deleted").await;
+    }).await;
 }

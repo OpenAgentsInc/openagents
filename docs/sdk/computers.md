@@ -85,6 +85,109 @@ The app OpenAPI example generates the implemented slice in
 [openapi.app.json](openapi.app.json), also composed into `/v1/openapi.json`.
 `#11804` extends this baseline after commands and files are implemented.
 
+## Command sessions
+
+Commands use the existing turn queue and computer lifecycle. Separate internal
+queue states prevent older workers from executing public commands as legacy
+foreground turns during a rolling deployment. Create configures
+output capture before execution; attaching only reads captured output. You can
+attach after a short command exits without losing its initial output.
+
+| Call | Result |
+| --- | --- |
+| `POST /computers/{id}/commands` | `202` queued command; `200` for the same request key and settings |
+| `GET /computers/{id}/commands/{command}` | State, observed exit code, timing, output sizes, bounds, and expiry |
+| `GET /computers/{id}/commands/{command}/output` | Bounded byte chunks, cursors, gaps, and terminal status |
+| `POST /computers/{id}/commands/{command}/cancel` | `202` cancellation intent or the already observed terminal result |
+
+Send a fresh `Idempotency-Key` for each intended execution. Retain that key across
+network failures and application restarts. A changed command, working directory,
+timeout, or environment with the same key returns `409 idempotency_conflict`.
+The key remains bound after completion and computer deletion. Existing internal
+turn reads and stops also recognize these IDs, preserving task references and
+the legacy text result shape. Use the public output endpoint for exact bytes. Retrying creation
+does not start another execution or undo cancellation. There are at most 16
+unfinished turns per computer, including legacy chat turns; excess requests get
+`429 quota_exhausted`.
+
+```http
+POST /v1/computers/cmp_0123456789abcdef0123/commands
+Authorization: Bearer YOUR_ACCOUNT_CREDENTIAL
+Idempotency-Key: build-2026-10-16-001
+Content-Type: application/json
+
+{"command":"printf 'hello'; printf 'notice' >&2","cwd":".","timeout_seconds":600}
+```
+
+The complete JSON request is at most 73,728 bytes.
+Command text is at most 65,536 UTF-8 bytes. `cwd` defaults to `.`, relative to
+`/workspace`, and must name an existing directory within that workspace.
+Absolute paths, `..` components, and control characters return `400`.
+A missing directory or symlink escape fails with exit code 126 before the shell
+command runs.
+The wrapper creates the workspace root when needed. Timeouts are 1–3,600 seconds
+(default 600); invalid values refuse rather than being silently changed.
+
+`env` contains at most 16 **non-secret** values, each at most 4,096 UTF-8 bytes.
+Allowed names are `LANG`, `LC_ALL`, `TZ`, `CI`, `TERM`, and `OA_PARAM_*`.
+Environment values, command text, working directory, timeout, and request digest
+are durable request metadata. Do not put credentials in these fields. Credential
+values and credential-reference fields are refused by this initial public
+operation; scoped references arrive in #11813. Existing internal chat turns keep
+their in-memory secret delivery.
+
+Output attachment uses authenticated cursor polling, including optional long
+polling. Send `stdout` and `stderr` byte offsets (initially zero), `max_bytes`
+(default and maximum 65,536 **per stream**), and `wait_ms` (0–10,000). Values of
+zero for `max_bytes` select the default. Decode each base64 stream, append it,
+and use the returned `next_cursor` without adjusting it for UTF-8 characters.
+Continue until `terminal` is true **and** `has_more` is false. A terminal command
+can still have several unread chunks. Disconnecting or abandoning a poll never
+cancels the command. Repeating a cursor intentionally repeats the same bytes.
+A cursor ahead of captured output returns `400` rather than silently skipping.
+
+Each stream keeps its first 256 KiB. Both guest capture and PostgreSQL storage
+are bounded even when a client never reads. Extra guest output is drained and
+discarded; `gaps.stdout` or `gaps.stderr` and the corresponding command truncation
+flag report that loss. These flags do not mean the returned prefix is missing
+bytes. Output expires seven days after creation: reads then return `410 expired`,
+and a periodic cleanup removes payloads within about a minute while the service
+is running. Request identity and terminal metadata remain for safe retries. Expiry removes
+the service copy; it does not erase files inside the computer. Those follow the
+computer's storage and deletion policy.
+An `unknown` command has no proven final output or exit, even if its truncation
+flags are false.
+
+States are `queued`, `dispatching`, `running`, `succeeded`, `failed`, `cancelled`,
+`timed_out`, and `unknown`. Dispatch ownership is committed before contacting the
+provider. After an uncertain reply or service restart, the worker observes the
+same command ID and digest; it never runs the shell again. A start that cannot be
+proved becomes `unknown`, including a crash after recording dispatch but before
+sending it. This can leave an unexecuted command unknown; it avoids unsafe replay.
+The worker then checkpoints the computer through the existing lifecycle.
+
+Cancellation records intent first, signals the command's Linux process group,
+and waits for its retained exit record. A signal acknowledgement alone cannot
+produce `cancelled`. A queued cancellation prevents dispatch. If an exit is
+recorded before cancellation, that result stays final; if cancellation arrives
+before final observation, the observed exit can be classified as `cancelled`,
+including exit code zero. A command timeout terminates the group with a short
+kill grace. An explicit shell exit code 124 is still an ordinary failed command,
+not proof of timeout. Stopping or deleting a computer also cancels its queued
+commands and asks its active command to terminate before lifecycle teardown.
+
+Every create, read, reconnect, and cancellation uses current account authority.
+There are no attach tokens or provider URLs in this contract. Do not put a bearer
+in a query string; unknown query fields refuse. An `Origin` header, if present,
+must match this deployment's website origin. Provider references, service tokens,
+raw provider errors, and internal owner headers are not part of public responses.
+Before reverting the lifecycle service to an image from before #11802, stop
+accepting new commands and drain active sessions. Older images skip public
+command rows; they cannot provide this execution or observation contract.
+
+These commands are non-interactive: no stdin, terminal, preview, daemon lifetime,
+or permissions beyond the current cloud-account gate are implied.
+
 ## Public contract and provider contract
 
 ```text
