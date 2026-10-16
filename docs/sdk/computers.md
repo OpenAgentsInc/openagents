@@ -1,9 +1,10 @@
 # Computers: one public API over supported places work can run
 
-2026-10-16. Status: public lifecycle implemented in
-[#11801](https://github.com/OpenAgentsInc/openagents/issues/11801) and command
-sessions in [#11802](https://github.com/OpenAgentsInc/openagents/issues/11802).
-Files, placement, and other capabilities are tracked separately. The implemented
+2026-10-16. Status: implemented public lifecycle
+([#11801](https://github.com/OpenAgentsInc/openagents/issues/11801)), command
+sessions ([#11802](https://github.com/OpenAgentsInc/openagents/issues/11802)),
+and bounded workspace files ([#11803](https://github.com/OpenAgentsInc/openagents/issues/11803)).
+Placement and other capabilities are tracked separately. The implemented
 slice below is distinct from the proposed resource and later operations.
 Deployment and live qualification evidence belongs to the implementation issue.
 
@@ -36,7 +37,8 @@ Deployed on 2026-10-16 for accounts with cloud access. The
 [verification record](computers-lifecycle-evidence.json) pins both running
 images, test results, and the dedicated-account staging workflows. Command
 sessions have a [separate verification record](computers-commands-evidence.json).
-Files and other backends remain separate work.
+Workspace files have their own [verification record](computers-files-evidence.json).
+Other backends remain separate work.
 
 The account-authenticated lifecycle uses `api.openagents.com/v1`. It accepts
 live `sess_` sessions, `oa_sk_` sign-in keys, and account-bound `oak_` keys whose
@@ -66,8 +68,8 @@ must belong to the account. Environment and version must be supplied together;
 the server resolves the saved version's image only after checking ownership.
 A public caller cannot supply a raw provider image or owner. Without an
 environment, the service uses its configured default runtime. Organization
-workspace selection, placement requirements, commands, and files remain later
-contract work rather than implicit rights from account authentication.
+workspace selection and placement requirements remain later contract work.
+Commands and files use the explicit account and computer checks described below.
 
 Use a key of 1–128 ASCII letters, digits, `_`, `-`, or `.`, not starting with
 `.`. When header and body keys are both sent, they must match. A changed
@@ -232,8 +234,10 @@ The public upper bound is 4 MiB per file, with two transfers per service instanc
 Each path is at most 1,024 UTF-8 bytes, with components at most 255 bytes. The
 upload body and driver execution each have a 60-second bound. Transfer slots are
 acquired before body buffering; excess work returns `429` with `Retry-After: 1`.
-Downloads are fully checked and bounded before a success response starts. Both
-directions use `Cache-Control: no-store`. These limits are independent of the
+An oversized upload returns `413`. Its slot stays occupied while the remaining
+body is discarded in chunks, for at most 60 seconds; discarded bytes never reach
+the computer. Downloads are fully checked and bounded before a success response
+starts. Both directions use `Cache-Control: no-store`. These limits are independent of the
 older Boat and SPACE driver file limits.
 
 Paths are relative, with `/` separators. Absolute paths, empty or dot components,

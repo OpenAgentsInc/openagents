@@ -118,8 +118,12 @@ is deployed; its [verification record](computers-lifecycle-evidence.json) pins
 both images and the completed staging workflows. Command sessions
 [#11802](https://github.com/OpenAgentsInc/openagents/issues/11802) are deployed;
 their [verification record](computers-commands-evidence.json) covers bounded
-output, retries, cancellation, and timeout. Continue with files
-[#11803](https://github.com/OpenAgentsInc/openagents/issues/11803) in the owner's
+output, retries, cancellation, and timeout. Bounded workspace files
+[#11803](https://github.com/OpenAgentsInc/openagents/issues/11803) are deployed;
+their [verification record](computers-files-evidence.json) covers binary and empty
+transfers, checksums, path restrictions, stop/wake persistence, and cleanup.
+Continue with the Computers specification
+[#11804](https://github.com/OpenAgentsInc/openagents/issues/11804) in the owner's
 requested sequence. Keep using the same worktree and push and close each issue
 before starting the next one.
 

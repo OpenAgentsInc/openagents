@@ -1,0 +1,1167 @@
+{
+  "schema": "openagents.computers.files.evidence.v1",
+  "date": "2026-10-16",
+  "issue": 11803,
+  "implementation_sources": [
+    "7d8e1026b6c3a349ad61709af004b45043a19bca",
+    "4579ddd612f6526daf81bc2d7539ec5b9c9ac05a",
+    "eb777a3545060508cc413be433f0bb8f2c5879dd",
+    "5873b92ed90790ee7dc60cecb06ee55c98713e79"
+  ],
+  "deployments": {
+    "coder": {
+      "source": "5873b92ed90790ee7dc60cecb06ee55c98713e79",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:32ef9473ce38f6acbaa1a5f8039492623ab50a4c4e48f63a36a661a768a0580a",
+      "traffic": [
+        {
+          "percent": 100,
+          "revisionName": "coder-web-32ef9473ce-20261016122510",
+          "tag": "new",
+          "url": "https://new---coder-ezxz4mgdsq-uc.a.run.app"
+        }
+      ],
+      "BOAT_API_BASE": "https://oa-boat-157437760789.us-central1.run.app/api/v1"
+    },
+    "openagents-web-1-staging": {
+      "source": "5873b92ed90790ee7dc60cecb06ee55c98713e79",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:32ef9473ce38f6acbaa1a5f8039492623ab50a4c4e48f63a36a661a768a0580a",
+      "traffic": [
+        {
+          "latestRevision": true,
+          "percent": 100,
+          "revisionName": "openagents-web-1-staging-files-11803-5873b92ed9"
+        }
+      ],
+      "BOAT_API_BASE": "https://oa-boat-157437760789.us-central1.run.app/api/v1"
+    },
+    "oa-computers": {
+      "source": "7d8e1026b6c3a349ad61709af004b45043a19bca",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-computers@sha256:4a7eb474da0c403c4f6cd84d371d346b1bd5245fd20a3ab80a25cf56d38c041f",
+      "traffic": [
+        {
+          "latestRevision": true,
+          "percent": 100,
+          "revisionName": "oa-computers-00005-b2m"
+        }
+      ],
+      "BOAT_API_BASE": "https://oa-boat-157437760789.us-central1.run.app/api/v1"
+    },
+    "oa-computers-staging": {
+      "source": "7d8e1026b6c3a349ad61709af004b45043a19bca",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-computers@sha256:4a7eb474da0c403c4f6cd84d371d346b1bd5245fd20a3ab80a25cf56d38c041f",
+      "traffic": [
+        {
+          "latestRevision": true,
+          "percent": 100,
+          "revisionName": "oa-computers-staging-00007-zbb"
+        }
+      ],
+      "BOAT_API_BASE": "https://oa-boat-157437760789.us-central1.run.app/api/v1"
+    },
+    "oa-boat": {
+      "source": "4579ddd612f6526daf81bc2d7539ec5b9c9ac05a",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-boat@sha256:046c1393b7841f96622e485160ab5b09b84ccb4f11ecba43ce5cfab953521354",
+      "traffic": [
+        {
+          "percent": 100,
+          "revisionName": "oa-boat-files-11803-4579ddd612"
+        }
+      ]
+    },
+    "qualification": {
+      "production_site_smoke": {
+        "passed": 66,
+        "failed": 0,
+        "skipped": 2
+      },
+      "staging_scoped_site_smoke": {
+        "passed": 34,
+        "failed": 0,
+        "skipped": 1,
+        "scope": "home, docs, aliases, terminal; installer run skipped"
+      },
+      "public_reference_operations": 81,
+      "original_staging_frontend_source": "eb777a3545060508cc413be433f0bb8f2c5879dd",
+      "intermediate_frontend_adoption": "Shift guard preserved a newer concurrent c905 deployment containing the empty-PUT fix; the final5873 patch includes that source and retains its browser assets.",
+      "provider_candidate_tag_removed": true,
+      "staging_provider_base_normalized": true
+    }
+  },
+  "checks": {
+    "standard_rust_passed": 292,
+    "standard_rust_ignored": 1,
+    "extra_confinement_harness": "Native and ABI2 policies both pass moved-directory and outside-hardlink-sentinel checks.",
+    "rust_scope": [
+      "computer-files",
+      "boat",
+      "computer-driver with boat",
+      "oa-boat including all conformance profiles, installer framing, and lost-reply cases",
+      "oa-computers with disposable PostgreSQL",
+      "openagents-web app schema, account/native proxy, copy, phone routes, aliases, and combined reference"
+    ],
+    "rebased_consumer_tests": 40,
+    "final_exact_main_proxy_tests": 2,
+    "final_exact_main_source": "5873b92ed90790ee7dc60cecb06ee55c98713e79",
+    "python_reference_tests": 4,
+    "local_schema_references": 224,
+    "app_operations": 23,
+    "combined_public_operations_at_file_qualification": 80,
+    "current_combined_public_operations": 81,
+    "format": "passed",
+    "local_documentation_links": 33,
+    "static_helper": "x86_64-unknown-linux-musl, no dynamic interpreter, binary write/read passed",
+    "ignored_scope": "One existing live Boat test is ignored; other environment-gated SDK tests are not used as live evidence. The explicit dedicated-account checks below supply that proof."
+  },
+  "bounds": {
+    "max_file_bytes": 4194304,
+    "max_path_utf8_bytes": 1024,
+    "max_component_utf8_bytes": 255,
+    "transfers_per_instance": 2,
+    "body_timeout_seconds": 60,
+    "execution_timeout_seconds": 60,
+    "body": "application/octet-stream",
+    "required_upload_headers": [
+      "Content-Length",
+      "X-Content-SHA256"
+    ],
+    "implicit_wake": false,
+    "implicit_create_computer": false,
+    "shared_account_artifact": false
+  },
+  "semantics": [
+    "Each request uses fresh native account authority; cookies and forged internal owner headers do not grant file access. Ownership and readiness are checked before buffering and again at driver dispatch.",
+    "Uploads check the complete length and SHA256 before effects. Create-only identical retries succeed; conflicts return412. Explicit overwrite publishes a new mode0600 inode by atomic rename and flushes both file and directory. An identical retry keeps existing permissions.",
+    "The helper pins a regular inode before I/O, takes a read lease, bounds the copy, checks metadata and lease afterward, and returns409 on a changing file. Symlinks, mount crossings, devices, sockets, directories, and FIFOs are refused.",
+    "openat2 and Landlock ABI2 confine paths and directory moves. The helper never truncates existing inodes; O_TRUNC is rejected explicitly. ABI3 adds kernel truncation restrictions. There is no unrestricted fallback.",
+    "Two stalled uploads exhaust the two slots before any provider effect; a third transfer returns429. A raw over-limit request is refused before its body is sent.",
+    "A lost write reply is uncertain rather than successful; read and compare the hash before retrying. A checked complete download is buffered within the bound before HTTP success begins.",
+    "Stopped or starting computers return409; deleted or missing computers return404. Transfers never wake or recreate one. Existing public files and legacy driver/conformance paths remain separate and passing."
+  ],
+  "live_findings": [
+    {
+      "finding": "Supported Boat guest mounts /run noexec; executing there failed126. Its6.1.0-53-cloud-amd64 kernel predates the initial ABI3 requirement; direct helper returned18.",
+      "correction": "Root-owned executable directory under /var/lib, removed after every transfer; ABI2 REFER policy with only new-inode writes and explicit O_TRUNC refusal. Forced-ABI2 race and hardlink checks passed."
+    },
+    {
+      "finding": "Cloud Run rejects empty PUT without a length before the application.",
+      "negative_control": {
+        "record": "cmp_373e220a2a20965c005b, already deleted and owned by the dedicated staging account",
+        "missing_length": 411,
+        "explicit_zero": 404,
+        "effects": "none"
+      },
+      "correction": "Web binary proxy sends Content-Length0 for empty PUT. Mock-provider and public empty upload/download checks cover it."
+    },
+    {
+      "finding": "Early oversized-body refusal reset the Cloud Run HTTP/1 connection and hid413.",
+      "correction": "Send413 headers and JSON immediately, then keep the response stream open while discarding chunks without buffering, bounded to32MiB/60seconds. Hold the existing transfer slot until completion or disconnect. Full-body, raw headers, two stalled slots, and disconnect regression checks pass."
+    }
+  ],
+  "staging_core": {
+    "base": "https://staging.openagents.com",
+    "account": "acct_dc7a799879686fc5",
+    "computer": "cmp_4534ef2a12d5be7c73f3",
+    "passed": true,
+    "cleaned": true,
+    "commands": [
+      "trn_78b75f6ac370f954187a",
+      "trn_939c4d90dc1c69cedae2"
+    ],
+    "scope": "Core checks excluding the empty upload; explicit empty-PUT transport fix still pending",
+    "elapsed_seconds": 202.735,
+    "observations": 133,
+    "temporary_session_created": true,
+    "assertions": [
+      {
+        "check": "binary_upload_read_retry_overwrite_limits",
+        "passed": true,
+        "bytes": 1048587,
+        "sha256": "3eb8d4fe181bb763d4dc610c9891bb263f1c1350e8fb3432dcea6e18ab457aae"
+      },
+      {
+        "check": "command_hash_symlink_special_busy_stop_wake_binary_retention",
+        "passed": true
+      },
+      {
+        "check": "guest_installer_directory_cleanup",
+        "passed": true
+      }
+    ],
+    "file_transfers": [
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=input.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.902,
+        "elapsed_seconds": 57.488,
+        "bytes": 92,
+        "error": null
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=input.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.688,
+        "elapsed_seconds": 58.177,
+        "bytes": 1048587,
+        "error": null,
+        "sha256": "3eb8d4fe181bb763d4dc610c9891bb263f1c1350e8fb3432dcea6e18ab457aae",
+        "checksum_header": "3eb8d4fe181bb763d4dc610c9891bb263f1c1350e8fb3432dcea6e18ab457aae",
+        "cache_control": "no-store"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=input.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.942,
+        "elapsed_seconds": 59.126,
+        "bytes": 92,
+        "error": null
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=input.bin&overwrite=false",
+        "status": 412,
+        "seconds": 0.393,
+        "elapsed_seconds": 59.519,
+        "bytes": 90,
+        "error": "file_exists"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=input.bin&overwrite=false",
+        "status": 422,
+        "seconds": 0.18,
+        "elapsed_seconds": 59.7,
+        "bytes": 96,
+        "error": "incomplete_upload"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=input.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.837,
+        "elapsed_seconds": 60.537,
+        "bytes": 1048587,
+        "error": null,
+        "sha256": "3eb8d4fe181bb763d4dc610c9891bb263f1c1350e8fb3432dcea6e18ab457aae",
+        "checksum_header": "3eb8d4fe181bb763d4dc610c9891bb263f1c1350e8fb3432dcea6e18ab457aae",
+        "cache_control": "no-store"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=quote+%27t%C3%A9.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.684,
+        "elapsed_seconds": 61.225,
+        "bytes": 86,
+        "error": null
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=quote+%27t%C3%A9.bin&overwrite=true",
+        "status": 200,
+        "seconds": 0.729,
+        "elapsed_seconds": 61.954,
+        "bytes": 86,
+        "error": null
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=quote+%27t%C3%A9.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.448,
+        "elapsed_seconds": 62.402,
+        "bytes": 5,
+        "error": null,
+        "sha256": "3454c7ec1e02edce0fe7f4efe362651fbb457bc6d62fdd7a2f8001611bf23cf0",
+        "checksum_header": "3454c7ec1e02edce0fe7f4efe362651fbb457bc6d62fdd7a2f8001611bf23cf0",
+        "cache_control": "no-store"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=..%2Foutside&overwrite=false",
+        "status": 400,
+        "seconds": 0.165,
+        "elapsed_seconds": 62.567,
+        "bytes": 137,
+        "error": "invalid_path"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=%252e%252e%2Foutside&overwrite=false",
+        "status": 400,
+        "seconds": 0.202,
+        "elapsed_seconds": 62.769,
+        "bytes": 137,
+        "error": "invalid_path"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=%2Fetc%2Fhostname&overwrite=false",
+        "status": 400,
+        "seconds": 0.182,
+        "elapsed_seconds": 62.951,
+        "bytes": 137,
+        "error": "invalid_path"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=a%2F%2Fb&overwrite=false",
+        "status": 400,
+        "seconds": 0.156,
+        "elapsed_seconds": 63.108,
+        "bytes": 137,
+        "error": "invalid_path"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=input.bin&overwrite=false",
+        "status": 403,
+        "seconds": 0.172,
+        "elapsed_seconds": 63.28,
+        "bytes": 78,
+        "error": "forbidden"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=too-big&overwrite=false",
+        "status": 413,
+        "seconds": 1.866,
+        "elapsed_seconds": 65.158,
+        "bytes": 96,
+        "error": "file_too_large"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=too-big&overwrite=false",
+        "status": 404,
+        "seconds": 0.52,
+        "elapsed_seconds": 65.678,
+        "bytes": 96,
+        "error": "file_not_found"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=escaped&overwrite=false",
+        "status": 403,
+        "seconds": 0.477,
+        "elapsed_seconds": 69.058,
+        "bytes": 105,
+        "error": "file_path_refused"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=pipe&overwrite=false",
+        "status": 415,
+        "seconds": 0.511,
+        "elapsed_seconds": 69.569,
+        "bytes": 66,
+        "error": "not_a_file"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=changing.bin&overwrite=false",
+        "status": 409,
+        "seconds": 0.413,
+        "elapsed_seconds": 69.982,
+        "bytes": 106,
+        "error": "file_changed"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=input.bin&overwrite=false",
+        "status": 409,
+        "seconds": 0.225,
+        "elapsed_seconds": 92.966,
+        "bytes": 123,
+        "error": "computer_not_ready"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=input.bin&overwrite=false",
+        "status": 409,
+        "seconds": 0.506,
+        "elapsed_seconds": 93.474,
+        "bytes": 123,
+        "error": "computer_not_ready"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/files?path=input.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.69,
+        "elapsed_seconds": 141.477,
+        "bytes": 1048587,
+        "error": null,
+        "sha256": "3eb8d4fe181bb763d4dc610c9891bb263f1c1350e8fb3432dcea6e18ab457aae",
+        "checksum_header": "3eb8d4fe181bb763d4dc610c9891bb263f1c1350e8fb3432dcea6e18ab457aae",
+        "cache_control": "no-store"
+      }
+    ],
+    "mutations": [
+      {
+        "method": "POST",
+        "path": "/api/v1/sessions",
+        "status": 200,
+        "seconds": 0.304,
+        "elapsed_seconds": 0.526,
+        "state": null,
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers",
+        "status": 202,
+        "seconds": 0.335,
+        "elapsed_seconds": 1.269,
+        "state": "new",
+        "desired": "running",
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/commands",
+        "status": 202,
+        "seconds": 0.316,
+        "elapsed_seconds": 65.994,
+        "state": "queued",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/commands/trn_78b75f6ac370f954187a/cancel",
+        "status": 202,
+        "seconds": 0.221,
+        "elapsed_seconds": 70.203,
+        "state": "running",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/stop",
+        "status": 202,
+        "seconds": 0.185,
+        "elapsed_seconds": 75.016,
+        "state": "checkpointing",
+        "desired": "stopped",
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/wake",
+        "status": 202,
+        "seconds": 0.184,
+        "elapsed_seconds": 93.837,
+        "state": "stopped",
+        "desired": "running",
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3/commands",
+        "status": 202,
+        "seconds": 0.286,
+        "elapsed_seconds": 141.767,
+        "state": "queued",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "DELETE",
+        "path": "/v1/computers/cmp_4534ef2a12d5be7c73f3?kind=cloud",
+        "status": 202,
+        "seconds": 0.219,
+        "elapsed_seconds": 144.658,
+        "state": "checkpointing",
+        "desired": "deleted",
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/device/sign-out",
+        "status": 200,
+        "seconds": 0.302,
+        "elapsed_seconds": 202.555,
+        "state": null,
+        "desired": null,
+        "error": null
+      }
+    ]
+  },
+  "staging_empty": {
+    "base": "https://staging.openagents.com",
+    "account": "acct_dc7a799879686fc5",
+    "computer": "cmp_f5a9e4282a19838f1dbc",
+    "passed": true,
+    "cleaned": true,
+    "commands": [],
+    "scope": "Public empty-file upload, download, identical retry, and atomic empty overwrite; complements the complete core staging workflow",
+    "elapsed_seconds": 92.52,
+    "observations": 58,
+    "temporary_session_created": true,
+    "assertions": [
+      {
+        "check": "public_empty_upload_read_retry_and_empty_atomic_overwrite",
+        "passed": true
+      }
+    ],
+    "file_transfers": [
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_f5a9e4282a19838f1dbc/files?path=empty.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.378,
+        "elapsed_seconds": 59.164,
+        "bytes": 86,
+        "error": null
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_f5a9e4282a19838f1dbc/files?path=empty.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.417,
+        "elapsed_seconds": 59.581,
+        "bytes": 0,
+        "error": null,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "checksum_header": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "cache_control": "no-store"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_f5a9e4282a19838f1dbc/files?path=empty.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.394,
+        "elapsed_seconds": 59.976,
+        "bytes": 86,
+        "error": null
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_f5a9e4282a19838f1dbc/files?path=empty.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.451,
+        "elapsed_seconds": 60.426,
+        "bytes": 0,
+        "error": null,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "checksum_header": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "cache_control": "no-store"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_f5a9e4282a19838f1dbc/files?path=replace.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.717,
+        "elapsed_seconds": 61.144,
+        "bytes": 86,
+        "error": null
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_f5a9e4282a19838f1dbc/files?path=replace.bin&overwrite=true",
+        "status": 200,
+        "seconds": 0.613,
+        "elapsed_seconds": 61.757,
+        "bytes": 86,
+        "error": null
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_f5a9e4282a19838f1dbc/files?path=replace.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.381,
+        "elapsed_seconds": 62.138,
+        "bytes": 0,
+        "error": null,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "checksum_header": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "cache_control": "no-store"
+      }
+    ],
+    "mutations": [
+      {
+        "method": "POST",
+        "path": "/api/v1/sessions",
+        "status": 200,
+        "seconds": 0.311,
+        "elapsed_seconds": 0.522,
+        "state": null,
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers",
+        "status": 202,
+        "seconds": 0.461,
+        "elapsed_seconds": 1.342,
+        "state": "new",
+        "desired": "running",
+        "error": null
+      },
+      {
+        "method": "DELETE",
+        "path": "/v1/computers/cmp_f5a9e4282a19838f1dbc?kind=cloud",
+        "status": 202,
+        "seconds": 0.28,
+        "elapsed_seconds": 62.418,
+        "state": "awake",
+        "desired": "deleted",
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/device/sign-out",
+        "status": 200,
+        "seconds": 0.696,
+        "elapsed_seconds": 92.011,
+        "state": null,
+        "desired": null,
+        "error": null
+      }
+    ]
+  },
+  "staging_final": {
+    "base": "https://staging.openagents.com",
+    "account": "acct_dc7a799879686fc5",
+    "computer": "cmp_bdebc7ce4dcca9d43f10",
+    "passed": true,
+    "cleaned": true,
+    "commands": [],
+    "scope": "Public empty-file upload/read/retry/overwrite, full oversized-body typed413/no effects, and existing binary unchanged; complements the complete core staging workflow",
+    "elapsed_seconds": 98.85,
+    "observations": 65,
+    "temporary_session_created": true,
+    "assertions": [
+      {
+        "check": "public_empty_upload_read_retry_and_empty_atomic_overwrite",
+        "passed": true
+      },
+      {
+        "check": "full_oversize_upload_typed413_no_effect_existing_file_intact",
+        "passed": true
+      }
+    ],
+    "file_transfers": [
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_bdebc7ce4dcca9d43f10/files?path=empty.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.455,
+        "elapsed_seconds": 55.078,
+        "bytes": 86,
+        "error": null
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_bdebc7ce4dcca9d43f10/files?path=empty.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.454,
+        "elapsed_seconds": 55.532,
+        "bytes": 0,
+        "error": null,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "checksum_header": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "cache_control": "no-store"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_bdebc7ce4dcca9d43f10/files?path=empty.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.419,
+        "elapsed_seconds": 55.951,
+        "bytes": 86,
+        "error": null
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_bdebc7ce4dcca9d43f10/files?path=empty.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.511,
+        "elapsed_seconds": 56.462,
+        "bytes": 0,
+        "error": null,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "checksum_header": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "cache_control": "no-store"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_bdebc7ce4dcca9d43f10/files?path=replace.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.418,
+        "elapsed_seconds": 56.88,
+        "bytes": 86,
+        "error": null
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_bdebc7ce4dcca9d43f10/files?path=replace.bin&overwrite=true",
+        "status": 200,
+        "seconds": 0.503,
+        "elapsed_seconds": 57.384,
+        "bytes": 86,
+        "error": null
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_bdebc7ce4dcca9d43f10/files?path=replace.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.487,
+        "elapsed_seconds": 57.871,
+        "bytes": 0,
+        "error": null,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "checksum_header": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "cache_control": "no-store"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_bdebc7ce4dcca9d43f10/files?path=keep.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.383,
+        "elapsed_seconds": 58.254,
+        "bytes": 86,
+        "error": null
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_bdebc7ce4dcca9d43f10/files?path=too-big&overwrite=false",
+        "status": 413,
+        "seconds": 1.107,
+        "elapsed_seconds": 59.371,
+        "bytes": 96,
+        "error": "file_too_large"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_bdebc7ce4dcca9d43f10/files?path=too-big&overwrite=false",
+        "status": 404,
+        "seconds": 0.388,
+        "elapsed_seconds": 59.76,
+        "bytes": 96,
+        "error": "file_not_found"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_bdebc7ce4dcca9d43f10/files?path=keep.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.377,
+        "elapsed_seconds": 60.138,
+        "bytes": 4,
+        "error": null,
+        "sha256": "6ca7ea2feefc88ecb5ed6356ed963f47dc9137f82526fdd25d618ea626d0803f",
+        "checksum_header": "6ca7ea2feefc88ecb5ed6356ed963f47dc9137f82526fdd25d618ea626d0803f",
+        "cache_control": "no-store"
+      }
+    ],
+    "mutations": [
+      {
+        "method": "POST",
+        "path": "/api/v1/sessions",
+        "status": 200,
+        "seconds": 0.359,
+        "elapsed_seconds": 0.561,
+        "state": null,
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers",
+        "status": 202,
+        "seconds": 0.311,
+        "elapsed_seconds": 1.253,
+        "state": "new",
+        "desired": "running",
+        "error": null
+      },
+      {
+        "method": "DELETE",
+        "path": "/v1/computers/cmp_bdebc7ce4dcca9d43f10?kind=cloud",
+        "status": 202,
+        "seconds": 0.318,
+        "elapsed_seconds": 60.456,
+        "state": "awake",
+        "desired": "deleted",
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/device/sign-out",
+        "status": 200,
+        "seconds": 0.355,
+        "elapsed_seconds": 98.651,
+        "state": null,
+        "desired": null,
+        "error": null
+      }
+    ]
+  },
+  "production": {
+    "base": "https://api.openagents.com",
+    "account": "acct_83d16a35955ef908",
+    "computer": "cmp_ab53d59a79ae829cb87e",
+    "passed": true,
+    "cleaned": true,
+    "commands": [
+      "trn_a1b61d9ded5e29f78fc9",
+      "trn_aca1865d35d7e63e362e"
+    ],
+    "scope": "Complete file workflow, including empty uploads",
+    "elapsed_seconds": 215.855,
+    "observations": 137,
+    "temporary_session_created": false,
+    "assertions": [
+      {
+        "check": "binary_upload_read_retry_overwrite_limits",
+        "passed": true,
+        "bytes": 1048587,
+        "sha256": "3eb8d4fe181bb763d4dc610c9891bb263f1c1350e8fb3432dcea6e18ab457aae"
+      },
+      {
+        "check": "command_hash_symlink_special_busy_stop_wake_binary_retention",
+        "passed": true
+      },
+      {
+        "check": "guest_installer_directory_cleanup",
+        "passed": true
+      }
+    ],
+    "file_transfers": [
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=input.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.821,
+        "elapsed_seconds": 60.869,
+        "bytes": 92,
+        "error": null
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=input.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.897,
+        "elapsed_seconds": 61.765,
+        "bytes": 1048587,
+        "error": null,
+        "sha256": "3eb8d4fe181bb763d4dc610c9891bb263f1c1350e8fb3432dcea6e18ab457aae",
+        "checksum_header": "3eb8d4fe181bb763d4dc610c9891bb263f1c1350e8fb3432dcea6e18ab457aae",
+        "cache_control": "no-store"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=input.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.915,
+        "elapsed_seconds": 62.686,
+        "bytes": 92,
+        "error": null
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=input.bin&overwrite=false",
+        "status": 412,
+        "seconds": 0.384,
+        "elapsed_seconds": 63.069,
+        "bytes": 90,
+        "error": "file_exists"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=input.bin&overwrite=false",
+        "status": 422,
+        "seconds": 0.162,
+        "elapsed_seconds": 63.232,
+        "bytes": 96,
+        "error": "incomplete_upload"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=input.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.605,
+        "elapsed_seconds": 63.837,
+        "bytes": 1048587,
+        "error": null,
+        "sha256": "3eb8d4fe181bb763d4dc610c9891bb263f1c1350e8fb3432dcea6e18ab457aae",
+        "checksum_header": "3eb8d4fe181bb763d4dc610c9891bb263f1c1350e8fb3432dcea6e18ab457aae",
+        "cache_control": "no-store"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=quote+%27t%C3%A9.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.683,
+        "elapsed_seconds": 64.525,
+        "bytes": 86,
+        "error": null
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=quote+%27t%C3%A9.bin&overwrite=true",
+        "status": 200,
+        "seconds": 0.675,
+        "elapsed_seconds": 65.2,
+        "bytes": 86,
+        "error": null
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=quote+%27t%C3%A9.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.478,
+        "elapsed_seconds": 65.678,
+        "bytes": 5,
+        "error": null,
+        "sha256": "3454c7ec1e02edce0fe7f4efe362651fbb457bc6d62fdd7a2f8001611bf23cf0",
+        "checksum_header": "3454c7ec1e02edce0fe7f4efe362651fbb457bc6d62fdd7a2f8001611bf23cf0",
+        "cache_control": "no-store"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=empty.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.404,
+        "elapsed_seconds": 66.082,
+        "bytes": 86,
+        "error": null
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=empty.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.407,
+        "elapsed_seconds": 66.489,
+        "bytes": 0,
+        "error": null,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "checksum_header": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "cache_control": "no-store"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=..%2Foutside&overwrite=false",
+        "status": 400,
+        "seconds": 0.139,
+        "elapsed_seconds": 66.628,
+        "bytes": 137,
+        "error": "invalid_path"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=%252e%252e%2Foutside&overwrite=false",
+        "status": 400,
+        "seconds": 0.135,
+        "elapsed_seconds": 66.763,
+        "bytes": 137,
+        "error": "invalid_path"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=%2Fetc%2Fhostname&overwrite=false",
+        "status": 400,
+        "seconds": 0.156,
+        "elapsed_seconds": 66.92,
+        "bytes": 137,
+        "error": "invalid_path"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=a%2F%2Fb&overwrite=false",
+        "status": 400,
+        "seconds": 0.145,
+        "elapsed_seconds": 67.065,
+        "bytes": 137,
+        "error": "invalid_path"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=input.bin&overwrite=false",
+        "status": 403,
+        "seconds": 0.185,
+        "elapsed_seconds": 67.25,
+        "bytes": 78,
+        "error": "forbidden"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=too-big&overwrite=false",
+        "status": 413,
+        "seconds": 1.045,
+        "elapsed_seconds": 68.297,
+        "bytes": 96,
+        "error": "file_too_large"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=too-big&overwrite=false",
+        "status": 404,
+        "seconds": 0.369,
+        "elapsed_seconds": 68.667,
+        "bytes": 96,
+        "error": "file_not_found"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=escaped&overwrite=false",
+        "status": 403,
+        "seconds": 0.37,
+        "elapsed_seconds": 72.027,
+        "bytes": 105,
+        "error": "file_path_refused"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=pipe&overwrite=false",
+        "status": 415,
+        "seconds": 0.512,
+        "elapsed_seconds": 72.539,
+        "bytes": 66,
+        "error": "not_a_file"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=changing.bin&overwrite=false",
+        "status": 409,
+        "seconds": 0.403,
+        "elapsed_seconds": 72.943,
+        "bytes": 106,
+        "error": "file_changed"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=input.bin&overwrite=false",
+        "status": 409,
+        "seconds": 0.167,
+        "elapsed_seconds": 109.856,
+        "bytes": 123,
+        "error": "computer_not_ready"
+      },
+      {
+        "method": "PUT",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=input.bin&overwrite=false",
+        "status": 409,
+        "seconds": 0.433,
+        "elapsed_seconds": 110.291,
+        "bytes": 123,
+        "error": "computer_not_ready"
+      },
+      {
+        "method": "GET",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/files?path=input.bin&overwrite=false",
+        "status": 200,
+        "seconds": 0.614,
+        "elapsed_seconds": 152.844,
+        "bytes": 1048587,
+        "error": null,
+        "sha256": "3eb8d4fe181bb763d4dc610c9891bb263f1c1350e8fb3432dcea6e18ab457aae",
+        "checksum_header": "3eb8d4fe181bb763d4dc610c9891bb263f1c1350e8fb3432dcea6e18ab457aae",
+        "cache_control": "no-store"
+      }
+    ],
+    "mutations": [
+      {
+        "method": "POST",
+        "path": "/v1/computers",
+        "status": 202,
+        "seconds": 0.253,
+        "elapsed_seconds": 0.655,
+        "state": "new",
+        "desired": "running",
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/commands",
+        "status": 202,
+        "seconds": 0.46,
+        "elapsed_seconds": 69.126,
+        "state": "queued",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/commands/trn_a1b61d9ded5e29f78fc9/cancel",
+        "status": 202,
+        "seconds": 0.214,
+        "elapsed_seconds": 73.156,
+        "state": "running",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/stop",
+        "status": 202,
+        "seconds": 0.198,
+        "elapsed_seconds": 77.867,
+        "state": "checkpointing",
+        "desired": "stopped",
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/wake",
+        "status": 202,
+        "seconds": 0.186,
+        "elapsed_seconds": 110.652,
+        "state": "stopped",
+        "desired": "running",
+        "error": null
+      },
+      {
+        "method": "POST",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e/commands",
+        "status": 202,
+        "seconds": 0.253,
+        "elapsed_seconds": 153.102,
+        "state": "queued",
+        "desired": null,
+        "error": null
+      },
+      {
+        "method": "DELETE",
+        "path": "/v1/computers/cmp_ab53d59a79ae829cb87e?kind=cloud",
+        "status": 202,
+        "seconds": 0.267,
+        "elapsed_seconds": 155.883,
+        "state": "checkpointing",
+        "desired": "deleted",
+        "error": null
+      }
+    ]
+  },
+  "cleanup": {
+    "earlier_failed_uploads": [
+      "cmp_f59f1e88b79b6fec34bb",
+      "cmp_373e220a2a20965c005b"
+    ],
+    "diagnostic_probe": "cmp_2c02cc1efbbba2d54a11",
+    "core_run": "cmp_4534ef2a12d5be7c73f3",
+    "staging_empty_run": "cmp_f5a9e4282a19838f1dbc",
+    "earlier_production_connection_failures": [
+      "cmp_0a45f932c8a5348a680c",
+      "cmp_2be1ff8186cc913a58d8"
+    ],
+    "earlier_attempts_deleted_and_absent": true,
+    "earlier_temporary_sessions_revoked": true,
+    "production_oversize_attempts": "Binary and empty transfers passed twice, but GFE returned503 on early oversize refusal. Both computers were deleted and absent. The response-stream drain fix keeps413 open until bounded discard finishes; complete rerun is recorded below.",
+    "owner_account_or_computers_used": false,
+    "chats_projects_or_drafts_created": false,
+    "guest_helper_directories": "Zero observed after transfer completion."
+  },
+  "schema_sha256": "d058ef8b02f89e72d10495d08afa537d20fef171038fd90f15163b3e836bd2c3",
+  "boundaries": [
+    "Boat disk persistence only; no SPACE or memory-restore claim.",
+    "No recursive sync, arbitrary host filesystem browsing, screenshot access, large-object storage, or preview capability.",
+    "No new Coder release, SDK publication, GitHub workflow, payment, or real model call."
+  ]
+}
