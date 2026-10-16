@@ -100,6 +100,12 @@ the saved native specification digest to the native evidence owner. Non-secret
 Git settings and relative working directories are carried in that transported
 command. Credential values arrive separately at dispatch.
 
+Managed commands keep a physical `~/workspace` for the public file API and a
+`~/repo` alias for existing saved-image consumers. An existing recipe checkout
+moves as one directory; two different nonempty trees or a workspace symlink
+refuse instead of merging their contents. Fresh verification and qualification
+also check that a saved image remains usable through both paths.
+
 ## Clean images and credential handling
 
 Image publication requires a native clean build in its capture phase, successful

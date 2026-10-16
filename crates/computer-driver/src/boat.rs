@@ -13,6 +13,28 @@ use crate::*;
 use ::boat::models::*;
 use ::boat::{Client, Error, Nullable};
 
+// Keep the existing saved-image consumers' repo path while the public file
+// API and commands use a physical workspace directory. Refuse two different
+// nonempty trees or a workspace symlink rather than merging private content.
+const ENVIRONMENT_WORKSPACE: &str = r#"workspace="$HOME/workspace"
+legacy="$HOME/repo"
+[ ! -L "$workspace" ] || exit 125
+if [ -L "$legacy" ]; then
+  [ "$(realpath -e "$legacy")" = "$(realpath -e "$workspace")" ] || exit 125
+elif [ -e "$legacy" ]; then
+  [ -d "$legacy" ] || exit 125
+  if [ -e "$workspace" ]; then
+    [ -d "$workspace" ] && [ -z "$(ls -A "$workspace")" ] || exit 125
+    rmdir "$workspace" || exit 125
+  fi
+  mv "$legacy" "$workspace" || exit 125
+  ln -s "$workspace" "$legacy" || exit 125
+else
+  mkdir -p "$workspace" || exit 125
+  ln -s "$workspace" "$legacy" || exit 125
+fi
+"#;
+
 /// One Boat service as a computer driver.
 #[derive(Clone)]
 pub struct BoatDriver {
@@ -291,7 +313,7 @@ impl Driver for BoatDriver {
         let script = identified::bounded_command_script(root, "workspace", &public);
         let script = if volatile {
             format!(
-                "sudo -n install -d -m 700 -o \"$(id -u)\" -g \"$(id -g)\" /run/oa-environment-commands || exit 125\n{script}"
+                "{ENVIRONMENT_WORKSPACE}\nsudo -n install -d -m 700 -o \"$(id -u)\" -g \"$(id -g)\" /run/oa-environment-commands || exit 125\n{script}"
             )
         } else {
             script
@@ -707,5 +729,63 @@ fn environment_image(s: &NamedSnapshot) -> ImageRecord {
         state,
         snapshot: s.snapshot_id.clone(),
         size_bytes: s.size_bytes.and_then(|n| u64::try_from(n).ok()),
+    }
+}
+
+#[cfg(test)]
+mod workspace_tests {
+    use super::ENVIRONMENT_WORKSPACE;
+    use std::{fs, process::Command};
+    fn run(home: &std::path::Path) -> bool {
+        Command::new("sh")
+            .arg("-c")
+            .arg(ENVIRONMENT_WORKSPACE)
+            .env("HOME", home)
+            .current_dir(home)
+            .status()
+            .unwrap()
+            .success()
+    }
+    #[test]
+    fn saved_images_keep_the_original_repo_path_and_the_public_workspace() {
+        let home = tempfile::tempdir().unwrap();
+        fs::create_dir(home.path().join("repo")).unwrap();
+        fs::write(home.path().join("repo/source"), b"original").unwrap();
+        assert!(run(home.path()));
+        assert!(run(home.path()));
+        assert_eq!(
+            fs::read(home.path().join("workspace/source")).unwrap(),
+            b"original"
+        );
+        assert_eq!(
+            fs::read(home.path().join("repo/source")).unwrap(),
+            b"original"
+        );
+        assert!(
+            fs::symlink_metadata(home.path().join("repo"))
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+    }
+    #[test]
+    fn conflicting_trees_and_a_workspace_symlink_are_refused() {
+        use std::os::unix::fs::symlink;
+        let home = tempfile::tempdir().unwrap();
+        for directory in ["repo", "workspace"] {
+            fs::create_dir(home.path().join(directory)).unwrap();
+            fs::write(home.path().join(directory).join("source"), directory).unwrap();
+        }
+        assert!(!run(home.path()));
+        assert_eq!(fs::read(home.path().join("repo/source")).unwrap(), b"repo");
+        assert_eq!(
+            fs::read(home.path().join("workspace/source")).unwrap(),
+            b"workspace"
+        );
+        let other = tempfile::tempdir().unwrap();
+        fs::remove_dir_all(home.path().join("workspace")).unwrap();
+        symlink(other.path(), home.path().join("workspace")).unwrap();
+        assert!(!run(home.path()));
+        assert!(fs::read_dir(other.path()).unwrap().next().is_none());
     }
 }

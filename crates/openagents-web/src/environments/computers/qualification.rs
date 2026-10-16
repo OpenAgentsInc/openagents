@@ -147,6 +147,69 @@ fn transports() -> Transports<FakeTransport> {
         ]))
     })
 }
+async fn reuse_saved_image(
+    api: &openagents_sdk::computers::Computers<'_>,
+    id: &str,
+    number: u64,
+    evidence: &std::path::Path,
+) -> Result<String, String> {
+    use openagents_sdk::{
+        CancellationToken,
+        computers::{CommandOutcome, WaitFor},
+    };
+    let cancel = CancellationToken::new();
+    let request=api.create_request(serde_json::from_value(json!({"environment":id,"version":number.to_string(),"size":"small","idempotency_key":format!("reuse-{id}")})).unwrap()).map_err(|_|"Saved-image request failed.")?;
+    shared::write(&evidence.with_file_name("reuse-request.json"), &request)?;
+    let computer = api
+        .create(&request, &cancel)
+        .await
+        .map_err(|_| "Saved-image allocation was not confirmed.")?;
+    shared::write(
+        &evidence.with_file_name("reuse-reference.json"),
+        computer.reference(),
+    )?;
+    api.wait(
+        computer.reference(),
+        WaitFor::Awake,
+        Duration::from_secs(600),
+        &cancel,
+    )
+    .await
+    .map_err(|_| "Saved image did not wake.")?;
+    let request=api.command_request(computer.reference(),serde_json::from_value(json!({"command":r#"test -f "$HOME/repo/deploy/space-host/fixtures/environment/Cargo.toml" && test -f "$HOME/workspace/deploy/space-host/fixtures/environment/Cargo.toml" && printf oa-root-compatible"#,"idempotency_key":format!("reuse-check-{id}"),"timeout_seconds":60})).unwrap()).map_err(|_|"Saved-image check could not be prepared.")?;
+    let command = api
+        .execute(&request, &cancel)
+        .await
+        .map_err(|_| "Saved-image check was not confirmed.")?;
+    let mut reader = api
+        .output(command.reference())
+        .map_err(|_| "Saved-image output could not be opened.")?;
+    let mut bytes = vec![];
+    let end = Instant::now() + Duration::from_secs(120);
+    while Instant::now() < end {
+        let Some(page) = reader
+            .next_page(api, &cancel)
+            .await
+            .map_err(|_| "Saved-image output could not be read.")?
+        else {
+            break;
+        };
+        if page.stdout_gap || page.stderr_gap {
+            return Err("Saved-image output was incomplete.".into());
+        }
+        bytes.extend(page.stdout);
+        if page.terminal && !page.has_more {
+            if page.command.outcome() != Some(CommandOutcome::Succeeded)
+                || bytes != b"oa-root-compatible"
+            {
+                return Err("The saved image did not preserve both repository paths.".into());
+            }
+            return Ok(computer.reference().id().into());
+        }
+    }
+    Err("Saved-image check timed out.".into())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "Requires an explicit disposable staging account and real Boat resources."]
 async fn a_staging_repository_build_fresh_verifier_and_save_use_shared_computers() {
@@ -301,6 +364,7 @@ async fn a_staging_repository_build_fresh_verifier_and_save_use_shared_computers
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
     let mut result = json!({"schema":"openagents.environment-computers.qualification.v1","account":q.account,"environment":id,"staging_backend":BACKEND,"public_front":"local test of the same server router","native_authority":"current staging account and workspace reads; issued-session adapter","scripted_model":true,"model_calls":0,"candidate_ready":ready,"reason":reason});
+    let mut reuse_ok = false;
     if ready {
         let view = root.view(&id).unwrap();
         let candidate = view.candidate.unwrap();
@@ -313,6 +377,16 @@ async fn a_staging_repository_build_fresh_verifier_and_save_use_shared_computers
         result["saved_version"] = json!(number);
         result["image"] = json!(pin.image.image_id);
         result["candidate_digest"] = json!(candidate.digest);
+        match reuse_saved_image(&computers, &id, number, &q.evidence).await {
+            Ok(computer) => {
+                reuse_ok = true;
+                result["reused_computer"] = json!(computer);
+                result["legacy_and_public_paths_verified"] = json!(true);
+            }
+            Err(error) => {
+                result["reuse_error"] = json!(error);
+            }
+        }
         let list = computers
             .list(200, None, &openagents_sdk::CancellationToken::new())
             .await
@@ -329,6 +403,27 @@ async fn a_staging_repository_build_fresh_verifier_and_save_use_shared_computers
     // owner. Delete every allocation through its saved SDK binding, even when
     // qualification fails; keep a cleanup receipt outside the temporary root.
     let mut cleanup = vec![];
+    // This fresh qualification account owns only this run's resources. Include
+    // a regular saved-image allocation whose create reply may have been lost.
+    if let Ok(page) = computers
+        .list(200, None, &openagents_sdk::CancellationToken::new())
+        .await
+    {
+        for computer in page.computers {
+            let cancel = openagents_sdk::CancellationToken::new();
+            let _ = computers.delete(computer.reference(), &cancel).await;
+            let deleted = computers
+                .wait(
+                    computer.reference(),
+                    openagents_sdk::computers::WaitFor::Deleted,
+                    Duration::from_secs(600),
+                    &cancel,
+                )
+                .await
+                .is_ok();
+            cleanup.push(json!({"computer":computer.reference().id(),"role":"account cleanup","deleted":deleted}));
+        }
+    }
     let bindings = state.join("environment-computers/attempts");
     if bindings.is_dir() {
         for entry in std::fs::read_dir(bindings).unwrap() {
@@ -357,6 +452,10 @@ async fn a_staging_repository_build_fresh_verifier_and_save_use_shared_computers
     assert!(
         ready,
         "The staging environment did not produce a verified candidate; see the private evidence file."
+    );
+    assert!(
+        reuse_ok,
+        "The saved-image compatibility check failed; see the private evidence file."
     );
     assert!(
         cleanup.iter().all(|item| item["deleted"] == true),
