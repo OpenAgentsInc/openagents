@@ -122,7 +122,10 @@ unavailable content, cancels old selections, and clears private views on sign-ou
 The [reader qualification record](history-reader-evidence.json) covers 405 messages,
 direct existing-ID navigation, saved bytes, and the native read-only view.
 Messages beyond the view's budget continue in another explicit window; very long
-text uses numbered parts. Publication and final external qualification are #11832.
+text uses numbered parts. The [standalone SDK example](../../examples/sdk-history/README.md)
+and [delivery evidence](delivery-evidence.json) complete #11832, including native
+reads against the public API. The real GitHub/Keychain check and authenticated
+staging rerun remain in `NEEDS_OWNER.md`; package publication stays deferred.
 
 ## Appearance
 

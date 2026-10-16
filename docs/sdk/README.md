@@ -71,13 +71,14 @@ account. The SDK uses `https://api.openagents.com/v1` for app API calls and
 explicit for staging/local use. No desktop GitHub secret, Zeron WorkOS account,
 new auth provider, or proposed `/auth/app` flow is needed.
 
-Existing public reads are `/v1/account`, `/v1/threads`,
-`/v1/threads/{id}`, and `/v1/threads/{id}/messages`. Export their actual
-schemas and auth behavior through a lightweight Rust client. The detail
-response's newest 200 messages are a preview; the paginated message endpoint
-is needed for complete history. Its saved files and tool details need further
-coverage. The [delivery plan](delivery-plan.md#first-desktop-delivery-authentication-and-history)
-records the exact gaps and issues.
+The implemented [saved history API](chat-history.md) uses `/v1/history*` for
+bounded summary pages, complete revision-checked messages, saved files and
+captures, and shared-project discovery. The typed Rust SDK and native sidebar
+and reader are implemented. The older `/v1/threads/{id}` detail remains a preview
+of the newest 200 messages; it does not replace the complete history reader.
+The [standalone example](../../examples/sdk-history/README.md) and
+[delivery evidence](../coder-desktop/delivery-evidence.json) record the external
+Git build, deployed API checks, native reads, cleanup, and remaining owner checks.
 
 Include web chats and terminal/phone chats already synced to the account,
 archived-chat access, and authorized shared-project history. Sign-in does not

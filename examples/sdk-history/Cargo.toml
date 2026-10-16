@@ -1,0 +1,12 @@
+[package]
+name = "sdk-history-example"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# An independent consumer: no parent workspace or sibling dependencies.
+[workspace]
+
+[dependencies]
+openagents = { package = "openagents-sdk", git = "https://github.com/OpenAgentsInc/openagents.git", rev = "4b5b70d72b1f1d142170417c283937876dc5734d" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }

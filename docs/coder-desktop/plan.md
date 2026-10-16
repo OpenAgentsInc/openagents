@@ -160,7 +160,7 @@ follows as the corresponding SDK contracts become available.
 | Desktop workflow | Existing work or dependency | Remaining desktop/SDK requirement |
 | --- | --- | --- |
 | Sign in and discover the account/workspaces | Existing website/device auth; #11825, #11826, #11829 | Export the public Rust SDK, isolated OS credential storage, restart validation, expiry/revocation, account switch, and typed refusals. Key prefixes alone never grant compute access. |
-| List and open previous chats | Public `/v1/history*` reads and typed SDK complete in #11827 and #11828; sidebar complete in #11830. | #11831 implements the read-only saved transcript view, message pages, tool/thinking content, and lazy saved bytes. #11832 qualifies the complete external journey. |
+| List and open previous chats | Public `/v1/history*` reads and typed SDK complete in #11827 and #11828; sidebar complete in #11830. | #11831 completes the read-only transcript view. #11832 records the standalone example, deployed native reads, and remaining owner checks in delivery-evidence.json. |
 | Create/list/stop/wake/delete a computer | [#11801](https://github.com/OpenAgentsInc/openagents/issues/11801), Rust client [#11805](https://github.com/OpenAgentsInc/openagents/issues/11805) | Retained request identities, bounded waits, readiness/error UI, and deletion confirmation. |
 | Execute and follow a command | [#11802](https://github.com/OpenAgentsInc/openagents/issues/11802) | Identified command creation, attachment/replay, bounded output, explicit cancellation, and recovery from uncertain dispatch. |
 | Read and write computer files | [#11803](https://github.com/OpenAgentsInc/openagents/issues/11803) | Owner-routed transfer and editor-safe concurrency. Generic upload/download does not by itself supply listings, indexed search, watches, atomic save, or conflict handling. |
@@ -251,8 +251,8 @@ access retain their existing activation conditions.
 
 ## First reference scenario
 
-The first externally reproducible SDK example is authentication and history
-(#11832): approve device sign-in in the website's system-browser flow,
+The [first external SDK example](../../examples/sdk-history/README.md) implements
+authentication and history (#11832; [evidence](delivery-evidence.json)): approve device sign-in in the website's system-browser flow,
 discover the existing account, list every available chat page, open a saved
 chat and page its messages/files, then sign out. Reopen the app to verify
 session restoration before sign-out, and use another synthetic account to

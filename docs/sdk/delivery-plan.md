@@ -43,8 +43,11 @@ sidebar, and transcript integration (#11829–#11831) are implemented. The deskt
 [auth](../coder-desktop/auth-client-evidence.json),
 [sidebar](../coder-desktop/history-sidebar-evidence.json), and
 [reader](../coder-desktop/history-reader-evidence.json) records identify their
-source pins and checks. The external example and final deployed qualification
-are #11832. Package publication stays deferred.
+source pins and checks. The [standalone example](../../examples/sdk-history/README.md)
+and [delivery evidence](../coder-desktop/delivery-evidence.json) complete #11832.
+The public native read passed with disposable production test-account chats;
+the current staging credential and real GitHub/Keychain checks remain in
+`NEEDS_OWNER.md`. Package publication stays deferred.
 
 The built device flow is `POST /v1/device/code`, `POST /v1/device/token`,
 and `POST /v1/device/sign-out`; approval stays on the website. Reuse

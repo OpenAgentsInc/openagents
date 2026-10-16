@@ -1,4 +1,4 @@
-## Check the Coder Desktop Keychain prompt (#11829)
+## Check Coder Desktop GitHub approval and Keychain (#11829, #11832)
 
 On your Mac, sign in to Coder Desktop, allow its own Keychain entry, restart,
 and sign out. Confirm that it displays your OpenAgents account and leaves your
@@ -6,6 +6,13 @@ provider logins and local workspace intact. The native shell/browser fixture and
 injected failure tests pass; automated checks deliberately do not write to the
 owner's Keychain or use the owner's GitHub session. macOS is the first supported
 credential-store platform.
+
+For a staging rerun, create a dedicated staging test-account credential. The
+available production test key currently receives `401` from staging. Production
+qualification passed with disposable, nonprivate chats; see
+[the delivery evidence](docs/coder-desktop/delivery-evidence.json). Sign-in keys
+cannot approve device logins, so use a real website GitHub session for that
+manual step. No owner account data was used by the automated checks.
 
 ## Qualify the native ENV providers on disposable accounts (#11736)
 

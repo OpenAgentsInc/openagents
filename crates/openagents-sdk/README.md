@@ -8,7 +8,7 @@ run on the application's Tokio runtime.
 
 ```toml
 [dependencies]
-openagents-sdk = { git = "https://github.com/OpenAgentsInc/openagents.git", rev = "ceabf529d2698fce04c3d433e222258457b74e41" }
+openagents-sdk = { git = "https://github.com/OpenAgentsInc/openagents.git", rev = "4b5b70d72b1f1d142170417c283937876dc5734d" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 

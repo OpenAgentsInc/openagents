@@ -19,8 +19,10 @@ def main():
     parser.add_argument("--api", default="https://api.openagents.com")
     parser.add_argument("--seed-dedicated-account", action="store_true")
     parser.add_argument("--client-manifest", help="Run a prebuilt independent Cargo client while the synthetic chats exist")
+    parser.add_argument("--client-arg", action="append", default=[], help="Argument passed to the independent example")
+    parser.add_argument("--native-command", nargs=argparse.REMAINDER, help="Isolated native fixture command; receives only synthetic chat IDs in SDK_FIXTURE_CHAT_IDS")
     args = parser.parse_args()
-    assert not args.client_manifest or args.seed_dedicated_account, "The external-client check requires disposable fixtures"
+    assert not (args.client_manifest or args.native_command) or args.seed_dedicated_account, "The external-client check requires disposable fixtures"
     opener = urllib.request.build_opener(NoRedirect())
     token = os.environ.get("OPENAGENTS_TOKEN")
 
@@ -94,7 +96,10 @@ def main():
             status, _ = call("GET", "/v1/history/" + chat + "/messages?after=msg_199&revision=999999")
             assert status == 409
         if args.client_manifest:
-            subprocess.run(["cargo", "run", "--locked", "--manifest-path", args.client_manifest], check=True)
+            subprocess.run(["cargo", "run", "--locked", "--manifest-path", args.client_manifest, "--", *args.client_arg], check=True)
+        if args.native_command:
+            env = dict(os.environ, SDK_FIXTURE_CHAT_IDS=json.dumps(ids))
+            subprocess.run(args.native_command, check=True, env=env)
         print("PASS dedicated-account ID pages, project directory, saved tools/thinking, and complete 205-message reads")
     finally:
         failed_cleanup = 0

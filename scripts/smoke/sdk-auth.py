@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -18,6 +19,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--api", default="https://api.openagents.com")
     parser.add_argument("--website", default="https://openagents.com")
+    parser.add_argument("--check-revocation", action="store_true", help="Create and revoke one disposable dedicated-account key; measure cached refusal")
     args = parser.parse_args()
     opener = urllib.request.build_opener(NoRedirect())
 
@@ -69,6 +71,29 @@ def main():
         status, account = call("GET", "/v1/account", token=token)
         assert status == 200 and account["account"]["id"] and isinstance(account["workspaces"], list)
         print("PASS dedicated test-account bearer and workspace discovery")
+    if args.check_revocation:
+        parent = os.environ.get("OPENAGENTS_TOKEN", "")
+        assert parent.startswith("oa_sk_"), "Explicit dedicated-account sign-in key required"
+        status, made = call("POST", "/v1/keys", {"name": "SDK revocation fixture"}, token=parent)
+        assert status == 200, "Disposable key creation failed"
+        key, key_id = made["token"], made["key"]["id"]
+        removed = False
+        try:
+            assert call("GET", "/v1/account", token=key)[0] == 200
+            assert call("DELETE", "/v1/keys/" + key_id, token=parent)[0] == 200
+            removed = True
+            start = time.monotonic()
+            while True:
+                status, _ = call("GET", "/v1/account", token=key)
+                if status == 401:
+                    break
+                assert status == 200 and time.monotonic() - start < 35, "Revocation exceeded the documented cache bound"
+                time.sleep(1)
+            print(f"PASS disposable-key revocation refusal after {time.monotonic() - start:.1f}s (30s cache plus request allowance)")
+        finally:
+            if not removed:
+                assert call("DELETE", "/v1/keys/" + key_id, token=parent)[0] in (200, 404), "Disposable key cleanup failed"
+        print("Cleanup: disposable key revoked; parent test key unchanged")
     print("PASS public auth schema, unauthenticated refusal, pending, slowdown, and invalid credentials")
     if args.api.rstrip("/") != args.website.rstrip("/"):
         print("PASS API-host cookie isolation")

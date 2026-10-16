@@ -1,0 +1,105 @@
+{
+  "issue": 11832,
+  "qualified_at_utc": "2026-10-16T06:55:42.350142+00:00",
+  "desktop_repository": "https://github.com/OpenAgentsInc/coder-desktop",
+  "desktop_commit": "5513adaf9f76ea47b0ed6d164febeadd89f6502d",
+  "sdk_commit": "4b5b70d72b1f1d142170417c283937876dc5734d",
+  "schema_file": "docs/sdk/openapi.app.json",
+  "schema_file_sha256": "7a44ea9441c5aea6b0cef15b9ec901d81be4033ff036882e7256fb73f8694690",
+  "deployed_schema_sha256": {
+    "production": "3d67ca0710d2d8ebf2da4e8267cfb9a7131c7afff41d93e3036d63a1b6c681b2",
+    "staging": "7e3b677f26958a2d00fe11fafbc80436a9a56d5dee67e8519df16558b1cbbca9"
+  },
+  "compatibility": "All checked-in auth/history path operations equal the production public schema operations; other API operations continue to evolve.",
+  "server": {
+    "production_api": "https://api.openagents.com/v1",
+    "production_website": "https://openagents.com",
+    "production_revision": "coder-web-55d58e1ee5-20261016063247",
+    "staging_website_and_api": "https://staging.openagents.com",
+    "staging_revision": "openagents-web-1-staging-e642b9a823-062505",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:55d58e1ee5a4c9ac7e8ce32d4c40dd6033fa53220cac9cc77944690329721bdc",
+    "browser_bundle_source": "e642b9a823c4e4ee216eb849a19163725ee4b2f5",
+    "note": "The browser bundle commit is not a claim about the native server source. The immutable image and running revision identify the qualified server. No deployment was needed for this example/fixture change."
+  },
+  "platform": {
+    "os": "macOS 26.4",
+    "build": "25E246",
+    "architecture": "arm64",
+    "desktop_rust": "1.98.1",
+    "sdk_rust": "1.97.1"
+  },
+  "external_consumer": {
+    "directory": "examples/sdk-history",
+    "build": "Copied outside both repositories; cargo build --locked passed",
+    "sdk_source": "Public Git revision, no sibling paths or private patches",
+    "resolved_packages": 141,
+    "workspace_members": 1,
+    "server_host_gui_dependencies": [],
+    "production_chats": 3,
+    "production_messages": 615,
+    "tools_and_thinking": "passed",
+    "restore": "Second client restores caller memory store before browsing",
+    "sign_out": "passed; imported test key forgotten locally, parent not revoked",
+    "files": "Example implements lazy saved bytes; deployed synced fixtures have no file/capture bytes. Real-handler SDK tests and synthetic native reader qualify files/captures."
+  },
+  "native_public_api": {
+    "mode": "account-fixture --public-history",
+    "credential": "Explicit dedicated-account sign-in key; injected memory store; no Keychain",
+    "authority": "Actual public SDK account, history, and message handlers",
+    "restored": true,
+    "sidebar_chats": 3,
+    "opened_chats": 3,
+    "messages_per_chat": 205,
+    "messages_total": 615,
+    "tool_output_and_thinking": "passed",
+    "signed_in_capture_to_signed_out_seconds": 1.65,
+    "timing_scope": "One local offscreen run including three complete transcript reads, captures, and local sign-out; not a latency benchmark",
+    "sign_out": "Saved credential, sidebar, reader, and navigation cleared",
+    "capture_review": "public-reader-0.png reviewed; actual saved tool input/output and thinking visible; no composer"
+  },
+  "revocation": {
+    "probe": "scripts/smoke/sdk-auth.py --check-revocation",
+    "disposable_key_refused_seconds": 0.2,
+    "documented_success_cache_seconds": 30,
+    "probe_allowance_seconds": 35,
+    "scope": "Measured one newly created sign-in key; browser-session removal and mid-fetch account loss also covered in synthetic tests. This sample does not promise 0.2 seconds for every cached session."
+  },
+  "checks": {
+    "sdk_tests": {
+      "auth": 10,
+      "history": 5,
+      "copy": 1
+    },
+    "desktop_account_tests": {
+      "platform": 1,
+      "auth": 11,
+      "history": 4,
+      "reader": 6
+    },
+    "isolated_browser_and_native_reader": "openagents browser run -- python3 scripts/check-account-fixture.py --reader BINARY SCRATCH passed after fixture extension",
+    "formatting": "Changed Rust example rustfmt, standalone cargo fmt, Python compile, git diff --check passed",
+    "prior_native_checks": "See auth-client-evidence.json, history-sidebar-evidence.json, and history-reader-evidence.json for denial, expiry, restart, switching, storage/network outages, shared/archive, files/captures, changed pages, and late responses."
+  },
+  "limitations": [
+    "Real GitHub-session approval and the native Keychain prompt remain owner-only checks in NEEDS_OWNER.md. No owner browser session or Keychain was accessed.",
+    "The available dedicated production test key is rejected by staging (401); staging authenticated rerun requires a dedicated staging credential. Anonymous schemas/pending/slowdown were reached, but authenticated staging qualification was not completed in this final pass.",
+    "A sign-in key cannot approve device grants; that security boundary stays intact. Full approval is qualified by fake GitHub on actual handlers and isolated native/browser fixtures.",
+    "The standalone example uses an in-process memory store; native Keychain persistence is implemented separately.",
+    "macOS is the supported desktop credential-store platform; Linux and Windows are not qualified here.",
+    "Read-only saved history; unsynced local chats, sending replies, engine execution, and computer provisioning are outside this milestone."
+  ],
+  "cleanup": {
+    "production_seed_batches": 2,
+    "synthetic_chats_created": 6,
+    "synthetic_chats_removed": 6,
+    "synthetic_messages_removed": 1230,
+    "disposable_keys_created": 1,
+    "disposable_keys_revoked": 1,
+    "parent_test_key": "unchanged",
+    "anonymous_device_grants": "Unapproved; expire after 600 seconds",
+    "new_accounts_or_computers_or_tasks_or_hosts": 0,
+    "owner_keychain_or_browser_profile_writes": 0,
+    "native_processes": "Exited; local fixture server shuts down with its runtime",
+    "retained_artifacts": "Scrubbed evidence in Git; captures/build logs/independent checkout under the agent scratch directory"
+  }
+}
