@@ -47,6 +47,9 @@ fn mainnet_and_credential_bearing_endpoints_are_refused() {
     let cfg = scratch("bad-config").join("config.json");
     std::fs::write(&cfg,r#"{"schema":"layertree.follower.v1","network":"mainnet","rpc":"https://example.org","tree_open":"tree.jsonl","operator_key":"","unroll_key":"","unroll":"package.bin","member":0,"sources":{"directories":["mirror"]},"state":"state"}"#).unwrap();
     assert!(Config::load(&cfg).is_err());
+    assert!(mirror::mirror_endpoint("http://10.128.0.119:18440", true).is_ok());
+    assert!(mirror::mirror_endpoint("http://8.8.8.8", true).is_err());
+    assert!(mirror::mirror_endpoint("http://private.example.org", true).is_err());
     assert!(chain::endpoint("https://user:password@example.org").is_err());
     assert!(chain::endpoint("https://example.org?token=unused").is_err());
     assert!(mirror::check_relay_url("wss://example.org?token=unused").is_err());

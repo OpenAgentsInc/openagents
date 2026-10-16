@@ -142,6 +142,9 @@ def check(evidence):
     require(operator and operator[0]['kind'] == 'tree_open' and
             all(row['network'] == 'signet' for row in operator), 'Choose the public signet operator log.')
     honest = read_group(base, plan['honest'], inputs)
+    normal_until = plan['normal_until']
+    honest = [(data, [row for row in checks if row['checked_at'] <= normal_until]) for data, checks in honest]
+    require(all(checks for _, checks in honest), 'No checks before the normal-operation deadline.')
     start = max(checks[0]['checked_at'] for _, checks in honest)
     end = min(checks[-1]['checked_at'] for _, checks in honest)
     require(end - start >= WEEK, 'Three followers have not completed a common week.')
@@ -154,7 +157,7 @@ def check(evidence):
         require(all(0 <= b - a <= MAX_GAP for a, b in zip(times, times[1:])), 'Follower check gap exceeds two minutes.')
         require(all(row['stopped'] is None and not row['exited'] and row['unroll_held'] for row in checks),
                 'A public-tree follower stopped, exited, or lacked its escape package.')
-        require(all(row['scanned'] == row['observed_tip'] for row in checks), 'A public-tree follower fell behind.')
+        require(all(0 <= row['observed_tip'] - row['scanned'] <= 1 for row in checks), 'A public-tree follower fell behind.')
         require(checks[-1]['observed_tip'] > checks[0]['observed_tip'], 'The chain did not advance.')
         require(not any(row['kind'] == 'light_client' and row['result'] != 'ok' for row in data),
                 'The honest public tree raised an alarm.')

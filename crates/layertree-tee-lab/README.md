@@ -552,3 +552,31 @@ The converter checks the tree, output bytes, and member's exact unroll
 payout before writing public bootstrap files. The subsequent follower
 check compares that output with Core. First qualify the capture through
 the attestation client; this converter does not verify hardware reports.
+
+`scripts/layertree/build-follower.sh REF OUTPUT_DIRECTORY` builds a native
+Linux reader using the same pinned Rust compiler image as the research
+service. Set `CARGO_TARGET_DIR` to your existing external target directory.
+The output records the source commit, compiler image, input hashes, and
+binary hash. The isolated build parent preserves the workspace's package
+and lint settings and includes the Nostr schemas required by its library.
+
+For an isolated operator test receiver, run
+`scripts/layertree/alarm-receiver.py --directory NEW_RECEIVER_DIRECTORY
+--until UNIX_SECONDS`. It binds loopback on an available port, writes the
+URL to `receiver.json`, and syncs each alarm to `received.jsonl` before
+responding. It rejects mainnet observations and conflicting duplicate IDs.
+Restarting with the same directory keeps its port and receipt IDs. Inspect
+its `receiver.log` or query its loopback endpoint through SSH forwarding.
+Use this test receiver independently of the owner's production account.
+
+Set the evidence plan's `normal_until` to the end of normal operation.
+The week check uses statuses before that time, so later legitimate unroll
+payouts do not invalidate the normal-operation evidence. A check may be one
+block behind a tip that advanced during its RPC calls; longer lag fails.
+
+The measured signet service's mirrors use plain HTTP inside its GCP VPC.
+List those numeric RFC 1918 URLs under `sources.private_http` to select
+that transport explicitly. This option carries only public record/package
+bytes, and their hashes and payout checks still determine acceptance.
+It accepts no URL credentials, public IPs, or hostnames. RPC credentials
+continue to require HTTPS or loopback.

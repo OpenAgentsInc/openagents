@@ -35,6 +35,9 @@ pub struct Sources {
     pub directories: Vec<PathBuf>,
     #[serde(default)]
     pub https: Vec<String>,
+    /// Public record bytes on explicitly selected RFC 1918 mirrors in the test VPC.
+    #[serde(default)]
+    pub private_http: Vec<String>,
     #[serde(default)]
     pub relays: Vec<Relay>,
 }
@@ -98,6 +101,27 @@ pub fn check_relay_url(text: &str) -> Result<(), String> {
     }
     Ok(())
 }
+pub fn mirror_endpoint(text: &str, private: bool) -> Result<reqwest::Url, String> {
+    if !private {
+        return endpoint(text);
+    }
+    let url = reqwest::Url::parse(text).map_err(|_| "Invalid private mirror address.")?;
+    if url.scheme() != "http"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || !url
+            .host_str()
+            .and_then(|host| host.parse::<std::net::Ipv4Addr>().ok())
+            .is_some_and(|host| host.is_private())
+    {
+        return Err(
+            "Choose an RFC 1918 HTTP mirror without credentials or query parameters.".into(),
+        );
+    }
+    Ok(url)
+}
 pub struct Mirrors {
     sources: Sources,
     client: reqwest::blocking::Client,
@@ -108,14 +132,26 @@ pub struct Mirrors {
 }
 impl Mirrors {
     pub fn new(sources: Sources, cache: PathBuf) -> Result<Self, String> {
-        if sources.directories.is_empty() && sources.https.is_empty() && sources.relays.is_empty() {
+        if sources.directories.is_empty()
+            && sources.https.is_empty()
+            && sources.private_http.is_empty()
+            && sources.relays.is_empty()
+        {
             return Err("Choose at least one record source.".into());
         }
-        if sources.directories.len() + sources.https.len() + sources.relays.len() > 8 {
+        if sources.directories.len()
+            + sources.https.len()
+            + sources.private_http.len()
+            + sources.relays.len()
+            > 8
+        {
             return Err("Choose up to eight independent record sources.".into());
         }
         for url in &sources.https {
             endpoint(url)?;
+        }
+        for url in &sources.private_http {
+            mirror_endpoint(url, true)?;
         }
         for relay in &sources.relays {
             check_relay_url(&relay.url)?;
@@ -188,8 +224,14 @@ impl Mirrors {
                 }
             }
         }
-        for base in &self.sources.https {
-            let Ok(mut url) = endpoint(base) else {
+        for (base, private) in self
+            .sources
+            .https
+            .iter()
+            .map(|base| (base, false))
+            .chain(self.sources.private_http.iter().map(|base| (base, true)))
+        {
+            let Ok(mut url) = mirror_endpoint(base, private) else {
                 continue;
             };
             let Ok(mut path) = url.path_segments_mut() else {

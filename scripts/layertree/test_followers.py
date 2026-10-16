@@ -22,7 +22,7 @@ class Evidence(unittest.TestCase):
                          dict(seq=2, kind='transition', network='signet', height=102, txid='last')]
         self.save('operator.jsonl', self.operator)
         self.plan = dict(schema='layertree.followers.evidence.v1', operator='operator.jsonl',
-                         notifications='received.jsonl', honest=[], attacks={})
+                         notifications='received.jsonl', normal_until=1000+followers.WEEK, honest=[], attacks={})
         self.logs = {}
         received = []
         for member in range(3):
@@ -107,6 +107,57 @@ class Evidence(unittest.TestCase):
         self.save('merge-0/observations.jsonl', [dict(kind='light_client', id='bad', network='signet', tree_id='other')])
         with self.assertRaises(ValueError):
             followers.merge(args)
+
+
+class Receiver(unittest.TestCase):
+    def test_notification_is_synced_deduplicated_and_survives_restart(self):
+        import subprocess
+        import sys
+        import time
+        import urllib.request
+        from urllib.error import HTTPError
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            command = [sys.executable, str(Path(__file__).with_name('alarm-receiver.py')),
+                       '--directory', directory, '--until', str(int(time.time())+30)]
+            processes = []
+            try:
+                first = subprocess.Popen(command, stdout=subprocess.DEVNULL)
+                processes.append(first)
+                ready = root/'receiver.json'
+                deadline = time.monotonic()+5
+                while not ready.exists() and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                url = json.loads(ready.read_text())['url']
+                alarm = dict(schema='layertree.follower.observation.v1',kind='light_client',network='signet',
+                             result='OutputMismatch',id='ab'*32,member=0,height=100)
+                def send(row):
+                    request = urllib.request.Request(url,data=json.dumps(row).encode(),
+                        headers={'Idempotency-Key':row['id'],'Content-Type':'application/json'})
+                    with urllib.request.urlopen(request,timeout=3) as response:
+                        return response.status
+                self.assertEqual(send(alarm),204)
+                self.assertEqual(len(followers.rows(root/'received.jsonl')),1)
+                first.terminate(); first.wait(timeout=5)
+                with (root/'received.jsonl').open('ab') as stream:
+                    stream.write(b'{"unfinished":')
+                second = subprocess.Popen(command, stdout=subprocess.DEVNULL)
+                processes.append(second)
+                deadline = time.monotonic()+5
+                while time.monotonic() < deadline:
+                    if json.loads(ready.read_text())['pid'] == second.pid:
+                        break
+                    time.sleep(0.02)
+                self.assertEqual(send(alarm),204)
+                self.assertEqual(len(followers.rows(root/'received.jsonl')),1)
+                with self.assertRaises(HTTPError) as error:
+                    send(dict(alarm,network='mainnet',id='cd'*32))
+                self.assertEqual(error.exception.code,400)
+            finally:
+                for process in processes:
+                    if process.poll() is None:
+                        process.terminate()
+                    process.wait(timeout=5)
 
 
 if __name__ == '__main__':
