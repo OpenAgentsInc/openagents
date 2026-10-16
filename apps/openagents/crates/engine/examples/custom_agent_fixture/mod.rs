@@ -445,14 +445,14 @@ pub(super) fn project_name(f: &Fixture) -> String {
 }
 
 async fn cleanup_lab(f: &mut Fixture) -> Result<()> {
-    use coder_account::openagents::labs::*;
+    use coder_account::openagents::agent_lab::*;
     let client = Client::new(Deployment::production())?;
     let session = client.authenticate(&f.credential).await?;
     ensure!(
         session.account().id == ACCOUNT,
         "Dedicated account required"
     );
-    let labs = client.labs(&session)?;
+    let labs = client.agent_lab(&session)?;
     let agents = client.agents(&session)?;
     let cancel = coder_account::openagents::CancellationToken::new();
     let mut runs = vec![];

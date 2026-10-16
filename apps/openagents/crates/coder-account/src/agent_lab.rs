@@ -2,7 +2,7 @@
 use crate::{Controller, Lease};
 use openagents::{
     self,
-    labs::{
+    agent_lab::{
         self as api,
         view::{Action, Command, Workbench},
         *,
@@ -116,7 +116,7 @@ impl Lab {
         let lease = self.lease()?;
         let labs = lease
             .client()
-            .labs(lease.session())
+            .agent_lab(lease.session())
             .map_err(|_| "Sign in again.")?;
         let mut documents = vec![];
         let mut after = None;
@@ -226,7 +226,7 @@ impl Lab {
         }
         let labs = lease
             .client()
-            .labs(lease.session())
+            .agent_lab(lease.session())
             .map_err(|_| "Sign in again.")?;
         if let Command::Load(id) = command {
             let d = labs

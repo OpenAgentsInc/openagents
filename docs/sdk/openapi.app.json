@@ -4836,7 +4836,7 @@
         }
       }
     },
-    "/v1/labs/kinds": {
+    "/v1/labs/agent/kinds": {
       "get": {
         "operationId": "getAgentLabKinds",
         "tags": [
@@ -4880,7 +4880,7 @@
         }
       }
     },
-    "/v1/labs/hosts": {
+    "/v1/labs/agent/hosts": {
       "get": {
         "operationId": "getAgentLabHosts",
         "tags": [
@@ -4976,7 +4976,7 @@
         }
       }
     },
-    "/v1/labs/documents": {
+    "/v1/labs/agent/documents": {
       "get": {
         "operationId": "getAgentLabDocuments",
         "tags": [
@@ -5087,7 +5087,7 @@
         }
       }
     },
-    "/v1/labs/documents/{id}": {
+    "/v1/labs/agent/documents/{id}": {
       "get": {
         "operationId": "getAgentLabDocumentsId",
         "tags": [
@@ -5262,7 +5262,7 @@
         }
       }
     },
-    "/v1/labs/documents/{id}/jobs": {
+    "/v1/labs/agent/documents/{id}/jobs": {
       "post": {
         "operationId": "postAgentLabDocumentsIdJobs",
         "tags": [
@@ -5325,7 +5325,7 @@
         }
       }
     },
-    "/v1/labs/documents/{id}/promote": {
+    "/v1/labs/agent/documents/{id}/promote": {
       "post": {
         "operationId": "postAgentLabDocumentsIdPromote",
         "tags": [
@@ -5388,7 +5388,7 @@
         }
       }
     },
-    "/v1/labs/jobs": {
+    "/v1/labs/agent/jobs": {
       "get": {
         "operationId": "getAgentLabJobs",
         "tags": [
@@ -5447,7 +5447,7 @@
         }
       }
     },
-    "/v1/labs/jobs/{id}": {
+    "/v1/labs/agent/jobs/{id}": {
       "get": {
         "operationId": "getAgentLabJobsId",
         "tags": [
@@ -5500,7 +5500,7 @@
         }
       }
     },
-    "/v1/labs/jobs/{id}/actions": {
+    "/v1/labs/agent/jobs/{id}/actions": {
       "post": {
         "operationId": "postAgentLabJobsIdActions",
         "tags": [
@@ -5563,7 +5563,7 @@
         }
       }
     },
-    "/v1/labs/jobs/{id}/host": {
+    "/v1/labs/agent/jobs/{id}/host": {
       "post": {
         "operationId": "postAgentLabJobsIdHost",
         "tags": [

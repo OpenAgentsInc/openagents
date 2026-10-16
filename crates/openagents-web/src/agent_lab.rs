@@ -137,19 +137,19 @@ fn experiment(b: &Book, id: &str, version: u64) -> Result<Experiment, Response> 
 }
 pub(crate) fn routes() -> Router<App> {
     Router::new()
-        .route("/v1/labs/kinds", get(kinds))
-        .route("/v1/labs/hosts", get(hosts).post(heartbeat))
-        .route("/v1/labs/documents", get(documents).post(create))
+        .route("/v1/labs/agent/kinds", get(kinds))
+        .route("/v1/labs/agent/hosts", get(hosts).post(heartbeat))
+        .route("/v1/labs/agent/documents", get(documents).post(create))
         .route(
-            "/v1/labs/documents/{id}",
+            "/v1/labs/agent/documents/{id}",
             get(document).put(update).delete(delete_document),
         )
-        .route("/v1/labs/documents/{id}/jobs", post(start))
-        .route("/v1/labs/documents/{id}/promote", post(promote))
-        .route("/v1/labs/jobs", get(runs))
-        .route("/v1/labs/jobs/{id}", get(run))
-        .route("/v1/labs/jobs/{id}/actions", post(change))
-        .route("/v1/labs/jobs/{id}/host", post(host_update))
+        .route("/v1/labs/agent/documents/{id}/jobs", post(start))
+        .route("/v1/labs/agent/documents/{id}/promote", post(promote))
+        .route("/v1/labs/agent/jobs", get(runs))
+        .route("/v1/labs/agent/jobs/{id}", get(run))
+        .route("/v1/labs/agent/jobs/{id}/actions", post(change))
+        .route("/v1/labs/agent/jobs/{id}/host", post(host_update))
         .layer(DefaultBodyLimit::max(192 * 1024))
 }
 async fn kinds(State(app): State<App>, headers: HeaderMap) -> Response {
@@ -1007,8 +1007,8 @@ mod tests {
             .unwrap();
 
         let cancel = openagents_sdk::CancellationToken::new();
-        let labs = client.labs(&a).unwrap();
-        let other = client.labs(&b).unwrap();
+        let labs = client.agent_lab(&a).unwrap();
+        let other = client.agent_lab(&b).unwrap();
         let agents = client.agents(&a).unwrap();
         let mut e = starter();
         e.host = "fixture-host".into();

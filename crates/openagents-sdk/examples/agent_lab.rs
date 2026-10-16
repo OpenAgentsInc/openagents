@@ -1,12 +1,12 @@
 //! Save a finite experiment through the same SDK used by the app.
-use openagents_sdk::{CancellationToken, Client, Deployment, labs::*};
+use openagents_sdk::{CancellationToken, Client, Deployment, agent_lab::*};
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new(Deployment::production())?;
     let credential = std::env::var("OPENAGENTS_TOKEN")?;
     let session = client.authenticate(&credential).await?;
     drop(credential);
-    let labs = client.labs(&session)?;
+    let labs = client.agent_lab(&session)?;
     let cancel = CancellationToken::new();
     let hosts = labs.hosts(&cancel).await?;
     let host = hosts.first().ok_or("Open the updated desktop app first.")?;

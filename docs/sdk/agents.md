@@ -132,7 +132,7 @@ Private Nostr export uses [NIP-AGENT](../../nips/openagents/NIP-AGENT.md) and
 
 ## Test an agent in Agent Lab
 
-Use [`Client::labs(session)`](../../crates/openagents-sdk/src/labs.rs) to save
+Use [`Client::agent_lab(session)`](../../crates/openagents-sdk/src/agent_lab.rs) to save
 an experiment and run a finite set of tasks through the same assignment service.
 The [Agent Lab guide](../agent-lab/README.md) covers the shared mobile/browser
 workbench, checks, comparisons, supported references, and explicit promotion.

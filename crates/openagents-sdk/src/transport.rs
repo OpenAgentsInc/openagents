@@ -229,7 +229,7 @@ impl Client {
         token: Option<&str>,
     ) -> Result<T, Error> {
         let response = self.send(method, segments, query, body, token).await?;
-        let limit = if segments.first() == Some(&"labs") {
+        let limit = if segments.first() == Some(&"labs") && segments.get(1) == Some(&"agent") {
             16 * 1024 * 1024
         } else if matches!(
             segments.first().copied(),

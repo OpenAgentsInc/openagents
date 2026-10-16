@@ -68,7 +68,7 @@ async fn refresh(
     client: &Client,
     session: &Session,
 ) -> Result<(), openagents_sdk::Error> {
-    let api = client.labs(session)?;
+    let api = client.agent_lab(session)?;
     let cancel = CancellationToken::new();
     let s = &mut frame.workbench;
     let mut data = vec![];
@@ -151,7 +151,7 @@ async fn page(
         f.workbench.notice = Some("Couldn't load Agent Lab. Try Refresh.".into());
     }
     if let Some(id) = open.document {
-        if let Ok(api) = client.labs(&session) {
+        if let Ok(api) = client.agent_lab(&session) {
             if let Ok(d) = api.document(&id, &CancellationToken::new()).await {
                 if let Some(v) = d
                     .versions
@@ -303,7 +303,7 @@ async fn apply(
 ) -> Result<(), String> {
     // Only the opened report and current draft travel in a browser form. Fetch full
     // versions and definitions when chosen rather than resending their histories.
-    let api = client.labs(session).map_err(|e| e.to_string())?;
+    let api = client.agent_lab(session).map_err(|e| e.to_string())?;
     let cancel = CancellationToken::new();
     if let Some(id) = key.strip_prefix("run:") {
         let r = api.run(id, &cancel).await.map_err(|e| e.to_string())?;
@@ -373,7 +373,7 @@ async fn apply(
         return Ok(());
     };
     let cancel = CancellationToken::new();
-    let api = client.labs(session).map_err(|e| e.to_string())?;
+    let api = client.agent_lab(session).map_err(|e| e.to_string())?;
     match command {
         Command::Refresh => {
             refresh(f, client, session)
@@ -543,7 +543,7 @@ async fn task(
         Err(_) => return StatusCode::FORBIDDEN.into_response(),
     };
     // Conversations use a different ID from assignments; resolve only through this account's Lab reports.
-    let labs = client.labs(&session).unwrap();
+    let labs = client.agent_lab(&session).unwrap();
     let cancel = CancellationToken::new();
     let mut after = None;
     let mut assignment = None;

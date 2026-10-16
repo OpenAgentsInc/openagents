@@ -5,8 +5,8 @@ use coder_account::{
     Lease,
     openagents::{
         self,
+        agent_lab::*,
         agents::assignments::{Assignment, AssignmentAction, AssignmentState},
-        labs::*,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -70,7 +70,7 @@ impl DocHost {
     ) -> Result<(), EngineError> {
         let labs = lease
             .client()
-            .labs(lease.session())
+            .agent_lab(lease.session())
             .map_err(EngineError::AgentService)?;
         let ws = self
             .workspace()
@@ -363,7 +363,7 @@ impl DocHost {
     ) -> Result<(), EngineError> {
         let labs = lease
             .client()
-            .labs(lease.session())
+            .agent_lab(lease.session())
             .map_err(EngineError::AgentService)?;
         let req = labs.bind(HostUpdate {
             request_id: openagents::agents::request_id().map_err(EngineError::AgentService)?,
@@ -448,14 +448,14 @@ fn copy_project(source: &Path, target: &Path) -> io::Result<String> {
     walk(&source, Path::new(""), target, &mut entries, &mut bytes, 0)?;
     Ok(hash(&entries))
 }
-fn bindings(root: &Path) -> Vec<openagents::labs::components::ToolBinding> {
+fn bindings(root: &Path) -> Vec<openagents::agent_lab::components::ToolBinding> {
     let Ok(bytes) = std::fs::read(root.join("tools.json")) else {
         return vec![];
     };
     if bytes.len() > 65536 {
         return vec![];
     }
-    serde_json::from_slice::<Vec<openagents::labs::components::ToolBinding>>(&bytes)
+    serde_json::from_slice::<Vec<openagents::agent_lab::components::ToolBinding>>(&bytes)
         .ok()
         .filter(|v| v.len() <= 32)
         .unwrap_or_default()
@@ -554,7 +554,7 @@ mod tests {
     #[tokio::test]
     async fn installed_lab_references_are_pinned_scoped_and_bounded() {
         use axum::{Json, Router, extract::Path as RoutePath, routing::post};
-        use openagents::labs::components::{ReadTool, ToolBinding};
+        use openagents::agent_lab::components::{ReadTool, ToolBinding};
         use serde_json::json;
         async fn read(
             RoutePath(tool): RoutePath<String>,

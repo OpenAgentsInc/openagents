@@ -2,16 +2,19 @@
 use serde_json::{Value, json};
 pub(crate) fn extend(doc: &mut Value) {
     for (path, methods) in [
-        ("/v1/labs/kinds", vec!["get"]),
-        ("/v1/labs/hosts", vec!["get", "post"]),
-        ("/v1/labs/documents", vec!["get", "post"]),
-        ("/v1/labs/documents/{id}", vec!["get", "put", "delete"]),
-        ("/v1/labs/documents/{id}/jobs", vec!["post"]),
-        ("/v1/labs/documents/{id}/promote", vec!["post"]),
-        ("/v1/labs/jobs", vec!["get"]),
-        ("/v1/labs/jobs/{id}", vec!["get"]),
-        ("/v1/labs/jobs/{id}/actions", vec!["post"]),
-        ("/v1/labs/jobs/{id}/host", vec!["post"]),
+        ("/v1/labs/agent/kinds", vec!["get"]),
+        ("/v1/labs/agent/hosts", vec!["get", "post"]),
+        ("/v1/labs/agent/documents", vec!["get", "post"]),
+        (
+            "/v1/labs/agent/documents/{id}",
+            vec!["get", "put", "delete"],
+        ),
+        ("/v1/labs/agent/documents/{id}/jobs", vec!["post"]),
+        ("/v1/labs/agent/documents/{id}/promote", vec!["post"]),
+        ("/v1/labs/agent/jobs", vec!["get"]),
+        ("/v1/labs/agent/jobs/{id}", vec!["get"]),
+        ("/v1/labs/agent/jobs/{id}/actions", vec!["post"]),
+        ("/v1/labs/agent/jobs/{id}/host", vec!["post"]),
     ] {
         for method in methods {
             let parameters = if path.contains("{id}") {
@@ -20,7 +23,7 @@ pub(crate) fn extend(doc: &mut Value) {
                 vec![]
             };
             let suffix = path
-                .trim_start_matches("/v1/labs/")
+                .trim_start_matches("/v1/labs/agent/")
                 .split('/')
                 .map(|s| {
                     let s = s.trim_matches(['{', '}']);

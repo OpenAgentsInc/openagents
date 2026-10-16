@@ -256,7 +256,7 @@ benchmark performance.
 
 Track delivery in [#11914](https://github.com/OpenAgentsInc/openagents/issues/11914)
 and its children [#11915–#11921](https://github.com/OpenAgentsInc/openagents/issues/11915).
-The first provider implements Agent Lab on the common `/v1/labs` route family;
+The first provider implements Agent Lab on the common `/v1/labs/agent` route family;
 the broader shared-platform migrations remain separate issues.
 
 Open **Agent Lab** from the mobile agent picker, or visit
@@ -269,7 +269,7 @@ a live Lab reference must be removed before promotion because the current
 agent definition contract has no dynamic tool binding.
 
 `crates/agent-lab` owns documents, checks, finite plans, reports, and the Rust
-Native workbench. `Client::labs(session)` in `crates/openagents-sdk` exposes
+Native workbench. `Client::agent_lab(session)` in `crates/openagents-sdk` exposes
 account-bound saved requests. See its `examples/agent_lab.rs` example. The web
 adapter signs its form state with the existing account CSRF contract. The
 native controller saves uncertain requests privately before sending and offers

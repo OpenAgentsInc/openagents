@@ -1,6 +1,6 @@
 //! Account-owned Agent Lab documents and bounded experiments.
 use crate::{CancellationToken, Client, Deployment, Error, Session};
-pub use agent_lab::{api::*, *};
+pub use ::agent_lab::{api::*, *};
 use reqwest::Method;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -9,20 +9,20 @@ pub struct Request<T> {
     deployment: Deployment,
     pub body: T,
 }
-pub struct Labs<'a> {
+pub struct AgentLabClient<'a> {
     client: &'a Client,
     session: &'a Session,
 }
 impl Client {
-    pub fn labs<'a>(&'a self, session: &'a Session) -> Result<Labs<'a>, Error> {
+    pub fn agent_lab<'a>(&'a self, session: &'a Session) -> Result<AgentLabClient<'a>, Error> {
         self.check_session(session)?;
-        Ok(Labs {
+        Ok(AgentLabClient {
             client: self,
             session,
         })
     }
 }
-impl Labs<'_> {
+impl AgentLabClient<'_> {
     pub fn bind<T>(&self, body: T) -> Request<T> {
         Request {
             account: self.session.account().id.clone(),
@@ -58,7 +58,7 @@ impl Labs<'_> {
     ) -> Result<Document, Error> {
         self.send(
             Method::DELETE,
-            &["labs", "documents", id],
+            &["labs", "agent", "documents", id],
             &[],
             Some(self.body(request)?),
             cancel,
@@ -66,13 +66,13 @@ impl Labs<'_> {
         .await
     }
     pub async fn hosts(&self, cancel: &CancellationToken) -> Result<Vec<Host>, Error> {
-        self.send(Method::GET, &["labs", "hosts"], &[], None, cancel)
+        self.send(Method::GET, &["labs", "agent", "hosts"], &[], None, cancel)
             .await
     }
     pub async fn heartbeat(&self, host: &Host, cancel: &CancellationToken) -> Result<Host, Error> {
         self.send(
             Method::POST,
-            &["labs", "hosts"],
+            &["labs", "agent", "hosts"],
             &[],
             Some(serde_json::to_value(host).map_err(|_| Error::InvalidReference)?),
             cancel,
@@ -86,7 +86,7 @@ impl Labs<'_> {
     ) -> Result<Page<Document>, Error> {
         self.send(
             Method::GET,
-            &["labs", "documents"],
+            &["labs", "agent", "documents"],
             &after.map(|a| vec![("after", a.into())]).unwrap_or_default(),
             None,
             cancel,
@@ -94,8 +94,14 @@ impl Labs<'_> {
         .await
     }
     pub async fn document(&self, id: &str, cancel: &CancellationToken) -> Result<Document, Error> {
-        self.send(Method::GET, &["labs", "documents", id], &[], None, cancel)
-            .await
+        self.send(
+            Method::GET,
+            &["labs", "agent", "documents", id],
+            &[],
+            None,
+            cancel,
+        )
+        .await
     }
     pub async fn save(
         &self,
@@ -103,7 +109,7 @@ impl Labs<'_> {
         request: &Request<SaveDocument>,
         cancel: &CancellationToken,
     ) -> Result<Document, Error> {
-        let mut path = vec!["labs", "documents"];
+        let mut path = vec!["labs", "agent", "documents"];
         if let Some(id) = id {
             path.push(id)
         }
@@ -128,7 +134,7 @@ impl Labs<'_> {
     ) -> Result<Run, Error> {
         self.send(
             Method::POST,
-            &["labs", "documents", id, "jobs"],
+            &["labs", "agent", "documents", id, "jobs"],
             &[],
             Some(self.body(request)?),
             cancel,
@@ -148,12 +154,24 @@ impl Labs<'_> {
         if let Some(a) = after {
             query.push(("after", a.into()))
         }
-        self.send(Method::GET, &["labs", "jobs"], &query, None, cancel)
-            .await
+        self.send(
+            Method::GET,
+            &["labs", "agent", "jobs"],
+            &query,
+            None,
+            cancel,
+        )
+        .await
     }
     pub async fn run(&self, id: &str, cancel: &CancellationToken) -> Result<Run, Error> {
-        self.send(Method::GET, &["labs", "jobs", id], &[], None, cancel)
-            .await
+        self.send(
+            Method::GET,
+            &["labs", "agent", "jobs", id],
+            &[],
+            None,
+            cancel,
+        )
+        .await
     }
     pub async fn change(
         &self,
@@ -163,7 +181,7 @@ impl Labs<'_> {
     ) -> Result<Run, Error> {
         self.send(
             Method::POST,
-            &["labs", "jobs", id, "actions"],
+            &["labs", "agent", "jobs", id, "actions"],
             &[],
             Some(self.body(request)?),
             cancel,
@@ -178,7 +196,7 @@ impl Labs<'_> {
     ) -> Result<Run, Error> {
         self.send(
             Method::POST,
-            &["labs", "jobs", id, "host"],
+            &["labs", "agent", "jobs", id, "host"],
             &[],
             Some(self.body(request)?),
             cancel,
@@ -193,7 +211,7 @@ impl Labs<'_> {
     ) -> Result<agent_contract::AgentDefinition, Error> {
         self.send(
             Method::POST,
-            &["labs", "documents", id, "promote"],
+            &["labs", "agent", "documents", id, "promote"],
             &[],
             Some(self.body(request)?),
             cancel,

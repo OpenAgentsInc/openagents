@@ -189,8 +189,8 @@ pub fn owned(path: &str) -> bool {
         || path == "/labs/agent"
         || path.starts_with("/labs/agent/")
         || path == "/static/agent-lab.js"
-        || path == "/v1/labs"
-        || path.starts_with("/v1/labs/")
+        || path == "/v1/labs/agent"
+        || path.starts_with("/v1/labs/agent/")
         || path.starts_with("/api/flow/")
         || OWNED_EXACT.contains(&path)
         || crate::agent_ready::owns(path)
@@ -391,8 +391,8 @@ mod agent_lab_routes {
             "/labs/agent",
             "/labs/agent/tasks/task",
             "/static/agent-lab.js",
-            "/v1/labs/documents",
-            "/v1/labs/jobs/id/host",
+            "/v1/labs/agent/documents",
+            "/v1/labs/agent/jobs/id/host",
         ] {
             assert!(super::owned(path), "{path}");
         }
