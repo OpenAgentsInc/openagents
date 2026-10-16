@@ -1,4 +1,15 @@
-# OpenAgents 1.0.0 (1006)
+# OpenAgents 1.0.0 (1007)
+
+Home now uses Coder Noir and Coder Light, with compact issue totals and current
+agent tasks. Edit widgets from the toolbar; manage saved dashboards and shared
+layouts from the menu. Sessions stays visible as you scroll, and the Sessions
+shortcut at the top opens the original list with its folders and history.
+
+Check Home in dark and light appearance, open Sessions, and reopen a conversation.
+Try editing and canceling, saving a dashboard, and reopening the app. Check large
+text and VoiceOver on your phone.
+
+OpenAgents 1.0.0 (1006)
 
 Your login stays saved when you update the app through TestFlight. Existing
 saved logins carry over, and choosing Sign Out keeps you signed out.

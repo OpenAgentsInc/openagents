@@ -1,3 +1,11 @@
+## Check the refreshed Home on iPhone (#11923)
+
+Install TestFlight build 1007. Check Coder Noir and Coder Light, large text, and
+VoiceOver. Open the original Sessions list from Home and from the tab bar, then
+open an existing conversation. Check editing and canceling a widget change.
+Simulator checks cover navigation, editing, restart, and sending a message;
+physical iPhone appearance and VoiceOver still need a device check.
+
 ## Check login across iPhone updates (#11922)
 
 Install TestFlight build 1006 over the signed-in app without deleting it.
@@ -8,7 +16,7 @@ this last check needs a physical iPhone update.
 
 ## Check Home dashboards on iPhone (#11912)
 
-Install OpenAgents TestFlight build 1005. With your GitHub-connected account,
+Install OpenAgents TestFlight build 1007. With your GitHub-connected account,
 choose the OpenAgents project in Home and compare open issues and issues
 assigned to you with GitHub. Check a GitHub Projects board if you use one.
 The dedicated automation account has no GitHub connection; automated issue

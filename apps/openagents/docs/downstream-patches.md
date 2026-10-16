@@ -79,3 +79,8 @@ feature keeps forms independent of the app's separate syntax-engine version.
   normal `ComposerBar`; its small cloud-controls hook hides attachments and
   replaces local queue behavior with Stop. `client_ffi/saved.rs` exports Rust
   send/retry/stop state and actions. Neither surface starts a local harness.
+
+- [OpenAgents #11923](https://github.com/OpenAgentsInc/openagents/issues/11923):
+  Home uses the Coder Noir and Coder Light palettes, compact current-work rows,
+  and a separate dashboard management screen. UIKit mounts shared actions in
+  the navigation bar and keeps Sessions visible while scrolling.
