@@ -310,3 +310,24 @@ fn editing_one_reference_preserves_the_others() {
             .contains("Second skill")
     );
 }
+#[cfg(feature = "views")]
+#[test]
+fn forms_validate_the_submitted_values_after_the_edit() {
+    use rust_native::Activation;
+    let mut s = agent_lab::view::Workbench::new("form".into());
+    s.action("add-guidance").unwrap();
+    let click = Activation {
+        instance: s.instance.clone(),
+        revision: s.revision,
+        node: "save".into(),
+    };
+    assert!(s.view().validate().unwrap().activate(&click).is_err());
+    assert!(s.form_view().validate().unwrap().activate(&click).is_ok());
+    assert!(s.action("save").is_err());
+    s.field("component:0", "A completed reference".into())
+        .unwrap();
+    assert!(s.action("save").unwrap().is_some());
+    s.action("check:0:json").unwrap();
+    s.field("expected:0", "{".into()).unwrap();
+    assert!(s.action("save").is_err());
+}

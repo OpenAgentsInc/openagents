@@ -117,6 +117,28 @@ impl Workbench {
         self.revision = self.revision.wrapping_add(1).max(1)
     }
     pub fn view(&self) -> View<Action> {
+        self.project(false)
+    }
+    /// Form submissions carry edits with the action; validate after those edits arrive.
+    pub fn form_view(&self) -> View<Action> {
+        self.project(true)
+    }
+    pub fn draft_valid(&self) -> bool {
+        self.draft.validate().is_ok()
+            && self.inputs.iter().all(|(k, v)| {
+                !k.starts_with("expected:")
+                    || !matches!(
+                        self.draft
+                            .suite
+                            .cases
+                            .get(k[9..].parse::<usize>().unwrap_or(usize::MAX))
+                            .map(|c| &c.check),
+                        Some(Check::Json { .. })
+                    )
+                    || serde_json::from_str::<Value>(v).is_ok()
+            })
+    }
+    fn project(&self, form: bool) -> View<Action> {
         let enabled = !self.busy && !self.pending;
         let mut n = vec![
             text("heading", "Agent Lab"),
@@ -460,20 +482,7 @@ impl Workbench {
         n.push(button(
             "save",
             "Save experiment",
-            enabled
-                && self.draft.validate().is_ok()
-                && self.inputs.iter().all(|(k, v)| {
-                    !k.starts_with("expected:")
-                        || !matches!(
-                            self.draft
-                                .suite
-                                .cases
-                                .get(k[9..].parse::<usize>().unwrap_or(usize::MAX))
-                                .map(|c| &c.check),
-                            Some(Check::Json { .. })
-                        )
-                        || serde_json::from_str::<Value>(v).is_ok()
-                }),
+            enabled && (form || self.draft_valid()),
         ));
         if self.document.is_some() && !self.dirty {
             n.push(button(
@@ -707,7 +716,12 @@ impl Workbench {
                 self.selected_run = None;
                 self.inputs.clear();
             }
-            "save" => command = Some(Command::Save),
+            "save" => {
+                if !self.draft_valid() {
+                    return Err("Check the agent, test cases, and expected results.".into());
+                }
+                command = Some(Command::Save)
+            }
             "start" => command = Some(Command::Start),
             "promote" => command = Some(Command::Promote),
             "add-guidance" | "add-memory" => {

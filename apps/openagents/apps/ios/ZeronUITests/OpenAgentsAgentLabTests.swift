@@ -42,6 +42,17 @@ final class OpenAgentsAgentLabTests: XCTestCase {
         let passed = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "1 of 1 passed")).firstMatch
         XCTAssertTrue(passed.waitForExistence(timeout: 90)); reveal(passed)
         let result = XCTAttachment(screenshot: app.screenshot()); result.name = "agent-lab-result"; result.lifetime = .keepAlways; add(result)
+        let task = app.buttons["Open task"]
+        reveal(task); task.tap()
+        let reply = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "received:")).firstMatch
+        XCTAssertTrue(reply.waitForExistence(timeout: 90))
+        app.navigationBars.buttons.firstMatch.tap()
+        if app.buttons["new-session"].exists {
+            app.buttons["new-session"].tap()
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).tap()
+        }
+        app.buttons["composer-chip-model"].tap(); app.buttons["Agent Lab…"].tap()
+        XCTAssertTrue(app.buttons["lab-promote"].waitForExistence(timeout: 10))
         let use = app.buttons["lab-promote"]
         reveal(use, up: false); use.tap()
         let ready = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "ready in your agent picker")).firstMatch

@@ -198,7 +198,7 @@ async fn render(app: &App, headers: &HeaderMap, f: Frame) -> Response {
         Ok(v) => v,
         Err(_) => return StatusCode::FORBIDDEN.into_response(),
     };
-    let view = match f.workbench.view().validate() {
+    let view = match f.workbench.form_view().validate() {
         Ok(v) => v,
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
@@ -214,7 +214,7 @@ async fn render(app: &App, headers: &HeaderMap, f: Frame) -> Response {
     };
     // The adapter forwards native field and activation events. All actions stay in Rust.
     let html = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent Lab · OpenAgents</title><style>{}body{{max-width:780px;margin:24px auto;padding:16px;font:16px system-ui}}button,input,textarea{{font:inherit}}textarea{{min-height:100px}}.rn-stack{{gap:12px}}</style></head><body><a href="/">OpenAgents</a><form method="post"><input type="hidden" name="_frame" value="{}"><input type="hidden" name="_csrf" value="{}"><input type="hidden" name="_action" id="action">{}</form><script src="/static/agent-lab.js" defer></script></body></html>"#,
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent Lab · OpenAgents</title><style>{}body{{background:#12151b;color:#ddd;max-width:780px;margin:24px auto;padding:16px;font:16px system-ui}}a{{color:#a8c8ff}}button,input,textarea{{font:inherit}}textarea{{min-height:100px}}.rn-view .rn-stack{{gap:12px}}</style></head><body><a href="/">OpenAgents</a><form method="post"><input type="hidden" name="_frame" value="{}"><input type="hidden" name="_csrf" value="{}"><input type="hidden" name="_action" id="action">{}</form><script src="/static/agent-lab.js" defer></script></body></html>"#,
         rust_native_web::CSS,
         escape(&state),
         escape(&ticket),
@@ -273,7 +273,7 @@ async fn submit(
     }
     let action = fields.remove("_action").unwrap_or_default();
     if let Some(id) = action.strip_prefix("session:") {
-        let valid = f.workbench.view().validate().is_ok_and(|v| {
+        let valid = f.workbench.form_view().validate().is_ok_and(|v| {
             v.activate(&rust_native::Activation {
                 instance: f.workbench.instance.clone(),
                 revision: f.workbench.revision,
@@ -331,7 +331,7 @@ async fn apply(
         f.workbench.agents.push(a);
     }
     let s = &mut f.workbench;
-    let view = s.view().validate().map_err(|_| "Reload Agent Lab.")?;
+    let view = s.form_view().validate().map_err(|_| "Reload Agent Lab.")?;
     let event = rust_native::Activation {
         instance: s.instance.clone(),
         revision: s.revision,
@@ -353,9 +353,10 @@ async fn apply(
             },
             value: value.clone(),
         };
-        if let Ok(intent) = view.change_field(&change) {
-            edits.push((intent.0.clone(), value.clone()));
-        }
+        let intent = view
+            .change_field(&change)
+            .map_err(|_| "Check the length of the edited fields.")?;
+        edits.push((intent.0.clone(), value.clone()));
     }
     let before = s.draft.clone();
     let was_dirty = s.dirty;
