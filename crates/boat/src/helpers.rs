@@ -410,3 +410,44 @@ impl Client {
         .await
     }
 }
+
+/// The protected workspace extension served by oa-boat; legacy file calls stay separate.
+impl Client {
+    pub async fn read_workspace_file(&self, computer: &str, path: &str) -> Result<Vec<u8>> {
+        let url = self.path(&["sandboxes", computer, "workspace-files"])?;
+        let v: FileReadResponse = self
+            .json(
+                crate::client::Op::NEVER,
+                reqwest::Method::GET,
+                url,
+                &[("path", path.to_owned())],
+                &[],
+                None,
+            )
+            .await?;
+        base64::engine::general_purpose::STANDARD
+            .decode(v.content)
+            .map_err(|_| Error::Decode)
+    }
+    pub async fn write_workspace_file(
+        &self,
+        computer: &str,
+        path: &str,
+        bytes: &[u8],
+        overwrite: bool,
+    ) -> Result<computer_files::FileInfo> {
+        let url = self.path(&["sandboxes", computer, "workspace-files"])?;
+        self.json(
+            crate::client::Op::NEVER,
+            reqwest::Method::PUT,
+            url,
+            &[],
+            &[],
+            Some(serde_json::json!({
+                "path": path, "content": base64::engine::general_purpose::STANDARD.encode(bytes),
+                "size": bytes.len(), "sha256": computer_files::digest(bytes), "overwrite": overwrite
+            })),
+        )
+        .await
+    }
+}

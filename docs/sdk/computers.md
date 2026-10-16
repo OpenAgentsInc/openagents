@@ -196,6 +196,71 @@ command rows; they cannot provide this execution or observation contract.
 These commands are non-interactive: no stdin, terminal, preview, daemon lifetime,
 or permissions beyond the current cloud-account gate are implied.
 
+## Workspace file transfers
+
+The protected file API uses the same account authority as commands. It operates
+under the guest user's `workspace` directory, which is also the command working
+directory. It does not expose a provider URL, the worker's filesystem, or shared
+account artifact storage. Older `/v1/files` and driver file calls keep their
+existing behavior.
+
+| Call | Result |
+| --- | --- |
+| `PUT /computers/{id}/files?path=input.bin` | Check and atomically publish a binary upload; return `size` and lowercase `sha256` |
+| `GET /computers/{id}/files?path=input.bin` | Return complete binary bytes with `X-Content-SHA256` and an ETag containing the same hash |
+| `GET /computers/capabilities` | `files` gives the transfer bounds, or is `null` when the driver does not offer protected transfers |
+
+For an upload, send `Content-Type: application/octet-stream`, `Content-Length`,
+and `X-Content-SHA256` with the SHA-256 of the complete body. An empty file is a
+valid upload. The service checks the length and hash before writing; a partial
+or mismatched body returns `422` and leaves the previous file intact. A successful
+upload creates mode `0600`, including when replacing a file with other permissions.
+Parents must already exist; create directories through a command. The first
+upload can create the fixed workspace directory itself.
+
+By default, uploads are create-only. Repeating the same path and bytes succeeds;
+a different existing file returns `412 file_exists`. Add `overwrite=true` to
+atomically replace a regular file. Concurrent overwrites use the last completed
+publication. There is no content compare-and-swap or file idempotency key.
+Commands can change a file after a transfer completes. A lost upload response
+can mean the write completed: read and compare the hash before retrying. A
+deadline or uncertain backend write returns `503 write_uncertain`, never a
+successful partial file.
+
+The public upper bound is 4 MiB per file, with two transfers per service instance.
+Each path is at most 1,024 UTF-8 bytes, with components at most 255 bytes. The
+upload body and driver execution each have a 60-second bound. Transfer slots are
+acquired before body buffering; excess work returns `429` with `Retry-After: 1`.
+Downloads are fully checked and bounded before a success response starts. Both
+directions use `Cache-Control: no-store`. These limits are independent of the
+older Boat and SPACE driver file limits.
+
+Paths are relative, with `/` separators. Absolute paths, empty or dot components,
+parent traversal, controls, backslashes, colons, percent signs, invalid UTF-8,
+and the Unicode replacement character are refused. Decode query values once;
+double-encoded traversal remains invalid. Symlinks, mount crossings, sockets,
+FIFOs, directories, and devices are refused. Unicode names and spaces are allowed.
+
+The Rust guest helper uses `openat2` beneath an open workspace directory and
+[Landlock filesystem restrictions](https://docs.kernel.org/userspace-api/landlock.html).
+The kernel restriction also denies writes through a directory handle after a
+command moves that directory outside the workspace. The helper opens a file for
+I/O only after confirming that its pinned inode is regular. It takes a Linux
+file read lease and checks metadata before and after copying. Files already open
+for writing, a broken lease, or changed metadata return `409 file_changed`.
+Kernels without Landlock ABI 3, filesystems without the required lease support,
+and files for which the guest user cannot obtain a lease return `501` rather
+than using an unrestricted fallback. Reads use the guest user's permissions.
+
+Transfers require desired state `running` and observed state `awake` or `turn`.
+Stopped, starting, or checkpointing computers return `409 computer_not_ready`;
+you must wake explicitly and wait. Transfers never allocate or wake a computer.
+A missing or deleted computer returns `404`. Deletion or stop during a transfer
+can make its result unavailable; it does not authorize a replacement computer.
+Each request checks current account access, including after reconnect or
+revocation. An `Origin` header must match the deployment. Unknown query fields,
+including URL tokens, are refused.
+
 ## Public contract and provider contract
 
 ```text

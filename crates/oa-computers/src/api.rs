@@ -42,6 +42,7 @@ pub const BOUNDS: Bounds = Bounds {
 
 #[derive(Clone)]
 pub struct Api {
+    pub files: Option<crate::files::Client>,
     pub store: Store,
     pub caps: Capabilities,
     /// SHA-256 of the service bearer token.
@@ -89,7 +90,7 @@ async fn auth(State(api): State<Arc<Api>>, req: Request, next: Next) -> Response
     next.run(req).await
 }
 
-fn account(headers: &HeaderMap) -> Result<String, Response> {
+pub(crate) fn account(headers: &HeaderMap) -> Result<String, Response> {
     headers
         .get(ACCOUNT_HEADER)
         .and_then(|v| v.to_str().ok())
@@ -472,6 +473,7 @@ pub fn router(api: Arc<Api>) -> Router {
         .route("/v1/computers/{id}/wake", post(wake))
         .merge(crate::turns::routes())
         .merge(crate::commands::routes())
+        .merge(crate::files::routes())
         .layer(middleware::from_fn_with_state(api.clone(), auth))
         .with_state(api)
 }

@@ -2523,6 +2523,387 @@
           }
         }
       }
+    },
+    "/v1/computers/{id}/files": {
+      "get": {
+        "operationId": "readComputerFile",
+        "summary": "Read a workspace file",
+        "description": "Requires an awake computer; never wakes or allocates. Returns a bounded complete read after taking a read lease and checking file size and modification metadata. Files open for writing return409; files that cannot take a lease are unsupported. Concurrent changes can return409. File mode is not altered.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^cmp_[0-9a-f]{20}$"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "description": "Relative UTF-8 path beneath the command workspace. No empty or dot components, controls, backslashes, colon, percent signs, symlinks, or mount crossings. Parents must already exist.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complete binary file; X-Content-SHA256 and ETag identify the returned bytes.",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or query.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign in again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access or path refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Computer, file, or parent directory missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Computer is not awake, or the file changed during the read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "411": {
+            "description": "Upload length required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Create-only upload conflicts with a different file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "File exceeds 4 MiB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Choose a regular file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Upload length or checksum mismatch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Two transfers are in progress; retry after one second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Protected files are unsupported on this computer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Transfer unavailable; a write may have completed, so read and verify before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "writeComputerFile",
+        "summary": "Upload a workspace file",
+        "description": "Requires awake computer, Content-Length, and SHA256. Validates the full body before writing. Publishes a same-directory temporary file by atomic rename; partial or mismatched uploads leave the previous file intact. Missing parents return404. Maximum4MiB, two transfers per instance,60second upload and60second execution bounds. A lost response can leave the result uncertain: read and compare SHA256 before retrying. Files stay on this computer's disk and are not shared artifacts.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^cmp_[0-9a-f]{20}$"
+            }
+          },
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "description": "Relative UTF-8 path beneath the command workspace. No empty or dot components, controls, backslashes, colon, percent signs, symlinks, or mount crossings. Parents must already exist.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
+          },
+          {
+            "name": "overwrite",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "False: existing identical bytes succeed; different bytes return412. True: atomically replace; concurrent writers use last completed publication. No content compare-and-swap or idempotency key is offered."
+          },
+          {
+            "name": "X-Content-SHA256",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "maxLength": 4194304
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The complete upload was checked and atomically published with mode0600.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputerFileInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid path or query.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sign in again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Access or path refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Computer, file, or parent directory missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Computer is not awake, or the file changed during the read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "411": {
+            "description": "Upload length required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "412": {
+            "description": "Create-only upload conflicts with a different file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "File exceeds 4 MiB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Choose a regular file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Upload length or checksum mismatch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Two transfers are in progress; retry after one second.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Protected files are unsupported on this computer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Transfer unavailable; a write may have completed, so read and verify before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3286,6 +3667,33 @@
                 "const": 20
               }
             }
+          },
+          "files": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "max_bytes": {
+                "type": "integer",
+                "maximum": 4194304
+              },
+              "max_path_bytes": {
+                "type": "integer",
+                "const": 1024
+              },
+              "max_concurrent_transfers": {
+                "type": "integer",
+                "const": 2
+              },
+              "timeout_seconds": {
+                "type": "integer",
+                "const": 60
+              },
+              "requires_awake": {
+                "const": true
+              }
+            }
           }
         }
       },
@@ -3486,6 +3894,25 @@
           },
           "has_more": {
             "type": "boolean"
+          }
+        }
+      },
+      "AppComputerFileInfo": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "size",
+          "sha256"
+        ],
+        "properties": {
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4194304
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
           }
         }
       }

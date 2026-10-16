@@ -10,6 +10,7 @@
 pub mod api;
 pub mod commands;
 pub mod db;
+pub mod files;
 pub mod reconcile;
 pub mod store;
 pub mod turns;
@@ -69,7 +70,22 @@ pub fn app(
     token: &str,
     turns: turns::Secrets,
 ) -> axum::Router {
+    app_with_files(store, caps, token, turns, None)
+}
+
+/// The API with a bounded protected-file worker.
+pub fn app_with_files(
+    store: Store,
+    mut caps: computer_driver::Capabilities,
+    token: &str,
+    turns: turns::Secrets,
+    files: Option<files::Client>,
+) -> axum::Router {
+    if files.is_none() {
+        caps.workspace_file_bytes = None;
+    }
     api::router(Arc::new(api::Api {
+        files,
         store,
         caps,
         token: api::Api::token_digest(token),

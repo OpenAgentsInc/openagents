@@ -76,6 +76,8 @@ pub type Res<T> = Result<T, ApiErr>;
 /// The service's settings.
 #[derive(Clone, Debug)]
 pub struct Config {
+    /// Trusted local executable copied to the guest for protected transfers.
+    pub workspace_helper: Option<std::path::PathBuf>,
     pub project: String,
     pub region: String,
     /// Zones tried in order when one has no capacity.
@@ -100,6 +102,7 @@ pub struct Config {
 impl Config {
     pub fn for_tests() -> Self {
         Self {
+            workspace_helper: None,
             project: "test".into(),
             region: "us-central1".into(),
             zones: vec!["us-central1-a".into(), "us-central1-b".into()],
@@ -146,6 +149,7 @@ struct State {
 }
 
 pub struct Service<C, R> {
+    pub workspace_slots: Arc<tokio::sync::Semaphore>,
     pub cfg: Config,
     pub compute: C,
     pub remote: R,
@@ -247,6 +251,7 @@ fn text(bytes: &[u8]) -> String {
 impl<C: Compute, R: Remote> Service<C, R> {
     pub fn new(cfg: Config, compute: C, remote: R) -> Arc<Self> {
         Arc::new(Self {
+            workspace_slots: Arc::new(tokio::sync::Semaphore::new(computer_files::MAX_TRANSFERS)),
             cfg,
             compute,
             remote,
@@ -2385,5 +2390,117 @@ impl crate::remote::Output {
         v.extend_from_slice(b"\n[... output truncated ...]\n");
         v.extend_from_slice(&self.stderr_tail);
         v
+    }
+}
+
+/// The workspace extension never uses the unrestricted legacy file paths.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkspaceWrite {
+    pub path: String,
+    pub content: String,
+    pub size: usize,
+    pub sha256: String,
+    pub overwrite: bool,
+}
+
+fn workspace_error(error: computer_files::FileError) -> ApiErr {
+    use computer_files::FileError as F;
+    let status = match error {
+        F::Invalid => 400,
+        F::Missing => 404,
+        F::Escape => 403,
+        F::Special => 415,
+        F::TooLarge => 413,
+        F::Changed => 409,
+        F::Exists => 412,
+        F::Incomplete => 422,
+        F::Unsupported => 501,
+        F::Unavailable | F::WriteUncertain => 503,
+    };
+    ApiErr::new(
+        status,
+        &format!("file_{error:?}").to_ascii_lowercase(),
+        error.message(),
+    )
+}
+impl<C: Compute, R: Remote> Service<C, R> {
+    pub async fn workspace_read(self: &Arc<Self>, id: &str, path: &str) -> Res<FileReadResponse> {
+        use base64::Engine;
+        computer_files::validate_path(path).map_err(workspace_error)?;
+        let helper = self
+            .cfg
+            .workspace_helper
+            .as_ref()
+            .ok_or_else(|| workspace_error(computer_files::FileError::Unsupported))?;
+        let (_, ip) = self.ready_vm(id).await?;
+        let args = vec!["read".to_owned(), path.to_owned()];
+        let o = self.remote.workspace_file(&ip, helper, &args, vec![]).await;
+        if o.transport_failed {
+            return Err(workspace_error(computer_files::FileError::Unavailable));
+        }
+        if o.code != Some(0) {
+            return Err(workspace_error(computer_files::FileError::from_exit(
+                o.code.unwrap_or(-1),
+            )));
+        }
+        if o.stdout_truncated || o.stdout.len() > computer_files::MAX_BYTES {
+            return Err(workspace_error(computer_files::FileError::TooLarge));
+        }
+        Ok(FileReadResponse {
+            ok: true,
+            type_: "file".into(),
+            success: true,
+            path: path.into(),
+            encoding: "base64".into(),
+            size: o.stdout.len() as i64,
+            content: base64::engine::general_purpose::STANDARD.encode(o.stdout),
+            ..Default::default()
+        })
+    }
+    pub async fn workspace_write(
+        self: &Arc<Self>,
+        id: &str,
+        req: WorkspaceWrite,
+    ) -> Res<computer_files::FileInfo> {
+        use base64::Engine;
+        use computer_files::{FileError as F, MAX_BYTES};
+        computer_files::validate_path(&req.path).map_err(workspace_error)?;
+        if req.size > MAX_BYTES || req.content.len() > MAX_BYTES.div_ceil(3) * 4 {
+            return Err(workspace_error(F::TooLarge));
+        }
+        if !computer_files::valid_digest(&req.sha256) {
+            return Err(workspace_error(F::Invalid));
+        }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&req.content)
+            .map_err(|_| workspace_error(F::Incomplete))?;
+        if bytes.len() != req.size || computer_files::digest(&bytes) != req.sha256 {
+            return Err(workspace_error(F::Incomplete));
+        }
+        let helper = self
+            .cfg
+            .workspace_helper
+            .as_ref()
+            .ok_or_else(|| workspace_error(F::Unsupported))?;
+        let (_, ip) = self.ready_vm(id).await?;
+        let args = vec![
+            "write".into(),
+            req.path,
+            req.size.to_string(),
+            req.sha256.clone(),
+            req.overwrite.to_string(),
+        ];
+        let o = self.remote.workspace_file(&ip, helper, &args, bytes).await;
+        if o.transport_failed || o.code.is_none() {
+            return Err(workspace_error(F::WriteUncertain));
+        }
+        if o.code != Some(0) {
+            return Err(workspace_error(F::from_exit(o.code.unwrap_or(-1))));
+        }
+        Ok(computer_files::FileInfo {
+            size: req.size,
+            sha256: req.sha256,
+        })
     }
 }

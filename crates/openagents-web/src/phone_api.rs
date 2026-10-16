@@ -119,6 +119,10 @@ pub(crate) fn routes() -> Router<App> {
             post(crate::computers_api::wake),
         )
         .route(
+            "/v1/computers/{name}/files",
+            get(crate::computers_api::files::transfer).put(crate::computers_api::files::transfer),
+        )
+        .route(
             "/v1/computers/{name}/commands",
             post(crate::computers_api::commands::create),
         )

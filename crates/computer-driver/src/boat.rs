@@ -232,6 +232,50 @@ impl Driver for BoatDriver {
         .map(|o| o.stdout)
     }
 
+    async fn read_workspace_file(
+        &self,
+        computer: &str,
+        path: &str,
+    ) -> Result<Vec<u8>, computer_files::FileError> {
+        computer_files::validate_path(path)?;
+        if self.caps.workspace_file_bytes.is_none() {
+            return Err(computer_files::FileError::Unsupported);
+        }
+        let bytes = self
+            .client
+            .read_workspace_file(computer, path)
+            .await
+            .map_err(|e| file_error(&e, false))?;
+        if bytes.len() > computer_files::MAX_BYTES {
+            return Err(computer_files::FileError::TooLarge);
+        }
+        Ok(bytes)
+    }
+    async fn write_workspace_file(
+        &self,
+        computer: &str,
+        path: &str,
+        bytes: &[u8],
+        overwrite: bool,
+    ) -> Result<computer_files::FileInfo, computer_files::FileError> {
+        computer_files::validate_path(path)?;
+        if bytes.len() > computer_files::MAX_BYTES {
+            return Err(computer_files::FileError::TooLarge);
+        }
+        if self.caps.workspace_file_bytes.is_none() {
+            return Err(computer_files::FileError::Unsupported);
+        }
+        let info = self
+            .client
+            .write_workspace_file(computer, path, bytes, overwrite)
+            .await
+            .map_err(|e| file_error(&e, true))?;
+        if info.size != bytes.len() || info.sha256 != computer_files::digest(bytes) {
+            return Err(computer_files::FileError::WriteUncertain);
+        }
+        Ok(info)
+    }
+
     async fn put_file(&self, computer: &str, path: &str, bytes: &[u8]) -> Outcome<()> {
         match self.client.write_bytes(computer, path, bytes).await {
             Ok(_) => Outcome::done(()),
@@ -399,5 +443,29 @@ impl Driver for BoatDriver {
             Ok(r) => Outcome::done(r.id),
             Err(e) => mutation(e),
         }
+    }
+}
+
+fn file_error(error: &Error, write: bool) -> computer_files::FileError {
+    use computer_files::FileError as F;
+    let Error::Api(api) = error else {
+        return if write {
+            F::WriteUncertain
+        } else {
+            F::Unavailable
+        };
+    };
+    match api.status.as_u16() {
+        400 => F::Invalid,
+        403 => F::Escape,
+        404 => F::Missing,
+        409 => F::Changed,
+        413 => F::TooLarge,
+        415 => F::Special,
+        412 => F::Exists,
+        422 => F::Incomplete,
+        501 => F::Unsupported,
+        _ if write => F::WriteUncertain,
+        _ => F::Unavailable,
     }
 }

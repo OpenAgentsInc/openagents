@@ -25,6 +25,7 @@ fn token(who: &str) -> String {
 #[derive(Default)]
 struct Native {
     revoked: AtomicBool,
+    file: Mutex<Vec<u8>>,
     calls: Mutex<Vec<(String, String, String)>>,
 }
 
@@ -96,7 +97,7 @@ async fn provider(State(state): State<Arc<Native>>, request: Request) -> Respons
         .push((owner.clone(), method.clone(), path.clone()));
     if path == "/v1/capabilities" {
         return Json(
-            json!({"driver":CANARY,"profiles":["core","suspend","snapshot","fork","command"],"sizes":["small","medium"]}),
+            json!({"driver":CANARY,"profiles":["core","suspend","snapshot","fork","command"],"sizes":["small","medium"],"workspace_file_bytes":computer_files::MAX_BYTES}),
         )
         .into_response();
     }
@@ -111,6 +112,49 @@ async fn provider(State(state): State<Arc<Native>>, request: Request) -> Respons
     }
     if owner != crate::chat_store::account_owner("alice") {
         return (StatusCode::NOT_FOUND, Json(json!({"message":CANARY}))).into_response();
+    }
+    if path.ends_with("/files") {
+        if request
+            .uri()
+            .query()
+            .is_some_and(|q| q.contains("provider-error"))
+        {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({"error":CANARY,"message":CANARY})),
+            )
+                .into_response();
+        }
+        if method == "PUT" {
+            let data = axum::body::to_bytes(request.into_body(), computer_files::MAX_BYTES)
+                .await
+                .unwrap()
+                .to_vec();
+            let info = json!({"size":data.len(),"sha256":computer_files::digest(&data)});
+            *state.file.lock().unwrap() = data;
+            return Json(info).into_response();
+        }
+        let bytes = state.file.lock().unwrap().clone();
+        let hash = if request
+            .uri()
+            .query()
+            .is_some_and(|q| q.contains("bad-hash"))
+        {
+            "0".repeat(64)
+        } else {
+            computer_files::digest(&bytes)
+        };
+        return (
+            [
+                (header::CONTENT_TYPE, "application/octet-stream".to_owned()),
+                (
+                    axum::http::HeaderName::from_static("x-content-sha256"),
+                    hash,
+                ),
+            ],
+            bytes,
+        )
+            .into_response();
     }
     if path.contains("/commands") {
         let command = json!({"id":COMMAND,"computer":ID,"state":"succeeded","digest":"a".repeat(64),"exit_code":0,"provider_reference":CANARY,"owner":CANARY,"cancel_requested":false,"created_unix":1,"started_unix":2,"finished_unix":3,"output_expires_unix":604801,"output_limit_bytes":262144,"stdout_truncated":false,"stderr_truncated":false,"stdout_bytes":5,"stderr_bytes":5});
@@ -409,6 +453,75 @@ async fn public_lifecycle_uses_current_account_authority_and_keeps_service_crede
         .unwrap();
     assert_eq!(r.status(), 503);
     assert!(!r.text().await.unwrap().contains(CANARY));
+    let file_url = format!("{base}/v1/computers/{ID}/files?path=input.bin");
+    let file_bytes = b"\x00\xffSDK binary\x00".to_vec();
+    let file_hash = computer_files::digest(&file_bytes);
+    let r = http
+        .put(&file_url)
+        .bearer_auth(token("alice"))
+        .header("content-type", "application/octet-stream")
+        .header("x-content-sha256", &file_hash)
+        .header(
+            "x-openagents-account",
+            crate::chat_store::account_owner("bob"),
+        )
+        .body(file_bytes.clone())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    assert_eq!(r.json::<Value>().await.unwrap()["sha256"], file_hash);
+    let r = http
+        .get(&file_url)
+        .bearer_auth(token("alice"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    assert_eq!(r.headers()[header::CACHE_CONTROL], "no-store");
+    assert_eq!(r.headers()["x-content-sha256"], file_hash);
+    assert_eq!(r.bytes().await.unwrap().as_ref(), file_bytes);
+    assert_eq!(
+        http.get(&file_url)
+            .bearer_auth(token("bob"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        404
+    );
+    assert_eq!(
+        http.put(&file_url)
+            .bearer_auth(token("bob"))
+            .header("content-type", "application/octet-stream")
+            .header("x-content-sha256", &file_hash)
+            .body(file_bytes.clone())
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        404
+    );
+    for (path, status) in [("bad-hash", 503), ("provider-error", 503)] {
+        let r = http
+            .get(format!("{base}/v1/computers/{ID}/files?path={path}"))
+            .bearer_auth(token("alice"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), status);
+        assert!(!r.text().await.unwrap().contains(CANARY));
+    }
+    let caps: Value = http
+        .get(format!("{base}/v1/computers/capabilities"))
+        .bearer_auth(token("alice"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(caps["files"]["max_bytes"], computer_files::MAX_BYTES);
     let before = state.calls.lock().unwrap().len();
     let too_large = http
         .post(format!("{base}/v1/computers"))
@@ -499,7 +612,43 @@ async fn public_lifecycle_uses_current_account_authority_and_keeps_service_crede
         assert!(matches!(r.status().as_u16(), 400 | 403));
         assert!(!r.text().await.unwrap().contains(CANARY));
     }
+    for (query, status) in [
+        ("path=../outside", 400),
+        ("path=%252e%252e/outside", 400),
+        ("path=%FF", 400),
+        ("path=input.bin&token=secret", 400),
+        ("path=input.bin&overwrite=secret", 400),
+    ] {
+        let r = http
+            .get(format!("{base}/v1/computers/{ID}/files?{query}"))
+            .bearer_auth(token("alice"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), status);
+        let text = r.text().await.unwrap();
+        assert!(!text.contains("secret") && !text.contains(CANARY));
+    }
+    assert_eq!(
+        http.get(&file_url)
+            .bearer_auth(token("alice"))
+            .header("Origin", "https://hostile.example")
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        403
+    );
     state.revoked.store(true, Ordering::SeqCst);
+    assert_eq!(
+        http.get(&file_url)
+            .bearer_auth(token("alice"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        401
+    );
     assert_eq!(
         http.get(format!("{base}/v1/computers/{ID}"))
             .bearer_auth(token("alice"))

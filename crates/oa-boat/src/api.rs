@@ -320,8 +320,15 @@ async fn named_delete<C: Compute, R: Remote>(
 /// `GET /capabilities`: the driver declaration `computer-driver` reads
 /// (#11624). oa-boat supports all four profiles: create/observe/exec/files/
 /// meter/delete, stop and resume on the same disk, named snapshots, fork.
-async fn capabilities() -> Response {
-    axum::Json(crate::capabilities()).into_response()
+async fn capabilities<C: Compute, R: Remote>(State(s): S<C, R>) -> Response {
+    let mut caps = crate::capabilities();
+    caps.workspace_file_bytes = s
+        .cfg
+        .workspace_helper
+        .as_ref()
+        .filter(|p| p.is_file())
+        .map(|_| computer_files::MAX_BYTES);
+    axum::Json(caps).into_response()
 }
 
 async fn environments() -> Response {
@@ -345,7 +352,7 @@ async fn missing() -> Response {
 pub fn router<C: Compute, R: Remote>(service: Arc<Service<C, R>>, token: Token) -> Router {
     let v1 = Router::new()
         .route("/limits", get(limits::<C, R>))
-        .route("/capabilities", get(capabilities))
+        .route("/capabilities", get(capabilities::<C, R>))
         .route("/environments", get(environments))
         .route("/sandboxes", get(list::<C, R>).post(create::<C, R>))
         .route(
@@ -365,6 +372,10 @@ pub fn router<C: Compute, R: Remote>(service: Arc<Service<C, R>>, token: Token) 
         .route(
             "/sandboxes/{id}/files",
             get(read_file::<C, R>).put(write_file::<C, R>),
+        )
+        .route(
+            "/sandboxes/{id}/workspace-files",
+            get(workspace_read::<C, R>).put(workspace_write::<C, R>),
         )
         .route("/sandboxes/{id}/usage", get(usage::<C, R>))
         .route("/sandboxes/{id}/snapshots/latest", get(latest::<C, R>))
@@ -395,4 +406,55 @@ pub fn router<C: Compute, R: Remote>(service: Arc<Service<C, R>>, token: Token) 
         .fallback(missing)
         .layer(DefaultBodyLimit::max(80 * 1024 * 1024))
         .layer(middleware::from_fn_with_state(token, auth))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WorkspaceQuery {
+    path: String,
+}
+async fn workspace_read<C: Compute, R: Remote>(
+    State(s): S<C, R>,
+    Path(id): Path<String>,
+    Query(q): Query<WorkspaceQuery>,
+) -> Response {
+    let Ok(_permit) = s.workspace_slots.clone().try_acquire_owned() else {
+        return ApiErr::new(
+            429,
+            "transfer_limit",
+            "Two file transfers are already running.",
+        )
+        .into_response();
+    };
+    ok(s.workspace_read(&id, &q.path).await)
+}
+async fn workspace_write<C: Compute, R: Remote>(
+    State(s): S<C, R>,
+    Path(id): Path<String>,
+    req: Request,
+) -> Response {
+    let Ok(_permit) = s.workspace_slots.clone().try_acquire_owned() else {
+        return ApiErr::new(
+            429,
+            "transfer_limit",
+            "Two file transfers are already running.",
+        )
+        .into_response();
+    };
+    let max = computer_files::MAX_BYTES.div_ceil(3) * 4 + 4096;
+    let bytes = match tokio::time::timeout(
+        std::time::Duration::from_secs(computer_files::TIMEOUT_SECONDS),
+        axum::body::to_bytes(req.into_body(), max),
+    )
+    .await
+    {
+        Ok(Ok(b)) => b,
+        _ => {
+            return ApiErr::new(413, "file_too_large", "Files can be up to 4 MiB.").into_response();
+        }
+    };
+    match serde_json::from_slice::<crate::service::WorkspaceWrite>(&bytes) {
+        Ok(r) => ok(s.workspace_write(&id, r).await),
+        Err(_) => ApiErr::new(400, "invalid_request", "Check the upload settings.").into_response(),
+    }
 }

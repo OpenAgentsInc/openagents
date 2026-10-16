@@ -1,0 +1,22 @@
+[package]
+name = "computer-files"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Bounded workspace file transfers and a Linux guest helper."
+
+[dependencies]
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
+
+[[test]]
+name = "confinement"
+harness = false

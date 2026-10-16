@@ -159,3 +159,26 @@ local shell). Against a deployed instance:
 ## Measurements
 
 See [the deployment record](../deployment/oa-boat.md).
+
+## Protected workspace files
+
+The additive `/api/v1/sandboxes/{id}/workspace-files` extension serves the public
+Computers file API. It keeps the older `/files` methods unchanged. The image
+includes a static Rust `computer-files` helper at
+`/usr/local/bin/oa-computer-files` (`OA_BOAT_FILE_HELPER` overrides the local
+path). Each transfer sends that executable and its body over one SSH channel.
+A root-owned temporary directory protects the executable; it runs as the guest
+user with only `HOME` supplied, and the installer removes it afterward.
+
+The helper requires Linux `openat2`, Landlock ABI 3, and local filesystem file
+leases. It refuses unsupported protection instead of falling back to legacy file
+calls. Read the [public file contract](../sdk/computers.md#workspace-file-transfers)
+for paths, checksums, bounds, overwrite behavior, and uncertainty. A driver
+advertises `workspace_file_bytes` only when configured with the helper. Protected
+calls require a ready VM and never resume one.
+
+To qualify a new provider image before shifting its traffic, deploy a tagged
+candidate and set `OA_COMPUTERS_BOAT_API_BASE` to its `/api/v1` URL when running
+`deploy/oa-computers/deploy.sh staging COMMIT`. The production deploy always uses
+the production provider URL. Promote the tested provider before deploying the
+production Computers backend so startup capability discovery sees the extension.

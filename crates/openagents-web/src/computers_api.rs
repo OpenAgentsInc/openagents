@@ -2,6 +2,7 @@
 //! are constructed only at the trusted service boundary.
 
 pub(crate) mod commands;
+pub(crate) mod files;
 
 use axum::body::Bytes;
 use axum::extract::{Path, State};
@@ -419,7 +420,8 @@ pub(crate) async fn capabilities(State(app): State<App>, headers: HeaderMap) -> 
                 "schema": "openagents.computers.capabilities.v1",
                 "profiles": v["profiles"].as_array().unwrap().iter().filter(|profile| matches!(profile.as_str(), Some("core" | "suspend"))).collect::<Vec<_>>(),
                 "sizes": v["sizes"],
-                "limits": {"max_computers": 20}
+                "limits": {"max_computers": 20},
+                "files": if v["workspace_file_bytes"].as_u64().is_some_and(|n| n > 0 && n <= computer_files::MAX_BYTES as u64) { json!({"max_bytes":v["workspace_file_bytes"],"max_path_bytes":computer_files::MAX_PATH_BYTES,"max_concurrent_transfers":computer_files::MAX_TRANSFERS,"timeout_seconds":computer_files::TIMEOUT_SECONDS,"requires_awake":true}) } else { Value::Null }
             }),
         ),
         _ => unavailable(),
@@ -451,7 +453,8 @@ pub(crate) fn extend_openapi(document: &mut Value) {
         }},
         "AppComputerCapabilities":{"type":"object","required":["schema","profiles","sizes","limits"],"properties":{
             "schema":{"const":"openagents.computers.capabilities.v1"},"profiles":{"type":"array","items":{"type":"string"}},"sizes":{"type":"array","items":{"type":"string"}},
-            "limits":{"type":"object","required":["max_computers"],"properties":{"max_computers":{"type":"integer","const":20}}}
+            "limits":{"type":"object","required":["max_computers"],"properties":{"max_computers":{"type":"integer","const":20}}},
+            "files":{"type":["object","null"],"properties":{"max_bytes":{"type":"integer","maximum":computer_files::MAX_BYTES},"max_path_bytes":{"type":"integer","const":computer_files::MAX_PATH_BYTES},"max_concurrent_transfers":{"type":"integer","const":computer_files::MAX_TRANSFERS},"timeout_seconds":{"type":"integer","const":computer_files::TIMEOUT_SECONDS},"requires_awake":{"const":true}}}
         }}
     });
     document["components"]["schemas"]
@@ -512,4 +515,5 @@ pub(crate) fn extend_openapi(document: &mut Value) {
         "get":operation("getComputerCapabilities","ComputerCapabilities"), "delete":remove_named
     });
     commands::extend_openapi(document);
+    files::extend_openapi(document);
 }

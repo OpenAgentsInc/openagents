@@ -1222,3 +1222,119 @@ async fn command_owner_restart_observes_the_same_execution_and_never_replays_abs
         wait_for(&base,"acct-a",&id,|v|v["state"]=="deleted").await;
     }).await;
 }
+
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread")]
+async fn bounded_files_share_owner_and_never_wake_or_recreate_computers() {
+    use computer_driver::boat::BoatDriver;
+    use computer_files::{MAX_BYTES, digest};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let Some(admin) = admin() else {
+        eprintln!("skipping: OA_COMPUTERS_TEST_DATABASE_URL is unset");
+        return;
+    };
+    let (db, _) = Db::scratch(&admin).await.unwrap();
+    let store = Store::new(db);
+    let dir = tempfile::tempdir().unwrap();
+    let fake = oa_boat::testing::Fake::default();
+    fake.0.lock().unwrap().root = Some(dir.path().to_owned());
+    let helper = std::env::var_os("OA_COMPUTER_FILES_HELPER")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join("computer-files")
+        });
+    assert!(
+        helper.is_file(),
+        "build the computer-files binary before protected-file tests"
+    );
+    let mut cfg = oa_boat::Config::for_tests();
+    cfg.workspace_helper = Some(helper);
+    let service = oa_boat::Service::new(
+        cfg,
+        fake.clone(),
+        oa_boat::remote::Local {
+            root: dir.path().to_owned(),
+        },
+    );
+    let boat_app = oa_boat::api::router(service, oa_boat::api::Token::new(TOKEN));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let boat_port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        axum::serve(listener, boat_app).await.unwrap();
+    });
+    let boat = boat::Client::builder(boat::ApiKey::new(TOKEN).unwrap())
+        .base_url(format!("http://127.0.0.1:{boat_port}/api/v1"))
+        .build()
+        .unwrap();
+    let driver = BoatDriver::connect(boat.clone()).await.unwrap();
+    let caps = driver.capabilities();
+    let files = oa_computers::files::spawn(store.clone(), driver.clone());
+    let turns = Secrets::default();
+    let app = oa_computers::app_with_files(store.clone(), caps, TOKEN, turns.clone(), Some(files));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let base = format!("http://127.0.0.1:{port}");
+    let local = tokio::task::LocalSet::new();
+    local.spawn_local(
+        Rc::new(Reconciler {
+            store: store.clone(),
+            driver,
+            settings: fast("t-files"),
+            turns,
+        })
+        .run(),
+    );
+    local.run_until(async {
+        let (status,made)=call(reqwest::Method::POST,format!("{base}/v1/computers"),"acct-files",Some(json!({"idempotency_key":"files-one"}))).await;
+        assert_eq!(status,202,"{made}");let id=made["id"].as_str().unwrap();
+        wait_for(&base,"acct-files",id,|v|v["state"]=="awake").await;
+        let bytes:Vec<u8>=(0..=255).cycle().take(9001).collect();let checksum=digest(&bytes);
+        let file_url=format!("{base}/v1/computers/{id}/files?path=input.bin");
+        let put=|account:&str,bytes:Vec<u8>,checksum:&str|http().put(&file_url).bearer_auth(TOKEN).header("x-openagents-account",account).header("content-type","application/octet-stream").header("x-content-sha256",checksum).body(bytes);
+        let reply=put("acct-files",bytes.clone(),&checksum).send().await.unwrap();assert_eq!(reply.status(),200);assert_eq!(reply.json::<Value>().await.unwrap()["sha256"],checksum);
+        let get=|account:&str|http().get(&file_url).bearer_auth(TOKEN).header("x-openagents-account",account);
+        let r=get("acct-files").send().await.unwrap();assert_eq!(r.status(),200);assert_eq!(r.headers()["x-content-sha256"],checksum);assert_eq!(r.bytes().await.unwrap().as_ref(),bytes);
+        assert_eq!(put("acct-other",b"bad".to_vec(),&digest(b"bad")).send().await.unwrap().status(),404);
+        assert_eq!(get("acct-other").send().await.unwrap().status(),404);
+        assert_eq!(put("acct-files",bytes.clone(),&checksum).send().await.unwrap().status(),200);
+        assert_eq!(put("acct-files",b"bad".to_vec(),&digest(b"bad")).send().await.unwrap().status(),412);
+        assert_eq!(put("acct-files",b"bad".to_vec(),&checksum).send().await.unwrap().status(),422);
+        for path in ["../outside","%2e%2e/outside","%FF","input.bin&token=secret"] {
+            let url=format!("{base}/v1/computers/{id}/files?path={path}");
+            assert_eq!(http().get(url).bearer_auth(TOKEN).header("x-openagents-account","acct-files").send().await.unwrap().status(),400);
+        }
+        // A declared over-limit body is rejected before any body byte is sent.
+        let mut socket=tokio::net::TcpStream::connect(("127.0.0.1",port)).await.unwrap();
+        socket.write_all(format!("PUT /v1/computers/{id}/files?path=too-big HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {TOKEN}\r\nX-OpenAgents-Account: acct-files\r\nContent-Type: application/octet-stream\r\nX-Content-SHA256: {checksum}\r\nContent-Length: {}\r\n\r\n",MAX_BYTES+1).as_bytes()).await.unwrap();
+        let mut reply=[0u8;2048];let n=tokio::time::timeout(Duration::from_secs(3),socket.read(&mut reply)).await.unwrap().unwrap();assert!(std::str::from_utf8(&reply[..n]).unwrap().starts_with("HTTP/1.1 413"));drop(socket);
+        // Two unfinished uploads hold both slots; a third transfer is refused.
+        let mut waiting=Vec::new();
+        for _ in 0..2 {
+            let mut s=tokio::net::TcpStream::connect(("127.0.0.1",port)).await.unwrap();
+            s.write_all(format!("PUT /v1/computers/{id}/files?path=pending HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {TOKEN}\r\nX-OpenAgents-Account: acct-files\r\nContent-Type: application/octet-stream\r\nX-Content-SHA256: {}\r\nContent-Length: 1\r\n\r\n",digest(b"x")).as_bytes()).await.unwrap();waiting.push(s);
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(get("acct-files").send().await.unwrap().status(),429);drop(waiting);
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(get("acct-files").send().await.unwrap().bytes().await.unwrap().as_ref(),bytes);
+        call(reqwest::Method::POST,format!("{base}/v1/computers/{id}/stop"),"acct-files",None).await;
+        wait_for(&base,"acct-files",id,|v|v["state"]=="stopped").await;
+        assert_eq!(get("acct-files").send().await.unwrap().status(),409);
+        assert_eq!(put("acct-files",bytes.clone(),&checksum).send().await.unwrap().status(),409);
+        let (_,still)=call(reqwest::Method::GET,format!("{base}/v1/computers/{id}"),"acct-files",None).await;assert_eq!(still["desired"],"stopped");
+        call(reqwest::Method::POST,format!("{base}/v1/computers/{id}/wake"),"acct-files",None).await;wait_for(&base,"acct-files",id,|v|v["state"]=="awake").await;
+        assert_eq!(get("acct-files").send().await.unwrap().bytes().await.unwrap().as_ref(),bytes);
+        call(reqwest::Method::DELETE,format!("{base}/v1/computers/{id}"),"acct-files",None).await;wait_for(&base,"acct-files",id,|v|v["state"]=="deleted").await;
+        assert_eq!(get("acct-files").send().await.unwrap().status(),404);
+        assert_eq!(fake.0.lock().unwrap().instances.len(),0);
+    }).await;
+}

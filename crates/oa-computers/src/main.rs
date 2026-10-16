@@ -63,11 +63,13 @@ async fn serve<D: Driver + Clone + Send + 'static>(driver: D, dsn: String, token
             std::process::exit(1);
         }
     };
+    let files = oa_computers::files::spawn(Store::new(db.clone()), driver.clone());
     let turns = oa_computers::turns::Secrets::default();
     if env("OA_COMPUTERS_RECONCILE").as_deref() != Some("0") {
         oa_computers::spawn_reconciler(dsn, driver, settings(), turns.clone());
     }
-    let app = oa_computers::app(Store::new(db), caps.clone(), &token, turns);
+    let app =
+        oa_computers::app_with_files(Store::new(db), caps.clone(), &token, turns, Some(files));
     let listen = env("OA_COMPUTERS_LISTEN").unwrap_or_else(|| match env("PORT") {
         Some(port) => format!("0.0.0.0:{port}"),
         None => "127.0.0.1:8790".into(),

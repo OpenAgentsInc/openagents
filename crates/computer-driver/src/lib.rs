@@ -94,12 +94,16 @@ pub struct Capabilities {
     /// Size classes a create may name; the first is the default.
     #[serde(default)]
     pub sizes: Vec<String>,
+    /// Maximum bytes for protected workspace transfers, when supported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_file_bytes: Option<usize>,
 }
 impl Capabilities {
     pub fn new(driver: &str, profiles: impl IntoIterator<Item = Profile>, sizes: &[&str]) -> Self {
         let mut profiles: BTreeSet<Profile> = profiles.into_iter().collect();
         profiles.insert(Profile::Core);
         Self {
+            workspace_file_bytes: None,
             schema: CAPABILITIES_SCHEMA.into(),
             driver: driver.into(),
             profiles,
@@ -473,6 +477,23 @@ pub trait Driver {
     async fn stop_command(&self, _computer: &str, _id: &str) -> Outcome<String> {
         Outcome::failed("identified commands are unsupported")
     }
+    /// Protected workspace transfers are distinct from legacy unrestricted files.
+    async fn read_workspace_file(
+        &self,
+        _computer: &str,
+        _path: &str,
+    ) -> Result<Vec<u8>, computer_files::FileError> {
+        Err(computer_files::FileError::Unsupported)
+    }
+    async fn write_workspace_file(
+        &self,
+        _computer: &str,
+        _path: &str,
+        _bytes: &[u8],
+        _overwrite: bool,
+    ) -> Result<computer_files::FileInfo, computer_files::FileError> {
+        Err(computer_files::FileError::Unsupported)
+    }
     async fn put_file(&self, computer: &str, path: &str, bytes: &[u8]) -> Outcome<()>;
     async fn get_file(&self, computer: &str, path: &str) -> Outcome<Vec<u8>>;
     async fn meter(&self, computer: &str) -> Outcome<Meter>;
@@ -535,6 +556,22 @@ impl<D: Driver> Driver for std::sync::Arc<D> {
     }
     async fn stop_command(&self, c: &str, id: &str) -> Outcome<String> {
         (**self).stop_command(c, id).await
+    }
+    async fn read_workspace_file(
+        &self,
+        c: &str,
+        p: &str,
+    ) -> Result<Vec<u8>, computer_files::FileError> {
+        (**self).read_workspace_file(c, p).await
+    }
+    async fn write_workspace_file(
+        &self,
+        c: &str,
+        p: &str,
+        b: &[u8],
+        overwrite: bool,
+    ) -> Result<computer_files::FileInfo, computer_files::FileError> {
+        (**self).write_workspace_file(c, p, b, overwrite).await
     }
     async fn put_file(&self, c: &str, p: &str, b: &[u8]) -> Outcome<()> {
         (**self).put_file(c, p, b).await

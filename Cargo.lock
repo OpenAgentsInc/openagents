@@ -2416,6 +2416,7 @@ name = "boat"
 version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
+ "computer-files",
  "hmac 0.12.1",
  "reqwest 0.12.28",
  "serde",
@@ -4402,6 +4403,7 @@ version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "boat",
+ "computer-files",
  "futures-util",
  "reqwest 0.12.28",
  "serde",
@@ -4411,6 +4413,16 @@ dependencies = [
  "tokio-tungstenite 0.30.0",
  "uuid",
  "zeroize",
+]
+
+[[package]]
+name = "computer-files"
+version = "1.0.0"
+dependencies = [
+ "libc",
+ "serde",
+ "sha2 0.10.9",
+ "tempfile",
 ]
 
 [[package]]
@@ -10921,6 +10933,7 @@ dependencies = [
  "bytes",
  "computer-conformance",
  "computer-driver",
+ "computer-files",
  "futures-util",
  "hex",
  "rand 0.9.5",
@@ -10942,6 +10955,7 @@ dependencies = [
  "coder-environment",
  "coder-working-computer",
  "computer-driver",
+ "computer-files",
  "getrandom 0.4.3",
  "oa-boat",
  "reqwest 0.12.28",
@@ -11969,6 +11983,7 @@ dependencies = [
  "coder-working-computer",
  "codex-transport",
  "compute-workbench",
+ "computer-files",
  "discovery",
  "futures-util",
  "github-actions",

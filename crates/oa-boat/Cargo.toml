@@ -11,6 +11,7 @@ name = "oa-boat"
 path = "src/main.rs"
 
 [dependencies]
+computer-files = { path = "../computer-files" }
 boat = { path = "../boat" }
 computer-driver = { path = "../computer-driver" }
 axum = "0.8"

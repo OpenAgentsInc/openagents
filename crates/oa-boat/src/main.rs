@@ -73,6 +73,10 @@ async fn main() -> Result<(), String> {
     .filter(|z| !z.is_empty())
     .collect();
     let cfg = Config {
+        workspace_helper: Some(PathBuf::from(var(
+            "OA_BOAT_FILE_HELPER",
+            "/usr/local/bin/oa-computer-files",
+        ))),
         project: var("OA_BOAT_PROJECT", "openagentsgemini"),
         region: var("OA_BOAT_REGION", "us-central1"),
         zones,

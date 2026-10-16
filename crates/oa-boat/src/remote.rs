@@ -47,6 +47,56 @@ pub trait Remote: Send + Sync + 'static {
         limit: Duration,
         cap: usize,
     ) -> impl Future<Output = Output> + Send;
+    /// Run the protected file helper under the guest user. The executable is
+    /// installed into a fresh root-owned directory before untrusted paths are used.
+    fn workspace_file(
+        &self,
+        host: &str,
+        helper: &std::path::Path,
+        args: &[String],
+        bytes: Vec<u8>,
+    ) -> impl Future<Output = Output> + Send {
+        async move {
+            let mut input = match tokio::fs::read(helper).await {
+                Ok(v) if v.len() <= 8 * 1024 * 1024 => v,
+                _ => return file_failure(computer_files::FileError::Unsupported),
+            };
+            let length = input.len();
+            let checksum = computer_files::digest(&input);
+            input.extend_from_slice(&bytes);
+            let command = args
+                .iter()
+                .map(|s| boat::shell_quote(s))
+                .collect::<Vec<_>>()
+                .join(" ");
+            // One SSH channel carries the executable followed by the file body.
+            // Root keeps the executable private; the helper runs as the guest user.
+            // The installer always removes its directory, including on failures.
+            let inner = format!(
+                r##"set -eu
+umask 077
+d=$(mktemp -d /run/oa-computer-files.XXXXXXXXXX)
+trap 'rm -rf -- "$d"' EXIT HUP INT TERM
+head -c {length} > "$d/helper"
+printf '%s  %s\n' '{checksum}' "$d/helper" | sha256sum -c - >/dev/null
+chmod 755 "$d/helper" "$d"
+/usr/bin/sudo -n -u "#$1" /usr/bin/env -i HOME="$2" "$d/helper" {command}
+"##
+            );
+            let script = format!(
+                "/usr/bin/sudo -n /bin/sh -c {} sh \"$(id -u)\" \"$HOME\"",
+                boat::shell_quote(&inner)
+            );
+            self.run(
+                host,
+                &script,
+                input,
+                Duration::from_secs(computer_files::TIMEOUT_SECONDS),
+                computer_files::MAX_BYTES + 1,
+            )
+            .await
+        }
+    }
     /// Run `script` and send its output as it arrives; the last chunk is
     /// `Exit` or `Failed`.
     fn stream(
@@ -295,6 +345,30 @@ impl Local {
 }
 
 impl Remote for Local {
+    async fn workspace_file(
+        &self,
+        host: &str,
+        helper: &std::path::Path,
+        args: &[String],
+        bytes: Vec<u8>,
+    ) -> Output {
+        let home = self.root.join(host).join("home");
+        let _ = std::fs::create_dir_all(&home);
+        let mut c = tokio::process::Command::new(helper);
+        c.args(args)
+            .env_clear()
+            .env("HOME", &home)
+            .current_dir(&home)
+            .kill_on_drop(true);
+        capture(
+            c,
+            bytes,
+            Duration::from_secs(60),
+            computer_files::MAX_BYTES + 1,
+            None,
+        )
+        .await
+    }
     async fn run(
         &self,
         host: &str,
@@ -309,4 +383,16 @@ impl Remote for Local {
         pipe(self.command(host, script), limit)
     }
     async fn forget(&self, _host: &str) {}
+}
+
+fn file_failure(error: computer_files::FileError) -> Output {
+    Output {
+        code: Some(error.exit_code()),
+        stdout: vec![],
+        stderr: vec![],
+        stdout_truncated: false,
+        stderr_truncated: false,
+        stderr_tail: vec![],
+        transport_failed: false,
+    }
 }

@@ -17,6 +17,7 @@ name = "space-spike"
 required-features = ["space"]
 
 [dependencies]
+computer-files = { path = "../computer-files" }
 boat = { path = "../boat", optional = true }
 base64 = "0.22"
 futures-util = { version = "0.3", optional = true }

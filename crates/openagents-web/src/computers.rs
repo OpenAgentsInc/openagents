@@ -425,3 +425,51 @@ pub(crate) fn rows(all: &[Computer]) -> Vec<Value> {
         })
         .collect()
 }
+
+/// Binary transfers have their own response bound and longer deadline.
+impl Client {
+    pub(crate) async fn file_call(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        owner: &str,
+        upload: Option<Vec<u8>>,
+        checksum: Option<&str>,
+    ) -> Result<(u16, Vec<u8>, Option<String>), ()> {
+        let mut req = self
+            .http
+            .request(method, format!("{}{path}", self.base))
+            .timeout(Duration::from_secs(computer_files::TIMEOUT_SECONDS + 15))
+            .bearer_auth(self.token().map_err(|_| ())?)
+            .header("x-openagents-account", owner);
+        if let Some(bytes) = upload {
+            req = req
+                .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+                .header("x-content-sha256", checksum.ok_or(())?)
+                .body(bytes);
+        }
+        let mut reply = req.send().await.map_err(|_| ())?;
+        let status = reply.status().as_u16();
+        let checksum = reply
+            .headers()
+            .get("x-content-sha256")
+            .and_then(|h| h.to_str().ok())
+            .map(str::to_owned);
+        let limit = if status == 200 {
+            computer_files::MAX_BYTES
+        } else {
+            65536
+        };
+        if reply.content_length().is_some_and(|n| n > limit as u64) {
+            return Err(());
+        }
+        let mut bytes = Vec::new();
+        while let Some(chunk) = reply.chunk().await.map_err(|_| ())? {
+            if bytes.len() + chunk.len() > limit {
+                return Err(());
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        Ok((status, bytes, checksum))
+    }
+}

@@ -529,3 +529,144 @@ async fn a_lost_insert_wait_tries_the_next_zone_and_a_made_vm_is_used() {
     let w = r.fake.0.lock().unwrap();
     assert_eq!(w.instances.len(), 2, "no extra VM in another zone");
 }
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn protected_workspace_files_are_binary_bounded_and_do_not_wake() {
+    use computer_files::{MAX_BYTES, digest};
+    let helper = std::env::var_os("OA_COMPUTER_FILES_HELPER")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join("computer-files")
+        });
+    assert!(
+        helper.is_file(),
+        "build the computer-files binary before running protected-file tests"
+    );
+    let r = rig(|cfg| cfg.workspace_helper = Some(helper)).await;
+    let id = create(&r.client, CreateSandboxRequest::default(), None).await;
+    r.client.wait_until_ready(&id, &fast()).await.unwrap();
+    let caps = r.client.capabilities().await.unwrap();
+    assert_eq!(caps["workspace_file_bytes"], MAX_BYTES);
+    let bytes: Vec<u8> = (0..=255).cycle().take(100_003).collect();
+    let info = r
+        .client
+        .write_workspace_file(&id, "input.bin", &bytes, false)
+        .await
+        .unwrap();
+    assert_eq!(info.sha256, digest(&bytes));
+    assert_eq!(info.size, bytes.len());
+    assert_eq!(
+        r.client
+            .read_workspace_file(&id, "input.bin")
+            .await
+            .unwrap(),
+        bytes
+    );
+    r.client
+        .write_workspace_file(&id, "input.bin", &bytes, false)
+        .await
+        .unwrap();
+    let e = r
+        .client
+        .write_workspace_file(&id, "input.bin", b"different", false)
+        .await
+        .unwrap_err();
+    assert!(matches!(e,boat::Error::Api(ref e) if e.status.as_u16()==412));
+    r.client
+        .write_workspace_file(&id, "input.bin", b"replaced", true)
+        .await
+        .unwrap();
+    assert_eq!(
+        r.client
+            .read_workspace_file(&id, "input.bin")
+            .await
+            .unwrap(),
+        b"replaced"
+    );
+    run(
+        &r.client,
+        &id,
+        "ln -s /etc workspace/escape; mkfifo workspace/pipe",
+    )
+    .await;
+    for (path, status) in [("../outside", 400), ("escape/passwd", 403), ("pipe", 415)] {
+        let e = r.client.read_workspace_file(&id, path).await.unwrap_err();
+        assert!(
+            matches!(e,boat::Error::Api(ref e) if e.status.as_u16()==status),
+            "{e}"
+        );
+    }
+    let full = vec![0x9a; MAX_BYTES];
+    r.client
+        .write_workspace_file(&id, "full", &full, false)
+        .await
+        .unwrap();
+    assert_eq!(
+        r.client.read_workspace_file(&id, "full").await.unwrap(),
+        full
+    );
+    let permit = r
+        .service
+        .workspace_slots
+        .clone()
+        .acquire_many_owned(2)
+        .await
+        .unwrap();
+    let e = r
+        .client
+        .read_workspace_file(&id, "input.bin")
+        .await
+        .unwrap_err();
+    assert!(matches!(e,boat::Error::Api(ref e) if e.status.as_u16()==429));
+    drop(permit);
+    r.client
+        .stop(&StopParams {
+            sandbox_id: id.clone(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let e = r
+        .client
+        .read_workspace_file(&id, "input.bin")
+        .await
+        .unwrap_err();
+    assert!(matches!(e,boat::Error::Api(ref e) if e.status.as_u16()==409));
+    r.client
+        .resume(&ResumeParams {
+            sandbox_id: id.clone(),
+            body: Some(ResumeRequest::default()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    r.client.wait_until_ready(&id, &fast()).await.unwrap();
+    assert_eq!(
+        r.client
+            .read_workspace_file(&id, "input.bin")
+            .await
+            .unwrap(),
+        b"replaced"
+    );
+    // The unrestricted legacy file contract remains a separate operation.
+    r.client
+        .write_bytes(&id, "legacy.bin", &bytes)
+        .await
+        .unwrap();
+    assert_eq!(r.client.read_bytes(&id, "legacy.bin").await.unwrap(), bytes);
+    r.client
+        .delete_sandbox(&DeleteSandboxParams {
+            sandbox_id: id.clone(),
+            x_ascii_confirm_delete: id,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+}
