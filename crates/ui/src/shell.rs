@@ -6384,6 +6384,10 @@ impl Shell {
     }
 
     fn request_sign_out(&mut self, cx: &mut Context<Self>) {
+        if let Some(account) = crate::openagents_account::AppAccount::global(cx) {
+            account.update(cx, |account, cx| account.sign_out(cx));
+            return;
+        }
         self.close_user_menu(cx);
         if self.state.read(cx).workspace_scope != Some(WorkspaceScope::Synced) {
             return;
@@ -6793,6 +6797,10 @@ impl Shell {
     }
 
     fn start_sign_in(&mut self, cx: &mut Context<Self>) {
+        if let Some(account) = crate::openagents_account::AppAccount::global(cx) {
+            account.update(cx, |account, cx| account.sign_in(cx));
+            return;
+        }
         let scope = self.state.read(cx).workspace_scope;
         if scope == Some(WorkspaceScope::Development) {
             return;
@@ -9897,6 +9905,10 @@ impl Shell {
             (true, false) => "Close settings · Ctrl+,".into(),
         };
         let voice_trigger = self.render_voice_trigger(theme, cx);
+        let trigger = match crate::openagents_account::AppAccount::global(cx) {
+            Some(account) => account.into_any_element(),
+            None => trigger.into_any_element(),
+        };
         div()
             .w_full()
             .flex()

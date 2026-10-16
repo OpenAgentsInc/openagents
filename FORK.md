@@ -69,7 +69,7 @@ The source of truth is [`crates/brand/src/lib.rs`](crates/brand/src/lib.rs).
 | Engine IPC port | 27654 (dev script 49777) | **27854** (dev script unchanged, 49777) | `coder_brand::DEFAULT_IPC_PORT`; `apps/zeron/src/main.rs`; `crates/mcp/src/lib.rs` |
 | URL scheme | `zeron://` | `coder-desktop://` | `coder_brand::URL_SCHEME`; `Info.plist`; `crates/ui/src/lib.rs`, `links.rs`; `crates/client/src/auth.rs`; Windows installer registry |
 | Background service | launchd `sh.zeron.app`, systemd `zeron.service` | `com.openagents.coder.desktop`, `coder-desktop.service` | `coder_brand::LAUNCHD_LABEL`, `SYSTEMD_UNIT`; `apps/zeron/src/daemon.rs`; `crates/update/src/lib.rs` |
-| Keychain | none of Zeron's own (agent logins read Claude Code's and Antigravity's items) | unchanged | `crates/engine/src/agent_accounts.rs` |
+| Keychain | Provider entries only | OpenAgents app sessions use `<bundle ID>.account`, scoped by profile and deployment; provider entries stay separate. | `crates/coder-account/src/platform.rs`; `crates/ui/src/openagents_account.rs` |
 | Icon | Zeron | OpenAgents app icon (`dist/coder/icon-1024.png`, from `openagents/bins/openagents-ios/.../icon-1024.png`) | `dist/coder/coder.icns`, `coder.ico`, `coder.png`; packaging scripts; `dist/windows/zeron.rc` |
 | Windows installer | AppId `AD5DEC34-…`, `Programs\Zeron` | new AppId `0FBFAAA3-AC9B-4542-8219-5C1638A1FB18`, `Programs\Coder` | `dist/windows/zeron.iss`; `crates/update/src/windows.rs` |
 | User-visible strings | "Zeron …" | "Coder …" | menus, update dialog, permission prompts, notices, slash-command descriptions, link actions, settings text, agent-login pages |
@@ -93,7 +93,7 @@ A plain start of Coder makes no request to Zeron's services.
 | Service | Upstream default | Coder Desktop | Switch |
 | --- | --- | --- | --- |
 | Update feed | `https://edge.zeron.sh/releases` | Off. No background checks; "Check for Updates…" says Coder doesn't update itself yet and points at openagents.com/download. Set our feed in one place when it exists. | `coder_brand::UPDATE_FEED`; `crates/update/src/lib.rs` (`feed_configured`, `release_base`); dev override `ZERON_RELEASES_URL` |
-| Sign-in (WorkOS AuthKit via the edge) | Production client ID baked in | Off. The app runs in its account-free workspace, labelled "Local". OpenAgents sign-in is [#11824](https://github.com/OpenAgentsInc/openagents/issues/11824). | `coder_brand::WORKOS_CLIENT_ID` |
+| Sign-in (WorkOS AuthKit via the edge) | Production client ID baked in | Off. Local workspaces remain independent. OpenAgents account sign-in uses the public SDK and the app’s own Keychain entry ([#11829](https://github.com/OpenAgentsInc/openagents/issues/11829)). | `coder_brand::WORKOS_CLIENT_ID` |
 | Sync, relays, preview signaling (edge) | `https://edge.zeron.sh` | Off. The default edge URL is `https://edge.invalid`, which never resolves. | `coder_brand::HOSTED_EDGE_URL`, `DISABLED_EDGE_URL`; dev override `ZERON_EDGE_URL` |
 | Release and download links | GitHub `zeronsh/zeron` releases | `https://openagents.com/download` | `coder_brand::DOWNLOAD_URL` via `zeron_update::RELEASES_PAGE` |
 | Telemetry, analytics, crash reporting | none in the app | none | — |

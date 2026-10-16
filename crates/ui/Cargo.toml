@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [features]
+account-fixture = ["gpui_platform/test-support"]
 voice-experimental = [] # Compatibility flag; native subscription voice uses Codex's packaged helper.
 project-palette-fixture = []
 compact-picker-fixture = ["gpui_platform/test-support"]
@@ -17,6 +18,10 @@ windows-render-fixture = []
 appshots-fixture = ["gpui_platform/test-support"]
 pull-request-fixture = ["gpui_platform/test-support"]
 resource-profile = ["gpui/bench", "gpui_platform/test-support"]
+
+[[example]]
+name = "account-fixture"
+required-features = ["account-fixture"]
 
 [[example]]
 name = "macos-resource-profile"
@@ -60,6 +65,8 @@ required-features = ["compact-picker-fixture"]
 
 [dependencies]
 coder-brand.workspace = true
+coder-account.workspace = true
+gethostname.workspace = true
 zeron-voice-media.workspace = true
 zeron-voice-session.workspace = true
 zeron-orb.workspace = true
@@ -133,6 +140,7 @@ url = "2"
 x11rb = { version = "0.14.0", features = ["image"] }
 
 [dev-dependencies]
+axum = "0.8"
 gpui = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
 mimalloc.workspace = true

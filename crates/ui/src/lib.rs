@@ -50,6 +50,7 @@ mod new_thread_background_image;
 mod new_thread_background_mask;
 mod notice;
 pub mod notify;
+pub mod openagents_account;
 pub mod orb;
 pub mod overscroll;
 pub mod pickers;
@@ -212,6 +213,8 @@ pub fn run_app(config: UiConfig) {
         appshots::set_enabled(ui_settings.appshots_enabled);
         terminal::panel::init(cx);
         app_menus::init(cx);
+        #[cfg(target_os = "macos")]
+        openagents_account::AppAccount::init(data_dir.clone(), cx);
         app_update::AppUpdate::init(config.boot().edge_url, data_dir.clone(), cx);
         cx.register_url_scheme(coder_brand::URL_SCHEME).detach();
 

@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/coder-account",
     "crates/voice",
     "crates/voice-media",
     "crates/voice-session",
@@ -37,6 +38,7 @@ publish = false
 
 [workspace.dependencies]
 coder-brand = { path = "crates/brand" }
+coder-account = { path = "crates/coder-account" }
 zeron-voice-session = { path = "crates/voice-session" }
 zeron-orb = { path = "crates/orb" }
 zeron-veil = { path = "crates/veil" }
