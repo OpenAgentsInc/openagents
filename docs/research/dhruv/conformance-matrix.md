@@ -28,6 +28,9 @@ These compose several owners in one process. Each is a separate test in
 | Sealed job failures | ATT approval, key book, streamed output | `crates/dhruv-conformance/tests/attested_job.rs::disconnection_revocation_and_competing_endpoints_refuse` | D (lost chunk), R (revoked approval), C (older and rival endpoint keys) |
 | Funded labor and credit | LAB roles, rework, PYLON receipt, pay-ledger funding and payout, SOV income, X402 purchase, durable credit and metered use | `crates/dhruv-conformance/tests/funded_labor.rs::an_interrupted_rework_order_is_accepted_funded_once_and_costed_honestly` | I (crash before send, lost credit reply, treasury and credit restart, exact retry), $ (one wallet send, one income credit, distinct units, unknown fees stay null) |
 | Labor without a buyer | LAB resolver, finals, pay-ledger | `crates/dhruv-conformance/tests/funded_labor.rs::a_disconnected_buyer_and_competing_finals_never_pay_by_default` | D (buyer unavailable), C (competing finals stop funding) |
+| Managed execution | ENV allocator and local resource, COORD claims and call accounting, SESS native loop engine, CJ | `crates/session-host/src/tests/cj.rs::real_cj_open_and_turn_share_actual_environment_and_call_fences` | I (exact retries, one native turn, one charge per operation) |
+| Uncertain native start | The same ENV, COORD, and SESS owners | `crates/session-host/src/tests/cj.rs::cj_lost_start_and_restart_keep_the_original_charge_and_unknown_outcome` | I, $ (restart retains unknown and its original charge; no second start) |
+| Revoked execution | The same ENV, COORD, and SESS owners | `crates/session-host/src/tests/cj.rs::current_coord_revocation_and_environment_drain_block_native_continuations` | R, C (either authority stops native continuation without another call charge) |
 
 ## Trajectories — ATIF
 

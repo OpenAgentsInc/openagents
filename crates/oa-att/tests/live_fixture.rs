@@ -65,6 +65,37 @@ fn an_unbound_key_is_refused() {
 }
 
 #[test]
+fn the_binding_stage_includes_the_hpke_key_when_present() {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let (records, policy, now) = fixture();
+    let mut parsed = oa_att::parse(&records, &policy, now).unwrap();
+    let mut claims = oa_att::chain(&parsed, now).unwrap();
+    // This is a binding-stage vector, not a Google signature over these
+    // modified claims. The retained live endpoint has no HPKE key.
+    let hpke = [0x71; 32];
+    parsed.endpoint.body.hpke = Some(STANDARD.encode(hpke));
+    let binding = oa_att::nostr::att::binding(
+        &parsed.endpoint.body.endpoint,
+        Some(&hpke),
+        &parsed.release_id,
+    )
+    .unwrap();
+    parsed.endpoint.body.binding = binding.clone();
+    assert!(oa_att::bind(&parsed, &claims, &policy, None).is_err());
+    claims.nonces = vec![binding.clone()];
+    assert_eq!(
+        oa_att::bind(&parsed, &claims, &policy, None)
+            .unwrap()
+            .binding,
+        binding
+    );
+    parsed.endpoint.body.hpke = Some(STANDARD.encode([0x72; 32]));
+    assert!(oa_att::bind(&parsed, &claims, &policy, None).is_err());
+    parsed.endpoint.body.hpke = Some(STANDARD.encode([0x71; 31]));
+    assert!(oa_att::bind(&parsed, &claims, &policy, None).is_err());
+}
+
+#[test]
 fn expired_evidence_is_refused() {
     let (records, policy, now) = fixture();
     assert!(oa_att::parse(&records, &policy, now + 4_000).is_err());

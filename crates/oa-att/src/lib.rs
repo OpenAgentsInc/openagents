@@ -338,16 +338,21 @@ pub fn bind(
     let key = swapped
         .unwrap_or(&parsed.endpoint.body.endpoint)
         .to_string();
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
     let hpke = parsed
         .endpoint
         .body
         .hpke
         .as_ref()
-        .map(|_| ())
-        .map_or(Ok(None), |()| {
-            refuse("an HPKE key is not used by this client")
-        })?;
-    let binding = att::binding(&key, hpke, &parsed.release_id).map_err(Refused)?;
+        .map(|text| {
+            let bytes = STANDARD
+                .decode(text)
+                .map_err(|_| Refused("the endpoint's HPKE key is not base64".into()))?;
+            <[u8; 32]>::try_from(bytes)
+                .map_err(|_| Refused("the endpoint's HPKE key is not 32 bytes".into()))
+        })
+        .transpose()?;
+    let binding = att::binding(&key, hpke.as_ref(), &parsed.release_id).map_err(Refused)?;
     let level = level_of(claims);
     let bound = Bound {
         key: key.clone(),

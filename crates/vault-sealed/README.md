@@ -46,3 +46,19 @@ KMS. The real-endpoint test confirms that the captured TDX endpoint, which
 serves another workload and has no session key, is refused. Deploying the
 vault workload on Confidential Space with an attestation-bound KMS key is an
 owner step.
+
+`examples/cloud_fixture.rs` is a separate, one-shot research workload. Build
+it with `OA_VAULT_RESEARCH_COMMIT` set to the source commit and package the
+binary with `deploy/vault-sealed/research.Dockerfile`. Its `prepare IMAGE
+COMMIT` command creates public research release and head records with a
+600-second notice. After that notice, supply the JSON through
+`OA_VAULT_RESEARCH_RECORDS` to a bounded Confidential Space TDX instance.
+The `run` command verifies the actual Google token, image, signing key, and
+HPKE binding before opening a synthetic object under a one-use lease. It
+checks replay, revocation, key substitution, and expiry, then prints public
+records and an endpoint-signed completion. It exports no private keys.
+
+The client runs in the same process, and its key service is ephemeral
+`LocalKms`. This exercise does not qualify production storage, remote
+clients, Cloud KMS policy, independent rebuilding, or recovery after a
+machine is lost. Delete the research instance after collecting its result.
