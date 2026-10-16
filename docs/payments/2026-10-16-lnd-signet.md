@@ -86,3 +86,37 @@ The bounded controller watches the actual closure, CSV maturity, sweeps,
 and returns. No channel database was copied or restarted from an older
 state. Implementation `2c2f1004b1` is on main; final recovery and cleanup
 remain tracked in [#11862](https://github.com/OpenAgentsInc/openagents/issues/11862).
+
+## Synthetic Taproot Assets (#11863)
+
+The separate two-node signet experiment minted 1,000,000 units of
+`openagents-signet-test-11863`, asset ID
+`f7f99f1e88cf8a430f3566caaa2afe5b7065d7c6452c0bba4497fecfc2a68f3a`.
+These units are synthetic, with no promised redemption or monetary value.
+The pinned image contains litd 0.17, LND 0.21, and tapd 0.8; RPC is
+loopback-only, and each node has a fresh research wallet.
+
+| Operation | Confirmed height | Transaction | Fee (sat) |
+| --- | ---: | --- | ---: |
+| Mint 1,000,000 units | 326612 | `793fa5c113a0e6f083aad0695890b5e22d81d673fbdab8756bdc37a720215639` | 308 |
+| Transfer 10,000 units to the second node | 326613 | `c25831aecb719fb332e46b192d54e521a88ed5d56d8e830747ab25310ea8db28` | 509 |
+
+The receiver exported its transfer proof and tapd verified it. A separate
+read-only capture verified the same private proof again and checked both
+transactions, block heights, and fees through Core. Proof SHA-256 is
+`bb2960542abc3571254bf4dcd18d5a00c9e77861c9a9a4f7545244cba242148d`;
+the proof bytes, wallet seeds, and credentials are not published.
+The [public on-chain archive](evidence/lnd-assets-onchain-signet-2026-10-16.tar.gz)
+contains 11 files plus a checked manifest, including the public asset,
+transfer, proof-verification result, node identities, and Core reads.
+Archive SHA-256:
+`5b364b332c02c6ebd0b61f701ac0bc5c0fd0627210cc2be9f4770316d304de50`.
+
+The private asset channel and RFQ payments in both directions still wait for
+previously funded scratch-wallet outputs to reach CSV maturity. No new faucet
+or mainnet funds are used. The original observer and a separate cleanup
+controller retain the 150,000-sat funding cap and original 72-hour deadline.
+After the RFQ checks, cleanup closes the original channel cooperatively,
+verifies final asset proofs, returns ordinary BTC without spending asset
+carriers, and stops both research nodes. Those steps remain actual-run
+requirements; the mint and on-chain transfer do not complete the issue.
