@@ -311,8 +311,11 @@ impl Home {
         }
     }
     fn save_local(&self, s: &State) -> Result<(), String> {
-        s.library.validate().map_err(str::to_owned)?;
-        let bytes = serde_json::to_vec(&s.library).map_err(|_| storage_error())?;
+        self.save_library(&s.library)
+    }
+    fn save_library(&self, library: &Library) -> Result<(), String> {
+        library.validate().map_err(str::to_owned)?;
+        let bytes = serde_json::to_vec(library).map_err(|_| storage_error())?;
         if bytes.len() > 4 * 1024 * 1024 {
             return Err("Remove a dashboard before adding another.".into());
         }
@@ -1472,9 +1475,9 @@ impl Home {
                     library.dashboards.push(d);
                 }
                 library.validate().map_err(str::to_owned)?;
+                self.save_library(&library)?;
                 s.library = library;
-                self.save_local(&s)?;
-                std::fs::remove_file(path).map_err(|_| storage_error())?;
+                let _ = std::fs::remove_file(path);
             }
             "previous-issues" => s.issue_window = s.issue_window.saturating_sub(100),
             "previous-work" => s.work_offset = s.work_offset.saturating_sub(50),
@@ -1530,27 +1533,34 @@ impl Home {
                 s.draft = Some(d);
             }
             "default" => {
-                s.library.default = Some(s.selected.clone());
-                self.save_local(&s)?;
+                let mut library = s.library.clone();
+                library.default = Some(s.selected.clone());
+                self.save_library(&library)?;
+                s.library = library;
             }
             "done" => {
                 let d = s.draft.clone().ok_or("Open an editor first.")?;
                 d.validate().map_err(str::to_owned)?;
-                if let Some(existing) = s.library.dashboards.iter_mut().find(|v| v.id == d.id) {
+                let mut library = s.library.clone();
+                if let Some(existing) = library.dashboards.iter_mut().find(|v| v.id == d.id) {
                     *existing = d.clone();
-                    existing.revision += 1;
+                    existing.revision = existing
+                        .revision
+                        .checked_add(1)
+                        .ok_or("Save this dashboard as a copy.")?;
                 } else {
-                    if s.library.dashboards.len() >= 32 {
+                    if library.dashboards.len() >= 32 {
                         return Err("Remove a dashboard before adding another.".into());
                     }
-                    s.library.dashboards.push(d.clone());
+                    library.dashboards.push(d.clone());
                 }
+                self.save_library(&library)?;
+                s.library = library;
                 s.selected = d.id;
                 s.draft = None;
                 s.screen = Screen::Home;
                 s.issues.clear();
                 s.last_issues = None;
-                self.save_local(&s)?;
             }
             "delete-dashboard" => s.screen = Screen::ConfirmDelete,
             "confirm-delete" => {
@@ -1559,17 +1569,20 @@ impl Home {
                     .as_ref()
                     .map(|d| d.id.clone())
                     .unwrap_or_else(|| s.selected.clone());
-                s.library.dashboards.retain(|d| d.id != chosen);
-                if s.library.dashboards.is_empty() {
-                    s.library.dashboards.push(Dashboard::starter(fresh_id()));
+                let mut library = s.library.clone();
+                library.dashboards.retain(|d| d.id != chosen);
+                if library.dashboards.is_empty() {
+                    library.dashboards.push(Dashboard::starter(fresh_id()));
                 }
-                s.selected = s.library.dashboards[0].id.clone();
-                if s.library.default.as_ref() == Some(&chosen) {
-                    s.library.default = Some(s.selected.clone());
+                let selected = library.dashboards[0].id.clone();
+                if library.default.as_ref() == Some(&chosen) {
+                    library.default = Some(selected.clone());
                 }
+                self.save_library(&library)?;
+                s.library = library;
+                s.selected = selected;
                 s.draft = None;
                 s.screen = Screen::Home;
-                self.save_local(&s)?;
             }
             "undo" => {
                 if let Some((i, w)) = s.undo.take() {
@@ -2423,6 +2436,21 @@ mod tests {
             h.action(action).await.unwrap();
             h.view().validate().unwrap();
         }
+    }
+    #[tokio::test]
+    async fn a_failed_save_keeps_the_edit_cancelable() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("blocked");
+        let h = Home::new(None, parent.join("home.json"));
+        let original = h.state.lock().unwrap().library.clone();
+        h.action("edit").await.unwrap();
+        h.action("add:computers").await.unwrap();
+        std::fs::write(parent, "not a directory").unwrap();
+        assert!(h.action("done").await.is_err());
+        assert!(h.state.lock().unwrap().draft.is_some());
+        assert_eq!(h.state.lock().unwrap().library, original);
+        h.action("cancel").await.unwrap();
+        assert_eq!(h.state.lock().unwrap().library, original);
     }
     #[tokio::test]
     async fn import_after_signout_cannot_restore_a_draft() {
