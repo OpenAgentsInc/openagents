@@ -51,6 +51,26 @@ Rules that keep merges easy:
   with the current stable rustfmt, and reformatting it would turn every merge
   into a conflict. Format the files you change.
 
+## Sync protocol merge checkpoint (#11847)
+
+If an upstream merge changes `edge/`, `crates/sync`, `crates/proto`, or
+`crates/rpc`, run the Rust server conformance suite before completing the merge.
+Use a clean OpenAgents monorepo worktree and the candidate fork commit:
+
+```sh
+/path/to/clean-openagents-worktree/scripts/coder-sync/conformance.sh \
+  --fork-repo /path/to/candidate-fork --pin FULL_FORK_COMMIT
+```
+
+The script updates the shared client pin and lockfile, builds that exact
+headless engine, and runs chat, registry, device, blob, and image fixture flows
+against temporary Postgres and a fake bucket. Commit the pin and lockfile in
+OpenAgents after the suite passes; push the corresponding fork commit to our
+`origin/main`. A local candidate commit works before publication. Never push
+to `upstream`. Keep the previous pin if the suite fails, and turn each mismatch
+into a regression test before retrying. Notifications remain disabled until
+OpenAgents push-gateway delivery lands in #11853.
+
 ## Identity and branding seams (patch log)
 
 The source of truth is [`crates/brand/src/lib.rs`](crates/brand/src/lib.rs).
