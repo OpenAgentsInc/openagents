@@ -2,6 +2,7 @@
 """Run the bounded signet experiment through the reviewed Rust research CLI."""
 import argparse
 import base64
+from datetime import datetime, timezone
 import fcntl
 import json
 import os
@@ -19,6 +20,7 @@ parser.add_argument('release', type=Path)
 parser.add_argument('--kill-at', type=int, required=True)
 parser.add_argument('--binary', type=Path, required=True)
 parser.add_argument('--preflight', action='store_true')
+parser.add_argument('--kill-scheduler', type=Path)
 args = parser.parse_args()
 root = args.root.resolve()
 config = json.loads((root / 'service.json').read_text())
@@ -106,8 +108,8 @@ def available():
 
 
 def restart_late_window(state, now, kill_at):
-    """Retain an interrupted measurement and begin a full new week."""
-    # A later miss stays in the history but cannot erase a full clean week
+    """Retain an interrupted measurement and begin 24 clean hours."""
+    # A later miss stays in the history but cannot erase 24 clean hours
     # already observed. Keep supervising until the original kill and unroll.
     if 'qualified_soak' in state:
         return False
@@ -122,9 +124,56 @@ def restart_late_window(state, now, kill_at):
         'ended_at_unix': now, 'late_heartbeats': late,
     })
     state.update(soak_began_at_unix=now, soak_began_height=state['last_confirmation_height'],
-                 soak_ends_at_unix=now + 7 * 86400,
-                 qualification_window_fits_before_kill=now + 7 * 86400 + 1800 < kill_at)
+                 soak_ends_at_unix=now + 86400,
+                 qualification_window_fits_before_kill=now + 86400 + 1800 < kill_at)
     state.pop('elapsed_week_observed_at_unix', None)
+    state.pop('elapsed_soak_observed_at_unix', None)
+    return True
+
+
+def use_24_hour_window(state):
+    """Shorten the current window without erasing its start or late history."""
+    if state.get('required_soak_seconds') == 86400:
+        return
+    if 'qualified_soak' in state:
+        completed = state['qualified_soak']
+        assert completed['ended_at_unix'] - completed['began_at_unix'] >= 86400
+    state['required_soak_seconds'] = 86400
+    if 'soak_began_at_unix' in state:
+        state['previous_soak_ends_at_unix'] = state['soak_ends_at_unix']
+        state['soak_ends_at_unix'] = state['soak_began_at_unix'] + 86400
+        state['qualification_window_fits_before_kill'] = (
+            state['soak_ends_at_unix'] + 1800 < state['kill_at_unix'])
+
+
+def schedule_qualified_kill(state, now):
+    """Replace the distant deletion task only after observing 24 clean hours."""
+    if args.kill_scheduler is None or 'qualified_soak' not in state or 'qualified_kill_task' in state:
+        return
+    if 'qualified_kill_at_unix' not in state:
+        if now + 300 >= args.kill_at:
+            return  # The existing bounded deletion is already sooner.
+        state['qualified_kill_at_unix'] = int(now) + 300
+        save(state_path, state)  # Retain the same task time through uncertain replies.
+    timestamp = datetime.fromtimestamp(state['qualified_kill_at_unix'], timezone.utc).isoformat()
+    result = subprocess.run([str(args.kill_scheduler), 'reschedule', timestamp],
+                            capture_output=True, text=True, timeout=180)
+    if result.returncode:
+        raise RuntimeError('The qualified deletion could not be scheduled: ' + result.stderr[-500:])
+    task = json.loads(result.stdout)
+    state['qualified_kill_task'] = task['name']
+
+
+def qualify_soak(state, now, height, delay):
+    if (now < state['soak_ends_at_unix'] or
+            height - state['last_confirmation_height'] >= delay // 2):
+        return False
+    state.setdefault('elapsed_soak_observed_at_unix', now)
+    state.setdefault('qualified_soak', {
+        'began_at_unix': state['soak_began_at_unix'],
+        'ended_at_unix': state['soak_ends_at_unix'],
+        'observed_at_unix': now, 'observed_height': height,
+    })
     return True
 
 
@@ -141,6 +190,7 @@ state = json.loads(state_path.read_text()) if state_path.exists() else {
     'confirmations': [], 'missing_endpoint_checks': 0,
 }
 assert state['kill_at_unix'] == args.kill_at
+use_24_hour_window(state)
 restart_late_window(state, time.time(), args.kill_at)
 save(state_path, state)
 
@@ -151,7 +201,7 @@ while time.time() <= state['deadline_unix']:
         height = chain()
         if state['phase'] == 'paid':
             break
-        if time.time() >= args.kill_at and state['phase'] != 'unroll':
+        if time.time() >= state.get('qualified_kill_at_unix', args.kill_at) and state['phase'] != 'unroll':
             state['missing_endpoint_checks'] = 0 if available() else state['missing_endpoint_checks'] + 1
             if state['missing_endpoint_checks'] >= 3:
                 state.update(phase='unroll', endpoint_lost_at_unix=time.time(),
@@ -192,24 +242,17 @@ while time.time() <= state['deadline_unix']:
                 else:
                     state['phase'] = 'soak' if 'soak_began_at_unix' in state else 'soak_setup'
         elif phase in {'soak_setup', 'soak'}:
-            if (phase == 'soak' and time.time() >= state['soak_ends_at_unix']
-                    and height - state['last_confirmation_height'] < config['unroll_delay'] // 2):
-                observed = time.time()
-                state.setdefault('elapsed_week_observed_at_unix', observed)
-                state.setdefault('qualified_soak', {
-                    'began_at_unix': state['soak_began_at_unix'],
-                    'ended_at_unix': state['soak_ends_at_unix'],
-                    'observed_at_unix': observed, 'observed_height': height,
-                })
+            if phase == 'soak':
+                qualify_soak(state, time.time(), height, config['unroll_delay'])
             # Broadcast early enough to allow confirmation delays inside the
             # six-block target. The twelve-block exit delay stays unchanged.
             if height >= state['last_confirmation_height'] + config['unroll_delay'] // 3 - 1:
                 result = run('refresh')
                 state.update(phase='confirm', transaction_id=result['txid'], action='refresh')
             elif phase == 'soak_setup' and not state['pending_publications']:
-                end = time.time() + 7 * 86400
+                end = time.time() + 86400
                 if end + 1800 >= args.kill_at:
-                    raise RuntimeError('The planned kill leaves less than a full week of normal operation.')
+                    raise RuntimeError('The planned kill leaves less than 24 hours of normal operation.')
                 state.update(phase='soak', soak_began_at_unix=time.time(),
                              soak_began_height=height, soak_ends_at_unix=end)
         elif phase == 'unroll':
@@ -231,6 +274,11 @@ while time.time() <= state['deadline_unix']:
                 except Exception as error:
                     state['last_publication_error'] = str(error)[:500]
         state.pop('last_error', None)
+        try:
+            schedule_qualified_kill(state, time.time())
+            state.pop('last_kill_schedule_error', None)
+        except Exception as error:
+            state['last_kill_schedule_error'] = str(error)[:500]
     except Exception as error:
         message = str(error)[:500]
         state['last_error'] = message
