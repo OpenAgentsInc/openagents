@@ -90,6 +90,84 @@ pub(super) async fn cleanup(state: &Path, args: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// A definite failed native build may be replaced before it publishes any
+/// artifact. Unknown submissions never enter this path. Keep its complete
+/// frozen request and accepted identity as a separate attempt record.
+pub(super) async fn retry_failed(state: &Path, args: &[String]) -> Result<()> {
+    let job: BuildJob = serde_json::from_slice(&fs::read(
+        args.first().ok_or("Choose the frozen build job.")?,
+    )?)?;
+    job.validate()?;
+    if job.inputs.environment != ENVIRONMENT
+        || job.phase != Phase::PublishingSpace
+        || now_ms() >= job.deadline_ms
+    {
+        return Err("Use this qualification's current clean build.".into());
+    }
+    let path = state.join("publication-work.json");
+    let original = fs::read(&path)?;
+    let mut work: Work = serde_json::from_slice(&original)?;
+    if work.job != job.id
+        || work.inputs_digest != job.artifact_inputs_digest()
+        || work.rootfs.is_some()
+        || work.base_requested
+    {
+        return Err("This publication cannot be replaced.".into());
+    }
+    let accepted = work
+        .accepted
+        .as_ref()
+        .ok_or("An unknown submission cannot be repeated.")?;
+    let client = TemplateClient::new(
+        &std::env::var("SPACE_API_URL")?,
+        Secret::new(std::env::var("SPACE_API_TOKEN")?),
+    )?;
+    let status = done(
+        client
+            .status(&BuildAccepted {
+                job_id: accepted.job_id.clone(),
+                template_name: accepted.template_name.clone(),
+            })
+            .await,
+    )?;
+    if !matches!(status.state, BuildState::Failed) || status.content_hash.is_some() {
+        return Err("Only a definite failed build with no published image can be replaced.".into());
+    }
+    let template = done(client.template(&job).await)?;
+    if template["name"] != template_name(&job)
+        || template["description"]
+            != format!(
+                "OpenAgents environment build {}",
+                job.artifact_inputs_digest()
+            )
+        || template["content_hash"]
+            .as_str()
+            .is_some_and(|value| !value.is_empty())
+        || !template["snapshots"].as_array().is_some_and(Vec::is_empty)
+    {
+        return Err("This namespace already has an image or its ownership is unknown.".into());
+    }
+    let history = state.join(format!("failed-native-{}.json", accepted.job_id));
+    if history.exists() {
+        if fs::read(&history)? != original {
+            return Err("The failed attempt record changed.".into());
+        }
+    } else {
+        fs::write(&history, &original)?;
+    }
+    let native =
+        coder_environment_operator::space::recipe(&job, &work.base, install_script().as_bytes())?;
+    work.native_recipe_digest = env::digest(&serde_json::to_vec(&native)?);
+    work.accepted = None;
+    work.build_issued = false;
+    save(&path, &work)?;
+    println!(
+        "{}",
+        json!({"job":job.id,"failed_attempt_retained":history.file_name().and_then(|name| name.to_str()),"new_attempt_not_submitted":true})
+    );
+    Ok(())
+}
+
 pub(super) async fn run(state: &Path, args: &[String]) -> Result<()> {
     let job: BuildJob = serde_json::from_slice(&fs::read(
         args.first().ok_or("Choose the frozen build job.")?,
@@ -238,7 +316,7 @@ pub(super) async fn run(state: &Path, args: &[String]) -> Result<()> {
             && template["snapshots"].as_array().is_some_and(|rows| {
                 rows.iter().any(|row| {
                     row["vcpu"] == 2
-                        && row["memory_mib"] == 1024
+                        && row["memory_mib"] == 4096
                         && row["snapshot_hash"].as_str().is_some_and(|s| !s.is_empty())
                 })
             })

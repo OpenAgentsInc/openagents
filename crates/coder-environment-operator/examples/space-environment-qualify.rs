@@ -168,6 +168,9 @@ async fn main() -> Result<()> {
     if action == "space-cleanup" {
         return publication::cleanup(&state, &args[3..]).await;
     }
+    if action == "retry-publication" {
+        return publication::retry_failed(&state, &args[3..]).await;
+    }
     let origin = std::env::var("BOAT_API_BASE")?;
     if !origin.starts_with("https://oa-boat-") || std::env::var("BOAT_API_KEY")?.is_empty() {
         return Err("Configure this project's Boat service for the qualification.".into());

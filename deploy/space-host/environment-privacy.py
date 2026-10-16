@@ -22,7 +22,7 @@ assert re.fullmatch(r'sha256:[a-f0-9]{64}', rootfs)
 published = json.loads((state / 'published-template.json').read_text())
 assert published['name'] == template and published['content_hash'] == rootfs
 base = next(row for row in published['snapshots']
-            if row['vcpu'] == 2 and row['memory_mib'] == 1024)
+            if row['vcpu'] == 2 and row['memory_mib'] == 4096)
 assert re.fullmatch(r'(sha256:)?[a-f0-9]{64}', base['snapshot_hash'])
 report_path = state / 'raw-privacy.json'
 assert not report_path.exists(), 'Keep the previous privacy evidence'
@@ -89,11 +89,11 @@ for node in nodes:
         if relative == rootfs + '/rootfs.ext4':
             assert 'sha256:' + digest == rootfs
             disk_seen = True
-        if relative.startswith('snapshots/' + rootfs + '/2vcpu-1024mib/'):
+        if relative.startswith('snapshots/' + rootfs + '/2vcpu-4096mib/'):
             memory_seen |= Path(path).name == 'snapshot.base'
         report['files'].append({'worker': node, 'path': relative,
                                 'sha256': digest, 'canary_matches': 0})
-    snapshot_dir = directory + '/snapshots/' + rootfs + '/2vcpu-1024mib'
+    snapshot_dir = directory + '/snapshots/' + rootfs + '/2vcpu-4096mib'
     if subprocess.run(['docker', 'exec', node, 'test', '-f',
                        snapshot_dir + '/snapshot.base'], capture_output=True).returncode == 0:
         combined = hashlib.sha256()

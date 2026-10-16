@@ -51,7 +51,7 @@ for line in Path('/proc/cpuinfo').read_text().split('\n\n')[0].splitlines():
         if key.strip() in ('model name', 'flags'):
             fields[key.strip()] = value.strip()
 inputs = {'execution': execution, 'spaced_compatibility_family': family,
-          'host_cpu': fields, 'shape': {'vcpus': 2, 'memory_mib': 1024}}
+          'host_cpu': fields, 'shape': {'vcpus': 2, 'memory_mib': 4096}}
 encoded = json.dumps(inputs, sort_keys=True, separators=(',', ':')).encode()
 profile = {'platform': {'os': 'linux', 'architecture': 'x86_64'},
            'guest_daemon': {'revision': version, 'digest': daemon},
@@ -61,9 +61,12 @@ profile = {'platform': {'os': 'linux', 'architecture': 'x86_64'},
            'boot_profile_digest': hashlib.sha256(encoded).hexdigest()}
 base = {'kind': 'space-template', 'reference': 'seed@' + manifest['content_hash'],
         'provider_identity': manifest['content_hash']}
-for name, value in [('compatibility-11811.json', profile), ('compatibility-inputs-11811.json', inputs),
+for name, value in [('compatibility-11811-4g.json', profile), ('compatibility-inputs-11811-4g.json', inputs),
                     ('base-artifact-11811.json', base)]:
     path = HOME / 'evidence' / name
+    if name == 'base-artifact-11811.json' and path.exists():
+        assert json.loads(path.read_text()) == value
+        continue
     assert not path.exists(), 'Keep the previous profile evidence'
     path.write_text(json.dumps(value, indent=2) + '\n')
     path.chmod(0o600)

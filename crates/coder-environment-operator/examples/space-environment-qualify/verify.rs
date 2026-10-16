@@ -80,6 +80,9 @@ async fn check(
     tool: &str,
     script: String,
 ) -> Result<ExecOutput> {
+    // The public command API runs as the seed's user account. These operator
+    // checks inspect admission files and prepare a fresh project as root.
+    let script = format!("sudo -n -H -- sh -c '{}'", script.replace('\'', "'\"'\"'"));
     start(
         rec,
         job,
@@ -205,7 +208,7 @@ pub(super) async fn run(state: &Path, args: &[String]) -> Result<()> {
         .as_array()
         .and_then(|rows| {
             rows.iter()
-                .find(|row| row["vcpu"] == 2 && row["memory_mib"] == 1024)
+                .find(|row| row["vcpu"] == 2 && row["memory_mib"] == 4096)
         })
         .ok_or("The published image has no ready small boot image.")?;
     let snapshot = base["snapshot_hash"]
@@ -341,7 +344,7 @@ done
             inventory.push(env::NamedArtifact {name:path.into(),digest:digest.into()});
         }
         if inventory.len() != 5 { return Err("The fresh tool inventory is incomplete.".into()); }
-        check(&driver, &mut verification, &job, rootfs, &computer, "shape", "environment.space.shape", "set -eu\ntest \"$(getconf _NPROCESSORS_ONLN)\" = 2\nawk '/^MemTotal:/ {print; if ($2 < 900000 || $2 > 1048576) exit 1}' /proc/meminfo\n".into()).await?;
+        check(&driver, &mut verification, &job, rootfs, &computer, "shape", "environment.space.shape", "set -eu\ntest \"$(getconf _NPROCESSORS_ONLN)\" = 2\nawk '/^MemTotal:/ {print; if ($2 < 3800000 || $2 > 4194304) exit 1}' /proc/meminfo\n".into()).await?;
         let materialize = coder_environment_operator::space::source_command(&job.inputs.source, coder_environment_setup::source::Mode::Materialize)?;
         let verify = coder_environment_operator::space::source_command(&job.inputs.source, coder_environment_setup::source::Mode::Verify)?;
         let source = check(&driver, &mut verification, &job, rootfs, &computer, "source", "environment.space.source", format!("set -eu\nmkdir -p /workspace\ncd /workspace\n(\n{materialize}\n)\n{verify}")).await?;
@@ -409,7 +412,7 @@ done
     ]);
     let shape = Shape {
         vcpus: 2,
-        memory_mib: 1024,
+        memory_mib: 4096,
         min_disk_gib: None,
     };
     let artifact = SpaceArtifact {

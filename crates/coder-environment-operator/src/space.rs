@@ -57,7 +57,11 @@ pub fn source_command(
     mode: coder_environment_setup::source::Mode,
 ) -> Result<String, &'static str> {
     let script = coder_environment_setup::source::script(pin, mode)?;
-    Ok(format!("sh -c '{}'", script.replace('\'', "'\"'\"'")))
+    Ok(isolated_shell(&script))
+}
+
+fn isolated_shell(script: &str) -> String {
+    format!("sh -c '{}'", script.replace('\'', "'\"'\"'"))
 }
 
 fn ready_builder(node: &Value) -> bool {
@@ -89,7 +93,7 @@ pub fn recipe(job: &BuildJob, base: &Artifact, script: &[u8]) -> Result<Value, &
         &job.inputs.source,
         coder_environment_setup::source::Mode::Materialize,
     )?;
-    let sanitize = coder_environment_build::sanitize::script(&job.inputs.plan);
+    let sanitize = isolated_shell(&coder_environment_build::sanitize::script(&job.inputs.plan));
     let cwd = format!("/workspace/{}", job.inputs.install_cwd);
     let cwd = format!("'{}'", cwd.replace('\'', "'\"'\"'"));
     let wipe = format!(
@@ -100,7 +104,7 @@ wipe='/.oa-environment-zero-{name}'
 trap 'rm -f "$wipe"' EXIT
 (set -C; : > "$wipe")
 code=0
-message=$(LC_ALL=C dd if=/dev/zero of="$wipe" bs=1048576 status=none conv=fsync 2>&1) || code=$?
+message=$(LC_ALL=C dd if=/dev/zero of="$wipe" bs=1048576 status=none conv=fsync oflag=direct 2>&1) || code=$?
 available=$(df -B1 --output=avail / | awk 'NR==2 {{print $1}}')
 rm -f "$wipe"
 trap - EXIT
@@ -113,7 +117,7 @@ echo 'Free filesystem blocks cleared.'
     );
     Ok(json!({
         "metadata":{"description":format!("OpenAgents environment build {}",job.artifact_inputs_digest())},
-        "build_config":{"vcpu":2,"memory_bytes":1073741824u64,"disk_bytes":8589934592u64},
+        "build_config":{"vcpu":2,"memory_bytes":4294967296u64,"disk_bytes":8589934592u64},
         "origin":{"from_template":{"base":base.reference}},
         "steps":[
             {"run":{"user":"root","command":"apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates curl"}},
@@ -390,7 +394,7 @@ impl TemplateClient {
                 "{ADMIN}/templates/{}/base-snapshot-policy",
                 template_name(job)
             ),
-            Some(json!({"ensure_base_snapshot":true,"snapshot_vcpu":2,"snapshot_memory_mib":1024})),
+            Some(json!({"ensure_base_snapshot":true,"snapshot_vcpu":2,"snapshot_memory_mib":4096})),
             None,
         )
         .await
@@ -650,5 +654,39 @@ mod tests {
             assert!(!ready_builder(&denied), "{pointer}");
         }
         assert!(!ready_builder(&json!({})));
+    }
+
+    #[test]
+    fn sanitization_removes_a_regular_login_file_under_an_errexit_caller() {
+        let scratch = tempfile::tempdir().unwrap();
+        let home = scratch.path().join("home");
+        let root = scratch.path().join("root");
+        let work = scratch.path().join("work");
+        std::fs::create_dir_all(home.join(".config/gh")).unwrap();
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&work).unwrap();
+        let login = home.join(".config/gh/hosts.yml");
+        std::fs::write(&login, "synthetic-credential").unwrap();
+        let plan = coder_environment_build::sanitize::Plan::new(
+            &Default::default(),
+            "/tmp/oa-commands/test",
+        );
+        let script = isolated_shell(&coder_environment_build::sanitize::script(&plan));
+        let output = std::process::Command::new("sh")
+            .args(["-c", &format!("set -e\n{script}")])
+            .current_dir(work)
+            .env_clear()
+            .env("PATH", std::env::var("PATH").unwrap_or_default())
+            .env("HOME", home)
+            .env("OA_ROOT", root)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert!(!login.exists());
+        assert!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .contains(&format!("sanitized {}", plan.digest()))
+        );
     }
 }
