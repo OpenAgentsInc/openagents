@@ -1,0 +1,12 @@
+{
+  "space-template-manager-local": {
+    "templateCache": null
+  },
+  "space-sandbox-manager-local": {
+    "networkCredentials": {
+      "enabled": false
+    },
+    "sandboxEviction": null,
+    "snapshotReaper": null
+  }
+}

@@ -1,0 +1,482 @@
+{
+  "global": {
+    "observability": {
+      "mode": "off",
+      "environment": "qualification",
+      "cluster": "oa-space-service"
+    }
+  },
+  "space-sandbox-network-policy": {
+    "internetExcept": [
+      "10.0.0.0/8",
+      "100.64.0.0/10",
+      "172.16.0.0/12",
+      "192.168.0.0/16",
+      "169.254.0.0/16"
+    ]
+  },
+  "space-api-local": {
+    "image": {
+      "repository": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/api",
+      "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
+      "pullPolicy": "IfNotPresent"
+    },
+    "replicaCount": 1,
+    "nodeSelector": {
+      "space.pplx.net/infra": "true"
+    },
+    "resources": {
+      "requests": {
+        "cpu": "100m",
+        "memory": "128Mi"
+      },
+      "limits": {
+        "cpu": "1",
+        "memory": "1Gi"
+      }
+    },
+    "clusterId": "oa-space-service",
+    "postgres": {
+      "secretName": "space-postgres",
+      "rolesSecretName": "space-db-roles",
+      "poolMaxConnections": 4
+    },
+    "dataPlanePublicUrl": "https://oa-space-service-data-157437760789.us-central1.run.app",
+    "nodeCensusResidency": "false",
+    "secrets": {
+      "create": false
+    },
+    "redis": {
+      "url": ""
+    }
+  },
+  "space-internal-api-local": {
+    "image": {
+      "repository": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/worker",
+      "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
+      "pullPolicy": "IfNotPresent"
+    },
+    "replicaCount": 1,
+    "nodeSelector": {
+      "space.pplx.net/infra": "true"
+    },
+    "resources": {
+      "requests": {
+        "cpu": "100m",
+        "memory": "128Mi"
+      },
+      "limits": {
+        "cpu": "1",
+        "memory": "1Gi"
+      }
+    },
+    "clusterId": "oa-space-service",
+    "postgres": {
+      "secretName": "space-postgres",
+      "rolesSecretName": "space-db-roles",
+      "poolMaxConnections": 4
+    }
+  },
+  "space-credmgr-authority-local": {
+    "image": {
+      "repository": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/worker",
+      "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
+      "pullPolicy": "IfNotPresent"
+    },
+    "replicaCount": 1,
+    "nodeSelector": {
+      "space.pplx.net/infra": "true"
+    },
+    "resources": {
+      "requests": {
+        "cpu": "100m",
+        "memory": "128Mi"
+      },
+      "limits": {
+        "cpu": "1",
+        "memory": "1Gi"
+      }
+    },
+    "clusterId": "oa-space-service",
+    "postgres": {
+      "secretName": "space-postgres",
+      "rolesSecretName": "space-db-roles",
+      "poolMaxConnections": 4
+    },
+    "keyBroker": {
+      "url": "https://oa-space-service-keys-ezxz4mgdsq-uc.a.run.app:443",
+      "tokenSecretName": "space-key-broker-token",
+      "caSecretName": "space-key-broker-ca",
+      "tenantNamespace": "urn:openagents:space:org",
+      "grantScheme": "urn:openagents:space:grant:v1"
+    }
+  },
+  "space-data-plane-local": {
+    "image": {
+      "repository": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/data-plane",
+      "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
+      "pullPolicy": "IfNotPresent"
+    },
+    "replicaCount": 1,
+    "nodeSelector": {
+      "space.pplx.net/infra": "true"
+    },
+    "resources": {
+      "requests": {
+        "cpu": "100m",
+        "memory": "128Mi"
+      },
+      "limits": {
+        "cpu": "1",
+        "memory": "1Gi"
+      }
+    }
+  },
+  "space-cluster-controller-local": {
+    "image": {
+      "repository": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/cluster-controller",
+      "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
+      "pullPolicy": "IfNotPresent"
+    },
+    "replicaCount": 1,
+    "nodeSelector": {
+      "space.pplx.net/infra": "true"
+    },
+    "resources": {
+      "requests": {
+        "cpu": "100m",
+        "memory": "128Mi"
+      },
+      "limits": {
+        "cpu": "1",
+        "memory": "1Gi"
+      }
+    },
+    "clusterId": "oa-space-service",
+    "postgres": {
+      "secretName": "space-postgres",
+      "rolesSecretName": "space-db-roles",
+      "poolMaxConnections": 4
+    },
+    "snapshotEndpoint": "https://storage.googleapis.com",
+    "snapshotRegion": "us-central1",
+    "snapshotBucket": "openagentsgemini-oa-space-service-snapshots",
+    "snapshotCredentialsSecretName": "space-object-store",
+    "redis": {
+      "url": ""
+    },
+    "reconcilers": {
+      "publicOperationDispatcher": {
+        "env": {
+          "SPACE_PUBLIC_OPERATION_DISPATCHER_EXECUTION_CONCURRENCY": "2"
+        }
+      },
+      "nodeDrain": {
+        "env": {
+          "SPACE_NODE_DRAIN_ENABLED": "false",
+          "SPACE_NODE_DRAIN_NODE_CENSUS_RESIDENCY": "false",
+          "SPACE_NODE_DRAIN_TERMINATOR_KIND": "noop"
+        }
+      },
+      "drainedNodeTerminator": {
+        "env": {
+          "SPACE_DRAINED_NODE_TERMINATOR_ENABLED": "false"
+        }
+      },
+      "warmPool": {
+        "env": {}
+      }
+    }
+  },
+  "space-node-manager-local": {
+    "image": {
+      "repository": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/worker",
+      "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
+      "pullPolicy": "IfNotPresent"
+    },
+    "clusterId": "oa-space-service",
+    "node": {
+      "objectStore": {
+        "credentialsSecretName": "space-object-store",
+        "endpoint": "https://storage.googleapis.com",
+        "region": "us-central1"
+      },
+      "diskAdmission": {
+        "minAvailableBytes": "53687091200",
+        "allocationReservationBytes": "8589934592"
+      }
+    },
+    "resources": {
+      "requests": {
+        "cpu": "500m",
+        "memory": "128Mi"
+      },
+      "limits": {
+        "cpu": "1",
+        "memory": "1Gi"
+      }
+    }
+  },
+  "space-runtime-manager-local": {
+    "image": {
+      "repository": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/worker",
+      "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
+      "pullPolicy": "IfNotPresent"
+    },
+    "clusterId": "oa-space-service",
+    "node": {
+      "objectStore": {
+        "credentialsSecretName": "space-object-store",
+        "endpoint": "https://storage.googleapis.com",
+        "region": "us-central1"
+      },
+      "diskAdmission": {
+        "minAvailableBytes": "53687091200",
+        "allocationReservationBytes": "8589934592"
+      }
+    },
+    "resources": {
+      "requests": {
+        "cpu": "250m",
+        "memory": "128Mi"
+      },
+      "limits": {
+        "cpu": "1",
+        "memory": "1Gi"
+      }
+    }
+  },
+  "space-volume-manager-local": {
+    "image": {
+      "repository": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/worker",
+      "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
+      "pullPolicy": "IfNotPresent"
+    },
+    "clusterId": "oa-space-service",
+    "node": {
+      "objectStore": {
+        "credentialsSecretName": "space-object-store",
+        "endpoint": "https://storage.googleapis.com",
+        "region": "us-central1"
+      },
+      "diskAdmission": {
+        "minAvailableBytes": "53687091200",
+        "allocationReservationBytes": "8589934592"
+      }
+    },
+    "resources": {
+      "requests": {
+        "cpu": "500m",
+        "memory": "128Mi"
+      },
+      "limits": {
+        "cpu": "1",
+        "memory": "1Gi"
+      }
+    }
+  },
+  "space-credential-manager-local": {
+    "image": {
+      "repository": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/worker",
+      "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
+      "pullPolicy": "IfNotPresent"
+    },
+    "clusterId": "oa-space-service",
+    "node": {
+      "objectStore": {
+        "credentialsSecretName": "space-object-store",
+        "endpoint": "https://storage.googleapis.com",
+        "region": "us-central1"
+      },
+      "diskAdmission": {
+        "minAvailableBytes": "53687091200",
+        "allocationReservationBytes": "8589934592"
+      }
+    },
+    "resources": {
+      "requests": {
+        "cpu": "100m",
+        "memory": "128Mi"
+      },
+      "limits": {
+        "cpu": "1",
+        "memory": "1Gi"
+      }
+    }
+  },
+  "space-template-manager-local": {
+    "image": {
+      "repository": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/worker",
+      "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
+      "pullPolicy": "IfNotPresent"
+    },
+    "clusterId": "oa-space-service",
+    "node": {
+      "objectStore": {
+        "credentialsSecretName": "space-object-store",
+        "endpoint": "https://storage.googleapis.com",
+        "region": "us-central1"
+      },
+      "diskAdmission": {
+        "minAvailableBytes": "53687091200",
+        "allocationReservationBytes": "8589934592"
+      }
+    },
+    "resources": {
+      "requests": {
+        "cpu": "250m",
+        "memory": "128Mi"
+      },
+      "limits": {
+        "cpu": "1",
+        "memory": "1Gi"
+      }
+    },
+    "templateCache": {
+      "budgetBytes": "68719476736",
+      "gcIntervalSecs": "60",
+      "gcGraceSecs": "3600",
+      "prefetchLatestN": "1"
+    }
+  },
+  "space-sandbox-manager-local": {
+    "image": {
+      "repository": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/worker",
+      "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
+      "pullPolicy": "IfNotPresent"
+    },
+    "clusterId": "oa-space-service",
+    "node": {
+      "objectStore": {
+        "credentialsSecretName": "space-object-store",
+        "endpoint": "https://storage.googleapis.com",
+        "region": "us-central1"
+      },
+      "diskAdmission": {
+        "minAvailableBytes": "53687091200",
+        "allocationReservationBytes": "8589934592"
+      }
+    },
+    "resources": {
+      "requests": {
+        "cpu": "500m",
+        "memory": "128Mi"
+      },
+      "limits": {
+        "cpu": "1",
+        "memory": "1Gi"
+      }
+    },
+    "snapshots": {
+      "bucket": "openagentsgemini-oa-space-service-snapshots",
+      "region": "us-central1",
+      "endpoint": "https://storage.googleapis.com"
+    },
+    "sandboxEviction": {
+      "enabled": true,
+      "engageFraction": "0.85",
+      "targetFraction": "0.75",
+      "minIdleSecs": "3600",
+      "intervalSecs": "60",
+      "reuploadMaxPerTick": "1"
+    },
+    "snapshotReaper": {
+      "enabled": true,
+      "engageFraction": "0.85",
+      "targetFraction": "0.75",
+      "intervalSecs": "60",
+      "graceSecs": "3600",
+      "idleSecs": "86400"
+    }
+  },
+  "space-node-ctl-local": {
+    "image": {
+      "repository": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/worker",
+      "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
+      "pullPolicy": "IfNotPresent"
+    },
+    "clusterId": "oa-space-service",
+    "node": {
+      "objectStore": {
+        "credentialsSecretName": "space-object-store",
+        "endpoint": "https://storage.googleapis.com",
+        "region": "us-central1"
+      },
+      "diskAdmission": {
+        "minAvailableBytes": "53687091200",
+        "allocationReservationBytes": "8589934592"
+      }
+    },
+    "resources": {
+      "requests": {
+        "cpu": "100m",
+        "memory": "128Mi"
+      },
+      "limits": {
+        "cpu": "1",
+        "memory": "1Gi"
+      }
+    }
+  },
+  "space-node-api-local": {
+    "image": {
+      "repository": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/worker",
+      "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
+      "pullPolicy": "IfNotPresent"
+    },
+    "clusterId": "oa-space-service",
+    "node": {
+      "objectStore": {
+        "credentialsSecretName": "space-object-store",
+        "endpoint": "https://storage.googleapis.com",
+        "region": "us-central1"
+      },
+      "diskAdmission": {
+        "minAvailableBytes": "53687091200",
+        "allocationReservationBytes": "8589934592"
+      }
+    },
+    "resources": {
+      "requests": {
+        "cpu": "250m",
+        "memory": "128Mi"
+      },
+      "limits": {
+        "cpu": "1",
+        "memory": "1Gi"
+      }
+    }
+  },
+  "space-build-manager-local": {
+    "image": {
+      "repository": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/worker",
+      "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
+      "pullPolicy": "IfNotPresent"
+    },
+    "clusterId": "oa-space-service",
+    "node": {
+      "objectStore": {
+        "credentialsSecretName": "space-object-store",
+        "endpoint": "https://storage.googleapis.com",
+        "region": "us-central1"
+      },
+      "diskAdmission": {
+        "minAvailableBytes": "53687091200",
+        "allocationReservationBytes": "8589934592"
+      }
+    },
+    "resources": {
+      "requests": {
+        "cpu": "500m",
+        "memory": "128Mi"
+      },
+      "limits": {
+        "cpu": "1",
+        "memory": "1Gi"
+      }
+    },
+    "objectStore": {
+      "bucket": "openagentsgemini-oa-space-service-templates"
+    }
+  }
+}
