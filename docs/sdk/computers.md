@@ -89,6 +89,8 @@ The maintained contract and its regeneration checks are described below.
 
 ## Published contract and generated Rust bindings
 
+The [verification record](computers-openapi-evidence.json) pins the serving image,
+contract hash, generated outputs, checks, and independent production workflow.
 The public [OpenAPI reference](https://api.openagents.com/v1/openapi.json)
 contains the implemented Computers operations and their public authentication.
 The checked-in [Computers subset](openapi.computers.json) contains 18 operations:

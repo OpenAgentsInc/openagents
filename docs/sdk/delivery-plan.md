@@ -122,8 +122,12 @@ output, retries, cancellation, and timeout. Bounded workspace files
 [#11803](https://github.com/OpenAgentsInc/openagents/issues/11803) are deployed;
 their [verification record](computers-files-evidence.json) covers binary and empty
 transfers, checksums, path restrictions, stop/wake persistence, and cleanup.
-Continue with the Computers specification
-[#11804](https://github.com/OpenAgentsInc/openagents/issues/11804) in the owner's
+The Computers specification
+[#11804](https://github.com/OpenAgentsInc/openagents/issues/11804) is published;
+its [verification record](computers-openapi-evidence.json) covers deterministic
+Rust generation, runtime/schema checks, and an independent public workflow.
+Continue with the Rust client
+[#11805](https://github.com/OpenAgentsInc/openagents/issues/11805) in the owner's
 requested sequence. Keep using the same worktree and push and close each issue
 before starting the next one.
 

@@ -1,0 +1,1059 @@
+{
+  "format": "openagents.computers.contract.evidence.v1",
+  "date": "2026-10-16",
+  "issue": 11804,
+  "implementation_commit": "de8379d51ad439bcce0b19da0735600e2dde735e",
+  "generated_fixture_commit": "afdf9f68617be75face3e47f04c6d84f4aac44c9",
+  "deployed_source_commit": "de8379d51ad439bcce0b19da0735600e2dde735e",
+  "deployments": {
+    "openagents-web-1-staging": {
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:940646d26b7f3bbb94ba3be704acb10aeedff1d58efb53a3c6bfbd1ceaabda43",
+      "traffic": [
+        {
+          "latestRevision": true,
+          "percent": 100,
+          "revisionName": "openagents-web-1-staging-keys-de8379d51a"
+        }
+      ]
+    },
+    "coder": {
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:940646d26b7f3bbb94ba3be704acb10aeedff1d58efb53a3c6bfbd1ceaabda43",
+      "traffic": [
+        {
+          "percent": 100,
+          "revisionName": "coder-web-940646d26b-20261016134227",
+          "tag": "new",
+          "url": "https://new---coder-ezxz4mgdsq-uc.a.run.app"
+        }
+      ]
+    },
+    "oa-computers": {
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-computers@sha256:4a7eb474da0c403c4f6cd84d371d346b1bd5245fd20a3ab80a25cf56d38c041f",
+      "traffic": [
+        {
+          "latestRevision": true,
+          "percent": 100,
+          "revisionName": "oa-computers-00005-b2m"
+        }
+      ]
+    },
+    "oa-boat": {
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-boat@sha256:046c1393b7841f96622e485160ab5b09b84ccb4f11ecba43ce5cfab953521354",
+      "traffic": [
+        {
+          "percent": 100,
+          "revisionName": "oa-boat-files-11803-4579ddd612"
+        }
+      ]
+    }
+  },
+  "deployment_adoption": "A concurrent account-key deployment built and shipped this exact implementation commit to both origins. Both serving contracts match all 18 selected operations and referenced components. Its image is adopted; our waiting deployment pipeline was stopped before any write. The independently built image is retained without replacing this deployment.",
+  "independent_build": {
+    "id": "e7122906-4842-4bb5-bb16-ab365c6c6699",
+    "region": "global",
+    "status": "SUCCESS",
+    "source": "de8379d51ad439bcce0b19da0735600e2dde735e",
+    "deployed": false,
+    "base_image": "sha256:32ef9473ce38f6acbaa1a5f8039492623ab50a4c4e48f63a36a661a768a0580a"
+  },
+  "contract": {
+    "canonical": "https://api.openagents.com/v1/openapi.json",
+    "subset": "docs/sdk/openapi.computers.json",
+    "sha256": "e7687d54c13cf8a660b9de1d9fd80cc86095d58f5d588648c2b3d1a5745d487b",
+    "operations": [
+      {
+        "operation_id": "getAccount",
+        "method": "GET",
+        "path": "/v1/account",
+        "params": "GetAccountParams",
+        "result": "GetAccountResult",
+        "authority": "account",
+        "success": [
+          200
+        ],
+        "binary_request": false,
+        "binary_response": false,
+        "retry": "manual",
+        "max_request_bytes": null,
+        "max_response_bytes": 1048576
+      },
+      {
+        "operation_id": "listComputers",
+        "method": "GET",
+        "path": "/v1/computers",
+        "params": "ListComputersParams",
+        "result": "ListComputersResult",
+        "authority": "account",
+        "success": [
+          200
+        ],
+        "binary_request": false,
+        "binary_response": false,
+        "retry": "read",
+        "max_request_bytes": 0,
+        "max_response_bytes": 1048576
+      },
+      {
+        "operation_id": "createComputer",
+        "method": "POST",
+        "path": "/v1/computers",
+        "params": "CreateComputerParams",
+        "result": "CreateComputerResult",
+        "authority": "account",
+        "success": [
+          200,
+          202
+        ],
+        "binary_request": false,
+        "binary_response": false,
+        "retry": "same_request_key",
+        "max_request_bytes": 16384,
+        "max_response_bytes": 1048576
+      },
+      {
+        "operation_id": "removeComputerNamedCapabilities",
+        "method": "DELETE",
+        "path": "/v1/computers/capabilities",
+        "params": "RemoveComputerNamedCapabilitiesParams",
+        "result": "RemoveComputerNamedCapabilitiesResult",
+        "authority": "account",
+        "success": [
+          204
+        ],
+        "binary_request": false,
+        "binary_response": false,
+        "retry": "manual_intent",
+        "max_request_bytes": 0,
+        "max_response_bytes": 1048576
+      },
+      {
+        "operation_id": "getComputerCapabilities",
+        "method": "GET",
+        "path": "/v1/computers/capabilities",
+        "params": "GetComputerCapabilitiesParams",
+        "result": "GetComputerCapabilitiesResult",
+        "authority": "account",
+        "success": [
+          200
+        ],
+        "binary_request": false,
+        "binary_response": false,
+        "retry": "read",
+        "max_request_bytes": 0,
+        "max_response_bytes": 1048576
+      },
+      {
+        "operation_id": "deleteComputer",
+        "method": "DELETE",
+        "path": "/v1/computers/{id}",
+        "params": "DeleteComputerParams",
+        "result": "DeleteComputerResult",
+        "authority": "account",
+        "success": [
+          200,
+          202,
+          204
+        ],
+        "binary_request": false,
+        "binary_response": false,
+        "retry": "manual_intent",
+        "max_request_bytes": 0,
+        "max_response_bytes": 1048576
+      },
+      {
+        "operation_id": "getComputer",
+        "method": "GET",
+        "path": "/v1/computers/{id}",
+        "params": "GetComputerParams",
+        "result": "GetComputerResult",
+        "authority": "account",
+        "success": [
+          200
+        ],
+        "binary_request": false,
+        "binary_response": false,
+        "retry": "read",
+        "max_request_bytes": 0,
+        "max_response_bytes": 1048576
+      },
+      {
+        "operation_id": "createComputerCommand",
+        "method": "POST",
+        "path": "/v1/computers/{id}/commands",
+        "params": "CreateComputerCommandParams",
+        "result": "CreateComputerCommandResult",
+        "authority": "account",
+        "success": [
+          200,
+          202
+        ],
+        "binary_request": false,
+        "binary_response": false,
+        "retry": "same_request_key",
+        "max_request_bytes": 73728,
+        "max_response_bytes": 1048576
+      },
+      {
+        "operation_id": "getComputerCommand",
+        "method": "GET",
+        "path": "/v1/computers/{id}/commands/{command}",
+        "params": "GetComputerCommandParams",
+        "result": "GetComputerCommandResult",
+        "authority": "account",
+        "success": [
+          200
+        ],
+        "binary_request": false,
+        "binary_response": false,
+        "retry": "read",
+        "max_request_bytes": 0,
+        "max_response_bytes": 1048576
+      },
+      {
+        "operation_id": "cancelComputerCommand",
+        "method": "POST",
+        "path": "/v1/computers/{id}/commands/{command}/cancel",
+        "params": "CancelComputerCommandParams",
+        "result": "CancelComputerCommandResult",
+        "authority": "account",
+        "success": [
+          200,
+          202
+        ],
+        "binary_request": false,
+        "binary_response": false,
+        "retry": "manual_intent",
+        "max_request_bytes": 0,
+        "max_response_bytes": 1048576
+      },
+      {
+        "operation_id": "attachComputerCommand",
+        "method": "GET",
+        "path": "/v1/computers/{id}/commands/{command}/output",
+        "params": "AttachComputerCommandParams",
+        "result": "AttachComputerCommandResult",
+        "authority": "account",
+        "success": [
+          200
+        ],
+        "binary_request": false,
+        "binary_response": false,
+        "retry": "read",
+        "max_request_bytes": 0,
+        "max_response_bytes": 1048576
+      },
+      {
+        "operation_id": "readComputerFile",
+        "method": "GET",
+        "path": "/v1/computers/{id}/files",
+        "params": "ReadComputerFileParams",
+        "result": "ReadComputerFileResult",
+        "authority": "account",
+        "success": [
+          200
+        ],
+        "binary_request": false,
+        "binary_response": true,
+        "retry": "read",
+        "max_request_bytes": 0,
+        "max_response_bytes": 4194304
+      },
+      {
+        "operation_id": "writeComputerFile",
+        "method": "PUT",
+        "path": "/v1/computers/{id}/files",
+        "params": "WriteComputerFileParams",
+        "result": "WriteComputerFileResult",
+        "authority": "account",
+        "success": [
+          200
+        ],
+        "binary_request": true,
+        "binary_response": false,
+        "retry": "read_and_compare",
+        "max_request_bytes": 4194304,
+        "max_response_bytes": 1048576
+      },
+      {
+        "operation_id": "stopComputer",
+        "method": "POST",
+        "path": "/v1/computers/{id}/stop",
+        "params": "StopComputerParams",
+        "result": "StopComputerResult",
+        "authority": "account",
+        "success": [
+          200,
+          202
+        ],
+        "binary_request": false,
+        "binary_response": false,
+        "retry": "manual_intent",
+        "max_request_bytes": 0,
+        "max_response_bytes": 1048576
+      },
+      {
+        "operation_id": "wakeComputer",
+        "method": "POST",
+        "path": "/v1/computers/{id}/wake",
+        "params": "WakeComputerParams",
+        "result": "WakeComputerResult",
+        "authority": "account",
+        "success": [
+          200,
+          202
+        ],
+        "binary_request": false,
+        "binary_response": false,
+        "retry": "manual_intent",
+        "max_request_bytes": 0,
+        "max_response_bytes": 1048576
+      },
+      {
+        "operation_id": "startAppLogin",
+        "method": "POST",
+        "path": "/v1/device/code",
+        "params": "StartAppLoginParams",
+        "result": "StartAppLoginResult",
+        "authority": "public",
+        "success": [
+          200
+        ],
+        "binary_request": false,
+        "binary_response": false,
+        "retry": "manual",
+        "max_request_bytes": null,
+        "max_response_bytes": 1048576
+      },
+      {
+        "operation_id": "signOutApp",
+        "method": "POST",
+        "path": "/v1/device/sign-out",
+        "params": "SignOutAppParams",
+        "result": "SignOutAppResult",
+        "authority": "account",
+        "success": [
+          200
+        ],
+        "binary_request": false,
+        "binary_response": false,
+        "retry": "manual",
+        "max_request_bytes": null,
+        "max_response_bytes": 1048576
+      },
+      {
+        "operation_id": "pollAppLogin",
+        "method": "POST",
+        "path": "/v1/device/token",
+        "params": "PollAppLoginParams",
+        "result": "PollAppLoginResult",
+        "authority": "public",
+        "success": [
+          200
+        ],
+        "binary_request": false,
+        "binary_response": false,
+        "retry": "manual",
+        "max_request_bytes": null,
+        "max_response_bytes": 1048576
+      }
+    ],
+    "source": "Owning Rust schema functions; app_openapi::computers_document selects operations and referenced components.",
+    "generator": "scripts/api/computers_codegen.py version 1; Python standard library and repository-pinned Rust 1.97.1 rustfmt.",
+    "generated": "crates/openagents-sdk/src/generated/computers.rs",
+    "wire_boundary": "Typed values and transport-independent request builders. Ergonomic HTTP execution, polling and persistent retry helpers belong to #11805.",
+    "compatibility": [
+      "Response objects preserve unknown fields; string enums accept future values without claiming readiness or success.",
+      "Missing file capabilities remain unsupported.",
+      "Request plans separate path components, query values, headers, JSON, and binary bytes; authentication belongs to the shared client.",
+      "Debug output omits values, file content, commands, and credentials.",
+      "202 means accepted work; observe completion. Reads and detached waits never replay execution.",
+      "Cloud delete explicitly uses kind=cloud; enrolled-name 204 and the capabilities-name compatibility route remain described.",
+      "Command output is authenticated byte-offset polling, not SSE/WebSockets.",
+      "Existing Coder 1.0.0 routes, fields, operation/refusal codes, and old API addresses are preserved."
+    ],
+    "combined_public_operations": 84,
+    "app_operations": 26
+  },
+  "checks": {
+    "standard_rust_passed": 36,
+    "standard_rust_ignored": 0,
+    "sdk": {
+      "auth": 10,
+      "history": 5,
+      "generated_contract": 5,
+      "copy": 1
+    },
+    "web": {
+      "computer_contract_and_native_handler": 5,
+      "app_composition": 4,
+      "copy": 3,
+      "public_aliases": 3
+    },
+    "exact_rebase_regenerated_rust_rerun": 30,
+    "python_generator": 6,
+    "python_public_reference": 4,
+    "format_rust_files": 10,
+    "documentation_paths": 54,
+    "regeneration": "clean; both Rust-exported schemas and generated Rust/index agree",
+    "negative_checks": [
+      "Actual native handler responses validate at EOF without delaying early 413 headers.",
+      "A deliberately added required field fails response validation.",
+      "Changed runtime operations/components, duplicate operation IDs, missing references, internal paths, and wrong security are refused.",
+      "The real rebase changed shared auth metadata; the stale snapshot test failed as intended. Regeneration and all affected checks passed before qualification."
+    ],
+    "staging_site": {
+      "passed": 34,
+      "failed": 0,
+      "skipped": 1,
+      "scope": "home,docs,aliases,terminal; installer execution skipped"
+    },
+    "production_site": {
+      "passed": 66,
+      "failed": 0,
+      "skipped": 2,
+      "skips": "Optional model call and signed-in traces; no live model/agent engine call was required."
+    },
+    "frozen_cli": "Hosted installer returned coder 1.0.0 (3230ded51181aa438656825da8245cea6c8e717c clean).",
+    "final_delivery_documentation_paths": 57
+  },
+  "public_contract_reads": {
+    "staging": "18 operations and all referenced components match",
+    "production": "18 operations and all referenced components match",
+    "credential_used": false
+  },
+  "production_workflow": {
+    "schema": "openagents.computers.openapi.evidence.v1",
+    "origin": "https://api.openagents.com",
+    "account": "acct_83d16a35955ef908",
+    "account_verified": true,
+    "computer": "cmp_8fa32749b2944ee2cec3",
+    "command": "trn_dee5ac8313a44af5f4b7",
+    "passed": true,
+    "cleaned": true,
+    "cleanup_errors": [],
+    "request_key": "sdk-contract-c1079f919c6a787f7acb686f",
+    "contract_sha256": "e7687d54c13cf8a660b9de1d9fd80cc86095d58f5d588648c2b3d1a5745d487b",
+    "file_bytes": 15,
+    "file_sha256": "b63e02d66c50a85d6113334320d88de9bcd1375a3b667316249b5af2e471043e",
+    "observations": [
+      {
+        "operation": "getAccount",
+        "status": 200,
+        "state": null,
+        "elapsed_seconds": 0.317
+      },
+      {
+        "operation": "createComputer",
+        "status": 202,
+        "state": "new",
+        "elapsed_seconds": 0.726
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "new",
+        "elapsed_seconds": 0.923
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 3.139
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 5.307
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 7.468
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 10.012
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 12.174
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 14.326
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 16.482
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 18.628
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 20.843
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 23.034
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 25.241
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 27.444
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 29.617
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 31.793
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 34.045
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 36.208
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 38.387
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 40.556
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 42.743
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 44.923
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 47.095
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 50.186
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 52.373
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 54.541
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 56.71
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 58.896
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 61.071
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 63.248
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 65.47
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 67.628
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 69.83
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 72.244
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 74.418
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 76.576
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 78.751
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 80.929
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "awake",
+        "elapsed_seconds": 83.095
+      },
+      {
+        "operation": "writeComputerFile",
+        "status": 200,
+        "state": null,
+        "elapsed_seconds": 83.568
+      },
+      {
+        "operation": "createComputerCommand",
+        "status": 202,
+        "state": "queued",
+        "elapsed_seconds": 83.826
+      },
+      {
+        "operation": "getComputerCommand",
+        "status": 200,
+        "state": "dispatching",
+        "elapsed_seconds": 83.991
+      },
+      {
+        "operation": "getComputerCommand",
+        "status": 200,
+        "state": "succeeded",
+        "elapsed_seconds": 86.172
+      },
+      {
+        "operation": "attachComputerCommand",
+        "status": 200,
+        "state": null,
+        "elapsed_seconds": 86.348
+      },
+      {
+        "operation": "stopComputer",
+        "status": 202,
+        "state": "checkpointing",
+        "elapsed_seconds": 86.533
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "checkpointing",
+        "elapsed_seconds": 86.727
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "checkpointing",
+        "elapsed_seconds": 88.887
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "checkpointing",
+        "elapsed_seconds": 91.068
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "checkpointing",
+        "elapsed_seconds": 93.241
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "checkpointing",
+        "elapsed_seconds": 95.542
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "checkpointing",
+        "elapsed_seconds": 97.697
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "checkpointing",
+        "elapsed_seconds": 99.876
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "checkpointing",
+        "elapsed_seconds": 102.083
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "checkpointing",
+        "elapsed_seconds": 104.245
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "checkpointing",
+        "elapsed_seconds": 106.418
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "stopped",
+        "elapsed_seconds": 108.596
+      },
+      {
+        "operation": "readComputerFile",
+        "status": 409,
+        "state": null,
+        "elapsed_seconds": 108.757
+      },
+      {
+        "operation": "wakeComputer",
+        "status": 202,
+        "state": "stopped",
+        "elapsed_seconds": 108.923
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 109.098
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 111.27
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 113.428
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 115.607
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 117.779
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 119.947
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 122.117
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 124.282
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 126.487
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 128.659
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 130.827
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 133.037
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 135.231
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 137.392
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 139.577
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 141.788
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 143.947
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 146.142
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 148.49
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 150.677
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 152.868
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "booting",
+        "elapsed_seconds": 155.021
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "awake",
+        "elapsed_seconds": 157.296
+      },
+      {
+        "operation": "readComputerFile",
+        "status": 200,
+        "state": null,
+        "elapsed_seconds": 157.808
+      },
+      {
+        "operation": "deleteComputer",
+        "status": 202,
+        "state": "awake",
+        "elapsed_seconds": 157.974
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "awake",
+        "elapsed_seconds": 158.161
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "stopping",
+        "elapsed_seconds": 160.355
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "stopping",
+        "elapsed_seconds": 162.513
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "stopping",
+        "elapsed_seconds": 164.698
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "stopping",
+        "elapsed_seconds": 166.857
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "stopping",
+        "elapsed_seconds": 169.034
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "stopping",
+        "elapsed_seconds": 171.206
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "stopping",
+        "elapsed_seconds": 173.378
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "stopping",
+        "elapsed_seconds": 175.569
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "stopping",
+        "elapsed_seconds": 177.747
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "deleting",
+        "elapsed_seconds": 179.966
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "deleting",
+        "elapsed_seconds": 182.129
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "deleting",
+        "elapsed_seconds": 184.325
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "deleting",
+        "elapsed_seconds": 186.537
+      },
+      {
+        "operation": "getComputer",
+        "status": 200,
+        "state": "deleted",
+        "elapsed_seconds": 188.708
+      },
+      {
+        "operation": "listComputers",
+        "status": 200,
+        "state": null,
+        "elapsed_seconds": 188.894
+      }
+    ],
+    "elapsed_seconds": 188.894
+  },
+  "discovery": [
+    "Canonical public reference already linked by the API quickstart and agent discovery page.",
+    "Computers contract and generated bindings linked from both served guides, docs/api/README.md, and docs/sdk/public-routes.md.",
+    "No internal service URL or privileged credential is required by the public workflow."
+  ],
+  "cleanup": {
+    "computer_deleted_and_absent": true,
+    "supplied_master_credential_revoked": false,
+    "temporary_sessions_created": false,
+    "owner_account_or_computers_used": false,
+    "chats_projects_drafts_created": false
+  },
+  "boundaries": [
+    "Current cloud-access account gate remains in force.",
+    "No new Coder release, package publication, language client, GitHub workflow, payment, or model execution.",
+    "No new SPACE, own-machine allocation, memory restore, or artifact-sharing claim."
+  ]
+}
