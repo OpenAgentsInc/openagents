@@ -1,0 +1,21 @@
+[package]
+name = "lab-kit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The shared Lab contract: documents, versions, changes, jobs, notes, cards, and the LabKind trait"
+
+# Pure: no IO, so it builds for every app (desktop, iOS, Android, wasm32) and
+# for both the root workspace and apps/openagents.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sha2 = "0.10"
+thiserror = "2"
+
+[dev-dependencies]
+proptest = "1.11.0"
+
+[lints]
+workspace = true

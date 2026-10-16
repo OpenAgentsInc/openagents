@@ -1,0 +1,26 @@
+{
+  "schema": "lab.card.v1",
+  "kind": "future",
+  "document": "x",
+  "version": 3,
+  "title": "From a newer kind",
+  "summary": "Delegation plays through its report card",
+  "state": null,
+  "state_text": null,
+  "refusal": null,
+  "primary": null,
+  "poster": null,
+  "strip": [],
+  "compare": null,
+  "notes": [],
+  "page": "https://openagents.com/labs/future/x",
+  "private_local": false,
+  "detail": {
+    "anything": [
+      1,
+      2,
+      3
+    ]
+  },
+  "view": "hologram"
+}

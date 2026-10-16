@@ -204,8 +204,8 @@ Both start the Lab service if it isn't running.
 
 ## In Coder Desktop
 
-Coder Desktop ([OpenAgentsInc/coder-desktop](https://github.com/OpenAgentsInc/coder-desktop)
-`main`, from `895ae27c`) offers the Lab's tools to every agent it runs: Claude
+Coder Desktop (now in this repository at `apps/openagents/`; the Lab work
+landed as `84d10a9554`) offers the Lab's tools to every agent it runs: Claude
 Code, Codex, Cursor, and the other harnesses. It reads all 18 tools from the
 running Lab, so it has the newer ones (`lab_new`, `lab_lines`, `lab_voice`,
 `lab_keep_captions`) that the frozen Coder 1.0 terminal lacks. Ask in any chat,
@@ -225,10 +225,10 @@ Each result shows a card above the answer, drawn natively:
 **Open in the Lab player and timeline** opens the player in a Coder Browser
 tab, with the versions, compare, notes and timeline editing.
 
-Build and run it from the fork:
+Build and run it from this repository:
 
 ```
-cd ~/work/coder-desktop && git pull && RUSTUP_TOOLCHAIN=1.98.1 scripts/run-macos-dev.sh
+cd apps/openagents && scripts/run-macos-dev.sh
 ```
 
 A Coder Dev that is already running keeps its old build until you quit and

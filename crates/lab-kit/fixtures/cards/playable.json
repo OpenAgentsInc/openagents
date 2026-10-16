@@ -1,0 +1,22 @@
+{
+  "schema": "lab.card.v1",
+  "kind": "game",
+  "document": "ice-cream-man",
+  "version": 3,
+  "title": "The Ice Cream Man",
+  "summary": "Delegation plays through its report card",
+  "state": null,
+  "state_text": null,
+  "refusal": null,
+  "primary": "art_build_v7",
+  "poster": null,
+  "strip": [],
+  "compare": null,
+  "notes": [],
+  "page": "https://openagents.com/labs/game/ice-cream-man",
+  "private_local": false,
+  "detail": {
+    "bot_wins": 0.62
+  },
+  "view": "playable"
+}

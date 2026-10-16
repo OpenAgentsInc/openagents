@@ -1,0 +1,23 @@
+{
+  "schema": "lab.card.v1",
+  "kind": "ship",
+  "document": "tug",
+  "version": 3,
+  "title": "Tug",
+  "summary": "Delegation plays through its report card",
+  "state": null,
+  "state_text": null,
+  "refusal": {
+    "code": "mass_budget",
+    "message": "The tug would weigh 14.2 t; its budget is 12 t."
+  },
+  "primary": null,
+  "poster": null,
+  "strip": [],
+  "compare": null,
+  "notes": [],
+  "page": null,
+  "private_local": false,
+  "detail": {},
+  "view": "report"
+}

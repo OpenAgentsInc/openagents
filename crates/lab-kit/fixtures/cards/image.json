@@ -1,0 +1,20 @@
+{
+  "schema": "lab.card.v1",
+  "kind": "photo",
+  "document": "beach",
+  "version": 3,
+  "title": "Beach, warmer",
+  "summary": "Delegation plays through its report card",
+  "state": null,
+  "state_text": null,
+  "refusal": null,
+  "primary": "art_photo_v2",
+  "poster": null,
+  "strip": [],
+  "compare": null,
+  "notes": [],
+  "page": null,
+  "private_local": false,
+  "detail": {},
+  "view": "image"
+}

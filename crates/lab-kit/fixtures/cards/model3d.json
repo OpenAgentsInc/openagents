@@ -1,0 +1,22 @@
+{
+  "schema": "lab.card.v1",
+  "kind": "cad",
+  "document": "fan-bracket",
+  "version": 3,
+  "title": "Fan bracket",
+  "summary": "5 mm thicker base",
+  "state": null,
+  "state_text": null,
+  "refusal": null,
+  "primary": "art_glb_v4",
+  "poster": "art_hero_v4",
+  "strip": [],
+  "compare": null,
+  "notes": [],
+  "page": "https://openagents.com/cad/fan-bracket",
+  "private_local": false,
+  "detail": {
+    "mass_kg": 0.041
+  },
+  "view": "model3d"
+}

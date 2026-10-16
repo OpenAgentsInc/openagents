@@ -1,0 +1,20 @@
+{
+  "schema": "lab.card.v1",
+  "kind": "video",
+  "document": "episode-290",
+  "version": 3,
+  "title": "Episode 290 · Working cut",
+  "summary": "Delegation plays through its report card",
+  "state": "running",
+  "state_text": "Rendering the preview, about 3 min…",
+  "refusal": null,
+  "primary": null,
+  "poster": "art_poster_v3",
+  "strip": [],
+  "compare": null,
+  "notes": [],
+  "page": "https://openagents.com/labs/video/episode-290",
+  "private_local": false,
+  "detail": {},
+  "view": "video"
+}

@@ -1,0 +1,41 @@
+{
+  "schema": "lab.card.v1",
+  "kind": "video",
+  "document": "episode-290",
+  "version": 3,
+  "title": "Episode 290 · Working cut",
+  "summary": "Delegation plays through its report card",
+  "state": "done",
+  "state_text": null,
+  "refusal": null,
+  "primary": "art_render_v3",
+  "poster": "art_poster_v3",
+  "strip": [
+    "art_f1",
+    "art_f2"
+  ],
+  "compare": null,
+  "notes": [
+    {
+      "locator": {
+        "at": "time",
+        "seconds": 86.0
+      },
+      "author": "owner",
+      "text": "the glare's overdone"
+    }
+  ],
+  "page": "https://openagents.com/labs/video/episode-290",
+  "private_local": true,
+  "detail": {
+    "duration_seconds": 274.0,
+    "shots": [
+      {
+        "name": "s4-delegation",
+        "start": 76.5,
+        "end": 89.0
+      }
+    ]
+  },
+  "view": "video"
+}
