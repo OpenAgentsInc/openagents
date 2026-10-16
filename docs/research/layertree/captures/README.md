@@ -235,5 +235,15 @@ Guardian HALT observed at block 326605; signing refused; escape first valid at 3
 Source: [crates/layertree-tee-lab/fixtures/events/signet-halt-waiting.jsonl](../../../../crates/layertree-tee-lab/fixtures/events/signet-halt-waiting.jsonl), event 7.
 Signet transaction: `bab5f1752dc24432e1d760642d4d26c335a83b57a4401bdb39cfeeb2ef0b492f`.
 
-Normal signet operations are captured above. Signet alarm and final recovery views
-remain #11793/#11794 measurements; the regtest images are not substitutes.
+## signet halt paid
+
+![Guardian HALT recovery confirmed at signet block 326616: five exact 1,000-sat payouts; external fee 934 sats.](signet-halt-paid.jpg)
+
+Guardian HALT recovery confirmed at signet block 326616: five exact 1,000-sat payouts; external fee 934 sats.
+
+Source: [crates/layertree-tee-lab/fixtures/events/signet-halt-paid.jsonl](../../../../crates/layertree-tee-lab/fixtures/events/signet-halt-paid.jsonl), event 13.
+Signet transaction: `4cff145e6592bd1899f015b9187a6957541752a9c56eff1fc558a9d0c7fea747`.
+
+Normal signet operations and separate guardian HALT recovery are captured above.
+The primary tree’s physical-loss recovery and signet alarm remain #11793/#11794
+measurements; the regtest images are not substitutes.

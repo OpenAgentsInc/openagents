@@ -15,6 +15,7 @@ parser.add_argument("--film-shot", type=Path)
 parser.add_argument("--scratch", required=True, type=Path)
 parser.add_argument("--signet", action="store_true", help="Render the confirmed signet and separate negative-policy views.")
 parser.add_argument("--signet-halt", action="store_true", help="Render the measured guardian HALT while its escape waits for CSV.")
+parser.add_argument("--signet-halt-paid", action="store_true", help="Render confirmed member payouts after the guardian HALT.")
 parser.add_argument("--clips", type=Path, default=Path.home() / "work/film-out/verse")
 args = parser.parse_args()
 args.scratch.mkdir(parents=True, exist_ok=True)
@@ -68,6 +69,10 @@ if args.signet_halt:
     halted = "crates/layertree-tee-lab/fixtures/events/signet-halt-waiting.jsonl"
     plans = [("signet-halt-waiting", halted, lambda e: e["seq"] == len(read(halted)) - 1,
               "Guardian HALT observed at block 326605; signing refused; escape first valid at 326616; no payouts yet.")]
+if args.signet_halt_paid:
+    halted = "crates/layertree-tee-lab/fixtures/events/signet-halt-paid.jsonl"
+    plans = [("signet-halt-paid", halted, lambda e: e["seq"] == len(read(halted)) - 1,
+              "Guardian HALT recovery confirmed at signet block 326616: five exact 1,000-sat payouts; external fee 934 sats.")]
 existing = output / "sources.json"
 sources = json.loads(existing.read_text()) if existing.exists() else []
 replacing = {name + ".jpg" for name, *_ in plans}
@@ -87,6 +92,8 @@ for name, path, select, caption in plans:
     subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(png),
                     "-frames:v", "1", "-q:v", "2", "-pix_fmt", "yuvj444p", str(output / f"{name}.jpg")], check=True)
     txid = event.get("txid")
+    if name == "signet-halt-paid":
+        txid = next(e["txid"] for e in events if e["kind"] == "unroll_confirmed")
     if name == "signet-halt-waiting":
         txid = next(e["outpoint"].split(":")[0] for e in events if e["kind"] == "tree_open")
     if name == "alarm":
@@ -109,11 +116,11 @@ for source in sources:
     if source["txid"]:
         lines += [f"{'Signet' if source['network']=='signet' else 'Regtest' if source['network']=='regtest' else 'Illustrative'} transaction: `{source['txid']}`."]
     lines += [""]
-lines += ["Normal signet operations are captured above. Signet alarm and final recovery views", "remain #11793/#11794 measurements; the regtest images are not substitutes.", ""]
+lines += ["Normal signet operations and separate guardian HALT recovery are captured above.", "The primary tree’s physical-loss recovery and signet alarm remain #11793/#11794", "measurements; the regtest images are not substitutes.", ""]
 (output / "README.md").write_text("\n".join(lines))
 if args.film_shot:
     args.clips.mkdir(parents=True, exist_ok=True)
-    names = ["signet-halt-waiting"] if args.signet_halt else ["signet-tree", "signet-transitions"] if args.signet else ["tree", "transitions", "alarm", "unroll"]
+    names = ["signet-halt-paid"] if args.signet_halt_paid else ["signet-halt-waiting"] if args.signet_halt else ["signet-tree", "signet-transitions"] if args.signet else ["tree", "transitions", "alarm", "unroll"]
     for name in names:
         shot = REPO / f"docs/verse/film/verse-shots/layertree-{name}.json"
         subprocess.run([str(args.film_shot.resolve()), str(shot), "--out", str(args.clips / f"layertree-{name}.mp4")],

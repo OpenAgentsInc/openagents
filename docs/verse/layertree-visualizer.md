@@ -223,3 +223,13 @@ the observed HALT/refusal. SHA-256:
 The exporter also refused changed refusal and delay fields and an unsupported
 payout claim without writing events. Re-exporting the original normal run
 produced the identical 21-event fixture.
+
+The later `signet-halt-paid.jsonl` records the original saved escape and
+fee child confirmed at block 326616: five exact 1,000-sat payouts and
+934 sats paid externally in fees. Re-render its final still and eight-second
+clip with `scripts/layertree-captures.py --signet-halt-paid`. The shot and
+Video Lab scene are `layertree-signet-halt-paid.json` and
+`layertree-signet-halt-paid-scene.json` under the same film directories.
+The [final recovery report](../research/layertree/2026-10-16-signet-verification.md)
+links the public archive and refusal checks. This is the separate guardian
+HALT experiment; the primary tree's scheduled physical-loss run is still active.

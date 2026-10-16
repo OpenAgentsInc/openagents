@@ -232,5 +232,14 @@
     "network": "signet",
     "txid": "bab5f1752dc24432e1d760642d4d26c335a83b57a4401bdb39cfeeb2ef0b492f",
     "caption": "Guardian HALT observed at block 326605; signing refused; escape first valid at 326616; no payouts yet."
+  },
+  {
+    "image": "signet-halt-paid.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/signet-halt-paid.jsonl",
+    "sha256": "4c3b11feea8f170ece7e1a7bf0fa6fa8424fc2ea7f6a065c93cdf948b41c9348",
+    "seq": 13,
+    "network": "signet",
+    "txid": "4cff145e6592bd1899f015b9187a6957541752a9c56eff1fc558a9d0c7fea747",
+    "caption": "Guardian HALT recovery confirmed at signet block 326616: five exact 1,000-sat payouts; external fee 934 sats."
   }
 ]

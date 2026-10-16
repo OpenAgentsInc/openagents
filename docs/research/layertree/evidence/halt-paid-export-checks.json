@@ -1,0 +1,28 @@
+{
+  "negative_checks": [
+    {
+      "case": "wrong-refusal",
+      "refused": true,
+      "no_event_output": true,
+      "reason": "missing observed HALT and exact signing refusal"
+    },
+    {
+      "case": "wrong-delay",
+      "refused": true,
+      "no_event_output": true,
+      "reason": "HALT timing differs from the confirmed output and CSV delay"
+    },
+    {
+      "case": "wrong-fee",
+      "refused": true,
+      "no_event_output": true,
+      "reason": "confirmed escape or CPFP differs from its saved package and timing"
+    },
+    {
+      "case": "wrong-child",
+      "refused": true,
+      "no_event_output": true,
+      "reason": "confirmed escape or CPFP differs from its saved package and timing"
+    }
+  ]
+}

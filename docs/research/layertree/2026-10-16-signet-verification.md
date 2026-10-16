@@ -132,8 +132,52 @@ from `6fb4b4e71d4fb21d8bbd008ee5a4775cf0cbdea6` reproduced on both builders
 (OCI archive SHA-256
 `d74332efaaeb45fed4bb32c4d32ab59b634437df7ca3f1b7010f9ece48f32efe`).
 Rekor entry is 3278267593. The verifier rejected the release before its
-actual 10-minute notice elapsed. Its separate VM has a 24-hour native
+actual 10-minute notice elapsed. Its separate VM had a 24-hour native
 deadline. `scripts/layertree/observe-halt.py` waits for sync, funding
 confirmation, and release admission, then checks HALT signing refusal and
-runs saved-package recovery through the separate Core node. Its read-only
-preflight passed; this setup is not yet a HALT or payout result.
+runs saved-package recovery through the separate Core node. The actual guardian HALT occurred at height **326605**: the attested state
+reported `halted: true`, zero ephemeral keys, and the exact `Halted` refusal
+for a subsequent refresh. Mirror publication received an ACK and passed
+readback over a fresh connection.
+
+Saved-package recovery is now complete. Core refused the original escape
+with `non-BIP68-final` at tip 326614, one block before admission for the
+first valid block, **326616**. The original escape transaction
+`4cff145e6592bd1899f015b9187a6957541752a9c56eff1fc558a9d0c7fea747`
+and its fee child both confirmed at **326616**. All five members received
+exactly **1,000 sats** at their original exit scripts. The parent fee was
+zero; the separate anchor child paid **934 sats**. No member amount funded
+that fee.
+
+The independent exporter checked the historical Google-backed TDX token,
+release and rebuild records, every member's saved package signature, exact
+consensus transaction bytes, CSV timing, child anchor input, fees, and
+confirmed payout scripts and amounts. It rejected four altered captures:
+wrong HALT refusal, delay, fee, and child transaction. See the
+[negative checks](evidence/halt-paid-export-checks.json).
+
+The [final public archive](evidence/signet-halt-paid-2026-10-16.tar.gz)
+contains 62 files plus a SHA-256 manifest, including the public capture,
+release proofs, raw Core transaction and header reads, confirmed unspent
+member outputs, and exporter identity. Archive SHA-256:
+`e6c903a792a2eaa445ae8b2d5c3f86a31312fa0f315f93e78e20a72e0fe3536e`.
+The [14-event signet fixture](../../../crates/layertree-tee-lab/fixtures/events/signet-halt-paid.jsonl)
+pays 5,000 sats; the earlier waiting capture remains available.
+
+![Five exact payouts after the guardian HALT](captures/signet-halt-paid.jpg)
+
+The 1920×1080 still was visually checked. The corresponding H.264 clip,
+`~/work/film-out/verse/layertree-signet-halt-paid.mp4`, is eight seconds at
+24 fps and CRF 12; `ffprobe` confirmed its dimensions and duration. Both a
+[film shot](../../verse/film/verse-shots/layertree-signet-halt-paid.json)
+and a [Video Lab scene](../../verse/film/layertree-signet-halt-paid-scene.json)
+are committed. Re-render with `scripts/layertree-captures.py --signet-halt-paid`.
+
+This measures guardian HALT followed by public-package recovery. VM cleanup
+follows payout verification; it does not establish the primary tree's
+scheduled physical-loss recovery or its required week of heartbeats.
+
+After all payout and archive checks passed, GCP deleted only
+`oa-layertree-halt-tdx` (instance ID `4848185565226450307`). A subsequent
+instance inventory returned no matching VM. The primary service, mirrors,
+and shared builder/Core remain running.

@@ -729,8 +729,17 @@ limit. The [gallery](captures/README.md#signet-tree) and its source manifest
 link the exact checked log. A separate negative view changes the expected
 tree ID for a captured token; it is not a live signer failure.
 
-The primary week began 2026-10-16 at 11:01:32 UTC. Final signet alarm and
-kill/HALT unroll captures still require #11793 and #11794 results.
+The primary measurement restarted on 2026-10-16 at 13:34:53 UTC after a
+seven-block confirmation gap exceeded the six-block target. Its scheduled
+physical-loss recovery and the signet alarm still require #11793/#11794 results.
+
+![Five confirmed payouts after the separate guardian HALT](captures/signet-halt-paid.jpg)
+
+The separate guardian HALT run recovered all five exact 1,000-sat payouts at
+height 326616, with 934 sats in external anchor fees. The
+[P1 report](2026-10-16-signet-verification.md) links the checked public package,
+Core reads, and final capture. This completes the separate HALT recovery;
+it does not replace the primary week or physical-loss measurement.
 
 ## 11. What the sandbox proves, and what it does not
 

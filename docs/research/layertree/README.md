@@ -20,7 +20,9 @@ signet creation, join, update, exit, and refresh transactions confirmed at
 heights 326595–326599, with Google-backed image/key/channel checks and
 public mirror readbacks. Its linked archive contains the public captures
 and actual confirmation and fee measurements. The week-long run and
-kill/HALT recovery measurements remain in progress under #11793.
+physical-loss recovery remains in progress under #11793. The separate
+guardian HALT recovered all five exact 1,000-sat payouts at signet height
+326616; see the report and [final capture](captures/signet-halt-paid.jpg).
 
 ![Confirmed five-member signet tree](captures/signet-tree.jpg)
 

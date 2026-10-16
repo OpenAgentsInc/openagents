@@ -1,0 +1,59 @@
+{
+  "renderer": "verse-film-shot",
+  "shot": {
+    "name": "layertree-signet-halt-paid",
+    "notes": "Actual guardian HALT and signing refusal, then saved-package recovery confirmed at signet block 326616; five exact 1,000-sat payouts with 934 sats in external fees. This recovery precedes VM cleanup; it is not the primary tree physical-loss run.",
+    "scene": {
+      "kind": "layer_tree",
+      "events": "crates/layertree-tee-lab/fixtures/events/signet-halt-paid.jsonl",
+      "at": 3,
+      "caption": "Signet HALT recovery: five confirmed 1,000-sat payouts; block 326616",
+      "play": true,
+      "from": 3,
+      "to": 13,
+      "rate": 1.25
+    },
+    "duration": 8,
+    "fps": 24.0,
+    "width": 1920,
+    "height": 1080,
+    "subframes": 1,
+    "prewarm": 1,
+    "rig": {
+      "keys": [
+        {
+          "t": 0.0,
+          "eye": [
+            6.0,
+            18.0,
+            30.0
+          ],
+          "target": [
+            1.0,
+            8.0,
+            0.0
+          ],
+          "focal_mm": 38.0,
+          "ease": "in_out"
+        },
+        {
+          "t": 8.0,
+          "eye": [
+            -6.0,
+            18.0,
+            30.0
+          ],
+          "target": [
+            1.0,
+            8.0,
+            0.0
+          ],
+          "focal_mm": 38.0
+        }
+      ]
+    },
+    "crf": 12
+  },
+  "notes": "Actual guardian HALT and signing refusal, then saved-package recovery confirmed at signet block 326616; five exact 1,000-sat payouts with 934 sats in external fees. This recovery precedes VM cleanup; it is not the primary tree physical-loss run.",
+  "out": "~/work/film-out/verse/layertree-signet-halt-paid.mp4"
+}

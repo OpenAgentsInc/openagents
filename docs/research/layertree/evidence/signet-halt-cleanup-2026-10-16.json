@@ -1,0 +1,9 @@
+{
+  "network": "signet",
+  "instance": "oa-layertree-halt-tdx",
+  "instance_id": "4848185565226450307",
+  "deleted_after_confirmed_payout_verification": true,
+  "checked_at": "2026-10-16T14:00:49.069113+00:00",
+  "remaining_matching_instances": [],
+  "primary_deleted": false
+}
