@@ -20,6 +20,7 @@ pub mod context;
 pub mod host;
 pub mod records;
 pub mod terms;
+pub mod wire;
 
 #[cfg(test)]
 mod tests;

@@ -66,6 +66,7 @@ pub struct Book {
     entries: Vec<Entry>,
     index: BTreeMap<String, usize>,
     funded: Option<(String, String)>,
+    originals: BTreeMap<String, serde_json::Value>,
 }
 
 fn fail<T>(why: &str) -> Result<T> {
@@ -83,12 +84,22 @@ impl Book {
             entries: Vec::new(),
             index: BTreeMap::new(),
             funded: None,
+            originals: BTreeMap::new(),
         })
     }
 
     #[must_use]
     pub fn entries(&self) -> &[Entry] {
         &self.entries
+    }
+
+    /// Original canonical wire bytes' parsed value, when this book was fed
+    /// through the authenticated wire admission rather than compact records.
+    pub fn original(&self, digest: &str) -> Option<&serde_json::Value> {
+        self.originals.get(digest)
+    }
+    pub(crate) fn remember_original(&mut self, digest: String, body: serde_json::Value) {
+        self.originals.insert(digest, body);
     }
 
     fn get(&self, digest: &str) -> Option<&Record> {
@@ -147,11 +158,21 @@ impl Book {
     /// breaks the terms or the records before it. Nothing is retained then.
     pub fn apply(&mut self, record: Record, signer: &str, observed_at: u64) -> Result<Applied> {
         let digest = digest_of(&record)?;
-        if self.index.contains_key(&digest) {
-            return Ok(Applied::Duplicate(digest));
-        }
+        self.apply_canonical(record, signer, observed_at, digest)
+    }
+
+    pub(crate) fn apply_canonical(
+        &mut self,
+        record: Record,
+        signer: &str,
+        observed_at: u64,
+        digest: String,
+    ) -> Result<Applied> {
         if record.issuer() != signer {
             return fail("the record's issuer is not its signer");
+        }
+        if self.index.contains_key(&digest) {
+            return Ok(Applied::Duplicate(digest));
         }
         if record.order() != self.terms.order {
             return fail("the record is for another order");

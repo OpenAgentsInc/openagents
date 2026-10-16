@@ -127,9 +127,11 @@ pub fn admit_rework(
             return Err("repair context exceeds its byte limit".into());
         }
         if origin.digest == review_digest {
-            let expected =
-                contracts::jcs(&serde_json::to_value(&review.record).map_err(|e| e.to_string())?)
-                    .map_err(|e| e.to_string())?;
+            let value = book
+                .original(review_digest)
+                .cloned()
+                .unwrap_or(serde_json::to_value(&review.record).map_err(|e| e.to_string())?);
+            let expected = contracts::jcs(&value).map_err(|e| e.to_string())?;
             if raw != expected {
                 return Err("repair review bytes differ".into());
             }

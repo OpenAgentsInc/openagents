@@ -28,3 +28,12 @@ publication until the host reopens; a duplicate cannot publish an unsaved
 record. A missing initialized journal refuses to start a new history. Journals
 are bounded to 4,096 records and 16 MiB and are saved with private permissions,
 a synced file, an atomic rename, and a directory sync.
+
+`wire::Admission::from_confirmed` requires the confirmed MKT negotiation and
+keeps the full OrderRef and ArtifactRefs on incoming LAB records. It checks
+reference bytes, pinned JSON deliverable schemas, recipient, original signer,
+and policy before applying the compact role model. The model keeps the
+original signed record's identity and body, so subsequent references and repair
+context never use a hash of a different representation. This converter grants
+no execution or payment authority; task and checker evidence need their own
+runtime admission.

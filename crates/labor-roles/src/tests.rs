@@ -1302,3 +1302,6 @@ fn an_uncertain_journal_write_cannot_publish_a_nondurable_duplicate() {
     assert!(!host.issue(&record, NOW + 2, [5; 32]).unwrap().is_empty());
     assert_eq!(host.book.entries().len(), 1);
 }
+
+#[path = "tests/wire.rs"]
+mod wire;
