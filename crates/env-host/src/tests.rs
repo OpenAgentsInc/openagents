@@ -148,6 +148,69 @@ impl crate::claims::ClaimAuthority for FixtureClaims {
         Ok(())
     }
 }
+struct RevokingClaims {
+    coordinator: coordination_host::book::Coordinator,
+    scope: Value,
+    armed: Rc<std::cell::Cell<bool>>,
+}
+impl crate::claims::ClaimAuthority for RevokingClaims {
+    fn check(
+        &self,
+        claim: &Value,
+        controller: &str,
+        worker: &str,
+        declaration: &Value,
+        plaintext: &Value,
+        reservation: &Value,
+        frame: &Value,
+        now: u64,
+    ) -> crate::Result<()> {
+        self.coordinator.environment_claim(
+            claim,
+            controller,
+            worker,
+            declaration,
+            plaintext,
+            reservation,
+            frame,
+            now,
+        )?;
+        if self.armed.replace(false) {
+            let command = workspace_host::host::request(
+                &secret(OWNER),
+                &pk(OWNER),
+                json!({"v":"openagents.coordination-native-control.v1","requires":[],"coordinator":self.scope,"command":workspace_host::artifact::token(),"expected_revision":self.coordinator.scope(&self.scope)?["revision"],"actor":pk(WORKER),"roles":[],"resources":[],"targets":[],"all":true,"until":now+7200,"revoke":true,"scope_revoke":true}),
+                now,
+            )?;
+            self.coordinator.control_grants(&command, now)?;
+        }
+        Ok(())
+    }
+    fn with_current(
+        &self,
+        claim: &Value,
+        controller: &str,
+        worker: &str,
+        declaration: &Value,
+        plaintext: &Value,
+        reservation: &Value,
+        frame: &Value,
+        now: u64,
+        effect: &mut dyn FnMut() -> crate::Result<()>,
+    ) -> crate::Result<()> {
+        self.coordinator.with_environment_claim(
+            claim,
+            controller,
+            worker,
+            declaration,
+            plaintext,
+            reservation,
+            frame,
+            now,
+            effect,
+        )
+    }
+}
 struct Fixture {
     _temp: tempfile::TempDir,
     state: PathBuf,
@@ -1419,6 +1482,7 @@ fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() 
         "expired-claim",
         "different-frame",
         "resource-replaced",
+        "runtime-race",
     ] {
         let mut fx = Fixture::new();
         let (coordinator, scope, claim, event, payload) = native_environment_job(&mut fx);
@@ -1427,7 +1491,16 @@ fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() 
             secret(OWNER),
         )
         .unwrap();
-        let allocator = fx.allocator().with_claims(Box::new(mounted));
+        let armed = Rc::new(std::cell::Cell::new(false));
+        let allocator = if mode == "runtime-race" {
+            fx.allocator().with_claims(Box::new(RevokingClaims {
+                coordinator: mounted,
+                scope: scope.clone(),
+                armed: armed.clone(),
+            }))
+        } else {
+            fx.allocator().with_claims(Box::new(mounted))
+        };
         let mut request = fx.request_body(91, 0, 1800);
         request["bounds"][1]["currency"] = json!("USD");
         if mode == "different-frame" {
@@ -1471,6 +1544,93 @@ fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() 
             attachment_control(&fx, &allocator, &grant, "activate", 92, OWNER)["status"],
             "accepted"
         );
+        if mode == "run" || mode == "runtime-race" {
+            let body = allocator.store().json(&grant).unwrap();
+            let materialization = allocator.store().json(&body["materialization"]).unwrap();
+            let owner = pk(OWNER);
+            let executor = pk(WORKER);
+            let wrong = pk(7);
+            let fingerprint = digest_value(&job.payload).unwrap();
+            let runtime = crate::runtime::RuntimeUse {
+                attachment: body["attachment"].as_str().unwrap(),
+                fingerprint: &fingerprint,
+                grant: &grant,
+                controller: &owner,
+                executor: &executor,
+                lease: &body["lease"],
+                materialization: &body["materialization"],
+                engine: &materialization["runtime"]["artifact"],
+            };
+            if mode == "runtime-race" {
+                armed.set(true);
+                let mut disclosed = false;
+                assert!(
+                    allocator
+                        .with_runtime_use(&runtime, fx.now, &mut || {
+                            disclosed = true;
+                            Ok(())
+                        })
+                        .is_err()
+                );
+                assert!(!disclosed);
+                assert_eq!(coordinator.scope(&scope).unwrap()["calls"], 0);
+                continue;
+            }
+            let mut calls = 0;
+            for bad in [
+                crate::runtime::RuntimeUse {
+                    controller: &wrong,
+                    ..runtime
+                },
+                crate::runtime::RuntimeUse {
+                    executor: &wrong,
+                    ..runtime
+                },
+                crate::runtime::RuntimeUse {
+                    grant: &Value::Null,
+                    ..runtime
+                },
+                crate::runtime::RuntimeUse {
+                    lease: &Value::Null,
+                    ..runtime
+                },
+                crate::runtime::RuntimeUse {
+                    materialization: &Value::Null,
+                    ..runtime
+                },
+                crate::runtime::RuntimeUse {
+                    engine: &Value::Null,
+                    ..runtime
+                },
+            ] {
+                assert!(
+                    allocator
+                        .with_runtime_use(&bad, fx.now, &mut || {
+                            calls += 1;
+                            Ok(())
+                        })
+                        .is_err()
+                );
+            }
+            assert_eq!(calls, 0);
+            let revoke=workspace_host::host::request(&secret(OWNER),&pk(OWNER),json!({"v":"openagents.coordination-native-control.v1","requires":[],"coordinator":scope,"command":workspace_host::artifact::token(),"expected_revision":coordinator.scope(&scope).unwrap()["revision"],"actor":pk(WORKER),"roles":[],"resources":[],"targets":[],"all":true,"until":fx.now+7200,"revoke":true,"scope_revoke":false}),fx.now).unwrap();
+            let drain=fx.bundle(OWNER,&json!({"v":"openagents.environment-attachment-control.v1","requires":[],"attachment":grant,"command":workspace_host::artifact::token(),"expected_revision":allocator.status(&lease_id).unwrap()["revision"],"action":"drain","evidence":[]}));
+            allocator
+                .with_runtime_use(&runtime, fx.now, &mut || {
+                    assert!(
+                        coordinator.control_grants(&revoke, fx.now).is_err(),
+                        "COORD fence must remain held through disclosure"
+                    );
+                    assert!(
+                        allocator.submit(&drain, fx.now).is_err(),
+                        "ENV fence must remain held through disclosure"
+                    );
+                    calls += 1;
+                    Ok(())
+                })
+                .unwrap();
+            assert_eq!(calls, 1);
+        }
         if mode == "revoke" {
             let body = json!({"v":"openagents.coordination-native-control.v1","requires":[],"coordinator":scope,"command":workspace_host::artifact::token(),"expected_revision":coordinator.scope(&scope).unwrap()["revision"],"actor":pk(WORKER),"roles":[],"resources":[],"targets":[],"all":true,"until":fx.now+7200,"revoke":true,"scope_revoke":false});
             coordinator

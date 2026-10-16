@@ -12,7 +12,8 @@ session-host init --state DIR --key-file KEY --policy POLICY.json
 session-host admit --state DIR --key-file KEY --engine loop-mid-turn
 session-host submit --state DIR --key-file KEY --input BUNDLE \
   --env-state ENV --env-key ENVKEY --env-root RESOURCES \
-  --attachment ID --fingerprint DIGEST --grant GRANT.json
+  --attachment ID --fingerprint DIGEST --grant GRANT.json \
+  --coordinator-state COORD --coordinator-key-file COORDKEY
 session-host observe|status|export --state DIR --key-file KEY --session ID
 ```
 
@@ -38,6 +39,14 @@ the paths:
 Mapping Claude Code, Codex, and the ACP delegates to this host is still to
 come. Their steering rows stay in their own adapter crates.
 
+The production binding reads the allocator's actual saved attachment. It
+checks the requesting controller, executor key, lease, materialization, and
+admitted engine identity. Opening and turn start keep the ENV and COORD fences
+through native admission and input disclosure. Turn starts recheck after saving
+their durable intent; elapsed time cannot extend a grant. A read-only attachment
+probe cannot implement this admission. Missing live authority refuses.
+
+
 ## Rules the host enforces
 
 - **Opening.** The owner must be authorized by this host and the adapter
@@ -47,7 +56,7 @@ come. Their steering rows stay in their own adapter crates.
   refuses. Requested and effective configuration are both retained, and the
   effective one carries the enforcement record. Every opening and every turn
   start needs a current ENV attachment for that exact execution
-  (`Bindings::check`; `env_host::allocator::Allocator` implements it). A native
+  (`Bindings::with_current`; `env_host::allocator::Allocator` implements it). A native
   session already bound to an open session refuses. Resume keeps the source
   lineage only while no open session holds it. Fork needs the adapter's fork
   support. Import admits foreign history read-only.

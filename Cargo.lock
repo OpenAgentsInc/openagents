@@ -15351,6 +15351,7 @@ dependencies = [
 name = "session-host"
 version = "1.0.0"
 dependencies = [
+ "coordination-host",
  "env-host",
  "nostr",
  "secp256k1 0.31.1",

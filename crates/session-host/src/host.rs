@@ -27,11 +27,27 @@ pub const MAX_QUEUE: usize = 256;
 /// The current ENV execution binding for one CJ execution.
 pub trait Bindings {
     fn check(&self, attachment: &str, fingerprint: &str, now: u64) -> Result<()>;
+    fn with_current(
+        &self,
+        _request: &env_host::runtime::RuntimeUse<'_>,
+        _now: u64,
+        _effect: &mut dyn FnMut() -> Result<()>,
+    ) -> Result<()> {
+        Err("cannot_enforce: authoritative runtime admission is not configured".into())
+    }
 }
 
 impl Bindings for env_host::allocator::Allocator {
     fn check(&self, attachment: &str, fingerprint: &str, now: u64) -> Result<()> {
         self.check_dispatch(attachment, fingerprint, now)
+    }
+    fn with_current(
+        &self,
+        request: &env_host::runtime::RuntimeUse<'_>,
+        now: u64,
+        effect: &mut dyn FnMut() -> Result<()>,
+    ) -> Result<()> {
+        self.with_runtime_use(request, now, effect)
     }
 }
 
@@ -822,16 +838,40 @@ impl SessionHost {
         }
     }
 
-    fn check_binding(&self, binding: Option<&Binding>, now: u64) -> Result<Value> {
-        let binding = binding.ok_or_else(|| {
+    fn need_binding<'a>(&self, binding: Option<&'a Binding>) -> Result<&'a Binding> {
+        binding.ok_or_else(|| {
             refuse(
                 "not_admitted",
                 "execution needs a current environment attachment",
             )
-        })?;
-        self.bindings
-            .check(&binding.attachment, &binding.fingerprint, now)?;
-        Ok(binding.grant.clone())
+        })
+    }
+    fn runtime_use<'a>(
+        &'a self,
+        binding: &'a Binding,
+        controller: &'a str,
+        lease: &'a Value,
+        materialization: &'a Value,
+        engine: &'a Value,
+    ) -> env_host::runtime::RuntimeUse<'a> {
+        env_host::runtime::RuntimeUse {
+            attachment: &binding.attachment,
+            fingerprint: &binding.fingerprint,
+            grant: &binding.grant,
+            controller,
+            executor: self.pubkey(),
+            lease,
+            materialization,
+            engine,
+        }
+    }
+    fn check_binding(
+        &self,
+        request: &env_host::runtime::RuntimeUse<'_>,
+        now: u64,
+    ) -> Result<Value> {
+        self.bindings.with_current(request, now, &mut || Ok(()))?;
+        Ok(request.grant.clone())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -934,16 +974,31 @@ impl SessionHost {
                 _ => {}
             }
         }
-        let grant = self.check_binding(binding, now)?;
+        let binding = self.need_binding(binding)?;
+        let engine = self.store.json(&adapter.reference)?["engine"].clone();
+        let runtime = self.runtime_use(
+            binding,
+            signer,
+            &body["lease"],
+            &body["materialization"],
+            &engine,
+        );
+        let grant = self.check_binding(&runtime, now)?;
         let native = if import.is_some() {
             None
         } else {
-            let opened = self
-                .engines
-                .borrow_mut()
-                .get_mut(&adapter.engine)
-                .ok_or("engine")?
-                .open(resume.as_deref())?;
+            let mut opened = None;
+            self.bindings.with_current(&runtime, now, &mut || {
+                opened = Some(
+                    self.engines
+                        .borrow_mut()
+                        .get_mut(&adapter.engine)
+                        .ok_or("engine")?
+                        .open(resume.as_deref())?,
+                );
+                Ok(())
+            })?;
+            let opened = opened.ok_or("unknown: runtime did not acknowledge opening")?;
             if let Some(other) = state.bound.get(&opened)
                 && state
                     .sessions
@@ -1151,12 +1206,11 @@ impl SessionHost {
                 }
                 let intent = self.intent(session, &payload["intent"], now)?;
                 let _ = intent;
-                let grant = self.check_binding(binding, now)?;
                 records = self.start_turn(
                     state,
                     session,
                     &payload["intent"],
-                    grant,
+                    binding,
                     now,
                     Some((signer, input)),
                 )?;
@@ -1416,10 +1470,38 @@ impl SessionHost {
         state: &mut State,
         session: &mut Session,
         intent_ref: &Value,
-        grant: Value,
+        binding: Option<&Binding>,
         now: u64,
         pending: Option<(&str, &Value)>,
     ) -> Result<Vec<Value>> {
+        let started = std::time::Instant::now();
+        let binding = self.need_binding(binding)?;
+        let controller = pending
+            .map(|(actor, _)| actor.to_string())
+            .or_else(|| {
+                session
+                    .queue
+                    .iter()
+                    .find(|q| q.state == "queued" && q.intent == *intent_ref)
+                    .map(|q| q.requester.clone())
+            })
+            .ok_or("not_admitted: original turn requester required")?;
+        let admission = self.store.json(&session.admission)?;
+        let opening = self.store.json(&admission["request"])?;
+        let adapter = state
+            .adapters
+            .get(&session.adapter)
+            .ok_or("adapter")?
+            .clone();
+        let engine = self.store.json(&adapter.reference)?["engine"].clone();
+        let runtime = self.runtime_use(
+            binding,
+            &controller,
+            &opening["lease"],
+            &opening["materialization"],
+            &engine,
+        );
+        let grant = self.check_binding(&runtime, now)?;
         let intent = self.store.json(intent_ref)?;
         let mut input: Value =
             contracts::parse_strict_bounded(&self.bytes(&intent["input"])?, 1_048_576)
@@ -1512,16 +1594,35 @@ impl SessionHost {
             .sessions
             .insert(session.id.clone(), session.clone());
         self.save(&snapshot)?;
-        // The authoritative active-turn link is durable before the engine effect.
-        self.engines
-            .borrow_mut()
-            .get_mut(&adapter.engine)
-            .ok_or("engine")?
-            .start(
-                &native,
-                &turn,
-                &serde_json::to_vec(&input).map_err(|e| e.to_string())?,
-            )?;
+        // Recheck after the durable intent, holding both authorities through
+        // actual native input disclosure. A read-only probe is insufficient.
+        let current = now.saturating_add(started.elapsed().as_secs());
+        self.bindings.with_current(&runtime, current, &mut || {
+            let current = now.saturating_add(started.elapsed().as_secs());
+            if intent["expires_at"]
+                .as_u64()
+                .is_none_or(|deadline| deadline <= current)
+            {
+                return Err("stale: turn expired before disclosure".into());
+            }
+            if let Some((_, request)) = pending {
+                if self.store.json(request)?["expires_at"]
+                    .as_u64()
+                    .is_none_or(|deadline| deadline <= current)
+                {
+                    return Err("stale: command expired before disclosure".into());
+                }
+            }
+            self.engines
+                .borrow_mut()
+                .get_mut(&adapter.engine)
+                .ok_or("engine")?
+                .start(
+                    &native,
+                    &turn,
+                    &serde_json::to_vec(&input).map_err(|e| e.to_string())?,
+                )
+        })?;
         let evidence = self.capture(state, session, now)?;
         for (correction, _) in carried {
             let steering = self
@@ -1750,8 +1851,7 @@ impl SessionHost {
                 }
             }
             self.require(&state, &session, "queue")?;
-            let grant = self.check_binding(binding, now)?;
-            self.start_turn(&mut state, &mut session, &intent_ref, grant, now, None)?;
+            self.start_turn(&mut state, &mut session, &intent_ref, binding, now, None)?;
             let turn = session.active.as_ref().map(|t| t.id.clone());
             session.queue[index].state = "promoted".into();
             session.queue[index].turn = turn.clone();

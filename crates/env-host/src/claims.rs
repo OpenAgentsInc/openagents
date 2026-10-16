@@ -13,6 +13,20 @@ pub trait ClaimAuthority {
         frame: &Value,
         now: u64,
     ) -> Result<()>;
+    fn with_current(
+        &self,
+        _claim: &Value,
+        _controller: &str,
+        _worker: &str,
+        _declaration: &Value,
+        _plaintext: &Value,
+        _reservation: &Value,
+        _frame: &Value,
+        _now: u64,
+        _effect: &mut dyn FnMut() -> Result<()>,
+    ) -> Result<()> {
+        Err("cannot_enforce: fenced runtime admission is not configured".into())
+    }
     fn bootstrap_receipt(&self, _: &nostr::domain::Event, _: &str, _: u64) -> Result<Value> {
         Err("unavailable: bootstrap accounting cannot be observed".into())
     }
@@ -53,6 +67,30 @@ impl ClaimAuthority for coordination_host::book::Coordinator {
             reservation,
             frame,
             now,
+        )
+    }
+    fn with_current(
+        &self,
+        claim: &Value,
+        controller: &str,
+        worker: &str,
+        declaration: &Value,
+        plaintext: &Value,
+        reservation: &Value,
+        frame: &Value,
+        now: u64,
+        effect: &mut dyn FnMut() -> Result<()>,
+    ) -> Result<()> {
+        self.with_environment_claim(
+            claim,
+            controller,
+            worker,
+            declaration,
+            plaintext,
+            reservation,
+            frame,
+            now,
+            effect,
         )
     }
     fn bootstrap_receipt(

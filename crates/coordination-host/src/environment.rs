@@ -17,6 +17,30 @@ impl Coordinator {
     ) -> Result<()> {
         let _guard = self.store.lock()?;
         let state = self.state()?;
+        self.environment_claim_locked(
+            &state,
+            claim,
+            controller,
+            worker,
+            declaration,
+            plaintext,
+            reservation,
+            frame,
+            now,
+        )
+    }
+    fn environment_claim_locked(
+        &self,
+        state: &crate::book::State,
+        claim: &Value,
+        controller: &str,
+        worker: &str,
+        declaration: &Value,
+        plaintext: &Value,
+        reservation: &Value,
+        frame: &Value,
+        now: u64,
+    ) -> Result<()> {
         let (scope, lease) = state
             .scopes
             .values()
@@ -73,6 +97,37 @@ impl Coordinator {
 }
 
 impl Coordinator {
+    /// Keep the actual current claim fenced through runtime input disclosure.
+    /// The runtime host still owns operation admission and budget accounting.
+    pub fn with_environment_claim(
+        &self,
+        claim: &Value,
+        controller: &str,
+        worker: &str,
+        declaration: &Value,
+        plaintext: &Value,
+        reservation: &Value,
+        frame: &Value,
+        now: u64,
+        effect: &mut dyn FnMut() -> Result<()>,
+    ) -> Result<()> {
+        let started = std::time::Instant::now();
+        let _g = self.store.lock()?;
+        let state = self.state()?;
+        let now = now.saturating_add(started.elapsed().as_secs());
+        self.environment_claim_locked(
+            &state,
+            claim,
+            controller,
+            worker,
+            declaration,
+            plaintext,
+            reservation,
+            frame,
+            now,
+        )?;
+        effect()
+    }
     /// Charge one owner-admitted bootstrap against the actual container shared
     /// with this environment's named worker. This grants no bootstrap effects.
     pub fn environment_bootstrap(

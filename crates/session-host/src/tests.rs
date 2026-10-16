@@ -26,6 +26,15 @@ const STRANGER: u8 = 4;
 #[derive(Clone, Default)]
 struct Admitted(Rc<RefCell<BTreeSet<(String, String)>>>);
 impl Bindings for Admitted {
+    fn with_current(
+        &self,
+        request: &env_host::runtime::RuntimeUse<'_>,
+        now: u64,
+        effect: &mut dyn FnMut() -> crate::Result<()>,
+    ) -> crate::Result<()> {
+        self.check(request.attachment, request.fingerprint, now)?;
+        effect()
+    }
     fn check(&self, attachment: &str, fingerprint: &str, _: u64) -> crate::Result<()> {
         if self
             .0
@@ -1015,4 +1024,29 @@ fn cached_open_requires_the_current_owner_even_with_the_original_body() {
         fx.send(&host, OWNER, &body, Some(&binding))["reason"],
         "not_admitted"
     );
+}
+
+#[test]
+fn a_read_only_attachment_probe_cannot_authorize_runtime_disclosure() {
+    struct Probe;
+    impl Bindings for Probe {
+        fn check(&self, _: &str, _: &str, _: u64) -> crate::Result<()> {
+            Ok(())
+        }
+    }
+    let mut fx = Fx::new();
+    let host = SessionHost::open(
+        fx.root.clone(),
+        secret(HOST),
+        vec![Box::new(LoopEngine::mid_turn())],
+        Box::new(Probe),
+    )
+    .unwrap();
+    let adapter = host.admit_adapter("loop-mid-turn", fx.now).unwrap();
+    let body = fx.open_body(&host, &adapter, json!({"kind":"new","artifact":null}));
+    let binding = fx.binding();
+    let result = fx.send(&host, OWNER, &body, Some(&binding));
+    assert_eq!(result["status"], "refused");
+    assert_eq!(result["reason"], "cannot_enforce");
+    assert!(host.status(body["session"].as_str().unwrap()).is_err());
 }

@@ -15,7 +15,8 @@ pub const USAGE: &str = "usage: session-host ACTION --state DIR --key-file KEY [
   policy     --policy POLICY.json   replace owner/controller sets with the host key
   admit      --engine loop-mid-turn|loop-boundary
   submit     --input BUNDLE [--env-state DIR --env-key KEY --env-root DIR
-             --attachment ID --fingerprint DIGEST --grant GRANT.json]
+             --attachment ID --fingerprint DIGEST --grant GRANT.json
+             --coordinator-state DIR --coordinator-key-file KEY]
   observe    --session ID
   status     --session ID
   export     --session ID";
@@ -73,11 +74,15 @@ pub fn run(args: Vec<String>) -> Result<Value> {
         Some(dir) => {
             let key = read_secret(Path::new(&need("--env-key")?))?;
             let provider = LocalDirectories::new(PathBuf::from(need("--env-root")?))?;
-            Box::new(Allocator::open(
-                PathBuf::from(dir),
-                key,
-                Box::new(provider),
-            )?)
+            let mut allocator = Allocator::open(PathBuf::from(dir), key, Box::new(provider))?;
+            if let Some(root) = option("--coordinator-state") {
+                allocator =
+                    allocator.with_claims(Box::new(coordination_host::book::Coordinator::open(
+                        PathBuf::from(root),
+                        read_secret(Path::new(&need("--coordinator-key-file")?))?,
+                    )?));
+            }
+            Box::new(allocator)
         }
         None => Box::new(NoBindings),
     };

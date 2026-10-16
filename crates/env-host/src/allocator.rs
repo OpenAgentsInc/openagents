@@ -2353,3 +2353,79 @@ pub fn reference(body: &Value) -> Result<Value> {
         body["v"].as_str(),
     ))
 }
+
+impl Allocator {
+    pub(crate) fn runtime_use(
+        &self,
+        request: &crate::runtime::RuntimeUse<'_>,
+        now: u64,
+        effect: &mut dyn FnMut() -> Result<()>,
+    ) -> Result<()> {
+        let origin_now = now;
+        let started = std::time::Instant::now();
+        let _g = self.store.lock()?;
+        let state = self.state()?;
+        let lease = state
+            .leases
+            .values()
+            .find(|l| {
+                l.attachment
+                    .as_ref()
+                    .is_some_and(|a| a.id == request.attachment)
+            })
+            .ok_or("not_admitted: actual runtime attachment is not held")?;
+        let attachment = lease.attachment.as_ref().ok_or("attachment")?;
+        if attachment.grant != *request.grant
+            || attachment.request["controller"] != request.controller
+            || attachment.request["worker"] != request.executor
+            || lease.lease_ref != *request.lease
+            || lease.materialization.as_ref() != Some(request.materialization)
+        {
+            return Err(
+                "identity_mismatch: runtime admission differs from the allocator's actual grant"
+                    .into(),
+            );
+        }
+        let materialization = self.body(
+            request.materialization,
+            "openagents.environment-materialization.v1",
+        )?;
+        if materialization["runtime"]["artifact"] != *request.engine {
+            return Err(
+                "identity_mismatch: admitted engine differs from the realized runtime".into(),
+            );
+        }
+        let now = now.saturating_add(started.elapsed().as_secs());
+        self.check_dispatch(request.attachment, request.fingerprint, now)?;
+        let declaration = self.body(
+            &attachment.request["execute"],
+            "openagents.environment-execute.v1",
+        )?;
+        let plaintext = self.body(&declaration["body"], nostr::execution::SCHEMA)?;
+        let reservation = self.body(
+            &attachment.request["reservation"],
+            "openagents.reservation.v1",
+        )?;
+        let now = origin_now.saturating_add(started.elapsed().as_secs());
+        self.claims
+            .as_ref()
+            .ok_or("not_admitted: live runtime claim authority required")?
+            .with_current(
+                &attachment.request["claim"],
+                request.controller,
+                request.executor,
+                &declaration,
+                &plaintext,
+                &reservation,
+                &lease.request["frame"],
+                now,
+                &mut || {
+                    let current = origin_now.saturating_add(started.elapsed().as_secs());
+                    if lease.effective_expiry() <= current || attachment.expires_at <= current {
+                        return Err("stale: runtime attachment expired before disclosure".into());
+                    }
+                    effect()
+                },
+            )
+    }
+}

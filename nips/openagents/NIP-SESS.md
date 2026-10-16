@@ -757,3 +757,11 @@ intent, consumed queue identity, and the command's pending result together.
 A lost start acknowledgment leaves that original command unknown. Neither an
 exact retry nor a restart may start it again. Native protocol artifacts saved
 without their authoritative active-turn link do not establish durable admission.
+
+A runtime-side session operation verifies the exact attachment grant held by
+the allocator, its requesting controller and executor, the lease and
+materialization, and the admitted engine identity. Caller-provided grant bytes
+or knowledge of an attachment fingerprint cannot substitute for those checks.
+The allocator holds its current attachment fence through the native operation;
+the mounted COORD authority checks the same current claim under its own fence.
+An adapter without this authority refuses runtime admission.
