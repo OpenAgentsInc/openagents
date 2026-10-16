@@ -105,3 +105,40 @@ For failed attestation views, select events 2, 3, or 4 of
 public test data. A `tree_open` event can include an `observers` array to
 name the clients in a multi-observer recording; otherwise the scene uses
 the tree's members and any clients that report a result.
+
+## Timed unroll
+
+The unroll view makes the signer dark, counts blocks toward the current
+output's CSV deadline, shows broadcasts and confirmations by level, and
+sends each payout to its exit key. Member amounts stay intact; the fee
+counter counts external anchor fees separately. When logs skip waiting
+blocks, playback compresses the interval and labels the interpolated wait
+counter. The event header continues to name the recorded event and block.
+
+The reader matches every payout to an unpaid leaf's exact amount and exit
+key. It rejects early broadcasts or confirmations, unknown exit keys,
+changed amounts, and repeated payouts. Group nodes summarize the logged
+transactions at each level; the log does not identify each group's inputs,
+so this diagram does not reconstruct their precise transaction graph.
+Large trees collapse groups and show eight sample payouts with the full
+paid total and count.
+
+`layertree-unroll.json` renders the two-level regtest run in 30 seconds.
+For a one-level view, select `regtest.jsonl` instead. Add
+`--compare-progress` to show the prior output's spent unroll beside the
+current tree; the equivalent film field is `compare_progress: true`.
+
+The three-level capacity check uses 16,385 simulated members, generated
+outside the repository to avoid committing a large, repetitive log:
+
+```sh
+layertree_scratch="$(openagents scratch)"
+scripts/layertree-viz-fixtures.py "$layertree_scratch/three-level.jsonl"
+cargo run -p verse --no-default-features --features imported-desktop \
+  --example layertree -- --events "$layertree_scratch/three-level.jsonl" \
+  --capture "$layertree_scratch/three-level.png"
+```
+
+Every generated event is labelled `synthetic: true`, and the scene says
+**simulated**. These hashes and transactions are illustrative; the log is
+not evidence of Bitcoin execution or hardware attestation.

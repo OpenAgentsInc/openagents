@@ -190,13 +190,26 @@ fn link(model: &str, a: Vec3, b: Vec3) -> Instance {
 pub fn frame(set: &Set) -> Vec<Instance> {
     let layout = &set.layout;
     let mut out = Vec::new();
+    let unrolling = set.state.escape.down && set.state.escape.steps.values().any(|s| s.confirmed);
     for item in layout.visible() {
         let (position, radius) = animated_node(set, item);
-        out.push(node("value", position, radius));
+        out.push(node(
+            if unrolling { "faint" } else { "value" },
+            position,
+            radius,
+        ));
         if item.height < layout.depth {
             let parent = &layout.nodes[&(item.height + 1, item.index / 2)];
-            out.push(link("value-link", item.position, parent.position));
-            for dot in 0..2 {
+            out.push(link(
+                if unrolling {
+                    "faint-link"
+                } else {
+                    "value-link"
+                },
+                item.position,
+                parent.position,
+            ));
+            for dot in 0..if unrolling { 0 } else { 2 } {
                 let progress =
                     (set.time * 0.45 + dot as f32 * 0.5 + item.index as f32 * 0.09).fract();
                 out.push(node(
@@ -240,6 +253,7 @@ pub fn frame(set: &Set) -> Vec<Instance> {
     }
     transition_frame(set, &mut out);
     watch_frame(set, &mut out);
+    escape_frame(set, &mut out);
     out
 }
 
@@ -325,6 +339,12 @@ pub fn overlay(
     );
     let mut occupied: Vec<(f32, f32, f32)> = Vec::new();
     for item in set.layout.visible() {
+        if set.state.escape.down
+            && set.state.escape.steps.values().any(|s| s.confirmed)
+            && item.height != set.layout.depth
+        {
+            continue;
+        }
         let Some([x, y]) = project(view, animated_node(set, item).0, size) else {
             continue;
         };
@@ -366,7 +386,17 @@ pub fn overlay(
         }
     }
     if let Some([x, y]) = project(view, set.layout.coin(), size) {
-        ui.text(atlas, x - 50.0, y + 20.0, "Bitcoin output", white);
+        ui.text(
+            atlas,
+            x - 50.0,
+            y + 20.0,
+            if set.state.escape.steps.values().any(|s| s.confirmed) {
+                "Spent Bitcoin output"
+            } else {
+                "Bitcoin output"
+            },
+            white,
+        );
         ui.text(
             atlas,
             x - 50.0,
@@ -379,6 +409,7 @@ pub fn overlay(
     }
     transition_labels(set, view, size, atlas, &mut ui);
     watch_labels(set, view, size, atlas, &mut ui);
+    escape_labels(set, view, size, atlas, &mut ui);
     let source = Path::new(&set.run.source)
         .file_name()
         .and_then(|name| name.to_str())
@@ -643,6 +674,9 @@ fn signer_at(set: &Set) -> Vec3 {
     Vec3::new(-set.layout.width * 0.5 - 3.0, 3.5, 0.0)
 }
 fn client_rows(set: &Set) -> Vec<(u64, Vec3)> {
+    if set.state.escape.down {
+        return Vec::new();
+    }
     use std::collections::BTreeSet;
     let mut ids: BTreeSet<u64> = set
         .state
@@ -669,7 +703,9 @@ fn watch_frame(set: &Set, out: &mut Vec<Instance>) {
     let signer = signer_at(set);
     let bad = !status.is_empty() && status != "attested" || watch.alarm.is_some();
     out.push(node(
-        if bad {
+        if set.state.escape.down {
+            "signer-dim"
+        } else if bad {
             "signer-bad"
         } else if status.is_empty() {
             "signer-dim"
@@ -679,7 +715,7 @@ fn watch_frame(set: &Set, out: &mut Vec<Instance>) {
         signer,
         0.48,
     ));
-    if status == "attested" {
+    if status == "attested" && !set.state.escape.down {
         out.push(node("value", signer + Vec3::Y * 0.8, 0.12));
     }
     let event = set.event();
@@ -711,7 +747,15 @@ fn watch_frame(set: &Set, out: &mut Vec<Instance>) {
             out.push(link("danger-link", at, signer));
         }
     }
-    for (i, block) in watch.blocks.iter().rev().take(8).rev().enumerate() {
+    for (i, block) in watch
+        .blocks
+        .iter()
+        .rev()
+        .take(8)
+        .rev()
+        .filter(|_| !set.state.escape.down)
+        .enumerate()
+    {
         let at = Vec3::new(-set.layout.width * 0.5 + i as f32 * 2.3, 0.3, 8.5);
         let color = if !block.result.is_empty() && block.result != "ok" {
             "danger"
@@ -731,7 +775,9 @@ fn watch_labels(set: &Set, view: View, size: [f32; 2], atlas: &Atlas, ui: &mut U
     let danger = [1.0, 77.0 / 255.0, 66.0 / 255.0, 1.0];
     let a = &watch.attestation;
     if let Some([x, y]) = project(view, signer_at(set), size) {
-        let status = if a.result.is_empty() {
+        let status = if set.state.escape.down {
+            "offline"
+        } else if a.result.is_empty() {
             "not checked"
         } else {
             &a.result
@@ -794,7 +840,7 @@ fn watch_labels(set: &Set, view: View, size: [f32; 2], atlas: &Atlas, ui: &mut U
             ui.text(atlas, x - 25.0, y + 16.0, &format!("{id}"), dim);
         }
     }
-    if !watch.clients.is_empty() {
+    if !watch.clients.is_empty() && !set.state.escape.down {
         ui.text(atlas, size[0] - 330.0, 24.0, "Member checks", white);
         for (i, (id, (result, height))) in watch.clients.iter().take(8).enumerate() {
             ui.text(
@@ -809,7 +855,15 @@ fn watch_labels(set: &Set, view: View, size: [f32; 2], atlas: &Atlas, ui: &mut U
             );
         }
     }
-    for (i, block) in watch.blocks.iter().rev().take(8).rev().enumerate() {
+    for (i, block) in watch
+        .blocks
+        .iter()
+        .rev()
+        .take(8)
+        .rev()
+        .filter(|_| !set.state.escape.down)
+        .enumerate()
+    {
         let at = Vec3::new(-set.layout.width * 0.5 + i as f32 * 2.3, 0.3, 8.5);
         if let Some([x, y]) = project(view, at, size) {
             ui.text(
@@ -826,5 +880,216 @@ fn watch_labels(set: &Set, view: View, size: [f32; 2], atlas: &Atlas, ui: &mut U
     }
     if let Some(alarm) = &watch.alarm {
         ui.text(atlas, 26.0, 132.0, &format!("Alarm: {alarm}"), danger);
+    }
+}
+
+fn package_at(set: &Set, level: u32, index: usize, count: usize) -> Vec3 {
+    Vec3::new(
+        if count <= 1 {
+            0.0
+        } else {
+            (index as f32 / (count - 1) as f32 - 0.5) * set.layout.width
+        },
+        6.4 - level as f32 * 2.2,
+        2.0,
+    )
+}
+fn exit_at(set: &Set, index: usize, count: usize) -> Vec3 {
+    Vec3::new(
+        if count <= 1 {
+            0.0
+        } else {
+            (index as f32 / (count - 1) as f32 - 0.5) * set.layout.width
+        },
+        0.8,
+        6.5,
+    )
+}
+fn escape_frame(set: &Set, out: &mut Vec<Instance>) {
+    let escape = &set.state.escape;
+    if set.compare_progress && escape.old_output.is_some() {
+        let at = set.layout.coin() + Vec3::new(3.0, 3.0, 0.0);
+        out.push(node("signer-dim", at, 0.35));
+        out.push(link("faint-link", at, set.layout.coin()));
+    }
+    if !escape.down {
+        return;
+    }
+    if escape.steps.is_empty() {
+        out.push(node("signer-dim", package_at(set, 0, 0, 1), 0.4));
+    }
+    for level in 0..3 {
+        let steps: Vec<_> = escape.steps.values().filter(|s| s.level == level).collect();
+        let shown = steps.len().min(8);
+        for (i, step) in steps.iter().take(shown).enumerate() {
+            let at = package_at(set, level, i, shown);
+            out.push(node(
+                if step.confirmed { "value" } else { "signature" },
+                at,
+                0.25,
+            ));
+            if level > 0 {
+                out.push(link("signature-link", package_at(set, level - 1, 0, 1), at));
+            }
+            if !step.confirmed && step.fee > 0 {
+                out.push(node(
+                    "signature",
+                    (set.layout.coin() + Vec3::X * 2.0).lerp(at, set.phase),
+                    0.1,
+                ));
+            }
+        }
+    }
+    let shown = escape.paid.len().min(8);
+    for (i, paid) in escape.paid.iter().take(shown).enumerate() {
+        let end = exit_at(set, i, 8.min(set.state.leaves.len()));
+        let mut at = end;
+        if set.event().kind == "payout" && i + 1 == escape.paid.len() {
+            if let Some((&pos, _)) = set
+                .state
+                .leaves
+                .iter()
+                .find(|(_, l)| l.exit_key == paid.key && l.amount == paid.amount)
+            {
+                if let Some(leaf) = set.layout.nodes.get(&(0, pos)) {
+                    at = leaf.position.lerp(end, set.phase)
+                        + Vec3::Y * (set.phase * std::f32::consts::PI).sin() * 2.0;
+                }
+            }
+        }
+        out.push(node(
+            "value",
+            at,
+            super::model::radius(paid.amount, set.state.dust),
+        ));
+        out.push(node("signature", end - Vec3::Y * 0.4, 0.09));
+    }
+}
+fn escape_labels(set: &Set, view: View, size: [f32; 2], atlas: &Atlas, ui: &mut UiBatch) {
+    let escape = &set.state.escape;
+    let white = [WHITE[0], WHITE[1], WHITE[2], 1.0];
+    let gold = [GOLD[0], GOLD[1], GOLD[2], 1.0];
+    let dim = [0.5, 0.52, 0.56, 1.0];
+    if set.compare_progress {
+        if let Some(old) = &escape.old_output {
+            if let Some([x, y]) = project(view, set.layout.coin() + Vec3::new(3.0, 3.0, 0.0), size)
+            {
+                ui.text(atlas, x - 45.0, y - 35.0, "old unroll spent", dim);
+                ui.text(
+                    atlas,
+                    x - 45.0,
+                    y - 15.0,
+                    &old.chars().take(10).collect::<String>(),
+                    dim,
+                );
+            }
+        }
+    }
+    if !escape.down {
+        return;
+    }
+    let exact_remaining = escape.remaining_blocks();
+    let next = set
+        .next_height()
+        .unwrap_or(escape.height)
+        .max(escape.height);
+    let shown_height = escape
+        .height
+        .saturating_add(((next - escape.height) as f32 * set.phase) as u32);
+    let remaining = escape
+        .mature_at
+        .unwrap_or(shown_height)
+        .saturating_sub(shown_height);
+    let waited = set.state.delay.saturating_sub(remaining);
+    ui.text(
+        atlas,
+        26.0,
+        160.0,
+        &format!(
+            "Enclave offline / wait {waited}/{} blocks / {} remaining",
+            set.state.delay, remaining
+        ),
+        white,
+    );
+    if exact_remaining != remaining {
+        ui.text(
+            atlas,
+            26.0,
+            140.0,
+            "Wait time compressed between recorded blocks",
+            dim,
+        );
+    }
+    ui.text(
+        atlas,
+        26.0,
+        182.0,
+        &format!(
+            "Paid {} / {} sat in {} payouts",
+            amount(escape.total),
+            amount(escape.expected_total),
+            escape.paid.len()
+        ),
+        gold,
+    );
+    let fees = escape.anchor_total;
+    if fees > 0 {
+        ui.text(
+            atlas,
+            26.0,
+            204.0,
+            &format!("Anchor fees: {} sat from outside the tree", amount(fees)),
+            white,
+        );
+    }
+    if escape.steps.is_empty() {
+        if let Some([x, y]) = project(view, package_at(set, 0, 0, 1), size) {
+            ui.text(atlas, x - 50.0, y - 25.0, "unroll locked", dim);
+        }
+    }
+    for level in 0..3 {
+        let steps: Vec<_> = escape.steps.values().filter(|s| s.level == level).collect();
+        if steps.is_empty() {
+            continue;
+        }
+        let confirmed = steps.iter().filter(|s| s.confirmed).count();
+        if let Some([x, y]) = project(view, package_at(set, level, 0, 1) + Vec3::Y * 0.7, size) {
+            ui.text(
+                atlas,
+                x - 70.0,
+                y,
+                &format!("level {}: {confirmed}/{} confirmed", level + 1, steps.len()),
+                white,
+            );
+        }
+    }
+    if !escape.paid.is_empty() {
+        ui.text(atlas, size[0] - 330.0, 24.0, "Payouts / exit keys", white);
+    }
+    for (i, paid) in escape.paid.iter().take(8).enumerate() {
+        ui.text(
+            atlas,
+            size[0] - 330.0,
+            49.0 + i as f32 * 21.0,
+            &format!(
+                "{}: {} sat / {}..",
+                i + 1,
+                amount(paid.amount),
+                paid.key.chars().take(6).collect::<String>()
+            ),
+            gold,
+        );
+        if let Some([x, y]) = project(view, exit_at(set, i, 8.min(set.state.leaves.len())), size) {
+            ui.text(atlas, x - 4.0, y + 18.0, &format!("{}", i + 1), white);
+        }
+    }
+    if escape.paid.len() > 8 {
+        ui.text(
+            atlas,
+            26.0,
+            226.0,
+            &format!("Showing 8 of {} full payouts", escape.paid.len()),
+            dim,
+        );
     }
 }

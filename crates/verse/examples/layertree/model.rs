@@ -143,6 +143,7 @@ impl Run {
 
 #[derive(Clone, Debug, Default)]
 pub struct Snapshot {
+    pub escape: super::escape::Escape,
     pub watch: super::watch::Watch,
     pub seq: u64,
     pub height: Option<u32>,
@@ -272,6 +273,8 @@ impl Snapshot {
             _ => {}
         }
         self.watch.apply(event)?;
+        self.escape
+            .apply(event, &self.leaves, self.output_amount, self.delay)?;
         Ok(())
     }
 
@@ -298,6 +301,7 @@ pub struct Node {
     pub radius: f32,
 }
 
+#[derive(Clone)]
 pub struct Layout {
     pub nodes: BTreeMap<(u32, u64), Node>,
     pub depth: u32,
@@ -316,7 +320,7 @@ pub fn radius(amount: u64, dust: u64) -> f32 {
 impl Layout {
     pub fn new(state: &Snapshot) -> Result<Self, String> {
         let count = state.leaves.len().max(1);
-        let width = (count.min(128) as f32 * 2.1).max(10.0);
+        let width = (count.min(24) as f32 * 2.1).max(10.0);
         let mut nodes: BTreeMap<(u32, u64), Node> = BTreeMap::new();
         let mut bounds: BTreeMap<(u32, u64), (f32, f32)> = BTreeMap::new();
         for (rank, (&pos, leaf)) in state.leaves.iter().enumerate() {

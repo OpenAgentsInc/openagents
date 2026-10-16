@@ -1,5 +1,6 @@
 //! LayerTree's event-driven Verse scene, shared by the viewer and film shots.
 
+pub mod escape;
 pub mod model;
 pub mod scene;
 pub mod watch;
@@ -8,7 +9,7 @@ use model::{Layout, Run, Snapshot};
 use std::{collections::VecDeque, path::Path};
 
 struct Playback {
-    frames: VecDeque<(Snapshot, Layout)>,
+    frames: VecDeque<u64>,
     seconds: f32,
     elapsed: f32,
 }
@@ -20,6 +21,7 @@ pub struct Set {
     pub previous: Option<(Snapshot, Layout)>,
     pub phase: f32,
     pub time: f32,
+    pub compare_progress: bool,
     playback: Option<Playback>,
 }
 
@@ -35,6 +37,7 @@ impl Set {
             previous: None,
             phase: 1.0,
             time: 0.0,
+            compare_progress: false,
             playback: None,
         })
     }
@@ -51,12 +54,7 @@ impl Set {
         self.layout = Layout::new(&self.state)?;
         self.previous = None;
         self.time = 0.0;
-        let mut frames = VecDeque::new();
-        let mut state = self.state.clone();
-        for event in &self.run.events[from as usize + 1..to as usize + 1] {
-            state.apply(event)?;
-            frames.push_back((state.clone(), Layout::new(&state)?));
-        }
+        let frames = (from + 1..=to).collect();
         self.playback = Some(Playback {
             frames,
             seconds: rate.recip(),
@@ -79,14 +77,27 @@ impl Set {
             playback.elapsed += dt;
             while playback.elapsed >= playback.seconds && !playback.frames.is_empty() {
                 playback.elapsed -= playback.seconds;
-                let (state, layout) = playback.frames.pop_front().unwrap();
-                self.previous = Some((
-                    std::mem::replace(&mut self.state, state),
-                    std::mem::replace(&mut self.layout, layout),
-                ));
+                let seq = playback.frames.pop_front().unwrap();
+                // Run::load validates the complete replay. Keep only the prior
+                // frame so a large payout log does not clone the tree per event.
+                let previous = (self.state.clone(), self.layout.clone());
+                self.state
+                    .apply(&self.run.events[seq as usize])
+                    .expect("The run was checked when it was loaded.");
+                self.layout = Layout::new(&self.state)
+                    .expect("The run's balances were checked when it was loaded.");
+                self.previous = Some(previous);
             }
             self.phase = (playback.elapsed / playback.seconds).min(1.0);
         }
+    }
+
+    pub fn next_height(&self) -> Option<u32> {
+        self.playback
+            .as_ref()?
+            .frames
+            .front()
+            .and_then(|seq| self.run.events[*seq as usize].height)
     }
 
     pub fn event(&self) -> &model::Event {

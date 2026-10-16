@@ -211,6 +211,8 @@ enum SceneSpec {
         to: Option<u64>,
         #[serde(default = "layertree_rate")]
         rate: f32,
+        #[serde(default)]
+        compare_progress: bool,
     },
     /// The Lagrange 1 station.
     Lagrange,
@@ -556,8 +558,10 @@ impl Stage {
                 from,
                 to,
                 rate,
+                compare_progress,
             } => {
                 let mut set = Box::new(layertree::Set::load(events, *at)?);
+                set.compare_progress = *compare_progress;
                 if *play {
                     set.play(*from, *to, *rate)?;
                 }

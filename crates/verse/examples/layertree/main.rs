@@ -20,6 +20,7 @@ struct Options {
     events: PathBuf,
     at: Option<u64>,
     play: bool,
+    compare_progress: bool,
     from: u64,
     to: Option<u64>,
     rate: f32,
@@ -34,6 +35,7 @@ fn options() -> Result<Options, String> {
         events: PathBuf::new(),
         at: None,
         play: false,
+        compare_progress: false,
         from: 0,
         to: None,
         rate: 0.6,
@@ -63,6 +65,7 @@ fn options() -> Result<Options, String> {
                 ];
             }
             "--play" => out.play = true,
+            "--compare-progress" => out.compare_progress = true,
             "--from" => out.from = value()?.parse().map_err(|_| "Choose a start event.")?,
             "--to" => out.to = Some(value()?.parse().map_err(|_| "Choose an end event.")?),
             "--rate" => out.rate = value()?.parse().map_err(|_| "Choose events per second.")?,
@@ -268,6 +271,7 @@ impl ApplicationHandler for App {
 fn run() -> Result<(), String> {
     let options = options()?;
     let mut set = Set::load(&options.events, options.at)?;
+    set.compare_progress = options.compare_progress;
     if options.play {
         set.play(options.from, options.to, options.rate)?;
     }
