@@ -63,3 +63,26 @@ source hashes, chain fees, and final cleanup. Archive SHA-256:
 Seven recorded source hashes match the merged implementation. Invoice,
 preimage, credential, and seed fields are excluded. This evidence records
 the research run; it does not provide public payment preimages.
+
+## Remote signing and fresh backup recovery (#11862)
+
+The follow-up uses a separate seed-holding signer and a watcher with all
+259 accounts marked watch-only. Their confirmed private 20,000-sat anchor
+channel carried 1,001,001 msat outbound and 500,001 msat inbound. A further
+1,000,000-msat payment remained unresolved and unpaid during a bounded
+signer process pause, then completed under its original hash after resume
+in 4.375 seconds. All three direct payments had zero routing fee. This
+measures a process pause, not loss of a VM.
+
+Both original writers then stopped. Fresh databases restored the signer's
+test seed and the watcher's original public accounts, preserving their
+node identity. The encrypted SCB verified. LND explicitly refused its first
+application during startup; after inspecting that refusal, the next
+application waited for `SERVER_ACTIVE`, chain sync, and no existing channel.
+The Rust tool now checks that readiness before applying a backup.
+Peer-assisted recovery broadcast
+`48594d7f692ff092d2f87b1843584dc811b12ff6b67f55c21b67c68441832ce0`.
+The bounded controller watches the actual closure, CSV maturity, sweeps,
+and returns. No channel database was copied or restarted from an older
+state. Implementation `2c2f1004b1` is on main; final recovery and cleanup
+remain tracked in [#11862](https://github.com/OpenAgentsInc/openagents/issues/11862).
