@@ -73,4 +73,79 @@ final class OpenAgentsHistoryTests: XCTestCase {
         XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 15))
     }
 
+    func testLiveAccountHistory() throws {
+        guard let base = ProcessInfo.processInfo.environment["CODER_HISTORY_FIXTURE"] else { throw XCTSkip("Local fixture only") }
+        func change(_ path: String) {
+            let done = expectation(description: path)
+            URLSession.shared.dataTask(with: URL(string: base + path)!) { _, _, _ in done.fulfill() }.resume()
+            wait(for: [done], timeout: 5)
+        }
+        let app = XCUIApplication()
+        app.launchArguments = ["-account-fixture", "-account-api", base + "/v1", "-account-site", base,
+                               "-account-test-credential-url", base + "/fixture-key", "-edge", base]
+        app.launch()
+        let row = app.descendants(matching: .any).matching(identifier: "saved-chat-000000c7-1234-4234-8234-123456789abc").firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 20)); row.tap()
+        XCTAssertTrue(app.staticTexts["2 messages loaded"].waitForExistence(timeout: 10))
+        change("/advance")
+        XCTAssertTrue(app.staticTexts["4 messages loaded"].waitForExistence(timeout: 12))
+        change("/offline")
+        let offline = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Couldn't update this chat")).firstMatch
+        XCTAssertTrue(offline.waitForExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts["4 messages loaded"].exists)
+        change("/online")
+        XCTAssertTrue(offline.waitForNonExistence(timeout: 12))
+        XCUIDevice.shared.press(.home)
+        change("/advance")
+        app.activate()
+        XCTAssertTrue(app.staticTexts["6 messages loaded"].waitForExistence(timeout: 12))
+        let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "live-account-history"; shot.lifetime = .keepAlways; add(shot)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tabBars.buttons["Settings"].tap()
+        let signOut = app.cells["settings-signout"]
+        for _ in 0..<8 where !signOut.isHittable { app.swipeUp() }
+        signOut.tap(); app.buttons["Sign Out"].tap()
+        XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 15))
+    }
+
+    /// Captures the real account reader while the other applications change the same chat.
+    func testRecordAccountChat() throws {
+        guard let raw = ProcessInfo.processInfo.environment["CODER_FILM_CONFIG"], let bytes = raw.data(using: .utf8),
+              let config = try JSONSerialization.jsonObject(with: bytes) as? [String: String],
+              let keyURL = config["key_url"], let chat = config["chat"], let control = config["control"] else { throw XCTSkip("Film coordinator only") }
+        func exchange(_ path: String, _ body: [String: Any]? = nil) -> [String: Any] {
+            let done = expectation(description: path)
+            var result: [String: Any] = [:]
+            var request = URLRequest(url: URL(string: control + path)!)
+            if let body { request.httpMethod = "POST"; request.httpBody = try? JSONSerialization.data(withJSONObject: body); request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+            URLSession.shared.dataTask(with: request) { data, _, _ in
+                if let data, let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { result = value }
+                done.fulfill()
+            }.resume()
+            wait(for: [done], timeout: 8)
+            return result
+        }
+        let app = XCUIApplication()
+        app.launchArguments = ["-account-fixture", "-account-test-credential-url", keyURL, "-edge", "https://coder-sync-157437760789.us-central1.run.app", "-appearance", "2"]
+        app.launch()
+        let row = app.descendants(matching: .any).matching(identifier: "saved-chat-" + chat).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 30)); row.tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "saved-message-count").firstMatch.waitForExistence(timeout: 15))
+        _ = exchange("/phone-ready")
+        let deadline = Date().addingTimeInterval(180)
+        while Date() < deadline {
+            let labels = app.staticTexts.allElementsBoundByIndex.map { $0.label }
+            _ = exchange("/phone-proof", ["epoch": Date().timeIntervalSince1970, "chat": chat, "count": app.tables["saved-history-page"].value as? String ?? "", "labels": labels])
+            if exchange("/status")["stop"] as? Bool == true { break }
+            Thread.sleep(forTimeInterval: 0.6)
+        }
+        XCTAssertLessThan(Date(), deadline)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.tabBars.buttons["Settings"].tap()
+        let signOut = app.cells["settings-signout"]
+        for _ in 0..<8 where !signOut.isHittable { app.swipeUp() }
+        signOut.tap(); app.buttons["Sign Out"].tap()
+        XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 15))
+    }
+
 }

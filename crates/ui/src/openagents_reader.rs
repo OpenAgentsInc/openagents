@@ -42,6 +42,7 @@ pub struct SavedReader {
     notified_loss: Option<u64>,
     _watch: Task<()>,
     _auth: Task<()>,
+    _follow: Task<()>,
 }
 impl EventEmitter<ReaderEvent> for SavedReader {}
 fn launch(f: impl Future<Output = ()> + Send + 'static, cx: &mut Context<SavedReader>) {
@@ -95,6 +96,19 @@ impl SavedReader {
                 }
             }
         });
+        let follow = cx.spawn({
+            let model = model.clone();
+            async move |_, cx| {
+                loop {
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_secs(2))
+                        .await;
+                    if Tokio::spawn(cx, model.poll()).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        });
         Self {
             model,
             snapshot: Snapshot::default(),
@@ -110,9 +124,12 @@ impl SavedReader {
             notified_loss: None,
             _watch: watch,
             _auth: auth_watch,
+            _follow: follow,
         }
     }
     fn sync(&mut self, snapshot: Snapshot) {
+        let follow_tail = self.list.is_scrolled_to_end().unwrap_or(true);
+        let new_content = !Arc::ptr_eq(&snapshot.messages, &self.snapshot.messages);
         let old_len = self.snapshot.messages.len();
         let new_len = snapshot.messages.len();
         let same_chat = self.snapshot.summary.as_ref().map(|s| &s.chat)
@@ -142,6 +159,9 @@ impl SavedReader {
         } else if new_len > 0 && !Arc::ptr_eq(&snapshot.messages, &self.snapshot.messages) {
             self.list.remeasure_items(0..new_len);
         }
+        if follow_tail && same_chat && new_content && new_len > 0 && !snapshot.has_more {
+            self.list.scroll_to_reveal_item(new_len - 1);
+        }
         self.snapshot = snapshot;
     }
     pub fn open(&mut self, target: ExistingChat, cx: &mut Context<Self>) -> bool {
@@ -161,6 +181,7 @@ impl SavedReader {
         }
         let opened = self.model.open(target).is_ok();
         if opened {
+            self.model.set_following(true);
             self.focus_pending = true;
             launch(self.model.more(), cx);
         }

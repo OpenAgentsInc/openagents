@@ -300,3 +300,13 @@ Coder sessions stay separate. Sign-out clears both views. Run
 `scripts/ios/check-history.py` for the isolated native paging, file, archive,
 project, and sign-out check; `--public-history` accepts only disposable chat
 IDs supplied by the monorepo's `scripts/smoke/sdk-history.py`.
+
+## Live account readers (#11869)
+
+A fully loaded account chat follows changes every two seconds while its reader
+is open. Rust swaps complete, bounded pages together and cancels reads on
+selection changes, backgrounding on iOS, or sign-out. Incomplete histories keep
+explicit paging. Both native views follow the end while the person is already
+there. `scripts/ios/check-history.py --live` checks arrivals, outages and resume;
+the `account-fixture --film` example captures the real desktop reader against
+a dedicated account without starting an engine or opening the owner's data.

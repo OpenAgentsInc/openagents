@@ -60,6 +60,8 @@ struct State {
     file_epoch: u64,
     bytes: usize,
     replace: bool,
+    following: Option<CancellationToken>,
+    polling: bool,
     snapshot: Snapshot,
 }
 pub struct Reader {
@@ -84,6 +86,8 @@ impl Reader {
                 file_epoch: 0,
                 bytes: 0,
                 replace: false,
+                following: None,
+                polling: false,
                 snapshot: Snapshot::default(),
             }),
             updates,
@@ -129,6 +133,8 @@ impl Reader {
         let mut s = self.state.lock().unwrap();
         s.cancel.cancel();
         s.file_cancel.cancel();
+        s.following = None;
+        s.polling = false;
         s.epoch += 1;
         s.target = None;
         s.reader = None;
@@ -177,9 +183,12 @@ impl Reader {
             .client()
             .transcript(target.lease.session(), &target.chat)?
             .with_page_size(200.min(self.limits.messages))?;
+        let following = s.following.is_some();
         s.cancel.cancel();
         s.file_cancel.cancel();
         s.cancel = target.lease.cancel.child_token();
+        s.following = following.then(|| s.cancel.child_token());
+        s.polling = false;
         s.file_cancel = s.cancel.child_token();
         s.epoch += 1;
         s.reader = Some(reader);
@@ -336,6 +345,164 @@ impl Reader {
             this.publish(&s);
         }
     }
+    /// Follow only a fully loaded, visible transcript. Pausing cancels an in-flight read.
+    pub fn set_following(&self, active: bool) {
+        let mut s = self.state.lock().unwrap();
+        if !active {
+            if let Some(cancel) = s.following.take() {
+                cancel.cancel();
+            }
+        } else if s.following.is_none() && s.target.as_ref().is_some_and(ExistingChat::is_current) {
+            s.following = Some(s.cancel.child_token());
+        }
+    }
+
+    /// Re-read changed content atomically, within the same paging and memory bounds.
+    /// Old pages stay on screen during a request; account and selection changes cancel it.
+    pub fn poll(self: &Arc<Self>) -> impl Future<Output = ()> + Send + 'static {
+        let this = self.clone();
+        let request = {
+            let mut s = self.state.lock().unwrap();
+            if s.polling
+                || s.snapshot.has_more
+                || s.snapshot.first != 0
+                || s.snapshot.continue_required
+                || s.snapshot.smaller_page
+                || s.snapshot.login_required
+                || s.snapshot.access_lost
+                || s.snapshot.reload_required
+                || s.snapshot.state == LoadState::Loading
+            {
+                None
+            } else if let (Some(target), Some(cancel)) = (
+                s.target.clone().filter(ExistingChat::is_current),
+                s.following.clone().filter(|c| !c.is_cancelled()),
+            ) {
+                let revision = s.snapshot.summary.as_ref().map_or(0, |x| x.revision);
+                s.polling = true;
+                Some((
+                    s.epoch,
+                    target,
+                    cancel,
+                    revision,
+                    s.snapshot.messages.clone(),
+                ))
+            } else {
+                None
+            }
+        };
+        async move {
+            let Some((epoch, target, cancel, revision, previous)) = request else {
+                return;
+            };
+            let result = async {
+                let mut reader = target
+                    .lease
+                    .client()
+                    .transcript(target.lease.session(), &target.chat)?
+                    .with_page_size(200.min(this.limits.messages))?;
+                let mut messages = Vec::new();
+                let mut bytes = 0usize;
+                let mut summary = None;
+                let mut captures = Vec::new();
+                let mut has_more = false;
+                loop {
+                    let mut candidate = reader.clone();
+                    let Some(page) = candidate
+                        .next_page(target.lease.client(), target.lease.session(), &cancel)
+                        .await?
+                    else {
+                        break;
+                    };
+                    if summary.is_none() && page.revision == revision {
+                        return Ok(None);
+                    }
+                    let page_bytes = page
+                        .data
+                        .iter()
+                        .map(message_bytes)
+                        .fold(0usize, usize::saturating_add);
+                    if bytes.saturating_add(page_bytes) > this.limits.bytes
+                        || messages.len() + page.data.len() > this.limits.messages
+                    {
+                        if messages.is_empty() {
+                            return Err(Error::InvalidResponse);
+                        }
+                        has_more = true;
+                        break;
+                    }
+                    bytes += page_bytes;
+                    messages.extend(page.data);
+                    summary = Some(page.thread);
+                    captures = page.captures;
+                    has_more = page.has_more;
+                    reader = candidate;
+                    if !has_more
+                        || messages.len() >= this.limits.messages
+                        || bytes > this.limits.bytes / 2
+                    {
+                        break;
+                    }
+                }
+                Ok::<_, Error>(Some((reader, messages, bytes, summary, captures, has_more)))
+            }
+            .await;
+            let mut s = this.state.lock().unwrap();
+            if s.epoch != epoch {
+                return;
+            }
+            s.polling = false;
+            if !target.is_current()
+                || cancel.is_cancelled()
+                || !Arc::ptr_eq(&previous, &s.snapshot.messages)
+                || s.snapshot.state == LoadState::Loading
+            {
+                return;
+            }
+            match result {
+                Ok(None) => {
+                    if s.snapshot.state == LoadState::Ready {
+                        return;
+                    }
+                    s.snapshot.state = LoadState::Ready;
+                }
+                Ok(Some((reader, messages, bytes, summary, captures, has_more))) => {
+                    s.file_cancel.cancel();
+                    s.file_cancel = s.cancel.child_token();
+                    s.snapshot.download = None;
+                    s.snapshot.received = messages.len();
+                    s.snapshot.messages = Arc::new(messages);
+                    s.snapshot.summary = summary;
+                    s.snapshot.captures = captures;
+                    s.snapshot.has_more = has_more;
+                    s.snapshot.state = LoadState::Ready;
+                    s.bytes = bytes;
+                    s.reader = Some(reader);
+                }
+                Err(Error::Cancelled | Error::Changed | Error::InvalidCursor) => return,
+                Err(error) => {
+                    s.snapshot.login_required = login_required(&error);
+                    s.snapshot.access_lost = lost_access(&error);
+                    if s.snapshot.access_lost || s.snapshot.login_required {
+                        s.snapshot.messages = Arc::new(Vec::new());
+                        s.snapshot.captures.clear();
+                        s.snapshot.summary = None;
+                        s.snapshot.download = None;
+                        s.file_cancel.cancel();
+                        s.snapshot.received = 0;
+                        s.bytes = 0;
+                    }
+                    s.snapshot.state = LoadState::Failed {
+                        message: "Couldn't update this chat. Check your connection or refresh."
+                            .into(),
+                        stale: !s.snapshot.messages.is_empty(),
+                    };
+                }
+            }
+            this.publish(&s);
+        }
+    }
+
     /// Only one saved attachment is kept in memory. Selecting another cancels and releases it.
     pub fn download(
         self: &Arc<Self>,

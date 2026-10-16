@@ -387,6 +387,7 @@ final class AppModel {
     }
 
     func didEnterBackground() {
+        savedHistory?.setForeground(active: false)
         // Give the already-durable room outbox and host wake time to reach
         // the edge when the user leaves immediately after tapping Send.
         endDeliveryBackgroundTask()
@@ -402,6 +403,7 @@ final class AppModel {
         client?.onBackground()
     }
     func willEnterForeground() {
+        savedHistory?.setForeground(active: true)
         if !isDemo { account?.revalidate() }
         endDeliveryBackgroundTask()
         client?.onForeground()

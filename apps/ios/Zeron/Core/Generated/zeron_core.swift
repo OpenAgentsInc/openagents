@@ -2588,7 +2588,14 @@ public protocol CoreSavedHistoryProtocol: AnyObject, Sendable {
     
     func downloadedFilePart(part: UInt64) throws  -> SavedFilePart
     
+    /**
+     * Native view visibility controls following; navigation never grants write access.
+     */
+    func follow(visible: Bool) 
+    
     func message(id: String, part: UInt64) throws  -> SavedMessagePart
+    
+    func setForeground(active: Bool) 
     
     func shutdown() 
     
@@ -2676,6 +2683,18 @@ open func downloadedFilePart(part: UInt64)throws  -> SavedFilePart  {
 })
 }
     
+    /**
+     * Native view visibility controls following; navigation never grants write access.
+     */
+open func follow(visible: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coresavedhistory_follow(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(visible),uniffiCallStatus
+    )
+}
+}
+    
 open func message(id: String, part: UInt64)throws  -> SavedMessagePart  {
     return try  FfiConverterTypeSavedMessagePart_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
         uniffiCallStatus in
@@ -2685,6 +2704,15 @@ open func message(id: String, part: UInt64)throws  -> SavedMessagePart  {
         FfiConverterUInt64.lower(part),uniffiCallStatus
     )
 })
+}
+    
+open func setForeground(active: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coresavedhistory_set_foreground(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(active),uniffiCallStatus
+    )
+}
 }
     
 open func shutdown()  {try! rustCall() {
@@ -19153,7 +19181,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_zeron_mobile_checksum_method_coresavedhistory_downloaded_file_part() != 47197) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_zeron_mobile_checksum_method_coresavedhistory_follow() != 19809) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_zeron_mobile_checksum_method_coresavedhistory_message() != 12292) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coresavedhistory_set_foreground() != 53922) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_method_coresavedhistory_shutdown() != 19879) {

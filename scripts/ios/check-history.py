@@ -16,6 +16,9 @@ def chat(n):
 
 class Handler(BaseHTTPRequestHandler):
     credential = "oa_sk_" + "1" * 64
+    live = False
+    revision = 1
+    offline = False
     def log_message(self, *_):
         pass
 
@@ -24,7 +27,14 @@ class Handler(BaseHTTPRequestHandler):
         query = parse_qs(path.query)
         result = {}
         media = "application/json"
-        if path.path == "/fixture-key":
+        if path.path == "/advance":
+            Handler.revision += 1
+            result = {"ok": True}
+        elif path.path == "/offline":
+            Handler.offline = True
+        elif path.path == "/online":
+            Handler.offline = False
+        elif path.path == "/fixture-key":
             result = {"credential": self.credential}
         elif path.path == "/v1/account":
             result = {"account": {"id": "acct_fixture", "label": "History fixture"}, "workspaces": []}
@@ -38,13 +48,16 @@ class Handler(BaseHTTPRequestHandler):
                      "project": None, "source": ["web", "terminal", "phone"][n % 3], "messages": 405} for n in range(start, end)]
             result = {"data": rows, "next": chat(end-1) if end < 205 else None}
         elif path.path.endswith("/messages"):
+            if Handler.offline:
+                self.send_error(503); return
             start = int(query["after"][0][4:]) + 1 if "after" in query else 0
-            end = min(start + int(query.get("limit", [200])[0]), 405)
+            count = 2 * Handler.revision if Handler.live else 405
+            end = min(start + int(query.get("limit", [200])[0]), count)
             rows = [{"id": f"msg_{n}", "role": "user" if n == 0 else "assistant", "text": "Saved question — full text" if n == 0 else f"Saved reply {n}",
                      "files": [{"id": "0123456789abcdef0123456789abcdef", "name": "fixture.txt", "kind": "text", "size": 21}] if n == 0 else []} for n in range(start, end)]
-            result = {"thread": {"id": chat(204), "title": "Saved chat 204", "revision": 1, "updated_unix": 1, "pinned_unix": 1,
-                                 "archived_unix": None, "project": None, "source": "web", "messages": 405},
-                      "revision": 1, "data": rows, "next": f"msg_{end-1}" if end < 405 else None, "captures": []}
+            result = {"thread": {"id": path.path.split("/")[3], "title": "Saved chat", "revision": Handler.revision, "updated_unix": 1, "pinned_unix": 1,
+                                 "archived_unix": None, "project": None, "source": "web", "messages": count},
+                      "revision": Handler.revision, "data": rows, "next": f"msg_{end-1}" if end < count else None, "captures": []}
         elif "/files/" in path.path:
             result = b"fixture file contents"; media = "text/plain"
         else:
@@ -61,7 +74,9 @@ def main():
     parser.add_argument("--scratch", type=Path, required=True)
     parser.add_argument("--simulator", default="8010197D-517D-43DA-9559-46742EFABC65")
     parser.add_argument("--public-history", action="store_true", help="Use only the dedicated-account fixtures from sdk-history.py")
+    parser.add_argument("--live", action="store_true")
     args = parser.parse_args()
+    Handler.live = args.live
     if args.public_history:
         Handler.credential = os.environ["OPENAGENTS_TOKEN"]
         assert Handler.credential.startswith("oa_sk_")
@@ -73,7 +88,7 @@ def main():
                TEST_RUNNER_CODER_HISTORY_FIXTURE=f"http://127.0.0.1:{server.server_port}")
     if args.public_history:
         env["TEST_RUNNER_CODER_PUBLIC_HISTORY_CONFIG"] = json.dumps({"key_url": f"http://127.0.0.1:{server.server_port}/fixture-key", "chat": chat_ids[0]})
-    test = "testPublicSavedAccountHistory" if args.public_history else "testSavedAccountHistory"
+    test = "testPublicSavedAccountHistory" if args.public_history else "testLiveAccountHistory" if args.live else "testSavedAccountHistory"
     try:
         with (args.scratch / "history-uitest.log").open("w") as log:
             subprocess.run(["xcodebuild", "test", "-project", "apps/ios/Zeron.xcodeproj", "-scheme", "Zeron", "-configuration", "Debug",

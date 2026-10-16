@@ -134,7 +134,8 @@ fn capture_window(
         .unwrap();
 }
 fn main() -> anyhow::Result<()> {
-    let public_mode = std::env::args().any(|arg| arg == "--public-history");
+    let film_mode = std::env::args().any(|arg| arg == "--film");
+    let public_mode = film_mode || std::env::args().any(|arg| arg == "--public-history");
     let public_ids: Vec<String> = if public_mode {
         serde_json::from_str(&std::env::var("SDK_FIXTURE_CHAT_IDS")?)?
     } else {
@@ -190,7 +191,7 @@ fn main() -> anyhow::Result<()> {
         let session = runtime.block_on(client.authenticate(&token))?;
         store.save(&session.record())?;
         anyhow::ensure!(
-            public_ids.len() == 3,
+            public_ids.len() == if film_mode { 1 } else { 3 },
             "pass the three disposable fixture IDs"
         );
     }
@@ -358,6 +359,27 @@ fn main() -> anyhow::Result<()> {
                                         cx.background_executor()
                                             .timer(Duration::from_millis(100))
                                             .await;
+                                    }
+                                    if film_mode {
+                                        let frames = output.join("frames");
+                                        std::fs::create_dir_all(&frames).unwrap();
+                                        std::fs::write(output.join("ready"), id).unwrap();
+                                        let mut stamps = Vec::new();
+                                        let deadline = Instant::now() + Duration::from_secs(180);
+                                        while !output.join("stop").exists() {
+                                            assert!(Instant::now() < deadline, "film capture exceeded three minutes");
+                                            cx.background_executor().timer(Duration::from_millis(100)).await;
+                                            let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64();
+                                            let snapshot = reader.snapshot();
+                                            let n = stamps.len();
+                                            capture_window(window, cx, &frames, &format!("{n:06}"));
+                                            stamps.push(json!({"frame":format!("{n:06}.png"),"epoch":t,
+                                                "chat":id,"revision":snapshot.summary.as_ref().map(|s|s.revision),
+                                                "messages":snapshot.messages.iter().map(|m|json!({"id":m.id,"role":m.role.as_str(),"text":m.text})).collect::<Vec<_>>()}));
+                                            std::fs::write(output.join("frames.json"), serde_json::to_vec(&stamps).unwrap()).unwrap();
+                                        }
+                                        reader.clear();
+                                        break;
                                     }
                                     assert_eq!(reader.snapshot().messages.len(), 200);
                                     runtime.spawn(reader.more()).await.unwrap();

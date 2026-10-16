@@ -46,6 +46,7 @@ struct Server {
     status: AtomicUsize,
     file_status: AtomicUsize,
     revision: AtomicUsize,
+    count: AtomicUsize,
     reads: AtomicUsize,
     downloads: AtomicUsize,
     delayed: AtomicBool,
@@ -84,9 +85,10 @@ async fn messages(
         .unwrap_or(0);
     let limit = q["limit"].parse::<usize>().unwrap();
     assert!(limit <= 200);
-    let end = (start + limit).min(405);
+    let count = s.count.load(Ordering::SeqCst);
+    let end = (start + limit).min(count);
     let data:Vec<_>=(start..end).map(|n|json!({"id":format!("msg_{n}"),"role":match n{0=>"user",1=>"thinking",2=>"tool",3=>"future-role",_=>"assistant"},"text":if n==0{"# Saved question\n\n**Markdown** and `code`.\n\n```rust\nlet answer = 42;\n```".to_string()}else{format!("Saved message {n}")},"files":if s.bad.load(Ordering::SeqCst){json!("malformed")}else if n==0{json!([{"id":FILE,"name":"fixture.txt","kind":"text","size":8}])}else{json!([])},"tool":if n==2{Some(json!({"name":"read","summary":"Read a saved file","status":"done","input":"fixture.txt","output":"Full saved output"}))}else{None},"future_content":{"kind":"unknown","value":n},"generated_files":if n==3{json!("malformed additive content")}else{json!([])},"artifacts":[]})).collect();
-    Json(json!({"thread":{"id":chat,"title":"Saved fixture chat","revision":revision,"updated_unix":1,"pinned_unix":null,"archived_unix":if chat==id(2){Some(1)}else{None},"project":"prj_0000000000000001","source":if chat==id(2){"phone"}else{"terminal"},"messages":405},"revision":revision,"data":data,"next":(end<405).then(||format!("msg_{}",end-1)),"captures":[{"id":id(555),"name":"Saved capture","state":"saved","size":3,"media":"text/plain"},{"id":id(556),"name":"Missing capture","state":"not_saved","size":null,"media":null}]})).into_response()
+    Json(json!({"thread":{"id":chat,"title":"Saved fixture chat","revision":revision,"updated_unix":1,"pinned_unix":null,"archived_unix":if chat==id(2){Some(1)}else{None},"project":"prj_0000000000000001","source":if chat==id(2){"phone"}else{"terminal"},"messages":count},"revision":revision,"data":data,"next":(end<count).then(||format!("msg_{}",end-1)),"captures":[{"id":id(555),"name":"Saved capture","state":"saved","size":3,"media":"text/plain"},{"id":id(556),"name":"Missing capture","state":"not_saved","size":null,"media":null}]})).into_response()
 }
 async fn file(State(s): State<Arc<Server>>) -> Response {
     s.downloads.fetch_add(1, Ordering::SeqCst);
@@ -105,6 +107,7 @@ async fn setup() -> (Arc<Controller>, Arc<Reader>, Arc<Server>, tempfile::TempDi
     let origin = format!("http://{}", listener.local_addr().unwrap());
     let server = Arc::new(Server::default());
     server.revision.store(1, Ordering::SeqCst);
+    server.count.store(405, Ordering::SeqCst);
     let router = Router::new()
         .route(
             "/v1/account",
@@ -318,4 +321,95 @@ async fn missing_files_preserve_the_chat_but_revoked_access_clears_it() {
     assert!(r.snapshot().messages.is_empty());
     assert!(r.snapshot().access_lost);
     assert!(r.snapshot().download.is_none());
+}
+
+#[tokio::test]
+async fn live_follow_replaces_changed_history_atomically_and_reuses_unchanged_pictures() {
+    let (c, r, s, _root) = setup().await;
+    r.open(target(&c, 1)).unwrap();
+    r.more().await;
+    r.more().await;
+    r.more().await;
+    r.set_following(true);
+    let previous = r.snapshot().messages;
+    r.poll().await;
+    assert!(Arc::ptr_eq(&previous, &r.snapshot().messages));
+    s.count.store(406, Ordering::SeqCst);
+    s.revision.store(2, Ordering::SeqCst);
+    r.poll().await;
+    assert_eq!(r.snapshot().messages.len(), 406);
+    assert_eq!(r.snapshot().messages.last().unwrap().id, "msg_405");
+    assert_eq!(r.snapshot().summary.unwrap().revision, 2);
+    assert!(!r.snapshot().has_more);
+    s.status.store(503, Ordering::SeqCst);
+    r.poll().await;
+    assert!(matches!(
+        r.snapshot().state,
+        LoadState::Failed { stale: true, .. }
+    ));
+    assert_eq!(r.snapshot().messages.len(), 406);
+    s.status.store(0, Ordering::SeqCst);
+    r.poll().await;
+    assert_eq!(r.snapshot().state, LoadState::Ready);
+    s.status.store(403, Ordering::SeqCst);
+    r.poll().await;
+    assert!(r.snapshot().access_lost);
+    assert!(r.snapshot().messages.is_empty());
+}
+
+#[tokio::test]
+async fn following_does_not_replace_partial_pages_or_survive_background_selection_and_logout() {
+    let (c, r, s, _root) = setup().await;
+    r.open(target(&c, 1)).unwrap();
+    r.more().await;
+    r.set_following(true);
+    let reads = s.reads.load(Ordering::SeqCst);
+    r.poll().await;
+    assert_eq!(s.reads.load(Ordering::SeqCst), reads);
+    r.more().await;
+    r.more().await;
+    s.delayed.store(true, Ordering::SeqCst);
+    let pending = tokio::spawn(r.poll());
+    s.started.notified().await;
+    r.set_following(false);
+    pending.await.unwrap();
+    let reads = s.reads.load(Ordering::SeqCst);
+    r.poll().await;
+    assert_eq!(s.reads.load(Ordering::SeqCst), reads);
+    r.set_following(true);
+    let pending = tokio::spawn(r.poll());
+    s.started.notified().await;
+    r.open(target(&c, 2)).unwrap();
+    r.more().await;
+    pending.await.unwrap();
+    assert_eq!(r.snapshot().summary.unwrap().chat.id(), id(2));
+    r.more().await;
+    r.more().await;
+    r.set_following(true);
+    c.sign_out().await;
+    r.poll().await;
+    assert!(r.snapshot().messages.is_empty());
+}
+
+#[tokio::test]
+async fn a_growing_live_chat_stops_at_the_existing_paging_limit() {
+    let (c, _, s, _root) = setup().await;
+    s.count.store(190, Ordering::SeqCst);
+    let r = Reader::with_limits(Limits {
+        bytes: 1024 * 1024,
+        messages: 200,
+    });
+    r.open(target(&c, 1)).unwrap();
+    r.more().await;
+    r.set_following(true);
+    s.count.store(205, Ordering::SeqCst);
+    s.revision.store(2, Ordering::SeqCst);
+    r.poll().await;
+    assert_eq!(r.snapshot().messages.len(), 200);
+    assert!(r.snapshot().has_more);
+    let reads = s.reads.load(Ordering::SeqCst);
+    r.poll().await;
+    assert_eq!(s.reads.load(Ordering::SeqCst), reads);
+    r.more().await;
+    assert!(r.snapshot().continue_required);
 }

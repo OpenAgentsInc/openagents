@@ -13,6 +13,7 @@ class SavedHistoryController: UITableViewController {
     private var token: AnyObject?
     private var rows: [Row] = []
     private var part: UInt64 = 0
+    private var messageCount: UInt64 = 0
 
     init(app: AppModel, page: Page) {
         self.app = app
@@ -28,6 +29,16 @@ class SavedHistoryController: UITableViewController {
         tableView.estimatedRowHeight = 76
         token = app.observe { [weak self] in self?.reload() }
         reload()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if case .transcript = page { app.savedHistory?.follow(visible: true) }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        if case .transcript = page { app.savedHistory?.follow(visible: false) }
     }
 
     private func perform(_ action: SavedHistoryAction) {
@@ -70,6 +81,8 @@ class SavedHistoryController: UITableViewController {
     }
 
     private func reload() {
+        let nearBottom = tableView.contentSize.height - tableView.contentOffset.y - tableView.bounds.height < 120
+        var followNewMessages = false
         rows = []
         guard let state = app.savedSnapshot, state.signedIn else {
             title = "OpenAgents chats"
@@ -94,6 +107,9 @@ class SavedHistoryController: UITableViewController {
             if state.projects.isEmpty, case .ready = state.projectsState { rows.append(.note("No shared projects yet.", "saved-project-empty")) }
         case .transcript:
             let transcript = state.transcript
+            followNewMessages = !transcript.hasMore && transcript.received > messageCount && (nearBottom || messageCount == 0)
+            messageCount = transcript.received
+            tableView.accessibilityValue = "\(transcript.received) messages loaded"
             title = transcript.title ?? "Saved chat"
             navigationItem.prompt = "Saved chat"
             navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Refresh", primaryAction: UIAction { [weak self] _ in self?.perform(.refreshMessages) })
@@ -140,6 +156,10 @@ class SavedHistoryController: UITableViewController {
             }
         }
         tableView.reloadData()
+        if followNewMessages, !rows.isEmpty {
+            tableView.layoutIfNeeded()
+            tableView.scrollToRow(at: IndexPath(row: rows.count - 1, section: 0), at: .bottom, animated: false)
+        }
     }
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { rows.count }

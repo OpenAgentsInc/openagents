@@ -131,6 +131,8 @@ pub struct CoreSavedHistory {
     history: Arc<History>,
     reader: Arc<Reader>,
     archived: AtomicBool,
+    visible: AtomicBool,
+    foreground: AtomicBool,
     cancel: CancellationToken,
     listener: Arc<dyn SavedHistoryListener>,
 }
@@ -199,12 +201,16 @@ impl CoreSavedHistory {
             history: history.clone(),
             reader: reader.clone(),
             archived: AtomicBool::new(false),
+            visible: AtomicBool::new(false),
+            foreground: AtomicBool::new(true),
             cancel: CancellationToken::new(),
             listener: listener.clone(),
         });
         let cancel = this.cancel.clone();
         zeron_client::runtime::shared().spawn(async move {
             listener.on_saved_history_changed();
+            let mut timer = tokio::time::interval(std::time::Duration::from_secs(2));
+            timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
                 tokio::select! {
                     biased;
@@ -215,6 +221,7 @@ impl CoreSavedHistory {
                             listener.on_saved_history_changed(); break;
                         }
                     }
+                    _ = timer.tick() => reader.poll().await,
                     changed = lists.changed() => {
                         if changed.is_err() { break; }
                         listener.on_saved_history_changed();
@@ -346,6 +353,17 @@ impl CoreSavedHistory {
                     .unwrap_or(SavedLoadState::Idle),
             },
         }
+    }
+    /// Native view visibility controls following; navigation never grants write access.
+    pub fn follow(&self, visible: bool) {
+        self.visible.store(visible, Ordering::SeqCst);
+        self.reader
+            .set_following(visible && self.foreground.load(Ordering::SeqCst));
+    }
+    pub fn set_foreground(&self, active: bool) {
+        self.foreground.store(active, Ordering::SeqCst);
+        self.reader
+            .set_following(active && self.visible.load(Ordering::SeqCst));
     }
     pub fn action(&self, action: SavedHistoryAction) -> CoreResult<()> {
         if !self.current() {
