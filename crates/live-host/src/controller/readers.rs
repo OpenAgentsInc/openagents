@@ -139,10 +139,9 @@ impl Controller {
         if body["v"] == "openagents.live-plan.v1" {
             return false;
         }
-        let Some(member) = session.members.get(signer).filter(|m| m.expires_at > now) else {
+        let Some(_) = session.members.get(signer).filter(|m| m.expires_at > now) else {
             return false;
         };
-        let _ = member;
         match body["v"].as_str() {
             Some("openagents.live-participant.v1") => {
                 body["action"] == "revoke" && body["participant"] == signer

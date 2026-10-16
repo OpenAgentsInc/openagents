@@ -537,6 +537,23 @@ fn captures_and_transcripts_keep_scope_clock_and_corrections() {
     assert_eq!(observation["geometry"]["width_px"], 1280);
     // Recording the mic needs every publisher's recording consent; Bob gave none.
     assert_eq!(fx.capture(&c, "mic", "recording")["reason"], "not_admitted");
+    // A different purpose cannot bypass consent while retaining the same bytes.
+    assert_eq!(
+        fx.capture(&c, "mic", "task_input")["reason"],
+        "not_admitted"
+    );
+    let consent = fx.consent(BOB, json!(["record", "transcribe"]), json!(["mic"]));
+    assert_eq!(
+        fx.participant(
+            &c,
+            OWNER,
+            BOB,
+            json!(["publish"]),
+            json!(["mic"]),
+            vec![consent]
+        )["status"],
+        "accepted"
+    );
     let mic = fx.capture(&c, "mic", "task_input");
     let mic_ref = mic["value"].clone();
     let mic_body = c.store().json(&mic_ref).unwrap();
@@ -600,6 +617,18 @@ fn captures_and_transcripts_keep_scope_clock_and_corrections() {
     let second = c.store().json(&second).unwrap();
     assert_eq!(second["revision"], 1);
     assert_eq!(second["previous"], first);
+    assert!(
+        c.transcribe(
+            &fx.session,
+            &mic_ref,
+            &fx.asr,
+            vec![],
+            "partial",
+            fx.now + 3601
+        )
+        .unwrap_err()
+        .starts_with("not_admitted")
+    );
 }
 
 fn appoint_input(fx: &Fx, c: &Controller) {
@@ -1215,4 +1244,63 @@ fn current_session_rights_protect_cached_results_and_refusal_details() {
     let mut self_revoke = revoke;
     self_revoke["request"] = json!(fx.next());
     assert_eq!(fx.send(&c, ALICE, &self_revoke)["reason"], "not_admitted");
+}
+
+#[test]
+fn interrupted_device_write_recovers_unknown_without_reentering_the_device() {
+    use crate::media::{Applied, Device, InputGuard, InputOperation};
+    struct Crash(std::rc::Rc<std::cell::RefCell<SyntheticDevice>>);
+    impl Device for Crash {
+        fn input_operation(&self) -> Option<InputOperation> {
+            self.0.borrow().input_operation()
+        }
+        fn state(&self) -> (u64, u64) {
+            self.0.borrow().state()
+        }
+        fn apply(&mut self, _: &str, _: &[u8]) -> Applied {
+            panic!("unchecked input")
+        }
+        fn apply_checked(&mut self, operation: &str, input: &[u8], guard: &InputGuard) -> Applied {
+            assert!(matches!(
+                self.0.borrow_mut().apply_checked(operation, input, guard),
+                Applied::Applied(_)
+            ));
+            panic!("injected crash after native write");
+        }
+    }
+    let mut fx = Fx::new();
+    let c = fx.controller();
+    fx.active(&c);
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(SyntheticDevice::default()));
+    c.with_adapters(|a| a.device = Box::new(Crash(writes.clone())));
+    appoint_input(&fx, &c);
+    let observation = fx.capture(&c, "screen", "observation")["value"].clone();
+    let (proposal, action) = proposal(&mut fx, &c, &observation, b"{\"click\":[10,20]}");
+    let admission = admission(&mut fx, &c, &proposal, &action, b"approve");
+    let bundle = fx.bundle(OWNER, &admission, vec![]);
+    assert!(
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.submit(&bundle, fx.now)))
+            .is_err()
+    );
+    assert_eq!(writes.borrow().applied.len(), 1);
+    drop(c);
+    let c = fx.controller();
+    let fresh = tracked_input(&c);
+    // Original authority and capture may expire while recovering; observation
+    // of a completed dispatch must never depend on sending another input.
+    let result = c.submit(&bundle, fx.now + 2000).unwrap();
+    assert_eq!(result["status"], "unknown", "{result}");
+    let outcome = c.store().json(&result["value"]).unwrap();
+    assert_eq!(outcome["dispatched"], true);
+    assert_eq!(outcome["outcome"], "unknown");
+    assert_eq!(c.submit(&bundle, fx.now + 2000).unwrap(), result);
+    assert!(fresh.borrow().applied.is_empty());
+    let mut changed = admission;
+    changed["request"] = json!(fx.next());
+    changed["expected_revision"] = fx.revision(&c);
+    assert_eq!(
+        fx.send(&c, OWNER, &changed)["reason"],
+        "idempotency_conflict"
+    );
+    assert!(fresh.borrow().applied.is_empty());
 }

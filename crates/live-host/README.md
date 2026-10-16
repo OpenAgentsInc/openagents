@@ -67,11 +67,12 @@ broker, capture source, and device behind the same roles.
   revokes it and records the confirmed position and the uncertain tail.
   Playback never replays after reconnection.
 - **Captures and transcripts.** Captures come only from admitted capture
-  tracks. Recording needs bounded retention and recording consent from every
-  participant on the track. Observations carry image geometry or a media
+  tracks. Retaining any capture needs current bounded retention and recording
+  consent from every publisher on the track, regardless of its purpose. Observations carry image geometry or a media
   interval and a signed freshness record. Bytes are retained only when the
   track's retention allows it. Transcripts need an admitted transform, the
-  observation's clock domain, and segments inside its interval. Corrections
+  observation's clock domain, current recording and transcription consent,
+  bounded retention, and segments inside its interval. Corrections
   are new revisions that point to their predecessor.
 - **Device input.** An owner submits an inert `live-input` proposal. The host
   checks the installed CAP, input and observation schemas, binding, supported
@@ -89,7 +90,9 @@ broker, capture source, and device behind the same roles.
   observation must still match
   the device's generation and focus version within its age limit. Dispatch is
   journaled before the input is applied. A lost reply stays `unknown` and is
-  never re-applied. A changed admission for the same proposal is refused until
+  never re-applied. After a crash between dispatch and the final receipt, an
+  exact retry saves an unknown outcome without reentering the device, even if
+  the observation has since expired. A changed admission for the same proposal is refused until
   the original is reconciled.
   The actual input call receives the frozen observation, binding, all input
   preconditions, and an absolute deadline bounded by capture age and approval

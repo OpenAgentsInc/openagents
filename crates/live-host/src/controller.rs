@@ -23,6 +23,7 @@ use std::{
 use workspace_host::artifact::{Artifacts, token};
 mod input;
 mod readers;
+mod retention;
 pub use input::InputGrant;
 
 pub const MAX_PARTICIPANTS: usize = 64;
@@ -473,6 +474,20 @@ impl Controller {
                 self.save(&state)?;
                 return Ok(result);
             }
+            if body["v"] == "openagents.live-input-admission.v1"
+                && let Some(result) =
+                    self.recover_input(&mut state, session_id.as_deref(), &signer, &input, now)?
+            {
+                state.priors.insert(
+                    key,
+                    Prior {
+                        fingerprint: digest_of(&input).into(),
+                        result: result.clone(),
+                    },
+                );
+                self.save(&state)?;
+                return Ok(result);
+            }
             let outcome = match state.priors.get(&key) {
                 Some(prior) if prior.fingerprint == digest_of(&input) => {
                     let mut result = prior.result.clone();
@@ -517,6 +532,25 @@ impl Controller {
                         fresh.known.entry(principal).or_default().extend(known);
                     }
                     state = fresh;
+                    if body["v"] == "openagents.live-input-admission.v1"
+                        && let Some(result) = self.recover_input(
+                            &mut state,
+                            session_id.as_deref(),
+                            &signer,
+                            &input,
+                            now,
+                        )?
+                    {
+                        state.priors.insert(
+                            key,
+                            Prior {
+                                fingerprint: digest_of(&input).into(),
+                                result: result.clone(),
+                            },
+                        );
+                        self.save(&state)?;
+                        return Ok(result);
+                    }
                     let session = session_id
                         .as_ref()
                         .and_then(|id| state.sessions.get(id))
@@ -1320,29 +1354,14 @@ impl Controller {
             ));
         }
         let retained = track["retention"]["mode"] == "bounded";
-        if body["purpose"] == "recording" {
-            if !retained {
-                return Err(refuse(
-                    "cannot_enforce",
-                    "live delivery is not a recording right",
-                ));
-            }
-            let st = self.state()?;
-            for (participant, member) in session
-                .members
-                .iter()
-                .filter(|(_, m)| m.tracks.iter().any(|t| t == track_id))
-            {
-                self.consented(
-                    &st,
-                    session,
-                    participant,
-                    &["record".to_string()],
-                    &[track_id.to_string()],
-                    &member.consent,
-                    now,
-                )?;
-            }
+        if body["purpose"] == "recording" && !retained {
+            return Err(refuse(
+                "cannot_enforce",
+                "live delivery is not a recording right",
+            ));
+        }
+        if retained {
+            self.retention_consent(state, session, &track, &["record"], now)?;
         }
         let captured = self.adapters.borrow_mut().source.capture(
             track["source"]["scope"].as_str().unwrap_or_default(),
@@ -1613,6 +1632,7 @@ impl Controller {
                     "the observation's bytes were not retained",
                 ));
             }
+            self.retention_consent(&state, &session, &track, &["record", "transcribe"], now)?;
             let window = &body["interval"];
             if window.is_null() {
                 return Err(refuse(

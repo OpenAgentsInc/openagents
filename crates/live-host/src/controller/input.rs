@@ -591,3 +591,74 @@ impl Controller {
         ))
     }
 }
+
+impl Controller {
+    /// Finish observing an interrupted attempt without entering the device.
+    pub(super) fn recover_input(
+        &self,
+        state: &mut State,
+        id: Option<&str>,
+        signer: &str,
+        input: &Value,
+        now: u64,
+    ) -> Result<Option<Value>> {
+        let Some(id) = id else {
+            return Ok(None);
+        };
+        let prefix = format!("{id}:input:");
+        let pending = state
+            .priors
+            .iter()
+            .find(|(key, prior)| {
+                key.starts_with(&prefix)
+                    && prior.fingerprint == digest_of(input)
+                    && prior.result["value"].is_null()
+            })
+            .map(|(key, _)| key.clone());
+        let Some(key) = pending else {
+            return Ok(None);
+        };
+        let mut session = state
+            .sessions
+            .get(id)
+            .cloned()
+            .ok_or("not_admitted: input session")?;
+        if session.owner != signer {
+            return Err("not_admitted: input recovery owner".into());
+        }
+        let outcome = self.sign(
+            state,
+            &json!({"v":"openagents.live-input-outcome.v1","requires":[],
+            "admission":input,"dispatched":true,"outcome":"unknown","observed":null,"reason":null}),
+            signer,
+            now,
+        )?;
+        self.record(
+            &mut session,
+            "unknown",
+            json!({"input":digest_of(&outcome)}),
+            now,
+        )?;
+        session.revision += 1;
+        let result = self.result(
+            state,
+            signer,
+            input,
+            Some(&session),
+            "unknown",
+            None,
+            Some(outcome.clone()),
+            Vec::new(),
+            now,
+        )?;
+        state.priors.insert(
+            key,
+            Prior {
+                fingerprint: digest_of(input).into(),
+                result: json!({"value":outcome}),
+            },
+        );
+        state.sessions.insert(id.into(), session);
+        Ok(Some(result))
+    }
+}
