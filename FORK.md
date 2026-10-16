@@ -310,3 +310,11 @@ explicit paging. Both native views follow the end while the person is already
 there. `scripts/ios/check-history.py --live` checks arrivals, outages and resume;
 the `account-fixture --film` example captures the real desktop reader against
 a dedicated account without starting an engine or opening the owner's data.
+
+## Export exemption follow-up (#11850)
+
+- On 2026-10-16, the owner selected `ITSAppUsesNonExemptEncryption=false`
+  and requested a new upload. Both iOS Info.plist files declare it; the
+  archive check rejects a missing or non-exempt app declaration.
+- Marketing version stays 1.0.0. App, extension, and test targets advance to
+  build 1001 because build 1000 is already processed in App Store Connect.

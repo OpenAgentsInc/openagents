@@ -38,6 +38,7 @@ def verify(app, version):
     assert info["CFBundleIdentifier"] == "com.openagents.coder"
     assert info["CFBundleShortVersionString"] == version["version"]
     assert info["CFBundleVersion"] == version["build"]
+    assert info.get("ITSAppUsesNonExemptEncryption") is False, "Export exemption must be explicit."
     privacy = plistlib.loads((app / "PrivacyInfo.xcprivacy").read_bytes())
     assert privacy["NSPrivacyTracking"] is False
     assert not privacy["NSPrivacyTrackingDomains"]
@@ -82,6 +83,8 @@ def main():
             assert settings["CURRENT_PROJECT_VERSION"] == version["build"]
             assert settings["MARKETING_VERSION"] == version["version"]
             assert not settings.get("DEVELOPMENT_TEAM"), "Do not commit a signing team."
+    source_info = plistlib.loads((ROOT / "apps/ios/Zeron/Info.plist").read_bytes())
+    assert source_info.get("ITSAppUsesNonExemptEncryption") is False
     entitlements = plistlib.loads((ROOT / "apps/ios/Zeron.entitlements").read_bytes())
     assert "aps-environment" not in entitlements
     assert not entitlements.get("get-task-allow", False)

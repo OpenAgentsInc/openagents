@@ -1,6 +1,6 @@
 # Prepare Coder for TestFlight
 
-The candidate is **OpenAgents Coder 1.0.0 (1000)**, bundle
+The candidate is **OpenAgents Coder 1.0.0 (1001)**, bundle
 `com.openagents.coder`. This uses the existing App Store Connect record.
 Before signing, the owner checks that this version and build are available.
 If they are already used, change every app/extension version in
@@ -14,7 +14,7 @@ From a clean fork checkout on current `origin/main`:
 scratch=$(openagents scratch)
 python3 scripts/ios/archive.py \
   --target-dir "$HOME/work/coder-desktop-target-agent1" \
-  --output "$scratch/Coder-1.0.0-1000.xcarchive"
+  --output "$scratch/Coder-1.0.0-1001.xcarchive"
 ```
 
 The default is unsigned. The script builds the normal iPhone Rust core in
@@ -42,7 +42,7 @@ distribution validation and upload.
 | --- | --- |
 | Name | OpenAgents Coder |
 | Bundle ID | com.openagents.coder |
-| Version/build candidate | 1.0.0 / 1000 |
+| Version/build candidate | 1.0.0 / 1001 |
 | Subtitle | Your coding sessions, anywhere |
 | Category | Developer Tools |
 | Privacy policy | https://github.com/OpenAgentsInc/coder-desktop/blob/main/apps/ios/release/privacy.md |
@@ -70,10 +70,11 @@ upload. See Apple's [privacy manifest data types](https://developer.apple.com/do
 
 The Rust transports use rustls for HTTPS and secure WebSockets, including
 standard cryptography outside Apple's OS implementation. The app does not
-promise end-to-end encrypted chat storage. This release removes the inherited
-blanket `ITSAppUsesNonExemptEncryption=false` answer. The owner answers Apple's
-encryption questions using this inventory and supplies any required approval;
-the script makes no export-classification decision. See Apple's
+promise end-to-end encrypted chat storage. The owner selected the export
+exemption for this release on 2026-10-16.
+Both app and extension declare `ITSAppUsesNonExemptEncryption=false`; archive
+verification requires the app's declaration. This means the app uses no
+non-exempt encryption, not that it uses no cryptography. See Apple's
 [export compliance process](https://developer.apple.com/help/app-store-connect/manage-app-information/overview-of-export-compliance).
 
 ## Owner upload and device check
@@ -86,8 +87,8 @@ the script makes no export-classification decision. See Apple's
 3. Choose **Product > Archive**. In **Window > Organizer > Archives**, select
    OpenAgents Coder, then **Validate App**. Review privacy and encryption
    answers. Resolve signing or validation errors before continuing.
-4. The agent stops here. The owner chooses **Distribute App > App Store
-   Connect > Upload**, reviews bundle/version/team, and submits the upload.
+4. When the owner authorizes an upload, choose **Distribute App > App Store
+   Connect > Upload**, review bundle/version/team, and submit the upload.
 5. In **App Store Connect > Apps > OpenAgents Coder > TestFlight**, wait for
    processing, resolve **Missing Compliance** if shown, select the build,
    and paste `test-notes.md` into **What to Test**. Add it to an internal group.

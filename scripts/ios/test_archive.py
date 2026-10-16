@@ -16,10 +16,10 @@ class ArchiveChecks(unittest.TestCase):
         self.addCleanup(self.scratch.cleanup)
         self.app = Path(self.scratch.name) / "Zeron.app"
         self.app.mkdir()
-        self.version = {"version": "1.0.0", "build": "1000"}
+        self.version = {"version": "1.0.0", "build": "1001"}
         self.info = {"CFBundleIdentifier": "com.openagents.coder",
-                     "CFBundleShortVersionString": "1.0.0", "CFBundleVersion": "1000",
-                     "CFBundleExecutable": "Zeron"}
+                     "CFBundleShortVersionString": "1.0.0", "CFBundleVersion": "1001",
+                     "CFBundleExecutable": "Zeron", "ITSAppUsesNonExemptEncryption": False}
         self.write_info()
         (self.app / "Zeron").write_text("clean binary strings")
         self.privacy = plistlib.loads((archive.ROOT / "apps/ios/Zeron/PrivacyInfo.xcprivacy").read_bytes())
@@ -33,6 +33,17 @@ class ArchiveChecks(unittest.TestCase):
 
     def test_release_metadata_passes(self):
         archive.verify(self.app, self.version)
+
+    def test_export_exemption_must_be_explicit(self):
+        for value in (None, True):
+            with self.subTest(value=value):
+                if value is None:
+                    self.info.pop("ITSAppUsesNonExemptEncryption", None)
+                else:
+                    self.info["ITSAppUsesNonExemptEncryption"] = value
+                self.write_info()
+                with self.assertRaises(AssertionError):
+                    archive.verify(self.app, self.version)
 
     def test_wrong_bundle_is_rejected(self):
         self.info["CFBundleIdentifier"] = "sh.zeron.ios"
