@@ -178,7 +178,7 @@ pub(crate) fn extend(document: &mut Value) -> Result<(), &'static str> {
     document["x-openagents-reference"] = json!({
         "coverage": "partial",
         "inventory": "https://github.com/OpenAgentsInc/openagents/blob/main/docs/sdk/public-routes.md",
-        "description": "Only qualified public operations are described. The inventory names uncovered, gated, separately served, and internal families. Missing schemas do not imply missing handlers."
+        "description": "This reference describes selected public operations. The inventory lists other routes and the access they need. Routes can exist without a schema here."
     });
     Ok(())
 }

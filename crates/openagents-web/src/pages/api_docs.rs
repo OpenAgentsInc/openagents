@@ -362,7 +362,7 @@ Chat Completions at <code>https://api.openagents.com/v1</code>. Beta.</p>\
     }
     body.push_str(
         "</ol><p class=\"oa-page-meta\">Each guide is also plain Markdown: add <code>.md</code> \
-to its address, or start from <a href=\"/docs/api/llms.txt\">llms.txt</a>. Qualified public routes are \
+to its address, or start from <a href=\"/docs/api/llms.txt\">llms.txt</a>. Selected public routes are \
 described in OpenAPI at <code>https://api.openagents.com/v1/openapi.json</code>.</p>",
     );
     UiPage::new("API")
@@ -387,7 +387,7 @@ https://api.openagents.com/v1. Beta.\n\n## Guides\n\n",
         ));
     }
     out.push_str(
-        "\n## Reference\n\n- [OpenAPI 3.1 description of qualified public routes](https://api.openagents.com/v1/openapi.json)\n",
+        "\n## Reference\n\n- [OpenAPI 3.1 description of selected public routes](https://api.openagents.com/v1/openapi.json)\n",
     );
     out
 }
