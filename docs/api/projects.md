@@ -317,31 +317,38 @@ messages, as `tool_use` and `tool_result` blocks.
 | Route | Does |
 | --- | --- |
 | `POST /v1/files?purpose=project&filename=NAME` | Upload: the file's bytes as the request body (not multipart), at most 16 MiB. Returns a `file_`. |
-| `GET /v1/files/{id}` | Metadata: `filename`, `mime_type`, `size_bytes`, `sha256`, `created_at`, `stored_as` (`original` or `extracted_text`). |
+| `GET /v1/files/{id}` | Metadata: `filename`, `mime_type`, `size_bytes`, `sha256`, `created_at`, `stored_as` (`original`). |
 | `GET /v1/files/{id}/content` | The stored bytes, streamed, with `Content-Disposition: attachment; filename*=utf-8''…`, `Content-Type`, and a `Digest: sha-256=…` header for the served bytes. |
 | `GET /v1/generated_files/{id}`, `.../content` | The same for a tool's output. |
 | `GET /v1/artifacts/{version}` | One artifact version: `{"id", "version", "title", "artifact_type", "content"}`. |
 
-What is stored can differ from what was uploaded. An image may be kept as a
-processed copy, and some documents as their extracted text under the
-original name (`stored_as: extracted_text`). Read the format from the bytes,
-not the name. The file name is the uploader's, so a client never uses it as
-a path without cleaning it.
+These `/v1/files` routes store project files as their original bytes. They
+accept `purpose=project` (also the default); chat attachments use separate
+chat transports. The ordinary direct-upload limit defaults to 10 MiB, with
+a hard 16 MiB request limit. Treat a supplied filename as untrusted input.
+The download digest is lowercase hexadecimal, not base64.
+
+Use `?project=ID` to read another member's shared file. Attached files require
+current project membership even when that query is omitted. Reads require a
+viewer role; deletion requires an editor role. Session revocation takes effect
+on the next request. Changing project protection affects new attachments; it
+does not encrypt existing standard files.
 
 ## Project attachments and documents
 
-A project holds three kinds of attachment, told apart by `type`:
+A project holds four kinds of attachment, told apart by `type`:
 
 | `type` | Id | What | Read with |
 | --- | --- | --- | --- |
 | `file` | `file_` | An uploaded file (PDF, image, spreadsheet) | `GET /v1/files/{id}/content` |
 | `document` | `pdoc_` | Plain text: a note, or a document converted to text when added | `GET /v1/projects/{project}/documents/{id}` |
+| `vault` | 64 hexadecimal characters | An encrypted vault object, without its filename or MIME type | The vault service |
 | `source` | `psrc_` | A connected source (a Drive folder or file) | `GET /v1/projects/{project}/sources/{id}` |
 
 | Route | Does |
 | --- | --- |
-| `GET /v1/projects/{id}/attachments` | List all three kinds, oldest first, ties by id. `?limit`, `?after`. |
-| `POST /v1/projects/{id}/attachments` | Attach `{"file": "file_…"}`, add `{"document": {"title", "text"}}`, or connect `{"source": {"kind": "drive", "ref": "…"}}`. |
+| `GET /v1/projects/{id}/attachments` | List attachments, oldest first, ties by id. `?limit`, `?after`. |
+| `POST /v1/projects/{id}/attachments` | Attach `{"file": "file_…"}`, add `{"document": {"title", "text"}}`, or attach `{"vault": "OBJECT_ID"}`. Supply exactly one. Connected sources use their separate source routes. |
 | `GET /v1/projects/{id}/documents/{doc}` | A document's text and metadata. |
 | `DELETE /v1/projects/{id}/attachments/{att}` | Remove an attachment. A file attached only here is deleted with it. |
 
@@ -522,7 +529,7 @@ Every delete is immediate and permanent. There is no recovery window.
 | Route | Deletes | Answer |
 | --- | --- | --- |
 | `DELETE /v1/threads/{id}` | The thread, its messages, and files attached to them | `{"id", "object": "thread.deleted"}` |
-| `DELETE /v1/files/{id}` | A message file or a project file | `{"id", "object": "file.deleted"}` |
+| `DELETE /v1/files/{id}` | A standard project file | `{"id", "object": "file.deleted"}` |
 | `DELETE /v1/projects/{id}/attachments/{att}` | One attachment | `{"id", "object": "attachment.deleted"}` |
 | `DELETE /v1/projects/{id}` | The project (`409 project_has_threads` unless `?detach_threads=true`) | `{"id", "object": "project.deleted"}` |
 
@@ -644,7 +651,7 @@ lands ([#11451](https://github.com/OpenAgentsInc/openagents/issues/11451), phase
 | --- | --- | --- |
 | `GET chats` (org-wide, `user_ids[]`, `order_by`) | `GET /v1/threads` | Your own threads; `order` instead of `order_by`; no `user_ids[]` (a workspace admin view is a later, separate route) |
 | `GET chats/{id}/messages` | `GET /v1/threads/{id}/messages` | Same shape: content blocks, `files`, `generated_files`, `artifacts` |
-| `GET chats/files/{id}/content`, metadata | `GET /v1/files/{id}/content`, `GET /v1/files/{id}` | `sha256` instead of MD5; `stored_as` says when text was extracted |
+| `GET chats/files/{id}/content`, metadata | `GET /v1/files/{id}/content`, `GET /v1/files/{id}` | `sha256` instead of MD5; project files keep original bytes |
 | `GET chats/generated_files/{id}` | `GET /v1/generated_files/{id}` | Same |
 | `GET artifacts/{version}` | `GET /v1/artifacts/{version}` | Same |
 | `GET projects`, `GET projects/{id}` | `GET /v1/projects`, `GET /v1/projects/{id}` | Ours also create and change |

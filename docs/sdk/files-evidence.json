@@ -1,0 +1,53 @@
+{
+  "format": "openagents.sdk.files.qualification.v1",
+  "issue": 11866,
+  "parent": 11857,
+  "status": "Source checks complete; final schema deployment pending.",
+  "authorization_fix": {
+    "commit": "93a492df5b04487ed199025c63b97bab51652931",
+    "production_revision": "coder-web-e4956a9cb4-20261016145019",
+    "regressions": [
+      "External session revocation now returns 401 immediately instead of cached 200.",
+      "A demoted storage owner cannot delete an attached file; removed members cannot read it without a project query."
+    ]
+  },
+  "scope": {
+    "operations": 13,
+    "schemas": 15,
+    "app_operations": 54,
+    "combined_operations": 112,
+    "excluded": [
+      "Chat execution and sync (#11867)",
+      "Connected-source mutations (#11868)",
+      "Vault transport",
+      "Computers file transport",
+      "Package publication"
+    ]
+  },
+  "frozen_client": {
+    "origin": "https://staging.openagents.com",
+    "release": "1.0.0",
+    "release_commit": "3230ded51181aa438656825da8245cea6c8e717c",
+    "passed": true,
+    "checks": [
+      "released status command passed",
+      "created isolated project",
+      "uploaded and attached with released 1.0.0",
+      "listed project files",
+      "downloaded bytes match",
+      "removed file",
+      "deleted project"
+    ],
+    "file_sha256": "e9f01518ebe394dadacd834860c9b48ee5c7a2bdc0a1b30398310706203b0bb0",
+    "owner_account_used": false,
+    "live_inference": false,
+    "cleanup": true,
+    "doctor": "The frozen coder UI rejects coder doctor; supported openagents coder status passed."
+  },
+  "session_cleanup": {
+    "created_test_session_revoked": true,
+    "private_session_file_removed": true,
+    "post_revocation_file_status": 401,
+    "shared_master_key_revoked": false
+  }
+}

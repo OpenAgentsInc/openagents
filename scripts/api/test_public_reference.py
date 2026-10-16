@@ -72,6 +72,16 @@ class PublicReference(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'component drift'):
             reference.check(document)
 
+    def test_file_authority_and_upload_expiry_cannot_drift(self):
+        document = copy.deepcopy(self.document)
+        document['paths']['/v1/files/{id}']['delete']['security'] = [{'appBearer': []}]
+        with self.assertRaisesRegex(AssertionError, 'drift'):
+            reference.check(document)
+        document = copy.deepcopy(self.document)
+        document['components']['schemas']['AppFileUpload']['properties']['expires_at'] = {'type': 'string'}
+        with self.assertRaisesRegex(AssertionError, 'component drift'):
+            reference.check(document)
+
 
 if __name__ == '__main__':
     unittest.main()

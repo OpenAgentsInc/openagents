@@ -54,6 +54,8 @@ use crate::cloud::protect;
 use crate::cloud::session::SessionError;
 use crate::coder_sync::{answer, refused, stored};
 
+pub(crate) mod openapi;
+
 /// The largest file.
 pub(crate) const MAX_BYTES: usize = 10 * 1024 * 1024;
 /// The most attachments (files, documents, vault files) one project holds.

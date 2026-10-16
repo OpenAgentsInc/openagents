@@ -51,7 +51,7 @@ key have interchangeable authority.
 | `/v1/agents/{challenge,register,me,claim,claimed,credit}`, `/agents/{account}/revoke` | Gateway public agent registration | Challenge/proof, agent credential, or account owner as declared by handler | Gateway schema. These are not the web activity list at `/v1/agents`. |
 | `/v1/history*` | Web account-owned saved history | Account-bound app credential; owner or current shared-project membership for each read | Qualified [complete history](chat-history.md), including file/capture reads, unknown saved content and source-bound pagination. |
 | `/v1/threads*`, `/agents`, `/agents/actions` | Web chat/phone APIs, sync routes, and sharing | App account, chat ownership/shared access; mutating or execution operations need their own authority | Implemented app-used routes; older first-party schema is a navigation aid, not full current public coverage. Reply, sync, activity, and shared-chat contracts need qualification. |
-| `/v1/projects*`, `/files*` | Web projects, membership, files, sources, and uploads | App session/sign-in key plus current project role and file protection; these web handlers reject `oak_` credentials | Project lifecycle, repositories, membership and invitations have source-backed schemas. Files, documents, uploads and connected sources remain separate gaps under #11866 and #11868. |
+| `/v1/projects*`, `/files*` | Web projects, membership, files, sources, and uploads | App session/sign-in key plus current project role and file protection; these web handlers reject `oak_` credentials | Project lifecycle, repositories, membership and invitations have source-backed schemas. Files, documents, and resumable uploads also have source-backed schemas (#11866). Connected sources remain #11868. |
 | `/v1/connections*`, project Drive sources | Web connected-service handlers and gateway account integration | Account credential plus connected-service grant; Google availability gate | Gated, not universally available. Preserve unavailable/permission outcomes. Schema coverage remains incomplete. |
 | `/v1/computers*` | Web computer lifecycle over Computers service; existing device/sync handlers share the family | App account; lifecycle owner and idempotency checks; device activity has separate rights | Lifecycle, capabilities, Boat command sessions, and bounded binary workspace files are in the app schema. Commands use authenticated byte-offset polling. The [Computers subset](openapi.computers.json) and [generated operation index](computers-operations.json) cover the contract; the ergonomic client remains #11805; existing device sync remains a separate contract. |
 | `/v1/mac-jobs*`, `/own-runs*`, `/work*`, `/work-hosts*` | Web job/run handlers | Account ownership plus host/job authorization and deployment gates | Implemented app-used surfaces; no guessed client operations. Contracts and schema coverage need owning-consumer qualification. |
@@ -179,8 +179,7 @@ creation. A project can be created before protection setup fails, and
 protection can change before a later edit fails. Deletion can commit before
 file cleanup completes. Inspect current state before retrying an uncertain
 mutation. Reads do not start a chat, execute a command, or make a payment.
-Files/uploads (#11866), thread execution/sync (#11867), and connected sources
-(#11868) keep separate contracts.
+Thread execution/sync (#11867) and connected sources (#11868) keep separate contracts.
 
 The [project contract evidence](projects-evidence.json) records source,
 schemas, isolated authorization and failure checks, deployed images, and
@@ -244,3 +243,26 @@ saved public `vault/release.json` file list.
 The [System One qualification record](systemone-evidence.json) identifies its
 source, immutable image, staging/production checks, legacy compatibility,
 synthetic admission tests, and cleanup. No model work ran in the live probes.
+
+## Project files and uploads
+
+The reference includes 13 file, attachment, document, and resumable-upload
+operations. These require a live account session or sign-in key and current
+project rights. Attached files check those rights even without `?project=`;
+shared storage reads still need that query to select the project's storage.
+Vault attachments expose encrypted-object metadata only. Source creation
+uses the separate connected-source routes.
+
+Direct uploads accept original bytes, ordinarily up to 10 MiB, with a hard
+16 MiB request limit. Resumable uploads use 8 MiB parts and configured file
+and account quotas. Their expiry is a Unix timestamp. Repeat a start with
+the same request ID and identical metadata to inspect progress; repeat an
+identical part safely. Inspect progress after an uncertain completion before
+retrying. Completion checks the complete file hash and publishes its project
+attachment. Ordinary document creation has no such retry deduplication.
+Removing a vault attachment leaves its encrypted object in the vault.
+
+The [file contract evidence](files-evidence.json) records authorization tests,
+the frozen 1.0.0 client's staging file workflow, cleanup, and deployments.
+`python3 scripts/api/check_files_public.py` checks the reference and signed-out
+routes without creating data; set both origins to staging to check it there.

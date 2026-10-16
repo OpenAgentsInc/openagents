@@ -39,7 +39,7 @@ impl std::fmt::Debug for Request {
             .finish_non_exhaustive()
     }
 }
-pub const SCHEMA_SHA256: &str = "62dd6e891408c634cd106c0d81b7deab93781ae427d261db94edaa57cda4c3bf";
+pub const SCHEMA_SHA256: &str = "05ab6abb036ee51cb4a586a34befb1774c4a940f3bc0632d3ce3ed58c5879f9c";
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct AppAccount {
     #[serde(rename = "admin", default, skip_serializing_if = "Option::is_none")]

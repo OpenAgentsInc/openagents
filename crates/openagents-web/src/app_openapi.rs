@@ -118,6 +118,7 @@ pub fn document() -> Value {
     crate::key_openapi::extend(&mut document);
     crate::computers_api::extend_openapi(&mut document);
     crate::project_openapi::extend(&mut document);
+    crate::projects::files::openapi::extend(&mut document);
     document
 }
 
@@ -169,6 +170,24 @@ pub fn computers_document() -> Value {
         schemas.insert(name, schema);
     }
     document["components"]["schemas"] = Value::Object(schemas);
+    let mut schemes = BTreeSet::new();
+    for operation in std::iter::once(&document).chain(
+        document["paths"]
+            .as_object()
+            .unwrap()
+            .values()
+            .flat_map(|item| item.as_object().unwrap().values()),
+    ) {
+        if let Some(requirements) = operation["security"].as_array() {
+            for requirement in requirements {
+                schemes.extend(requirement.as_object().unwrap().keys().cloned());
+            }
+        }
+    }
+    document["components"]["securitySchemes"]
+        .as_object_mut()
+        .unwrap()
+        .retain(|name, _| schemes.contains(name));
     document["x-openagents-contract"] = json!({
         "version": 1,
         "source": "Rust handlers and their app_openapi schema",
@@ -277,6 +296,20 @@ fn validate_operations(document: &Value) -> Result<(), &'static str> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn computers_contract_excludes_unrelated_account_and_file_authority() {
+        let document = super::computers_document();
+        let schemes: Vec<_> = document["components"]["securitySchemes"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(schemes, ["appBearer"]);
+        assert!(document["paths"].get("/v1/files").is_none());
+        assert!(document["paths"].get("/v1/projects").is_none());
+    }
+
     #[test]
     fn committed_schema_matches_implemented_contract() {
         let fixture: serde_json::Value =

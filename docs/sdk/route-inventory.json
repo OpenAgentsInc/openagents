@@ -260,32 +260,32 @@
     {
       "path": "/v1/files",
       "source": "crates/openagents-web/src/projects/files.rs",
-      "line": 73
+      "line": 76
     },
     {
       "path": "/v1/files/{id}",
       "source": "crates/openagents-web/src/projects/files.rs",
-      "line": 77
+      "line": 80
     },
     {
       "path": "/v1/files/{id}/content",
       "source": "crates/openagents-web/src/projects/files.rs",
-      "line": 78
+      "line": 81
     },
     {
       "path": "/v1/projects/{id}/attachments",
       "source": "crates/openagents-web/src/projects/files.rs",
-      "line": 79
+      "line": 82
     },
     {
       "path": "/v1/projects/{id}/attachments/{attachment}",
       "source": "crates/openagents-web/src/projects/files.rs",
-      "line": 85
+      "line": 88
     },
     {
       "path": "/v1/projects/{id}/documents/{doc}",
       "source": "crates/openagents-web/src/projects/files.rs",
-      "line": 89
+      "line": 92
     },
     {
       "path": "/v1/projects/{id}/members",
