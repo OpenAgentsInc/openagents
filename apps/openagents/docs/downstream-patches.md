@@ -67,3 +67,8 @@ feature keeps forms independent of the app's separate syntax-engine version.
   `HomeViewController` and GPUI `home` mount the same Rust Native cards. Hooks
   add the Home destination, account lifecycle callbacks, mobile FFI, and one
   read-only session-report accessor; no separate chat path or engine starts.
+
+- [OpenAgents #11922](https://github.com/OpenAgentsInc/openagents/issues/11922):
+  iPhone logins use a stable Keychain profile across app-container changes.
+  `coder-account::PlatformStore::mobile` carries over existing credentials and
+  keeps explicit sign-out effective; `CoreAccount` selects it on iOS.

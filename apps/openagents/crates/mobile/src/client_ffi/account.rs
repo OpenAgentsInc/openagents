@@ -198,10 +198,11 @@ impl CoreAccount {
                 message: e.to_string(),
             }
         })?;
-        let store = Arc::new(PlatformStore::new(
-            "com.openagents.app.account".into(),
-            data_dir.clone(),
-        ));
+        #[cfg(target_os = "ios")]
+        let store = PlatformStore::mobile("com.openagents.app.account".into(), data_dir.clone());
+        #[cfg(not(target_os = "ios"))]
+        let store = PlatformStore::new("com.openagents.app.account".into(), data_dir.clone());
+        let store = Arc::new(store);
         Ok(Self::from_store(
             client,
             store,

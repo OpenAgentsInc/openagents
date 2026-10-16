@@ -1,4 +1,13 @@
-# OpenAgents 1.0.0 (1005)
+# OpenAgents 1.0.0 (1006)
+
+Your login stays saved when you update the app through TestFlight. Existing
+saved logins carry over, and choosing Sign Out keeps you signed out.
+
+Install this build over your signed-in app without deleting it. Open the app,
+quit and reopen it, and check that your account and projects are still there.
+Then sign out and reopen it to check that sign-out stays in effect.
+
+OpenAgents 1.0.0 (1005)
 
 Home opens first and shows open issues, issues assigned to you, and work across
 agents and computers. Choose a project, add widgets, change their size, and
