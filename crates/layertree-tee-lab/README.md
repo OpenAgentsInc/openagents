@@ -12,7 +12,7 @@ pre-signed, timelocked unroll that needs no enclave. The spec is
   `lightninglabs/layertree` commit `f6c4d29`, because the repository has no
   licence. One opt-in test reads upstream's published vectors from a local
   reference clone at test time.
-- **No network, no real keys, no money.**
+- **No network, no real keys, no money.** The only sockets are the opt-in regtest harness and `follow::HttpMirror`, which connects only where a test points it.
 
 ```sh
 cargo test --manifest-path crates/layertree-tee-lab/Cargo.toml
@@ -31,6 +31,7 @@ LAYERTREE_VECTORS=~/work/projects/repos/layertree/spec/test-vectors.json \
 | `unroll` | the delayed exit with deleted intermediate keys, checked with public data only |
 | `attest` | a fake hardware report and the light client's attestation check |
 | `light` | a member following the tree from chain data and anchored records |
+| `follow` | that member on a real chain: BIP-158 filters find the spend, a record source (directory or HTTP mirror) supplies the record, accepted only if it hashes to the `OP_RETURN`; alarms `RecordNotAnchored`, `RecordMissing`, `UnrollNotHeld` and the rule-breaking ones |
 
 `tests/lean_mirrors.rs` has property tests named after upstream's Lean
 theorems (`ExitK_no_inflation`, `Steps_sum`, `Reachable_ledger`, `payable`,
@@ -92,6 +93,15 @@ For a flat tree (radix 128) and a two-level one (radix 4) it:
 4. checks every leaf's exit key holds exactly its amount, and that the
    `layertree.events.v1` log replays. `fixtures/events/regtest.jsonl` and
    `regtest-two-level.jsonl` are logs from such runs.
+
+A third test (#11782) runs three `follow::Follower`s (two on a directory,
+one on an HTTP mirror stub) through 20 honest transitions, checking their
+paths against the full tree after every block, then a withheld record
+(`RecordMissing` after 3 blocks), a forged one (`RecordNotAnchored`), a
+withheld unroll (`UnrollNotHeld`) and a mined theft by a broken enclave
+(`OutputMismatch` for every member in that block). The node runs with
+`-blockfilterindex=1`. `tests/follow.rs` runs the same follower against an
+in-memory chain with real BIP-158 filters.
 
 `cargo test` without `--features regtest` needs no Docker.
 

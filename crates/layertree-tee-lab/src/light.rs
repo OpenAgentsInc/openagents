@@ -32,6 +32,12 @@ pub enum LightError {
     OutputMismatch,
     /// Our own proof no longer verifies.
     ProofBroken,
+    /// No record for a spend of the tree output, some blocks after it
+    /// confirmed (`follow::Follower`): the enclave or its mirror withholds it.
+    RecordMissing,
+    /// Some blocks after a transition, we still hold no unroll for the new
+    /// state that pays our leaf (`follow::Follower`).
+    UnrollNotHeld,
 }
 
 /// What one member keeps.

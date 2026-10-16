@@ -9,6 +9,12 @@
 //! Docker and sets `LAYERTREE_REGTEST_RPC` (host:port) and
 //! `LAYERTREE_REGTEST_ROOT` (where the `layertree.events.v1` logs go).
 //! `LAYERTREE_WRITE_EVENTS=1` also refreshes `fixtures/events/regtest*.jsonl`.
+//!
+//! The light-client scenario (#11782) runs three `follow::Follower`s
+//! against the same node: BIP-158 filters find each spend, records and
+//! unrolls come from a directory or an HTTP mirror stub, and withheld,
+//! forged or rule-breaking steps raise their alarms.
+//!
 //! Regtest only: fake coins, test keys, no money.
 
 #![cfg(feature = "regtest")]
@@ -17,7 +23,7 @@ mod common;
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
@@ -35,11 +41,14 @@ use serde_json::{Value, json};
 
 use common::{DELAY, DEPTH, LEASE, MEASUREMENT, sk, xonly};
 use layertree_tee_lab::attest::{FakeVendor, LogEntry, Platform, Policy, verify};
-use layertree_tee_lab::enclave::{Config, Enclave};
+use layertree_tee_lab::enclave::{Config, Enclave, Signed};
 use layertree_tee_lab::events::{Body, Network, Writer, read};
-use layertree_tee_lab::light::Member;
+use layertree_tee_lab::follow::{
+    ChainSource, DirSource, Follower, HttpMirror, RecordSource, Seen, record_name, unroll_name,
+};
+use layertree_tee_lab::light::{LightError, Member};
 use layertree_tee_lab::output::{TreeOutput, p2a_script, p2tr_raw};
-use layertree_tee_lab::rules::{self, Op, TreeParams};
+use layertree_tee_lab::rules::{self, Op, Record, TreeParams, TreeState};
 use layertree_tee_lab::tree::{DUST_MIN, Leaf, Tree, tree_id, voucher_msg};
 use layertree_tee_lab::unroll::{UnrollPackage, verify_package};
 
@@ -321,6 +330,76 @@ fn cpfp(chain: &mut Chain, parent: &Transaction) -> (Transaction, u64) {
     (tx, fee)
 }
 
+impl ChainSource for Chain {
+    fn tip(&mut self) -> Result<u32, String> {
+        Ok(self.height())
+    }
+    fn block_hash(&mut self, height: u32) -> Result<bitcoin::BlockHash, String> {
+        let v = self.rpc.raw("/", "getblockhash", json!([height]))?;
+        v.as_str()
+            .ok_or("hash")?
+            .parse()
+            .map_err(|e| format!("{e:?}"))
+    }
+    fn filter(&mut self, hash: &bitcoin::BlockHash) -> Result<Vec<u8>, String> {
+        let v = self
+            .rpc
+            .raw("/", "getblockfilter", json!([hash.to_string(), "basic"]))?;
+        let hex = v["filter"].as_str().ok_or("filter")?;
+        (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).map_err(|e| e.to_string()))
+            .collect()
+    }
+    fn block(&mut self, hash: &bitcoin::BlockHash) -> Result<bitcoin::Block, String> {
+        let v = self
+            .rpc
+            .raw("/", "getblock", json!([hash.to_string(), 0]))?;
+        deserialize_hex(v.as_str().ok_or("block")?).map_err(|e| e.to_string())
+    }
+}
+
+/// A mirror stub: serves the files of `dir` over HTTP/1.0 on a free local
+/// port until the process exits. Returns host:port.
+fn serve_dir(dir: PathBuf) -> String {
+    let l = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = l.local_addr().unwrap().to_string();
+    std::thread::spawn(move || {
+        for s in l.incoming() {
+            let Ok(mut s) = s else { continue };
+            // Read the whole request head before answering.
+            let mut head = Vec::new();
+            let mut buf = [0u8; 512];
+            while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+                match s.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => head.extend_from_slice(&buf[..n]),
+                }
+            }
+            let req = String::from_utf8_lossy(&head);
+            let name = req
+                .split_whitespace()
+                .nth(1)
+                .unwrap_or("/")
+                .trim_start_matches('/')
+                .to_owned();
+            let file = (!name.contains('/') && !name.contains(".."))
+                .then(|| std::fs::read(dir.join(&name)).ok())
+                .flatten();
+            let _ = match file {
+                Some(b) => s
+                    .write_all(
+                        format!("HTTP/1.0 200 OK\r\nContent-Length: {}\r\n\r\n", b.len())
+                            .as_bytes(),
+                    )
+                    .and_then(|_| s.write_all(&b)),
+                None => s.write_all(b"HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n"),
+            };
+        }
+    });
+    addr
+}
+
 // ------------------------------------------------------------ the scenario
 
 struct Run {
@@ -333,6 +412,21 @@ struct Run {
     unroll: UnrollPackage,
     /// Height at which the current tree output confirmed.
     confirmed_at: u32,
+    /// Where records and unrolls are published for followers (#11782).
+    store: Option<PathBuf>,
+    withhold_record: bool,
+    forge_record: bool,
+    withhold_unroll: bool,
+    last_record: Option<Record>,
+    last_unroll_pkg: Option<UnrollPackage>,
+}
+
+struct Built {
+    tx: Transaction,
+    prevouts: Vec<TxOut>,
+    sigs: Vec<bitcoin::secp256k1::schnorr::Signature>,
+    fee_key: SecretKey,
+    before: TreeState,
 }
 
 fn leaf(
@@ -471,6 +565,12 @@ impl Run {
             me,
             unroll,
             confirmed_at: 0,
+            store: None,
+            withhold_record: false,
+            forge_record: false,
+            withhold_unroll: false,
+            last_record: None,
+            last_unroll_pkg: None,
         };
         run.check_unroll();
         run.chain.send(&create);
@@ -501,19 +601,20 @@ impl Run {
 
     /// Build the transaction for `op` the way a client would (input 0 the
     /// tree, input 1 a fee coin; output 0 the next tree output, payouts,
-    /// the record's `OP_RETURN`, change), collect the signatures, let the
-    /// enclave authorize it, broadcast, mine, and check the chain.
-    fn step(&mut self, op: Op) {
+    /// the record's `OP_RETURN`, change) and collect the signatures.
+    /// `steal` moves that much from output 0 to the change: only a broken
+    /// enclave signs that.
+    fn build(&mut self, op: &Op, steal: u64) -> Built {
         let secp = self.chain.secp.clone();
         let p = self.params();
         let before = self.enclave.state().unwrap().clone();
         let next = self.enclave.next_unroll_key();
-        let fx = rules::effects(&secp, &p, &before, &op).expect("effects");
-        let rec = rules::record(&before, &fx, &op, next);
+        let fx = rules::effects(&secp, &p, &before, op).expect("effects");
+        let rec = rules::record(&before, &fx, op, next);
         let root = fx.tree.root().unwrap();
         assert!(!fx.terminal, "the harness keeps the tree alive");
         let mut outputs = vec![TxOut {
-            value: Amount::from_sat(root.sum),
+            value: Amount::from_sat(root.sum - steal),
             script_pubkey: TreeOutput {
                 root_hash: root.hash,
                 unroll_key: next,
@@ -544,26 +645,87 @@ impl Run {
         };
         let prevouts = vec![before.txout(&secp, &p), fprev];
         let msg = Message::from_digest(rules::sighash(&tx, &prevouts));
-        let sigs: Vec<_> = rules::signers(&p, &before, &op)
+        let sigs: Vec<_> = rules::signers(&p, &before, op)
             .unwrap()
             .iter()
             .map(|k| secp.sign_schnorr(&msg, &Keypair::from_secret_key(&secp, &self.keys[k])))
             .collect();
+        Built {
+            tx,
+            prevouts,
+            sigs,
+            fee_key: fkey,
+            before,
+        }
+    }
+
+    /// Have the enclave authorize, sign the fee input, broadcast and mine.
+    fn mine_signed(&mut self, op: &Op, b: Built) -> (Transaction, Signed, u32) {
         let signed = self
             .enclave
-            .authorize(tx, &prevouts, &op, &sigs)
-            .expect("the enclave signs a valid transition");
-        let mut tx = signed.tx;
-        sign_key_input(&secp, &mut tx, &prevouts, 1, &fkey);
-
+            .authorize(b.tx, &b.prevouts, op, &b.sigs)
+            .expect("the enclave signs");
+        let mut tx = signed.tx.clone();
+        sign_key_input(&self.chain.secp, &mut tx, &b.prevouts, 1, &b.fee_key);
         let txid = self.chain.send(&tx);
         let h = self.chain.mine(1);
         assert!(
             self.chain.tip_txids().contains(&txid.to_string()),
             "{op:?} confirmed"
         );
+        self.publish(&signed);
+        (tx, signed, h)
+    }
+
+    /// Publish the record and the new state's unroll where followers look,
+    /// unless this step withholds or forges them.
+    fn publish(&mut self, signed: &Signed) {
+        let Some(dir) = self.store.clone() else {
+            return;
+        };
+        let hash = signed.record.hash();
+        let bytes = if self.forge_record {
+            // A mirror serves other bytes under this record's hash.
+            self.last_record
+                .as_ref()
+                .map(|r| r.encode())
+                .unwrap_or_else(|| vec![0; 8])
+        } else {
+            signed.record.encode()
+        };
+        if !self.withhold_record {
+            std::fs::write(dir.join(record_name(&hash)), bytes).unwrap();
+        }
+        if let (Some(pkg), false) = (&signed.unroll, self.withhold_unroll) {
+            std::fs::write(dir.join(unroll_name(&pkg.tree_outpoint)), pkg.encode()).unwrap();
+        }
+        self.last_record = Some(signed.record.clone());
+        self.last_unroll_pkg = signed.unroll.clone();
+    }
+
+    /// Publish what this step withheld or forged.
+    fn publish_late(&mut self) {
+        let dir = self.store.clone().unwrap();
+        let rec = self.last_record.clone().unwrap();
+        std::fs::write(dir.join(record_name(&rec.hash())), rec.encode()).unwrap();
+        if let Some(pkg) = &self.last_unroll_pkg {
+            std::fs::write(dir.join(unroll_name(&pkg.tree_outpoint)), pkg.encode()).unwrap();
+        }
+        self.withhold_record = false;
+        self.forge_record = false;
+        self.withhold_unroll = false;
+    }
+
+    /// Build, authorize, broadcast and mine `op`, then check the chain.
+    fn step(&mut self, op: Op) -> u32 {
+        let secp = self.chain.secp.clone();
+        let p = self.params();
+        let b = self.build(&op, 0);
+        let before = b.before.clone();
+        let (tx, signed, h) = self.mine_signed(&op, b);
+        let txid = tx.compute_txid();
         self.confirmed_at = h;
-        self.unroll = signed.unroll.expect("the tree continues");
+        self.unroll = signed.unroll.clone().expect("the tree continues");
         assert_eq!(
             self.chain.utxo(&before.outpoint),
             None,
@@ -596,6 +758,7 @@ impl Run {
                 spent: vec![before.outpoint.to_string()],
             },
         );
+        h
     }
 
     /// Join, update, claim, exit and a refresh heartbeat, each mined.
@@ -778,4 +941,250 @@ fn a_two_level_unroll_pays_everyone_after_delta() {
     let mut run = Run::open(8, 4);
     run.transitions();
     assert_eq!(run.unroll_with_enclave_gone("regtest-two-level"), 2);
+}
+
+// ------------------------------------------------------- light clients (#11782)
+
+/// Blocks a follower waits for a record or an unroll before alarming.
+const MISSING_AFTER: u32 = 3;
+
+struct Watch {
+    f: Follower,
+    src: Box<dyn RecordSource>,
+}
+
+/// Every follower polls; each observation goes into the run log.
+fn poll_all(run: &mut Run, ws: &mut [Watch]) -> Vec<Vec<Seen>> {
+    let secp = run.chain.secp.clone();
+    let out: Vec<Vec<Seen>> = ws
+        .iter_mut()
+        .map(|w| w.f.poll(&secp, &mut run.chain, w.src.as_mut()).unwrap())
+        .collect();
+    for (w, seen) in ws.iter().zip(&out) {
+        for s in seen {
+            run.log.push(
+                Some(s.height),
+                Body::light_client(w.f.member.pos, &s.result),
+            );
+        }
+    }
+    out
+}
+
+/// Each follower saw exactly `want` at height `h`.
+fn expect_each(seen: &[Vec<Seen>], h: u32, want: Result<(), LightError>) {
+    for s in seen {
+        assert_eq!(s.len(), 1, "{s:?}");
+        assert_eq!(s[0].height, h, "{s:?}");
+        assert_eq!(s[0].result, want, "{s:?}");
+    }
+}
+
+/// Each follower's path, leaf, root and outpoint equal the full tree's.
+fn check_paths(run: &Run, ws: &[Watch]) {
+    let st = run.enclave.state().unwrap();
+    for w in ws {
+        let m = &w.f.member;
+        assert_eq!(m.root, st.tree.root().unwrap());
+        assert_eq!(m.path, st.tree.path(m.pos, 0).unwrap(), "member {}", m.pos);
+        assert_eq!(m.leaf, st.tree.get(m.pos).copied());
+        assert_eq!(m.outpoint, st.outpoint);
+    }
+}
+
+#[test]
+#[ignore = "needs bitcoind on regtest; scripts/layertree-regtest.sh"]
+fn light_clients_follow_twenty_transitions_and_raise_every_alarm() {
+    let mut run = Run::open(8, 128);
+    run.chain.fund_coins(32);
+    let base = std::env::var_os("LAYERTREE_REGTEST_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir);
+    let store = base.join(format!("mirror-{}", std::process::id()));
+    std::fs::create_dir_all(&store).unwrap();
+    run.store = Some(store.clone());
+    std::fs::write(
+        store.join(unroll_name(&run.unroll.tree_outpoint)),
+        run.unroll.encode(),
+    )
+    .unwrap();
+    let mirror = serve_dir(store.clone());
+
+    let p = run.params();
+    let st = run.enclave.state().unwrap().clone();
+    let mut ws: Vec<Watch> = [0u64, 2, 5]
+        .iter()
+        .enumerate()
+        .map(|(i, &pos)| {
+            let member = Member {
+                pos,
+                leaf: st.tree.get(pos).copied(),
+                path: st.tree.path(pos, 0).unwrap(),
+                root: st.tree.root().unwrap(),
+                outpoint: st.outpoint,
+                unroll_key: st.output.unroll_key,
+            };
+            // One member reads the HTTP mirror, the others the directory.
+            let src: Box<dyn RecordSource> = if i == 1 {
+                Box::new(HttpMirror {
+                    addr: mirror.clone(),
+                })
+            } else {
+                Box::new(DirSource { dir: store.clone() })
+            };
+            Watch {
+                f: Follower::new(
+                    member,
+                    p.clone(),
+                    run.confirmed_at,
+                    MISSING_AFTER,
+                    Some(run.unroll.clone()),
+                ),
+                src,
+            }
+        })
+        .collect();
+    let secp = run.chain.secp.clone();
+
+    // Twenty honest transitions: every member follows each in its block.
+    for i in 0..20u32 {
+        let op = match i % 5 {
+            0 => Op::Join {
+                height: 0,
+                index: 100 + u64::from(i),
+                leaves: vec![(0, leaf(&mut run.keys, &secp, 300 + i, 5_000, run.operator))],
+            },
+            1 => {
+                let old = *run.enclave.state().unwrap().tree.get(0).unwrap();
+                let fresh = leaf(&mut run.keys, &secp, 400 + i, old.amount, run.operator);
+                Op::Update {
+                    pos: 0,
+                    new_leaf: Leaf {
+                        exit_key: fresh.exit_key,
+                        nonce: old.nonce + 1,
+                        ..old
+                    },
+                }
+            }
+            2 => {
+                let src = *run.enclave.state().unwrap().tree.get(3).unwrap();
+                let mut claim = leaf(&mut run.keys, &secp, 500 + i, 1_000, run.operator);
+                claim.evictor_key = src.evictor_key;
+                claim.evict_after = src.evict_after;
+                let voucher = secp.sign_schnorr(
+                    &Message::from_digest(voucher_msg(&p.tree_id, &src, &claim)),
+                    &Keypair::from_secret_key(&secp, &run.keys[&src.owner_key]),
+                );
+                Op::Claim {
+                    source_pos: 3,
+                    claim_pos: 150 + u64::from(i),
+                    claim_leaf: claim,
+                    voucher_sig: voucher,
+                }
+            }
+            3 => Op::Exit {
+                pos: 100 + u64::from(i - 3),
+                evict: false,
+            },
+            _ => Op::Refresh,
+        };
+        let h = run.step(op);
+        let seen = poll_all(&mut run, &mut ws);
+        expect_each(&seen, h, Ok(()));
+        check_paths(&run, &ws);
+        assert!(ws.iter().all(|w| w.f.unroll.is_some()), "unroll held");
+    }
+
+    // A withheld record: RecordMissing after MISSING_AFTER blocks, then the
+    // late record is accepted and the members catch up.
+    run.withhold_record = true;
+    let h = run.step(Op::Refresh);
+    assert!(poll_all(&mut run, &mut ws).iter().all(Vec::is_empty));
+    for k in 1..=MISSING_AFTER {
+        run.chain.mine(1);
+        let seen = poll_all(&mut run, &mut ws);
+        if k < MISSING_AFTER {
+            assert!(seen.iter().all(Vec::is_empty), "{seen:?}");
+        } else {
+            expect_each(&seen, h + k, Err(LightError::RecordMissing));
+        }
+    }
+    run.publish_late();
+    expect_each(&poll_all(&mut run, &mut ws), h, Ok(()));
+    check_paths(&run, &ws);
+
+    // A mirror serves bytes that do not hash to the anchored value: refused
+    // in the spend's block, then the real record is accepted.
+    run.forge_record = true;
+    let h = run.step(Op::Refresh);
+    expect_each(
+        &poll_all(&mut run, &mut ws),
+        h,
+        Err(LightError::RecordNotAnchored),
+    );
+    run.publish_late();
+    expect_each(&poll_all(&mut run, &mut ws), h, Ok(()));
+    check_paths(&run, &ws);
+
+    // The new state's unroll is withheld: UnrollNotHeld after
+    // MISSING_AFTER blocks, cleared once it is published.
+    run.withhold_unroll = true;
+    let h = run.step(Op::Refresh);
+    expect_each(&poll_all(&mut run, &mut ws), h, Ok(()));
+    assert!(ws.iter().all(|w| w.f.unroll.is_none()));
+    for k in 1..=MISSING_AFTER {
+        run.chain.mine(1);
+        let seen = poll_all(&mut run, &mut ws);
+        if k < MISSING_AFTER {
+            assert!(seen.iter().all(Vec::is_empty), "{seen:?}");
+        } else {
+            expect_each(&seen, h + k, Err(LightError::UnrollNotHeld));
+        }
+    }
+    run.publish_late();
+    assert!(poll_all(&mut run, &mut ws).iter().all(Vec::is_empty));
+    assert!(ws.iter().all(|w| w.f.unroll.is_some()));
+
+    // A broken enclave signs a theft (output 0 short by 50,000 sat) and it
+    // is mined: every member alarms in that block, and stops.
+    run.enclave.break_for_test();
+    let op = Op::Refresh;
+    let b = run.build(&op, 50_000);
+    let before = b.before.clone();
+    let (tx, signed, h) = run.mine_signed(&op, b);
+    let txid = tx.compute_txid();
+    run.log.push(
+        Some(h),
+        Body::transition(&op, &before, &signed.record, &txid),
+    );
+    assert_eq!(
+        run.chain
+            .utxo(&OutPoint { txid, vout: 0 })
+            .unwrap()
+            .value
+            .to_sat(),
+        before.amount() - 50_000,
+        "the theft is on chain"
+    );
+    expect_each(
+        &poll_all(&mut run, &mut ws),
+        h,
+        Err(LightError::OutputMismatch),
+    );
+    assert!(
+        ws.iter()
+            .all(|w| w.f.stopped == Some(LightError::OutputMismatch))
+    );
+
+    let text = run.log.to_jsonl();
+    read(&text).unwrap_or_else(|e| panic!("light log: {e:?}"));
+    for alarm in [
+        "RecordMissing",
+        "RecordNotAnchored",
+        "UnrollNotHeld",
+        "OutputMismatch",
+    ] {
+        assert!(text.contains(&format!("\"result\":\"{alarm}\"")), "{alarm}");
+    }
+    std::fs::write(base.join("regtest-light.jsonl"), &text).unwrap();
 }

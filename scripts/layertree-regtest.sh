@@ -29,7 +29,7 @@ trap cleanup EXIT
 
 docker network create "$net" >/dev/null
 docker run -d --name "$name" --network "$net" -p 127.0.0.1::18443 "$BITCOIND_IMAGE" \
-  -regtest -server -txindex=1 -fallbackfee=0.0002 \
+  -regtest -server -txindex=1 -blockfilterindex=1 -fallbackfee=0.0002 \
   -rpcbind=0.0.0.0 -rpcallowip=0.0.0.0/0 \
   -rpcuser=regtest -rpcpassword=regtest-only >/dev/null
 

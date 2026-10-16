@@ -263,6 +263,38 @@ pub fn verify_package<C: Verification>(
     pkg: &UnrollPackage,
     mine: &Leaf,
 ) -> Result<Vec<Transaction>, UnrollError> {
+    verify(secp, p, output, outpoint, amount, Some(leaves), pkg, mine)
+}
+
+/// What a light client can check without the other leaves: the package
+/// spends this state's tree output after `Δ` by its unroll leaf, every
+/// signature verifies, every transaction conserves value, and a branch
+/// pays `mine` in full. It cannot see that every other leaf is paid; the
+/// full check is `verify_package`.
+#[allow(clippy::too_many_arguments)]
+pub fn verify_branch<C: Verification>(
+    secp: &Secp256k1<C>,
+    p: &TreeParams,
+    output: TreeOutput,
+    outpoint: OutPoint,
+    amount: u64,
+    pkg: &UnrollPackage,
+    mine: &Leaf,
+) -> Result<Vec<Transaction>, UnrollError> {
+    verify(secp, p, output, outpoint, amount, None, pkg, mine)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn verify<C: Verification>(
+    secp: &Secp256k1<C>,
+    p: &TreeParams,
+    output: TreeOutput,
+    outpoint: OutPoint,
+    amount: u64,
+    leaves: Option<&BTreeMap<u64, Leaf>>,
+    pkg: &UnrollPackage,
+    mine: &Leaf,
+) -> Result<Vec<Transaction>, UnrollError> {
     let root = pkg.txs.first().ok_or(UnrollError::Empty)?;
     if pkg.tree_outpoint != outpoint
         || root.input.len() != 1
@@ -364,19 +396,21 @@ pub fn verify_package<C: Verification>(
 
     // The final outputs (not spent by another unroll tx, not anchors) must
     // be exactly the leaves: each exit key paid its exact amount, once.
-    let mut want: Vec<(ScriptBuf, u64)> = leaves
-        .values()
-        .map(|l| (p2tr_raw(&l.exit_key), l.amount))
-        .collect();
-    let mut got: Vec<(ScriptBuf, u64)> = utxos
-        .iter()
-        .filter(|(op, o)| !spent.contains(*op) && o.script_pubkey != p2a_script())
-        .map(|(_, o)| (o.script_pubkey.clone(), o.value.to_sat()))
-        .collect();
-    want.sort();
-    got.sort();
-    if want != got {
-        return Err(UnrollError::Payouts);
+    if let Some(leaves) = leaves {
+        let mut want: Vec<(ScriptBuf, u64)> = leaves
+            .values()
+            .map(|l| (p2tr_raw(&l.exit_key), l.amount))
+            .collect();
+        let mut got: Vec<(ScriptBuf, u64)> = utxos
+            .iter()
+            .filter(|(op, o)| !spent.contains(*op) && o.script_pubkey != p2a_script())
+            .map(|(_, o)| (o.script_pubkey.clone(), o.value.to_sat()))
+            .collect();
+        want.sort();
+        got.sort();
+        if want != got {
+            return Err(UnrollError::Payouts);
+        }
     }
 
     // The branch to my payout.
