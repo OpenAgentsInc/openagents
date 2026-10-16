@@ -70,6 +70,8 @@ struct Adapter {
 #[serde(deny_unknown_fields)]
 struct Queued {
     id: String,
+    #[serde(default)]
+    requester: String,
     intent: Value,
     state: String,
     turn: Option<String>,
@@ -245,6 +247,38 @@ impl SessionHost {
         host.state()?;
         Ok(host)
     }
+    /// Host-key administration. A remote session controller cannot call this
+    /// through the signed session-operation endpoint.
+    pub fn set_policy(&self, policy: Policy) -> Result<()> {
+        for key in policy.owners.iter().chain(&policy.controllers) {
+            key.parse::<secp256k1::XOnlyPublicKey>()
+                .map_err(|_| "malformed: policy key")?;
+        }
+        let _g = self.store.lock()?;
+        let mut state = self.state()?;
+        state.policy = policy;
+        self.save(&state)
+    }
+    fn command_authority(&self, state: &State, signer: &str, body: &Value) -> Result<()> {
+        let session = state
+            .sessions
+            .get(body["scope"]["session"].as_str().ok_or("session")?)
+            .ok_or("not_admitted: unknown session")?;
+        if body["scope"]["authority"] != self.pubkey()
+            || body["scope"]["generation"] != session.generation
+        {
+            return Err(refuse("stale", "scope generation"));
+        }
+        let admin_stop = state.policy.controllers.contains(signer)
+            && matches!(body["action"].as_str(), Some("close" | "interrupt"));
+        if !admin_stop
+            && (!state.policy.owners.contains(&session.owner)
+                || signer != session.owner && !state.policy.controllers.contains(signer))
+        {
+            return Err(refuse("not_admitted", "session control was not admitted"));
+        }
+        Ok(())
+    }
     pub fn pubkey(&self) -> &str {
         self.signer.pubkey()
     }
@@ -296,9 +330,20 @@ impl SessionHost {
         Ok(reference)
     }
 
-    fn authenticate(&self, state: &mut State, event: &Event) -> Result<(String, Value, Value)> {
+    fn authenticate(
+        &self,
+        state: &mut State,
+        event: &Event,
+        now: u64,
+    ) -> Result<(String, Value, Value)> {
         let opened =
             nostr::private_artifact::open(event, &self.secret).map_err(|e| e.to_string())?;
+        if opened.recipient() != self.pubkey()
+            || opened.body().issued_at > now.saturating_add(300)
+            || now > opened.body().retain_until
+        {
+            return Err(refuse("not_admitted", "request recipient or time differs"));
+        }
         let bytes = opened
             .inline_bytes()
             .ok_or("malformed: requests carry their artifact inline")?
@@ -690,7 +735,7 @@ impl SessionHost {
             }
             self.store.put(bytes, "application/octet-stream", None)?;
         }
-        let (signer, body, input) = self.authenticate(&mut state, &bundle.event)?;
+        let (signer, body, input) = self.authenticate(&mut state, &bundle.event, now)?;
         if let Err(e) = sess::validate(&body) {
             let result = self.control_result(
                 &mut state,
@@ -723,6 +768,23 @@ impl SessionHost {
                 fresh.signers.extend(state.signers);
                 fresh.declarations.extend(state.declarations);
                 state = fresh;
+                if body["v"] == "openagents.session-command.v1"
+                    && self.command_authority(&state, &signer, &body).is_ok()
+                {
+                    let key = format!(
+                        "{}:{}:{}",
+                        body["scope"]["authority"].as_str().unwrap_or_default(),
+                        body["scope"]["session"].as_str().unwrap_or_default(),
+                        body["command"].as_str().unwrap_or_default()
+                    );
+                    if let Some(prior) = state.priors.get(&key).filter(|p| {
+                        p.fingerprint == digest_of(&input) && p.result["status"] == "unknown"
+                    }) {
+                        let result = prior.result.clone();
+                        self.save(&state)?;
+                        return Ok(result);
+                    }
+                }
                 let status = if matches!(code(&error), "conflict" | "idempotency_conflict") {
                     "conflict"
                 } else {
@@ -788,9 +850,6 @@ impl SessionHost {
             body["session"].as_str().unwrap_or_default(),
             body["command"].as_str().unwrap_or_default()
         );
-        if let Some(result) = Self::prior(state, &key, digest_of(input))? {
-            return Ok(result);
-        }
         if body["authority"] != self.pubkey() {
             return Err(refuse("not_admitted", "open names another authority"));
         }
@@ -799,6 +858,9 @@ impl SessionHost {
                 "not_admitted",
                 "owner is not authorized by this host",
             ));
+        }
+        if let Some(result) = Self::prior(state, &key, digest_of(input))? {
+            return Ok(result);
         }
         if sess::number(body, "expires_at").map_err(contract)? <= now {
             return Err(refuse("stale", "open request expired"));
@@ -1009,6 +1071,7 @@ impl SessionHost {
             scope["session"].as_str().unwrap_or_default(),
             body["command"].as_str().unwrap_or_default()
         );
+        self.command_authority(state, signer, body)?;
         if let Some(result) = Self::prior(state, &key, digest_of(input))? {
             return Ok(result);
         }
@@ -1089,7 +1152,14 @@ impl SessionHost {
                 let intent = self.intent(session, &payload["intent"], now)?;
                 let _ = intent;
                 let grant = self.check_binding(binding, now)?;
-                records = self.start_turn(state, session, &payload["intent"], grant, now)?;
+                records = self.start_turn(
+                    state,
+                    session,
+                    &payload["intent"],
+                    grant,
+                    now,
+                    Some((signer, input)),
+                )?;
             }
             "enqueue" => {
                 self.require(state, session, "queue")?;
@@ -1103,6 +1173,7 @@ impl SessionHost {
                 }
                 session.queue.push(Queued {
                     id,
+                    requester: signer.into(),
                     intent: payload["intent"].clone(),
                     state: "queued".into(),
                     turn: None,
@@ -1347,6 +1418,7 @@ impl SessionHost {
         intent_ref: &Value,
         grant: Value,
         now: u64,
+        pending: Option<(&str, &Value)>,
     ) -> Result<Vec<Value>> {
         let intent = self.store.json(intent_ref)?;
         let mut input: Value =
@@ -1387,7 +1459,60 @@ impl SessionHost {
             .ok_or("adapter")?
             .clone();
         let native = session.native.clone().ok_or("native session")?;
-        // RUN dispatch intent is retained before the engine effect.
+        session.active = Some(Turn {
+            id: turn.clone(),
+            intent: intent_ref.clone(),
+            attachment: grant.clone(),
+            run: run.clone(),
+            interrupted: false,
+        });
+        session.turn_revision = Some(0);
+        session.phase = "running".into();
+        session.quiescent = false;
+        for queued in session
+            .queue
+            .iter_mut()
+            .filter(|q| q.state == "queued" && q.intent == *intent_ref)
+        {
+            queued.state = "promoted".into();
+            queued.turn = Some(turn.clone());
+        }
+        if let Some((actor, request)) = pending {
+            let body = self.store.json(request)?;
+            let key = format!(
+                "{}:{}:{}",
+                body["scope"]["authority"].as_str().ok_or("authority")?,
+                session.id,
+                body["command"].as_str().ok_or("command")?
+            );
+            let result = self.control_result(
+                state,
+                actor,
+                request,
+                "unknown",
+                None,
+                Some("unavailable"),
+                now,
+            )?;
+            state.priors.insert(
+                key,
+                Prior {
+                    fingerprint: digest_of(request).into(),
+                    result,
+                },
+            );
+        }
+        let mut snapshot = self.state()?;
+        snapshot.priors.extend(state.priors.clone());
+        snapshot.signers.extend(state.signers.clone());
+        snapshot.declarations.extend(state.declarations.clone());
+        self.write_state(state, session, now)?;
+        snapshot.declarations.extend(state.declarations.clone());
+        snapshot
+            .sessions
+            .insert(session.id.clone(), session.clone());
+        self.save(&snapshot)?;
+        // The authoritative active-turn link is durable before the engine effect.
         self.engines
             .borrow_mut()
             .get_mut(&adapter.engine)
@@ -1597,6 +1722,16 @@ impl SessionHost {
                 .iter()
                 .position(|q| q.state == "queued")
                 .ok_or_else(|| refuse("unavailable", "the queue is empty"))?;
+            let requester = &session.queue[index].requester;
+            if !state.policy.owners.contains(&session.owner)
+                || requester.is_empty()
+                || requester != &session.owner && !state.policy.controllers.contains(requester)
+            {
+                return Err(refuse(
+                    "not_admitted",
+                    "queued requester is no longer authorized",
+                ));
+            }
             let intent_ref = session.queue[index].intent.clone();
             match self.intent(&session, &intent_ref, now) {
                 Ok(_) => {}
@@ -1616,7 +1751,7 @@ impl SessionHost {
             }
             self.require(&state, &session, "queue")?;
             let grant = self.check_binding(binding, now)?;
-            self.start_turn(&mut state, &mut session, &intent_ref, grant, now)?;
+            self.start_turn(&mut state, &mut session, &intent_ref, grant, now, None)?;
             let turn = session.active.as_ref().map(|t| t.id.clone());
             session.queue[index].state = "promoted".into();
             session.queue[index].turn = turn.clone();
@@ -1666,6 +1801,20 @@ impl SessionHost {
             .position(|i| same(&i.reference, &body["interaction"]))
             .ok_or_else(|| refuse("not_admitted", "unknown interaction"))?;
         let interaction = session.interactions[index].clone();
+        if body["responder"] != signer
+            || signer != interaction.recipient
+            || !state.policy.owners.contains(&session.owner)
+        {
+            return Err(refuse(
+                "not_admitted",
+                "only the current admitted recipient may answer",
+            ));
+        }
+        if body["scope"]["authority"] != self.pubkey()
+            || body["scope"]["generation"] != session.generation
+        {
+            return Err(refuse("stale", "scope generation"));
+        }
         if let Some(claim) = &interaction.claim {
             if claim.fingerprint == digest_of(input) {
                 // An unknown delivery stays unknown; it is never sent again.

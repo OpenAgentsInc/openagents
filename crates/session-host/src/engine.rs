@@ -121,6 +121,8 @@ pub struct LoopEngine {
     started: usize,
     /// Fault: lose the answer delivery after it is sent.
     pub fail_answer: bool,
+    /// Fault: lose the start acknowledgment after the turn begins.
+    pub fail_start: bool,
 }
 
 fn features(pairs: &[(&'static str, Support)]) -> BTreeMap<&'static str, Support> {
@@ -206,6 +208,7 @@ impl LoopEngine {
             counter: 0,
             started: 0,
             fail_answer: false,
+            fail_start: false,
         }
     }
     fn capture(
@@ -276,6 +279,9 @@ impl Engine for LoopEngine {
         });
         self.started += 1;
         self.capture("to_engine", "turn/start", Some(turn.into()), &input);
+        if self.fail_start {
+            return Err("unknown: native start reply lost".into());
+        }
         Ok(())
     }
     fn step(&mut self, native: &str) -> Observation {

@@ -85,6 +85,19 @@ come. Their steering rows stay in their own adapter crates.
   authorization. An observed child needs native evidence and grants no
   control.
 
+`session-host policy --state DIR --key-file KEY --policy POLICY.json` replaces
+the operator's owner/controller sets. This administrative path needs the host
+key; remote session commands cannot change policy. Cached replies still check
+current ownership, control rights, and scope generation. Promotion also checks
+the recorded queue requester's current rights. An old queue entry without that
+identity must be cancelled and submitted again.
+
+Engine starts now save the authoritative active turn, RUN dispatch intent,
+consumed queue head, and original command's pending result before calling the
+engine. A lost start reply stays unknown, including on exact retry or restart.
+A successful later observation can finish that original turn, but cannot
+promote its consumed queue head again.
+
 The store retains at most 64 sessions and 256 queued intents per session.
 Limits stop new admissions and never discard history. All fixtures use
 throwaway keys and local state; no money moves.

@@ -875,3 +875,144 @@ fn a_real_environment_allocator_without_an_attachment_admits_nothing() {
     assert_eq!(host.started("loop-mid-turn"), 0);
     let _: &dyn Engine = &LoopEngine::mid_turn();
 }
+
+#[test]
+fn lost_start_keeps_the_original_pending_turn_and_never_starts_it_again() {
+    let mut fx = Fx::new();
+    let mut engine = LoopEngine::mid_turn();
+    engine.fail_start = true;
+    let host = fx.host_with(engine, LoopEngine::boundary());
+    let (session, _) = fx.open(&host, "loop-mid-turn");
+    let intent = fx.intent(
+        &host,
+        &session,
+        json!({"prompt":"once","steps":1}),
+        fx.now + 600,
+    );
+    let command = fx.command(&host, &session, "submit", json!({"intent":intent}));
+    let binding = fx.binding();
+    let first = fx.send(&host, OWNER, &command, Some(&binding));
+    assert_eq!(first["status"], "unknown", "{first}");
+    assert_eq!(host.started("loop-mid-turn"), 1);
+    assert_eq!(host.status(&session).unwrap()["phase"], "running");
+    let retry = fx.send(&host, OWNER, &command, Some(&binding));
+    assert_eq!(retry, first);
+    assert_eq!(host.started("loop-mid-turn"), 1);
+    let restarted = fx.host();
+    let retry = fx.send(&restarted, OWNER, &command, Some(&binding));
+    assert_eq!(retry, first);
+    assert_eq!(restarted.started("loop-mid-turn"), 0);
+    restarted.observe(&session, fx.now).unwrap();
+    assert_eq!(restarted.status(&session).unwrap()["phase"], "unknown");
+}
+#[test]
+fn revoked_controllers_cannot_read_cached_commands_or_promote_their_queue() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let (session, _) = fx.open(&host, "loop-mid-turn");
+    let intent = fx.intent(
+        &host,
+        &session,
+        json!({"prompt":"queued","steps":1}),
+        fx.now + 600,
+    );
+    let command = fx.command(&host, &session, "enqueue", json!({"intent":intent}));
+    assert_eq!(
+        fx.send(&host, CONTROLLER, &command, None)["status"],
+        "accepted"
+    );
+    assert_eq!(
+        fx.send(&host, STRANGER, &command, None)["reason"],
+        "not_admitted"
+    );
+    host.set_policy(Policy {
+        owners: BTreeSet::from([pk(OWNER)]),
+        controllers: BTreeSet::new(),
+    })
+    .unwrap();
+    assert_eq!(
+        fx.send(&host, CONTROLLER, &command, None)["reason"],
+        "not_admitted"
+    );
+    let binding = fx.binding();
+    assert!(host.promote(&session, Some(&binding), fx.now).is_err());
+    assert_eq!(host.started("loop-mid-turn"), 0);
+}
+#[test]
+fn a_cached_question_answer_still_requires_the_current_recipient() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let (session, _) = fx.open(&host, "loop-mid-turn");
+    let intent = fx.intent(
+        &host,
+        &session,
+        json!({"prompt":"ask","steps":1,"ask":"branch?"}),
+        fx.now + 600,
+    );
+    let submit = fx.command(&host, &session, "submit", json!({"intent":intent}));
+    let binding = fx.binding();
+    fx.send(&host, OWNER, &submit, Some(&binding));
+    host.observe(&session, fx.now).unwrap();
+    let interaction = host.status(&session).unwrap()["interactions"][0]["interaction"].clone();
+    let response = put_json(&mut fx.artifacts, &json!({"text":"main"}));
+    let body = json!({"v":"openagents.session-interaction-response.v1","requires":[],"interaction":interaction,"scope":{"authority":pk(HOST),"session":session,"generation":0},"responder":pk(OWNER),"response":response,"expires_at":fx.now+600});
+    assert_eq!(fx.send(&host, OWNER, &body, None)["status"], "accepted");
+    assert_eq!(
+        fx.send(&host, STRANGER, &body, None)["reason"],
+        "not_admitted"
+    );
+    host.set_policy(Policy {
+        owners: BTreeSet::new(),
+        controllers: BTreeSet::new(),
+    })
+    .unwrap();
+    assert_eq!(fx.send(&host, OWNER, &body, None)["reason"], "not_admitted");
+}
+
+#[test]
+fn lost_queue_promotion_consumes_the_head_before_the_engine_effect() {
+    let mut fx = Fx::new();
+    let mut engine = LoopEngine::mid_turn();
+    engine.fail_start = true;
+    let host = fx.host_with(engine, LoopEngine::boundary());
+    let (session, _) = fx.open(&host, "loop-mid-turn");
+    let intent = fx.intent(
+        &host,
+        &session,
+        json!({"prompt":"once","steps":1}),
+        fx.now + 600,
+    );
+    let enqueue = fx.command(&host, &session, "enqueue", json!({"intent":intent}));
+    assert_eq!(fx.send(&host, OWNER, &enqueue, None)["status"], "accepted");
+    let binding = fx.binding();
+    assert!(host.promote(&session, Some(&binding), fx.now).is_err());
+    assert_eq!(host.started("loop-mid-turn"), 1);
+    fx.finish(&host, &session);
+    assert!(host.promote(&session, Some(&binding), fx.now).is_err());
+    assert_eq!(host.started("loop-mid-turn"), 1);
+}
+#[test]
+fn cached_open_requires_the_current_owner_even_with_the_original_body() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let adapter = host.admit_adapter("loop-mid-turn", fx.now).unwrap();
+    let body = fx.open_body(&host, &adapter, json!({"kind":"new","artifact":null}));
+    let binding = fx.binding();
+    assert_eq!(
+        fx.send(&host, OWNER, &body, Some(&binding))["status"],
+        "accepted"
+    );
+    assert_eq!(
+        fx.send(&host, STRANGER, &body, Some(&binding))["reason"],
+        "not_admitted"
+    );
+    host.set_policy(Policy {
+        owners: BTreeSet::new(),
+        controllers: BTreeSet::new(),
+    })
+    .unwrap();
+    assert_eq!(
+        fx.send(&host, OWNER, &body, Some(&binding))["reason"],
+        "not_admitted"
+    );
+}

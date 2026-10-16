@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 
 pub const USAGE: &str = "usage: session-host ACTION --state DIR --key-file KEY [options]
   init       --policy POLICY.json
+  policy     --policy POLICY.json   replace owner/controller sets with the host key
   admit      --engine loop-mid-turn|loop-boundary
   submit     --input BUNDLE [--env-state DIR --env-key KEY --env-root DIR
              --attachment ID --fingerprint DIGEST --grant GRANT.json]
@@ -90,6 +91,12 @@ pub fn run(args: Vec<String>) -> Result<Value> {
         bindings,
     )?;
     match args[0].as_str() {
+        "policy" => {
+            let policy = serde_json::from_value(json_file(&need("--policy")?)?)
+                .map_err(|_| "malformed: policy")?;
+            host.set_policy(policy)?;
+            Ok(json!({"updated":true}))
+        }
         "admit" => host.admit_adapter(&need("--engine")?, now),
         "submit" => {
             let bundle: Bundle = serde_json::from_value(json_file(&need("--input")?)?)

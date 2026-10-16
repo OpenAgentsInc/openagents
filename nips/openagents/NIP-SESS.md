@@ -745,3 +745,15 @@ sequence is the session revision. Turn input in the in-process adapters is
 JSON; an emulated steer's correction travels in the next turn's input as
 `corrections`. Mapping Claude Code, Codex, and ACP delegate engines to this
 profile is not implemented yet.
+
+The native host checks current membership and scope generation before returning
+a cached open, command, or interaction response. Possessing an earlier signed
+body or its artifact hash grants no access. Host-key administration can replace
+the owner/controller sets; revoked actors cannot retrieve new cached replies
+or promote previously queued work.
+
+Before an engine start, the host saves the active turn, complete RUN dispatch
+intent, consumed queue identity, and the command's pending result together.
+A lost start acknowledgment leaves that original command unknown. Neither an
+exact retry nor a restart may start it again. Native protocol artifacts saved
+without their authoritative active-turn link do not establish durable admission.
