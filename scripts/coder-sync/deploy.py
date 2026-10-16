@@ -101,6 +101,13 @@ def revision():
     return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
 
 
+# What the image build needs (deploy/coder-sync/Dockerfile copies the same
+# paths): the server, the SDK, and the sync clients from apps/openagents.
+BUILD_PATHS = ["Cargo.toml", "Cargo.lock", "crates/coder-sync", "crates/openagents-sdk", "crates/openagents-login",
+               "deploy/coder-sync", "apps/openagents/Cargo.toml"] + [
+    f"apps/openagents/crates/{name}" for name in ("brand", "client", "doc", "orb", "proto", "rpc", "sync", "voice-session")]
+
+
 def build():
     commit = revision()
     image = f"us-central1-docker.pkg.dev/{PROJECT}/openagents/coder-sync"
@@ -116,7 +123,7 @@ def build():
     scratch = os.environ.get("OPENAGENTS_SCRATCH") or subprocess.check_output(["openagents", "scratch"], text=True).strip()
     context = Path(tempfile.mkdtemp(prefix="coder-sync-build-", dir=scratch))
     try:
-        archive = subprocess.Popen(["git", "archive", commit, "crates/coder-sync", "Cargo.lock", "deploy/coder-sync"], cwd=ROOT, stdout=subprocess.PIPE)
+        archive = subprocess.Popen(["git", "archive", commit, *BUILD_PATHS], cwd=ROOT, stdout=subprocess.PIPE)
         subprocess.run(["tar", "-x", "-C", str(context)], stdin=archive.stdout, check=True)
         archive.stdout.close()
         if archive.wait():

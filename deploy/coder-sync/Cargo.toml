@@ -1,19 +1,17 @@
 # Server-only image packaging. Source stays in crates/coder-sync/src/server.
-# This workspace never includes the frozen Coder client library.
+# This workspace never includes the frozen Coder client library. The sync
+# clients come from the OpenAgents apps in apps/openagents (path dependencies).
 [workspace]
 members = ["conformance"]
 default-members = ["."]
 
-[workspace.metadata.conformance]
-fork-revision = "88deb192a37ecd1e023813a6fabe95ba8649b072"
-
 [workspace.dependencies]
-openagents = { package = "openagents-sdk", git = "https://github.com/OpenAgentsInc/openagents.git", rev = "5a3d1c14f58888c08d0e7a0ede0322fe7585b20b" }
-zeron-sync = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "88deb192a37ecd1e023813a6fabe95ba8649b072" }
-zeron-client = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "88deb192a37ecd1e023813a6fabe95ba8649b072" }
-zeron-proto = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "88deb192a37ecd1e023813a6fabe95ba8649b072" }
-zeron-doc = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "88deb192a37ecd1e023813a6fabe95ba8649b072" }
-zeron-rpc = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "88deb192a37ecd1e023813a6fabe95ba8649b072" }
+openagents = { package = "openagents-sdk", path = "../../crates/openagents-sdk" }
+zeron-sync = { path = "../../apps/openagents/crates/sync" }
+zeron-client = { path = "../../apps/openagents/crates/client" }
+zeron-proto = { path = "../../apps/openagents/crates/proto" }
+zeron-doc = { path = "../../apps/openagents/crates/doc" }
+zeron-rpc = { path = "../../apps/openagents/crates/rpc" }
 
 [package]
 name = "coder-sync-service"

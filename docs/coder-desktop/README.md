@@ -1,10 +1,12 @@
 # Coder Desktop
 
 Coder Desktop is Coder's desktop app: a fork of
-[Zeron](https://github.com/zeronsh/zeron) (MIT, Rust and GPUI) at
-[OpenAgentsInc/coder-desktop](https://github.com/OpenAgentsInc/coder-desktop),
-wired to our Computers and payments SDKs. It's also the first app built on
-the [OpenAgents SDK](../sdk/README.md) from outside this repository.
+[Zeron](https://github.com/zeronsh/zeron) (MIT, Rust and GPUI), wired to our
+Computers and payments SDKs. Since 2026-10-16 it lives in this repository at
+[`apps/openagents/`](../../apps/openagents/OPENAGENTS.md) and is becoming the
+OpenAgents desktop and mobile apps (AGENTS.md, "One OpenAgents desktop app
+and one mobile app"). The separate `OpenAgentsInc/coder-desktop` repository
+is archived. This page records the fork's history and decisions up to then.
 
 - [plan.md](plan.md): the integration plan. Ownership rules, the public
   contracts it uses, stages D0–D6 and their exit criteria.
@@ -14,9 +16,9 @@ the [OpenAgents SDK](../sdk/README.md) from outside this repository.
 
 ## Decisions (owner, 2026-10-15)
 
-- **Fork it.** The fork is
-  [OpenAgentsInc/coder-desktop](https://github.com/OpenAgentsInc/coder-desktop),
-  with Zeron as the `upstream` remote.
+- **Fork it.** The fork was `OpenAgentsInc/coder-desktop`, with Zeron as
+  the `upstream` remote. It moved into this repository at `apps/openagents/`
+  on 2026-10-16 and the old repository is archived.
 - **Upstream moves fast, and that's fine.** Zeron ships nearly every day
   (100 commits and three releases in the first half of October 2026). Agents
   pull upstream often and resolve conflicts. Zeron keeps doing the harness
@@ -50,19 +52,13 @@ and the [SDK delivery plan](../sdk/delivery-plan.md#first-desktop-delivery-authe
 
 ## Local setup
 
-The clone sits next to this repository:
+The app is in this repository. Build and open the development bundle on
+macOS from its directory (its own Cargo workspace; see
+[OPENAGENTS.md](../../apps/openagents/OPENAGENTS.md)):
 
 ```sh
-cd ~/work
-git clone https://github.com/OpenAgentsInc/coder-desktop.git
-cd coder-desktop
-git remote add upstream https://github.com/zeronsh/zeron.git
-```
-
-Build and open the development bundle on macOS:
-
-```sh
-RUSTUP_TOOLCHAIN=1.98.1 scripts/run-macos-dev.sh
+cd apps/openagents
+scripts/run-macos-dev.sh
 ```
 
 The fork pins the `stable` channel. Its GPUI uses `std::hint::cold_path`,
@@ -90,7 +86,7 @@ Zeron and the OpenAgents desktop can run side by side. Set
 `ZERON_DEV_BUILD_ONLY=1` to build without opening the bundle. The binary
 crate keeps its upstream name (`cargo build -p zeron`).
 
-The fork's [FORK.md](https://github.com/OpenAgentsInc/coder-desktop/blob/main/FORK.md)
+The app's [FORK.md](../../apps/openagents/FORK.md)
 lists every identity seam, what's still named Zeron, and the platform matrix
 (only macOS checked so far). The values live in one crate, `crates/brand`.
 
@@ -135,22 +131,23 @@ They use a pinned snapshot of the public `oa-tokens` palette, with opaque
 surfaces and neutral primary controls. Terminal panels use Coder Noir in both
 appearances. Saved theme choices and accent/glass preferences still apply.
 
-The fork's [theme documentation](https://github.com/OpenAgentsInc/coder-desktop/blob/main/docs/theme-system.md)
-records the palette revision. Its [patch log](https://github.com/OpenAgentsInc/coder-desktop/blob/main/docs/downstream-patches.md)
+The app's [theme documentation](../../apps/openagents/docs/theme-system.md)
+records the palette revision. Its [patch log](../../apps/openagents/docs/downstream-patches.md)
 tracks the changes to review when updating from Zeron.
 
 ## Keeping up with upstream
 
+From the repository root, on a clean `main`:
+
 ```sh
-git fetch upstream
-git merge upstream/main     # or rebase our branch; resolve, build, run
+git subtree pull --prefix=apps/openagents https://github.com/zeronsh/zeron.git main
 ```
 
 Then rebuild and open the dev bundle. Keep our changes in clearly separated
 places so upstream merges stay easy:
 - new crates or modules for the SDK adapters;
 - small edits at the integration seams;
-- a short patch log in the fork.
+- a short patch log in `apps/openagents/docs/downstream-patches.md`.
 
 ## Where the work is tracked
 
@@ -159,8 +156,8 @@ places so upstream merges stay easy:
   [delivery plan](../sdk/delivery-plan.md)).
 - **Desktop app work:** tracked in this repository, beginning with
   [#11824](https://github.com/OpenAgentsInc/openagents/issues/11824).
-  Implementation stays in `OpenAgentsInc/coder-desktop`; all issues stay
-  in `OpenAgentsInc/openagents` (owner, 2026-10-15).
+  Implementation is in `apps/openagents/` in this repository (since
+  2026-10-16); all issues stay in `OpenAgentsInc/openagents`.
 - **The Coder 1.0 freeze** ([1.0-freeze](../coder/1.0-freeze.md)) covers the
   `coder`, `openagents`, `microcoder` and `coder-boundary` programs. Coder
   Desktop is a separate app and isn't frozen.

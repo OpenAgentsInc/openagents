@@ -14,7 +14,7 @@ under `docs/coder-desktop/`; all issues are filed there.
 | | |
 | --- | --- |
 | Upstream remote | `upstream` = `https://github.com/zeronsh/zeron.git` |
-| Our remote | `origin` = `https://github.com/OpenAgentsInc/coder-desktop.git`, branch `main` |
+| Our home | `apps/openagents/` in `OpenAgentsInc/openagents`, branch `main` (imported 2026-10-16 with history; `OpenAgentsInc/coder-desktop` is archived) |
 | Last merged upstream | `3b2f78027a2c31622c39c35716da4d6e1af8de15` (v0.2.113 + 2, 2026-10-15) |
 | License | MIT. `LICENSE` keeps Zeron's copyright (Wing); `THIRD_PARTY_NOTICES.md` stays as upstream ships it. |
 
@@ -22,14 +22,19 @@ Update the "Last merged upstream" row after each merge.
 
 ## Merging upstream
 
+From the repository root, on a clean `main`:
+
 ```sh
-git fetch upstream
-git merge upstream/main
-# resolve conflicts, then:
-RUSTUP_TOOLCHAIN=1.98.1 cargo build -p zeron
-RUSTUP_TOOLCHAIN=1.98.1 cargo test -p coder-brand -p zeron -p zeron-update
-RUSTUP_TOOLCHAIN=1.98.1 scripts/run-macos-dev.sh
+git subtree pull --prefix=apps/openagents https://github.com/zeronsh/zeron.git main
+# resolve conflicts, then, from apps/openagents:
+cargo build -p zeron
+cargo test -p coder-brand -p zeron -p zeron-update
+scripts/run-macos-dev.sh
 ```
+
+Upstream changes to what we removed (`edge/` apart from `edge/src/install.sh`,
+`apps/landing`, `apps/www-redirect`, `.github/`) show as modify/delete
+conflicts: delete them again.
 
 After a merge, search for new upstream identity strings so nothing slips back
 in:
@@ -53,22 +58,19 @@ Rules that keep merges easy:
 
 ## Sync protocol merge checkpoint (#11847)
 
-If an upstream merge changes `edge/`, `crates/sync`, `crates/proto`, or
-`crates/rpc`, run the Rust server conformance suite before completing the merge.
-Use a clean OpenAgents monorepo worktree and the candidate fork commit:
+If an upstream pull changes `crates/sync`, `crates/proto`, `crates/rpc`,
+`crates/doc` or `crates/client`, run the Rust server conformance suite before
+pushing the merge. The server (`deploy/coder-sync`) uses these crates by path,
+so it always tests the clients in the same commit:
 
 ```sh
-/path/to/clean-openagents-worktree/scripts/coder-sync/conformance.sh \
-  --fork-repo /path/to/candidate-fork --pin FULL_FORK_COMMIT
+scripts/coder-sync/conformance.sh   # from the repository root
 ```
 
-The script updates the shared client pin and lockfile, builds that exact
-headless engine, and runs chat, registry, device, blob, and image fixture flows
-against temporary Postgres and a fake bucket. Commit the pin and lockfile in
-OpenAgents after the suite passes; push the corresponding fork commit to our
-`origin/main`. A local candidate commit works before publication. Never push
-to `upstream`. Keep the previous pin if the suite fails, and turn each mismatch
-into a regression test before retrying. Notifications remain disabled until
+It builds this tree's headless engine and runs chat, registry, device, blob,
+and image fixture flows against temporary Postgres and a fake bucket. Never
+push to Zeron's `upstream`. If the suite fails, fix the mismatch or back out
+the pull, and turn each mismatch into a regression test before retrying. Notifications remain disabled until
 OpenAgents push-gateway delivery lands in #11853.
 
 ## Identity and branding seams (patch log)

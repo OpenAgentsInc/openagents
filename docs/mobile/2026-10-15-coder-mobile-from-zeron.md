@@ -2,7 +2,7 @@
 
 Status: approved plan (owner, 2026-10-15). Epic: [#11840](https://github.com/OpenAgentsInc/openagents/issues/11840). The owner asked:
 1. What's needed to move our iOS app onto the Zeron iOS app's UI, which
-   ships inside our fork ([OpenAgentsInc/coder-desktop](https://github.com/OpenAgentsInc/coder-desktop),
+   ships inside our fork (now [`apps/openagents/`](../../apps/openagents/OPENAGENTS.md) in this repository; formerly `OpenAgentsInc/coder-desktop`,
    `apps/ios`)?
 2. Can our Nostr stack replace Zeron's Cloudflare server, or should we build
    something else in Rust on Google Cloud?

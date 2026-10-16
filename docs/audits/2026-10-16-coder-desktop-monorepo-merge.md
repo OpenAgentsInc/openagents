@@ -325,9 +325,19 @@ its own workspace on Rust 1.98.1, using the SDK by path. `edge/` (apart from
 - an arm64 iOS simulator build installs and opens to its sign-in screen;
 - the root workspace's 250 packages don't include the import.
 
-Next is step 2: repoint `scripts/coder-sync/conformance.py` (it still pins
-the fork's client crates by Git URL), move the fork's issues and links, and
-archive the fork repository.
+**Step 2 is done (2026-10-16).**
+- **Server:** the `coder-sync` server and its conformance suite now use the
+  sync clients and the SDK by path from this tree. The image copies exactly
+  those paths.
+- **Root workspace:** it now excludes `apps/openagents`. Cargo otherwise
+  resolves the imported crates' inherited fields against the root manifest.
+- **Conformance:** `scripts/coder-sync/conformance.sh` passes in full,
+  including the headless engine.
+- **Links:** docs links point at `apps/openagents/`, and the open issues that
+  named the fork have a comment.
+- **Old repository:** `OpenAgentsInc/coder-desktop` is archived read-only.
+
+Next is step 3, release scripts.
 
 Estimates are wall-clock time at this repository's measured pace (next
 section), with two to four agents working at once where the steps allow it.

@@ -32,11 +32,11 @@ The signed Release archive passed verification. Apple accepted the package;
 App Store Connect reports the build as `VALID`, uploaded at
 `2026-10-16T06:48:55-07:00`.
 
-The fork's [release guide](https://github.com/OpenAgentsInc/coder-desktop/blob/main/apps/ios/release/README.md)
+The app's [release guide](../../apps/openagents/apps/ios/release/README.md)
 contains the archive command, signing setup, metadata, and exact owner screens.
-[Test notes](https://github.com/OpenAgentsInc/coder-desktop/blob/main/apps/ios/release/test-notes.md)
+[Test notes](../../apps/openagents/apps/ios/release/test-notes.md)
 list verified actions and the remaining physical-device checks. The
-[app-specific privacy notice](https://github.com/OpenAgentsInc/coder-desktop/blob/main/apps/ios/release/privacy.md)
+[app-specific privacy notice](../../apps/openagents/apps/ios/release/privacy.md)
 supplements the general OpenAgents policy with phone-sync behavior.
 
 [Submission receipt](evidence/11850-testflight-1.0.0-1000.json) records the

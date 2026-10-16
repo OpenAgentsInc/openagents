@@ -22,10 +22,9 @@ You need a recent stable Rust (1.98.1 worked on 2026-10-15; the GPUI fork uses
 `std::hint::cold_path`, which older toolchains reject).
 
 ```sh
-git clone https://github.com/OpenAgentsInc/coder-desktop.git
-cd coder-desktop
-git remote add upstream https://github.com/zeronsh/zeron.git
-RUSTUP_TOOLCHAIN=1.98.1 scripts/run-macos-dev.sh
+git clone https://github.com/OpenAgentsInc/openagents.git
+cd openagents/apps/openagents
+scripts/run-macos-dev.sh
 ```
 
 The script builds `cargo build -p zeron` (the binary crate keeps its upstream

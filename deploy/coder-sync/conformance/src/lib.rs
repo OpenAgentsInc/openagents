@@ -1,1 +1,1 @@
-//! Protocol checks against the pinned fork client crates and the Rust server.
+//! Protocol checks against the apps' sync client crates (apps/openagents) and the Rust server.

@@ -5,6 +5,8 @@ root=$(cd "$(dirname "$0")/../.." && pwd)
 scratch=${OPENAGENTS_SCRATCH:-$(openagents scratch)}
 export OPENAGENTS_SCRATCH="$scratch"
 pg_bin=${CODER_SYNC_POSTGRES_BIN:-$(pg_config --bindir)}
+# Postgres refuses to start without a valid locale ("postmaster became multithreaded").
+export LC_ALL=${LC_ALL:-en_US.UTF-8} LANG=${LANG:-en_US.UTF-8}
 init_args=()
 if [[ -n "${CODER_SYNC_POSTGRES_SHARE:-}" ]]; then init_args=(-L "$CODER_SYNC_POSTGRES_SHARE"); fi
 state=$(mktemp -d "$scratch/coder-sync-test.XXXXXX")

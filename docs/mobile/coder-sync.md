@@ -39,9 +39,11 @@ cargo build --locked --manifest-path deploy/coder-sync/Cargo.toml --features ser
 ```
 
 `deploy/coder-sync/Cargo.toml` and its lockfile package the same server source
-for the image. The pinned fork client uses SQLite 0.32, while the frozen monorepo uses
-0.31. The separate workspace avoids a native-library conflict without changing
-those clients. Update the standalone manifest and lockfile for server
+for the image. The sync clients come by path from the OpenAgents apps
+(`apps/openagents/crates/{sync,client,proto,doc,rpc}`), which use SQLite 0.32
+while the root workspace uses 0.31. The separate workspace avoids a
+native-library conflict without changing those clients. The image copies
+exactly the paths listed in `scripts/coder-sync/deploy.py` (`BUILD_PATHS`). Update the standalone manifest and lockfile for server
 dependencies. No application code is copied into that package.
 
 ## Configuration
@@ -217,10 +219,10 @@ reference delivery behavior without acknowledgments.
 The default suite ports both edge device codec cases and all nine host-liveness
 cases. It also covers opaque routing, host replacement, disconnects, grants,
 sidecars, account isolation, wakeup retries, overflow, and transaction rollback.
-Build `zeron` from that same pinned fork revision to run the engine integration:
+Build `zeron` from `apps/openagents` in the same checkout to run the engine integration:
 
 ```sh
-ZERON_TEST_HEADLESS_BIN=/path/to/pinned/zeron \
+ZERON_TEST_HEADLESS_BIN=/path/to/apps-target/mobile/zeron \
   scripts/coder-sync/test.sh --test device pinned_headless -- --ignored
 ```
 
@@ -263,34 +265,25 @@ matching the pinned edge; it does not create a second attachment store.
 ## Protocol conformance checkpoint
 
 The `coder-sync-conformance` crate depends on the real `zeron-sync`,
-`zeron-client`, `zeron-proto`, `zeron-doc`, and `zeron-rpc` crates. One workspace
-revision pins all five. Run the complete suite, including the isolated engine
-and image fixture:
+`zeron-client`, `zeron-proto`, `zeron-doc`, and `zeron-rpc` crates by path
+from `apps/openagents/crates` (since 2026-10-16; before that, a Git pin on the
+fork). Run the complete suite, including the isolated engine and image
+fixture:
 
 ```sh
 scripts/coder-sync/conformance.sh
 ```
 
-For an upstream merge candidate, use a clean OpenAgents worktree:
+The script checks that the clients are path dependencies on `apps/openagents`,
+builds this checkout's headless engine in a persistent external target
+directory, runs every case against temporary Postgres and a fake bucket,
+checks the server's formatting, and builds the server executable. Phase logs
+stay under `openagents scratch` in `coder-sync-conformance`.
 
-```sh
-scripts/coder-sync/conformance.sh --fork-repo /path/to/fork --pin FULL_COMMIT
-```
-
-The script resolves the full local commit, updates the shared pin and lockfile,
-exports its source without editing the fork checkout, and builds the headless
-engine in the fork's persistent external target directory. It then runs every
-case against temporary Postgres and a fake bucket, checks formatting, and
-builds the server executable. Local Git configuration lets Cargo resolve an
-unpublished candidate without changing global settings. A failed run restores
-the pin files if nothing else changed them. Phase logs stay under
-`openagents scratch` in `coder-sync-conformance`.
-
-Commit the pin and lockfile after the candidate passes and is published to our
-fork. `FORK.md` requires this checkpoint whenever an upstream merge changes
-`edge/`, `crates/sync`, `crates/proto`, or `crates/rpc`. Counterexamples become
+`apps/openagents/FORK.md` requires this checkpoint whenever an upstream Zeron
+pull changes those client crates. Counterexamples become
 plain regression tests before retrying. Disk checks stop the script below
-8 GiB free. `CODER_SYNC_FORK_TARGET_DIR` selects the fork build cache; the
+8 GiB free. `CODER_SYNC_APPS_TARGET_DIR` selects the apps build cache; the
 server keeps `CARGO_TARGET_DIR`.
 
 The remaining edge update-log cases check small updates, large updates,

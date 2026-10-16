@@ -7,7 +7,7 @@ headless host, and the simulator. No real model or owner account is used.
 
 ## Prerequisites
 
-- Current `main` of `OpenAgentsInc/coder-desktop`, Rust 1.98.1, Xcode, and the
+- Current `main` of this repository (the apps are in `apps/openagents/`), Rust 1.98.1, Xcode, and the
   iPhone 17 Pro Max simulator `8010197D-517D-43DA-9559-46742EFABC65`.
 - A dedicated OpenAgents test account and a private file containing
   `OPENAGENTS_TOKEN=...`. Do not print its contents or use a personal account.

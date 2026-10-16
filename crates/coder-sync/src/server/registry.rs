@@ -1,4 +1,4 @@
-//! Account-private registry rows. Merge semantics come from the pinned fork;
+//! Account-private registry rows. Merge semantics come from the apps' sync clients (apps/openagents);
 //! one PostgreSQL transaction publishes every changed row in a batch.
 use super::{
     Identity, StateData,

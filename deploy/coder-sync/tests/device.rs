@@ -453,7 +453,7 @@ impl Drop for Engine {
     }
 }
 #[tokio::test]
-#[ignore = "Requires ZERON_TEST_HEADLESS_BIN built from the pinned fork commit"]
+#[ignore = "Requires ZERON_TEST_HEADLESS_BIN built from apps/openagents"]
 async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
     let binary = std::env::var("ZERON_TEST_HEADLESS_BIN")
         .expect("Build pinned zeron, set ZERON_TEST_HEADLESS_BIN");

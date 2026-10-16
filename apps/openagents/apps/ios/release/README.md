@@ -45,7 +45,7 @@ distribution validation and upload.
 | Version/build candidate | 1.0.0 / 1002 |
 | Subtitle | Your coding sessions, anywhere |
 | Category | Developer Tools |
-| Privacy policy | https://github.com/OpenAgentsInc/coder-desktop/blob/main/apps/ios/release/privacy.md |
+| Privacy policy | https://github.com/OpenAgentsInc/openagents/blob/main/apps/openagents/apps/ios/release/privacy.md (the old `coder-desktop` address still resolves from the archived repository) |
 | Support | https://github.com/OpenAgentsInc/openagents/issues |
 | What to test | Copy `test-notes.md` |
 | Review sign-in | OpenAgents device approval on openagents.com; use a dedicated test account |
