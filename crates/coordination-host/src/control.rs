@@ -13,7 +13,7 @@ impl Coordinator {
         let id = self.scope_key(&state, reference)?;
         let s = &state.scopes[&id];
         Ok(
-            json!({"coordinator":s.reference,"transport":s.transport,"revision":s.revision,"allowance":s.allowance,"calls":s.calls,"charged_calls":crate::claims::allocated(s,None),"claims":s.claims,"proposals":s.proposals,"frames":s.frames,"backgrounds":s.backgrounds,"revoked":s.revoked,"frozen":s.frozen}),
+            json!({"coordinator":s.reference,"transport":s.transport,"revision":s.revision,"allowance":s.allowance,"calls":s.calls,"charged_calls":crate::claims::allocated(s,None),"claims":s.claims,"proposals":s.proposals,"frames":s.frames,"backgrounds":s.backgrounds,"policy":s.policy,"resources":s.resources,"targets":s.targets,"revoked":s.revoked,"frozen":s.frozen}),
         )
     }
     pub fn control(&self, event: &Event, now: u64) -> Result<Value> {
@@ -73,9 +73,7 @@ impl Coordinator {
             value=self.store.put_json(&json!({"v":"openagents.coordination-native-status.v1","requires":[],"proposal":p.reference,"phase":p.status,"claim":p.claim,"findings":p.findings,"reuse":p.reuse}))?;
         } else if let Some(lease_key) = lease_key {
             let mut lease = scope.claims[&lease_key].clone();
-            if actor != scope.owner && actor != lease.actor {
-                return Err("not_admitted: claim control belongs to named worker or owner".into());
-            }
+            self.check_claim_controller(&scope, &lease, &actor, now)?;
             match action {
                 "renew" => {
                     self.current_lease(&scope, &lease, now)?;
@@ -88,7 +86,7 @@ impl Coordinator {
                     let until = body["requested_until"].as_u64().ok_or("renewal expiry")?;
                     let worker = self.check(&scope, &lease.actor, "claim", now)?;
                     if until <= now
-                        || until > now + scope.policy.max_claim_seconds
+                        || until > now.saturating_add(if self.operation(&scope.proposals[&task].body["target"])?["binding_contract"]["operation"]=="coord-container" {scope.policy.max_container_seconds.unwrap_or(scope.policy.max_claim_seconds)}else{scope.policy.max_claim_seconds})
                         || until > scope.policy.until
                         || until > worker.until
                         || lease.parent.as_ref().is_some_and(|p| {

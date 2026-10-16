@@ -26,6 +26,32 @@ pub(crate) fn allocated(scope: &Scope, parent: Option<&str>) -> u64 {
         .sum()
 }
 impl Coordinator {
+    /// A controller can manage only descendants of a currently held parent.
+    pub(crate) fn check_claim_controller(
+        &self,
+        scope: &Scope,
+        lease: &Lease,
+        actor: &str,
+        now: u64,
+    ) -> Result<()> {
+        if actor == scope.owner || actor == lease.actor {
+            return Ok(());
+        }
+        self.check(scope, actor, "control", now)?;
+        let mut parent = lease.parent.as_deref();
+        for _ in 0..64 {
+            let Some(key) = parent else {
+                break;
+            };
+            let ancestor = scope.claims.get(key).ok_or("parent claim unavailable")?;
+            self.current_lease(scope, ancestor, now)?;
+            if ancestor.actor == actor {
+                return Ok(());
+            }
+            parent = ancestor.parent.as_deref();
+        }
+        Err("not_admitted: controller has no current ancestor claim".into())
+    }
     pub fn claim(&self, event: &Event, now: u64) -> Result<Value> {
         let started = std::time::Instant::now();
         let (actor, body) = self.authenticate(event, now, Some("openagents.claim-request.v1"))?;
@@ -51,11 +77,16 @@ impl Coordinator {
             .map(|(id, _)| id.clone())
             .ok_or("proposal unavailable")?;
         let proposal = scope.proposals[&task].clone();
+        let container = self.operation(&proposal.body["target"])?["binding_contract"]["operation"]
+            == "coord-container";
         let worker = body["worker"].as_str().ok_or("worker key")?;
         let grant = self.check(&scope, &actor, "claim", now)?;
         let worker_grant = self.check(&scope, worker, "claim", now)?;
         if actor != worker && actor != scope.owner {
-            return Err("not_admitted: only named worker or owner can request claim".into());
+            self.check(&scope, &actor, "control", now)?;
+            if proposal.body["parent"].is_null() {
+                return Err("not_admitted: delegated controller requires its own parent".into());
+            }
         }
         let fp = contracts::digest_value(&body).map_err(|e| e.to_string())?;
         let key = format!("{actor}:claim:{fp}");
@@ -103,7 +134,15 @@ impl Coordinator {
         let limits = Limits::parse(&proposal.body["bounds"], &scope.policy)?;
         let until = body["requested_until"].as_u64().ok_or("claim expiry")?;
         if until <= now
-            || until > now.saturating_add(limits.wall_ms.div_ceil(1000))
+            || until
+                > now.saturating_add(if container {
+                    scope
+                        .policy
+                        .max_container_seconds
+                        .unwrap_or(scope.policy.max_claim_seconds)
+                } else {
+                    limits.wall_ms.div_ceil(1000)
+                })
             || until > scope.policy.until
             || until > grant.until
             || until > worker_grant.until
@@ -122,8 +161,6 @@ impl Coordinator {
         }
         let effects =
             contracts::parse_effects(&proposal.body["effects"]).map_err(|e| e.to_string())?;
-        let container = self.operation(&proposal.body["target"])?["binding_contract"]["operation"]
-            == "coord-container";
         if container && body["resources"] != json!([]) {
             return Err("container claims hold allowance rather than source locks".into());
         }
@@ -167,6 +204,11 @@ impl Coordinator {
                 })
                 .ok_or("not_admitted: exact admitted parent reservation required")?;
             self.current_lease(&scope, parent, now)?;
+            if actor != scope.owner && actor != parent.actor {
+                return Err(
+                    "not_admitted: parent worker or owner must authorize child allowance".into(),
+                );
+            }
             if parent
                 .own_calls
                 .checked_add(allocated(&scope, Some(parent_key)))

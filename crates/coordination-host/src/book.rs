@@ -20,6 +20,8 @@ pub struct Policy {
     pub calls: u64,
     pub concurrency: u64,
     pub max_claim_seconds: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_container_seconds: Option<u64>,
     pub max_depth: u64,
     pub until: u64,
     pub effects: Value,
@@ -309,6 +311,9 @@ impl Coordinator {
             || policy.concurrency > 64
             || policy.max_claim_seconds == 0
             || policy.max_claim_seconds > 300
+            || policy
+                .max_container_seconds
+                .is_some_and(|v| v == 0 || v > 90 * 86_400)
             || policy.max_depth == 0
             || policy.max_depth > 64
             || policy.until <= now

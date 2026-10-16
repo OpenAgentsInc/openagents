@@ -1619,6 +1619,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "automation-host"
+version = "1.0.0"
+dependencies = [
+ "coordination-host",
+ "nostr",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "standing-jobs",
+ "tempfile",
+ "workspace-host",
+]
+
+[[package]]
 name = "axum"
 version = "0.7.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3265,6 +3279,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "standing-jobs",
  "supervise",
  "tempfile",
  "tenancy",
@@ -15888,6 +15903,13 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
+
+[[package]]
+name = "standing-jobs"
+version = "1.0.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "static_assertions"

@@ -10,7 +10,9 @@ An automation can ask an agent to investigate a changed record, continue a
 bounded objective, or run a periodic check. A timer, reminder, model statement,
 idle session, reconnect, or webhook is not execution authority. Every occurrence
 requires current [POL](NIP-POL.md) authority and [COORD](NIP-COORD.md) admission.
-This is a target contract; the current Coder runtime does not implement it.
+The [v1 schemas](schemas/automation.v1.json) define the closed wire records.
+The native controller profile below reuses standing-job scheduling primitives
+and admitted COORD dispatch; the released Coder commands remain unchanged.
 
 ## Roles, operations, and encoding
 
@@ -332,3 +334,29 @@ Conformance claims name the roles implemented: plan controller, source,
 checker, worker adapter, or observer. Relay support for `3188` alone does not
 implement automation. Required Rust validators, durable host state, dispatch
 fencing, operation adapters, and crash fixtures remain implementation work.
+
+## Rust native controller profile
+
+The initial `automation-host` profile admits owner-signed once and fixed UTC
+interval plans against a separately admitted COORD container. It shares the
+standing-job calendar and allowance primitives with Coder. Original plan and
+control declarations, skipped slot ranges, typed occurrences, RUN history, and
+aggregate holds survive restart. The standalone CLI leaves released Coder
+commands unchanged.
+
+The controller, coordinator, worker, and checker have explicit keys. Current
+COORD grants and ancestor ownership constrain child claims and control. A long
+container reserves allowance; dispatchable children retain short deadlines.
+Preparation, worker intake, and the independent exact-output check consume the
+same parent call allowance. The native aggregate ledger conservatively debits
+admitted ceilings; it does not report those ceilings as measured telemetry.
+
+The worker returns the exact typed automation input as data. Pause and cancel
+share a fence with actual worker intake. Unknown outcomes retain their original
+holds and active occurrence; another timer cannot dispatch a replacement.
+
+Source observation, checked continuation, controller CAP/CJ exchange, broader
+recovery, and effectful session/environment adapters remain unfinished in
+#11735. Their records have closed validators, but unsupported triggers and
+bindings refuse at admission. A queue acknowledgment or model self-claim cannot
+complete work. See [the runtime guide](../../crates/automation-host/README.md).

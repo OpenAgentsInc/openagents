@@ -24,6 +24,12 @@ impl Coordinator {
         self.state()?;
         self.store.put(bytes, media, schema)
     }
+    /// Local owner inspection; never exposed as a remote digest lookup.
+    pub fn get_local_bytes(&self, reference: &Value) -> Result<Vec<u8>> {
+        let _guard = self.store.lock()?;
+        self.state()?;
+        self.store.get(reference)
+    }
     pub(crate) fn attachments(&self, files: &BTreeMap<String, Vec<u8>>) -> Result<()> {
         if files.len() > 256 || files.values().map(Vec::len).sum::<usize>() > 8 * 1_048_576 {
             return Err("coordinator input closure limit exceeded".into());
@@ -164,7 +170,8 @@ impl Coordinator {
 fn private(schema: &str) -> bool {
     matches!(
         schema,
-        "openagents.workspace-binding.v1"
+        "openagents.automation-native-policy.v1"
+            | "openagents.workspace-binding.v1"
             | "openagents.coordinator.v1"
             | "openagents.coordination-native-policy.v1"
             | "openagents.coordination-native-grant.v1"

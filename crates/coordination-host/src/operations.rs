@@ -7,7 +7,7 @@ use nostr::contracts::{self, Assurance, Bound};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 #[derive(Clone, Debug)]
-pub(crate) struct Limits {
+pub struct Limits {
     pub calls: u64,
     pub wall_ms: u64,
     pub input_bytes: u64,
@@ -16,7 +16,7 @@ pub(crate) struct Limits {
     pub depth: u64,
 }
 impl Limits {
-    pub(crate) fn parse(value: &Value, policy: &Policy) -> Result<Self> {
+    pub fn parse(value: &Value, policy: &Policy) -> Result<Self> {
         nostr::coordination::bounds_valid(value).map_err(|e| e.to_string())?;
         let mut limits = Self {
             calls: 1,
@@ -97,7 +97,9 @@ impl Coordinator {
         }
         nostr::cap::parse_definition(&body).map_err(|e| e.to_string())?;
         match body["binding_contract"]["operation"].as_str() {
-            Some("coord-data" | "coord-container" | "coord-git-change") => {}
+            Some(
+                "coord-data" | "coord-container" | "coord-git-change" | "coord-automation-data",
+            ) => {}
             _ => return Err("unsupported native operation binding".into()),
         }
         contracts::parse_schema_ref(&body["input"]).map_err(|e| e.to_string())?;
@@ -111,6 +113,7 @@ impl Coordinator {
         }
         let expected = match body["binding_contract"]["operation"].as_str() {
             Some("coord-data") => self.data_operation()?,
+            Some("coord-automation-data") => self.automation_operation()?,
             Some("coord-container") => self.container_operation(body["effects"].clone())?,
             Some("coord-git-change") => self.git_operation(
                 body["effects"]["writes"][0]
@@ -124,7 +127,7 @@ impl Coordinator {
         }
         Ok(body)
     }
-    pub(crate) fn effects_subset(&self, required: &Value, ceiling: &Value) -> Result<()> {
+    pub fn effects_subset(&self, required: &Value, ceiling: &Value) -> Result<()> {
         let requested = contracts::parse_effects(required).map_err(|e| e.to_string())?;
         let limit = contracts::parse_effects(ceiling).map_err(|e| e.to_string())?;
         for (requested, limit) in [
@@ -152,6 +155,13 @@ impl Coordinator {
     }
 }
 impl Coordinator {
+    /// A pinned wrapper adapter. Its owning AUTO controller gates worker intake.
+    pub fn automation_operation(&self) -> Result<Value> {
+        let schemas: Value =
+            serde_json::from_slice(nostr::automation::SCHEMA_BYTES).map_err(|e| e.to_string())?;
+        let schema = json!({"$defs":schemas["$defs"],"$ref":"#/$defs/automation-input"});
+        self.native_operation("automation-data",json!({"reads":["artifact"],"writes":[],"network":[],"process":false,"delegates":false,"spend":false}),schema,Value::Null)
+    }
     /// A bounded envelope for child work, with no code dispatch of its own.
     pub fn container_operation(&self, effects: Value) -> Result<Value> {
         self.effects_subset(&effects, &effects)?;

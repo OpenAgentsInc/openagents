@@ -1,0 +1,11 @@
+[package]
+name = "standing-jobs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Shared finite scheduling and conservative allowance admission."
+[lints]
+workspace = true
+[dependencies]
+serde = { version = "1", features = ["derive"] }

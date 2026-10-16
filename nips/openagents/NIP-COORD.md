@@ -272,3 +272,18 @@ current claims and independent verification; reading a finding executes nothing.
 The native profile exposes no arbitrary shell, network purchase, or controller
 takeover. A replacement controller needs the separately admitted RUN fencing
 and recovery profile before it can dispatch.
+
+A native policy may explicitly set `max_container_seconds` for a finite
+nondispatchable container. It reserves calls without holding a resource lock
+or dispatching code. Child/resource leases still use `max_claim_seconds`;
+renewal cannot replenish the container's allowance. Native auxiliary charges
+account for admitted preparation, source/checker requests, and recovery under
+that same reservation. A charge records consumed allowance, not permission to
+execute an external operation.
+
+An explicit control grant lets a parent worker claim, prepare, or control a
+named child's execution only within that parent's current ancestry. Both the
+controller's and child's target/resource grants apply. A control role alone
+cannot spend another participant's reservation. Native dispatch may pin both
+`request` and `run`; retries must preserve them, and retained execution identities
+cannot be reused by another claim.

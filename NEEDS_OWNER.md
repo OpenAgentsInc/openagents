@@ -1,3 +1,11 @@
+## Decide whether to ship the standing-job budget security fix (#11735)
+
+The source fix counts unmetered occurrences at their full reserved cost before
+admitting another occurrence. A reload regression covers the budget guard.
+The released Coder 1.0.0 remains unchanged. Under the binary freeze, the owner
+must decide whether this security fix warrants a release; no release or channel
+change was made for this work.
+
 ## Deploy the sealed vault workload on attested hardware (#11743)
 
 The sealed vault tier works in Rust, against a fixture endpoint and a local

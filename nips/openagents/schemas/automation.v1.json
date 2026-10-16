@@ -1,0 +1,1443 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OpenAgents NIP-AUTO v1 artifacts",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/automation-plan"
+    },
+    {
+      "$ref": "#/$defs/automation-skipped"
+    },
+    {
+      "$ref": "#/$defs/automation-observation"
+    },
+    {
+      "$ref": "#/$defs/automation-poll"
+    },
+    {
+      "$ref": "#/$defs/automation-occurrence"
+    },
+    {
+      "$ref": "#/$defs/automation-input"
+    },
+    {
+      "$ref": "#/$defs/automation-outcome"
+    },
+    {
+      "$ref": "#/$defs/automation-evaluation-input"
+    },
+    {
+      "$ref": "#/$defs/automation-evaluation"
+    },
+    {
+      "$ref": "#/$defs/automation-control"
+    },
+    {
+      "$ref": "#/$defs/automation-state"
+    },
+    {
+      "$ref": "#/$defs/automation-result"
+    }
+  ],
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "digest",
+        "size",
+        "media_type"
+      ],
+      "properties": {
+        "digest": {
+          "type": "string",
+          "minLength": 71,
+          "maxLength": 71
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "schema": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "event": {
+          "$ref": "#/$defs/event"
+        },
+        "sources": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "maxLength": 1024
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "event"
+                ],
+                "properties": {
+                  "event": {
+                    "$ref": "#/$defs/event"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "pubkey",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "pubkey": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "kind": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "coordinate": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      }
+    },
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "artifact"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "artifact": {
+          "$ref": "#/$defs/artifact"
+        },
+        "event": {
+          "$ref": "#/$defs/event"
+        }
+      }
+    },
+    "schema": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/artifact"
+        },
+        {
+          "properties": {
+            "media_type": {
+              "const": "application/schema+json"
+            }
+          }
+        }
+      ]
+    },
+    "effects": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reads",
+        "writes",
+        "network",
+        "process",
+        "delegates",
+        "spend"
+      ],
+      "properties": {
+        "reads": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "writes": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "network": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "process": {
+          "type": "boolean"
+        },
+        "delegates": {
+          "type": "boolean"
+        },
+        "spend": {
+          "type": "boolean"
+        }
+      }
+    },
+    "bound": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bound",
+        "ceiling",
+        "assurance",
+        "mechanism"
+      ],
+      "properties": {
+        "bound": {
+          "enum": [
+            "wall_ms",
+            "memory_bytes",
+            "input_bytes",
+            "output_bytes",
+            "read_bytes",
+            "storage_bytes",
+            "calls",
+            "attempts",
+            "concurrency",
+            "depth",
+            "fuel",
+            "spend_microunits"
+          ]
+        },
+        "ceiling": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "minimum": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "assurance": {
+          "enum": [
+            "host",
+            "trusted_executor"
+          ]
+        },
+        "mechanism": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "currency": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        }
+      }
+    },
+    "automation-plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "automation",
+        "run",
+        "owner",
+        "controller",
+        "coordinator",
+        "frame",
+        "policy",
+        "reservation",
+        "task",
+        "target",
+        "lock",
+        "payload",
+        "context",
+        "requirements",
+        "acceptance",
+        "effects",
+        "per_occurrence",
+        "aggregate",
+        "max_occurrences",
+        "max_observations",
+        "starts_at",
+        "expires_at",
+        "retain_until",
+        "trigger",
+        "completion"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.automation-plan.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "automation": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "run": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "controller": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "coordinator": {
+          "$ref": "#/$defs/artifact"
+        },
+        "frame": {
+          "$ref": "#/$defs/artifact"
+        },
+        "policy": {
+          "$ref": "#/$defs/artifact"
+        },
+        "reservation": {
+          "$ref": "#/$defs/artifact"
+        },
+        "task": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "target": {
+          "$ref": "#/$defs/definition"
+        },
+        "lock": {
+          "$ref": "#/$defs/artifact"
+        },
+        "payload": {
+          "$ref": "#/$defs/artifact"
+        },
+        "context": {
+          "$ref": "#/$defs/artifact"
+        },
+        "requirements": {
+          "$ref": "#/$defs/artifact"
+        },
+        "acceptance": {
+          "$ref": "#/$defs/artifact"
+        },
+        "effects": {
+          "$ref": "#/$defs/effects"
+        },
+        "per_occurrence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bound"
+          },
+          "maxItems": 12
+        },
+        "aggregate": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bound"
+          },
+          "maxItems": 12
+        },
+        "max_occurrences": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "max_observations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "starts_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "retain_until": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "trigger": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "at"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "once"
+                },
+                "at": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "first_at",
+                "every_seconds",
+                "missed"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "interval"
+                },
+                "first_at": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "every_seconds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "missed": {
+                  "enum": [
+                    "skip",
+                    "latest"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "first_at",
+                "every_seconds",
+                "source",
+                "resource",
+                "lock",
+                "input",
+                "context",
+                "requirements",
+                "bounds",
+                "max_age_seconds"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "source"
+                },
+                "first_at": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "every_seconds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "source": {
+                  "$ref": "#/$defs/definition"
+                },
+                "resource": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                },
+                "lock": {
+                  "$ref": "#/$defs/artifact"
+                },
+                "input": {
+                  "$ref": "#/$defs/artifact"
+                },
+                "context": {
+                  "$ref": "#/$defs/artifact"
+                },
+                "requirements": {
+                  "$ref": "#/$defs/artifact"
+                },
+                "bounds": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/bound"
+                  },
+                  "maxItems": 12
+                },
+                "max_age_seconds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "minimum_interval_seconds"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "continuation"
+                },
+                "minimum_interval_seconds": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                }
+              }
+            }
+          ]
+        },
+        "completion": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "target",
+                "lock",
+                "context",
+                "requirements",
+                "bounds"
+              ],
+              "properties": {
+                "target": {
+                  "$ref": "#/$defs/definition"
+                },
+                "lock": {
+                  "$ref": "#/$defs/artifact"
+                },
+                "context": {
+                  "$ref": "#/$defs/artifact"
+                },
+                "requirements": {
+                  "$ref": "#/$defs/artifact"
+                },
+                "bounds": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/bound"
+                  },
+                  "maxItems": 12
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "automation-skipped": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "plan",
+        "first_slot",
+        "last_slot",
+        "first_due_at",
+        "last_due_at",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.automation-skipped.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "plan": {
+          "$ref": "#/$defs/artifact"
+        },
+        "first_slot": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "last_slot": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "first_due_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "last_due_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "reason": {
+          "enum": [
+            "missed",
+            "occupied",
+            "paused",
+            "expired",
+            "bound"
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "automation-observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "source",
+        "resource",
+        "revision",
+        "observed_at",
+        "available",
+        "evidence",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.automation-observation.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "source": {
+          "$ref": "#/$defs/definition"
+        },
+        "resource": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "malformed",
+                "unsupported_version",
+                "unsupported_feature",
+                "not_admitted",
+                "unavailable",
+                "content_unavailable",
+                "identity_mismatch",
+                "incompatible",
+                "revoked",
+                "stale",
+                "cannot_enforce",
+                "limit_exceeded",
+                "idempotency_conflict",
+                "conflict"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "automation-poll": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "plan",
+        "poll",
+        "phase",
+        "slot",
+        "occurrence",
+        "request",
+        "run",
+        "deadline"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.automation-poll.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "plan": {
+          "$ref": "#/$defs/artifact"
+        },
+        "poll": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "phase": {
+          "enum": [
+            "observe",
+            "revalidate"
+          ]
+        },
+        "slot": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "occurrence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "run": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "deadline": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "automation-occurrence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "plan",
+        "occurrence",
+        "ordinal",
+        "key",
+        "due_at",
+        "deadline",
+        "observation",
+        "prior",
+        "request",
+        "run",
+        "task"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.automation-occurrence.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "plan": {
+          "$ref": "#/$defs/artifact"
+        },
+        "occurrence": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "key": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "once"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "slot"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "interval"
+                },
+                "slot": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "source",
+                "resource",
+                "revision"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "source"
+                },
+                "source": {
+                  "$ref": "#/$defs/definition"
+                },
+                "resource": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                },
+                "revision": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4096
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "predecessor"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "continuation"
+                },
+                "predecessor": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/artifact"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "due_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "deadline": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "observation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "prior": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "run": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "task": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "automation-input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "plan",
+        "occurrence",
+        "frame",
+        "payload",
+        "context",
+        "prior"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.automation-input.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "plan": {
+          "$ref": "#/$defs/artifact"
+        },
+        "occurrence": {
+          "$ref": "#/$defs/artifact"
+        },
+        "frame": {
+          "$ref": "#/$defs/artifact"
+        },
+        "payload": {
+          "$ref": "#/$defs/artifact"
+        },
+        "context": {
+          "$ref": "#/$defs/artifact"
+        },
+        "prior": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "automation-outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "occurrence",
+        "proposal",
+        "claim",
+        "result",
+        "settled",
+        "evidence",
+        "usage"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.automation-outcome.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "occurrence": {
+          "$ref": "#/$defs/artifact"
+        },
+        "proposal": {
+          "$ref": "#/$defs/artifact"
+        },
+        "claim": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "settled": {
+          "$ref": "#/$defs/artifact"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifact"
+          },
+          "maxItems": 256
+        },
+        "usage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifact"
+          },
+          "maxItems": 256
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "automation-evaluation-input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "plan",
+        "occurrence",
+        "outcome",
+        "frame",
+        "acceptance"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.automation-evaluation-input.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "plan": {
+          "$ref": "#/$defs/artifact"
+        },
+        "occurrence": {
+          "$ref": "#/$defs/artifact"
+        },
+        "outcome": {
+          "$ref": "#/$defs/artifact"
+        },
+        "frame": {
+          "$ref": "#/$defs/artifact"
+        },
+        "acceptance": {
+          "$ref": "#/$defs/artifact"
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "automation-evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "input",
+        "decision",
+        "evidence",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.automation-evaluation.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "input": {
+          "$ref": "#/$defs/artifact"
+        },
+        "decision": {
+          "enum": [
+            "continue",
+            "complete",
+            "blocked",
+            "unknown"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifact"
+          },
+          "maxItems": 256
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "automation-control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "plan",
+        "command",
+        "expected_revision",
+        "action",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.automation-control.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "plan": {
+          "$ref": "#/$defs/artifact"
+        },
+        "command": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "action": {
+          "enum": [
+            "pause",
+            "resume",
+            "cancel",
+            "status"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "automation-state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "plan",
+        "revision",
+        "previous",
+        "controller",
+        "generation",
+        "status",
+        "occurrences",
+        "observations",
+        "active",
+        "last_outcome",
+        "evaluation",
+        "accounting",
+        "record"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.automation-state.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "plan": {
+          "$ref": "#/$defs/artifact"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "previous": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "controller": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "status": {
+          "enum": [
+            "active",
+            "paused",
+            "blocked",
+            "exhausted",
+            "complete",
+            "cancelled",
+            "expired"
+          ]
+        },
+        "occurrences": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "observations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "active": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_outcome": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evaluation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "accounting": {
+          "$ref": "#/$defs/artifact"
+        },
+        "record": {
+          "$ref": "#/$defs/artifact"
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "automation-result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "input",
+        "status",
+        "state",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.automation-result.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "input": {
+          "$ref": "#/$defs/artifact"
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "duplicate",
+            "conflict",
+            "refused",
+            "unknown"
+          ]
+        },
+        "state": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "malformed",
+                "unsupported_version",
+                "unsupported_feature",
+                "not_admitted",
+                "unavailable",
+                "content_unavailable",
+                "identity_mismatch",
+                "incompatible",
+                "revoked",
+                "stale",
+                "cannot_enforce",
+                "limit_exceeded",
+                "idempotency_conflict",
+                "conflict"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

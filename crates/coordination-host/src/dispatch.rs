@@ -15,7 +15,17 @@ impl Coordinator {
             now,
             Some("openagents.coordination-native-dispatch.v1"),
         )?;
-        crate::admin::closed(&body, &["v", "requires", "coordinator", "claim"])?;
+        let fields: &[&str] = if body.get("request").is_some() || body.get("run").is_some() {
+            &["v", "requires", "coordinator", "claim", "request", "run"]
+        } else {
+            &["v", "requires", "coordinator", "claim"]
+        };
+        crate::admin::closed(&body, fields)?;
+        for field in ["request", "run"] {
+            if body.get(field).is_some() {
+                nostr::coordination::id(&body[field]).map_err(|e| e.to_string())?;
+            }
+        }
         let _guard = self.store.lock()?;
         let mut state = self.state()?;
         let id = self.scope_key(&state, &body["coordinator"])?;
@@ -28,10 +38,17 @@ impl Coordinator {
             .map(|(id, _)| id.clone())
             .ok_or("not_admitted: current claim unavailable")?;
         let mut lease = scope.claims[&lease_key].clone();
-        if actor != scope.owner && actor != lease.actor {
-            return Err("not_admitted: only named worker or owner can dispatch".into());
-        }
+        self.check_claim_controller(&scope, &lease, &actor, now)?;
         if let Some(event) = lease.execution {
+            if body
+                .get("request")
+                .is_some_and(|v| lease.input.as_ref().is_none_or(|p| &p["request"] != v))
+                || body
+                    .get("run")
+                    .is_some_and(|v| lease.input.as_ref().is_none_or(|p| &p["run"] != v))
+            {
+                return Err("idempotency_conflict: changed exact dispatch identity".into());
+            }
             return Ok(event);
         }
         self.current_lease(&scope, &lease, now)?;
@@ -55,9 +72,27 @@ impl Coordinator {
             &lease,
             now.saturating_add(started.elapsed().as_secs()),
         )?;
-        let request = workspace_host::artifact::token();
+        let request = body["request"]
+            .as_str()
+            .map(str::to_string)
+            .unwrap_or_else(workspace_host::artifact::token);
+        let run = body["run"].as_str().unwrap_or(&request);
+        if state.scopes.values().any(|s| {
+            s.descriptor["run"] == run
+                || s.claims.values().any(|l| {
+                    l.input
+                        .as_ref()
+                        .is_some_and(|p| p["request"] == request || p["run"] == run)
+                })
+        }) {
+            return Err(
+                "idempotency_conflict: dispatch identity already belongs to another execution"
+                    .into(),
+            );
+        }
+
         let deadline = lease.body["expires_at"].as_u64().ok_or("claim expiry")?;
-        let payload = json!({"v":execution::SCHEMA,"requires":[],"type":"execute","request":request,"attempt":1,"run":request,"target":proposal.body["target"],"lock":proposal.body["lock"],"input":{"artifact":proposal.body["input"]},"context":proposal.body["context"],"requirements":requirements,"bounds":{"wall_ms":limits.wall_ms,"output_bytes":limits.output_bytes,"jobs":1,"spend_microunits":0},"deadline":deadline,"retain_until":deadline+3600});
+        let payload = json!({"v":execution::SCHEMA,"requires":[],"type":"execute","request":request,"attempt":1,"run":run,"target":proposal.body["target"],"lock":proposal.body["lock"],"input":{"artifact":proposal.body["input"]},"context":proposal.body["context"],"requirements":requirements,"bounds":{"wall_ms":limits.wall_ms,"output_bytes":limits.output_bytes,"jobs":1,"spend_microunits":0},"deadline":deadline,"retain_until":deadline+3600});
         let event = self.seal(
             &lease.actor,
             execution::REQUEST_KIND,
@@ -102,6 +137,47 @@ impl Coordinator {
         }
         .event(kind, tags, body)
         .map_err(|e| format!("{e:?}"))
+    }
+    pub(crate) fn verify_intake(
+        &self,
+        event: &Event,
+        now: u64,
+    ) -> Result<crate::worker::VerifiedIntake> {
+        let (actor, body) =
+            self.authenticate(event, now, Some("openagents.coordination-native-intake.v1"))?;
+        crate::admin::closed(&body, &["v", "requires", "request", "fingerprint"])?;
+        let _guard = self.store.lock()?;
+        let state = self.state()?;
+        for scope in state.scopes.values() {
+            for lease in scope.claims.values() {
+                if lease
+                    .execution
+                    .as_ref()
+                    .is_some_and(|e| body["request"] == e.id)
+                {
+                    self.current_lease(scope, lease, now)?;
+                    let payload = lease.input.as_ref().ok_or("execution payload")?;
+                    let fingerprint =
+                        contracts::digest_value(payload).map_err(|e| e.to_string())?;
+                    if actor != lease.actor
+                        || lease.dispatched
+                        || body["fingerprint"] != fingerprint
+                    {
+                        return Err("not_admitted: exact unstarted worker intake required".into());
+                    }
+                    return Ok(crate::worker::VerifiedIntake {
+                        authority: self.authority().into(),
+                        actor,
+                        request: body["request"].as_str().ok_or("request")?.into(),
+                        fingerprint,
+                        scope: scope.reference.clone(),
+                        claim: lease.reference.clone(),
+                        payload: payload.clone(),
+                    });
+                }
+            }
+        }
+        Err("not_admitted: worker request unavailable".into())
     }
     pub(crate) fn intake(
         &self,

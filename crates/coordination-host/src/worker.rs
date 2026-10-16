@@ -14,6 +14,50 @@ struct WorkerState {
     outputs: BTreeMap<String, Value>,
 }
 /// A fixed Rust worker. Data and proposed patches remain data until integration.
+pub type Intake = (Value, BTreeMap<String, Vec<u8>>);
+/// An owning automation controller must hold its cancellation fence through intake.
+pub trait DispatchGate {
+    fn intake(
+        &self,
+        proof: &VerifiedIntake,
+        now: u64,
+        dispatch: &mut dyn FnMut() -> Result<Intake>,
+    ) -> Result<Intake>;
+}
+/// Coordinator-authenticated intake identity. Only the coordinator constructs it.
+/// It is a preflight proof; actual intake still checks current fences atomically.
+pub struct VerifiedIntake {
+    pub(crate) authority: String,
+    pub(crate) actor: String,
+    pub(crate) request: String,
+    pub(crate) fingerprint: String,
+    pub(crate) scope: Value,
+    pub(crate) claim: Value,
+    pub(crate) payload: Value,
+}
+impl VerifiedIntake {
+    pub fn authority(&self) -> &str {
+        &self.authority
+    }
+    pub fn actor(&self) -> &str {
+        &self.actor
+    }
+    pub fn request(&self) -> &str {
+        &self.request
+    }
+    pub fn fingerprint(&self) -> &str {
+        &self.fingerprint
+    }
+    pub fn scope(&self) -> &Value {
+        &self.scope
+    }
+    pub fn claim(&self) -> &Value {
+        &self.claim
+    }
+    pub fn payload(&self) -> &Value {
+        &self.payload
+    }
+}
 pub struct Worker {
     store: workspace_host::artifact::Artifacts,
     secret: secp256k1::SecretKey,
@@ -55,6 +99,24 @@ impl Worker {
         authority: &Coordinator,
         event: &Event,
         now: u64,
+    ) -> Result<(Event, BTreeMap<String, Vec<u8>>)> {
+        self.run_bound(authority, event, now, None)
+    }
+    pub fn run_gated(
+        &self,
+        authority: &Coordinator,
+        event: &Event,
+        now: u64,
+        gate: &dyn DispatchGate,
+    ) -> Result<(Event, BTreeMap<String, Vec<u8>>)> {
+        self.run_bound(authority, event, now, Some(gate))
+    }
+    fn run_bound(
+        &self,
+        authority: &Coordinator,
+        event: &Event,
+        now: u64,
+        gate: Option<&dyn DispatchGate>,
     ) -> Result<(Event, BTreeMap<String, Vec<u8>>)> {
         let opened = nostr::execution::open_request(
             event,
@@ -121,7 +183,13 @@ impl Worker {
         let intake = json!({"v":"openagents.coordination-native-intake.v1","requires":[],"request":event.id,"fingerprint":execute.fingerprint});
         let intake =
             workspace_host::host::request(&self.secret, authority.authority(), intake, now)?;
-        let (payload, pins) = authority.intake(&intake, now)?;
+        let mut dispatch = || authority.intake(&intake, now);
+        let (payload, pins) = if execute.payload["target"] == authority.automation_operation()? {
+            gate.ok_or("not_admitted: this operation requires its current AUTO controller")?
+                .intake(&authority.verify_intake(&intake, now)?, now, &mut dispatch)?
+        } else {
+            dispatch()?
+        };
         if payload != execute.payload || opened.principal != authority.authority() {
             return Err("worker request differs from authority's exact admission".into());
         }
@@ -143,7 +211,7 @@ impl Worker {
         .map_err(|e| format!("{e:?}"))?;
         if !matches!(
             target["binding_contract"]["operation"].as_str(),
-            Some("coord-data" | "coord-git-change")
+            Some("coord-data" | "coord-git-change" | "coord-automation-data")
         ) {
             return Err("unsupported native worker target".into());
         }

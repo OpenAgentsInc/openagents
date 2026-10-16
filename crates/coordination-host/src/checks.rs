@@ -165,6 +165,10 @@ impl Checker {
     pub fn new(secret: secp256k1::SecretKey) -> Self {
         Self { secret }
     }
+    pub fn authority(&self) -> String {
+        let pair = secp256k1::Keypair::from_secret_key(&secp256k1::Secp256k1::new(), &self.secret);
+        pair.x_only_public_key().0.to_string()
+    }
     pub fn check(
         &self,
         coordinator: &Coordinator,

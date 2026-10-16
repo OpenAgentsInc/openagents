@@ -37,6 +37,7 @@ fn setup(calls: u64) -> (tempfile::TempDir, Coordinator, Value, Value, Value) {
                 calls,
                 concurrency: 8,
                 max_claim_seconds: 100,
+                max_container_seconds: None,
                 max_depth: 8,
                 until: 5000,
                 effects: ceiling,
@@ -394,6 +395,7 @@ fn source_setup() -> (
                 calls: 8,
                 concurrency: 8,
                 max_claim_seconds: 100,
+                max_container_seconds: None,
                 max_depth: 8,
                 until: 5000,
                 effects,
@@ -591,6 +593,7 @@ fn background_sources_coalesce_changes_under_one_reserved_parent() {
                 calls: 12,
                 concurrency: 8,
                 max_claim_seconds: 100,
+                max_container_seconds: None,
                 max_depth: 8,
                 until: 5000,
                 effects: ceiling.clone(),
@@ -902,4 +905,123 @@ fn controller_byte_allowance_refuses_before_any_task_admission() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[test]
+fn long_container_allowance_charges_auxiliary_requests_once_and_keeps_short_child_leases() {
+    let (_t, h, s, _target, frame) = setup(3);
+    let old = h.state().unwrap();
+    let mut policy = old.scopes[&h.scope_key(&old, &s).unwrap()].policy.clone();
+    policy.max_container_seconds = Some(3600);
+    let container = h.container_operation(policy.effects.clone()).unwrap();
+    let data = h.data_operation().unwrap();
+    let s = h
+        .create_scope(
+            policy.clone(),
+            vec![],
+            vec![container.clone(), data.clone()],
+            100,
+        )
+        .unwrap();
+    h.frame(&event(1,json!({"v":"openagents.coordination-native-frame.v1","requires":[],"coordinator":s,"command":workspace_host::artifact::token(),"expected_revision":revision(&h,&s),"frame":frame}),100),&h.store.get(&frame).unwrap(),100).unwrap();
+    let mut p = proposal(&h, &s, &container, &frame, 3, None);
+    p["effects"] = policy.effects;
+    let pr = propose(&h, &p);
+    let claim = event(
+        1,
+        json!({"v":"openagents.claim-request.v1","requires":[],"proposal":pr,"worker":key(1),"resources":[],"expected_revision":revision(&h,&s),"requested_until":1000,"reservation":h.scope(&s).unwrap()["allowance"]}),
+        101,
+    );
+    let c = h.claim(&claim, 101).unwrap()["value"].clone();
+    let request = workspace_host::artifact::token();
+    let charge = json!({"v":"openagents.coordination-native-auxiliary.v1","requires":[],"coordinator":s,"claim":c,"command":workspace_host::artifact::token(),"purpose":"observe","request":request,"fingerprint":nostr::contracts::digest_bytes(b"exact signed source request")});
+    let signed = event(1, charge.clone(), 102);
+    let receipt = h.charge_auxiliary(&signed, 102).unwrap();
+    assert_eq!(h.charge_auxiliary(&signed, 102).unwrap(), receipt);
+    assert_eq!(h.scope(&s).unwrap()["calls"], 1);
+    let mut changed = charge;
+    changed["command"] = json!(workspace_host::artifact::token());
+    assert!(
+        h.charge_auxiliary(&event(1, changed, 102), 102)
+            .unwrap_err()
+            .contains("conflict")
+    );
+    let child = proposal(
+        &h,
+        &s,
+        &data,
+        &frame,
+        1,
+        Some(p["task"].as_str().unwrap().into()),
+    );
+    let child = propose(&h, &child);
+    let request = event(
+        1,
+        json!({"v":"openagents.claim-request.v1","requires":[],"proposal":child,"worker":key(1),"resources":[],"expected_revision":revision(&h,&s),"requested_until":900,"reservation":h.store.json(&c).unwrap()["reservation"]}),
+        102,
+    );
+    assert!(h.claim(&request, 102).unwrap_err().contains("lifetime"));
+}
+#[test]
+fn delegated_control_requires_an_owned_current_ancestor_and_cannot_take_another_parent() {
+    let (_t, h, s, target, frame) = setup(8);
+    let mut parent_effects = effects();
+    parent_effects["delegates"] = json!(true);
+    let container = h.container_operation(parent_effects.clone()).unwrap();
+    let mut parent = proposal(&h, &s, &container, &frame, 4, None);
+    parent["effects"] = parent_effects.clone();
+    let parent_ref = propose(&h, &parent);
+    let owner_claim = claim(
+        &h,
+        &s,
+        &parent_ref,
+        h.scope(&s).unwrap()["allowance"].clone(),
+    );
+    let child = proposal(
+        &h,
+        &s,
+        &target,
+        &frame,
+        2,
+        Some(parent["task"].as_str().unwrap().into()),
+    );
+    let child_ref = propose(&h, &child);
+    let body = json!({"v":"openagents.claim-request.v1","requires":[],"proposal":child_ref,"worker":key(2),"resources":[],"expected_revision":revision(&h,&s),"requested_until":190,"reservation":h.store.json(&owner_claim).unwrap()["reservation"]});
+    assert!(
+        h.claim(&event(3, body, 102), 102)
+            .unwrap_err()
+            .contains("parent worker")
+    );
+    let child_claim = claim(
+        &h,
+        &s,
+        &child_ref,
+        h.store.json(&owner_claim).unwrap()["reservation"].clone(),
+    );
+    let foreign_dispatch = event(
+        3,
+        json!({"v":"openagents.coordination-native-dispatch.v1","requires":[],"coordinator":s,"claim":child_claim}),
+        102,
+    );
+    assert!(
+        h.prepare(&foreign_dispatch, 102)
+            .unwrap_err()
+            .contains("ancestor")
+    );
+    let mut parent2 = proposal(&h, &s, &container, &frame, 4, None);
+    parent2["effects"] = parent_effects;
+    let parent2_ref = propose(&h, &parent2);
+    let claim3=h.claim(&event(3,json!({"v":"openagents.claim-request.v1","requires":[],"proposal":parent2_ref,"worker":key(3),"resources":[],"expected_revision":revision(&h,&s),"requested_until":190,"reservation":h.scope(&s).unwrap()["allowance"]}),102),102).unwrap()["value"].clone();
+    let child2 = proposal(
+        &h,
+        &s,
+        &target,
+        &frame,
+        2,
+        Some(parent2["task"].as_str().unwrap().into()),
+    );
+    let child2_ref = propose(&h, &child2);
+    let child2_claim=h.claim(&event(3,json!({"v":"openagents.claim-request.v1","requires":[],"proposal":child2_ref,"worker":key(2),"resources":[],"expected_revision":revision(&h,&s),"requested_until":190,"reservation":h.store.json(&claim3).unwrap()["reservation"]}),102),102).unwrap()["value"].clone();
+    h.prepare(&event(3,json!({"v":"openagents.coordination-native-dispatch.v1","requires":[],"coordinator":s,"claim":child2_claim}),103),103).unwrap();
+    h.control(&event(3,json!({"v":"openagents.coordination-control.v1","requires":[],"coordinator":s,"proposal":child2_ref,"claim":child2_claim,"action":"cancel","expected_revision":revision(&h,&s),"requested_until":null,"evidence":[]}),103),103).unwrap();
 }

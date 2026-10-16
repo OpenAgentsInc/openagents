@@ -464,23 +464,7 @@ fn minutes(at: &str) -> Option<i64> {
 /// The newest scheduled time at or before `now`, Unix seconds.
 #[must_use]
 pub fn last_slot(at: &str, weekday: Option<u8>, utc_offset: i32, now: u64) -> Option<u64> {
-    let minute = minutes(at)?;
-    let offset = i64::from(utc_offset) * 60;
-    let local = now as i64 + offset;
-    let day = local.div_euclid(86_400);
-    for back in 0..8 {
-        let d = day - back;
-        // 1970-01-01 was a Thursday: weekday 3 counting from Monday.
-        let weekday_of = (d + 3).rem_euclid(7) as u8;
-        if weekday.is_some_and(|w| w != weekday_of) {
-            continue;
-        }
-        let slot = d * 86_400 + minute * 60 - offset;
-        if slot <= now as i64 {
-            return u64::try_from(slot).ok();
-        }
-    }
-    None
+    standing_jobs::calendar_slot(at, weekday, utc_offset, now)
 }
 
 /// A job made from template `name` for `workspace`, off, expiring in 30
@@ -819,7 +803,12 @@ pub fn admit(job: &Job, record: &Record, facts: &dyn Facts, now: u64) -> Result<
     if job.occurrences >= job.max_occurrences {
         return Err("the job used all its occurrences".into());
     }
-    if job.budget.spent + job.budget.per_occurrence > job.budget.per_job {
+    if !standing_jobs::money_available(
+        job.budget.spent,
+        job.budget.per_occurrence,
+        job.budget.unmetered,
+        job.budget.per_job,
+    ) {
         return Err("the job's budget is spent".into());
     }
     if !facts.capacity() {
@@ -856,6 +845,30 @@ mod tests {
         (store, record)
     }
 
+    #[test]
+    fn an_unmetered_occurrence_blocks_another_admission_after_reload() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, record) = agent(&dir);
+        let mut job = template("nightly-check", "", None, None, 0, 100).unwrap();
+        job.budget.per_occurrence = 1.0;
+        job.budget.per_job = 1.0;
+        job.budget.spent = 0.0;
+        job.budget.unmetered = 0;
+        let world = World {
+            head: None,
+            issues: vec![],
+            capacity: true,
+        };
+        assert!(admit(&job, &record, &world, 101).is_ok());
+        job.budget.unmetered = 1;
+        Jobs::new(store.clone()).save(&[job]).unwrap();
+        let restored = Jobs::new(store).load().unwrap().remove(0);
+        assert!(
+            admit(&restored, &record, &world, 101)
+                .unwrap_err()
+                .contains("budget")
+        );
+    }
     const DAY: u64 = 86_400;
     // 2026-10-05 00:00 UTC, a Monday.
     const MONDAY: u64 = 1_791_158_400;
