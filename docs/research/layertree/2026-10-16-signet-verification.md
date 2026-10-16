@@ -61,9 +61,9 @@ also exercised by the existing `gcp_token_verify` cargo-fuzz target; its
 previous 1,000-run bounded check passed. This change adds capture tests and
 does not change that parser.
 
-Join, update, exit, refresh, the week of heartbeats, deliberate enclave
-loss, and final public-package recovery remain #11789/#11793 measurements.
-This first confirmed output does not complete those measurements.
+The normal transitions are recorded below. The week of heartbeats,
+deliberate enclave loss, and final public-package recovery remain #11793
+measurements. A confirmed creation output alone does not complete them.
 
 ## Confirmed normal transitions
 
@@ -113,3 +113,16 @@ actual gaps and late heartbeats are recorded. A one-time Cloud Task will
 delete the primary VM at **2026-10-24 09:28:00 UTC**, with a nine-day native
 VM deadline as fallback. #11793 still requires the elapsed week, deletion
 audit evidence, CSV maturity, exact payouts, and the separate HALT run.
+
+The separate HALT run uses committed `server/halt-service.json`, with fresh
+test keys and 20,000 signet sats. Its image
+`sha256:33b4bda396fede6c1a3fe4e3c37c07967f2c6a8ee81088b238ba5fd1319ee436`
+from `6fb4b4e71d4fb21d8bbd008ee5a4775cf0cbdea6` reproduced on both builders
+(OCI archive SHA-256
+`d74332efaaeb45fed4bb32c4d32ab59b634437df7ca3f1b7010f9ece48f32efe`).
+Rekor entry is 3278267593. The verifier rejected the release before its
+actual 10-minute notice elapsed. Its separate VM has a 24-hour native
+deadline. `scripts/layertree/observe-halt.py` waits for sync, funding
+confirmation, and release admission, then checks HALT signing refusal and
+runs saved-package recovery through the separate Core node. Its read-only
+preflight passed; this setup is not yet a HALT or payout result.
