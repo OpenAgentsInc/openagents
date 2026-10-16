@@ -25,8 +25,8 @@ They are not observed runtime behavior.
 | [Identity and packaging](identity-and-packaging.md) | Bundle identity, signature, entitlements, Electron fuses, document types, and the Developer ID profile |
 | [Process architecture](architecture.md) | Boot, windows, the IPC bus, preload trust, utility processes, schemes, and permission decisions |
 | [Surfaces and deep links](surfaces.md) | `claude://` routing, login callbacks, desktop actions, and the shell around the web view |
-| [Sessions and code](sessions.md) | Local code sessions, the local-agent session, git, GitHub, SSH, and device signatures |
-| [Cowork](cowork.md) | Spaces, artifacts, the `cowork-artifact:` document protocol, memory, and scheduled tasks |
+| [Sessions and code](sessions.md) | Code-session files under `claude-code-sessions`, `~/.claude.json` trust, the pty cwd, SSH `ssh -G`, askpass, and saved passwords |
+| [Cowork](cowork.md) | Session files, folder grants in `claude_desktop_config.json`, the sessions bridge, Copper Heron, direct MCP, artifacts, and scheduled tasks |
 | [Virtual machine](vm.md) | Bundle download, `smol-bin` disk copy, Swift start, host loop, and Yukon Silver |
 | [Computer use and devices](computer-use.md) | TCC grants, teach and watch-record, Sable Otter, framebuffer, simulator, Buddy, Bluetooth |
 | [Extensions and integrations](extensions-and-integrations.md) | MCP hosts, the node host's refusal to spawn Electron, plugins, GitHub, Office, Chrome |
@@ -55,11 +55,14 @@ They are not observed runtime behavior.
    simulator, skills, Office, engine, locale, and Buddy worlds.
    `LocalSessions` alone lists 337 methods.
 4. **Three products share the shell.** Chat is the shipped `ion-dist` page.
-   Code is `LocalSessions`: files, a pty, git, `gh`, and SSH. Cowork is
-   `LocalAgentModeSessions` plus a Linux VM (`claudevm.bundle`, downloaded
-   from `downloads.claude.ai`, booted through the Swift addon) plus
-   `cowork-artifact:` documents that can call `mcp__<server>__<tool>` and
-   nothing else.
+   Code is `LocalSessions`: a JSON file per session under
+   `claude-code-sessions`, trust in `~/.claude.json`, a pty whose cwd is the
+   worktree, git, `gh`, and SSH. Cowork is `LocalAgentModeSessions` (a JSON
+   file per session under `local-agent-mode-sessions`, folder grants in
+   `claude_desktop_config.json`, an in-process sessions bridge) plus a Linux
+   VM (`claudevm.bundle`, downloaded from `downloads.claude.ai`, booted
+   through the Swift addon) plus `cowork-artifact:` documents that can call
+   `mcp__<server>__<tool>` and nothing else.
 5. **`claude://` is one function.** Hosts `cowork`, `code`, `claude.ai`,
    `login`, `resume`, and `sable-otter` navigate or import. `preview` and
    `debug-handoff` are rejected in this non-nest build. Google and magic-link
