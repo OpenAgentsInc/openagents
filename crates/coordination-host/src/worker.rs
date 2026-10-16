@@ -244,6 +244,16 @@ impl Worker {
             .service
             .intend(&claim.key)
             .map_err(|e| format!("{e:?}"))?;
+        let mut records = vec![contracts::parse_strict(&root).map_err(|e| e.to_string())?];
+        let input_ref = execute.payload["input"]["artifact"].clone();
+        let admitted=nostr::run::append_envelope(&mut records,self.signer.pubkey(),"admitted",json!({"enforcement":[],"reservations":[],"deadlines":{"request":execute.deadline},"retention":execute.retain_until,"input":input_ref}),now).map_err(|e|e.to_string())?;
+        let dispatched=nostr::run::append_envelope(&mut records,self.signer.pubkey(),"dispatched",json!({"binding":execute.payload["target"],"attempt":execute.attempt,"input":input_ref,"context":execute.payload["context"],"effect":"native-data-copy","generation":0}),now).map_err(|e|e.to_string())?;
+        let mut artifacts = vec![
+            root_ref.clone(),
+            self.store.put_json(&admitted)?,
+            self.store.put_json(&dispatched)?,
+        ];
+        state.outputs.insert(key.clone(), json!(artifacts));
         self.store.save(&state, &self.signer)?;
         let output = input;
         let bytes = contracts::jcs(&output).map_err(|e| format!("{e:?}"))?;
@@ -251,6 +261,14 @@ impl Worker {
             return Err("pure worker output exceeds its declared bound".into());
         }
         let output_ref = self.store.put_json(&output)?;
+        let resolved=nostr::run::append_envelope(&mut records,self.signer.pubkey(),"resolved",json!({"outcome":"completed","dispatched":true,"output":output_ref,"receipts":[],"usage":{"calls":1,"spend_microunits":0},"verification":"not_run","integration":"not_requested"}),now).map_err(|e|e.to_string())?;
+        let settled=nostr::run::append_envelope(&mut records,self.signer.pubkey(),"settled",json!({"outcome":"completed","unknowns":[],"verification":"not_run","integration":"not_requested","results":[output_ref],"reservations":[]}),now).map_err(|e|e.to_string())?;
+        artifacts.extend([
+            output_ref.clone(),
+            self.store.put_json(&resolved)?,
+            self.store.put_json(&settled)?,
+        ]);
+        let terminal = artifacts.last().ok_or("terminal RUN")?.clone();
         let result = state
             .service
             .observe(
@@ -259,8 +277,8 @@ impl Worker {
                     outcome: "completed",
                     dispatched: true,
                     output: Some(output_ref.clone()),
-                    artifacts: vec![root_ref.clone(), output_ref.clone()],
-                    receipts: vec![],
+                    artifacts: artifacts.clone(),
+                    receipts: vec![terminal],
                     spend: Some(0),
                     verification: Some("not_run"),
                     integration: Some("not_requested"),
@@ -289,12 +307,13 @@ impl Worker {
         )
         .map_err(|e| format!("{e:?}"))?;
         state.events.insert(key.clone(), event.clone());
-        state.outputs.insert(key, json!([root_ref, output_ref]));
+        state.outputs.insert(key, json!(artifacts));
         self.store.save(&state, &self.signer)?;
-        let closure = BTreeMap::from([
-            (contracts::digest_bytes(&root), root),
-            (contracts::digest_bytes(&bytes), bytes),
-        ]);
+        let mut closure = BTreeMap::new();
+        for reference in &artifacts {
+            let bytes = self.store.get(reference)?;
+            closure.insert(contracts::digest_bytes(&bytes), bytes);
+        }
         Ok((event, closure))
     }
 }

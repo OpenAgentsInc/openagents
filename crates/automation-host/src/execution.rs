@@ -207,6 +207,8 @@ impl Automation {
             }
             self.store.put(bytes, "application/octet-stream", None)?;
         }
+        let terminal = nostr::run::terminal_from_result(&result, files, &state.policy.worker)
+            .map_err(|e| e.to_string())?;
         let result_ref = self.store.put_json(&result)?;
         // Keep the original signed event encrypted to its actual coordinator.
         self.store
@@ -216,6 +218,7 @@ impl Automation {
             .get_mut(&active)
             .ok_or("active occurrence")?;
         item["result"] = result_ref.clone();
+        item["terminal"] = terminal;
         item["phase"] = json!("check");
         let status = record.state["status"].as_str().ok_or("status")?.to_string();
         self.transition(
@@ -309,7 +312,7 @@ impl Automation {
         // does not infer unused capacity from incomplete timing or byte telemetry.
         record.accounting.settle(&active, Some(reserved))?;
         let settlement=self.store.put_json(&json!({"v":"openagents.automation-native-settlement.v1","requires":[],"occurrence":occurrence["reference"],"ledger":record.accounting,"checker_event":report,"check":check_ref}))?;
-        let outcome = json!({"v":"openagents.automation-outcome.v1","requires":[],"occurrence":occurrence["reference"],"proposal":occurrence["proposal"],"claim":occurrence["claim"],"result":occurrence["result"],"settled":settlement,"evidence":[check_ref],"usage":[settlement]});
+        let outcome = json!({"v":"openagents.automation-outcome.v1","requires":[],"occurrence":occurrence["reference"],"proposal":occurrence["proposal"],"claim":occurrence["claim"],"result":occurrence["result"],"settled":occurrence["terminal"],"evidence":[check_ref],"usage":[settlement]});
         automation::validate(&outcome).map_err(|e| e.to_string())?;
         let outcome_ref = self.declare(
             &mut state,

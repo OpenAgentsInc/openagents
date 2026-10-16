@@ -205,6 +205,8 @@ impl Automation {
         {
             return Err("identity_mismatch: source RUN admission differs".into());
         }
+        nostr::run::terminal_from_result(&result, files, source.authority())
+            .map_err(|e| e.to_string())?;
         let output_ref = &result["output"];
         let bytes = files
             .get(output_ref["digest"].as_str().ok_or("observation")?)

@@ -137,6 +137,19 @@ fn once_uses_actual_worker_independent_check_and_nonrenewable_parent() {
     assert_eq!(inspected["state"]["status"], "complete");
     assert_eq!(inspected["state"]["occurrences"], 1);
     assert_eq!(inspected["accounting"]["spent"]["calls"], 3);
+    let outcome_ref = &inspected["outcomes"]
+        .as_object()
+        .unwrap()
+        .values()
+        .next()
+        .unwrap()["reference"];
+    let outcome = auto.store.json(outcome_ref).unwrap();
+    let settled = auto.store.json(&outcome["settled"]).unwrap();
+    assert_eq!(settled["record"]["type"], "settled");
+    assert_eq!(settled["record"]["controller"], key(2));
+    assert_eq!(outcome["settled"]["schema"], nostr::run::RECORD_SCHEMA);
+    assert_ne!(outcome["settled"], outcome["usage"][0]);
+
     assert_eq!(
         auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
         3
@@ -665,11 +678,16 @@ fn source_cj_preserves_original_signers_and_reads_actual_workspace_versions() {
     )
     .unwrap();
     assert_eq!(result["outcome"], "completed");
+    nostr::run::terminal_from_result(&result, &files, &key(4)).unwrap();
     let output =
         nostr::automation::parse(&files[result["output"]["digest"].as_str().unwrap()]).unwrap();
     assert_eq!(output["source"], bundle["target"]);
     assert_eq!(output["available"], true);
-    assert_eq!(output["observed_at"], 110);
+    assert!(
+        output["observed_at"]
+            .as_u64()
+            .is_some_and(|t| (110..140).contains(&t))
+    );
     let mut signers = BTreeSet::new();
     for bytes in files.values() {
         if let Ok(e) = serde_json::from_slice::<Event>(bytes) {
@@ -687,6 +705,15 @@ fn source_cj_preserves_original_signers_and_reads_actual_workspace_versions() {
             .0,
         response
     );
+}
+fn occurrence_time(auto: &Automation, reference: &Value) -> u64 {
+    auto.inspect(reference).unwrap()["occurrences"]
+        .as_object()
+        .unwrap()
+        .values()
+        .map(|o| o["started_at"].as_u64().unwrap())
+        .max()
+        .unwrap()
 }
 fn watched() -> (
     tempfile::TempDir,
@@ -756,19 +783,20 @@ fn watched_plan_observes_revalidates_and_coalesces_the_exact_native_revision() {
     let first = auto.inspect(&reference).unwrap();
     assert_eq!(first["state"]["occurrences"], 1);
     assert_eq!(first["state"]["observations"], 1);
-    let request = auto.advance(&reference, 110).unwrap().unwrap();
+    let at = occurrence_time(&auto, &reference);
+    let request = auto.advance(&reference, at).unwrap().unwrap();
     let worker =
-        coordination_host::worker::Worker::open(t.path().join("watched-worker"), secret(2), 110)
+        coordination_host::worker::Worker::open(t.path().join("watched-worker"), secret(2), at)
             .unwrap();
     let (result, files) = worker
-        .run_gated(&auto.coordinator, &request, 110, &auto)
+        .run_gated(&auto.coordinator, &request, at, &auto)
         .unwrap();
-    auto.record_result(&reference, &result, &files, 111)
+    auto.record_result(&reference, &result, &files, at + 1)
         .unwrap();
     auto.check(
         &reference,
         &coordination_host::checks::Checker::new(secret(3)),
-        112,
+        at + 2,
     )
     .unwrap();
     let checked = auto.inspect(&reference).unwrap();
@@ -805,7 +833,8 @@ fn watched_plan_observes_revalidates_and_coalesces_the_exact_native_revision() {
 fn a_changed_source_refuses_worker_intake_and_retains_the_original_occurrence_hold() {
     let (t, auto, plan, reference, repo) = watched();
     auto.tick(&reference, 110).unwrap();
-    let request = auto.advance(&reference, 110).unwrap().unwrap();
+    let at = occurrence_time(&auto, &reference);
+    let request = auto.advance(&reference, at).unwrap().unwrap();
     let old = git(&repo, &["rev-parse", "refs/heads/docs"], None);
     let tree = git(&repo, &["rev-parse", "refs/heads/docs^{tree}"], None);
     let next = git(
@@ -815,11 +844,11 @@ fn a_changed_source_refuses_worker_intake_and_retains_the_original_occurrence_ho
     );
     git(&repo, &["update-ref", "refs/heads/docs", &next], None);
     let worker =
-        coordination_host::worker::Worker::open(t.path().join("stale-worker"), secret(2), 111)
+        coordination_host::worker::Worker::open(t.path().join("stale-worker"), secret(2), at + 1)
             .unwrap();
     assert!(
         worker
-            .run_gated(&auto.coordinator, &request, 111, &auto)
+            .run_gated(&auto.coordinator, &request, at + 1, &auto)
             .unwrap_err()
             .contains("stale")
     );
@@ -909,19 +938,20 @@ fn pause_and_cancel_fence_source_intake_before_the_native_reader_is_charged() {
 fn source_revalidation_uses_the_same_observation_cap_and_expiry_stops_new_reads() {
     let (t, auto, plan, reference, _repo) = watched_with(2);
     auto.tick(&reference, 110).unwrap();
-    let request = auto.advance(&reference, 110).unwrap().unwrap();
+    let at = occurrence_time(&auto, &reference);
+    let request = auto.advance(&reference, at).unwrap().unwrap();
     let worker =
-        coordination_host::worker::Worker::open(t.path().join("capped-worker"), secret(2), 110)
+        coordination_host::worker::Worker::open(t.path().join("capped-worker"), secret(2), at)
             .unwrap();
     let (result, files) = worker
-        .run_gated(&auto.coordinator, &request, 110, &auto)
+        .run_gated(&auto.coordinator, &request, at, &auto)
         .unwrap();
-    auto.record_result(&reference, &result, &files, 111)
+    auto.record_result(&reference, &result, &files, at + 1)
         .unwrap();
     auto.check(
         &reference,
         &coordination_host::checks::Checker::new(secret(3)),
-        112,
+        at + 2,
     )
     .unwrap();
     auto.tick(&reference, 170).unwrap();

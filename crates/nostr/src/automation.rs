@@ -167,6 +167,14 @@ pub fn validate(body: &Value) -> Result<()> {
                 return Err(error(RefusalCode::Conflict, "state predecessor"));
             }
         }
+        "automation-outcome" => {
+            if body["settled"]["schema"] != crate::run::RECORD_SCHEMA {
+                return Err(error(
+                    RefusalCode::IdentityMismatch,
+                    "authenticated RUN terminal schema",
+                ));
+            }
+        }
         "automation-result" => {
             if matches!(body["status"].as_str(), Some("accepted" | "duplicate"))
                 && (body["state"].is_null() || !body["reason"].is_null())
@@ -250,5 +258,13 @@ mod tests {
             json!({"kind":"interval","first_at":100,"every_seconds":60,"missed":"latest"});
         assert_eq!(due_at(&trigger, 2).unwrap(), 220);
         assert!(due_at(&trigger, u64::MAX).is_err());
+    }
+    #[test]
+    fn an_accounting_receipt_cannot_stand_in_for_a_terminal_run() {
+        let a = artifact();
+        let mut body = json!({"v":"openagents.automation-outcome.v1","requires":[],"occurrence":a,"proposal":a,"claim":a,"result":a,"settled":a,"evidence":[],"usage":[a]});
+        assert!(validate(&body).is_err());
+        body["settled"]["schema"] = json!(crate::run::RECORD_SCHEMA);
+        validate(&body).unwrap();
     }
 }

@@ -348,7 +348,7 @@ impl Coordinator {
         self.attachments(files)?;
         let mut root_found = false;
         for reference in result["artifacts"].as_array().ok_or("result artifacts")? {
-            if reference["schema"] != nostr::run::RECORD_SCHEMA {
+            if reference["digest"] != result["record"]["digest"] || root_found {
                 continue;
             }
             let bytes = files
@@ -380,6 +380,20 @@ impl Coordinator {
         }
         if !root_found {
             return Err("not_admitted: authenticated worker RUN root required".into());
+        }
+        let proposal = scope
+            .proposals
+            .values()
+            .find(|p| p.reference == lease.body["proposal"])
+            .ok_or("proposal")?;
+        if self.operation(&proposal.body["target"])?["binding_contract"]["operation"]
+            == "coord-automation-data"
+            || result["receipts"]
+                .as_array()
+                .is_some_and(|r| r.iter().any(|v| v["schema"] == nostr::run::RECORD_SCHEMA))
+        {
+            nostr::run::terminal_from_result(&result, files, &lease.actor)
+                .map_err(|e| e.to_string())?;
         }
         if result["outcome"] == "completed" {
             let reference =

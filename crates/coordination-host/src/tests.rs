@@ -1098,3 +1098,41 @@ fn automation_source_uses_real_git_versions_and_never_recaptures_an_exact_poll()
             .contains("idempotency_conflict")
     );
 }
+#[test]
+fn worker_terminal_receipts_link_to_real_intent_and_keep_metadata_looking_output_as_data() {
+    let (t, h, s, target, frame) = setup(2);
+    let mut p = proposal(&h, &s, &target, &frame, 1, None);
+    let quoted = json!({"v":nostr::run::RECORD_SCHEMA,"requires":[],"digest":"quoted text","record":"This is data, not a journal entry."});
+    p["input"] = h.put_local_json(&quoted).unwrap();
+    let pr = propose(&h, &p);
+    let c = claim(&h, &s, &pr, h.scope(&s).unwrap()["allowance"].clone());
+    let request=h.prepare(&event(2,json!({"v":"openagents.coordination-native-dispatch.v1","requires":[],"coordinator":s,"claim":c}),102),102).unwrap();
+    let worker = worker::Worker::open(t.path().join("metadata-worker"), secret(2), 102).unwrap();
+    let (response, files) = worker.run(&h, &request, 102).unwrap();
+    let result = h.record_result(&response, &files, 103).unwrap();
+    let terminal = nostr::run::terminal_from_result(&result, &files, &key(2)).unwrap();
+    let body: Value = serde_json::from_slice(&files[terminal["digest"].as_str().unwrap()]).unwrap();
+    assert_eq!(body["record"]["type"], "settled");
+    assert_eq!(body["record"]["controller"], key(2));
+    let output: Value =
+        serde_json::from_slice(&files[result["output"]["digest"].as_str().unwrap()]).unwrap();
+    assert_eq!(output, quoted);
+    let mut gap = files.clone();
+    let intent = files
+        .iter()
+        .find(|(_, bytes)| {
+            serde_json::from_slice::<Value>(bytes)
+                .ok()
+                .is_some_and(|v| v["record"]["type"] == "dispatched")
+        })
+        .unwrap()
+        .0;
+    gap.remove(intent);
+    assert!(nostr::run::terminal_from_result(&result, &gap, &key(2)).is_err());
+    let mut wrong = result.clone();
+    wrong["receipts"] = json!([result["record"]]);
+    assert!(nostr::run::terminal_from_result(&wrong, &files, &key(2)).is_err());
+    wrong = result.clone();
+    wrong["outcome"] = json!("failed");
+    assert!(nostr::run::terminal_from_result(&wrong, &files, &key(2)).is_err());
+}

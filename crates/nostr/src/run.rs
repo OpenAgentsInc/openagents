@@ -971,6 +971,168 @@ fn malformed(detail: impl Into<String>) -> ContractError {
     ContractError::new(RefusalCode::Malformed, detail)
 }
 
+/// Build and validate the next envelope. The owning host must persist intent
+/// before invoking an adapter; this constructor supplies no authentication.
+pub fn append_envelope(
+    records: &mut Vec<Value>,
+    controller: &str,
+    kind: &str,
+    data: Value,
+    time: u64,
+) -> Result<Value, ContractError> {
+    let previous = records
+        .last()
+        .ok_or_else(|| malformed("RUN root required"))?;
+    if records.len() > 8192 {
+        return Err(ContractError::new(
+            RefusalCode::LimitExceeded,
+            "RUN records",
+        ));
+    }
+    let root = &records[0]["record"];
+    let record = serde_json::json!({"run":root["run"],"seq":records.len(),"previous":previous["digest"],"controller":controller,"generation":root["generation"],"type":kind,"subject":{"step":null,"iteration":null,"attempt":1},"time":time,"data":data});
+    let body = serde_json::json!({"v":RECORD_SCHEMA,"requires":[],"digest":logical_digest(&record)?,"record":record});
+    let mut journal = Journal::default();
+    for value in records.iter().chain(std::iter::once(&body)) {
+        if ingest(&mut journal, parse_envelope(value)?, controller)? != Ingest::Applied {
+            return Err(ContractError::new(RefusalCode::Conflict, "RUN chain"));
+        }
+    }
+    records.push(body.clone());
+    Ok(body)
+}
+
+/// Verify a CJ-attributed terminal receipt and its chain back to the exact root.
+/// The caller first authenticates the CJ result. Output JSON remains data even
+/// when it resembles a RUN record; only the named receipt selects the chain.
+pub fn terminal_from_result(
+    result: &Value,
+    files: &BTreeMap<String, Vec<u8>>,
+    controller: &str,
+) -> Result<Value, ContractError> {
+    let decode = |reference: &Value| -> Result<Value, ContractError> {
+        let artifact = crate::contracts::parse_artifact(reference)?;
+        if artifact
+            .schema
+            .as_deref()
+            .is_some_and(|schema| schema != RECORD_SCHEMA)
+        {
+            return Err(malformed("RUN receipt schema"));
+        }
+        let bytes = files.get(&artifact.digest).ok_or_else(|| {
+            ContractError::new(RefusalCode::ContentUnavailable, "RUN receipt bytes")
+        })?;
+        crate::contracts::check_artifact_bytes(&artifact, bytes)?;
+        crate::contracts::parse_strict(bytes)
+    };
+    let root = decode(&result["record"])?;
+    let parsed = parse_envelope(&root)?;
+    if parsed.seq != 0 || parsed.controller != controller || root["record"]["run"] != result["run"]
+    {
+        return Err(ContractError::new(
+            RefusalCode::IdentityMismatch,
+            "RUN root",
+        ));
+    }
+    let mut terminal = None;
+    for reference in result["receipts"]
+        .as_array()
+        .ok_or_else(|| malformed("CJ receipts"))?
+    {
+        if reference["schema"] != RECORD_SCHEMA {
+            continue;
+        }
+        let body = decode(reference)?;
+        let parsed = parse_envelope(&body)?;
+        if parsed.controller == controller
+            && body["record"]["run"] == result["run"]
+            && parsed.record_type == "settled"
+        {
+            if terminal.is_some() {
+                return Err(ContractError::new(
+                    RefusalCode::Conflict,
+                    "RUN terminal receipts",
+                ));
+            }
+            terminal = Some((reference.clone(), body));
+        }
+    }
+    let (reference, body) = terminal.ok_or_else(|| {
+        ContractError::new(
+            RefusalCode::NotAdmitted,
+            "authenticated RUN terminal receipt required",
+        )
+    })?;
+    let mut by_digest = BTreeMap::new();
+    for artifact in result["artifacts"]
+        .as_array()
+        .ok_or_else(|| malformed("CJ artifacts"))?
+    {
+        if artifact["schema"] != RECORD_SCHEMA {
+            continue;
+        }
+        // An unrelated output may name this schema without being valid metadata.
+        if let Ok(value) = decode(artifact) {
+            if let Ok(record) = parse_envelope(&value) {
+                if record.controller == controller && value["record"]["run"] == result["run"] {
+                    by_digest.insert(record.digest, value);
+                }
+            }
+        }
+    }
+    by_digest.insert(parsed.digest, root.clone());
+    let mut chain = vec![body.clone()];
+    while chain.last().ok_or_else(|| malformed("RUN chain"))?["record"]["seq"] != 0 {
+        if chain.len() > by_digest.len() + 1 {
+            return Err(ContractError::new(RefusalCode::LimitExceeded, "RUN chain"));
+        }
+        let previous = chain.last().ok_or_else(|| malformed("RUN previous"))?["record"]["previous"]
+            .as_str()
+            .ok_or_else(|| malformed("RUN previous"))?;
+        chain.push(
+            by_digest
+                .get(previous)
+                .ok_or_else(|| {
+                    ContractError::new(RefusalCode::ContentUnavailable, "RUN chain gap")
+                })?
+                .clone(),
+        );
+    }
+    chain.reverse();
+    let mut journal = Journal::default();
+    for value in &chain {
+        if ingest(&mut journal, parse_envelope(value)?, controller)? != Ingest::Applied {
+            return Err(ContractError::new(
+                RefusalCode::Conflict,
+                "RUN terminal chain",
+            ));
+        }
+    }
+    let data = &body["record"]["data"];
+    if chain.first() != Some(&root)
+        || data["outcome"] != result["outcome"]
+        || data["unknowns"] != serde_json::json!([])
+        || data["verification"] != result["verification"]
+        || data["integration"] != result["integration"]
+        || !chain.iter().any(|b| {
+            b["record"]["type"] == "resolved"
+                && b["record"]["data"]["outcome"] == result["outcome"]
+                && b["record"]["data"]["dispatched"] == result["dispatched"]
+                && b["record"]["data"]["output"] == result["output"]
+        })
+        || result["outcome"] == "completed"
+            && !data["results"]
+                .as_array()
+                .is_some_and(|r| r.contains(&result["output"]))
+    {
+        return Err(ContractError::new(
+            RefusalCode::IdentityMismatch,
+            "RUN terminal outcome",
+        ));
+    }
+    Ok(reference)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

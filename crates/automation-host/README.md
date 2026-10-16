@@ -62,6 +62,9 @@ config reference. Its bounds declare one call, at most 30 seconds, and exactly
 including unavailable or unchanged results. The reader delivers at most
 512 KiB of content. Current scoped read grants, original source declarations,
 opaque provider revisions, and actual intake revalidation govern dispatch.
+Worker and source CJ results carry their complete RUN intent-to-terminal chain.
+Occurrence `settled` references the authenticated worker terminal record;
+conservative accounting receipts stay in `usage`.
 Queued pause/cancel blocks source intake before its read is charged.
 
 Continuation, broader occurrence cleanup recovery, and

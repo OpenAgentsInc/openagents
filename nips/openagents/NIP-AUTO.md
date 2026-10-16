@@ -352,6 +352,9 @@ Preparation, worker intake, and the independent exact-output check consume the
 same parent call allowance. The native aggregate ledger conservatively debits
 admitted ceilings; it does not report those ceilings as measured telemetry.
 
+Worker and source CJ results include persisted admitted/dispatched records and
+a terminal RUN receipt chained to their exact root. The controller validates
+the chain and keeps the terminal reference separate from accounting receipts.
 The worker returns the exact typed automation input as data. Pause and cancel
 share a fence with actual worker intake. Unknown outcomes retain their original
 holds and active occurrence; another timer cannot dispatch a replacement.

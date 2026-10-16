@@ -375,6 +375,16 @@ impl Source {
             .acknowledge(&key, &root)
             .map_err(|e| format!("{e:?}"))?;
         state.service.intend(&key).map_err(|e| format!("{e:?}"))?;
+        let mut records = vec![contracts::parse_strict(&root).map_err(|e| e.to_string())?];
+        let input_ref = self.store.put_json(&execute.input)?;
+        let admitted=nostr::run::append_envelope(&mut records,self.authority(),"admitted",json!({"enforcement":[],"reservations":[],"deadlines":{"request":execute.deadline},"retention":execute.retain_until,"input":input_ref}),now).map_err(|e|e.to_string())?;
+        let dispatched=nostr::run::append_envelope(&mut records,self.authority(),"dispatched",json!({"binding":execute.payload["target"],"attempt":execute.attempt,"input":input_ref,"context":execute.payload["context"],"effect":"native-workspace-read","generation":0}),now).map_err(|e|e.to_string())?;
+        let preflight_refs = vec![
+            root_ref.clone(),
+            self.store.put_json(&admitted)?,
+            self.store.put_json(&dispatched)?,
+        ];
+        state.files.insert(key.clone(), preflight_refs.clone());
         self.store.save(&state, &self.signer)?;
         let (original, files) = coordinator
             .automation_observe(admission, now.saturating_add(started.elapsed().as_secs()))?;
@@ -416,7 +426,17 @@ impl Source {
         let statement_ref = self
             .store
             .put_json(&serde_json::to_value(&statement).map_err(|e| e.to_string())?)?;
-        let mut refs = vec![root_ref, output.clone(), original_ref, statement_ref];
+        let resolved=nostr::run::append_envelope(&mut records,self.authority(),"resolved",json!({"outcome":"completed","dispatched":true,"output":output,"receipts":[],"usage":{"calls":1,"spend_microunits":0},"verification":"not_run","integration":"not_requested"}),now.saturating_add(started.elapsed().as_secs())).map_err(|e|e.to_string())?;
+        let settled=nostr::run::append_envelope(&mut records,self.authority(),"settled",json!({"outcome":"completed","unknowns":[],"verification":"not_run","integration":"not_requested","results":[output],"reservations":[]}),now.saturating_add(started.elapsed().as_secs())).map_err(|e|e.to_string())?;
+        let terminal_ref = self.store.put_json(&settled)?;
+        let mut refs = preflight_refs;
+        refs.extend([
+            output.clone(),
+            original_ref,
+            statement_ref,
+            self.store.put_json(&resolved)?,
+            terminal_ref.clone(),
+        ]);
         for bytes in files.values() {
             let r = self.store.put(bytes, "application/octet-stream", None)?;
             if !refs.iter().any(|p| p["digest"] == r["digest"]) {
@@ -444,7 +464,7 @@ impl Source {
                     dispatched: true,
                     output: Some(output),
                     artifacts: refs.clone(),
-                    receipts: vec![],
+                    receipts: vec![terminal_ref],
                     spend: Some(0),
                     verification: Some("not_run"),
                     integration: Some("not_requested"),
