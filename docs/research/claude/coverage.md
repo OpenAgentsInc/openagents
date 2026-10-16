@@ -47,8 +47,11 @@ chunks and `heavyWorkWorker.js` kept static facts only.
 
 The preload files, the `claude://` handler, the VM controller, the artifact
 protocol, the frame-shell HTML, and the managed-config schema were read from
-the shipped bytes. Those chapters replace the "not read" status of the
-window and IPC questions below. They do not replace a run.
+the shipped bytes. So were the code-session manager, the local-agent
+manager, the pty host worker, the OpenSSH helper, and the direct-MCP
+authorize handler. Those chapters replace the "not read" status of the
+window, IPC, session-file, trust, pty, SSH, grant, bridge, and hold
+questions below. They do not replace a run.
 
 Still not read as documents:
 
@@ -110,6 +113,34 @@ Still not read as documents:
    [computer use](computer-use.md) and
    [extensions](extensions-and-integrations.md). An imagine server was not
    found as a named process.
+5. A code session record is
+   `<userData>/claude-code-sessions/<account>/<org>/<sessionId>.json`.
+   Trust for that folder is `hasTrustDialogAccepted` in `~/.claude.json`
+   (or `$CLAUDE_CONFIG_DIR/.claude.json`). The pty cwd is the session
+   worktree, then `cwd`, unless a grantable harness cwd replaces it.
+   Scrollback, when flag `1923867086` is on, is under
+   `<userData>/terminal-scrollback/`. SSH config is what `ssh -vvv -G`
+   prints, then a generated `Host` / `Include` buffer. Saved passwords are
+   `safeStorage` ciphertext in `<userData>/ssh-remembered-passwords.json`.
+   The askpass helper is `askpass.sh` in a per-connection `ccd-ssh-`
+   directory. Details are in [sessions](sessions.md).
+6. A Cowork session record is
+   `<userData>/local-agent-mode-sessions/<account>/<org>/<sessionId>.json`,
+   or `agent/<sessionId>.json` when `sessionType` is `agent`. Folder grants
+   are keys of `preferences` in `<userData>/claude_desktop_config.json`.
+   The sessions bridge is an in-process client. It persists
+   `<userData>/bridge-state.json` keyed `<orgUuid>:<accountUuid>` and polls
+   `GET /v1/environments/<id>/work/poll`. Copper Heron is one in-memory hold,
+   hashed with SHA-256 over the finalized blocks, not a frame file. Direct
+   MCP OAuth state is `<userData>/connectors/<ownerId>/mcp-oauth.json`.
+   Details are in [Cowork](cowork.md).
+7. `cannot_scrub_all_ssh_hosts` is a failure while building a Cowork
+   feedback log bundle, not a trust decision. The reason tags beside it are
+   `ssh_configs`, `merged_settings`, `user_settings`,
+   `user_settings_hosts`, `device_managed_settings`, `name_turned_away`,
+   and `listing_failed`. On that error the bundle is built again without
+   logs, and `desktop_cowork_feedback_logs_left_out` records which tag was
+   present.
 
 ## Questions still open
 

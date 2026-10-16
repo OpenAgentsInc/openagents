@@ -19,6 +19,10 @@ Inspected surfaces:
 - The preload scripts and the main-process chunk, read as text: window
   options, the `claude://` handler, the VM controller, custom-scheme
   registration, the artifact document handler, and the managed-config schema.
+  The code-session manager, the local-agent manager, the pty host worker,
+  the OpenSSH connection helper, the askpass helper, and the direct-MCP
+  authorize handler were read for the session, trust, pty, SSH, grant,
+  bridge, and hold paths in [sessions](sessions.md) and [Cowork](cowork.md).
   `ion-dist/index.html`, `frame-shell.html`, `frame-connect.html`, and
   `frame-manage.html` were read. The hashed modules those documents load were
   not reconstructed function by function.
