@@ -335,12 +335,12 @@ snapshot's separate uncertain 502-sat credit reservation remains unresolved
 and is not retried.
 
 The unilateral exit of the 79,970-sat VTXO starts at height 326574. Its
-initial status reports two recovery transactions across two layers, one
-broadcast and one blocked on its ancestor. The plan uses 2 sat/vB and
-both confirmed backing-wallet inputs are visible. It estimates 1,202 sats
-of CPFP fees and 400 sats for the eventual sweep; only the reported
-601 sats spent so far are an observed cost. The initial best-case wait
-is 147 blocks. These are intermediate results, not a completed sweep.
+two recovery transactions confirm by height 326577. The wallet now waits
+for the actual 144-block relative delay, maturing at height **326721**.
+It records 1,202 sats spent on CPFP and estimates a further 400-sat sweep.
+The sweep has not happened; the estimate is not an observed final cost.
+A graceful daemon restart resumes the same exit job and submits its
+transaction package after the scratch proxy gains package-relay support.
 
 Public Esplora address scans returned HTTP 429. The scratch proxy now
 uses Lightning Labs' Esplora for reads, with public default-signet
@@ -360,13 +360,24 @@ LDK channel commitment also confirms at 326553; its delayed sweep remains
 under observation. No completed unilateral exit or expiry-window soak is
 claimed.
 
-The GCP builder and the three scratch processes are running. Saved
-`force-exit-started.json` and `force-exit-status-latest.json` identify the
-existing exit; inspect its status rather than starting another. Keep the
-original uncertain payment records, private upgraded copies, and both
-wallets. The source archive includes the resume, exit, provider-switch,
-and pause helpers. No replacement payment or additional faucet request
-is scheduled.
+The GCP builder, three scratch processes, and a separate Bitcoin Core
+30.2 signet node are running. The node has fully synchronized its chain,
+transaction index, and BIP-158 filter index. Its RPC listens only on
+loopback, uses a private cookie, and has no wallet.
+
+A bounded observer now follows the existing exit. After it sees the sweep
+confirmed, it stops only `waved` before the separate 20,000-sat VTXO's free
+refresh window. It resumes the wallet twelve real blocks into that window
+and saves two hours of subsequent activity for review. Its nine-day limit
+attempts to resume a paused wallet before it stops. It creates no invoice,
+payment intent, replacement payment, or faucet request. Window crossing
+and refresh completion remain unmeasured until those records exist.
+
+`observer-state.json`, `observer.pid`, and `exit-observation-history.ndjson`
+on the builder identify the running check. The source archive includes
+its controller and the resume, exit, provider, and node helpers. Preserve
+the original uncertain payment records, private upgraded copies, and both
+wallets. Inspect `force-exit-started.json` rather than starting another exit.
 
 ### Verdict
 
