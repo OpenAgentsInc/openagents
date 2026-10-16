@@ -83,6 +83,14 @@ It reads your key from `OPENAGENTS_API_KEY`. With no key,
 `--pay x402 --max-msat N` pays for one request over Lightning
 ([Pay per request](/docs/api/pay-per-request)).
 
+## Computers
+
+Use the [Computers API](https://github.com/OpenAgentsInc/openagents/blob/main/docs/sdk/computers.md)
+to create a cloud computer, transfer a file, run a command, and stop or wake it.
+You need an account credential with cloud access. The
+[public OpenAPI reference](https://api.openagents.com/v1/openapi.json) describes
+the requests, limits, errors, and command output.
+
 ## Next
 
 - [Models and prices](/docs/api/models): every model and what it costs.

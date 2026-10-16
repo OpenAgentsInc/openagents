@@ -120,6 +120,65 @@ pub fn document() -> Value {
     document
 }
 
+/// The Computers contract and the public authentication needed to call it.
+/// This is a subset of `document`, with only its referenced components.
+#[must_use]
+pub fn computers_document() -> Value {
+    use std::collections::BTreeSet;
+    fn references(value: &Value, found: &mut BTreeSet<String>) {
+        match value {
+            Value::Object(values) => {
+                for (key, value) in values {
+                    if key == "$ref" {
+                        let name = value
+                            .as_str()
+                            .unwrap()
+                            .strip_prefix("#/components/schemas/")
+                            .unwrap();
+                        found.insert(name.to_owned());
+                    } else {
+                        references(value, found);
+                    }
+                }
+            }
+            Value::Array(values) => values.iter().for_each(|v| references(v, found)),
+            _ => {}
+        }
+    }
+    let mut document = document();
+    document["info"] = json!({"title":"OpenAgents Computers API", "version":"1"});
+    document["paths"]
+        .as_object_mut()
+        .unwrap()
+        .retain(|path, _| {
+            path.starts_with("/v1/computers")
+                || path.starts_with("/v1/device/")
+                || path == "/v1/account"
+        });
+    let mut needed = BTreeSet::new();
+    references(&document["paths"], &mut needed);
+    let mut schemas = serde_json::Map::new();
+    while let Some(name) = needed.pop_first() {
+        if schemas.contains_key(&name) {
+            continue;
+        }
+        let schema = document["components"]["schemas"][&name].clone();
+        assert!(schema.is_object(), "Missing contract component");
+        references(&schema, &mut needed);
+        schemas.insert(name, schema);
+    }
+    document["components"]["schemas"] = Value::Object(schemas);
+    document["x-openagents-contract"] = json!({
+        "version": 1,
+        "source": "Rust handlers and their app_openapi schema",
+        "canonical": "https://api.openagents.com/v1/openapi.json",
+        "response_compatibility": "Ignore unknown object fields and preserve unknown enum strings. Unknown states never imply readiness, successful completion, or permission to replay work.",
+        "command_transport": "Authenticated byte-offset polling; no SSE or WebSocket transport is offered by this slice.",
+        "generation": "scripts/api/computers_codegen.py"
+    });
+    document
+}
+
 /// Compose the web front's public reference. Gateway paths are relative to `/v1`;
 /// app paths already include it. Filter forwarding operations before merging.
 pub(crate) fn extend(document: &mut Value) -> Result<(), &'static str> {

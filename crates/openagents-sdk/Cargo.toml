@@ -17,6 +17,7 @@ url = { version = "2", features = ["serde"] }
 httpdate = "1"
 
 [dev-dependencies]
+sha2 = "0.10"
 oa-copy = { path = "../oa-copy" }
 axum = "0.8"
 tempfile = "3"

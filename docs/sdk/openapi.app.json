@@ -1143,6 +1143,27 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppComputerList"
+                },
+                "example": {
+                  "computers": [
+                    {
+                      "id": "cmp_0123456789abcdef0123",
+                      "name": "Cloud computer 012345",
+                      "kind": "cloud",
+                      "chat": null,
+                      "size": "small",
+                      "state": "awake",
+                      "desired": "running",
+                      "online": true,
+                      "turns": 0,
+                      "created_unix": 1,
+                      "updated_unix": 1,
+                      "seen_unix": null,
+                      "sync": null,
+                      "last_error": null
+                    }
+                  ],
+                  "next_cursor": null
                 }
               }
             }
@@ -1269,7 +1290,11 @@
             },
             "description": "The previous next_cursor; scoped to the same account."
           }
-        ]
+        ],
+        "x-openagents-retry": "read",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 0
       },
       "post": {
         "operationId": "createComputer",
@@ -1289,6 +1314,22 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppComputer"
+                },
+                "example": {
+                  "id": "cmp_0123456789abcdef0123",
+                  "name": "Cloud computer 012345",
+                  "kind": "cloud",
+                  "chat": null,
+                  "size": "small",
+                  "state": "awake",
+                  "desired": "running",
+                  "online": true,
+                  "turns": 0,
+                  "created_unix": 1,
+                  "updated_unix": 1,
+                  "seen_unix": null,
+                  "sync": null,
+                  "last_error": null
                 }
               }
             }
@@ -1384,11 +1425,27 @@
             }
           },
           "202": {
-            "description": "The requested computer result.",
+            "description": "Accepted intent; poll the same resource until its observed state confirms completion. A response or polling timeout does not cancel work.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppComputer"
+                },
+                "example": {
+                  "id": "cmp_0123456789abcdef0123",
+                  "name": "Cloud computer 012345",
+                  "kind": "cloud",
+                  "chat": null,
+                  "size": "small",
+                  "state": "awake",
+                  "desired": "running",
+                  "online": true,
+                  "turns": 0,
+                  "created_unix": 1,
+                  "updated_unix": 1,
+                  "seen_unix": null,
+                  "sync": null,
+                  "last_error": null
                 }
               }
             }
@@ -1400,6 +1457,9 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AppCreateComputer"
+              },
+              "example": {
+                "size": "small"
               }
             }
           }
@@ -1411,10 +1471,19 @@
             "required": false,
             "description": "One logical request key; required in the header or body and reused across retries. Conflicting settings return 409.",
             "schema": {
-              "type": "string"
-            }
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$"
+            },
+            "example": "sdk-example-key"
           }
-        ]
+        ],
+        "x-openagents-retry": "same_request_key",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 16384,
+        "x-openagents-accepted-is-complete": false
       }
     },
     "/v1/computers/{id}": {
@@ -1436,6 +1505,22 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppComputer"
+                },
+                "example": {
+                  "id": "cmp_0123456789abcdef0123",
+                  "name": "Cloud computer 012345",
+                  "kind": "cloud",
+                  "chat": null,
+                  "size": "small",
+                  "state": "awake",
+                  "desired": "running",
+                  "online": true,
+                  "turns": 0,
+                  "created_unix": 1,
+                  "updated_unix": 1,
+                  "seen_unix": null,
+                  "sync": null,
+                  "last_error": null
                 }
               }
             }
@@ -1538,9 +1623,14 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "cmp_0123456789abcdef0123"
           }
-        ]
+        ],
+        "x-openagents-retry": "read",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 0
       },
       "delete": {
         "operationId": "deleteComputer",
@@ -1560,6 +1650,22 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppComputer"
+                },
+                "example": {
+                  "id": "cmp_0123456789abcdef0123",
+                  "name": "Cloud computer 012345",
+                  "kind": "cloud",
+                  "chat": null,
+                  "size": "small",
+                  "state": "awake",
+                  "desired": "running",
+                  "online": true,
+                  "turns": 0,
+                  "created_unix": 1,
+                  "updated_unix": 1,
+                  "seen_unix": null,
+                  "sync": null,
+                  "last_error": null
                 }
               }
             }
@@ -1655,11 +1761,27 @@
             }
           },
           "202": {
-            "description": "The requested computer result.",
+            "description": "Accepted intent; poll the same resource until its observed state confirms completion. A response or polling timeout does not cancel work.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppComputer"
+                },
+                "example": {
+                  "id": "cmp_0123456789abcdef0123",
+                  "name": "Cloud computer 012345",
+                  "kind": "cloud",
+                  "chat": null,
+                  "size": "small",
+                  "state": "awake",
+                  "desired": "running",
+                  "online": true,
+                  "turns": 0,
+                  "created_unix": 1,
+                  "updated_unix": 1,
+                  "seen_unix": null,
+                  "sync": null,
+                  "last_error": null
                 }
               }
             }
@@ -1675,7 +1797,8 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "cmp_0123456789abcdef0123"
           },
           {
             "name": "kind",
@@ -1688,7 +1811,12 @@
             },
             "description": "Select cloud deletion explicitly, including when one of your own computers has the same name. Without this, an existing computer name is removed from your list."
           }
-        ]
+        ],
+        "x-openagents-retry": "manual_intent",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 0,
+        "x-openagents-accepted-is-complete": false
       }
     },
     "/v1/computers/{id}/stop": {
@@ -1710,6 +1838,22 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppComputer"
+                },
+                "example": {
+                  "id": "cmp_0123456789abcdef0123",
+                  "name": "Cloud computer 012345",
+                  "kind": "cloud",
+                  "chat": null,
+                  "size": "small",
+                  "state": "awake",
+                  "desired": "running",
+                  "online": true,
+                  "turns": 0,
+                  "created_unix": 1,
+                  "updated_unix": 1,
+                  "seen_unix": null,
+                  "sync": null,
+                  "last_error": null
                 }
               }
             }
@@ -1805,11 +1949,27 @@
             }
           },
           "202": {
-            "description": "The requested computer result.",
+            "description": "Accepted intent; poll the same resource until its observed state confirms completion. A response or polling timeout does not cancel work.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppComputer"
+                },
+                "example": {
+                  "id": "cmp_0123456789abcdef0123",
+                  "name": "Cloud computer 012345",
+                  "kind": "cloud",
+                  "chat": null,
+                  "size": "small",
+                  "state": "awake",
+                  "desired": "running",
+                  "online": true,
+                  "turns": 0,
+                  "created_unix": 1,
+                  "updated_unix": 1,
+                  "seen_unix": null,
+                  "sync": null,
+                  "last_error": null
                 }
               }
             }
@@ -1822,9 +1982,15 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "cmp_0123456789abcdef0123"
           }
-        ]
+        ],
+        "x-openagents-retry": "manual_intent",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 0,
+        "x-openagents-accepted-is-complete": false
       }
     },
     "/v1/computers/{id}/wake": {
@@ -1846,6 +2012,22 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppComputer"
+                },
+                "example": {
+                  "id": "cmp_0123456789abcdef0123",
+                  "name": "Cloud computer 012345",
+                  "kind": "cloud",
+                  "chat": null,
+                  "size": "small",
+                  "state": "awake",
+                  "desired": "running",
+                  "online": true,
+                  "turns": 0,
+                  "created_unix": 1,
+                  "updated_unix": 1,
+                  "seen_unix": null,
+                  "sync": null,
+                  "last_error": null
                 }
               }
             }
@@ -1941,11 +2123,27 @@
             }
           },
           "202": {
-            "description": "The requested computer result.",
+            "description": "Accepted intent; poll the same resource until its observed state confirms completion. A response or polling timeout does not cancel work.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppComputer"
+                },
+                "example": {
+                  "id": "cmp_0123456789abcdef0123",
+                  "name": "Cloud computer 012345",
+                  "kind": "cloud",
+                  "chat": null,
+                  "size": "small",
+                  "state": "awake",
+                  "desired": "running",
+                  "online": true,
+                  "turns": 0,
+                  "created_unix": 1,
+                  "updated_unix": 1,
+                  "seen_unix": null,
+                  "sync": null,
+                  "last_error": null
                 }
               }
             }
@@ -1958,9 +2156,15 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "cmp_0123456789abcdef0123"
           }
-        ]
+        ],
+        "x-openagents-retry": "manual_intent",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 0,
+        "x-openagents-accepted-is-complete": false
       }
     },
     "/v1/computers/capabilities": {
@@ -1982,6 +2186,26 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppComputerCapabilities"
+                },
+                "example": {
+                  "schema": "openagents.computers.capabilities.v1",
+                  "profiles": [
+                    "core",
+                    "suspend"
+                  ],
+                  "sizes": [
+                    "small"
+                  ],
+                  "limits": {
+                    "max_computers": 20
+                  },
+                  "files": {
+                    "max_bytes": 4194304,
+                    "max_path_bytes": 1024,
+                    "max_concurrent_transfers": 2,
+                    "timeout_seconds": 60,
+                    "requires_awake": true
+                  }
                 }
               }
             }
@@ -2076,7 +2300,11 @@
               }
             }
           }
-        }
+        },
+        "x-openagents-retry": "read",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 0
       },
       "delete": {
         "operationId": "removeComputerNamedCapabilities",
@@ -2183,7 +2411,11 @@
           "204": {
             "description": "The computer name was removed from your list."
           }
-        }
+        },
+        "x-openagents-retry": "manual_intent",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 0
       }
     },
     "/v1/computers/{id}/commands": {
@@ -2205,7 +2437,8 @@
             "schema": {
               "type": "string",
               "pattern": "^cmp_[0-9a-fA-F]{20}$"
-            }
+            },
+            "example": "cmp_0123456789abcdef0123"
           },
           {
             "name": "Idempotency-Key",
@@ -2213,9 +2446,11 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 128
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$"
             },
-            "description": "Required in the header or body; when both are sent they must match."
+            "description": "Required in the header or body; when both are sent they must match.",
+            "example": "sdk-example-key"
           }
         ],
         "description": "Account-authenticated Boat commands. Creation queues execution with output capture already configured. Attach reads saved output and never starts or cancels work. Poll from the returned byte offsets; each request checks current authority. No URL tokens. Unknown execution is never replayed. Output expires seven days after creation; each stream retains its first 256 KiB and reports discarded bytes with gaps. Cancellation is intent until an observed exit. Origin, if supplied, must match this deployment.",
@@ -2226,6 +2461,23 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppCommand"
+                },
+                "example": {
+                  "id": "trn_0123456789abcdef0123",
+                  "computer": "cmp_0123456789abcdef0123",
+                  "state": "succeeded",
+                  "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "exit_code": 0,
+                  "cancel_requested": false,
+                  "created_unix": 1,
+                  "started_unix": 2,
+                  "finished_unix": 3,
+                  "output_expires_unix": 604801,
+                  "output_limit_bytes": 262144,
+                  "stdout_truncated": false,
+                  "stderr_truncated": false,
+                  "stdout_bytes": 5,
+                  "stderr_bytes": 5
                 }
               }
             }
@@ -2321,11 +2573,28 @@
             }
           },
           "202": {
-            "description": "The command or saved output.",
+            "description": "Accepted intent; poll the same resource until its observed state confirms completion. A response or polling timeout does not cancel work.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppCommand"
+                },
+                "example": {
+                  "id": "trn_0123456789abcdef0123",
+                  "computer": "cmp_0123456789abcdef0123",
+                  "state": "succeeded",
+                  "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "exit_code": 0,
+                  "cancel_requested": false,
+                  "created_unix": 1,
+                  "started_unix": 2,
+                  "finished_unix": 3,
+                  "output_expires_unix": 604801,
+                  "output_limit_bytes": 262144,
+                  "stdout_truncated": false,
+                  "stderr_truncated": false,
+                  "stdout_bytes": 5,
+                  "stderr_bytes": 5
                 }
               }
             }
@@ -2337,10 +2606,19 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AppCreateCommand"
+              },
+              "example": {
+                "command": "sha256sum input.bin",
+                "timeout_seconds": 30
               }
             }
           }
-        }
+        },
+        "x-openagents-retry": "same_request_key",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 73728,
+        "x-openagents-accepted-is-complete": false
       }
     },
     "/v1/computers/{id}/commands/{command}": {
@@ -2362,7 +2640,8 @@
             "schema": {
               "type": "string",
               "pattern": "^cmp_[0-9a-fA-F]{20}$"
-            }
+            },
+            "example": "cmp_0123456789abcdef0123"
           },
           {
             "name": "command",
@@ -2371,7 +2650,8 @@
             "schema": {
               "type": "string",
               "pattern": "^trn_[0-9a-fA-F]{20}$"
-            }
+            },
+            "example": "trn_0123456789abcdef0123"
           }
         ],
         "description": "Account-authenticated Boat commands. Creation queues execution with output capture already configured. Attach reads saved output and never starts or cancels work. Poll from the returned byte offsets; each request checks current authority. No URL tokens. Unknown execution is never replayed. Output expires seven days after creation; each stream retains its first 256 KiB and reports discarded bytes with gaps. Cancellation is intent until an observed exit. Origin, if supplied, must match this deployment.",
@@ -2382,6 +2662,23 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppCommand"
+                },
+                "example": {
+                  "id": "trn_0123456789abcdef0123",
+                  "computer": "cmp_0123456789abcdef0123",
+                  "state": "succeeded",
+                  "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "exit_code": 0,
+                  "cancel_requested": false,
+                  "created_unix": 1,
+                  "started_unix": 2,
+                  "finished_unix": 3,
+                  "output_expires_unix": 604801,
+                  "output_limit_bytes": 262144,
+                  "stdout_truncated": false,
+                  "stderr_truncated": false,
+                  "stdout_bytes": 5,
+                  "stderr_bytes": 5
                 }
               }
             }
@@ -2476,7 +2773,11 @@
               }
             }
           }
-        }
+        },
+        "x-openagents-retry": "read",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 0
       }
     },
     "/v1/computers/{id}/commands/{command}/output": {
@@ -2498,7 +2799,8 @@
             "schema": {
               "type": "string",
               "pattern": "^cmp_[0-9a-fA-F]{20}$"
-            }
+            },
+            "example": "cmp_0123456789abcdef0123"
           },
           {
             "name": "command",
@@ -2507,7 +2809,8 @@
             "schema": {
               "type": "string",
               "pattern": "^trn_[0-9a-fA-F]{20}$"
-            }
+            },
+            "example": "trn_0123456789abcdef0123"
           },
           {
             "name": "stdout",
@@ -2558,6 +2861,38 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppCommandOutput"
+                },
+                "example": {
+                  "command": {
+                    "id": "trn_0123456789abcdef0123",
+                    "computer": "cmp_0123456789abcdef0123",
+                    "state": "succeeded",
+                    "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "exit_code": 0,
+                    "cancel_requested": false,
+                    "created_unix": 1,
+                    "started_unix": 2,
+                    "finished_unix": 3,
+                    "output_expires_unix": 604801,
+                    "output_limit_bytes": 262144,
+                    "stdout_truncated": false,
+                    "stderr_truncated": false,
+                    "stdout_bytes": 5,
+                    "stderr_bytes": 5
+                  },
+                  "encoding": "base64",
+                  "stdout": "ZWFybHk=",
+                  "stderr": "ZXJyb3I=",
+                  "next_cursor": {
+                    "stdout": 5,
+                    "stderr": 5
+                  },
+                  "gaps": {
+                    "stdout": false,
+                    "stderr": false
+                  },
+                  "terminal": true,
+                  "has_more": false
                 }
               }
             }
@@ -2652,7 +2987,11 @@
               }
             }
           }
-        }
+        },
+        "x-openagents-retry": "read",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 0
       }
     },
     "/v1/computers/{id}/commands/{command}/cancel": {
@@ -2674,7 +3013,8 @@
             "schema": {
               "type": "string",
               "pattern": "^cmp_[0-9a-fA-F]{20}$"
-            }
+            },
+            "example": "cmp_0123456789abcdef0123"
           },
           {
             "name": "command",
@@ -2683,7 +3023,8 @@
             "schema": {
               "type": "string",
               "pattern": "^trn_[0-9a-fA-F]{20}$"
-            }
+            },
+            "example": "trn_0123456789abcdef0123"
           }
         ],
         "description": "Account-authenticated Boat commands. Creation queues execution with output capture already configured. Attach reads saved output and never starts or cancels work. Poll from the returned byte offsets; each request checks current authority. No URL tokens. Unknown execution is never replayed. Output expires seven days after creation; each stream retains its first 256 KiB and reports discarded bytes with gaps. Cancellation is intent until an observed exit. Origin, if supplied, must match this deployment.",
@@ -2694,6 +3035,23 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppCommand"
+                },
+                "example": {
+                  "id": "trn_0123456789abcdef0123",
+                  "computer": "cmp_0123456789abcdef0123",
+                  "state": "succeeded",
+                  "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "exit_code": 0,
+                  "cancel_requested": false,
+                  "created_unix": 1,
+                  "started_unix": 2,
+                  "finished_unix": 3,
+                  "output_expires_unix": 604801,
+                  "output_limit_bytes": 262144,
+                  "stdout_truncated": false,
+                  "stderr_truncated": false,
+                  "stdout_bytes": 5,
+                  "stderr_bytes": 5
                 }
               }
             }
@@ -2789,16 +3147,38 @@
             }
           },
           "202": {
-            "description": "The command or saved output.",
+            "description": "Accepted intent; poll the same resource until its observed state confirms completion. A response or polling timeout does not cancel work.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppCommand"
+                },
+                "example": {
+                  "id": "trn_0123456789abcdef0123",
+                  "computer": "cmp_0123456789abcdef0123",
+                  "state": "succeeded",
+                  "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "exit_code": 0,
+                  "cancel_requested": false,
+                  "created_unix": 1,
+                  "started_unix": 2,
+                  "finished_unix": 3,
+                  "output_expires_unix": 604801,
+                  "output_limit_bytes": 262144,
+                  "stdout_truncated": false,
+                  "stderr_truncated": false,
+                  "stdout_bytes": 5,
+                  "stderr_bytes": 5
                 }
               }
             }
           }
-        }
+        },
+        "x-openagents-retry": "manual_intent",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 0,
+        "x-openagents-accepted-is-complete": false
       }
     },
     "/v1/computers/{id}/files": {
@@ -2819,7 +3199,8 @@
             "schema": {
               "type": "string",
               "pattern": "^cmp_[0-9a-f]{20}$"
-            }
+            },
+            "example": "cmp_0123456789abcdef0123"
           },
           {
             "name": "path",
@@ -2829,8 +3210,10 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 1024
-            }
+              "maxLength": 1024,
+              "x-max-utf8-bytes": 1024
+            },
+            "example": "input.bin"
           }
         ],
         "responses": {
@@ -2840,7 +3223,32 @@
               "application/octet-stream": {
                 "schema": {
                   "type": "string",
-                  "format": "binary"
+                  "format": "binary",
+                  "maxLength": 4194304
+                },
+                "example": "sdk\n"
+              }
+            },
+            "headers": {
+              "X-Content-SHA256": {
+                "description": "Lowercase SHA256 of the complete binary response.",
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "ETag": {
+                "description": "The same SHA256 in double quotes.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "no-store"
                 }
               }
             }
@@ -2975,7 +3383,11 @@
               }
             }
           }
-        }
+        },
+        "x-openagents-retry": "read",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 4194304,
+        "x-openagents-max-request-bytes": 0
       },
       "put": {
         "operationId": "writeComputerFile",
@@ -2994,7 +3406,8 @@
             "schema": {
               "type": "string",
               "pattern": "^cmp_[0-9a-f]{20}$"
-            }
+            },
+            "example": "cmp_0123456789abcdef0123"
           },
           {
             "name": "path",
@@ -3004,8 +3417,10 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 1024
-            }
+              "maxLength": 1024,
+              "x-max-utf8-bytes": 1024
+            },
+            "example": "input.bin"
           },
           {
             "name": "overwrite",
@@ -3023,7 +3438,20 @@
             "schema": {
               "type": "string",
               "pattern": "^[0-9a-f]{64}$"
-            }
+            },
+            "example": "26e5d2e798113f713318a98981b2df55f52894eddc33fbbaf64deabeeb6706ec"
+          },
+          {
+            "name": "Content-Length",
+            "in": "header",
+            "required": true,
+            "description": "Exact binary body length, including zero for an empty upload.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4194304
+            },
+            "example": 4
           }
         ],
         "requestBody": {
@@ -3034,7 +3462,8 @@
                 "type": "string",
                 "format": "binary",
                 "maxLength": 4194304
-              }
+              },
+              "example": "sdk\n"
             }
           }
         },
@@ -3045,6 +3474,10 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AppComputerFileInfo"
+                },
+                "example": {
+                  "size": 4,
+                  "sha256": "26e5d2e798113f713318a98981b2df55f52894eddc33fbbaf64deabeeb6706ec"
                 }
               }
             }
@@ -3179,7 +3612,11 @@
               }
             }
           }
-        }
+        },
+        "x-openagents-retry": "read_and_compare",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 4194304
       }
     }
   },
@@ -3432,7 +3869,15 @@
               }
             }
           }
-        }
+        },
+        "examples": [
+          {
+            "error": {
+              "code": "not_found",
+              "message": "No such computer."
+            }
+          }
+        ]
       },
       "HistorySummary": {
         "type": "object",
@@ -4088,7 +4533,25 @@
               "null"
             ]
           }
-        }
+        },
+        "examples": [
+          {
+            "id": "cmp_0123456789abcdef0123",
+            "name": "Cloud computer 012345",
+            "kind": "cloud",
+            "chat": null,
+            "size": "small",
+            "state": "awake",
+            "desired": "running",
+            "online": true,
+            "turns": 0,
+            "created_unix": 1,
+            "updated_unix": 1,
+            "seen_unix": null,
+            "sync": null,
+            "last_error": null
+          }
+        ]
       },
       "AppEnrolledComputer": {
         "type": "object",
@@ -4115,7 +4578,15 @@
               "null"
             ]
           }
-        }
+        },
+        "examples": [
+          {
+            "name": "My computer",
+            "online": false,
+            "seen_unix": null,
+            "sync": null
+          }
+        ]
       },
       "AppComputerList": {
         "type": "object",
@@ -4143,7 +4614,30 @@
               "null"
             ]
           }
-        }
+        },
+        "examples": [
+          {
+            "computers": [
+              {
+                "id": "cmp_0123456789abcdef0123",
+                "name": "Cloud computer 012345",
+                "kind": "cloud",
+                "chat": null,
+                "size": "small",
+                "state": "awake",
+                "desired": "running",
+                "online": true,
+                "turns": 0,
+                "created_unix": 1,
+                "updated_unix": 1,
+                "seen_unix": null,
+                "sync": null,
+                "last_error": null
+              }
+            ],
+            "next_cursor": null
+          }
+        ]
       },
       "AppCreateComputer": {
         "type": "object",
@@ -4181,9 +4675,17 @@
               "string",
               "null"
             ],
-            "description": "Required here or as Idempotency-Key; when both are supplied they must match."
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$",
+            "description": "Required here or in Idempotency-Key; both must match. Keep the key bound to the immutable request after completion or deletion."
           }
-        }
+        },
+        "examples": [
+          {
+            "size": "small"
+          }
+        ]
       },
       "AppComputerCapabilities": {
         "type": "object",
@@ -4246,9 +4748,39 @@
               "requires_awake": {
                 "const": true
               }
+            },
+            "required": [
+              "max_bytes",
+              "max_path_bytes",
+              "max_concurrent_transfers",
+              "timeout_seconds",
+              "requires_awake"
+            ],
+            "description": "Absent or null means protected file transfer is unsupported. Do not infer support from the backend name."
+          }
+        },
+        "examples": [
+          {
+            "schema": "openagents.computers.capabilities.v1",
+            "profiles": [
+              "core",
+              "suspend"
+            ],
+            "sizes": [
+              "small"
+            ],
+            "limits": {
+              "max_computers": 20
+            },
+            "files": {
+              "max_bytes": 4194304,
+              "max_path_bytes": 1024,
+              "max_concurrent_transfers": 2,
+              "timeout_seconds": 60,
+              "requires_awake": true
             }
           }
-        }
+        ]
       },
       "AppCreateCommand": {
         "type": "object",
@@ -4261,7 +4793,8 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 65536,
-            "description": "Shell command. Do not put credentials in command text."
+            "description": "Shell command. Do not put credentials in command text.",
+            "x-max-utf8-bytes": 65536
           },
           "cwd": {
             "type": "string",
@@ -4290,7 +4823,13 @@
             "maxLength": 128,
             "description": "Required here or as Idempotency-Key. Reuse across retries."
           }
-        }
+        },
+        "examples": [
+          {
+            "command": "sha256sum input.bin",
+            "timeout_seconds": 30
+          }
+        ]
       },
       "AppCommand": {
         "type": "object",
@@ -4377,7 +4916,26 @@
             "minimum": 0,
             "maximum": 262144
           }
-        }
+        },
+        "examples": [
+          {
+            "id": "trn_0123456789abcdef0123",
+            "computer": "cmp_0123456789abcdef0123",
+            "state": "succeeded",
+            "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "exit_code": 0,
+            "cancel_requested": false,
+            "created_unix": 1,
+            "started_unix": 2,
+            "finished_unix": 3,
+            "output_expires_unix": 604801,
+            "output_limit_bytes": 262144,
+            "stdout_truncated": false,
+            "stderr_truncated": false,
+            "stdout_bytes": 5,
+            "stderr_bytes": 5
+          }
+        ]
       },
       "AppCommandOutput": {
         "type": "object",
@@ -4448,7 +5006,41 @@
           "has_more": {
             "type": "boolean"
           }
-        }
+        },
+        "examples": [
+          {
+            "command": {
+              "id": "trn_0123456789abcdef0123",
+              "computer": "cmp_0123456789abcdef0123",
+              "state": "succeeded",
+              "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "exit_code": 0,
+              "cancel_requested": false,
+              "created_unix": 1,
+              "started_unix": 2,
+              "finished_unix": 3,
+              "output_expires_unix": 604801,
+              "output_limit_bytes": 262144,
+              "stdout_truncated": false,
+              "stderr_truncated": false,
+              "stdout_bytes": 5,
+              "stderr_bytes": 5
+            },
+            "encoding": "base64",
+            "stdout": "ZWFybHk=",
+            "stderr": "ZXJyb3I=",
+            "next_cursor": {
+              "stdout": 5,
+              "stderr": 5
+            },
+            "gaps": {
+              "stdout": false,
+              "stderr": false
+            },
+            "terminal": true,
+            "has_more": false
+          }
+        ]
       },
       "AppComputerFileInfo": {
         "type": "object",
@@ -4467,7 +5059,13 @@
             "type": "string",
             "pattern": "^[0-9a-f]{64}$"
           }
-        }
+        },
+        "examples": [
+          {
+            "size": 4,
+            "sha256": "26e5d2e798113f713318a98981b2df55f52894eddc33fbbaf64deabeeb6706ec"
+          }
+        ]
       }
     }
   }

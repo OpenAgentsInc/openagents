@@ -2,6 +2,7 @@
 //! client never adopts CLI credentials, launches a browser, or loads a host.
 
 mod auth;
+pub mod generated;
 pub mod history;
 mod transport;
 

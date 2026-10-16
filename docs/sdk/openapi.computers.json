@@ -1,0 +1,3608 @@
+{
+  "components": {
+    "schemas": {
+      "AppAccount": {
+        "properties": {
+          "admin": {
+            "type": "boolean"
+          },
+          "avatar_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label"
+        ],
+        "type": "object"
+      },
+      "AppAccountError": {
+        "examples": [
+          {
+            "error": {
+              "code": "not_found",
+              "message": "No such computer."
+            }
+          }
+        ],
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "AppAccountView": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/AppAccount"
+          },
+          "v": {
+            "const": "openagents.accounts.v1"
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/AppWorkspace"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "account",
+          "workspaces"
+        ],
+        "type": "object"
+      },
+      "AppCommand": {
+        "examples": [
+          {
+            "cancel_requested": false,
+            "computer": "cmp_0123456789abcdef0123",
+            "created_unix": 1,
+            "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "exit_code": 0,
+            "finished_unix": 3,
+            "id": "trn_0123456789abcdef0123",
+            "output_expires_unix": 604801,
+            "output_limit_bytes": 262144,
+            "started_unix": 2,
+            "state": "succeeded",
+            "stderr_bytes": 5,
+            "stderr_truncated": false,
+            "stdout_bytes": 5,
+            "stdout_truncated": false
+          }
+        ],
+        "properties": {
+          "cancel_requested": {
+            "type": "boolean"
+          },
+          "computer": {
+            "type": "string"
+          },
+          "created_unix": {
+            "type": "integer"
+          },
+          "digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "exit_code": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "finished_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "pattern": "^trn_[0-9a-fA-F]{20}$",
+            "type": "string"
+          },
+          "output_expires_unix": {
+            "type": "integer"
+          },
+          "output_limit_bytes": {
+            "const": 262144
+          },
+          "started_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "dispatching",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "timed_out",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "stderr_bytes": {
+            "maximum": 262144,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stderr_truncated": {
+            "type": "boolean"
+          },
+          "stdout_bytes": {
+            "maximum": 262144,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stdout_truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "computer",
+          "state",
+          "digest",
+          "exit_code",
+          "cancel_requested",
+          "output_expires_unix",
+          "output_limit_bytes",
+          "stdout_truncated",
+          "stderr_truncated"
+        ],
+        "type": "object"
+      },
+      "AppCommandOutput": {
+        "examples": [
+          {
+            "command": {
+              "cancel_requested": false,
+              "computer": "cmp_0123456789abcdef0123",
+              "created_unix": 1,
+              "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "exit_code": 0,
+              "finished_unix": 3,
+              "id": "trn_0123456789abcdef0123",
+              "output_expires_unix": 604801,
+              "output_limit_bytes": 262144,
+              "started_unix": 2,
+              "state": "succeeded",
+              "stderr_bytes": 5,
+              "stderr_truncated": false,
+              "stdout_bytes": 5,
+              "stdout_truncated": false
+            },
+            "encoding": "base64",
+            "gaps": {
+              "stderr": false,
+              "stdout": false
+            },
+            "has_more": false,
+            "next_cursor": {
+              "stderr": 5,
+              "stdout": 5
+            },
+            "stderr": "ZXJyb3I=",
+            "stdout": "ZWFybHk=",
+            "terminal": true
+          }
+        ],
+        "properties": {
+          "command": {
+            "$ref": "#/components/schemas/AppCommand"
+          },
+          "encoding": {
+            "const": "base64"
+          },
+          "gaps": {
+            "properties": {
+              "stderr": {
+                "type": "boolean"
+              },
+              "stdout": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "stdout",
+              "stderr"
+            ],
+            "type": "object"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "properties": {
+              "stderr": {
+                "maximum": 262144,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "stdout": {
+                "maximum": 262144,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "stdout",
+              "stderr"
+            ],
+            "type": "object"
+          },
+          "stderr": {
+            "contentEncoding": "base64",
+            "maxLength": 87384,
+            "type": "string"
+          },
+          "stdout": {
+            "contentEncoding": "base64",
+            "maxLength": 87384,
+            "type": "string"
+          },
+          "terminal": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "command",
+          "encoding",
+          "stdout",
+          "stderr",
+          "next_cursor",
+          "gaps",
+          "terminal",
+          "has_more"
+        ],
+        "type": "object"
+      },
+      "AppComputer": {
+        "examples": [
+          {
+            "chat": null,
+            "created_unix": 1,
+            "desired": "running",
+            "id": "cmp_0123456789abcdef0123",
+            "kind": "cloud",
+            "last_error": null,
+            "name": "Cloud computer 012345",
+            "online": true,
+            "seen_unix": null,
+            "size": "small",
+            "state": "awake",
+            "sync": null,
+            "turns": 0,
+            "updated_unix": 1
+          }
+        ],
+        "properties": {
+          "chat": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_unix": {
+            "type": "integer"
+          },
+          "desired": {
+            "enum": [
+              "running",
+              "stopped",
+              "deleted"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "pattern": "^cmp_[0-9a-fA-F]{20}$",
+            "type": "string"
+          },
+          "kind": {
+            "const": "cloud"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "seen_unix": {
+            "type": "null"
+          },
+          "size": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "sync": {
+            "type": "null"
+          },
+          "turns": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "updated_unix": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "state",
+          "desired",
+          "size",
+          "online"
+        ],
+        "type": "object"
+      },
+      "AppComputerCapabilities": {
+        "examples": [
+          {
+            "files": {
+              "max_bytes": 4194304,
+              "max_concurrent_transfers": 2,
+              "max_path_bytes": 1024,
+              "requires_awake": true,
+              "timeout_seconds": 60
+            },
+            "limits": {
+              "max_computers": 20
+            },
+            "profiles": [
+              "core",
+              "suspend"
+            ],
+            "schema": "openagents.computers.capabilities.v1",
+            "sizes": [
+              "small"
+            ]
+          }
+        ],
+        "properties": {
+          "files": {
+            "description": "Absent or null means protected file transfer is unsupported. Do not infer support from the backend name.",
+            "properties": {
+              "max_bytes": {
+                "maximum": 4194304,
+                "type": "integer"
+              },
+              "max_concurrent_transfers": {
+                "const": 2,
+                "type": "integer"
+              },
+              "max_path_bytes": {
+                "const": 1024,
+                "type": "integer"
+              },
+              "requires_awake": {
+                "const": true
+              },
+              "timeout_seconds": {
+                "const": 60,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "max_bytes",
+              "max_path_bytes",
+              "max_concurrent_transfers",
+              "timeout_seconds",
+              "requires_awake"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "limits": {
+            "properties": {
+              "max_computers": {
+                "const": 20,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "max_computers"
+            ],
+            "type": "object"
+          },
+          "profiles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "schema": {
+            "const": "openagents.computers.capabilities.v1"
+          },
+          "sizes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "schema",
+          "profiles",
+          "sizes",
+          "limits"
+        ],
+        "type": "object"
+      },
+      "AppComputerFileInfo": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "sha256": "26e5d2e798113f713318a98981b2df55f52894eddc33fbbaf64deabeeb6706ec",
+            "size": 4
+          }
+        ],
+        "properties": {
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "size": {
+            "maximum": 4194304,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "size",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "AppComputerList": {
+        "examples": [
+          {
+            "computers": [
+              {
+                "chat": null,
+                "created_unix": 1,
+                "desired": "running",
+                "id": "cmp_0123456789abcdef0123",
+                "kind": "cloud",
+                "last_error": null,
+                "name": "Cloud computer 012345",
+                "online": true,
+                "seen_unix": null,
+                "size": "small",
+                "state": "awake",
+                "sync": null,
+                "turns": 0,
+                "updated_unix": 1
+              }
+            ],
+            "next_cursor": null
+          }
+        ],
+        "properties": {
+          "computers": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AppComputer"
+                },
+                {
+                  "$ref": "#/components/schemas/AppEnrolledComputer"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "computers",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "AppCreateCommand": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "command": "sha256sum input.bin",
+            "timeout_seconds": 30
+          }
+        ],
+        "properties": {
+          "command": {
+            "description": "Shell command. Do not put credentials in command text.",
+            "maxLength": 65536,
+            "minLength": 1,
+            "type": "string",
+            "x-max-utf8-bytes": 65536
+          },
+          "cwd": {
+            "default": ".",
+            "description": "Existing directory relative to the computer workspace; traversal and symlink escape refuse.",
+            "maxLength": 1024,
+            "type": "string"
+          },
+          "env": {
+            "additionalProperties": {
+              "maxLength": 4096,
+              "type": "string"
+            },
+            "description": "Non-secret values only. Names: LANG, LC_ALL, TZ, CI, TERM, or OA_PARAM_*; credential fields refuse.",
+            "maxProperties": 16,
+            "type": "object"
+          },
+          "idempotency_key": {
+            "description": "Required here or as Idempotency-Key. Reuse across retries.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "default": 600,
+            "maximum": 3600,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "type": "object"
+      },
+      "AppCreateComputer": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "size": "small"
+          }
+        ],
+        "properties": {
+          "chat": {
+            "description": "An existing chat owned by this account.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "environment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "idempotency_key": {
+            "description": "Required here or in Idempotency-Key; both must match. Keep the key bound to the immutable request after completion or deletion.",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "size": {
+            "default": "small",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "description": "The saved version number, paired with environment.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "AppDeviceGrant": {
+        "properties": {
+          "device_code": {
+            "type": "string",
+            "x-sensitive": true
+          },
+          "expires_in": {
+            "const": 600,
+            "type": "integer"
+          },
+          "interval": {
+            "const": 5,
+            "type": "integer"
+          },
+          "user_code": {
+            "type": "string"
+          },
+          "verification_uri": {
+            "format": "uri",
+            "type": "string"
+          },
+          "verification_uri_complete": {
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_code",
+          "user_code",
+          "verification_uri",
+          "verification_uri_complete",
+          "expires_in",
+          "interval"
+        ],
+        "type": "object"
+      },
+      "AppDevicePoll": {
+        "properties": {
+          "device_code": {
+            "type": "string",
+            "x-sensitive": true
+          },
+          "grant_type": {
+            "const": "urn:ietf:params:oauth:grant-type:device_code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_code"
+        ],
+        "type": "object"
+      },
+      "AppDeviceRequest": {
+        "properties": {
+          "app": {
+            "default": "Coder",
+            "maxLength": 64,
+            "type": "string"
+          },
+          "computer": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "computer"
+        ],
+        "type": "object"
+      },
+      "AppEnrolledComputer": {
+        "examples": [
+          {
+            "name": "My computer",
+            "online": false,
+            "seen_unix": null,
+            "sync": null
+          }
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "seen_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "sync": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "online"
+        ],
+        "type": "object"
+      },
+      "AppOAuthError": {
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "error_description": {
+            "type": "string"
+          },
+          "interval": {
+            "maximum": 60,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "error",
+          "error_description"
+        ],
+        "type": "object"
+      },
+      "AppSession": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "x-sensitive": true
+          },
+          "account": {
+            "$ref": "#/components/schemas/AppAccount"
+          },
+          "expires_in": {
+            "maximum": 2592000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "token_type": {
+            "const": "Bearer"
+          }
+        },
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in",
+          "account"
+        ],
+        "type": "object"
+      },
+      "AppSignedOut": {
+        "properties": {
+          "signed_out": {
+            "const": true
+          }
+        },
+        "required": [
+          "signed_out"
+        ],
+        "type": "object"
+      },
+      "AppWorkspace": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "members": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "seats": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "tenant": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "role",
+          "tenant"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "appBearer": {
+        "description": "A live app sess_ session or oa_sk_ sign-in key. Account-bound oak_ keys are accepted only where the operation declares them and their scopes permit it. API cookies are ignored.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "OpenAgents Computers API",
+    "version": "1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/account": {
+      "get": {
+        "description": "Existing account and current workspace memberships. Accepts app sess_ sessions, oa_sk_ sign-in keys, and account-bound oak_ API keys. Credential prefixes alone do not prove authorization.",
+        "operationId": "getAccount",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountView"
+                }
+              }
+            },
+            "description": "The authenticated account."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Missing, expired, invalid, or revoked credential."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Credential cannot act for an account."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The account no longer exists."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Account storage is unavailable."
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Account"
+        ]
+      }
+    },
+    "/v1/computers": {
+      "get": {
+        "description": "Account-owned cloud computers. Accepts live app sessions/sign-in keys or account-bound API keys with accounts scope. Cloud operations remain restricted to accounts with cloud access. Acceptance is not readiness or completion; poll the computer. Internal owner headers and service tokens are not public credentials.",
+        "operationId": "listComputers",
+        "parameters": [
+          {
+            "description": "Select only cloud computers. Without this, keep the existing list of your own computers and add your cloud computers when available.",
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "enum": [
+                "cloud"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Cloud page size.",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 200,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The previous next_cursor; scoped to the same account.",
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "computers": [
+                    {
+                      "chat": null,
+                      "created_unix": 1,
+                      "desired": "running",
+                      "id": "cmp_0123456789abcdef0123",
+                      "kind": "cloud",
+                      "last_error": null,
+                      "name": "Cloud computer 012345",
+                      "online": true,
+                      "seen_unix": null,
+                      "size": "small",
+                      "state": "awake",
+                      "sync": null,
+                      "turns": 0,
+                      "updated_unix": 1
+                    }
+                  ],
+                  "next_cursor": null
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputerList"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Computers"
+        ],
+        "x-openagents-max-request-bytes": 0,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-retry": "read"
+      },
+      "post": {
+        "description": "Account-owned cloud computers. Accepts live app sessions/sign-in keys or account-bound API keys with accounts scope. Cloud operations remain restricted to accounts with cloud access. Acceptance is not readiness or completion; poll the computer. Internal owner headers and service tokens are not public credentials.",
+        "operationId": "createComputer",
+        "parameters": [
+          {
+            "description": "One logical request key; required in the header or body and reused across retries. Conflicting settings return 409.",
+            "example": "sdk-example-key",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "size": "small"
+              },
+              "schema": {
+                "$ref": "#/components/schemas/AppCreateComputer"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "chat": null,
+                  "created_unix": 1,
+                  "desired": "running",
+                  "id": "cmp_0123456789abcdef0123",
+                  "kind": "cloud",
+                  "last_error": null,
+                  "name": "Cloud computer 012345",
+                  "online": true,
+                  "seen_unix": null,
+                  "size": "small",
+                  "state": "awake",
+                  "sync": null,
+                  "turns": 0,
+                  "updated_unix": 1
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "chat": null,
+                  "created_unix": 1,
+                  "desired": "running",
+                  "id": "cmp_0123456789abcdef0123",
+                  "kind": "cloud",
+                  "last_error": null,
+                  "name": "Cloud computer 012345",
+                  "online": true,
+                  "seen_unix": null,
+                  "size": "small",
+                  "state": "awake",
+                  "sync": null,
+                  "turns": 0,
+                  "updated_unix": 1
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            },
+            "description": "Accepted intent; poll the same resource until its observed state confirms completion. A response or polling timeout does not cancel work."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Computers"
+        ],
+        "x-openagents-accepted-is-complete": false,
+        "x-openagents-max-request-bytes": 16384,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-retry": "same_request_key"
+      }
+    },
+    "/v1/computers/capabilities": {
+      "delete": {
+        "description": "Remove a computer named capabilities from your list. Its files and synced chats stay. Cloud access is not required.",
+        "operationId": "removeComputerNamedCapabilities",
+        "responses": {
+          "204": {
+            "description": "The computer name was removed from your list."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Computers"
+        ],
+        "x-openagents-max-request-bytes": 0,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-retry": "manual_intent"
+      },
+      "get": {
+        "description": "Account-owned cloud computers. Accepts live app sessions/sign-in keys or account-bound API keys with accounts scope. Cloud operations remain restricted to accounts with cloud access. Acceptance is not readiness or completion; poll the computer. Internal owner headers and service tokens are not public credentials.",
+        "operationId": "getComputerCapabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "files": {
+                    "max_bytes": 4194304,
+                    "max_concurrent_transfers": 2,
+                    "max_path_bytes": 1024,
+                    "requires_awake": true,
+                    "timeout_seconds": 60
+                  },
+                  "limits": {
+                    "max_computers": 20
+                  },
+                  "profiles": [
+                    "core",
+                    "suspend"
+                  ],
+                  "schema": "openagents.computers.capabilities.v1",
+                  "sizes": [
+                    "small"
+                  ]
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputerCapabilities"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Computers"
+        ],
+        "x-openagents-max-request-bytes": 0,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-retry": "read"
+      }
+    },
+    "/v1/computers/{id}": {
+      "delete": {
+        "description": "Cloud IDs request deletion (202); names of your own computers are removed from your list (204). Read a cloud computer to check when deletion is finished.",
+        "operationId": "deleteComputer",
+        "parameters": [
+          {
+            "example": "cmp_0123456789abcdef0123",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Select cloud deletion explicitly, including when one of your own computers has the same name. Without this, an existing computer name is removed from your list.",
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "enum": [
+                "cloud"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "chat": null,
+                  "created_unix": 1,
+                  "desired": "running",
+                  "id": "cmp_0123456789abcdef0123",
+                  "kind": "cloud",
+                  "last_error": null,
+                  "name": "Cloud computer 012345",
+                  "online": true,
+                  "seen_unix": null,
+                  "size": "small",
+                  "state": "awake",
+                  "sync": null,
+                  "turns": 0,
+                  "updated_unix": 1
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "chat": null,
+                  "created_unix": 1,
+                  "desired": "running",
+                  "id": "cmp_0123456789abcdef0123",
+                  "kind": "cloud",
+                  "last_error": null,
+                  "name": "Cloud computer 012345",
+                  "online": true,
+                  "seen_unix": null,
+                  "size": "small",
+                  "state": "awake",
+                  "sync": null,
+                  "turns": 0,
+                  "updated_unix": 1
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            },
+            "description": "Accepted intent; poll the same resource until its observed state confirms completion. A response or polling timeout does not cancel work."
+          },
+          "204": {
+            "description": "The computer name was removed from your list. Its files and synced chats stay."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Computers"
+        ],
+        "x-openagents-accepted-is-complete": false,
+        "x-openagents-max-request-bytes": 0,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-retry": "manual_intent"
+      },
+      "get": {
+        "description": "Account-owned cloud computers. Accepts live app sessions/sign-in keys or account-bound API keys with accounts scope. Cloud operations remain restricted to accounts with cloud access. Acceptance is not readiness or completion; poll the computer. Internal owner headers and service tokens are not public credentials.",
+        "operationId": "getComputer",
+        "parameters": [
+          {
+            "example": "cmp_0123456789abcdef0123",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "chat": null,
+                  "created_unix": 1,
+                  "desired": "running",
+                  "id": "cmp_0123456789abcdef0123",
+                  "kind": "cloud",
+                  "last_error": null,
+                  "name": "Cloud computer 012345",
+                  "online": true,
+                  "seen_unix": null,
+                  "size": "small",
+                  "state": "awake",
+                  "sync": null,
+                  "turns": 0,
+                  "updated_unix": 1
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Computers"
+        ],
+        "x-openagents-max-request-bytes": 0,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-retry": "read"
+      }
+    },
+    "/v1/computers/{id}/commands": {
+      "post": {
+        "description": "Account-authenticated Boat commands. Creation queues execution with output capture already configured. Attach reads saved output and never starts or cancels work. Poll from the returned byte offsets; each request checks current authority. No URL tokens. Unknown execution is never replayed. Output expires seven days after creation; each stream retains its first 256 KiB and reports discarded bytes with gaps. Cancellation is intent until an observed exit. Origin, if supplied, must match this deployment.",
+        "operationId": "createComputerCommand",
+        "parameters": [
+          {
+            "example": "cmp_0123456789abcdef0123",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "pattern": "^cmp_[0-9a-fA-F]{20}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required in the header or body; when both are sent they must match.",
+            "example": "sdk-example-key",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "command": "sha256sum input.bin",
+                "timeout_seconds": 30
+              },
+              "schema": {
+                "$ref": "#/components/schemas/AppCreateCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "cancel_requested": false,
+                  "computer": "cmp_0123456789abcdef0123",
+                  "created_unix": 1,
+                  "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "exit_code": 0,
+                  "finished_unix": 3,
+                  "id": "trn_0123456789abcdef0123",
+                  "output_expires_unix": 604801,
+                  "output_limit_bytes": 262144,
+                  "started_unix": 2,
+                  "state": "succeeded",
+                  "stderr_bytes": 5,
+                  "stderr_truncated": false,
+                  "stdout_bytes": 5,
+                  "stdout_truncated": false
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppCommand"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "cancel_requested": false,
+                  "computer": "cmp_0123456789abcdef0123",
+                  "created_unix": 1,
+                  "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "exit_code": 0,
+                  "finished_unix": 3,
+                  "id": "trn_0123456789abcdef0123",
+                  "output_expires_unix": 604801,
+                  "output_limit_bytes": 262144,
+                  "started_unix": 2,
+                  "state": "succeeded",
+                  "stderr_bytes": 5,
+                  "stderr_truncated": false,
+                  "stdout_bytes": 5,
+                  "stdout_truncated": false
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppCommand"
+                }
+              }
+            },
+            "description": "Accepted intent; poll the same resource until its observed state confirms completion. A response or polling timeout does not cancel work."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Computers"
+        ],
+        "x-openagents-accepted-is-complete": false,
+        "x-openagents-max-request-bytes": 73728,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-retry": "same_request_key"
+      }
+    },
+    "/v1/computers/{id}/commands/{command}": {
+      "get": {
+        "description": "Account-authenticated Boat commands. Creation queues execution with output capture already configured. Attach reads saved output and never starts or cancels work. Poll from the returned byte offsets; each request checks current authority. No URL tokens. Unknown execution is never replayed. Output expires seven days after creation; each stream retains its first 256 KiB and reports discarded bytes with gaps. Cancellation is intent until an observed exit. Origin, if supplied, must match this deployment.",
+        "operationId": "getComputerCommand",
+        "parameters": [
+          {
+            "example": "cmp_0123456789abcdef0123",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "pattern": "^cmp_[0-9a-fA-F]{20}$",
+              "type": "string"
+            }
+          },
+          {
+            "example": "trn_0123456789abcdef0123",
+            "in": "path",
+            "name": "command",
+            "required": true,
+            "schema": {
+              "pattern": "^trn_[0-9a-fA-F]{20}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "cancel_requested": false,
+                  "computer": "cmp_0123456789abcdef0123",
+                  "created_unix": 1,
+                  "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "exit_code": 0,
+                  "finished_unix": 3,
+                  "id": "trn_0123456789abcdef0123",
+                  "output_expires_unix": 604801,
+                  "output_limit_bytes": 262144,
+                  "started_unix": 2,
+                  "state": "succeeded",
+                  "stderr_bytes": 5,
+                  "stderr_truncated": false,
+                  "stdout_bytes": 5,
+                  "stdout_truncated": false
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppCommand"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Computers"
+        ],
+        "x-openagents-max-request-bytes": 0,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-retry": "read"
+      }
+    },
+    "/v1/computers/{id}/commands/{command}/cancel": {
+      "post": {
+        "description": "Account-authenticated Boat commands. Creation queues execution with output capture already configured. Attach reads saved output and never starts or cancels work. Poll from the returned byte offsets; each request checks current authority. No URL tokens. Unknown execution is never replayed. Output expires seven days after creation; each stream retains its first 256 KiB and reports discarded bytes with gaps. Cancellation is intent until an observed exit. Origin, if supplied, must match this deployment.",
+        "operationId": "cancelComputerCommand",
+        "parameters": [
+          {
+            "example": "cmp_0123456789abcdef0123",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "pattern": "^cmp_[0-9a-fA-F]{20}$",
+              "type": "string"
+            }
+          },
+          {
+            "example": "trn_0123456789abcdef0123",
+            "in": "path",
+            "name": "command",
+            "required": true,
+            "schema": {
+              "pattern": "^trn_[0-9a-fA-F]{20}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "cancel_requested": false,
+                  "computer": "cmp_0123456789abcdef0123",
+                  "created_unix": 1,
+                  "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "exit_code": 0,
+                  "finished_unix": 3,
+                  "id": "trn_0123456789abcdef0123",
+                  "output_expires_unix": 604801,
+                  "output_limit_bytes": 262144,
+                  "started_unix": 2,
+                  "state": "succeeded",
+                  "stderr_bytes": 5,
+                  "stderr_truncated": false,
+                  "stdout_bytes": 5,
+                  "stdout_truncated": false
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppCommand"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "cancel_requested": false,
+                  "computer": "cmp_0123456789abcdef0123",
+                  "created_unix": 1,
+                  "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "exit_code": 0,
+                  "finished_unix": 3,
+                  "id": "trn_0123456789abcdef0123",
+                  "output_expires_unix": 604801,
+                  "output_limit_bytes": 262144,
+                  "started_unix": 2,
+                  "state": "succeeded",
+                  "stderr_bytes": 5,
+                  "stderr_truncated": false,
+                  "stdout_bytes": 5,
+                  "stdout_truncated": false
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppCommand"
+                }
+              }
+            },
+            "description": "Accepted intent; poll the same resource until its observed state confirms completion. A response or polling timeout does not cancel work."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Computers"
+        ],
+        "x-openagents-accepted-is-complete": false,
+        "x-openagents-max-request-bytes": 0,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-retry": "manual_intent"
+      }
+    },
+    "/v1/computers/{id}/commands/{command}/output": {
+      "get": {
+        "description": "Account-authenticated Boat commands. Creation queues execution with output capture already configured. Attach reads saved output and never starts or cancels work. Poll from the returned byte offsets; each request checks current authority. No URL tokens. Unknown execution is never replayed. Output expires seven days after creation; each stream retains its first 256 KiB and reports discarded bytes with gaps. Cancellation is intent until an observed exit. Origin, if supplied, must match this deployment.",
+        "operationId": "attachComputerCommand",
+        "parameters": [
+          {
+            "example": "cmp_0123456789abcdef0123",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "pattern": "^cmp_[0-9a-fA-F]{20}$",
+              "type": "string"
+            }
+          },
+          {
+            "example": "trn_0123456789abcdef0123",
+            "in": "path",
+            "name": "command",
+            "required": true,
+            "schema": {
+              "pattern": "^trn_[0-9a-fA-F]{20}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stdout",
+            "schema": {
+              "default": 0,
+              "maximum": 262144,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stderr",
+            "schema": {
+              "default": 0,
+              "maximum": 262144,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_bytes",
+            "schema": {
+              "default": 65536,
+              "maximum": 65536,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "wait_ms",
+            "schema": {
+              "default": 0,
+              "maximum": 10000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "command": {
+                    "cancel_requested": false,
+                    "computer": "cmp_0123456789abcdef0123",
+                    "created_unix": 1,
+                    "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "exit_code": 0,
+                    "finished_unix": 3,
+                    "id": "trn_0123456789abcdef0123",
+                    "output_expires_unix": 604801,
+                    "output_limit_bytes": 262144,
+                    "started_unix": 2,
+                    "state": "succeeded",
+                    "stderr_bytes": 5,
+                    "stderr_truncated": false,
+                    "stdout_bytes": 5,
+                    "stdout_truncated": false
+                  },
+                  "encoding": "base64",
+                  "gaps": {
+                    "stderr": false,
+                    "stdout": false
+                  },
+                  "has_more": false,
+                  "next_cursor": {
+                    "stderr": 5,
+                    "stdout": 5
+                  },
+                  "stderr": "ZXJyb3I=",
+                  "stdout": "ZWFybHk=",
+                  "terminal": true
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppCommandOutput"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The command or saved output."
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Computers"
+        ],
+        "x-openagents-max-request-bytes": 0,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-retry": "read"
+      }
+    },
+    "/v1/computers/{id}/files": {
+      "get": {
+        "description": "Requires an awake computer; never wakes or allocates. Returns a bounded complete read after taking a read lease and checking file size and modification metadata. Files open for writing return409; files that cannot take a lease are unsupported. Concurrent changes can return409. File mode is not altered.",
+        "operationId": "readComputerFile",
+        "parameters": [
+          {
+            "example": "cmp_0123456789abcdef0123",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "pattern": "^cmp_[0-9a-f]{20}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Relative UTF-8 path beneath the command workspace. No empty or dot components, controls, backslashes, colon, percent signs, symlinks, or mount crossings. Parents must already exist.",
+            "example": "input.bin",
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string",
+              "x-max-utf8-bytes": 1024
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "example": "sdk\n",
+                "schema": {
+                  "format": "binary",
+                  "maxLength": 4194304,
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Complete binary file; X-Content-SHA256 and ETag identify the returned bytes.",
+            "headers": {
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "ETag": {
+                "description": "The same SHA256 in double quotes.",
+                "required": true,
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Content-SHA256": {
+                "description": "Lowercase SHA256 of the complete binary response.",
+                "required": true,
+                "schema": {
+                  "pattern": "^[0-9a-f]{64}$",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Invalid path or query."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Sign in again."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Access or path refused."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Computer, file, or parent directory missing."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Computer is not awake, or the file changed during the read."
+          },
+          "411": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Upload length required."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Create-only upload conflicts with a different file."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "File exceeds 4 MiB."
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Choose a regular file."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Upload length or checksum mismatch."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Two transfers are in progress; retry after one second."
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Protected files are unsupported on this computer."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Transfer unavailable; a write may have completed, so read and verify before retrying."
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "summary": "Read a workspace file",
+        "x-openagents-max-request-bytes": 0,
+        "x-openagents-max-response-bytes": 4194304,
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-retry": "read"
+      },
+      "put": {
+        "description": "Requires awake computer, Content-Length, and SHA256. Validates the full body before writing. Publishes a same-directory temporary file by atomic rename; partial or mismatched uploads leave the previous file intact. Missing parents return404. Maximum4MiB, two transfers per instance,60second upload and60second execution bounds. A lost response can leave the result uncertain: read and compare SHA256 before retrying. Files stay on this computer's disk and are not shared artifacts.",
+        "operationId": "writeComputerFile",
+        "parameters": [
+          {
+            "example": "cmp_0123456789abcdef0123",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "pattern": "^cmp_[0-9a-f]{20}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Relative UTF-8 path beneath the command workspace. No empty or dot components, controls, backslashes, colon, percent signs, symlinks, or mount crossings. Parents must already exist.",
+            "example": "input.bin",
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string",
+              "x-max-utf8-bytes": 1024
+            }
+          },
+          {
+            "description": "False: existing identical bytes succeed; different bytes return412. True: atomically replace; concurrent writers use last completed publication. No content compare-and-swap or idempotency key is offered.",
+            "in": "query",
+            "name": "overwrite",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "example": "26e5d2e798113f713318a98981b2df55f52894eddc33fbbaf64deabeeb6706ec",
+            "in": "header",
+            "name": "X-Content-SHA256",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact binary body length, including zero for an empty upload.",
+            "example": 4,
+            "in": "header",
+            "name": "Content-Length",
+            "required": true,
+            "schema": {
+              "maximum": 4194304,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "example": "sdk\n",
+              "schema": {
+                "format": "binary",
+                "maxLength": 4194304,
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "sha256": "26e5d2e798113f713318a98981b2df55f52894eddc33fbbaf64deabeeb6706ec",
+                  "size": 4
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputerFileInfo"
+                }
+              }
+            },
+            "description": "The complete upload was checked and atomically published with mode0600."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Invalid path or query."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Sign in again."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Access or path refused."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Computer, file, or parent directory missing."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Computer is not awake, or the file changed during the read."
+          },
+          "411": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Upload length required."
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Create-only upload conflicts with a different file."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "File exceeds 4 MiB."
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Choose a regular file."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Upload length or checksum mismatch."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Two transfers are in progress; retry after one second."
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Protected files are unsupported on this computer."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "Transfer unavailable; a write may have completed, so read and verify before retrying."
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "summary": "Upload a workspace file",
+        "x-openagents-max-request-bytes": 4194304,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-retry": "read_and_compare"
+      }
+    },
+    "/v1/computers/{id}/stop": {
+      "post": {
+        "description": "Account-owned cloud computers. Accepts live app sessions/sign-in keys or account-bound API keys with accounts scope. Cloud operations remain restricted to accounts with cloud access. Acceptance is not readiness or completion; poll the computer. Internal owner headers and service tokens are not public credentials.",
+        "operationId": "stopComputer",
+        "parameters": [
+          {
+            "example": "cmp_0123456789abcdef0123",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "chat": null,
+                  "created_unix": 1,
+                  "desired": "running",
+                  "id": "cmp_0123456789abcdef0123",
+                  "kind": "cloud",
+                  "last_error": null,
+                  "name": "Cloud computer 012345",
+                  "online": true,
+                  "seen_unix": null,
+                  "size": "small",
+                  "state": "awake",
+                  "sync": null,
+                  "turns": 0,
+                  "updated_unix": 1
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "chat": null,
+                  "created_unix": 1,
+                  "desired": "running",
+                  "id": "cmp_0123456789abcdef0123",
+                  "kind": "cloud",
+                  "last_error": null,
+                  "name": "Cloud computer 012345",
+                  "online": true,
+                  "seen_unix": null,
+                  "size": "small",
+                  "state": "awake",
+                  "sync": null,
+                  "turns": 0,
+                  "updated_unix": 1
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            },
+            "description": "Accepted intent; poll the same resource until its observed state confirms completion. A response or polling timeout does not cancel work."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Computers"
+        ],
+        "x-openagents-accepted-is-complete": false,
+        "x-openagents-max-request-bytes": 0,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-retry": "manual_intent"
+      }
+    },
+    "/v1/computers/{id}/wake": {
+      "post": {
+        "description": "Account-owned cloud computers. Accepts live app sessions/sign-in keys or account-bound API keys with accounts scope. Cloud operations remain restricted to accounts with cloud access. Acceptance is not readiness or completion; poll the computer. Internal owner headers and service tokens are not public credentials.",
+        "operationId": "wakeComputer",
+        "parameters": [
+          {
+            "example": "cmp_0123456789abcdef0123",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "chat": null,
+                  "created_unix": 1,
+                  "desired": "running",
+                  "id": "cmp_0123456789abcdef0123",
+                  "kind": "cloud",
+                  "last_error": null,
+                  "name": "Cloud computer 012345",
+                  "online": true,
+                  "seen_unix": null,
+                  "size": "small",
+                  "state": "awake",
+                  "sync": null,
+                  "turns": 0,
+                  "updated_unix": 1
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "chat": null,
+                  "created_unix": 1,
+                  "desired": "running",
+                  "id": "cmp_0123456789abcdef0123",
+                  "kind": "cloud",
+                  "last_error": null,
+                  "name": "Cloud computer 012345",
+                  "online": true,
+                  "seen_unix": null,
+                  "size": "small",
+                  "state": "awake",
+                  "sync": null,
+                  "turns": 0,
+                  "updated_unix": 1
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputer"
+                }
+              }
+            },
+            "description": "Accepted intent; poll the same resource until its observed state confirms completion. A response or polling timeout does not cancel work."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            },
+            "description": "The requested computer result."
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Computers"
+        ],
+        "x-openagents-accepted-is-complete": false,
+        "x-openagents-max-request-bytes": 0,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-retry": "manual_intent"
+      }
+    },
+    "/v1/device/code": {
+      "post": {
+        "operationId": "startAppLogin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppDeviceRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/AppDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppDeviceGrant"
+                }
+              }
+            },
+            "description": "The app's result. Tokens and codes are returned only here; do not cache."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOAuthError"
+                }
+              }
+            },
+            "description": "Invalid request, pending, slow_down, denied, expired, or already redeemed grant."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOAuthError"
+                }
+              }
+            },
+            "description": "Sign-in is temporarily unavailable."
+          }
+        },
+        "security": [],
+        "tags": [
+          "App authentication"
+        ]
+      }
+    },
+    "/v1/device/sign-out": {
+      "post": {
+        "description": "Revoke this app session. Already expired/revoked sessions are signed out. A sign-in key is a session too; revoking it here is not a local forget operation.",
+        "operationId": "signOutApp",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSignedOut"
+                }
+              }
+            },
+            "description": "The app's result. Tokens and codes are returned only here; do not cache."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOAuthError"
+                }
+              }
+            },
+            "description": "Invalid request, pending, slow_down, denied, expired, or already redeemed grant."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOAuthError"
+                }
+              }
+            },
+            "description": "Invalid app credential."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOAuthError"
+                }
+              }
+            },
+            "description": "Sign-in is temporarily unavailable."
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "App authentication"
+        ]
+      }
+    },
+    "/v1/device/token": {
+      "post": {
+        "operationId": "pollAppLogin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppDevicePoll"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/AppDevicePoll"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSession"
+                }
+              }
+            },
+            "description": "The app's result. Tokens and codes are returned only here; do not cache."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOAuthError"
+                }
+              }
+            },
+            "description": "Invalid request, pending, slow_down, denied, expired, or already redeemed grant."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppOAuthError"
+                }
+              }
+            },
+            "description": "Sign-in is temporarily unavailable."
+          }
+        },
+        "security": [],
+        "tags": [
+          "App authentication"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.openagents.com"
+    }
+  ],
+  "x-openagents-contract": {
+    "canonical": "https://api.openagents.com/v1/openapi.json",
+    "command_transport": "Authenticated byte-offset polling; no SSE or WebSocket transport is offered by this slice.",
+    "generation": "scripts/api/computers_codegen.py",
+    "response_compatibility": "Ignore unknown object fields and preserve unknown enum strings. Unknown states never imply readiness, successful completion, or permission to replay work.",
+    "source": "Rust handlers and their app_openapi schema",
+    "version": 1
+  }
+}

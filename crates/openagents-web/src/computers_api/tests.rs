@@ -101,7 +101,7 @@ async fn provider(State(state): State<Arc<Native>>, request: Request) -> Respons
         )
         .into_response();
     }
-    let mut row = json!({"id":ID,"chat":null,"size":"small","desired":"running","state":"awake","turns":0,"last_error":CANARY,"driver":CANARY,"resource":CANARY});
+    let mut row = json!({"id":ID,"chat":null,"size":"small","desired":"running","state":"awake","turns":0,"created_unix":1,"updated_unix":1,"last_error":CANARY,"driver":CANARY,"resource":CANARY});
     if path == "/v1/computers" && method == "GET" {
         let rows = if owner == crate::chat_store::account_owner("alice") {
             vec![row]
@@ -261,7 +261,10 @@ async fn public_lifecycle_uses_current_account_authority_and_keeps_service_crede
         .unwrap()
         .unwrap();
     let app = App(Arc::new(crate::Inner { config }));
-    let (base, task) = serve(crate::phone_api::routes().with_state(app)).await;
+    let (base, task) = serve(crate::phone_api::routes().with_state(app).layer(
+        axum::middleware::from_fn(super::contract_tests::check_response),
+    ))
+    .await;
     let http = reqwest::Client::new();
     let create = http
         .post(format!("{base}/v1/computers"))

@@ -1,0 +1,302 @@
+{
+  "format": "openagents.computers.operations.v1",
+  "generator_version": 1,
+  "schema_sha256": "05ab6abb036ee51cb4a586a34befb1774c4a940f3bc0632d3ce3ed58c5879f9c",
+  "operations": [
+    {
+      "operation_id": "getAccount",
+      "method": "GET",
+      "path": "/v1/account",
+      "params": "GetAccountParams",
+      "result": "GetAccountResult",
+      "authority": "account",
+      "success": [
+        200
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "manual",
+      "max_request_bytes": null,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "listComputers",
+      "method": "GET",
+      "path": "/v1/computers",
+      "params": "ListComputersParams",
+      "result": "ListComputersResult",
+      "authority": "account",
+      "success": [
+        200
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "read",
+      "max_request_bytes": 0,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "createComputer",
+      "method": "POST",
+      "path": "/v1/computers",
+      "params": "CreateComputerParams",
+      "result": "CreateComputerResult",
+      "authority": "account",
+      "success": [
+        200,
+        202
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "same_request_key",
+      "max_request_bytes": 16384,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "removeComputerNamedCapabilities",
+      "method": "DELETE",
+      "path": "/v1/computers/capabilities",
+      "params": "RemoveComputerNamedCapabilitiesParams",
+      "result": "RemoveComputerNamedCapabilitiesResult",
+      "authority": "account",
+      "success": [
+        204
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "manual_intent",
+      "max_request_bytes": 0,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "getComputerCapabilities",
+      "method": "GET",
+      "path": "/v1/computers/capabilities",
+      "params": "GetComputerCapabilitiesParams",
+      "result": "GetComputerCapabilitiesResult",
+      "authority": "account",
+      "success": [
+        200
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "read",
+      "max_request_bytes": 0,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "deleteComputer",
+      "method": "DELETE",
+      "path": "/v1/computers/{id}",
+      "params": "DeleteComputerParams",
+      "result": "DeleteComputerResult",
+      "authority": "account",
+      "success": [
+        200,
+        202,
+        204
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "manual_intent",
+      "max_request_bytes": 0,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "getComputer",
+      "method": "GET",
+      "path": "/v1/computers/{id}",
+      "params": "GetComputerParams",
+      "result": "GetComputerResult",
+      "authority": "account",
+      "success": [
+        200
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "read",
+      "max_request_bytes": 0,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "createComputerCommand",
+      "method": "POST",
+      "path": "/v1/computers/{id}/commands",
+      "params": "CreateComputerCommandParams",
+      "result": "CreateComputerCommandResult",
+      "authority": "account",
+      "success": [
+        200,
+        202
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "same_request_key",
+      "max_request_bytes": 73728,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "getComputerCommand",
+      "method": "GET",
+      "path": "/v1/computers/{id}/commands/{command}",
+      "params": "GetComputerCommandParams",
+      "result": "GetComputerCommandResult",
+      "authority": "account",
+      "success": [
+        200
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "read",
+      "max_request_bytes": 0,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "cancelComputerCommand",
+      "method": "POST",
+      "path": "/v1/computers/{id}/commands/{command}/cancel",
+      "params": "CancelComputerCommandParams",
+      "result": "CancelComputerCommandResult",
+      "authority": "account",
+      "success": [
+        200,
+        202
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "manual_intent",
+      "max_request_bytes": 0,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "attachComputerCommand",
+      "method": "GET",
+      "path": "/v1/computers/{id}/commands/{command}/output",
+      "params": "AttachComputerCommandParams",
+      "result": "AttachComputerCommandResult",
+      "authority": "account",
+      "success": [
+        200
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "read",
+      "max_request_bytes": 0,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "readComputerFile",
+      "method": "GET",
+      "path": "/v1/computers/{id}/files",
+      "params": "ReadComputerFileParams",
+      "result": "ReadComputerFileResult",
+      "authority": "account",
+      "success": [
+        200
+      ],
+      "binary_request": false,
+      "binary_response": true,
+      "retry": "read",
+      "max_request_bytes": 0,
+      "max_response_bytes": 4194304
+    },
+    {
+      "operation_id": "writeComputerFile",
+      "method": "PUT",
+      "path": "/v1/computers/{id}/files",
+      "params": "WriteComputerFileParams",
+      "result": "WriteComputerFileResult",
+      "authority": "account",
+      "success": [
+        200
+      ],
+      "binary_request": true,
+      "binary_response": false,
+      "retry": "read_and_compare",
+      "max_request_bytes": 4194304,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "stopComputer",
+      "method": "POST",
+      "path": "/v1/computers/{id}/stop",
+      "params": "StopComputerParams",
+      "result": "StopComputerResult",
+      "authority": "account",
+      "success": [
+        200,
+        202
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "manual_intent",
+      "max_request_bytes": 0,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "wakeComputer",
+      "method": "POST",
+      "path": "/v1/computers/{id}/wake",
+      "params": "WakeComputerParams",
+      "result": "WakeComputerResult",
+      "authority": "account",
+      "success": [
+        200,
+        202
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "manual_intent",
+      "max_request_bytes": 0,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "startAppLogin",
+      "method": "POST",
+      "path": "/v1/device/code",
+      "params": "StartAppLoginParams",
+      "result": "StartAppLoginResult",
+      "authority": "public",
+      "success": [
+        200
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "manual",
+      "max_request_bytes": null,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "signOutApp",
+      "method": "POST",
+      "path": "/v1/device/sign-out",
+      "params": "SignOutAppParams",
+      "result": "SignOutAppResult",
+      "authority": "account",
+      "success": [
+        200
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "manual",
+      "max_request_bytes": null,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "pollAppLogin",
+      "method": "POST",
+      "path": "/v1/device/token",
+      "params": "PollAppLoginParams",
+      "result": "PollAppLoginResult",
+      "authority": "public",
+      "success": [
+        200
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "manual",
+      "max_request_bytes": null,
+      "max_response_bytes": 1048576
+    }
+  ]
+}

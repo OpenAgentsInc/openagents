@@ -85,9 +85,80 @@ admission limit and a 16 KiB public request limit. These controls do not replace
 the later durable usage/billing work. Cloud-only reads report service outages;
 the mixed legacy list keeps its previous best-effort cloud append behavior.
 
-The app OpenAPI example generates the implemented slice in
-[openapi.app.json](openapi.app.json), also composed into `/v1/openapi.json`.
-`#11804` extends this baseline after commands and files are implemented.
+The maintained contract and its regeneration checks are described below.
+
+## Published contract and generated Rust bindings
+
+The public [OpenAPI reference](https://api.openagents.com/v1/openapi.json)
+contains the implemented Computers operations and their public authentication.
+The checked-in [Computers subset](openapi.computers.json) contains 18 operations:
+14 Computers operations, including the existing named-computer detach
+compatibility route, and four device/account operations. It includes only the
+components those operations reference. The [operation index](computers-operations.json)
+records methods, paths, authority, successful status codes, binary bodies,
+response bounds, and retry rules.
+
+The owning Rust handlers and their schema functions are the maintained source.
+`app_openapi::computers_document` extracts this subset from the same document
+composed into the public reference. Do not edit the JSON exports or generated
+Rust by hand. Runtime tests validate actual handler responses against the schema;
+example checks cover JSON and binary representations. A deliberate required-field
+change must fail validation. These checks supplement request and authorization
+tests; a generated schema does not establish permission to perform an operation.
+
+The Rust [wire bindings](../../crates/openagents-sdk/src/generated/computers.rs)
+provide typed values and request builders under
+`openagents_sdk::generated::computers`. Request plans keep unencoded path
+components, query values, headers, and binary bytes separate. The shared client
+owns deployment validation, credentials, HTTP, cancellation, and bounded retries;
+its Computers facade and execution helpers are tracked in
+[#11805](https://github.com/OpenAgentsInc/openagents/issues/11805).
+Generated bindings have no implicit network effects. Their debug output omits
+values, and response objects preserve unknown fields. Enum values remain strings
+so future values decode; an unknown state never means ready, successful, or safe
+to replay. Missing file capability means unsupported.
+
+`202` records accepted work. Poll the same resource for completion. A cancelled
+local wait or lost connection does not cancel a remote command. Command output
+uses authenticated byte-offset polling; this slice offers no SSE or WebSocket
+command stream. File requests and responses use binary bodies. An upload needs
+its exact `Content-Length`, including zero, and lowercase `X-Content-SHA256`.
+A successful read includes the verified checksum, ETag, and `Cache-Control`.
+
+Keep one request key for each intended create or command execution, including
+across application restarts. Changed immutable settings conflict. A file write
+with an uncertain result needs a read/hash comparison before a retry. Stop, wake,
+delete, and cancel are explicit intents; do not automatically replay an old
+intent after another caller has changed the resource.
+
+Regenerate with the pinned Rust toolchain and Python 3.11 or later. The generator
+uses only Python's standard library and the pinned `rustfmt`; its version and
+input SHA256 appear in the generated artifacts. Keep the existing Cargo target
+directory outside the worktree.
+
+```sh
+sdk_scratch="$(openagents scratch)"
+cargo run -p openagents-web --example app_openapi > "$sdk_scratch/openapi.app.json"
+cargo run -p openagents-web --example computers_openapi > "$sdk_scratch/openapi.computers.json"
+cp "$sdk_scratch/openapi.app.json" docs/sdk/openapi.app.json
+cp "$sdk_scratch/openapi.computers.json" docs/sdk/openapi.computers.json
+python3 scripts/api/computers_codegen.py
+python3 scripts/api/computers_codegen.py --check
+python3 -m unittest discover -s scripts/api -p test_computers_contract.py
+cargo test -p openagents-sdk
+cargo test -p openagents-web --lib computers_api::
+cargo test -p openagents-web --lib app_openapi::
+```
+
+The [public check](../../scripts/api/check_computers_public.py) compares the
+reachable reference with the subset before loading a credential. Its default
+mode reads only the schema. `--live --evidence PATH` runs create, binary upload,
+a command-side checksum, stop/wake, identical readback, and deletion using paths
+resolved from published operation IDs. It requires the approved dedicated test
+account, uses `OPENAGENTS_TEST_TOKEN` or the private test-account file, and records
+cleanup without credentials or content. It never revokes a supplied credential.
+The older API addresses, enrolled-machine sync, and Coder 1.0.0 keep their
+existing behavior. SDK publication and other language clients remain separate.
 
 ## Command sessions
 

@@ -2,6 +2,7 @@
 //! are constructed only at the trusted service boundary.
 
 pub(crate) mod commands;
+mod contract;
 pub(crate) mod files;
 
 use axum::body::Bytes;
@@ -429,6 +430,8 @@ pub(crate) async fn capabilities(State(app): State<App>, headers: HeaderMap) -> 
 }
 
 #[cfg(test)]
+mod contract_tests;
+#[cfg(test)]
 mod tests;
 
 /// The implemented lifecycle slice, composed into the app/gateway OpenAPI.
@@ -516,4 +519,5 @@ pub(crate) fn extend_openapi(document: &mut Value) {
     });
     commands::extend_openapi(document);
     files::extend_openapi(document);
+    contract::qualify(document);
 }

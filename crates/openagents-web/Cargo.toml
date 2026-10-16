@@ -90,6 +90,7 @@ url = "2"
 workbench = { path = "../workbench" }
 
 [dev-dependencies]
+jsonschema = { version = "0.33", default-features = false }
 lightning-invoice = "0.34.1"
 bitcoin = "0.32"
 oa-connections = { path = "../oa-connections", features = ["fake"] }

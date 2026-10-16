@@ -13,6 +13,7 @@ Start from any of these. None needs a key.
 | --- | --- |
 | A short index of the site and its docs | `https://openagents.com/llms.txt` |
 | Every doc in one file | `https://openagents.com/llms-full.txt` |
+| The Computers contract and generated Rust bindings | [Computers API](https://github.com/OpenAgentsInc/openagents/blob/main/docs/sdk/computers.md#published-contract-and-generated-rust-bindings) |
 | The API, described in OpenAPI 3.1 | `https://api.openagents.com/v1/openapi.json` |
 | The API catalog | `https://openagents.com/.well-known/api-catalog` |
 | The AI catalog (MCP, agent card, skills, API) | `https://openagents.com/.well-known/ai-catalog.json` |
