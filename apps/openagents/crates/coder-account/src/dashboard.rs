@@ -240,6 +240,10 @@ impl Home {
         s.preview = None;
         s.update_target = None;
         s.publishing = None;
+        s.library_pending = None;
+        s.undo = None;
+        s.configured = None;
+        s.remote_next = None;
         s.notice = Some("Sign in again to see your work.".into());
         self.changed(&mut s);
     }
@@ -1258,11 +1262,17 @@ impl Home {
         result
     }
     pub async fn import(&self, bytes: &[u8]) -> Result<(), String> {
+        if !self.current() {
+            return Err("Sign in again to continue.".into());
+        }
         let package = Package::decode(bytes).map_err(str::to_owned)?;
         let d = package
             .install(fresh_id(), Scope::default(), None)
             .map_err(str::to_owned)?;
         let mut s = self.state.lock().unwrap();
+        if !self.current() {
+            return Err("Sign in again to continue.".into());
+        }
         s.draft = Some(d);
         s.screen = Screen::Configure;
         s.configured = None;
@@ -2413,6 +2423,24 @@ mod tests {
             h.action(action).await.unwrap();
             h.view().validate().unwrap();
         }
+    }
+    #[tokio::test]
+    async fn import_after_signout_cannot_restore_a_draft() {
+        let dir = tempfile::tempdir().unwrap();
+        let h = Home::new(None, dir.path().join("home.json"));
+        let package = Dashboard::starter("source")
+            .export("Private title".into())
+            .unwrap();
+        h.shutdown();
+        assert!(
+            h.import(&serde_json::to_vec(&package).unwrap())
+                .await
+                .is_err()
+        );
+        let s = h.state.lock().unwrap();
+        assert!(s.draft.is_none());
+        assert!(s.undo.is_none());
+        assert!(s.library_pending.is_none());
     }
     #[tokio::test]
     async fn drag_reorders_only_the_current_edit_draft() {
