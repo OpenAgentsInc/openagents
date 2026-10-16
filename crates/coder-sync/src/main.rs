@@ -28,12 +28,21 @@ async fn run() -> Result<(), &'static str> {
         .probe()
         .await
         .map_err(|_| "Could not read and write the bucket.")?;
+    let accounts = if config.auth == coder_sync::server::config::AuthMode::OpenAgents {
+        Some(
+            coder_sync::server::auth::Accounts::new(config.account_deployment)
+                .map_err(|_| "Invalid account service configuration.")?,
+        )
+    } else {
+        None
+    };
     let state = StateData {
         database,
         bucket,
         rooms: Rooms::default(),
         devices: Default::default(),
         auth: config.auth,
+        accounts,
         revision: config.revision,
     };
     let listener = tokio::net::TcpListener::bind(config.listen)

@@ -446,6 +446,7 @@ pub async fn websocket(
     upgrade: std::result::Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Result<Response> {
     let who = scope(&state, &headers, &q, &org)?;
+    let lease = super::auth::socket_lease(&state, &headers, &q, &who);
     let upgrade =
         upgrade.map_err(|_| Failure(StatusCode::UPGRADE_REQUIRED, "expected_websocket"))?;
     let s = state.clone();
@@ -470,6 +471,7 @@ pub async fn websocket(
                 who.account,
                 q.get("device").cloned().unwrap_or_default(),
                 events,
+                lease,
             )
         }))
 }
@@ -484,11 +486,15 @@ async fn session(
     account: String,
     mut device: String,
     mut events: tokio::sync::broadcast::Receiver<(Uuid, Vec<u8>)>,
+    lease: Option<super::auth::SocketLease>,
 ) {
     let sender = Uuid::new_v4();
     let mut ready = false;
+    let ended = super::auth::socket_ended(lease);
+    tokio::pin!(ended);
     loop {
         tokio::select! {
+            code=&mut ended=>{let reason=if code==4401{"Log in again to continue."}else{"Account service is unavailable. Try again."};let _=ws.send(Message::Close(Some(axum::extract::ws::CloseFrame{code,reason:reason.into()}))).await;break;},
             event=events.recv()=>match event{
                 Ok((source,bytes)) if ready=>{
                     let Ok(frame)=serde_json::from_slice::<Value>(&bytes)else{break;};

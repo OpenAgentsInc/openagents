@@ -23,4 +23,9 @@ export CODER_SYNC_TEST_DATABASE_URL="host=127.0.0.1 port=$port user=coder_sync_t
 export RUSTUP_TOOLCHAIN=${RUSTUP_TOOLCHAIN:-1.98.1}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$HOME/work/openagents-target-agent1}
 cd "$root"
-cargo test --manifest-path deploy/coder-sync/Cargo.toml --workspace --features coder-sync-service/server "$@"
+if [[ "${1:-}" == "--ios-auth-fixture" ]]; then
+  shift
+  cargo run --manifest-path deploy/coder-sync/Cargo.toml -p coder-sync-conformance --bin ios-auth-fixture -- "$@"
+else
+  cargo test --manifest-path deploy/coder-sync/Cargo.toml --workspace --features coder-sync-service/server "$@"
+fi

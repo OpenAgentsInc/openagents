@@ -48,9 +48,23 @@ pub(crate) fn identity(
         .and_then(|h| h.split_once(' '))
         .filter(|(s, _)| s.eq_ignore_ascii_case("bearer"))
         .map(|(_, t)| t.trim());
-    let who = header
-        .or_else(|| query.get("token").map(String::as_str))
-        .and_then(|t| authenticate(state.auth, t))
+    let verified = if state.auth == super::config::AuthMode::OpenAgents {
+        headers
+            .get(super::auth::ACCOUNT_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .map(|account| Identity {
+                account: account.into(),
+                workspace: None,
+            })
+    } else {
+        None
+    };
+    let who = verified
+        .or_else(|| {
+            header
+                .or_else(|| query.get("token").map(String::as_str))
+                .and_then(|t| authenticate(state.auth, t))
+        })
         .ok_or(Failure(StatusCode::UNAUTHORIZED, "unauthenticated"))?;
     if id.is_empty()
         || id.len() > 128
@@ -466,6 +480,7 @@ pub async fn websocket(
     >,
 ) -> Result<Response> {
     let who = identity(&state, &headers, &q, &id)?;
+    let lease = super::auth::socket_lease(&state, &headers, &q, &who);
     let upgrade =
         upgrade.map_err(|_| Failure(StatusCode::UPGRADE_REQUIRED, "expected_websocket"))?;
     let s = state.clone();
@@ -487,6 +502,7 @@ pub async fn websocket(
                 q.get("device").cloned().unwrap_or_default(),
                 q.get("hostDevice").cloned(),
                 events,
+                lease,
             )
         }))
 }
@@ -501,11 +517,15 @@ async fn session(
     mut device: String,
     host_hint: Option<String>,
     mut events: tokio::sync::broadcast::Receiver<(Uuid, Vec<u8>)>,
+    lease: Option<super::auth::SocketLease>,
 ) {
     let sender = Uuid::new_v4();
     let mut ready = false;
+    let ended = super::auth::socket_ended(lease);
+    tokio::pin!(ended);
     loop {
         tokio::select! {
+            code=&mut ended=>{let reason=if code==4401{"Log in again to continue."}else{"Account service is unavailable. Try again."};let _=socket.send(Message::Close(Some(axum::extract::ws::CloseFrame{code,reason:reason.into()}))).await;break;},
             event=events.recv()=>match event {
                 Ok((source,bytes)) if ready && source!=sender=>{if !send(&mut socket,bytes).await{break;}},
                 Ok(_)=>{},

@@ -31,6 +31,7 @@ impl Server {
             rooms: Rooms::default(),
             devices: Default::default(),
             auth: AuthMode::Dev,
+            accounts: None,
             revision: "blob-test".into(),
         };
         let app = server::router(state.clone());

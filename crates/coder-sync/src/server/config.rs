@@ -4,6 +4,7 @@ use std::{collections::HashMap, net::SocketAddr};
 pub enum AuthMode {
     Disabled,
     Dev,
+    OpenAgents,
 }
 
 pub struct Config {
@@ -11,6 +12,7 @@ pub struct Config {
     pub database_url: String,
     pub bucket: String,
     pub auth: AuthMode,
+    pub account_deployment: openagents::Deployment,
     pub revision: String,
 }
 
@@ -26,8 +28,9 @@ impl Config {
         let get = |key: &str| vars.get(key).map(String::as_str);
         // A missing deployment environment is production-safe too.
         let local = matches!(get("CODER_SYNC_ENV"), Some("local" | "staging"));
-        let auth = match get("CODER_SYNC_AUTH").unwrap_or("disabled") {
+        let auth = match get("CODER_SYNC_AUTH").unwrap_or("openagents") {
             "disabled" => AuthMode::Disabled,
+            "openagents" => AuthMode::OpenAgents,
             "dev" if local && allow_dev => AuthMode::Dev,
             "dev" => {
                 return Err(
@@ -54,6 +57,11 @@ impl Config {
             database_url,
             bucket,
             auth,
+            account_deployment: openagents::Deployment::new(
+                get("CODER_SYNC_ACCOUNT_API").unwrap_or("https://api.openagents.com/v1"),
+                get("CODER_SYNC_ACCOUNT_WEBSITE").unwrap_or("https://openagents.com"),
+            )
+            .map_err(|_| "Invalid account service configuration.")?,
             revision: get("CODER_SYNC_REVISION")
                 .unwrap_or("development")
                 .to_owned(),

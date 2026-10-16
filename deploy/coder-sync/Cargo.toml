@@ -8,6 +8,7 @@ default-members = ["."]
 fork-revision = "c2943aef2a3082370642e79d06bb5759dc4da2d9"
 
 [workspace.dependencies]
+openagents = { package = "openagents-sdk", git = "https://github.com/OpenAgentsInc/openagents.git", rev = "5a3d1c14f58888c08d0e7a0ede0322fe7585b20b" }
 zeron-sync = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "c2943aef2a3082370642e79d06bb5759dc4da2d9" }
 zeron-client = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "c2943aef2a3082370642e79d06bb5759dc4da2d9" }
 zeron-proto = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "c2943aef2a3082370642e79d06bb5759dc4da2d9" }
@@ -34,6 +35,7 @@ path = "../../crates/coder-sync/src/main.rs"
 server = []
 
 [dependencies]
+openagents.workspace = true
 zeron-proto.workspace = true
 sha2 = "0.10"
 zeron-rpc.workspace = true

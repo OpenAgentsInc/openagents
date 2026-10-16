@@ -78,6 +78,7 @@ impl TestServer {
             rooms: Rooms::default(),
             devices: Default::default(),
             auth: AuthMode::Dev,
+            accounts: None,
             revision: "chat-test".into(),
         });
         let task = tokio::spawn(async move {

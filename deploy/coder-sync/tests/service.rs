@@ -48,6 +48,22 @@ fn production_and_unknown_environments_refuse_dev_auth_even_with_flag() {
 }
 
 #[test]
+fn openagents_auth_is_the_default_and_requires_a_valid_account_deployment() {
+    let mut config = vars(Some("production"), "openagents");
+    config.remove("CODER_SYNC_AUTH");
+    assert_eq!(
+        Config::parse(config.clone(), false).unwrap().auth,
+        AuthMode::OpenAgents
+    );
+    config.insert(
+        "CODER_SYNC_ACCOUNT_API".into(),
+        "http://remote.example/v1".into(),
+    );
+    assert!(Config::parse(config, false).is_err());
+    assert!(authenticate(AuthMode::OpenAgents, "alice@workspace").is_none());
+}
+
+#[test]
 fn disabled_auth_accepts_no_token_and_dev_identity_is_scoped() {
     for token in ["", "test-user", "test-user@workspace", "sess_fake"] {
         assert!(authenticate(AuthMode::Disabled, token).is_none());
@@ -153,6 +169,7 @@ async fn database_migrations_health_and_auth_with_fake_bucket() {
         rooms: Rooms::default(),
         devices: Default::default(),
         auth: AuthMode::Disabled,
+        accounts: None,
         revision: "fixture".into(),
     });
     let response = app

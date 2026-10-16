@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod blob;
 pub mod chat;
 pub mod config;
@@ -26,6 +27,7 @@ pub struct StateData {
     pub rooms: rooms::Rooms,
     pub devices: device::Devices,
     pub auth: AuthMode,
+    pub accounts: Option<auth::Accounts>,
     pub revision: String,
 }
 
@@ -55,6 +57,7 @@ pub fn authenticate(mode: AuthMode, token: &str) -> Option<Identity> {
 }
 
 pub fn router(state: StateData) -> Router {
+    let state = Arc::new(state);
     Router::new()
         .route("/health", get(health))
         .route("/blob/{id}/{part}", get(blob::read).put(blob::put))
@@ -105,7 +108,8 @@ pub fn router(state: StateData) -> Router {
         )
         .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024))
         .fallback(protected)
-        .with_state(Arc::new(state))
+        .with_state(state.clone())
+        .layer(middleware::from_fn_with_state(state, auth::guard))
         .layer(middleware::from_fn(request_id))
 }
 
@@ -117,7 +121,7 @@ async fn health(State(state): State<Arc<StateData>>) -> Response {
         )
             .into_response();
     }
-    Json(serde_json::json!({"ok":true, "service":"coder-sync", "auth": match state.auth { AuthMode::Disabled=>"disabled", AuthMode::Dev=>"dev" }, "revision":state.revision})).into_response()
+    Json(serde_json::json!({"ok":true, "service":"coder-sync", "auth": match state.auth { AuthMode::Disabled=>"disabled", AuthMode::Dev=>"dev", AuthMode::OpenAgents=>"openagents" }, "revision":state.revision})).into_response()
 }
 
 async fn protected(State(state): State<Arc<StateData>>, request: Request) -> Response {
@@ -139,6 +143,13 @@ async fn protected(State(state): State<Arc<StateData>>, request: Request) -> Res
         .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
         .map(|(_, value)| value.trim().to_owned())
         .or(query_token);
+    if state.auth == AuthMode::OpenAgents && request.headers().contains_key(auth::ACCOUNT_HEADER) {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error":"not_found"})),
+        )
+            .into_response();
+    }
     if token
         .as_deref()
         .and_then(|t| authenticate(state.auth, t))

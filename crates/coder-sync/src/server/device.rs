@@ -635,6 +635,7 @@ pub async fn websocket(
     upgrade: std::result::Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Result<Response> {
     let who = identity(&state, &headers, &q, &id)?;
+    let lease = super::auth::socket_lease(&state, &headers, &q, &who);
     let upgrade =
         upgrade.map_err(|_| Failure(StatusCode::UPGRADE_REQUIRED, "expected_websocket"))?;
     let role = if q.get("role").is_some_and(|r| r == "host") {
@@ -690,6 +691,7 @@ pub async fn websocket(
                 rx,
                 closing,
                 waking,
+                lease,
             )
         }))
 }
@@ -720,6 +722,7 @@ async fn session(
     mut outbound: mpsc::Receiver<Vec<u8>>,
     mut closing: watch::Receiver<Option<(u16, &'static str)>>,
     mut waking: watch::Receiver<u64>,
+    lease: Option<super::auth::SocketLease>,
 ) {
     let mut inflight = HashSet::new();
     if role == Role::Host {
@@ -732,8 +735,11 @@ async fn session(
     let mut retry = tokio::time::interval(std::time::Duration::from_secs(5));
     retry.tick().await;
     let mut last_pulse = std::time::Instant::now();
+    let ended = super::auth::socket_ended(lease);
+    tokio::pin!(ended);
     loop {
         tokio::select! {
+            code=&mut ended=>{let reason=if code==4401{"Log in again to continue."}else{"Account service is unavailable. Try again."};let _=socket.send(Message::Close(Some(axum::extract::ws::CloseFrame{code,reason:reason.into()}))).await;break;},
             change=closing.changed()=>{
                 if change.is_err(){break;}let command=*closing.borrow();if let Some((code,reason))=command{let _=socket.send(Message::Close(Some(CloseFrame{code,reason:reason.into()}))).await;break;}
             },

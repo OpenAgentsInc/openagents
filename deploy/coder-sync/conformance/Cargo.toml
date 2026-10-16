@@ -6,6 +6,7 @@ rust-version = "1.98.1"
 publish = false
 
 [dependencies]
+openagents.workspace = true
 coder-sync = { package = "coder-sync-service", path = "..", features = ["server"] }
 zeron-sync.workspace = true
 zeron-client.workspace = true
@@ -60,3 +61,7 @@ path = "../tests/update_log.rs"
 [[test]]
 name = "push_rules"
 path = "../tests/push_rules.rs"
+
+[[test]]
+name = "auth"
+path = "../tests/auth.rs"

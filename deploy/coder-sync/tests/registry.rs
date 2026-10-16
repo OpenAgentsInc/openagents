@@ -37,6 +37,7 @@ impl Server {
             rooms: Rooms::default(),
             devices: Default::default(),
             auth: AuthMode::Dev,
+            accounts: None,
             revision: "registry-test".into(),
         });
         let task = tokio::spawn(async move {

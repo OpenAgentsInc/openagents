@@ -41,6 +41,7 @@ impl Server {
             rooms: Rooms::default(),
             devices: Default::default(),
             auth: AuthMode::Dev,
+            accounts: None,
             revision: "update-log-test".into(),
         });
         let task = tokio::spawn(async move {

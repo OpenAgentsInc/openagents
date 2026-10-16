@@ -51,7 +51,7 @@ dependencies. No application code is copied into that package.
 | `CODER_SYNC_DATABASE_URL` | Postgres connection string; Secret Manager in Cloud Run. Unix socket connections use Cloud Run's Cloud SQL attachment. |
 | `CODER_SYNC_BUCKET` | The private Cloud Storage bucket. Cloud Run uses its runtime service account through the metadata token endpoint. |
 | `CODER_SYNC_ENV` | `local`, `staging`, or `production`. Missing and unknown values refuse dev auth. |
-| `CODER_SYNC_AUTH` | `disabled` by default; all room requests are refused until account sign-in lands in #11848. `dev` also requires `--allow-dev-auth` and a local or staging environment. |
+| `CODER_SYNC_AUTH` | `openagents` by default. Each request checks an OpenAgents app session with the public account API. `disabled` refuses every room request. Local `dev` requires `--allow-dev-auth` and a local or staging environment. |
 | `CODER_SYNC_LISTEN` | Listen address; defaults to `0.0.0.0:$PORT`, or port 8080. |
 | `CODER_SYNC_REVISION` | The full deployed Git commit, returned by `/health`. |
 
@@ -111,10 +111,10 @@ compiled dependencies by digest and publishes new caches with
 commit-specific tags, preserving Artifact Registry tag immutability. It refuses
 a dirty checkout or one behind `origin/main`. Each Cloud Run
 service has `max-instances=1`, a 3,600-second timeout, and its own database
-secret and bucket. Staging enables explicit dev auth; production disables it.
+secret and bucket. Staging and production use OpenAgents accounts. Neither deployment enables dev auth.
 
 Read `/health` at each returned `run.app` URL. Confirm `revision` equals the
-pushed commit and production's `auth` is `disabled`. A room request with a dev
+pushed commit and production's `auth` is `openagents`. A room request with a dev
 bearer must return 401 in production. Do not send credentials to `/health`.
 
 ## Domain and owner steps
@@ -300,3 +300,22 @@ use modern checkpoints, and normal row uploads retain their 1 MiB limit.
 Pure registry notification rules cover completed turns, questions, errors,
 stale activity, first sync, titles, and preferences. They send no notifications
 and create no APNs transport; #11853 must use the OpenAgents push gateway.
+
+### OpenAgents account sessions
+
+Both clients reuse `coder-account` and the public OpenAgents SDK device-code
+flow from #11824. The account service verifies each HTTP request and WebSocket
+handshake. Live sockets recheck the session every 15 seconds and close after
+revocation, expiry, or an account-service outage. No successful authentication
+result is cached. The account ID returned by the service owns rooms and blobs;
+client-supplied account headers are discarded.
+
+`CODER_SYNC_ACCOUNT_API` and `CODER_SYNC_ACCOUNT_WEBSITE` default to
+`https://api.openagents.com/v1` and `https://openagents.com`. Remote deployments
+require HTTPS. Loopback HTTP is available for dedicated local test accounts.
+Run `scripts/coder-sync/test.sh --ios-auth-fixture CONFIG_PATH` to start the
+isolated account service, sync service, fake bucket, and temporary Postgres
+for the native sign-in test. The configuration file contains addresses and
+fixture IDs only. Stop that fixture with `POST /__fixture/stop` on its sync URL.
+The fixture does not contact GitHub, save a production credential, or open a
+browser.
