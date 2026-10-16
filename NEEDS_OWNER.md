@@ -1,3 +1,11 @@
+## Check login across iPhone updates (#11922)
+
+Install TestFlight build 1006 over the signed-in app without deleting it.
+Check that your account opens without signing in, then quit and reopen the app.
+Choose Sign Out and reopen it to confirm that sign-out stays in effect.
+The automated tests cover moved app storage, earlier mobile logins, and sign-out;
+this last check needs a physical iPhone update.
+
 ## Check Home dashboards on iPhone (#11912)
 
 Install OpenAgents TestFlight build 1005. With your GitHub-connected account,
