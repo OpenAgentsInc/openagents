@@ -158,3 +158,7 @@ cards, guide, and docs MCP. The optional POST body is deliberately invalid JSON;
 it contains no credential, model, state, or questions. Use `--output FILE` to
 save scrubbed results and `--browser-baseline FILE` to compare a previously
 saved public `vault/release.json` file list.
+
+The [System One qualification record](systemone-evidence.json) identifies its
+source, immutable image, staging/production checks, legacy compatibility,
+synthetic admission tests, and cleanup. No model work ran in the live probes.

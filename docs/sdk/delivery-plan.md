@@ -320,3 +320,7 @@ The initial #11818 inventory/composition milestone is implemented and deployed;
 [route coverage](public-routes.md) and [evidence](public-reference-evidence.json)
 record its scope. Incremental app-contract and System One schema work is tracked
 in #11857 and #11858. Uncovered domains do not block the Computers slice.
+
+The public System One composition and discovery work (#11858) is implemented
+and deployed; [qualification evidence](systemone-evidence.json) records the
+verified slice and its limits. Remaining application schema work is #11857.

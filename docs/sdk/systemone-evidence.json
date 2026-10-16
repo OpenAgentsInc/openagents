@@ -1,0 +1,118 @@
+{
+  "issue": 11858,
+  "qualified_at_utc": "2026-10-16T11:56:36.952023+00:00",
+  "implementation_commit": "40a2fe1716c9108489677331a49a07c397333df7",
+  "build_source_commit": "c90510bba18212aa29f32c2721757467248e0b49",
+  "contract": {
+    "owner": {
+      "path": "docs/decision-models/api/openapi.yaml",
+      "sha256": "325e852940b38e98f9bd1b00d80560f5916abbd7c02cf30cfa5bda60ffa5e732"
+    },
+    "public_slice": "docs/sdk/openapi.systemone.json",
+    "operation": "POST /v1/systemone",
+    "operation_id": "answerSystemOne",
+    "component_prefix": "SystemOne",
+    "scope": "Only this operation and its referenced components are composed. The standalone gateway retains its own catalog, classification, and job contracts."
+  },
+  "build": {
+    "id": "bafa88a1-94e1-4006-a1ca-309676d97735",
+    "status": "SUCCESS",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:16192086e8670a35cafdb312ffb9c7267238031ae0803832c4e502d2309d3de5",
+    "browser_asset_base": "sha256:b85d7920d98e6737161b78e325b58358d0ab403ad7637d5e3e6dc946dccb2d79",
+    "toolchain": "Rust 1.97.1, Linux native server",
+    "context_verification": "gcloud meta list-files-for-upload confirms docs/sdk/openapi.systemone.json is uploaded",
+    "initial_failure": {
+      "id": "016e4d5f-4e1b-4954-bfb6-1a5f0803c2fb",
+      "reason": "New embedded SDK schema was excluded by web.gcloudignore; fixed and rebuilt from committed source."
+    }
+  },
+  "deployment": {
+    "staging_revision": "openagents-web-1-staging-sysone-c90510bba1",
+    "production_revision": "coder-web-16192086e8-20261016115301",
+    "production_previous": "coder-web-b85d7920d9-20261016093310",
+    "same_image_digest": true,
+    "gateway_and_runtime_configuration": "preserved; only the web image changed",
+    "startup": "Production briefly returned 502 while the gateway started. Final checks passed after warm-up."
+  },
+  "checks": {
+    "rust_unique_passed": 48,
+    "rust_web_unique_passed": 27,
+    "rust_gateway_unique_passed": 21,
+    "python_passed": 8,
+    "regeneration": "generated slice matches the owning YAML; duplicate keys and external references rejected",
+    "formatting": "Changed Rust files and lib module declarations pass rustfmt; Python compile and git diff --check pass",
+    "documentation": "Updated local paths checked; new guide served as HTML, Markdown, and docs MCP",
+    "isolated_contracts": [
+      "Real gateway with synthetic registry/keys and stub backend returns the typed Noul result and receipt headers",
+      "Authority, unknown/unbound keys, shared-door isolation, workspace membership, bounds, quotas, retries, identity mismatch and backend refusals",
+      "Actual web router preserves body, bearer/workspace/attempt headers, Retry-After and response metadata on canonical and legacy addresses",
+      "Component conflicts and unreachable/nonpublic operation import are rejected; generic standalone discovery keeps its separate scope"
+    ]
+  },
+  "staging": {
+    "at_utc": "2026-10-16T11:52:24.962737+00:00",
+    "api": "https://staging.openagents.com",
+    "website": "https://staging.openagents.com",
+    "schema_sha256": "38426b1ee006aae27984a97715b08ffdd6d0f416d9b3b92f7dbad13ab5978308",
+    "operations": 81,
+    "systemone_slice": "matches owning generated operations and components",
+    "discovery": "agent card, API catalog, MCP card, llms.txt and guide passed",
+    "unpublished_operations": "classification and jobs absent",
+    "malformed_calls": [
+      {
+        "url": "https://staging.openagents.com/v1/systemone",
+        "status": 400,
+        "code": "invalid_request"
+      }
+    ],
+    "browser_assets": "unchanged"
+  },
+  "production": {
+    "at_utc": "2026-10-16T11:54:20.478364+00:00",
+    "api": "https://api.openagents.com",
+    "website": "https://openagents.com",
+    "schema_sha256": "a5713fc62829ae4513cf728e460a5f27615d6d4bf558b6ee2194f87109d4bccb",
+    "operations": 81,
+    "systemone_slice": "matches owning generated operations and components",
+    "discovery": "agent card, API catalog, MCP card, llms.txt and guide passed",
+    "unpublished_operations": "classification and jobs absent",
+    "malformed_calls": [
+      {
+        "url": "https://api.openagents.com/v1/systemone",
+        "status": 400,
+        "code": "invalid_request"
+      },
+      {
+        "url": "https://openagents.com/v1/systemone",
+        "status": 400,
+        "code": "invalid_request"
+      },
+      {
+        "url": "https://openagents.com/api/v1/systemone",
+        "status": 400,
+        "code": "invalid_request"
+      }
+    ],
+    "browser_assets": "unchanged"
+  },
+  "compatibility": [
+    "Before and after deployment, malformed JSON returns 400 invalid_request on all checked System One addresses",
+    "Canonical and all three website schema aliases return identical paths and one HTTPS server; deprecated API addresses retain headers",
+    "No gateway admission or settlement implementation changed; source contract now describes supported account/workspace and policy-gated anonymous access",
+    "Typed refusal codes are examples rather than a closed enum, preserving backend-specific errors",
+    "Browser release file hashes match the previously deployed image on staging and production"
+  ],
+  "limitations": [
+    "Valid decision calls are qualified with synthetic keys and stub backends; no paid or real-model inference ran against production.",
+    "The public inference catalog and standalone decision door catalog keep distinct shapes. Classification and jobs remain outside the public API-front reference."
+  ],
+  "cleanup": {
+    "owner_data_or_credentials_used": false,
+    "accounts_sessions_grants_chats_projects_computers_tasks_created": 0,
+    "valid_live_inference_requests": 0,
+    "live_post_bodies": "Only malformed JSON for routing/refusal checks, and read-only docs MCP calls",
+    "cloud_workers": "Builds finished; no test machine, host, or persistent worker created",
+    "scratch_source_export": "Removed after successful image build; scrubbed probes, build recipe and source identity retained in agent scratch",
+    "binary_or_package_release": "None; frozen Coder programs remain unchanged"
+  }
+}
