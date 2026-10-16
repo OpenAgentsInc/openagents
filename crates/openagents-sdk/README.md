@@ -152,6 +152,17 @@ command or key. `Error::code`, `status`, `refusal`, and `retry_after` expose
 bounded server information without including private error messages in logs.
 No payment or automatic x402 spending occurs.
 
+HTTP 402 responses return `Error::PaymentRequired` (including the Computers
+error type). `payment_required().header()` exposes one unmodified
+`PAYMENT-REQUIRED` text header up to 64 KiB, or a typed reason for a missing,
+repeated, oversized, or non-text header. The header is untrusted; the SDK does
+not decode or validate its offer, contact its URLs, or send a payment. Debug
+and display output omit the header and response body. Computers does not retry
+402; an earlier lost mutation response still returns `Uncertain` with the
+challenge available through the same accessor. These new error variants require
+an additional arm in exhaustive matches. Automatic payment remains deferred
+under [#11822](https://github.com/OpenAgentsInc/openagents/issues/11822).
+
 Configure `Client::with_timeouts` for connect and per-request deadlines,
 then `Computers::with_operation_timeout` and `with_retries` for a bounded
 operation. Reads and keyed creates/commands retry eligible failures with

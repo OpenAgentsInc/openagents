@@ -85,7 +85,8 @@ impl Deployment {
     }
 }
 
-/// Errors never retain response bodies, credential values, or request URLs.
+/// Error diagnostics omit response bodies, credential values, request URLs,
+/// and the HTTP 402 headers available through the explicit accessor.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Error {
     InvalidDeployment,
@@ -112,6 +113,7 @@ pub enum Error {
     InvalidReference,
     TooLarge,
     Redirect,
+    PaymentRequired(crate::PaymentRequired),
     RateLimited {
         retry_after: Option<Duration>,
     },
@@ -122,6 +124,16 @@ pub enum Error {
         status: u16,
         code: Option<&'static str>,
     },
+}
+
+impl Error {
+    pub fn payment_required(&self) -> Option<&crate::PaymentRequired> {
+        match self {
+            Self::PaymentRequired(challenge) => Some(challenge),
+            Self::UncertainLogin(cause) => cause.payment_required(),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Error {
@@ -147,6 +159,7 @@ impl fmt::Display for Error {
             Self::InvalidResponse => "That response couldn't be opened. Try again.",
             Self::TooLarge => "The response is too large to open.",
             Self::Redirect => "Check the website address and try again.",
+            Self::PaymentRequired(_) => "Payment is required. No payment was sent.",
             Self::RateLimited { .. } => "Too many requests. Try again later.",
             Self::Unavailable { .. } => "The service is unavailable. Try again later.",
             Self::Refused { .. } => "The service could not complete this request.",
@@ -344,6 +357,11 @@ impl Client {
             });
         if status.is_redirection() {
             return Err(Error::Redirect);
+        }
+        if status.as_u16() == 402 {
+            return Err(Error::PaymentRequired(
+                crate::PaymentRequired::from_headers(response.headers()),
+            ));
         }
         if status.as_u16() == 429 {
             return Err(Error::RateLimited { retry_after });

@@ -217,6 +217,7 @@ impl RetryPolicy {
 pub enum Refusal {
     Authentication,
     AccessDenied,
+    PaymentRequired,
     Missing,
     Quota,
     RateLimited,
@@ -233,6 +234,7 @@ pub enum Error {
     InvalidResponse,
     TooLarge,
     Redirect,
+    PaymentRequired(crate::PaymentRequired),
     Cancelled,
     WaitTimedOut,
     Unsupported,
@@ -257,6 +259,7 @@ impl Error {
     pub fn refusal(&self) -> Option<Refusal> {
         match self {
             Self::Unsupported => Some(Refusal::Unsupported),
+            Self::PaymentRequired(_) => Some(Refusal::PaymentRequired),
             Self::Uncertain { cause, .. } => cause.refusal(),
             Self::Api { status, code, .. } => Some(match (*status, code.as_deref()) {
                 (_, Some("quota_exhausted")) => Refusal::Quota,
@@ -275,6 +278,7 @@ impl Error {
     pub fn status(&self) -> Option<u16> {
         match self {
             Self::Api { status, .. } => Some(*status),
+            Self::PaymentRequired(_) => Some(402),
             Self::Uncertain { cause, .. } => cause.status(),
             _ => None,
         }
@@ -292,6 +296,18 @@ impl Error {
             Self::Uncertain { cause, .. } => cause.retry_after(),
             _ => None,
         }
+    }
+    pub fn payment_required(&self) -> Option<&crate::PaymentRequired> {
+        match self {
+            Self::PaymentRequired(challenge) => Some(challenge),
+            Self::Session(error) => error.payment_required(),
+            Self::Uncertain { cause, .. } => cause.payment_required(),
+            _ => None,
+        }
+    }
+    fn definite_refusal(&self) -> bool {
+        matches!(self, Self::PaymentRequired(_))
+            || matches!(self, Self::Api { status, .. } if (400..500).contains(status) && *status != 408)
     }
     fn retryable(&self) -> bool {
         matches!(
@@ -314,6 +330,7 @@ impl fmt::Display for Error {
             Self::InvalidResponse => "That response couldn't be opened.",
             Self::TooLarge => "The file or output is too large.",
             Self::Redirect => "Check the website address and try again.",
+            Self::PaymentRequired(_) => "Payment is required. No payment was sent.",
             Self::Cancelled => "Canceled.",
             Self::WaitTimedOut => "The wait ended. Check the computer or command again.",
             Self::Unsupported => "This action isn't available for this computer.",
@@ -346,6 +363,7 @@ impl From<crate::Error> for Error {
         match value {
             crate::Error::TooLarge => Self::TooLarge,
             crate::Error::Network { timeout } => Self::Network { timeout },
+            crate::Error::PaymentRequired(challenge) => Self::PaymentRequired(challenge),
             e => Self::Session(e),
         }
     }

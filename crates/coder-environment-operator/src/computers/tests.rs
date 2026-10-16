@@ -26,6 +26,8 @@ struct Fake {
     image_response: Mutex<Option<Value>>,
     lost_create: AtomicBool,
     lost_create_all: AtomicBool,
+    payment_required: AtomicBool,
+    refused_creates: AtomicUsize,
     lost_command: AtomicBool,
     lost_delete: AtomicBool,
     gap: AtomicBool,
@@ -74,6 +76,15 @@ async fn serve(State(fake): State<Arc<Fake>>, request: Request) -> Response {
         return axum::http::StatusCode::FORBIDDEN.into_response();
     }
     if path == "/v1/computers" && method == "POST" {
+        if fake.payment_required.load(Ordering::SeqCst) {
+            fake.refused_creates.fetch_add(1, Ordering::SeqCst);
+            return (
+                axum::http::StatusCode::PAYMENT_REQUIRED,
+                [("payment-required", "private-payment-fixture")],
+                Json(json!({"error":{"code":"payment_required"}})),
+            )
+                .into_response();
+        }
         let mut first = fake.create.lock().unwrap();
         if let Some(saved) = first.as_ref() {
             assert_eq!(saved, &body)
@@ -255,6 +266,19 @@ impl Fixture {
         }
     }
 }
+#[tokio::test]
+async fn a_payment_challenge_is_refused_without_allocation_or_an_automatic_retry() {
+    let f = Fixture::new().await;
+    f.fake.payment_required.store(true, Ordering::SeqCst);
+    let result = f.provider().create(&f.c, "create").await;
+    assert!(
+        matches!(&result, Outcome::Failed { reason } if !reason.contains("private-payment-fixture"))
+    );
+    assert_eq!(f.fake.refused_creates.load(Ordering::SeqCst), 1);
+    assert_eq!(f.fake.allocations.load(Ordering::SeqCst), 0);
+    assert_eq!(f.fake.executions.load(Ordering::SeqCst), 0);
+}
+
 #[tokio::test]
 async fn lost_replies_and_restart_keep_the_same_allocation_command_and_cleanup() {
     let f = Fixture::new().await;

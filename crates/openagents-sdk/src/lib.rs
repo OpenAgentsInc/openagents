@@ -8,6 +8,7 @@ pub mod computers;
 pub mod dashboard;
 pub mod generated;
 pub mod history;
+mod payment;
 mod transport;
 
 pub use auth::{
@@ -19,6 +20,7 @@ pub use history::{
     HistoryIndex, HistoryPage, HistoryProject, MessageRole, ProjectReader, SavedCapture, SavedFile,
     SavedMessage, ToolDetail, ToolStatus, TranscriptPage, TranscriptReader,
 };
+pub use payment::{MAX_PAYMENT_REQUIRED_HEADER_BYTES, PaymentRequired, PaymentRequiredHeaderError};
 pub use tokio_util::sync::CancellationToken;
 pub use transport::{Client, Deployment, Error};
 

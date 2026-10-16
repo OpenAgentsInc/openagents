@@ -20,7 +20,8 @@ fn unknown<T>(_: impl std::fmt::Display) -> Outcome<T> {
 }
 fn api_error<T>(e: ApiError) -> Outcome<T> {
     match e {
-        ApiError::Api {
+        ApiError::PaymentRequired(_)
+        | ApiError::Api {
             status: 400..=499, ..
         } if !matches!(
             e,

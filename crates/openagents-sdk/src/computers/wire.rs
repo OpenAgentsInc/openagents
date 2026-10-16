@@ -142,6 +142,11 @@ impl Computers<'_> {
                 if (300..400).contains(&status) {
                     return Err(Error::Redirect);
                 }
+                if status == 402 {
+                    return Err(Error::PaymentRequired(
+                        crate::PaymentRequired::from_headers(response.headers()),
+                    ));
+                }
                 let reply_headers = response.headers().clone();
                 let limit = if plan.operation.success.contains(&status) {
                     plan.operation.max_response_bytes
@@ -182,9 +187,7 @@ impl Computers<'_> {
                 Ok(value) => break Ok(value),
                 Err(error) => error,
             };
-            if mutation
-                && !matches!(&error, Error::Api {status, ..} if (400..500).contains(status) && *status != 408)
-            {
+            if mutation && !error.definite_refusal() {
                 ambiguous_attempt = true;
             }
             if !retry || !error.retryable() || attempt >= self.retries.max_retries {
@@ -207,8 +210,16 @@ impl Computers<'_> {
             attempt += 1;
         };
         result.map_err(|error| {
-            let refused=matches!(&error,Error::Api{status,..} if (400..500).contains(status) && *status!=408);
-            if mutation && (ambiguous_attempt || !refused) {Error::Uncertain {operation:plan.operation.id,key,cause:Box::new(error)}} else {error}
+            let refused = error.definite_refusal();
+            if mutation && (ambiguous_attempt || !refused) {
+                Error::Uncertain {
+                    operation: plan.operation.id,
+                    key,
+                    cause: Box::new(error),
+                }
+            } else {
+                error
+            }
         })
     }
 }
