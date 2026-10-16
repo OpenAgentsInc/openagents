@@ -392,3 +392,12 @@ all be checked before calling recovery successful.
 This probe accepts no external signing requests. The actual signet
 service, current-chain restoration, attested client channel, and public
 tree runs remain #11789, #11792, and #11793.
+
+## Signet service
+
+The separate [TDX service](server/README.md) validates signet with Core inside
+the guest and uses the existing predicate, mirror receipts, and pre-signed
+exits. Its [client](client/README.md) verifies a fresh challenge bound to the
+actual TLS certificate before submitting an operator-signed request. The
+research CLI keeps its private test keys outside the repository. A service
+restart creates a fresh key; the old tree exits through its saved unroll.
