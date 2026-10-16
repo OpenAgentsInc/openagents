@@ -1273,6 +1273,13 @@ impl Store {
             let removed = self
                 .delete(&chat.owner, &chat.id, &loaded.generation)
                 .await?;
+            if removed
+                && crate::computer_runs::purge(self, &chat.owner, &chat.id)
+                    .await
+                    .is_err()
+            {
+                eprintln!("openagents-web: computer task records could not be deleted");
+            }
             // The chat's files go with it (#11174).
             if removed
                 && let Err(error) = crate::chat_files::purge(self, &chat.owner, &chat.id).await

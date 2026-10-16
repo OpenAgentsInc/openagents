@@ -263,7 +263,7 @@ pub struct Inspection {
 
 /// One command, identified before it is started. A driver runs a given
 /// `id` at most once on a computer.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CommandSpec {
     pub id: String,
@@ -278,6 +278,14 @@ pub struct CommandSpec {
     pub timeout_seconds: u64,
     /// Digest of everything above.
     pub digest: String,
+}
+impl std::fmt::Debug for CommandSpec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CommandSpec")
+            .field("id", &self.id)
+            .field("credential_names", &self.credential_names)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Bytes of each output stream already delivered.

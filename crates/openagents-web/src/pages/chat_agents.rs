@@ -858,6 +858,18 @@ async fn stop_run(app: &App, headers: &HeaderMap, owner: &str, id: &str, run: &s
             Err(_) => "That didn't go through. Try again.".to_owned(),
         };
     }
+    if crate::computers::split_task_id(run).is_some() && super::work::links(app, headers).await {
+        if let Err(message) = crate::computer_runs::authorize(app, headers, owner).await {
+            return message;
+        }
+        match crate::computer_runs::cancel(app, owner, run).await {
+            Ok(true) => {
+                return "Stopping it. Its result joins the chat when it has stopped.".into();
+            }
+            Err(message) => return message,
+            Ok(false) => {}
+        }
+    }
     // A turn on the chat's own computer stops through oa-computers (#11624).
     if let Some((computer, turn)) = crate::computers::split_task_id(run)
         && let Some(client) = crate::computers::client()
@@ -1359,7 +1371,7 @@ async fn deliver(app: &App, headers: &HeaderMap, chat: &Conversation) -> Option<
                 })
                 .await;
                 if recorded.is_err() {
-                    super::work::abandon(app, &task);
+                    super::work::abandon(app, &chat.owner, &task);
                     lines.push(format!("{} couldn't start again. Try again.", agent.name));
                 } else {
                     lines.push(format!("{} is working on your message.", agent.name));

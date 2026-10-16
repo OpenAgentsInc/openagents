@@ -202,6 +202,7 @@ impl<D: Driver + Clone + 'static> Reconciler<D> {
         let result = if let Some(t) = active_command {
             crate::commands::run(
                 &self.store,
+                &self.turns,
                 &p,
                 &lease,
                 &e,

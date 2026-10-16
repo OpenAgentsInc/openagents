@@ -42,6 +42,7 @@ mod coder_sync;
 mod components;
 mod composer;
 mod composer_row;
+mod computer_runs;
 pub mod computers;
 mod computers_api;
 pub mod connections;

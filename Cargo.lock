@@ -12020,6 +12020,7 @@ dependencies = [
  "oa-vault",
  "oa-vault-web",
  "openagents-chat",
+ "openagents-sdk",
  "openagents-ui",
  "openagents-wallet",
  "openui-lang",

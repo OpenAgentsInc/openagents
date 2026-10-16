@@ -238,11 +238,29 @@ impl Choices {
             .find(|env| env.repository.eq_ignore_ascii_case(repository))
     }
 
+    pub(crate) fn chosen_environment(
+        &self,
+        project: Option<&Project>,
+        id: &str,
+    ) -> Option<&Environment> {
+        match project {
+            Some(project) => self.environment(project).filter(|env| env.id == id),
+            None => self.environments.iter().find(|env| env.id == id),
+        }
+    }
+
     /// Where a message can run with `project` picked, Chat first.
     pub(crate) fn targets(&self, project: Option<&Project>) -> Vec<(Target, String)> {
         let mut targets = vec![(Target::Chat, HERE.to_owned())];
         if let Some(env) = project.and_then(|project| self.environment(project)) {
             targets.push((Target::Claude(env.id.clone()), env.label()));
+        } else if project.is_none() {
+            targets.extend(self.environments.iter().map(|env| {
+                (
+                    Target::Claude(env.id.clone()),
+                    format!("Claude Code in {} v{}", env.repository, env.version),
+                )
+            }));
         }
         if self.solver && project.and_then(Project::repository).is_some() {
             targets.push((Target::Solver, crate::work_runs::SOLVER.to_owned()));
@@ -270,10 +288,11 @@ impl Choices {
             }
         });
         let asked = Target::parse(&wanted.target);
-        let target = if self
-            .targets(project.as_ref())
-            .iter()
-            .any(|(target, _)| *target == asked)
+        let target = if (wanted.project.trim().is_empty() || project.is_some())
+            && self
+                .targets(project.as_ref())
+                .iter()
+                .any(|(target, _)| *target == asked)
         {
             asked
         } else {
@@ -522,7 +541,7 @@ pub(crate) fn row(
                             .environments
                             .iter()
                             .find(|env| env.id == *id)
-                            .map_or_else(|| "Claude Code".to_owned(), |env| format!("Claude Code v{}", env.version)),
+                            .map_or_else(|| "Claude Code".to_owned(), |env| if picked.project.is_none() { format!("Claude Code in {} v{}",env.repository,env.version) } else { format!("Claude Code v{}", env.version) }),
                         _ => targets
                             .iter()
                             .find(|(target, _)| *target == picked.target)
@@ -868,7 +887,7 @@ fn target_panel(choices: &Choices, picked: &Picked, with: &With<'_>) -> Markup {
                     label,
                     Some(match target {
                         Target::Chat => "Answers here. Nothing runs.",
-                        Target::Claude(_) => "Runs on a fresh computer with this repository. Its answer shows in this chat.",
+                        Target::Claude(_) => "Runs in this saved environment. Its answer shows in this chat.",
                         Target::Coder(_) => "Starts a new chat with Coder on your computer, with its files and tools.",
                         Target::Solver => "Name an issue: a computer of its own solves it and opens a pull request. Its progress and the pull request show in this chat.",
                     }),
@@ -881,7 +900,7 @@ fn target_panel(choices: &Choices, picked: &Picked, with: &With<'_>) -> Markup {
                     small { "Not online now. Open Coder on it with /sync on." }
                 }
             }
-            @if choices.account && choices.computers.is_empty() {
+            @if choices.account && choices.computers.is_empty() && choices.environments.is_empty() {
                 p class="oa-composer-note" {
                     "None of your computers is online. Open Coder on your computer, logged in, with "
                     code { "/sync on" }

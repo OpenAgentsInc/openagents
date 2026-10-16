@@ -583,6 +583,11 @@ async fn archive(
     .await;
     match result {
         Ok(_) => {
+            if archive && crate::computers::client().is_some() && app.config.cloud.is_some() {
+                if let Err(_) = crate::computer_runs::archive(&app, &headers, &owner, &id).await {
+                    eprintln!("openagents-web: archived chat computer cleanup failed");
+                }
+            }
             let notice = archive.then_some(id.as_str());
             changed(&app, &headers, &owner, &form, notice, html! {}).await
         }

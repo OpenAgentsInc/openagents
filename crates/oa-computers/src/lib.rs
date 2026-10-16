@@ -8,6 +8,7 @@
 //! schema of the account database. See `docs/cloud/computers.md`.
 
 pub mod api;
+pub mod command_credentials;
 pub mod commands;
 pub mod db;
 pub mod files;

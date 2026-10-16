@@ -39,7 +39,7 @@ impl std::fmt::Debug for Request {
             .finish_non_exhaustive()
     }
 }
-pub const SCHEMA_SHA256: &str = "05ab6abb036ee51cb4a586a34befb1774c4a940f3bc0632d3ce3ed58c5879f9c";
+pub const SCHEMA_SHA256: &str = "650743146cca456e223f4230f2c50b41d975282f0266bada524aa15922d94ce7";
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct AppAccount {
     #[serde(rename = "admin", default, skip_serializing_if = "Option::is_none")]
@@ -373,6 +373,12 @@ impl std::fmt::Debug for AppComputerListComputersItem {
 pub struct AppCreateCommand {
     #[serde(rename = "command")]
     pub command: String,
+    #[serde(
+        rename = "credential_ref",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub credential_ref: Option<String>,
     #[serde(rename = "cwd", default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
     #[serde(rename = "env", default, skip_serializing_if = "Option::is_none")]
