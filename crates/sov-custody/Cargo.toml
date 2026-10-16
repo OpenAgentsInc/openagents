@@ -1,0 +1,20 @@
+[package]
+name = "sov-custody"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "NIP-SOV remote custody over NIP-46 and persistent guardian quorum admission for exact actions."
+
+[dependencies]
+nostr = { path = "../nostr" }
+workspace-host = { path = "../workspace-host" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

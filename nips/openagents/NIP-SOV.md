@@ -2,7 +2,10 @@
 
 `draft` `optional` — v1, 2026-09-26. **Partly implemented:** `openagents sov` validates
 profiles and runs a finite local lifecycle with explicit local-key custody.
-Treasury, guardians, remote custody, and portable recovery remain unfinished
+[`sov-custody`](../../crates/sov-custody/README.md) implements NIP-46 remote
+custody and guardian quorum admission (see the
+[Rust custody profile](#rust-custody-profile)). Treasury, hardware and
+threshold custody, and portable recovery remain unfinished
 ([backlog](https://github.com/OpenAgentsInc/openagents/issues/11729)).
 The [shared contracts](contracts.md) are normative. SOV composes durable agent
 identity, bounded initiative, private state, key custody, and economic activity
@@ -277,7 +280,9 @@ records attributable acceptance/refusal and evidence references without
 recording secret material or decrypted private content.
 
 Local custody, remote custody, hardware-protected storage, and threshold
-custody are possible integration profiles. None is implemented by this draft.
+custody are possible integration profiles. Local custody runs in
+`openagents sov`, and NIP-46 remote custody in `sov-custody`. Hardware and
+threshold custody are not implemented and refuse.
 A profile claiming independent control must identify the actual parties and
 every quorum and recovery path. A dealer that first creates a whole key cannot
 claim the key never existed. Two shares under one administrator are not two
@@ -524,3 +529,21 @@ this work. Generic Nostr signing, private envelope support, local scheduling,
 an existing agent loop, and offline invoice validation do not establish SOV
 conformance. Publish only the roles supported by retained evidence, with
 unimplemented custody, lifecycle, and payment roles stated explicitly.
+
+## Rust custody profile
+
+The [custody schemas](schemas/sovereign-custody.v1.json) describe the guardian
+policy above, the POL approval request and decision bodies, and these
+supported records:
+
+| Record | Fields |
+| --- | --- |
+| `openagents.sovereign-custody-policy.v1` | `agent`, `authority`, `revision`, `previous`, `mechanism` (`nip46`; `local`, `hardware`, and `threshold` refuse here), `signer` (remote-signer key), `transport` (client transport key), `purposes` (`sign`, `nip44_encrypt`, `nip44_decrypt`), `callers`, `recovery` (pubkey or null), `exportable` (false for `nip46`), `starts_at`, `expires_at`. |
+| `openagents.sovereign-action-preconditions.v1` | `profile`, `guardian_policy`, `generation`, and `input`: the exact preconditions a gated POL action names. |
+| `openagents.sovereign-custody-request.v1` | `agent`, `profile`, `policy`, `guardian` (current guardian policy or null), `requester`, `generation`, `purpose`, `operation`, `input` (the complete unsigned event, or `{peer, text, recipient}` for NIP-44), `action` (the approved POL action or null), `nonce`, `deadline`. |
+| `openagents.sovereign-custody-receipt.v1` | `request`, `status` (`completed`, `refused`, or `unknown`), `result` (signed event or ciphertext; never plaintext), `quorum`, `evidence`, `reason`. |
+| `openagents.sovereign-quorum-admission.v1` | `action`, `policy`, the counted `approvals`, `generation`, and `consumed_at`. |
+
+Idempotency is `(agent, requester, nonce)` with the request digest. A gated
+operation consumes its quorum atomically, together with the dispatch intent,
+before the signer is called.
