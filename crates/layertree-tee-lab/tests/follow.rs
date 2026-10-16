@@ -20,12 +20,13 @@ use layertree_tee_lab::follow::{ChainSource, Follower, RecordSource, anchored_ha
 use layertree_tee_lab::light::{LightError, Member};
 use layertree_tee_lab::rules::{Op, TreeState};
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct MemChain {
     blocks: Vec<Block>,
     filters: Vec<Vec<u8>>,
     /// Every output ever created, for the filters' input scripts.
     coins: HashMap<OutPoint, ScriptBuf>,
+    fail_height: Option<u32>,
 }
 
 impl MemChain {
@@ -88,6 +89,9 @@ impl ChainSource for MemChain {
         Ok(self.blocks.len() as u32 - 1)
     }
     fn block_hash(&mut self, height: u32) -> Result<BlockHash, String> {
+        if self.fail_height == Some(height) {
+            return Err("test source unavailable".into());
+        }
         Ok(self.blocks[height as usize].block_hash())
     }
     fn filter(&mut self, hash: &BlockHash) -> Result<Vec<u8>, String> {
@@ -107,6 +111,7 @@ impl ChainSource for MemChain {
 struct Mirror {
     records: HashMap<[u8; 32], Vec<u8>>,
     unrolls: HashMap<OutPoint, Vec<u8>>,
+    alternates: HashMap<OutPoint, Vec<Vec<u8>>>,
 }
 
 impl RecordSource for Mirror {
@@ -115,6 +120,12 @@ impl RecordSource for Mirror {
     }
     fn unroll(&mut self, outpoint: &OutPoint) -> Option<Vec<u8>> {
         self.unrolls.get(outpoint).cloned()
+    }
+    fn unroll_candidates(&mut self, outpoint: &OutPoint) -> Vec<Vec<u8>> {
+        self.unroll(outpoint)
+            .into_iter()
+            .chain(self.alternates.get(outpoint).cloned().unwrap_or_default())
+            .collect()
     }
 }
 
@@ -126,7 +137,10 @@ struct Lab {
 
 impl Lab {
     fn new() -> Lab {
-        let w = World::new(6, 128, None);
+        Self::with_radix(128)
+    }
+    fn with_radix(radix: usize) -> Lab {
+        let w = World::new(6, radix, None);
         let st = w.enclave.state().unwrap().clone();
         let mut chain = MemChain::default();
         // Block 0 creates the tree output.
@@ -302,4 +316,238 @@ fn a_mined_theft_stops_every_follower_in_its_block() {
         lab.empty_block();
         assert_eq!(lab.poll(f), vec![]);
     }
+}
+
+#[test]
+fn late_record_replays_later_blocks_for_every_follower() {
+    let mut lab = Lab::new();
+    let mut fs = vec![lab.follower(0), lab.follower(2), lab.follower(4)];
+    let (first, h1) = lab.step(Op::Refresh, false, true);
+    for f in &mut fs {
+        assert!(lab.poll(f).is_empty());
+    }
+    let (_, h2) = lab.step(Op::Refresh, true, true);
+    let (_, h3) = lab.step(Op::Refresh, true, true);
+    for f in &mut fs {
+        assert_eq!(lab.poll(f), vec![(h3, Err(LightError::RecordMissing))]);
+    }
+    lab.publish(&first, true, false);
+    for f in &mut fs {
+        assert_eq!(lab.poll(f), vec![(h1, Ok(())), (h2, Ok(())), (h3, Ok(()))]);
+        lab.check_path(f);
+        assert!(f.unroll.is_some());
+        assert!(lab.poll(f).is_empty());
+    }
+}
+
+#[test]
+fn late_record_replays_a_child_spend_in_the_same_block() {
+    let mut lab = Lab::new();
+    let mut f = lab.follower(2);
+    let old = lab.w.enclave.state().unwrap().clone();
+    let first = lab.w.step(Op::Refresh).unwrap();
+    let middle = lab.w.enclave.state().unwrap().clone();
+    let second = lab.w.step(Op::Refresh).unwrap();
+    let params = lab.w.params();
+    let h = lab.chain.push(
+        vec![first.tx.clone(), second.tx.clone()],
+        &[
+            (old.outpoint, old.txout(&lab.w.secp, &params)),
+            (middle.outpoint, middle.txout(&lab.w.secp, &params)),
+        ],
+    );
+    lab.publish(&first, false, true);
+    lab.publish(&second, true, true);
+    assert!(lab.poll(&mut f).is_empty());
+    lab.publish(&first, true, false);
+    assert_eq!(lab.poll(&mut f), vec![(h, Ok(())), (h, Ok(()))]);
+    lab.check_path(&f);
+}
+
+#[test]
+fn late_record_does_not_hide_a_later_mined_theft() {
+    let mut lab = Lab::new();
+    let mut f = lab.follower(2);
+    let (first, h1) = lab.step(Op::Refresh, false, true);
+    assert!(lab.poll(&mut f).is_empty());
+    lab.w.enclave.break_for_test();
+    let op = Op::Refresh;
+    let before = lab.w.enclave.state().unwrap().clone();
+    let (mut tx, prevouts, sigs) = lab.w.build(&op);
+    tx.output[0].value = Amount::from_sat(tx.output[0].value.to_sat() - 50_000);
+    let theft = lab.w.enclave.authorize(tx, &prevouts, &op, &sigs).unwrap();
+    let prev = before.txout(&lab.w.secp, &lab.w.params());
+    let h2 = lab
+        .chain
+        .push(vec![theft.tx.clone()], &[(before.outpoint, prev)]);
+    lab.publish(&theft, true, true);
+    assert!(lab.poll(&mut f).is_empty());
+    lab.empty_block();
+    let observed_tip = lab.empty_block();
+    lab.publish(&first, true, false);
+    assert_eq!(
+        lab.poll(&mut f),
+        vec![(h1, Ok(())), (h2, Err(LightError::OutputMismatch))]
+    );
+    assert_eq!(f.stopped, Some(LightError::OutputMismatch));
+    assert_eq!(f.observed_tip, observed_tip);
+    assert!(f.observed_tip > h2 + 1);
+}
+
+#[test]
+fn failed_poll_does_not_lose_earlier_observations() {
+    let mut lab = Lab::new();
+    let mut f = lab.follower(2);
+    let original = f.member.outpoint;
+    let (_, h) = lab.step(Op::Refresh, true, true);
+    let later = lab.empty_block();
+    lab.chain.fail_height = Some(later);
+    let secp = lab.w.secp.clone();
+    assert!(f.poll(&secp, &mut lab.chain, &mut lab.mirror).is_err());
+    assert_eq!(f.member.outpoint, original);
+    assert_eq!(f.scanned, 0);
+    lab.chain.fail_height = None;
+    assert_eq!(lab.poll(&mut f), vec![(h, Ok(()))]);
+    lab.check_path(&f);
+}
+
+#[test]
+fn changed_or_shortened_chain_requires_replay_before_following_more() {
+    use layertree_tee_lab::follow::PollError;
+    let mut lab = Lab::new();
+    let mut f = lab.follower(2);
+    let (_, h) = lab.step(Op::Refresh, true, true);
+    lab.poll(&mut f);
+    let outpoint = f.member.outpoint;
+    lab.chain.blocks[h as usize].header.nonce += 1;
+    let secp = lab.w.secp.clone();
+    assert_eq!(
+        f.poll(&secp, &mut lab.chain, &mut lab.mirror),
+        Err(PollError::Reorganized { height: h })
+    );
+    assert_eq!(f.member.outpoint, outpoint);
+    assert!(f.stopped.is_none());
+    lab.chain.blocks.truncate(h as usize);
+    lab.chain.filters.truncate(h as usize);
+    assert_eq!(
+        f.poll(&secp, &mut lab.chain, &mut lab.mirror),
+        Err(PollError::Reorganized { height: h })
+    );
+}
+
+#[test]
+fn a_good_unroll_from_another_mirror_is_used_when_the_first_is_wrong() {
+    let mut lab = Lab::new();
+    let mut f = lab.follower(2);
+    let (signed, h) = lab.step(Op::Refresh, true, true);
+    let outpoint = lab.w.enclave.state().unwrap().outpoint;
+    lab.mirror
+        .unrolls
+        .insert(outpoint, lab.w.genesis_unroll.encode());
+    lab.mirror
+        .alternates
+        .insert(outpoint, vec![signed.unroll.unwrap().encode()]);
+    assert_eq!(lab.poll(&mut f), vec![(h, Ok(()))]);
+    assert_eq!(f.unroll.as_ref().unwrap().tree_outpoint, outpoint);
+}
+
+#[test]
+fn a_held_one_or_multi_level_unroll_pays_the_member_without_record_alarms() {
+    use layertree_tee_lab::output::TreeOutput;
+    use layertree_tee_lab::unroll::verify_branch;
+    for radix in [128, 2] {
+        let mut lab = Lab::with_radix(radix);
+        let mut f = lab.follower(2);
+        let package = f.unroll.clone().unwrap();
+        let initial = lab.w.enclave.state().unwrap().clone();
+        let branch = verify_branch(
+            &lab.w.secp,
+            &f.params,
+            TreeOutput {
+                root_hash: f.member.root.hash,
+                unroll_key: f.member.unroll_key,
+            },
+            f.member.outpoint,
+            f.member.root.sum,
+            &package,
+            &f.member.leaf.unwrap(),
+        )
+        .unwrap();
+        if radix == 2 {
+            assert!(branch.len() > 1);
+        }
+        let length = branch.len();
+        for (i, tx) in branch.into_iter().enumerate() {
+            let prev = tx.input[0].previous_output;
+            let coin = if i == 0 {
+                initial.txout(&lab.w.secp, &f.params)
+            } else {
+                package
+                    .txs
+                    .iter()
+                    .find(|t| t.compute_txid() == prev.txid)
+                    .unwrap()
+                    .output[prev.vout as usize]
+                    .clone()
+            };
+            let h = lab.chain.push(vec![tx], &[(prev, coin)]);
+            assert_eq!(lab.poll(&mut f), vec![(h, Ok(()))]);
+            assert!(f.stopped.is_none());
+            assert_eq!(f.exited, i + 1 == length);
+        }
+        assert!(f.exited);
+        assert!(f.member.leaf.is_none());
+    }
+}
+
+#[test]
+fn a_fork_during_a_poll_does_not_commit_mixed_chain_observations() {
+    struct SwitchingChain {
+        old: MemChain,
+        new: MemChain,
+        switched: bool,
+    }
+    impl ChainSource for SwitchingChain {
+        fn tip(&mut self) -> Result<u32, String> {
+            self.old.tip()
+        }
+        fn block_hash(&mut self, h: u32) -> Result<BlockHash, String> {
+            if self.switched {
+                self.new.block_hash(h)
+            } else {
+                self.old.block_hash(h)
+            }
+        }
+        fn filter(&mut self, hash: &BlockHash) -> Result<Vec<u8>, String> {
+            self.old.filter(hash).or_else(|_| self.new.filter(hash))
+        }
+        fn block(&mut self, hash: &BlockHash) -> Result<Block, String> {
+            self.old.block(hash).or_else(|_| self.new.block(hash))
+        }
+        fn header(&mut self, hash: &BlockHash) -> Result<Header, String> {
+            let header = self.block(hash)?.header;
+            self.switched = true;
+            Ok(header)
+        }
+    }
+    let mut lab = Lab::new();
+    let mut f = lab.follower(2);
+    let initial = f.member.outpoint;
+    lab.step(Op::Refresh, true, true);
+    lab.empty_block();
+    let mut fork = lab.chain.clone();
+    fork.blocks[1].header.nonce += 1;
+    fork.blocks[2].header.prev_blockhash = fork.blocks[1].block_hash();
+    let mut chain = SwitchingChain {
+        old: lab.chain,
+        new: fork,
+        switched: false,
+    };
+    assert!(matches!(
+        f.poll(&lab.w.secp, &mut chain, &mut lab.mirror),
+        Err(layertree_tee_lab::follow::PollError::Reorganized { .. })
+    ));
+    assert_eq!(f.scanned, 0);
+    assert_eq!(f.member.outpoint, initial);
+    assert!(f.stopped.is_none());
 }

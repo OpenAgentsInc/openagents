@@ -22,7 +22,7 @@ name="layertree-regtest-$$"
 net="$name-net"
 
 cleanup() {
-  docker rm -f "$name" >/dev/null 2>&1 || true
+  docker rm -fv "$name" >/dev/null 2>&1 || true
   docker network rm "$net" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -34,7 +34,11 @@ docker run -d --name "$name" --network "$net" -p 127.0.0.1::18443 "$BITCOIND_IMA
   -rpcuser=regtest -rpcpassword=regtest-only >/dev/null
 
 echo "layertree-regtest: scratch root $root"
-args=(--features regtest --test regtest -- --ignored --nocapture --test-threads=1)
+args=(--features "${LAYERTREE_REGTEST_FEATURES:-regtest}" --test regtest)
+if [[ -n "${LAYERTREE_REGTEST_FILTER:-}" ]]; then
+  args+=("$LAYERTREE_REGTEST_FILTER")
+fi
+args+=(-- --ignored --nocapture --test-threads=1)
 if command -v cargo >/dev/null 2>&1; then
   port=$(docker port "$name" 18443/tcp | head -n1 | sed 's/.*://')
   LAYERTREE_REGTEST_RPC="127.0.0.1:$port" LAYERTREE_REGTEST_ROOT="$root" \
@@ -43,10 +47,10 @@ else
   # No Rust on this machine: build and run inside the pinned image, on the
   # node's private network. The lab is its own workspace, so only it builds.
   docker run --rm --network "$net" \
-    -v "$repo/crates/layertree-tee-lab:/lab" -v "$root:/scratch" \
+    -v "$repo:/workspace:ro" -v "$root:/scratch" \
     -e CARGO_TARGET_DIR=/scratch/target \
     -e LAYERTREE_REGTEST_RPC="$name:18443" -e LAYERTREE_REGTEST_ROOT=/scratch \
     -e LAYERTREE_WRITE_EVENTS \
-    "$RUST_IMAGE" cargo test --manifest-path /lab/Cargo.toml "${args[@]}"
+    "$RUST_IMAGE" cargo test --manifest-path /workspace/crates/layertree-tee-lab/Cargo.toml "${args[@]}"
 fi
 echo "layertree-regtest: passed; event logs in $root"

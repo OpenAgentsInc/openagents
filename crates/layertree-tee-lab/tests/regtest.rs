@@ -387,6 +387,12 @@ impl ChainSource for Chain {
             .parse()
             .map_err(|e| format!("{e:?}"))
     }
+    fn header(&mut self, hash: &bitcoin::BlockHash) -> Result<bitcoin::block::Header, String> {
+        let value = self
+            .rpc
+            .raw("/", "getblockheader", json!([hash.to_string(), false]))?;
+        deserialize_hex(value.as_str().ok_or("header")?).map_err(|e| e.to_string())
+    }
     fn filter(&mut self, hash: &bitcoin::BlockHash) -> Result<Vec<u8>, String> {
         let v = self
             .rpc
@@ -1514,4 +1520,467 @@ fn after_halt_only_exits_are_signed_and_the_unroll_confirms_delta_later() {
     let stats = run.unroll_with_enclave_gone("regtest-halt");
     assert_eq!(stats.blocks_to_accept, u32::from(DELAY));
     assert_eq!(stats.levels, 1);
+}
+
+#[cfg(feature = "follow-relay-tests")]
+fn public_relay_fixture() -> String {
+    use futures_util::{SinkExt, StreamExt};
+    use std::sync::{Arc, Mutex};
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!("ws://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        runtime.block_on(async move {
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            let events = Arc::new(Mutex::new(BTreeMap::<String, nostr::domain::Event>::new()));
+            let end = Instant::now() + Duration::from_secs(90);
+            while Instant::now() < end {
+                let Ok(Ok((stream, _))) =
+                    tokio::time::timeout(Duration::from_millis(100), listener.accept()).await
+                else {
+                    continue;
+                };
+                let events = events.clone();
+                tokio::spawn(async move {
+                    let Ok(mut socket) = tokio_tungstenite::accept_async(stream).await else {
+                        return;
+                    };
+                    socket
+                        .send(tokio_tungstenite::tungstenite::Message::Text(
+                            json!(["AUTH", "test-reader-challenge"]).to_string().into(),
+                        ))
+                        .await
+                        .unwrap();
+                    let mut authenticated = false;
+                    while let Some(Ok(frame)) = socket.next().await {
+                        let Ok(text) = frame.to_text() else {
+                            break;
+                        };
+                        let Ok(message) = serde_json::from_str::<Value>(text) else {
+                            break;
+                        };
+                        if message[0] == "AUTH" {
+                            let event: nostr::domain::Event =
+                                serde_json::from_value(message[1].clone()).unwrap();
+                            authenticated = event.kind == 22242
+                                && event.validate_crypto().is_ok()
+                                && event.tag_values("challenge").collect::<Vec<_>>()
+                                    == vec!["test-reader-challenge"];
+                            socket
+                                .send(tokio_tungstenite::tungstenite::Message::Text(
+                                    json!(["OK", event.id, authenticated, ""])
+                                        .to_string()
+                                        .into(),
+                                ))
+                                .await
+                                .unwrap();
+                        } else if message[0] == "EVENT" {
+                            let Ok(event) =
+                                serde_json::from_value::<nostr::domain::Event>(message[1].clone())
+                            else {
+                                break;
+                            };
+                            let valid = event.validate_structure().is_ok()
+                                && event.validate_crypto().is_ok();
+                            if valid {
+                                events
+                                    .lock()
+                                    .unwrap()
+                                    .insert(event.id.clone(), event.clone());
+                            }
+                            if socket
+                                .send(tokio_tungstenite::tungstenite::Message::Text(
+                                    json!(["OK", event.id, valid, ""]).to_string().into(),
+                                ))
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                        } else if message[0] == "REQ" {
+                            let filter = &message[2];
+                            if !authenticated
+                                && (filter.get("ids").is_some()
+                                    || filter["kinds"]
+                                        .as_array()
+                                        .is_some_and(|kinds| kinds.contains(&json!(1065))))
+                            {
+                                socket
+                                    .send(tokio_tungstenite::tungstenite::Message::Text(
+                                        json!(["CLOSED", message[1], "auth-required: test reader"])
+                                            .to_string()
+                                            .into(),
+                                    ))
+                                    .await
+                                    .unwrap();
+                                continue;
+                            }
+                            let selected: Vec<_> = {
+                                let map = events.lock().unwrap();
+                                map.values()
+                                    .filter(|event| {
+                                        (filter.get("ids").is_none_or(|ids| {
+                                            ids.as_array().unwrap().iter().any(|id| id == &event.id)
+                                        })) && (filter.get("authors").is_none_or(|authors| {
+                                            authors
+                                                .as_array()
+                                                .unwrap()
+                                                .iter()
+                                                .any(|a| a == &event.pubkey)
+                                        })) && (filter.get("kinds").is_none_or(|kinds| {
+                                            kinds
+                                                .as_array()
+                                                .unwrap()
+                                                .iter()
+                                                .any(|k| k.as_u64() == Some(u64::from(event.kind)))
+                                        })) && (["d", "t", "r"].iter().all(|key| {
+                                            filter.get(format!("#{key}")).is_none_or(|tags| {
+                                                tags.as_array().unwrap().iter().any(|tag| {
+                                                    event.tag_values(key).any(|value| tag == value)
+                                                })
+                                            })
+                                        })) && (filter.get("#d").is_none_or(|tags| {
+                                            tags.as_array()
+                                                .unwrap()
+                                                .iter()
+                                                .any(|tag| event.tag_values("d").any(|d| tag == d))
+                                        }))
+                                    })
+                                    .take(8)
+                                    .cloned()
+                                    .collect()
+                            };
+                            for event in selected {
+                                if socket
+                                    .send(tokio_tungstenite::tungstenite::Message::Text(
+                                        json!(["EVENT", message[1], event]).to_string().into(),
+                                    ))
+                                    .await
+                                    .is_err()
+                                {
+                                    return;
+                                }
+                            }
+                            if socket
+                                .send(tokio_tungstenite::tungstenite::Message::Text(
+                                    json!(["EOSE", message[1]]).to_string().into(),
+                                ))
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                    }
+                    let _ = socket.close(None).await;
+                });
+            }
+        });
+    });
+    url
+}
+
+/// The deployed reader runs as three independent OS processes, not calls into
+/// the in-process test follower. All alarms reach an HTTP receiver.
+#[cfg(feature = "follow-live")]
+#[test]
+#[ignore = "needs bitcoind; run the follow-live regtest acceptance command"]
+fn independent_follower_processes_detect_theft_and_notify() {
+    use std::process::Command;
+    let mut run = Run::open(8, 128);
+    let base = PathBuf::from(std::env::var_os("LAYERTREE_REGTEST_ROOT").expect("scratch root"));
+    let root = base.join("independent-followers");
+    std::fs::create_dir_all(&root).unwrap();
+    let store = root.join("mirror");
+    std::fs::create_dir_all(&store).unwrap();
+    run.store = Some(store.clone());
+    std::fs::write(
+        store.join(unroll_name(&run.unroll.tree_outpoint)),
+        run.unroll.encode(),
+    )
+    .unwrap();
+    let creation = root.join("creation.jsonl");
+    std::fs::write(&creation, run.log.to_jsonl()).unwrap();
+    let package = root.join("genesis.bin");
+    std::fs::write(&package, run.unroll.encode()).unwrap();
+    let params = run.params();
+    let unroll_key = run.enclave.state().unwrap().output.unroll_key;
+    let rpc = format!("http://{}", run.chain.rpc.addr);
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let webhook = format!("http://{}", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        let end = Instant::now() + Duration::from_secs(30);
+        let mut received = Vec::new();
+        while received.len() < 3 && Instant::now() < end {
+            match listener.accept() {
+                Ok((mut socket, _)) => {
+                    socket
+                        .set_read_timeout(Some(Duration::from_secs(2)))
+                        .unwrap();
+                    let mut bytes = Vec::new();
+                    let mut chunk = [0u8; 1024];
+                    let header = loop {
+                        let n = socket.read(&mut chunk).unwrap();
+                        assert!(n > 0);
+                        bytes.extend_from_slice(&chunk[..n]);
+                        assert!(bytes.len() < 16 * 1024);
+                        if let Some(at) = bytes.windows(4).position(|w| w == b"\r\n\r\n") {
+                            break at + 4;
+                        }
+                    };
+                    let text = std::str::from_utf8(&bytes[..header]).unwrap();
+                    let length: usize = text
+                        .lines()
+                        .find_map(|line| {
+                            line.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|n| n.trim().parse().unwrap())
+                        })
+                        .unwrap();
+                    let id = text
+                        .lines()
+                        .find_map(|line| {
+                            line.to_ascii_lowercase()
+                                .strip_prefix("idempotency-key:")
+                                .map(|id| id.trim().to_owned())
+                        })
+                        .unwrap();
+                    while bytes.len() < header + length {
+                        let n = socket.read(&mut chunk).unwrap();
+                        assert!(n > 0);
+                        bytes.extend_from_slice(&chunk[..n]);
+                    }
+                    let event: Value =
+                        serde_json::from_slice(&bytes[header..header + length]).unwrap();
+                    assert_eq!(event["id"], id);
+                    received.push(event);
+                    socket
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                        )
+                        .unwrap();
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(10))
+                }
+                Err(e) => panic!("webhook: {e}"),
+            }
+        }
+        received
+    });
+    let http = serve_dir(store.clone());
+    #[cfg(feature = "follow-relay-tests")]
+    let relay = public_relay_fixture();
+    #[cfg(feature = "follow-relay-tests")]
+    let mirror_secret = hex::encode(sk(9000).secret_bytes());
+    #[cfg(feature = "follow-relay-tests")]
+    let publisher = nostr::domain::RelaySigner::from_secret_hex(&mirror_secret)
+        .unwrap()
+        .sign(0, 1, vec![], String::new())
+        .pubkey;
+    let mut configs = Vec::new();
+    for member in [0, 2, 5] {
+        let state = root.join(format!("member-{member}"));
+        let path = root.join(format!("member-{member}.json"));
+        let mut sources = if member == 2 {
+            json!({"https":[format!("http://{http}")]})
+        } else {
+            json!({"directories":[store]})
+        };
+        #[cfg(feature = "follow-relay-tests")]
+        if member == 5 {
+            sources = json!({"relays":[{"url":relay,"publisher":publisher}]});
+        }
+        let config = json!({"schema":"layertree.follower.v1","network":"regtest","rpc":rpc,"tree_open":creation,"operator_key":hex::encode(params.operator_key),"unroll_key":hex::encode(unroll_key.serialize()),"unroll":package,"member":member,"sources":sources,"state":state,"webhook_env":"LAYERTREE_ALARM_WEBHOOK"});
+        std::fs::write(&path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+        configs.push((path, state));
+    }
+    let check = |configs: &[(PathBuf, PathBuf)], expected: i32| {
+        let children: Vec<_> = configs
+            .iter()
+            .map(|(path, _)| {
+                Command::new(env!("CARGO_BIN_EXE_layertree-follow"))
+                    .arg("--config")
+                    .arg(path)
+                    .arg("--once")
+                    .env("LAYERTREE_RPC_USER", "regtest")
+                    .env("LAYERTREE_RPC_PASSWORD", "regtest-only")
+                    .env("LAYERTREE_ALARM_WEBHOOK", &webhook)
+                    .env(
+                        "LAYERTREE_TEST_READER_SECRET",
+                        hex::encode(sk(9001).secret_bytes()),
+                    )
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
+                    .unwrap()
+            })
+            .collect();
+        for child in children {
+            let output = child.wait_with_output().unwrap();
+            assert_eq!(
+                output.status.code(),
+                Some(expected),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    };
+    #[cfg(feature = "follow-relay-tests")]
+    let publish = |run: &Run| {
+        let output = Command::new(env!("CARGO_BIN_EXE_layertree-follow"))
+            .arg("publish")
+            .arg("--relay")
+            .arg(&relay)
+            .arg("--directory")
+            .arg(&store)
+            .arg("--receipts")
+            .arg(root.join("mirror-publications.json"))
+            .arg("--secret-env")
+            .arg("LAYERTREE_TEST_MIRROR_SECRET")
+            .env("LAYERTREE_TEST_MIRROR_SECRET", &mirror_secret)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        publish_inline_fixture(
+            &relay,
+            &mirror_secret,
+            &hex::encode(params.tree_id),
+            run.last_record.as_ref().unwrap(),
+            run.last_unroll_pkg.as_ref(),
+        );
+    };
+    run.step(Op::Refresh);
+    #[cfg(feature = "follow-relay-tests")]
+    publish(&run);
+    run.step(Op::Refresh);
+    #[cfg(feature = "follow-relay-tests")]
+    publish(&run);
+    check(&configs, 0);
+    for (_, state) in &configs {
+        let status: Value =
+            serde_json::from_slice(&std::fs::read(state.join("status.json")).unwrap()).unwrap();
+        assert_eq!(
+            status["outpoint"],
+            run.enclave.state().unwrap().outpoint.to_string()
+        );
+        assert_eq!(status["unroll_held"], true);
+    }
+    #[cfg(feature = "follow-relay-tests")]
+    {
+        // A fresh process with no record cache reads the live controller's
+        // inline-file profile, as well as the notes checked above.
+        let (path, state) = &mut configs[2];
+        let mut config: Value = serde_json::from_slice(&std::fs::read(&*path).unwrap()).unwrap();
+        *state = root.join("member-5-inline");
+        config["state"] = json!(state);
+        config["sources"] = json!({"relays":[{"url":relay,"publisher":publisher,"inline_file":true,"tree_id":hex::encode(params.tree_id),"auth_env":"LAYERTREE_TEST_READER_SECRET"}]});
+        std::fs::write(&*path, serde_json::to_vec_pretty(&config).unwrap()).unwrap();
+        check(&configs, 0);
+    }
+    run.enclave.break_for_test();
+    let op = Op::Refresh;
+    let built = run.build(&op, 50_000);
+    let (_, _, height) = run.mine_signed(&op, built);
+    #[cfg(feature = "follow-relay-tests")]
+    publish(&run);
+    check(&configs, 2);
+    let received = server.join().unwrap();
+    assert_eq!(received.len(), 3);
+    let mut members = Vec::new();
+    for row in received {
+        assert_eq!(row["result"], "OutputMismatch");
+        assert_eq!(row["height"], height);
+        assert_eq!(row["observed_tip"], height);
+        members.push(row["member"].as_u64().unwrap());
+    }
+    members.sort();
+    assert_eq!(members, vec![0, 2, 5]);
+    // Replaying after a process restart sends no duplicate alarm: its ACK is durable.
+    check(&configs, 2);
+    for (_, state) in &configs {
+        let status: Value =
+            serde_json::from_slice(&std::fs::read(state.join("status.json")).unwrap()).unwrap();
+        assert_eq!(status["pending_notifications"], 0);
+    }
+    std::fs::write(
+        root.join("passed"),
+        b"three independent processes; Core confirmed theft; three webhooks; restart dedup\n",
+    )
+    .unwrap();
+}
+
+#[cfg(feature = "follow-relay-tests")]
+fn publish_inline_fixture(
+    relay: &str,
+    secret: &str,
+    tree: &str,
+    record: &Record,
+    unroll: Option<&UnrollPackage>,
+) {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use bitcoin::hashes::sha256;
+    use nostr::domain::{RelaySigner, Tag};
+    let signer = RelaySigner::from_secret_hex(secret).unwrap();
+    let tag = |name: &str, value: String| Tag::new(vec![name.into(), value]);
+    let bytes = serde_json::to_vec(&json!({"v":"openagents.layertree.mirror.v1", "tree_id":tree, "data":{"record":hex::encode(record.encode()),"unroll":unroll.map(|p|hex::encode(p.encode()))}})).unwrap();
+    let now = layertree_tee_lab::follow_live::now().unwrap();
+    let blob = signer.sign(
+        now,
+        1064,
+        vec![tag("type", "application/json".into())],
+        STANDARD.encode(&bytes),
+    );
+    let header = signer.sign(
+        now,
+        1065,
+        vec![
+            tag("e", blob.id.clone()),
+            tag("m", "application/json".into()),
+            tag("x", sha256::Hash::hash(&bytes).to_string()),
+            tag("size", bytes.len().to_string()),
+            tag("t", format!("layertree:{tree}")),
+            tag("r", hex::encode(record.hash())),
+        ],
+        "Signet tree recovery data.".into(),
+    );
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let mut socket = nostr_transport::Connection::connect_open(relay, Duration::from_secs(10))
+            .await
+            .unwrap();
+        let challenge = socket.next().await.unwrap();
+        assert_eq!(challenge[0], "AUTH");
+        let auth = signer.sign(
+            now,
+            22242,
+            vec![
+                tag("relay", relay.into()),
+                tag("challenge", challenge[1].as_str().unwrap().into()),
+            ],
+            String::new(),
+        );
+        socket.send(json!(["AUTH", auth])).await.unwrap();
+        assert_eq!(socket.next().await.unwrap()[2], true);
+        for event in [blob, header] {
+            socket.send(json!(["EVENT", event])).await.unwrap();
+            let ack = socket.next().await.unwrap();
+            assert_eq!(ack[0], "OK");
+            assert_eq!(ack[1], event.id);
+            assert_eq!(ack[2], true);
+        }
+        socket.close().await.unwrap();
+    });
 }

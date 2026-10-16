@@ -24,6 +24,7 @@
 //! regtest (`tests/regtest.rs`), signet, or in memory. The two record
 //! backends here are a local directory and a minimal HTTP mirror client.
 
+use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
@@ -46,6 +47,10 @@ pub trait ChainSource {
     fn block_hash(&mut self, height: u32) -> Result<BlockHash, String>;
     /// The BIP-158 basic filter's bytes for the block.
     fn filter(&mut self, hash: &BlockHash) -> Result<Vec<u8>, String>;
+    /// Sources should fetch just the header; the default supports in-memory adapters.
+    fn header(&mut self, hash: &BlockHash) -> Result<bitcoin::block::Header, String> {
+        self.block(hash).map(|block| block.header)
+    }
     fn block(&mut self, hash: &BlockHash) -> Result<Block, String>;
 }
 
@@ -57,6 +62,19 @@ pub trait RecordSource {
     fn record(&mut self, hash: &[u8; 32]) -> Option<Vec<u8>>;
     /// The unroll package for the tree output at `outpoint`.
     fn unroll(&mut self, outpoint: &OutPoint) -> Option<Vec<u8>>;
+    /// Try independent mirrors before concluding that no valid package is held.
+    fn unroll_candidates(&mut self, outpoint: &OutPoint) -> Vec<Vec<u8>> {
+        self.unroll(outpoint).into_iter().collect()
+    }
+    fn unroll_matching(
+        &mut self,
+        outpoint: &OutPoint,
+        check: &mut dyn FnMut(&[u8]) -> bool,
+    ) -> Option<Vec<u8>> {
+        self.unroll_candidates(outpoint)
+            .into_iter()
+            .find(|bytes| check(bytes))
+    }
 }
 
 fn hex(b: &[u8]) -> String {
@@ -158,19 +176,57 @@ pub struct Seen {
     pub result: Result<(), LightError>,
 }
 
+/// A source read failure or a changed chain. A reorg requires replay from
+/// a trusted earlier state rather than treating a rolled-back spend as theft.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PollError {
+    Source(String),
+    Reorganized { height: u32 },
+}
+impl From<String> for PollError {
+    fn from(error: String) -> Self {
+        Self::Source(error)
+    }
+}
+impl std::fmt::Display for PollError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Source(error) => write!(f, "{error}"),
+            Self::Reorganized { height } => write!(
+                f,
+                "The chain changed at block {height}. Replay from an earlier trusted state."
+            ),
+        }
+    }
+}
+impl std::error::Error for PollError {}
+impl From<PollError> for String {
+    fn from(error: PollError) -> Self {
+        error.to_string()
+    }
+}
+
+#[derive(Clone)]
 pub struct Follower {
     pub member: Member,
     pub params: TreeParams,
     /// Blocks after a spend before `RecordMissing` / `UnrollNotHeld`.
     pub missing_after: u32,
-    /// The highest block scanned.
+    /// The highest block scanned for the current tracked output.
     pub scanned: u32,
+    /// The node's tip when this poll completed, including any catch-up delay.
+    pub observed_tip: u32,
     /// The unroll the member holds for its current state, checked.
     pub unroll: Option<UnrollPackage>,
     /// Set by a rule-breaking spend; the follower stops.
     pub stopped: Option<LightError>,
+    /// The checked unroll branch has paid this member in full.
+    pub exited: bool,
     pending: Option<Pending>,
     await_unroll: Option<AwaitUnroll>,
+    checkpoint: Option<(u32, BlockHash)>,
+    unroll_path: Option<VecDeque<Transaction>>,
+    unroll_spk: Option<ScriptBuf>,
 }
 
 impl Follower {
@@ -189,10 +245,15 @@ impl Follower {
             params,
             missing_after,
             scanned: from_height,
+            observed_tip: from_height,
             unroll,
             stopped: None,
+            exited: false,
             pending: None,
             await_unroll: None,
+            checkpoint: None,
+            unroll_path: None,
+            unroll_spk: None,
         }
     }
 
@@ -205,8 +266,10 @@ impl Follower {
 
     /// The scriptPubKey of the tree output this member trusts.
     pub fn tracked_spk<C: Verification>(&self, secp: &Secp256k1<C>) -> ScriptBuf {
-        self.output()
-            .script_pubkey(secp, &self.params.enclave_key, self.params.unroll_delay)
+        self.unroll_spk.clone().unwrap_or_else(|| {
+            self.output()
+                .script_pubkey(secp, &self.params.enclave_key, self.params.unroll_delay)
+        })
     }
 
     /// Scan every block up to the tip and retry anything pending. Returns
@@ -216,17 +279,47 @@ impl Follower {
         secp: &Secp256k1<C>,
         chain: &mut dyn ChainSource,
         records: &mut dyn RecordSource,
-    ) -> Result<Vec<Seen>, String> {
+    ) -> Result<Vec<Seen>, PollError> {
+        // Commit the state and its observations together. An RPC failure
+        // after one block must not silently consume that block's observations.
+        let mut next = self.clone();
+        let seen = next.poll_inner(secp, chain, records)?;
+        *self = next;
+        Ok(seen)
+    }
+
+    fn poll_inner<C: Verification>(
+        &mut self,
+        secp: &Secp256k1<C>,
+        chain: &mut dyn ChainSource,
+        records: &mut dyn RecordSource,
+    ) -> Result<Vec<Seen>, PollError> {
         let mut seen = Vec::new();
         let tip = chain.tip()?;
-        // Retry at the current height first: a record or unroll may have
-        // been published since the last poll.
+        if let Some((height, hash)) = self.checkpoint {
+            if tip < height || chain.block_hash(height)? != hash {
+                return Err(PollError::Reorganized { height });
+            }
+        }
+        let start_height = self.scanned;
+        if tip < start_height {
+            return Err(PollError::Reorganized {
+                height: start_height,
+            });
+        }
+        let start_hash = chain.block_hash(start_height)?;
         let now = self.scanned;
         self.settle(secp, now, records, &mut seen);
-        while self.scanned < tip && self.stopped.is_none() {
+        let mut last_hash = chain.block_hash(self.scanned)?;
+        let mut examined = Vec::new();
+        while self.scanned < tip && self.stopped.is_none() && !self.exited {
             let h = self.scanned + 1;
+            let hash = chain.block_hash(h)?;
+            let header = chain.header(&hash)?;
+            if header.block_hash() != hash || header.prev_blockhash != last_hash {
+                return Err(PollError::Reorganized { height: h - 1 });
+            }
             if self.pending.is_none() {
-                let hash = chain.block_hash(h)?;
                 let spk = self.tracked_spk(secp);
                 let filter = BlockFilter::new(&chain.filter(&hash)?);
                 if filter
@@ -234,12 +327,35 @@ impl Follower {
                     .map_err(|e| e.to_string())?
                 {
                     let block = chain.block(&hash)?;
+                    examined.push((h, hash));
                     self.find_spends(secp, &block, h, records, &mut seen);
                 }
             }
             self.scanned = h;
+            last_hash = hash;
             self.settle(secp, h, records, &mut seen);
+            if self.scanned != h {
+                last_hash = chain.block_hash(self.scanned)?;
+            }
         }
+        let final_tip = chain.tip()?;
+        if final_tip < self.scanned
+            || chain.block_hash(start_height)? != start_hash
+            || chain.block_hash(self.scanned)? != last_hash
+        {
+            return Err(PollError::Reorganized {
+                height: self.scanned,
+            });
+        }
+        // A recovered record may rewind the scan across a fork. Check every
+        // block used to change member state against the final active chain.
+        for (height, hash) in examined {
+            if chain.block_hash(height)? != hash {
+                return Err(PollError::Reorganized { height });
+            }
+        }
+        self.observed_tip = final_tip;
+        self.checkpoint = Some((self.scanned, last_hash));
         Ok(seen)
     }
 
@@ -253,7 +369,7 @@ impl Follower {
         seen: &mut Vec<Seen>,
     ) {
         loop {
-            if self.pending.is_some() || self.stopped.is_some() {
+            if self.pending.is_some() || self.stopped.is_some() || self.exited {
                 return;
             }
             let Some(tx) = block
@@ -268,6 +384,9 @@ impl Follower {
             else {
                 return;
             };
+            if self.follow_unroll(secp, &tx, h, seen) {
+                continue;
+            }
             self.pending = Some(Pending {
                 tx,
                 height: h,
@@ -279,6 +398,76 @@ impl Follower {
                 return;
             }
         }
+    }
+
+    pub fn unrolling(&self) -> bool {
+        self.unroll_path.is_some() && !self.exited
+    }
+
+    /// A held package is already checked against this member's exact payout.
+    /// Its script-path spend needs no record or enclave signature at exit time.
+    fn follow_unroll<C: Verification>(
+        &mut self,
+        secp: &Secp256k1<C>,
+        tx: &Transaction,
+        height: u32,
+        seen: &mut Vec<Seen>,
+    ) -> bool {
+        if self.unroll_path.is_none() {
+            let (Some(pkg), Some(leaf)) = (&self.unroll, self.member.leaf) else {
+                return false;
+            };
+            if pkg.txs.first() != Some(tx) {
+                return false;
+            }
+            let Ok(branch) = verify_branch(
+                secp,
+                &self.params,
+                self.output(),
+                self.member.outpoint,
+                self.member.root.sum,
+                pkg,
+                &leaf,
+            ) else {
+                return false;
+            };
+            self.unroll_path = Some(branch.into());
+            self.await_unroll = None;
+        }
+        let expected = self.unroll_path.as_mut().and_then(VecDeque::pop_front);
+        if expected.as_ref() != Some(tx) {
+            seen.push(Seen {
+                height,
+                txid: Some(tx.compute_txid()),
+                result: Err(LightError::OutputMismatch),
+            });
+            self.stop(LightError::OutputMismatch);
+            return true;
+        }
+        if let Some(next) = self.unroll_path.as_ref().and_then(|path| path.front()) {
+            let next_input = next.input[0].previous_output;
+            if next_input.txid != tx.compute_txid() || next_input.vout as usize >= tx.output.len() {
+                seen.push(Seen {
+                    height,
+                    txid: Some(tx.compute_txid()),
+                    result: Err(LightError::OutputMismatch),
+                });
+                self.stop(LightError::OutputMismatch);
+                return true;
+            }
+            self.member.outpoint = next_input;
+            self.unroll_spk = Some(tx.output[next_input.vout as usize].script_pubkey.clone());
+        } else {
+            self.exited = true;
+            self.member.leaf = None;
+            self.unroll_spk = None;
+        }
+        seen.push(Seen {
+            height,
+            txid: Some(tx.compute_txid()),
+            result: Ok(()),
+        });
+        true
     }
 
     fn raise(&mut self, seen: &mut Vec<Seen>, height: u32, e: LightError) {
@@ -303,7 +492,7 @@ impl Follower {
         records: &mut dyn RecordSource,
         seen: &mut Vec<Seen>,
     ) {
-        if self.stopped.is_some() {
+        if self.stopped.is_some() || self.exited {
             return;
         }
         if let Some(p) = self.pending.clone() {
@@ -341,6 +530,10 @@ impl Follower {
                     });
                     match result {
                         Ok(()) => {
+                            // A late record changes the tracked output. Scan its
+                            // block again so neither same-block children nor
+                            // later spends are skipped while catching up.
+                            self.scanned = self.scanned.min(p.height.saturating_sub(1));
                             self.unroll = None;
                             self.await_unroll = (self.member.leaf.is_some()
                                 && rec.next_unroll_key.is_some())
@@ -381,14 +574,29 @@ impl Follower {
             self.await_unroll = None;
             return;
         };
+        let output = self.output();
+        let check = |bytes: &[u8]| {
+            UnrollPackage::decode(bytes).is_ok_and(|pkg| {
+                verify_branch(
+                    secp,
+                    &self.params,
+                    output,
+                    outpoint,
+                    self.member.root.sum,
+                    &pkg,
+                    &leaf,
+                )
+                .is_ok()
+            })
+        };
         let held = records
-            .unroll(&outpoint)
-            .and_then(|b| UnrollPackage::decode(&b).ok())
+            .unroll_matching(&outpoint, &mut { check })
+            .and_then(|bytes| UnrollPackage::decode(&bytes).ok())
             .filter(|pkg| {
                 verify_branch(
                     secp,
                     &self.params,
-                    self.output(),
+                    output,
                     outpoint,
                     self.member.root.sum,
                     pkg,

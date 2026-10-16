@@ -27,6 +27,8 @@ pub mod enclave;
 #[cfg(feature = "events")]
 pub mod events;
 pub mod follow;
+#[cfg(feature = "follow-live")]
+pub mod follow_live;
 #[cfg(all(unix, feature = "events"))]
 pub mod guest;
 pub mod light;

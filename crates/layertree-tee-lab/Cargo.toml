@@ -25,8 +25,21 @@ crc = { version = "=3.4.0", optional = true }
 reqwest = { version = "=0.12.28", optional = true, default-features = false, features = ["blocking", "json", "rustls-tls"] }
 zeroize = { version = "=1.9.0", optional = true }
 
+# Opt-in read-only chain follower and public mirror transport.
+nostr = { path = "../nostr", optional = true }
+nostr-transport = { path = "../nostr-transport", optional = true }
+tokio = { version = "1", features = ["rt", "net", "time"], optional = true }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"], optional = true }
+webpki-roots = { version = "1", optional = true }
+
+futures-util = { version = "0.3", optional = true }
+tokio-tungstenite = { version = "=0.30.0", optional = true }
+
 [features]
+# The local WebSocket relay acceptance fixture; never needed by the follower binary.
+follow-relay-tests = ["follow-live", "dep:futures-util", "dep:tokio-tungstenite"]
 events = ["dep:serde", "dep:serde_json"]
+follow-live = ["events", "dep:base64", "dep:reqwest", "dep:nostr", "dep:nostr-transport", "dep:tokio", "dep:rustls", "dep:webpki-roots"]
 gcp-sealing = ["events", "dep:aes-gcm", "dep:base64", "dep:crc", "dep:reqwest", "dep:zeroize"]
 # The ignored bitcoind harness in tests/regtest.rs (#11781); run it with
 # scripts/layertree-regtest.sh. Adds no dependencies.
@@ -50,3 +63,8 @@ required-features = ["gcp-sealing"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
+[[bin]]
+name = "layertree-follow"
+path = "src/bin/layertree-follow.rs"
+required-features = ["follow-live"]

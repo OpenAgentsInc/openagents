@@ -401,3 +401,137 @@ exits. Its [client](client/README.md) verifies a fresh challenge bound to the
 actual TLS certificate before submitting an operator-signed request. The
 research CLI keeps its private test keys outside the repository. A service
 restart creates a fresh key; the old tree exits through its saved unroll.
+## Live followers (#11794)
+
+The opt-in `layertree-follow` program reads signet or regtest only. It has
+no wallet or signing endpoint. A bootstrap configuration supplies the public
+tree-creation event, operator and unroll public keys, and the initial signed
+unroll package. The program recomputes the root, checks the member's path and
+exact escape payout, and compares the creation output with Core's confirmed
+block. Hardware-attestation verification remains the separate P1 verifier.
+
+Records can come from directories, HTTPS mirrors (loopback HTTP for tests),
+or signed public Nostr notes. The research mirror profile uses regular
+NIP-01 kind `1`, not NIP-78's owner-only app data. Its exact tags are
+`["t", "layertree-mirror-v1"]` and `["d", FILE_NAME]`. The signed content is
+`{"schema":"layertree.mirror.v1","name":FILE_NAME,"bytes":HEX_BYTES}`.
+File names are the existing `record-HASH.bin` and `unroll-TXID-VOUT.bin`.
+Readers pin the mirror publisher and check the event ID, signature, kind,
+tags and body before decoding. A publisher identifies the source; Bitcoin's
+record hash and the member's checked unroll determine what it accepts.
+
+The live signet controller in `client/` uses the experimental inline-file
+proposal, kinds `1064` and `1065`, described in its README. Set
+`"inline_file": true` and `"tree_id": TREE_ID_HEX` on that relay entry to
+read its existing publications. Set `"auth_env": ENVIRONMENT_VARIABLE_NAME`
+when the relay requires NIP-42; that variable holds a dedicated test reader
+key. The follower verifies both signatures, header/file binding, SHA-256,
+size, tree ID, and record hash. It fetches each blob by the signed header's
+exact event ID. Its inline-file limit is 32 KiB, matching the controller.
+
+The transport bounds a query to ten seconds, 32 data messages, and
+400,000 decoded bytes per mirror file. Records and checked unrolls are
+cached locally. A valid first source avoids waiting on unavailable backup
+mirrors. Public relay reads need no private key. These notes contain public
+experiment data; use a dedicated mirror identity for the test.
+
+Each process owns a separate state directory. Its observation log and
+webhook outbox survive restarts; webhook receivers deduplicate by the
+`Idempotency-Key` header, which is also the alarm's `id`. A successful HTTP
+response is recorded before removing that alarm from the outbox. Failed
+notifications remain queued and do not stop chain checks. Source read
+failures leave the follower unchanged, and a changed chain triggers replay
+from the checked creation output. A late record causes its block and later
+blocks to be scanned again. Held unroll transactions are followed through
+the member's exact payout without treating that exit as a missing record.
+
+Build and test the standalone program:
+
+```sh
+cargo build --locked --manifest-path crates/layertree-tee-lab/Cargo.toml --features follow-live --bin layertree-follow
+LAYERTREE_REGTEST_ROOT="$(openagents scratch)/follower-process-check" \
+  LAYERTREE_REGTEST_FEATURES=regtest,follow-relay-tests \
+  LAYERTREE_REGTEST_FILTER=independent_follower_processes_detect_theft_and_notify \
+  scripts/layertree-regtest.sh
+```
+
+A configuration has this shape. Set `LAYERTREE_RPC_USER`,
+`LAYERTREE_RPC_PASSWORD`, and the selected webhook environment variable
+outside the file. Paths resolve relative to the configuration file. Use
+three different members and state directories. Set up a local Core with
+`blockfilterindex=1`; forward remote private HTTP endpoints to loopback,
+or serve them through HTTPS.
+
+```json
+{
+  "schema": "layertree.follower.v1",
+  "network": "signet",
+  "rpc": "http://127.0.0.1:38332",
+  "tree_open": "creation.jsonl",
+  "operator_key": "OPERATOR_PUBLIC_KEY_HEX",
+  "unroll_key": "INITIAL_UNROLL_PUBLIC_KEY_HEX",
+  "unroll": "initial-unroll.bin",
+  "member": 0,
+  "sources": {
+    "directories": [],
+    "https": ["https://MIRROR_HOST/public-tree"],
+    "relays": [{"url": "wss://RELAY_HOST", "publisher": "MIRROR_PUBLIC_KEY_HEX"}]
+  },
+  "state": "member-0",
+  "webhook_env": "LAYERTREE_TEST_ALARM_WEBHOOK",
+  "poll_seconds": 10,
+  "missing_after": 3
+}
+```
+
+Core selects and validates the signet chain. The follower checks header
+continuity, fetched block hashes and Merkle roots, records, member paths,
+and payouts; it does not implement independent chain selection or signet
+consensus. Independent processes are permitted by #11794; this launcher
+uses three processes on one machine. It does not make three independent
+chain sources out of a shared Core.
+
+Run one check with `layertree-follow --config FILE --once`, or use
+`scripts/layertree/followers.py run --binary PATH --until UNIX_SECONDS
+--output NEW_LAUNCH_DIRECTORY MEMBER_0.json MEMBER_2.json MEMBER_5.json`.
+The launcher records the executable hash, configuration hashes, PIDs,
+outputs, and exit codes. It stays in the foreground and stops its own
+children on interruption. Choose an explicit deadline that covers the
+public tree's full week. Exit `2` means a stopped tree; `3` means queued
+notifications remain. Restart with the same state directory to retry
+undelivered alarms. A receiver must retain each JSON body and deduplicate
+by its ID. Never point this experiment at the owner's production account.
+
+Publish the public mirror files with the separate mirror identity:
+
+```sh
+layertree-follow publish --relay wss://RELAY_HOST --directory PUBLIC_MIRROR_DIRECTORY \
+  --receipts MIRROR_RECEIPTS_FILE --secret-env LAYERTREE_TEST_MIRROR_SECRET
+```
+
+Run this after each confirmed transition. The publisher checks file names,
+record hashes, and package encodings before publishing. It saves exact
+signed events before sending, records acknowledgments per relay, and
+retries the same event after interruption. It does not publish arbitrary
+files or the enclave key.
+
+The acceptance helper takes a JSON file with schema
+`layertree.followers.evidence.v1`, an `operator` event-log path,
+`honest` (three state-directory paths), `attacks` (keys `theft`, `withheld`,
+and `mismatch`, each with three dedicated test-tree state directories),
+and `notifications` (the receiver's JSONL alarm bodies). Paths resolve
+relative to that file. Run `scripts/layertree/followers.py check --evidence
+FILE --output SUMMARY.json`. It requires a common 604,800-second signet
+interval, checks no more than two minutes apart, all confirmed transitions,
+held unrolls, and all three staged alarms delivered to the receiver.
+Theft detection uses the actual detection tip, at most one block after
+mining. Short runs, regtest logs, gaps, and unacknowledged alarms fail.
+The summary hashes every input; it checks evidence consistency and cannot
+replace checking the public transactions and hardware reports.
+
+Use `followers.py merge --operator FILE --states STATE_0 STATE_2 STATE_5
+--output NEW_FILE.jsonl` for Verse. It preserves operator event order,
+adds follower observations, assigns contiguous sequence numbers, and saves
+input hashes beside the output. The raw journals retain notification IDs,
+detection tips, and times. The week-long signet run and staged signet
+attacks remain required before #11794 can close.
