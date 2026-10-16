@@ -21,5 +21,21 @@ pub use service::{Config, Service};
 pub fn capabilities() -> computer_driver::Capabilities {
     let mut names: Vec<&str> = sizes::SIZES.iter().map(|s| s.name).collect();
     names.sort_by_key(|n| *n != "default");
-    computer_driver::Capabilities::new("oa-boat", computer_driver::Profile::ALL, &names)
+    let mut caps =
+        computer_driver::Capabilities::new("oa-boat", computer_driver::Profile::ALL, &names);
+    caps.command_sessions = true;
+    caps.shapes = sizes::SIZES
+        .iter()
+        .map(|size| {
+            (
+                size.name.into(),
+                computer_driver::Shape {
+                    vcpus: size.vcpu as u32,
+                    memory_mib: size.memory_gb as u64 * 1024,
+                    min_disk_gib: Some(size.disk_gb as u64),
+                },
+            )
+        })
+        .collect();
+    caps
 }

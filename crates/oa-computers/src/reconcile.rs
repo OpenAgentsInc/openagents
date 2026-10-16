@@ -14,11 +14,11 @@
 //!
 //! The loop runs on a `LocalSet` (driver futures need not be `Send`).
 
+use crate::registry::{Drivers, Refused};
 use crate::store::{Desired, Entry, PgLease, Store};
 use coder_working_computer::driver::{self, Settled};
 use coder_working_computer::on_driver::OnDriver;
 use coder_working_computer::{Phase, StopReason, Trigger};
-use computer_driver::Driver;
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -92,12 +92,12 @@ pub struct Reconciler<D> {
     pub turns: crate::turns::Secrets,
 }
 
-impl<D: Driver + Clone + 'static> Reconciler<D> {
-    fn provider(&self, e: &Entry) -> OnDriver<D> {
-        let mut p = OnDriver::new(self.driver.clone(), e.image.clone());
+impl<D: Drivers + 'static> Reconciler<D> {
+    fn provider(&self, e: &Entry) -> Result<OnDriver<D::Bound>, Refused> {
+        let mut p = OnDriver::new(self.driver.resolve(e)?, e.image.clone());
         p.poll = self.settings.driver_poll;
         p.deadline = self.settings.driver_deadline;
-        p
+        Ok(p)
     }
 
     fn backoff(&self, attempts: i32) -> Duration {
@@ -112,6 +112,10 @@ impl<D: Driver + Clone + 'static> Reconciler<D> {
         let mut pruned = tokio::time::Instant::now() - Duration::from_secs(60);
         loop {
             if pruned.elapsed() >= Duration::from_secs(60) {
+                if let Some(catalog) = self.driver.legacy_catalog() {
+                    // Cover rows made by a previous API revision during rollout.
+                    let _ = self.store.pin_legacy(catalog).await;
+                }
                 let _ = self.store.prune_command_output().await;
                 pruned = tokio::time::Instant::now();
             }
@@ -149,6 +153,24 @@ impl<D: Driver + Clone + 'static> Reconciler<D> {
 
     /// One visit to one claimed computer.
     pub async fn visit(self: &Rc<Self>, e: Entry) {
+        let p = match self.provider(&e) {
+            Ok(provider) => provider,
+            Err(error) => {
+                // A missing deployment is not evidence that its resource is gone.
+                let _ = self
+                    .store
+                    .release(
+                        &e.id,
+                        &self.settings.holder,
+                        self.backoff(e.attempts),
+                        e.attempts.saturating_add(1),
+                        Some(&error.to_string()),
+                        false,
+                    )
+                    .await;
+                return;
+            }
+        };
         let lease = PgLease {
             store: self.store.clone(),
             id: e.id.clone(),
@@ -170,7 +192,6 @@ impl<D: Driver + Clone + 'static> Reconciler<D> {
                 }
             })
         };
-        let p = self.provider(&e);
         let now = now_ms();
         // Kept long enough: a stopped computer nobody asked for goes.
         let mut e = e;

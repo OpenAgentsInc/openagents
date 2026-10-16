@@ -414,11 +414,36 @@ fn quote(s: &str) -> String {
 
 impl Driver for SpaceDriver {
     fn capabilities(&self) -> Capabilities {
-        Capabilities::new(
+        let mut caps = Capabilities::new(
             "space",
             [Profile::Core, Profile::Suspend],
             &["small", "medium", "large"],
-        )
+        );
+        caps.memory_suspend = true;
+        let artifact = crate::Artifact {
+            kind: crate::ArtifactKind::SpaceTemplate,
+            reference: self.template.clone(),
+            provider_identity: None,
+            disk_gib: None,
+        };
+        if artifact.validate().is_ok() {
+            caps.default_artifact = Some(artifact);
+        }
+        // Small uses the template's shape; do not guess it from the size name.
+        caps.shapes = [("medium", 4, 4096), ("large", 8, 8192)]
+            .into_iter()
+            .map(|(name, vcpus, memory_mib)| {
+                (
+                    name.into(),
+                    crate::Shape {
+                        vcpus,
+                        memory_mib,
+                        min_disk_gib: None,
+                    },
+                )
+            })
+            .collect();
+        caps
     }
 
     async fn create(&self, r: &CreateRequest) -> Outcome<String> {

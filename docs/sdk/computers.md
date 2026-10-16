@@ -4,8 +4,8 @@
 ([#11801](https://github.com/OpenAgentsInc/openagents/issues/11801)), command
 sessions ([#11802](https://github.com/OpenAgentsInc/openagents/issues/11802)),
 and bounded workspace files ([#11803](https://github.com/OpenAgentsInc/openagents/issues/11803)).
-Placement and other capabilities are tracked separately. The implemented
-slice below is distinct from the proposed resource and later operations.
+Persistent deployment dispatch and requirement-based placement are implemented
+in [#11809](https://github.com/OpenAgentsInc/openagents/issues/11809).
 Deployment and live qualification evidence belongs to the implementation issue.
 
 Part of the [OpenAgents SDK](README.md). See the
@@ -410,10 +410,17 @@ account/workspace/grant data and ignores or strips spoofed internal headers.
 The supported key issuers/scopes must be audited; prefix matching is insufficient.
 Keep the named-agent/admin gate until broader admission is explicitly ready.
 
-## Proposed resource and placement
+## Resource and placement
 
-The exact additive schema is settled in [#11801](https://github.com/OpenAgentsInc/openagents/issues/11801) and [#11804](https://github.com/OpenAgentsInc/openagents/issues/11804).
-The intended fields are:
+Create accepts optional `placement` (`auto`, `our-cloud`, or `fast-sandbox`) and
+`needs` (`profiles`, `memory_suspend`, `files`, `command_sessions`, `min_vcpus`, `min_memory_mib`).
+An explicit placement either satisfies the requirements or refuses. `enrolled`,
+`enrolled_host`, and non-null `egress_profile` are reserved and currently refused.
+Capability discovery adds account-filtered `placements` with shapes and limits;
+existing top-level fields remain compatible. Production's default remains Boat.
+These additions do not publish Snapshot/Fork operations or activate SPACE.
+
+The resource model includes implemented fields and later work:
 
 | Field | Meaning |
 | --- | --- |
@@ -422,7 +429,7 @@ The intended fields are:
 | environment/version | Immutable verified environment and compatible backend artifact |
 | size | Supported named class, with actual vCPU/memory available for inspection |
 | needs | Explicit capability requirements, such as memory-preserving suspension or fork |
-| placement | `auto`, our cloud, fast sandbox, or an authorized enrolled host; exact wire names remain proposed |
+| placement | `auto`, `our-cloud`, or `fast-sandbox`; enrolled-host creation is not yet supported |
 | desired/observed state | Accepted intent and actual lifecycle progress, including failure and uncertainty |
 | capabilities | What the bound backend/artifact actually supports, including suspension semantics and limits |
 | lifecycle | Idle policy, absolute lifetime, and private-state retention |

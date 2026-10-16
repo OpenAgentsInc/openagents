@@ -176,7 +176,10 @@ fn wrap<T>(fault: Option<Inject>, effect: impl FnOnce() -> Outcome<T>) -> Outcom
 
 impl Driver for FakeDriver {
     fn capabilities(&self) -> Capabilities {
-        Capabilities::new("fake", self.profiles.iter().copied(), &["small", "default"])
+        let mut caps =
+            Capabilities::new("fake", self.profiles.iter().copied(), &["small", "default"]);
+        caps.command_sessions = true;
+        caps
     }
 
     async fn create(&self, r: &CreateRequest) -> Outcome<String> {

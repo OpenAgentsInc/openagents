@@ -29,6 +29,23 @@ esac
 [[ $sdk_commit =~ ^[0-9a-f]{40}$ ]] || { echo 'Use a full commit ID.' >&2; exit 2; }
 git fetch -q origin main
 git merge-base --is-ancestor "$sdk_commit" origin/main || { echo 'Push the commit to main before deploying.' >&2; exit 1; }
+# Verify the previous connection before assigning rows written by the old
+# single-driver service. A new default is not evidence of their deployment.
+sdk_legacy_mapping() {
+ gcloud run services describe "$sdk_service" --project "$sdk_project" --region "$sdk_region" --format=json |
+ python3 -c '
+import json,sys
+service=json.load(sys.stdin)
+env={e["name"]:e.get("value") for e in service["spec"]["template"]["spec"]["containers"][0].get("env",[])}
+if (env.get("OA_COMPUTERS_REGISTRY_FILE") or
+    env.get("OA_COMPUTERS_DRIVER","boat") != "boat" or
+    env.get("BOAT_API_BASE","https://api.boat.dev/api/v1").rstrip("/") != sys.argv[1].rstrip("/") or
+    env.get("OA_COMPUTERS_LEGACY_DEPLOYMENT", "oa-boat-primary") != "oa-boat-primary"):
+    sys.exit("The running computer connection differs. Keep its deployment mapping before using this helper.")
+print("oa-boat-primary")
+' "$sdk_boat_base"
+}
+sdk_legacy=$(sdk_legacy_mapping)
 if [[ $sdk_environment == staging ]]; then
  if ! gcloud secrets describe "$sdk_token" --project "$sdk_project" >/dev/null 2>&1; then
   python3 -c 'import secrets; print(secrets.token_urlsafe(48), end="")' |
@@ -66,11 +83,12 @@ if [[ -n $sdk_previous ]]; then
  }
 fi
 
+sdk_legacy=$(sdk_legacy_mapping)
 gcloud run deploy "$sdk_service" --project "$sdk_project" --region "$sdk_region" \
  --image "$sdk_repo@$sdk_digest" --service-account "$sdk_runtime" \
  --add-cloudsql-instances "$sdk_project:$sdk_region:$sdk_database" \
  --update-secrets "OA_COMPUTERS_DATABASE_URL=$sdk_dsn:latest,OA_COMPUTERS_TOKEN=$sdk_token:latest,BOAT_API_KEY=oa-boat-api-key:latest" \
- --update-env-vars "OA_COMPUTERS_DRIVER=boat,BOAT_API_BASE=$sdk_boat_base" \
+ --update-env-vars "OA_COMPUTERS_DRIVER=boat,BOAT_API_BASE=$sdk_boat_base,OA_COMPUTERS_LEGACY_DEPLOYMENT=$sdk_legacy" \
  --labels "openagents-commit=$sdk_commit" --min-instances 1 --max-instances 1 \
  --no-cpu-throttling --cpu 1 --memory 512Mi --allow-unauthenticated --quiet
 sdk_running=$(gcloud run services describe "$sdk_service" --project "$sdk_project" --region "$sdk_region" \

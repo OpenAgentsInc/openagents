@@ -45,8 +45,11 @@ impl BoatDriver {
             .capabilities()
             .await
             .map_err(|e| format!("GET /capabilities: {e}"))?;
-        let caps: Capabilities =
+        let mut caps: Capabilities =
             serde_json::from_value(value).map_err(|e| format!("capabilities: {e}"))?;
+        // Identified commands are implemented by this adapter over Core exec,
+        // including services that predate the additive declaration field.
+        caps.command_sessions = true;
         caps.validate()?;
         Ok(Self { client, caps })
     }

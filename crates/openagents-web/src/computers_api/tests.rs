@@ -97,7 +97,8 @@ async fn provider(State(state): State<Arc<Native>>, request: Request) -> Respons
         .push((owner.clone(), method.clone(), path.clone()));
     if path == "/v1/capabilities" {
         return Json(
-            json!({"driver":CANARY,"profiles":["core","suspend","snapshot","fork","command"],"sizes":["small","medium"],"workspace_file_bytes":computer_files::MAX_BYTES}),
+            json!({"driver":CANARY,"profiles":["core","suspend","snapshot","fork","command"],"sizes":["small","medium"],"workspace_file_bytes":computer_files::MAX_BYTES,
+                "default_placement":"our-cloud","placements":[{"placement":"our-cloud","deployment":CANARY,"offers":[{"driver":CANARY,"profiles":["core","suspend",CANARY],"sizes":["small"],"shapes":{"small":{"vcpus":2,"memory_mib":8192,"provider":CANARY}},"memory_suspend":false,"command_sessions":true,"workspace_file_bytes":computer_files::MAX_BYTES,"default_environment_available":true}]}]}),
         )
         .into_response();
     }
@@ -201,6 +202,19 @@ async fn provider(State(state): State<Arc<Native>>, request: Request) -> Respons
     if path.ends_with("/stop") {
         row["desired"] = json!("stopped");
     }
+    if method == "POST" && path == "/v1/computers" {
+        let body: Value = serde_json::from_slice(
+            &axum::body::to_bytes(request.into_body(), 16 * 1024)
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        if body["idempotency_key"] == "logical-request-one" {
+            assert_eq!(body["placement"], "fast-sandbox");
+            assert_eq!(body["needs"]["files"], true);
+            assert_eq!(body["needs"]["min_memory_mib"], 2048);
+        }
+    }
     if method == "DELETE" {
         row["desired"] = json!("deleted");
     }
@@ -274,7 +288,7 @@ async fn public_lifecycle_uses_current_account_authority_and_keeps_service_crede
             crate::chat_store::account_owner("bob"),
         )
         .header("Idempotency-Key", "logical-request-one")
-        .json(&json!({"size":"small"}))
+        .json(&json!({"size":"small","placement":"fast-sandbox","needs":{"files":true,"min_memory_mib":2048}}))
         .send()
         .await
         .unwrap();
@@ -296,6 +310,12 @@ async fn public_lifecycle_uses_current_account_authority_and_keeps_service_crede
         let text = r.text().await.unwrap();
         assert!(!text.contains(CANARY));
         if path.ends_with("capabilities") {
+            let capabilities: Value = serde_json::from_str(&text).unwrap();
+            assert_eq!(capabilities["default_placement"], "our-cloud");
+            assert_eq!(
+                capabilities["placements"][0]["offers"][0]["shapes"]["small"],
+                json!({"vcpus":2,"memory_mib":8192})
+            );
             assert_eq!(
                 serde_json::from_str::<Value>(&text).unwrap()["profiles"],
                 json!(["core", "suspend"])

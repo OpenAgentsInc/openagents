@@ -45,6 +45,7 @@ pub struct Api {
     pub files: Option<crate::files::Client>,
     pub store: Store,
     pub caps: Capabilities,
+    pub catalog: Option<crate::registry::Catalog>,
     /// SHA-256 of the service bearer token.
     pub token: [u8; 32],
     /// Turn credentials waiting in memory (shared with the reconciler).
@@ -57,6 +58,19 @@ fn sha(s: &str) -> [u8; 32] {
 impl Api {
     pub fn token_digest(token: &str) -> [u8; 32] {
         sha(token)
+    }
+
+    pub(crate) fn capabilities_for(&self, entry: &Entry) -> Result<Capabilities, Response> {
+        if let Some(catalog) = &self.catalog {
+            catalog
+                .for_entry(entry)
+                .map(|target| target.caps.clone())
+                .map_err(admission_error)
+        } else if entry.binding.is_none() && entry.driver == self.caps.driver {
+            Ok(self.caps.clone())
+        } else {
+            Err(admission_error(crate::registry::Refused::Unavailable))
+        }
     }
 }
 
@@ -133,26 +147,13 @@ pub fn view(e: &Entry) -> Value {
         "last_error": e.last_error,
         "created_unix": e.created_unix,
         "updated_unix": e.updated_unix,
+        "binding": e.binding,
+        "resource_binding": e.binding.as_ref().and_then(|binding| e.record.resource().map(|id|
+            json!({"deployment":binding.deployment,"id":id}))),
     })
 }
 
-#[derive(Deserialize, Default)]
-#[serde(deny_unknown_fields)]
-pub struct CreateBody {
-    #[serde(default)]
-    pub chat: Option<String>,
-    #[serde(default)]
-    pub image: Option<String>,
-    #[serde(default)]
-    pub size: Option<String>,
-    #[serde(default)]
-    pub idempotency_key: Option<String>,
-    /// The saved environment and version the image was built from.
-    #[serde(default)]
-    pub environment: Option<String>,
-    #[serde(default)]
-    pub version: Option<String>,
-}
+pub use crate::registry::CreateIntent as CreateBody;
 
 fn new_id() -> String {
     let mut b = [0u8; 10];
@@ -170,6 +171,17 @@ pub fn admit_create(
     owner: &str,
     body: &CreateBody,
 ) -> Result<Computer, (StatusCode, &'static str, String)> {
+    if body.placement.is_some()
+        || body.needs.is_some()
+        || body.egress_profile.is_some()
+        || body.enrolled_host.is_some()
+    {
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "unsupported",
+            "Those computer requirements aren't available here.".into(),
+        ));
+    }
     if let Err(no) = coder_working_computer::on_driver::check(caps) {
         return Err((
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -290,21 +302,24 @@ async fn create(
         }
         body.idempotency_key = Some(key.to_owned());
     }
-    let record = match admit_create(&api.caps, &owner, &body) {
-        Ok(r) => r,
-        Err((status, code, message)) => return err(status, code, &message),
+    let made = if let Some(catalog) = &api.catalog {
+        api.store.create_placed(&owner, &body, catalog).await
+    } else {
+        let record = match admit_create(&api.caps, &owner, &body) {
+            Ok(record) => record,
+            Err((status, code, message)) => return err(status, code, &message),
+        };
+        api.store
+            .create(&NewComputer {
+                owner: &owner,
+                chat: body.chat.as_deref(),
+                idempotency_key: body.idempotency_key.as_deref(),
+                driver: &api.caps.driver,
+                image: body.image.as_deref(),
+                record: &record,
+            })
+            .await
     };
-    let made = api
-        .store
-        .create(&NewComputer {
-            owner: &owner,
-            chat: body.chat.as_deref(),
-            idempotency_key: body.idempotency_key.as_deref(),
-            driver: &api.caps.driver,
-            image: body.image.as_deref(),
-            record: &record,
-        })
-        .await;
     match made {
         Ok((e, true)) => (StatusCode::ACCEPTED, Json(view(&e))).into_response(),
         Ok((e, false)) => {
@@ -330,6 +345,7 @@ async fn create(
             "unavailable",
             "Computers are busy. Try again shortly.",
         ),
+        Err(CreateError::Admission(error)) => admission_error(error),
         Err(CreateError::Database(e)) => {
             eprintln!("oa-computers: create: {e}");
             err(
@@ -339,6 +355,24 @@ async fn create(
             )
         }
     }
+}
+
+fn admission_error(error: crate::registry::Refused) -> Response {
+    use crate::registry::Refused;
+    let (status, code) = match error {
+        Refused::Configuration | Refused::Unavailable => {
+            (StatusCode::SERVICE_UNAVAILABLE, "unavailable")
+        }
+        Refused::Invalid => (StatusCode::BAD_REQUEST, "invalid"),
+        Refused::Size => (StatusCode::BAD_REQUEST, "invalid_size"),
+        Refused::Forbidden => (StatusCode::FORBIDDEN, "forbidden"),
+        Refused::Placement | Refused::Unsupported | Refused::Artifact => {
+            (StatusCode::UNPROCESSABLE_ENTITY, "unsupported")
+        }
+        Refused::Capacity => (StatusCode::TOO_MANY_REQUESTS, "quota_exhausted"),
+        Refused::Conflict => (StatusCode::CONFLICT, "idempotency_conflict"),
+    };
+    err(status, code, &error.to_string())
 }
 
 #[derive(Deserialize, Default)]
@@ -453,8 +487,22 @@ async fn wake(State(api): State<Arc<Api>>, headers: HeaderMap, Path(id): Path<St
     want(&api, &headers, &id, Desired::Running).await
 }
 
-async fn capabilities(State(api): State<Arc<Api>>) -> Response {
-    Json(api.caps.clone()).into_response()
+async fn capabilities(State(api): State<Arc<Api>>, headers: HeaderMap) -> Response {
+    let mut value = serde_json::to_value(&api.caps).expect("capabilities serialize");
+    if let Some(catalog) = &api.catalog {
+        // Old internal callers can still read default capabilities without
+        // an account header. Account-specific offers require that header.
+        if let Ok(owner) = account(&headers) {
+            value["placements"] = catalog.offers(&owner);
+        }
+        value["default_placement"] = catalog
+            .targets
+            .get(&catalog.default)
+            .map_or(serde_json::Value::Null, |target| {
+                serde_json::to_value(target.placement).expect("placement serializes")
+            });
+    }
+    Json(value).into_response()
 }
 
 async fn healthz() -> Response {

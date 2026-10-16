@@ -196,14 +196,21 @@ impl Compute for Fake {
         Ok(self.0.lock().unwrap().images.get(name).cloned())
     }
     async fn image_from_family(&self, family: &str) -> Result<Option<Image>> {
-        Ok(Some(Image {
+        let image = Image {
             name: format!("{family}-20261010"),
             id: "1".into(),
             status: "READY".into(),
             disk_gb: 200,
             self_link: format!("projects/test/global/images/{family}-20261010"),
             ..Default::default()
-        }))
+        };
+        self.0
+            .lock()
+            .unwrap()
+            .images
+            .entry(image.name.clone())
+            .or_insert_with(|| image.clone());
+        Ok(Some(image))
     }
     async fn list_images(&self, label: &str, value: &str) -> Result<Vec<Image>> {
         Ok(self

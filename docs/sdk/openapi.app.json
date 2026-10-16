@@ -9150,6 +9150,44 @@
             "maxLength": 128,
             "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$",
             "description": "Required here or in Idempotency-Key; both must match. Keep the key bound to the immutable request after completion or deletion."
+          },
+          "placement": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              null,
+              "auto",
+              "our-cloud",
+              "fast-sandbox",
+              "enrolled"
+            ],
+            "description": "An explicit kind of computer is required or refused; it never falls back to another kind. Enrolled computers are not yet supported for creation."
+          },
+          "needs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppComputerNeeds"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "egress_profile": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reserved. Non-null profiles are refused until their network rules are supported."
+          },
+          "enrolled_host": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reserved. Non-null host selections are currently refused."
           }
         },
         "examples": [
@@ -9157,6 +9195,150 @@
             "size": "small"
           }
         ]
+      },
+      "AppComputerNeeds": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "profiles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "core",
+                "suspend",
+                "snapshot",
+                "fork"
+              ]
+            },
+            "uniqueItems": true
+          },
+          "memory_suspend": {
+            "type": "boolean",
+            "default": false
+          },
+          "files": {
+            "type": "boolean",
+            "default": false
+          },
+          "command_sessions": {
+            "type": "boolean",
+            "default": false
+          },
+          "min_vcpus": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 4294967295
+          },
+          "min_memory_mib": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          }
+        }
+      },
+      "AppComputerShape": {
+        "type": "object",
+        "required": [
+          "vcpus",
+          "memory_mib"
+        ],
+        "properties": {
+          "vcpus": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "memory_mib": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "min_disk_gib": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "AppPlacementOffer": {
+        "type": "object",
+        "required": [
+          "profiles",
+          "sizes",
+          "shapes",
+          "memory_suspend",
+          "command_sessions",
+          "workspace_file_bytes",
+          "default_environment_available"
+        ],
+        "properties": {
+          "profiles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "core",
+                "suspend",
+                "snapshot",
+                "fork"
+              ]
+            }
+          },
+          "sizes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "shapes": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AppComputerShape"
+            }
+          },
+          "memory_suspend": {
+            "type": "boolean"
+          },
+          "command_sessions": {
+            "type": "boolean"
+          },
+          "workspace_file_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 4194304
+          },
+          "default_environment_available": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AppPlacementCapabilities": {
+        "type": "object",
+        "required": [
+          "placement",
+          "offers"
+        ],
+        "properties": {
+          "placement": {
+            "type": "string",
+            "enum": [
+              "our-cloud",
+              "fast-sandbox"
+            ]
+          },
+          "offers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppPlacementOffer"
+            }
+          }
+        }
       },
       "AppComputerCapabilities": {
         "type": "object",
@@ -9193,6 +9375,23 @@
                 "const": 20
               }
             }
+          },
+          "placements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppPlacementCapabilities"
+            }
+          },
+          "default_placement": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              null,
+              "our-cloud",
+              "fast-sandbox"
+            ]
           },
           "files": {
             "type": [

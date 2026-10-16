@@ -144,6 +144,43 @@ struct Create {
     environment: Option<String>,
     version: Option<String>,
     idempotency_key: Option<String>,
+    placement: Option<Placement>,
+    needs: Option<Needs>,
+    egress_profile: Option<String>,
+    enrolled_host: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum Placement {
+    Auto,
+    OurCloud,
+    FastSandbox,
+    Enrolled,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum Profile {
+    Core,
+    Suspend,
+    Snapshot,
+    Fork,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Needs {
+    #[serde(default)]
+    profiles: Vec<Profile>,
+    #[serde(default)]
+    memory_suspend: bool,
+    #[serde(default)]
+    files: bool,
+    #[serde(default)]
+    command_sessions: bool,
+    min_vcpus: Option<u32>,
+    min_memory_mib: Option<u64>,
 }
 
 pub(crate) async fn create(
@@ -398,6 +435,56 @@ pub(crate) async fn list_cloud(
     }
 }
 
+fn public_placements(value: &Value) -> Value {
+    let mut placements = Vec::new();
+    for group in value.as_array().into_iter().flatten().take(16) {
+        if !matches!(
+            group["placement"].as_str(),
+            Some("our-cloud" | "fast-sandbox")
+        ) {
+            continue;
+        }
+        let mut offers = Vec::new();
+        for offer in group["offers"].as_array().into_iter().flatten().take(16) {
+            let profiles: Vec<_> = offer["profiles"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|p| matches!(p.as_str(), Some("core" | "suspend" | "snapshot" | "fork")))
+                .collect();
+            let sizes: Vec<_> = offer["sizes"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .take(32)
+                .filter(|s| s.as_str().is_some_and(coder_environment::valid_id))
+                .collect();
+            let mut shapes = serde_json::Map::new();
+            for size in &sizes {
+                let name = size.as_str().unwrap();
+                let shape = &offer["shapes"][name];
+                if !shape["vcpus"].as_u64().is_some_and(|n| n > 0)
+                    || !shape["memory_mib"].as_u64().is_some_and(|n| n > 0)
+                {
+                    continue;
+                }
+                let mut safe = json!({"vcpus":shape["vcpus"],"memory_mib":shape["memory_mib"]});
+                if shape["min_disk_gib"].as_u64().is_some_and(|n| n > 0) {
+                    safe["min_disk_gib"] = shape["min_disk_gib"].clone();
+                }
+                shapes.insert(name.into(), safe);
+            }
+            offers.push(json!({"profiles":profiles,"sizes":sizes,"shapes":shapes,
+                "memory_suspend":offer["memory_suspend"].as_bool().unwrap_or(false),
+                "command_sessions":offer["command_sessions"].as_bool().unwrap_or(false),
+                "workspace_file_bytes":offer["workspace_file_bytes"].as_u64().filter(|n|*n>0 && *n<=computer_files::MAX_BYTES as u64),
+                "default_environment_available":offer["default_environment_available"].as_bool().unwrap_or(false)}));
+        }
+        placements.push(json!({"placement":group["placement"],"offers":offers}));
+    }
+    json!(placements)
+}
+
 pub(crate) async fn capabilities(State(app): State<App>, headers: HeaderMap) -> Response {
     let identity = match admitted(&app, &headers).await {
         Ok(i) => i,
@@ -421,6 +508,8 @@ pub(crate) async fn capabilities(State(app): State<App>, headers: HeaderMap) -> 
                 "schema": "openagents.computers.capabilities.v1",
                 "profiles": v["profiles"].as_array().unwrap().iter().filter(|profile| matches!(profile.as_str(), Some("core" | "suspend"))).collect::<Vec<_>>(),
                 "sizes": v["sizes"],
+                "placements": public_placements(&v["placements"]),
+                "default_placement": v["default_placement"].as_str().filter(|p|matches!(*p,"our-cloud"|"fast-sandbox")),
                 "limits": {"max_computers": 20},
                 "files": if v["workspace_file_bytes"].as_u64().is_some_and(|n| n > 0 && n <= computer_files::MAX_BYTES as u64) { json!({"max_bytes":v["workspace_file_bytes"],"max_path_bytes":computer_files::MAX_PATH_BYTES,"max_concurrent_transfers":computer_files::MAX_TRANSFERS,"timeout_seconds":computer_files::TIMEOUT_SECONDS,"requires_awake":true}) } else { Value::Null }
             }),
@@ -452,11 +541,34 @@ pub(crate) fn extend_openapi(document: &mut Value) {
         "AppCreateComputer":{"type":"object","additionalProperties":false,"properties":{
             "chat":{"type":["string","null"],"description":"An existing chat owned by this account."},"size":{"type":["string","null"],"default":"small"},
             "environment":{"type":["string","null"]},"version":{"type":["string","null"],"description":"The saved version number, paired with environment."},
-            "idempotency_key":{"type":["string","null"],"description":"Required here or as Idempotency-Key; when both are supplied they must match."}
+            "idempotency_key":{"type":["string","null"],"description":"Required here or as Idempotency-Key; when both are supplied they must match."},
+            "placement":{"type":["string","null"],"enum":[null,"auto","our-cloud","fast-sandbox","enrolled"],"description":"An explicit kind of computer is required or refused; it never falls back to another kind. Enrolled computers are not yet supported for creation."},
+            "needs": {"anyOf":[reference("ComputerNeeds"),{"type":"null"}]},
+            "egress_profile":{"type":["string","null"],"description":"Reserved. Non-null profiles are refused until their network rules are supported."},
+            "enrolled_host":{"type":["string","null"],"description":"Reserved. Non-null host selections are currently refused."}
+        }},
+        "AppComputerNeeds":{"type":"object","additionalProperties":false,"properties":{
+            "profiles":{"type":"array","items":{"type":"string","enum":["core","suspend","snapshot","fork"]},"uniqueItems":true},
+            "memory_suspend":{"type":"boolean","default":false},"files":{"type":"boolean","default":false},"command_sessions":{"type":"boolean","default":false},
+            "min_vcpus":{"type":["integer","null"],"minimum":1,"maximum":u32::MAX},"min_memory_mib":{"type":["integer","null"],"minimum":1}
+        }},
+        "AppComputerShape":{"type":"object","required":["vcpus","memory_mib"],"properties":{
+            "vcpus":{"type":"integer","minimum":1},"memory_mib":{"type":"integer","minimum":1},"min_disk_gib":{"type":"integer","minimum":1}
+        }},
+        "AppPlacementOffer":{"type":"object","required":["profiles","sizes","shapes","memory_suspend","command_sessions","workspace_file_bytes","default_environment_available"],"properties":{
+            "profiles":{"type":"array","items":{"type":"string","enum":["core","suspend","snapshot","fork"]}},
+            "sizes":{"type":"array","items":{"type":"string"}},"shapes":{"type":"object","additionalProperties":reference("ComputerShape")},
+            "memory_suspend":{"type":"boolean"},"command_sessions":{"type":"boolean"},
+            "workspace_file_bytes":{"type":["integer","null"],"minimum":1,"maximum":computer_files::MAX_BYTES},"default_environment_available":{"type":"boolean"}
+        }},
+        "AppPlacementCapabilities":{"type":"object","required":["placement","offers"],"properties":{
+            "placement":{"type":"string","enum":["our-cloud","fast-sandbox"]},"offers":{"type":"array","items":reference("PlacementOffer")}
         }},
         "AppComputerCapabilities":{"type":"object","required":["schema","profiles","sizes","limits"],"properties":{
             "schema":{"const":"openagents.computers.capabilities.v1"},"profiles":{"type":"array","items":{"type":"string"}},"sizes":{"type":"array","items":{"type":"string"}},
             "limits":{"type":"object","required":["max_computers"],"properties":{"max_computers":{"type":"integer","const":20}}},
+            "placements":{"type":"array","items":reference("PlacementCapabilities")},
+            "default_placement":{"type":["string","null"],"enum":[null,"our-cloud","fast-sandbox"]},
             "files":{"type":["object","null"],"properties":{"max_bytes":{"type":"integer","maximum":computer_files::MAX_BYTES},"max_path_bytes":{"type":"integer","const":computer_files::MAX_PATH_BYTES},"max_concurrent_transfers":{"type":"integer","const":computer_files::MAX_TRANSFERS},"timeout_seconds":{"type":"integer","const":computer_files::TIMEOUT_SECONDS},"requires_awake":{"const":true}}}
         }}
     });

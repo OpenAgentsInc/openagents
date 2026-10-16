@@ -14,7 +14,7 @@ use coder_working_computer::driver::Held;
 use coder_working_computer::store::{Result as StoreResult, StoreError};
 use coder_working_computer::{Applied, Command, Computer, Phase, apply};
 use serde::Serialize;
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 use tokio_postgres::Row;
 
 /// What the API and reconciler want a computer to be.
@@ -59,10 +59,11 @@ pub struct Entry {
     pub last_error: Option<String>,
     pub created_unix: i64,
     pub updated_unix: i64,
+    pub binding: Option<crate::registry::Binding>,
 }
 
 const COLUMNS: &str = "id, owner, chat, driver, image, size, desired, phase, record, attempts, \
-     last_error, extract(epoch from created_at)::bigint, extract(epoch from updated_at)::bigint";
+     last_error, extract(epoch from created_at)::bigint, extract(epoch from updated_at)::bigint, binding";
 
 fn entry(row: &Row) -> Result<Entry, DbError> {
     let record: serde_json::Value = row.get(8);
@@ -82,6 +83,11 @@ fn entry(row: &Row) -> Result<Entry, DbError> {
         last_error: row.get(10),
         created_unix: row.get(11),
         updated_unix: row.get(12),
+        binding: row
+            .get::<_, Option<serde_json::Value>>(13)
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|_| DbError("The saved computer settings could not be read.".into()))?,
     })
 }
 
@@ -103,6 +109,13 @@ pub struct NewComputer<'a> {
     pub record: &'a Computer,
 }
 
+struct Insert {
+    driver: String,
+    image: Option<String>,
+    record: Computer,
+    binding: Option<crate::registry::Binding>,
+}
+
 /// Admission failures are distinct from temporary database failures.
 #[derive(Debug)]
 pub enum CreateError {
@@ -110,6 +123,7 @@ pub enum CreateError {
     Conflict,
     Limit,
     Busy,
+    Admission(crate::registry::Refused),
 }
 
 impl From<DbError> for CreateError {
@@ -131,6 +145,7 @@ impl std::fmt::Display for CreateError {
             Self::Conflict => f.write_str("That request already names a different computer."),
             Self::Limit => f.write_str("Delete an unused computer before creating another."),
             Self::Busy => f.write_str("Computers are busy. Try again shortly."),
+            Self::Admission(error) => error.fmt(f),
         }
     }
 }
@@ -154,10 +169,178 @@ impl Store {
         }
     }
 
+    /// Assign old rows only through an explicit previous-deployment mapping.
+    /// Image omission and operation identities remain exactly as issued.
+    pub async fn pin_legacy(&self, catalog: &crate::registry::Catalog) -> Result<u64, DbError> {
+        let drivers: Vec<String> = catalog
+            .targets
+            .values()
+            .filter_map(|target| target.legacy_driver.clone())
+            .collect();
+        if drivers.is_empty() {
+            return Ok(0);
+        }
+        let mut client = self.db.independent().await?;
+        let tx = client.transaction().await?;
+        tx.batch_execute("SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='15s'")
+            .await?;
+        tx.query_one("SELECT pg_advisory_xact_lock(11809)", &[])
+            .await?;
+        let rows=tx.query(&format!("SELECT {COLUMNS} FROM computers.computers WHERE binding IS NULL AND driver=ANY($1) ORDER BY created_at LIMIT 1000 FOR UPDATE SKIP LOCKED"),&[&drivers]).await?;
+        let mut count = 0;
+        for row in rows {
+            let entry = entry(&row)?;
+            let binding = catalog
+                .legacy_binding(&entry)
+                .map_err(|_| DbError("The previous computer service is not configured.".into()))?;
+            let value = serde_json::to_value(binding)
+                .map_err(|_| DbError("The computer settings could not be recorded.".into()))?;
+            count += tx
+                .execute(
+                    "UPDATE computers.computers SET binding=$2 WHERE id=$1 AND binding IS NULL",
+                    &[&entry.id, &value],
+                )
+                .await?;
+        }
+        tx.commit().await?;
+        Ok(count)
+    }
+
     /// Record intent. Returns the row and whether it was made now: a live
     /// computer for the same chat, or the same idempotency key, is
     /// returned as it is instead of a second one.
     pub async fn create(&self, n: &NewComputer<'_>) -> Result<(Entry, bool), CreateError> {
+        self.create_inner(
+            n.owner,
+            n.chat,
+            n.idempotency_key,
+            false,
+            |e| {
+                if n.idempotency_key.is_some()
+                    && (e.chat.as_deref() != n.chat
+                        || e.driver != n.driver
+                        || e.image.as_deref() != n.image
+                        || e.size != n.record.size
+                        || e.record.base != n.record.base)
+                {
+                    Err(CreateError::Conflict)
+                } else {
+                    Ok(())
+                }
+            },
+            |_| {
+                Ok(Insert {
+                    driver: n.driver.into(),
+                    image: n.image.map(str::to_owned),
+                    record: n.record.clone(),
+                    binding: None,
+                })
+            },
+        )
+        .await
+    }
+
+    /// Retry lookup precedes today's placement choice, including when the
+    /// original deployment was removed from the current configuration.
+    pub async fn create_placed(
+        &self,
+        owner: &str,
+        intent: &crate::registry::CreateIntent,
+        catalog: &crate::registry::Catalog,
+    ) -> Result<(Entry, bool), CreateError> {
+        self.create_inner(
+            owner,
+            intent.chat.as_deref(),
+            intent.idempotency_key.as_deref(),
+            true,
+            |entry| {
+                if intent.legacy_ensure() {
+                    return Ok(());
+                }
+                if let Some(binding) = entry.binding.as_ref().filter(|binding| !binding.migrated) {
+                    if binding.request_fingerprint == intent.fingerprint(&binding.size) {
+                        return Ok(());
+                    }
+                    return Err(CreateError::Conflict);
+                }
+                // Old rows have no original placement request. Preserve the old
+                // immutable settings; never infer acceptance of a new requirement.
+                if intent.placement.is_some()
+                    || intent.needs.is_some()
+                    || intent.egress_profile.is_some()
+                    || intent.enrolled_host.is_some()
+                    || entry.chat != intent.chat
+                    || entry.image != intent.image
+                    || intent.size.as_ref().is_some_and(|size| size != &entry.size)
+                    || entry
+                        .record
+                        .base
+                        .as_ref()
+                        .map(|base| (&base.environment, &base.version))
+                        != intent.environment.as_ref().zip(intent.version.as_ref())
+                {
+                    return Err(CreateError::Conflict);
+                }
+                Ok(())
+            },
+            |counts| {
+                // Unassigned legacy rows conservatively consume every deployment
+                // capacity until their previous connection is explicitly pinned.
+                let mut counts = counts.clone();
+                let unassigned = counts.remove("").unwrap_or(0);
+                for id in catalog.targets.keys() {
+                    *counts.entry(id.clone()).or_default() += unassigned;
+                }
+                let binding = catalog
+                    .choose(owner, intent, &counts)
+                    .map_err(CreateError::Admission)?;
+                let target = &catalog.targets[&binding.deployment];
+                let body = crate::api::CreateBody {
+                    chat: intent.chat.clone(),
+                    image: intent.image.clone(),
+                    size: Some(binding.size.clone()),
+                    idempotency_key: intent.idempotency_key.clone(),
+                    environment: intent.environment.clone(),
+                    version: intent.version.clone(),
+                    ..Default::default()
+                };
+                let record = crate::api::admit_create(&target.caps, owner, &body)
+                    .map_err(|_| CreateError::Admission(crate::registry::Refused::Invalid))?;
+                let artifact = binding
+                    .artifact
+                    .as_ref()
+                    .expect("new placement has an image");
+                let image = if artifact.kind == computer_driver::ArtifactKind::Test
+                    && artifact.reference == "test:empty"
+                {
+                    None
+                } else {
+                    Some(artifact.reference.clone())
+                };
+                Ok(Insert {
+                    driver: binding.driver.clone(),
+                    image,
+                    record,
+                    binding: Some(binding),
+                })
+            },
+        )
+        .await
+    }
+
+    async fn create_inner<Existing, New>(
+        &self,
+        owner: &str,
+        chat: Option<&str>,
+        key: Option<&str>,
+        placement_admission: bool,
+        matches_existing: Existing,
+        make_new: New,
+    ) -> Result<(Entry, bool), CreateError>
+    where
+        Existing: Fn(&Entry) -> Result<(), CreateError>,
+        New: FnOnce(&BTreeMap<String, i64>) -> Result<Insert, CreateError>,
+    {
         let _permit = self
             .admission
             .try_acquire()
@@ -174,7 +357,7 @@ impl Store {
         // retry lookup and quota admission, including simultaneous API requests.
         tx.query_one(
             "SELECT pg_advisory_xact_lock(hashtextextended($1, 11801))",
-            &[&n.owner],
+            &[&owner],
         )
         .await?;
         let existing = tx
@@ -192,7 +375,7 @@ impl Store {
                                   WHERE owner = $1 AND request_key = $3))
                      ORDER BY created_at DESC LIMIT 2"
                 ),
-                &[&n.owner, &n.chat, &n.idempotency_key],
+                &[&owner, &chat, &key],
             )
             .await?;
         if existing.len() > 1 {
@@ -200,59 +383,65 @@ impl Store {
         }
         if let Some(row) = existing.first() {
             let e = entry(row)?;
-            // Unkeyed chat ensures keep the existing computer, even if a
-            // later turn offers another image. Public creates always use a
-            // key and must match the original immutable settings.
-            if n.idempotency_key.is_some()
-                && (e.chat.as_deref() != n.chat
-                    || e.driver != n.driver
-                    || e.image.as_deref() != n.image
-                    || e.size != n.record.size
-                    || e.record.base != n.record.base)
-            {
-                return Err(CreateError::Conflict);
-            }
-            remember_request(&tx, n, &e.id).await?;
+            matches_existing(&e)?;
+            remember_request(&tx, owner, key, &e.id).await?;
             tx.commit().await?;
             return Ok((e, false));
         }
         let count: i64 = tx
             .query_one(
                 "SELECT count(*) FROM computers.computers WHERE owner = $1 AND NOT done",
-                &[&n.owner],
+                &[&owner],
             )
             .await?
             .get(0);
         if count >= MAX_ACCOUNT_COMPUTERS {
             return Err(CreateError::Limit);
         }
-        let record = serde_json::to_value(n.record).map_err(|e| DbError(e.to_string()))?;
+        let mut counts = BTreeMap::new();
+        if placement_admission {
+            // Serialize placement capacity across accounts, after the account lock.
+            tx.query_one("SELECT pg_advisory_xact_lock(11809)", &[])
+                .await?;
+            for row in tx.query("SELECT binding->>'deployment', count(*) FROM computers.computers WHERE NOT done GROUP BY binding->>'deployment'", &[]).await? {
+                counts.insert(row.get::<_,Option<String>>(0).unwrap_or_default(), row.get::<_,i64>(1));
+            }
+        }
+        let insert = make_new(&counts)?;
+        let record = serde_json::to_value(&insert.record).map_err(|e| DbError(e.to_string()))?;
+        let binding = insert
+            .binding
+            .as_ref()
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(|_| DbError("The computer settings could not be recorded.".into()))?;
         let inserted = tx
             .query_opt(
                 &format!(
                     "INSERT INTO computers.computers
-                       (id, owner, chat, idempotency_key, driver, image, size, desired, phase, revision, record)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, 'running', $8, $9, $10)
+                       (id, owner, chat, idempotency_key, driver, image, size, desired, phase, revision, record, binding)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, 'running', $8, $9, $10, $11)
                      ON CONFLICT DO NOTHING
                      RETURNING {COLUMNS}"
                 ),
                 &[
-                    &n.record.id,
-                    &n.owner,
-                    &n.chat,
-                    &n.idempotency_key,
-                    &n.driver,
-                    &n.image,
-                    &n.record.size,
-                    &phase_name(&n.record.phase),
-                    &(n.record.revision as i64),
+                    &insert.record.id,
+                    &owner,
+                    &chat,
+                    &key,
+                    &insert.driver,
+                    &insert.image,
+                    &insert.record.size,
+                    &phase_name(&insert.record.phase),
+                    &(insert.record.revision as i64),
                     &record,
+                    &binding,
                 ],
             )
             .await?;
         if let Some(row) = inserted {
             let e = entry(&row)?;
-            remember_request(&tx, n, &e.id).await?;
+            remember_request(&tx, owner, key, &e.id).await?;
             tx.commit().await?;
             return Ok((e, true));
         }
@@ -346,7 +535,8 @@ impl Store {
         c.query_opt(
             &format!(
                 "UPDATE computers.computers
-                 SET lease_holder = $1, lease_until = now() + make_interval(secs => $2)
+                 SET lease_holder = $1, lease_until = now() + make_interval(secs => $2),
+                     binding_lease_until = now() + make_interval(secs => $2)
                  WHERE id = (
                    SELECT id FROM computers.computers
                    WHERE NOT done AND next_attempt_at <= now()
@@ -421,14 +611,15 @@ impl Store {
 
 async fn remember_request(
     tx: &tokio_postgres::Transaction<'_>,
-    n: &NewComputer<'_>,
+    owner: &str,
+    key: Option<&str>,
     id: &str,
 ) -> Result<(), CreateError> {
-    if let Some(key) = n.idempotency_key {
+    if let Some(key) = key {
         let known = tx
             .query_opt(
                 "SELECT 1 FROM computers.create_requests WHERE owner = $1 AND request_key = $2",
-                &[&n.owner, &key],
+                &[&owner, &key],
             )
             .await?
             .is_some();
@@ -445,7 +636,7 @@ async fn remember_request(
             }
             tx.execute(
                 "INSERT INTO computers.create_requests (owner, request_key, computer) VALUES ($1, $2, $3)",
-                &[&n.owner, &key, &id],
+                &[&owner, &key, &id],
             )
             .await?;
         }

@@ -726,6 +726,34 @@ fi
     async fn image_for(&self, from: Option<&str>) -> Res<Image> {
         match from {
             Some(name) if !name.is_empty() => {
+                // Placement saves the resolved image reference, rather than a
+                // family whose default can change before an uncertain retry.
+                let reference = name
+                    .strip_prefix("https://www.googleapis.com/compute/v1/")
+                    .or_else(|| name.strip_prefix("https://compute.googleapis.com/compute/v1/"))
+                    .unwrap_or(name);
+                let prefix = format!("projects/{}/global/images/", self.cfg.project);
+                let name = if reference.contains('/') {
+                    reference.strip_prefix(&prefix).ok_or_else(|| {
+                        ApiErr::new(
+                            422,
+                            "invalid_image",
+                            "Choose an image from this computer service.",
+                        )
+                    })?
+                } else {
+                    reference
+                };
+                if name.is_empty()
+                    || name.contains(['/', '?', '#'])
+                    || name.chars().any(char::is_whitespace)
+                {
+                    return Err(ApiErr::new(
+                        422,
+                        "invalid_image",
+                        "The image reference is invalid.",
+                    ));
+                }
                 let image = self
                     .compute
                     .get_image(name)

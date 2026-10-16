@@ -322,6 +322,19 @@ async fn named_delete<C: Compute, R: Remote>(
 /// meter/delete, stop and resume on the same disk, named snapshots, fork.
 async fn capabilities<C: Compute, R: Remote>(State(s): S<C, R>) -> Response {
     let mut caps = crate::capabilities();
+    // Resolving the family is read-only. If it is unavailable, existing
+    // computers still need observe/delete; new placement refuses a missing base.
+    if let Ok(Some(image)) = s.compute.image_from_family(&s.cfg.base_family).await
+        && image.status == "READY"
+        && !image.self_link.is_empty()
+    {
+        caps.default_artifact = Some(computer_driver::Artifact {
+            kind: computer_driver::ArtifactKind::GceImage,
+            reference: image.self_link,
+            provider_identity: (!image.id.is_empty()).then_some(image.id),
+            disk_gib: u64::try_from(image.disk_gb).ok().filter(|n| *n > 0),
+        });
+    }
     caps.workspace_file_bytes = s
         .cfg
         .workspace_helper

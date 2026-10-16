@@ -8,6 +8,9 @@
 //!   `fake` (`OA_COMPUTERS_FAKE_DIR`, local development only), or `space`
 //!   (feature `space`; `SPACE_API_URL`, `SPACE_DATA_PLANE_URL`,
 //!   `SPACE_API_TOKEN`, and `SPACE_TEMPLATE`).
+//! - `OA_COMPUTERS_REGISTRY_FILE`: explicit deployment configuration. Old rows
+//!   require an explicit `legacy` mapping. With the old single-driver variables,
+//!   `OA_COMPUTERS_LEGACY_DEPLOYMENT` identifies that previous deployment.
 //! - `OA_COMPUTERS_LISTEN` (default `0.0.0.0:$PORT`, else `127.0.0.1:8790`).
 //! - `OA_COMPUTERS_RECONCILE=0` serves the API without a reconciler.
 //! - `OA_COMPUTERS_KEEP_STOPPED_DAYS` (7): a computer stopped this long
@@ -17,7 +20,7 @@
 //!
 //! No secret is ever printed.
 
-use computer_driver::Driver;
+use oa_computers::registry::{Registry, runtime::RuntimeDriver};
 use oa_computers::{Db, Store, reconcile::Settings};
 use std::time::Duration;
 
@@ -50,12 +53,8 @@ fn settings() -> Settings {
     s
 }
 
-async fn serve<D: Driver + Clone + Send + 'static>(driver: D, dsn: String, token: String) {
-    let caps = driver.capabilities();
-    if let Err(e) = coder_working_computer::on_driver::check(&caps) {
-        eprintln!("oa-computers: {e}");
-        std::process::exit(2);
-    }
+async fn serve(driver: Registry<RuntimeDriver>, dsn: String, token: String) {
+    let catalog = driver.catalog().clone();
     let db = match Db::connect(&dsn).await {
         Ok(db) => db,
         Err(e) => {
@@ -63,13 +62,22 @@ async fn serve<D: Driver + Clone + Send + 'static>(driver: D, dsn: String, token
             std::process::exit(1);
         }
     };
+    if let Err(error) = Store::new(db.clone()).pin_legacy(&catalog).await {
+        eprintln!("oa-computers: {error}");
+        std::process::exit(1);
+    }
     let files = oa_computers::files::spawn(Store::new(db.clone()), driver.clone());
     let turns = oa_computers::turns::Secrets::default();
     if env("OA_COMPUTERS_RECONCILE").as_deref() != Some("0") {
         oa_computers::spawn_reconciler(dsn, driver, settings(), turns.clone());
     }
-    let app =
-        oa_computers::app_with_files(Store::new(db), caps.clone(), &token, turns, Some(files));
+    let app = oa_computers::app_with_registry(
+        Store::new(db),
+        catalog.clone(),
+        &token,
+        turns,
+        Some(files),
+    );
     let listen = env("OA_COMPUTERS_LISTEN").unwrap_or_else(|| match env("PORT") {
         Some(port) => format!("0.0.0.0:{port}"),
         None => "127.0.0.1:8790".into(),
@@ -82,8 +90,8 @@ async fn serve<D: Driver + Clone + Send + 'static>(driver: D, dsn: String, token
         }
     };
     eprintln!(
-        "oa-computers: listening on {listen}, driver {}",
-        caps.driver
+        "oa-computers: listening on {listen}, {} configured services",
+        catalog.targets.len()
     );
     if let Err(e) = axum::serve(listener, app).await {
         eprintln!("oa-computers: {e}");
@@ -97,43 +105,12 @@ async fn main() {
         eprintln!("oa-computers: OA_COMPUTERS_DATABASE_URL and OA_COMPUTERS_TOKEN are required");
         std::process::exit(2);
     };
-    match env("OA_COMPUTERS_DRIVER").as_deref().unwrap_or("boat") {
-        #[cfg(feature = "space")]
-        "space" => {
-            let driver = match computer_driver::space::SpaceDriver::from_env() {
-                Ok(d) => d,
-                Err(e) => {
-                    eprintln!("oa-computers: {e}");
-                    std::process::exit(2);
-                }
-            };
-            serve(driver, dsn, token).await;
-        }
-        "fake" => {
-            let dir =
-                env("OA_COMPUTERS_FAKE_DIR").unwrap_or_else(|| "/tmp/oa-computers-fake".into());
-            serve(computer_driver::fake::FakeDriver::new(dir), dsn, token).await;
-        }
-        "boat" => {
-            let client = match boat::Client::from_env().await {
-                Ok(c) => c,
-                Err(e) => {
-                    eprintln!("oa-computers: boat client: {e}");
-                    std::process::exit(2);
-                }
-            };
-            let driver = match computer_driver::boat::BoatDriver::connect(client).await {
-                Ok(d) => d,
-                Err(e) => {
-                    eprintln!("oa-computers: {e}");
-                    std::process::exit(2);
-                }
-            };
-            serve(driver, dsn, token).await;
-        }
-        other => {
-            eprintln!("oa-computers: unknown driver {other}");
+    let registry = match oa_computers::registry::runtime::from_environment().await {
+        Ok(registry) => registry,
+        Err(error) => {
+            eprintln!("oa-computers: {error}");
             std::process::exit(2);
         }
-    }
+    };
+    serve(registry, dsn, token).await;
 }

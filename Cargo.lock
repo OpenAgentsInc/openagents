@@ -10977,6 +10977,7 @@ dependencies = [
  "computer-files",
  "getrandom 0.4.3",
  "oa-boat",
+ "proptest",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -10984,6 +10985,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-postgres",
+ "url",
 ]
 
 [[package]]

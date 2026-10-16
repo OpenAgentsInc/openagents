@@ -13,13 +13,14 @@ pub mod commands;
 pub mod db;
 pub mod files;
 pub mod reconcile;
+pub mod registry;
 pub mod store;
 pub mod turns;
 
 pub use db::Db;
 pub use store::Store;
 
-use computer_driver::Driver;
+use registry::Drivers;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -32,7 +33,7 @@ pub fn spawn_reconciler<D>(
     turns: turns::Secrets,
 ) -> std::thread::JoinHandle<()>
 where
-    D: Driver + Clone + Send + 'static,
+    D: Drivers + Send + 'static,
 {
     std::thread::Builder::new()
         .name("oa-computers-reconcile".into())
@@ -89,6 +90,36 @@ pub fn app_with_files(
         files,
         store,
         caps,
+        catalog: None,
+        token: api::Api::token_digest(token),
+        turns,
+    }))
+}
+
+/// The registry-backed API keeps the original capability fields for callers
+/// that do not use placement. All new allocation decisions use the catalog.
+pub fn app_with_registry(
+    store: Store,
+    mut catalog: registry::Catalog,
+    token: &str,
+    turns: turns::Secrets,
+    files: Option<files::Client>,
+) -> axum::Router {
+    if files.is_none() {
+        for target in catalog.targets.values_mut() {
+            target.caps.workspace_file_bytes = None;
+        }
+    }
+    let caps = catalog
+        .targets
+        .get(&catalog.default)
+        .map(|target| target.caps.clone())
+        .unwrap_or_else(|| computer_driver::Capabilities::new("unavailable", [], &[]));
+    api::router(Arc::new(api::Api {
+        files,
+        store,
+        caps,
+        catalog: Some(catalog),
         token: api::Api::token_digest(token),
         turns,
     }))

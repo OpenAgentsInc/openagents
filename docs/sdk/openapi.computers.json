@@ -405,6 +405,17 @@
           }
         ],
         "properties": {
+          "default_placement": {
+            "enum": [
+              null,
+              "our-cloud",
+              "fast-sandbox"
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "files": {
             "description": "Absent or null means protected file transfer is unsupported. Do not infer support from the backend name.",
             "properties": {
@@ -451,6 +462,12 @@
               "max_computers"
             ],
             "type": "object"
+          },
+          "placements": {
+            "items": {
+              "$ref": "#/components/schemas/AppPlacementCapabilities"
+            },
+            "type": "array"
           },
           "profiles": {
             "items": {
@@ -552,6 +569,73 @@
         ],
         "type": "object"
       },
+      "AppComputerNeeds": {
+        "additionalProperties": false,
+        "properties": {
+          "command_sessions": {
+            "default": false,
+            "type": "boolean"
+          },
+          "files": {
+            "default": false,
+            "type": "boolean"
+          },
+          "memory_suspend": {
+            "default": false,
+            "type": "boolean"
+          },
+          "min_memory_mib": {
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "min_vcpus": {
+            "maximum": 4294967295,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "profiles": {
+            "items": {
+              "enum": [
+                "core",
+                "suspend",
+                "snapshot",
+                "fork"
+              ],
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "type": "object"
+      },
+      "AppComputerShape": {
+        "properties": {
+          "memory_mib": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "min_disk_gib": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "vcpus": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "vcpus",
+          "memory_mib"
+        ],
+        "type": "object"
+      },
       "AppCreateCommand": {
         "additionalProperties": false,
         "examples": [
@@ -622,6 +706,20 @@
               "null"
             ]
           },
+          "egress_profile": {
+            "description": "Reserved. Non-null profiles are refused until their network rules are supported.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enrolled_host": {
+            "description": "Reserved. Non-null host selections are currently refused.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "environment": {
             "type": [
               "string",
@@ -633,6 +731,30 @@
             "maxLength": 128,
             "minLength": 1,
             "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "needs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AppComputerNeeds"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "placement": {
+            "description": "An explicit kind of computer is required or refused; it never falls back to another kind. Enrolled computers are not yet supported for creation.",
+            "enum": [
+              null,
+              "auto",
+              "our-cloud",
+              "fast-sandbox",
+              "enrolled"
+            ],
             "type": [
               "string",
               "null"
@@ -777,6 +899,83 @@
         "required": [
           "error",
           "error_description"
+        ],
+        "type": "object"
+      },
+      "AppPlacementCapabilities": {
+        "properties": {
+          "offers": {
+            "items": {
+              "$ref": "#/components/schemas/AppPlacementOffer"
+            },
+            "type": "array"
+          },
+          "placement": {
+            "enum": [
+              "our-cloud",
+              "fast-sandbox"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "placement",
+          "offers"
+        ],
+        "type": "object"
+      },
+      "AppPlacementOffer": {
+        "properties": {
+          "command_sessions": {
+            "type": "boolean"
+          },
+          "default_environment_available": {
+            "type": "boolean"
+          },
+          "memory_suspend": {
+            "type": "boolean"
+          },
+          "profiles": {
+            "items": {
+              "enum": [
+                "core",
+                "suspend",
+                "snapshot",
+                "fork"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "shapes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AppComputerShape"
+            },
+            "type": "object"
+          },
+          "sizes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "workspace_file_bytes": {
+            "maximum": 4194304,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "profiles",
+          "sizes",
+          "shapes",
+          "memory_suspend",
+          "command_sessions",
+          "workspace_file_bytes",
+          "default_environment_available"
         ],
         "type": "object"
       },

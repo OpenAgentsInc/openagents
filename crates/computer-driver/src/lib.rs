@@ -54,6 +54,73 @@ pub const UNSUPPORTED: &str = "unsupported:";
 // ---------------------------------------------------------------------
 // Profiles and capabilities.
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+/// An image reference belongs to one provider's image format.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArtifactKind {
+    GceImage,
+    SpaceTemplate,
+    Test,
+}
+
+/// A resolved base image. When present, `provider_identity` is the image ID
+/// or template digest reported by the provider. A numeric ID is not a content hash.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Artifact {
+    pub kind: ArtifactKind,
+    pub reference: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_identity: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk_gib: Option<u64>,
+}
+impl Artifact {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.reference.is_empty()
+            || self.reference.len() > 2048
+            || self.reference.contains(['?', '#'])
+            || self
+                .reference
+                .chars()
+                .any(|c| c.is_control() || c.is_whitespace())
+            || self.provider_identity.as_deref().is_some_and(|value| {
+                value.is_empty() || value.len() > 256 || value.chars().any(char::is_control)
+            })
+        {
+            return Err("The image reference is invalid.");
+        }
+        if self.kind == ArtifactKind::SpaceTemplate {
+            let digest = self.reference.strip_prefix("sha256:").or_else(|| {
+                self.reference
+                    .rsplit_once("@sha256:")
+                    .map(|(_, digest)| digest)
+            });
+            if !digest.is_some_and(|digest| {
+                digest.len() == 64 && digest.bytes().all(|b| b.is_ascii_hexdigit())
+            }) {
+                return Err("Use a template pinned by its SHA-256 digest.");
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The resources behind a size class, independent of a provider's machine name.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Shape {
+    pub vcpus: u32,
+    pub memory_mib: u64,
+    /// Images may require a larger disk. This is the declared lower bound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_disk_gib: Option<u64>,
+}
+
 /// One conformance profile.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -97,12 +164,27 @@ pub struct Capabilities {
     /// Maximum bytes for protected workspace transfers, when supported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_file_bytes: Option<usize>,
+    /// Whether Suspend preserves running processes, beyond the disk contents.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub memory_suspend: bool,
+    /// Start, observe, and cancel a command under one retained command ID.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub command_sessions: bool,
+    /// Resolved provider default, so a new allocation need not follow a mutable family.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_artifact: Option<Artifact>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub shapes: std::collections::BTreeMap<String, Shape>,
 }
 impl Capabilities {
     pub fn new(driver: &str, profiles: impl IntoIterator<Item = Profile>, sizes: &[&str]) -> Self {
         let mut profiles: BTreeSet<Profile> = profiles.into_iter().collect();
         profiles.insert(Profile::Core);
         Self {
+            memory_suspend: false,
+            command_sessions: false,
+            default_artifact: None,
+            shapes: Default::default(),
             workspace_file_bytes: None,
             schema: CAPABILITIES_SCHEMA.into(),
             driver: driver.into(),
@@ -123,6 +205,20 @@ impl Capabilities {
         }
         if !self.supports(Profile::Core) {
             return Err("Every driver must support the Core profile.");
+        }
+        if self.memory_suspend && !self.supports(Profile::Suspend) {
+            return Err("Keeping processes requires Suspend support.");
+        }
+        if let Some(artifact) = &self.default_artifact {
+            artifact.validate()?;
+        }
+        if self.shapes.iter().any(|(name, shape)| {
+            (!self.sizes.is_empty() && !self.sizes.contains(name))
+                || shape.vcpus == 0
+                || shape.memory_mib == 0
+                || shape.min_disk_gib == Some(0)
+        }) {
+            return Err("The size details are invalid.");
         }
         Ok(())
     }
@@ -639,6 +735,45 @@ mod tests {
         assert_eq!(back, caps);
         let none = Capabilities::new("bare", [], &[]);
         assert!(none.supports(Profile::Core));
+    }
+
+    #[test]
+    fn old_declarations_do_not_claim_images_shapes_or_memory_preservation() {
+        let old: Capabilities = serde_json::from_value(serde_json::json!({
+            "schema":CAPABILITIES_SCHEMA,"driver":"old","profiles":["core","suspend"],"sizes":["small"]
+        })).unwrap();
+        assert!(old.validate().is_ok());
+        assert!(!old.memory_suspend && !old.command_sessions);
+        assert!(old.shapes.is_empty() && old.default_artifact.is_none());
+        let mut malformed = old.clone();
+        malformed.memory_suspend = true;
+        malformed.profiles.remove(&Profile::Suspend);
+        assert!(malformed.validate().is_err());
+        let mut malformed = old;
+        malformed.shapes.insert(
+            "small".into(),
+            Shape {
+                vcpus: 2,
+                memory_mib: 0,
+                min_disk_gib: None,
+            },
+        );
+        assert!(malformed.validate().is_err());
+    }
+
+    #[test]
+    fn a_gce_image_cannot_be_admitted_as_a_pinned_space_template() {
+        let mut artifact = Artifact {
+            kind: ArtifactKind::SpaceTemplate,
+            reference: "projects/p/global/images/i".into(),
+            provider_identity: None,
+            disk_gib: None,
+        };
+        assert!(artifact.validate().is_err());
+        artifact.reference = format!("registry.example/template@sha256:{}", "a".repeat(64));
+        assert!(artifact.validate().is_ok());
+        artifact.reference.push_str("?credential=private-fixture");
+        assert!(artifact.validate().is_err());
     }
 
     #[test]

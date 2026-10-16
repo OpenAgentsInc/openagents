@@ -39,7 +39,7 @@ impl std::fmt::Debug for Request {
             .finish_non_exhaustive()
     }
 }
-pub const SCHEMA_SHA256: &str = "650743146cca456e223f4230f2c50b41d975282f0266bada524aa15922d94ce7";
+pub const SCHEMA_SHA256: &str = "19dcf5d6bca65a0874c4abd385b54e556619a079e84499fa925c3e031687b769";
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct AppAccount {
     #[serde(rename = "admin", default, skip_serializing_if = "Option::is_none")]
@@ -275,10 +275,22 @@ impl std::fmt::Debug for AppComputer {
 }
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct AppComputerCapabilities {
+    #[serde(
+        rename = "default_placement",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub default_placement: Option<String>,
     #[serde(rename = "files", default, skip_serializing_if = "Option::is_none")]
     pub files: Option<AppComputerCapabilitiesFiles>,
     #[serde(rename = "limits")]
     pub limits: AppComputerCapabilitiesLimits,
+    #[serde(
+        rename = "placements",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub placements: Option<Vec<AppPlacementCapabilities>>,
     #[serde(rename = "profiles")]
     pub profiles: Vec<String>,
     #[serde(rename = "schema")]
@@ -370,6 +382,60 @@ impl std::fmt::Debug for AppComputerListComputersItem {
     }
 }
 #[derive(Clone, Serialize, Deserialize, Default)]
+pub struct AppComputerNeeds {
+    #[serde(
+        rename = "command_sessions",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub command_sessions: Option<bool>,
+    #[serde(rename = "files", default, skip_serializing_if = "Option::is_none")]
+    pub files: Option<bool>,
+    #[serde(
+        rename = "memory_suspend",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub memory_suspend: Option<bool>,
+    #[serde(
+        rename = "min_memory_mib",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub min_memory_mib: Option<u64>,
+    #[serde(rename = "min_vcpus", default, skip_serializing_if = "Option::is_none")]
+    pub min_vcpus: Option<u64>,
+    #[serde(rename = "profiles", default, skip_serializing_if = "Option::is_none")]
+    pub profiles: Option<Vec<String>>,
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+}
+impl std::fmt::Debug for AppComputerNeeds {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppComputerNeeds").finish_non_exhaustive()
+    }
+}
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct AppComputerShape {
+    #[serde(rename = "memory_mib")]
+    pub memory_mib: u64,
+    #[serde(
+        rename = "min_disk_gib",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub min_disk_gib: Option<u64>,
+    #[serde(rename = "vcpus")]
+    pub vcpus: u64,
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+}
+impl std::fmt::Debug for AppComputerShape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppComputerShape").finish_non_exhaustive()
+    }
+}
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct AppCreateCommand {
     #[serde(rename = "command")]
     pub command: String,
@@ -408,6 +474,18 @@ pub struct AppCreateComputer {
     #[serde(rename = "chat", default, skip_serializing_if = "Option::is_none")]
     pub chat: Option<String>,
     #[serde(
+        rename = "egress_profile",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub egress_profile: Option<String>,
+    #[serde(
+        rename = "enrolled_host",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub enrolled_host: Option<String>,
+    #[serde(
         rename = "environment",
         default,
         skip_serializing_if = "Option::is_none"
@@ -419,6 +497,10 @@ pub struct AppCreateComputer {
         skip_serializing_if = "Option::is_none"
     )]
     pub idempotency_key: Option<String>,
+    #[serde(rename = "needs", default, skip_serializing_if = "Option::is_none")]
+    pub needs: Option<AppCreateComputerNeeds>,
+    #[serde(rename = "placement", default, skip_serializing_if = "Option::is_none")]
+    pub placement: Option<String>,
     #[serde(rename = "size", default, skip_serializing_if = "Option::is_none")]
     pub size: Option<String>,
     #[serde(rename = "version", default, skip_serializing_if = "Option::is_none")]
@@ -429,6 +511,18 @@ pub struct AppCreateComputer {
 impl std::fmt::Debug for AppCreateComputer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppCreateComputer").finish_non_exhaustive()
+    }
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum AppCreateComputerNeeds {
+    Variant0(AppComputerNeeds),
+    Variant1(()),
+}
+impl std::fmt::Debug for AppCreateComputerNeeds {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppCreateComputerNeeds")
+            .finish_non_exhaustive()
     }
 }
 #[derive(Clone, Serialize, Deserialize, Default)]
@@ -518,6 +612,45 @@ pub struct AppOAuthError {
 impl std::fmt::Debug for AppOAuthError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppOAuthError").finish_non_exhaustive()
+    }
+}
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct AppPlacementCapabilities {
+    #[serde(rename = "offers")]
+    pub offers: Vec<AppPlacementOffer>,
+    #[serde(rename = "placement")]
+    pub placement: String,
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+}
+impl std::fmt::Debug for AppPlacementCapabilities {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppPlacementCapabilities")
+            .finish_non_exhaustive()
+    }
+}
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct AppPlacementOffer {
+    #[serde(rename = "command_sessions")]
+    pub command_sessions: bool,
+    #[serde(rename = "default_environment_available")]
+    pub default_environment_available: bool,
+    #[serde(rename = "memory_suspend")]
+    pub memory_suspend: bool,
+    #[serde(rename = "profiles")]
+    pub profiles: Vec<String>,
+    #[serde(rename = "shapes")]
+    pub shapes: std::collections::BTreeMap<String, AppComputerShape>,
+    #[serde(rename = "sizes")]
+    pub sizes: Vec<String>,
+    #[serde(rename = "workspace_file_bytes")]
+    pub workspace_file_bytes: Option<u64>,
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+}
+impl std::fmt::Debug for AppPlacementOffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppPlacementOffer").finish_non_exhaustive()
     }
 }
 #[derive(Clone, Serialize, Deserialize, Default)]

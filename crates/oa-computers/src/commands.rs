@@ -167,6 +167,17 @@ impl Store {
         computer: &str,
         request: &Request,
     ) -> Result<(String, bool), &'static str> {
+        self.add_command_admitted(owner, computer, request, Ok(()))
+            .await
+    }
+
+    pub(crate) async fn add_command_admitted(
+        &self,
+        owner: &str,
+        computer: &str,
+        request: &Request,
+        admission: Result<(), &'static str>,
+    ) -> Result<(String, bool), &'static str> {
         let mut c = self.db.independent().await.map_err(|_| "unavailable")?;
         let tx = c.transaction().await.map_err(|_| "unavailable")?;
         tx.batch_execute("SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='10s'")
@@ -183,6 +194,9 @@ impl Store {
             if r.get::<_,String>(1) != digest { return Err("idempotency_conflict"); }
             return Ok((r.get(0),false));
         }
+        // An existing request remains readable after a deployment disappears
+        // or stops admitting commands. Only a new command needs admission.
+        admission?;
         if tx.query_opt("SELECT id FROM computers.computers WHERE id=$1 AND owner=$2 AND desired<>'deleted' FOR UPDATE", &[&computer,&owner]).await.map_err(|_| "unavailable")?.is_none() { return Err("not_found"); }
         let count:i64 = tx.query_one("SELECT count(*) FROM computers.turns WHERE computer=$1 AND state IN ('queued','running','command_queued','command_running')", &[&computer]).await.map_err(|_| "unavailable")?.get(0);
         if count >= 16 {
@@ -235,9 +249,10 @@ fn error(code: &str) -> Response {
         "quota_exhausted" => StatusCode::TOO_MANY_REQUESTS,
         "invalid" => StatusCode::BAD_REQUEST,
         "expired" => StatusCode::GONE,
+        "unsupported" => StatusCode::UNPROCESSABLE_ENTITY,
         _ => StatusCode::SERVICE_UNAVAILABLE,
     };
-    (status,Json(json!({"error":{"code":code,"message":match code {"invalid"=>"Check the command settings and try again.","not_found"=>"No such command.","expired"=>"This command's output has expired.","idempotency_conflict"=>"That request key already names another command.","quota_exhausted"=>"Wait for a command to finish before starting another.",_=>"We couldn't read that command. Try again later."}}}))).into_response()
+    (status,Json(json!({"error":{"code":code,"message":match code {"unsupported"=>"Commands aren't available for this computer.","invalid"=>"Check the command settings and try again.","not_found"=>"No such command.","expired"=>"This command's output has expired.","idempotency_conflict"=>"That request key already names another command.","quota_exhausted"=>"Wait for a command to finish before starting another.",_=>"We couldn't read that command. Try again later."}}}))).into_response()
 }
 async fn create(
     State(api): State<Arc<Api>>,
@@ -257,7 +272,21 @@ async fn create(
     if !request.valid() {
         return error("invalid");
     }
-    let (id, new) = match api.store.add_command(owner, &computer, &request).await {
+    let entry = match api.store.get(owner, &computer).await {
+        Ok(Some(entry)) => entry,
+        Ok(None) => return error("not_found"),
+        Err(_) => return error("unavailable"),
+    };
+    let admission = match api.capabilities_for(&entry) {
+        Ok(caps) if api.catalog.is_some() && !caps.command_sessions => Err("unsupported"),
+        Ok(_) => Ok(()),
+        Err(_) => Err("unavailable"),
+    };
+    let (id, new) = match api
+        .store
+        .add_command_admitted(owner, &computer, &request, admission)
+        .await
+    {
         Ok(r) => r,
         Err(e) => return error(e),
     };

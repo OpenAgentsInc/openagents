@@ -1,4 +1,5 @@
 //! A bounded bridge to non-Send driver file calls. It never creates or wakes a computer.
+use crate::registry::Drivers;
 use crate::{Store, api::Api, store::Desired};
 use axum::{
     Json, Router,
@@ -42,7 +43,7 @@ impl From<FileError> for Error {
 }
 
 /// Keep all driver futures on their own LocalSet, with two requests in flight.
-pub fn spawn<D: Driver + Clone + Send + 'static>(store: Store, driver: D) -> Client {
+pub fn spawn<D: Drivers + Send + 'static>(store: Store, driver: D) -> Client {
     let (tx, mut rx) = mpsc::channel::<Transfer>(MAX_TRANSFERS);
     std::thread::Builder::new()
         .name("oa-computers-files".into())
@@ -66,6 +67,9 @@ pub fn spawn<D: Driver + Clone + Send + 'static>(store: Store, driver: D) -> Cli
                             if e.desired == Desired::Deleted {
                                 return Err(Error::MissingComputer);
                             }
+                            let driver = driver
+                                .resolve(&e)
+                                .map_err(|_| Error::File(FileError::Unavailable))?;
                             if e.desired != Desired::Running
                                 || !matches!(e.phase.as_str(), "awake" | "turn")
                             {
@@ -199,18 +203,25 @@ async fn transfer(
         return error(FileError::Invalid.into());
     }
     // Ownership and readiness precede body buffering and provider access.
-    match api.store.get(&owner, &id).await {
+    let entry = match api.store.get(&owner, &id).await {
         Ok(Some(e))
-            if e.desired == Desired::Running && matches!(e.phase.as_str(), "awake" | "turn") => {}
+            if e.desired == Desired::Running && matches!(e.phase.as_str(), "awake" | "turn") =>
+        {
+            e
+        }
         Ok(Some(e)) if e.desired == Desired::Deleted => return error(Error::MissingComputer),
         Ok(Some(_)) => return error(Error::NotReady),
         Ok(None) => return error(Error::MissingComputer),
         Err(_) => return error(FileError::Unavailable.into()),
-    }
+    };
+    let caps = match api.capabilities_for(&entry) {
+        Ok(caps) => caps,
+        Err(response) => return response,
+    };
     let Some(client) = api
         .files
         .as_ref()
-        .filter(|_| api.caps.workspace_file_bytes.is_some())
+        .filter(|_| caps.workspace_file_bytes.is_some())
     else {
         return error(FileError::Unsupported.into());
     };
@@ -218,7 +229,7 @@ async fn transfer(
         Ok(p) => p,
         Err(_) => return error(Error::Busy),
     };
-    let max = api.caps.workspace_file_bytes.unwrap_or(0).min(MAX_BYTES);
+    let max = caps.workspace_file_bytes.unwrap_or(0).min(MAX_BYTES);
     let write = req.method() == axum::http::Method::PUT;
     let upload = if write {
         if headers

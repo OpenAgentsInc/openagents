@@ -51,7 +51,7 @@ sees only its own computers.
 | `POST /v1/computers` `{chat?, image?, size?, idempotency_key?, environment?, version?}` | record intent; `202` new, `200` existing, `422` the driver cannot hold a chat computer, `400` bad size or field |
 | `GET /v1/computers`, `GET /v1/computers/{id}` | the account's computers: `id`, `chat`, `driver`, `image`, `size`, `desired`, `state` (lifecycle phase), `resource`, `turns`, `attempts`, `last_error`, times |
 | `DELETE /v1/computers/{id}`, `POST …/stop`, `POST …/wake` | change intent, `202` |
-| `GET /v1/capabilities` | the driver's declaration |
+| `GET /v1/capabilities` | the default driver's declaration plus account-filtered placement offers and shapes |
 | `POST /v1/computers/{id}/turns` `{command, cwd?, timeout_seconds?, env?}` | queue a turn (`202` with its id); `env`'s values stay in memory only |
 | `GET /v1/computers/{id}/turns/{turn}`, `POST …/turns/{turn}/stop` | read a turn (`state` queued/running/done/failed, `exit_code`, `stdout`, `stderr`, `error`); stop it |
 
@@ -71,6 +71,23 @@ immutable settings refuse. Keyed retries do not wake a subsequently stopped
 computer; legacy unkeyed chat ensure still does. Transactional admission locks
 serialize per account, limit unsettled computers to 20, and bound concurrent
 create transactions. Paging is by `(created_at, id)` under the same owner.
+
+The service assigns each new computer to a configured deployment before any
+provider call. Its saved binding includes the resolved image, shape, requirements,
+policy, and operation namespace. Restarts and changed defaults keep that binding;
+a missing or changed connection leaves the computer unavailable until restored.
+Legacy rows require an explicit `OA_COMPUTERS_LEGACY_DEPLOYMENT=oa-boat-primary`
+mapping to their previous Boat connection. The deploy helper verifies that
+connection before supplying the mapping; it never guesses from a new default.
+
+`OA_COMPUTERS_REGISTRY_FILE` selects a JSON configuration with `default`, `policy`,
+and `deployments`. Each deployment has a stable `id`, `kind` (`boat`, `space`, or
+test-only `fake`), credential-free `api_url`, and a `credential_env` variable name.
+Optional settings include `data_plane_url`, digest-pinned `template`, `scope`,
+`placement`, `priority`, `capacity`, `rollout_accounts`, `enabled`, `admit_new`,
+trusted `shapes`, and explicit `legacy`. Credentials stay in environment variables.
+Boat remains the default. SPACE needs the server's `space` feature and an admitted
+configuration; this change does not enable SPACE in production.
 
 Staging uses its own `oa-computers-staging` service, staging account database,
 and `oa-computers-staging-token`. Deploy the appropriate lifecycle service from
