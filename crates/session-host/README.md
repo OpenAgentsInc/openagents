@@ -121,6 +121,13 @@ New input, steering, configuration, answers, and queue promotion refuse.
 Observation and stopping remain available. A later terminal result can prove
 quiescence but does not erase the fault or make the session ready again.
 
+Close needs an idle session with known turn quiescence. Stop the active turn
+first. For a managed session, close saves its RUN intent and pending command
+reply before calling the adapter's native close. Only an acknowledged native
+close makes it closed. A lost reply stays unknown, cannot be sent again under
+another command, and keeps the resume lineage reserved. Read-only imports have
+no native engine to stop. Adapters without native close refuse that operation.
+
 The store retains at most 64 sessions and 256 queued intents per session.
 Limits stop new admissions and never discard history. All fixtures use
 throwaway keys and local state; no money moves.

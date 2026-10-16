@@ -86,6 +86,10 @@ pub trait Engine {
     fn profile(&self) -> Profile;
     /// Open or resume a native session. Resume state is opaque bytes.
     fn open(&mut self, resume: Option<&[u8]>) -> Result<String>;
+    /// Stop this exact idle native session. Success acknowledges its closure.
+    fn close(&mut self, _native: &str) -> Result<()> {
+        Err("unsupported_feature: native close is not implemented".into())
+    }
     fn start(&mut self, native: &str, turn: &str, input: &[u8]) -> Result<()>;
     fn step(&mut self, native: &str) -> Observation;
     /// Deliver a mid-turn steer. Returns whether the engine replayed it.
@@ -132,6 +136,8 @@ pub struct LoopEngine {
     pub fail_open: bool,
     /// Fault: emit a required reverse request the adapter does not support.
     pub protocol_fault: bool,
+    /// Fault: lose the reply after the native session has closed.
+    pub fail_close: bool,
 }
 
 fn features(pairs: &[(&'static str, Support)]) -> BTreeMap<&'static str, Support> {
@@ -220,6 +226,7 @@ impl LoopEngine {
             fail_start: false,
             fail_open: false,
             protocol_fault: false,
+            fail_close: false,
         }
     }
     fn capture(
@@ -272,6 +279,32 @@ impl Engine for LoopEngine {
             return Err("unknown: native opening acknowledgment lost".into());
         }
         Ok(id)
+    }
+    fn close(&mut self, native: &str) -> Result<()> {
+        let session = self
+            .sessions
+            .get(native)
+            .ok_or("unknown: native session unavailable")?;
+        if session.run.is_some() {
+            return Err("conflict: native session is still running".into());
+        }
+        self.capture(
+            "to_engine",
+            "session/close",
+            Some(native.into()),
+            &json!({}),
+        );
+        self.sessions.remove(native);
+        self.capture(
+            "from_engine",
+            "session/closed",
+            Some(native.into()),
+            &json!({}),
+        );
+        if self.fail_close {
+            return Err("unknown: native close acknowledgment lost".into());
+        }
+        Ok(())
     }
     fn start(&mut self, native: &str, turn: &str, input: &[u8]) -> Result<()> {
         let input: Value = serde_json::from_slice(input).map_err(|_| "malformed: turn input")?;

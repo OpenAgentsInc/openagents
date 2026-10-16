@@ -781,3 +781,11 @@ linked to the native capture and an unknown turn result with cause
 restart or a later terminal observation. It blocks new input, steering,
 configuration, interaction answers, and promotion. Observation and stopping
 remain available; positive terminal evidence does not silently restore dispatch.
+
+This host's close operation requires known turn quiescence. It refuses active
+or uncertain work; the controller must first stop and observe the current turn.
+For a managed native binding, the host saves a complete close RUN intent and
+original unknown command reply before calling native close. Only an
+acknowledged native close marks the session closed. An uncertain close keeps
+the lineage reserved and is never repeated, including under a different command
+ID or after restart. Closing a read-only import has no native engine effect.

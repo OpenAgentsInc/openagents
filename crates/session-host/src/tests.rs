@@ -1291,3 +1291,93 @@ fn a_required_native_protocol_fault_keeps_evidence_and_blocks_input_after_termin
         assert_eq!(restarted.started(name), 0);
     }
 }
+
+#[test]
+fn close_stops_the_native_session_and_lost_acknowledgments_never_repeat() {
+    for lost in [false, true] {
+        let mut fx = Fx::new();
+        let mut engine = LoopEngine::mid_turn();
+        engine.fail_close = lost;
+        let host = fx.host_with(engine, LoopEngine::boundary());
+        let (session, adapter) = fx.open(&host, "loop-mid-turn");
+        let history = host.export(&session, fx.now).unwrap();
+        let bytes = host.store().get(&history).unwrap();
+        fx.artifacts.insert(digest_bytes(&bytes), bytes);
+        host.with_engine("loop-mid-turn", |e| {
+            e.captures();
+        });
+        let close = fx.command(&host, &session, "close", json!({"reason":"done"}));
+        let reply = fx.send(&host, OWNER, &close, None);
+        assert_eq!(reply["status"], if lost { "unknown" } else { "accepted" });
+        assert_eq!(
+            host.status(&session).unwrap()["phase"],
+            if lost { "unknown" } else { "closed" }
+        );
+        let native = format!("loop-loop-mid-turn-1");
+        assert!(
+            host.with_engine("loop-mid-turn", |e| e.resume_state(&native))
+                .unwrap()
+                .is_none()
+        );
+        let retry = fx.send(&host, OWNER, &close, None);
+        assert_eq!(retry["status"], if lost { "unknown" } else { "duplicate" });
+        let captures = host.with_engine("loop-mid-turn", |e| e.captures()).unwrap();
+        assert_eq!(
+            captures
+                .iter()
+                .filter(|c| c.method == "session/close")
+                .count(),
+            usize::from(lost)
+        );
+        // A lost acknowledgment reserves the lineage despite native termination.
+        let resume = fx.open_body(&host, &adapter, json!({"kind":"resume","artifact":history}));
+        let binding = fx.binding();
+        let resumed = fx.send(&host, OWNER, &resume, Some(&binding));
+        assert_eq!(
+            resumed["status"],
+            if lost { "conflict" } else { "accepted" }
+        );
+        if lost {
+            let changed = fx.command(&host, &session, "close", json!({"reason":"retry"}));
+            assert_eq!(fx.send(&host, OWNER, &changed, None)["status"], "refused");
+            let restarted = fx.host();
+            assert_eq!(fx.send(&restarted, OWNER, &close, None), reply);
+            assert_eq!(
+                fx.send(&restarted, OWNER, &changed, None)["status"],
+                "refused"
+            );
+            let captures = restarted
+                .with_engine("loop-mid-turn", |e| e.captures())
+                .unwrap();
+            assert!(captures.is_empty());
+            assert_eq!(restarted.status(&session).unwrap()["phase"], "unknown");
+        }
+    }
+}
+
+#[test]
+fn close_requires_actual_turn_quiescence_and_does_not_free_unknown_work() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let (session, _) = fx.open(&host, "loop-mid-turn");
+    let intent = fx.intent(
+        &host,
+        &session,
+        json!({"prompt":"running","steps":3}),
+        fx.now + 600,
+    );
+    let submit = fx.command(&host, &session, "submit", json!({"intent":intent}));
+    let binding = fx.binding();
+    fx.send(&host, OWNER, &submit, Some(&binding));
+    let close = fx.command(&host, &session, "close", json!({"reason":"stop"}));
+    assert_eq!(fx.send(&host, OWNER, &close, None)["status"], "conflict");
+    assert_eq!(host.status(&session).unwrap()["phase"], "running");
+    let restarted = fx.host();
+    restarted.observe(&session, fx.now).unwrap();
+    let close = fx.command(&restarted, &session, "close", json!({"reason":"forget"}));
+    assert_eq!(
+        fx.send(&restarted, OWNER, &close, None)["status"],
+        "conflict"
+    );
+    assert_eq!(restarted.status(&session).unwrap()["phase"], "unknown");
+}

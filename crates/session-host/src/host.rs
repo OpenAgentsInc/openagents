@@ -135,6 +135,10 @@ struct Session {
     opening_run: Vec<Value>,
     #[serde(default)]
     protocol_fault: Option<Value>,
+    #[serde(default)]
+    closing_native: bool,
+    #[serde(default)]
+    close_run: Vec<Value>,
     connection: String,
     ordinal: u64,
     generation: u64,
@@ -452,6 +456,7 @@ impl SessionHost {
                 )?
             };
             let limitations: Vec<String> = match (*name, support) {
+                ("close", _) => vec!["stop the active turn before closing; an unknown close cannot release the resume binding".into()],
                 ("queue" | "reorder", Support::Emulated) => {
                     vec!["host-held FIFO; the engine has no native queue".into()]
                 }
@@ -1072,6 +1077,8 @@ impl SessionHost {
             opening: import.is_none(),
             opening_run: run,
             protocol_fault: None,
+            closing_native: false,
+            close_run: Vec::new(),
             connection: token(),
             ordinal: 0,
             generation: 0,
@@ -1267,6 +1274,9 @@ impl SessionHost {
         let payload = &body["payload"];
         if session.opening && action != "archive" {
             return Err(refuse("unavailable", "native opening is still unknown"));
+        }
+        if session.closing_native && action != "archive" {
+            return Err(refuse("unavailable", "native close is still unknown"));
         }
         if session.protocol_fault.is_some()
             && !matches!(
@@ -1501,15 +1511,7 @@ impl SessionHost {
             "archive" => session.archived = payload["archived"] == true,
             "close" => {
                 self.require(state, session, "close")?;
-                session.phase = if session.active.is_some() {
-                    "closing"
-                } else {
-                    "closed"
-                }
-                .into();
-                for item in session.queue.iter_mut().filter(|q| q.state == "queued") {
-                    item.state = "cancelled".into();
-                }
+                records = self.close_native(state, session, signer, body, input, now)?;
             }
             _ => return Err(refuse("unsupported_feature", "action")),
         }
@@ -1525,6 +1527,116 @@ impl SessionHost {
             None,
             now,
         )
+    }
+
+    fn close_native(
+        &self,
+        state: &mut State,
+        session: &mut Session,
+        actor: &str,
+        command: &Value,
+        input: &Value,
+        now: u64,
+    ) -> Result<Vec<Value>> {
+        if session.active.is_some() || !session.quiescent {
+            return Err(refuse(
+                "conflict",
+                "stop the current turn before closing the session",
+            ));
+        }
+        for item in session.queue.iter_mut().filter(|q| q.state == "queued") {
+            item.state = "cancelled".into();
+        }
+        let Some(native) = session.native.clone() else {
+            if !session.read_only {
+                return Err(refuse("unavailable", "native session is unknown"));
+            }
+            session.phase = "closed".into();
+            return Ok(Vec::new());
+        };
+        if state.bound.get(&native) != Some(&session.id) {
+            return Err(refuse(
+                "conflict",
+                "native binding differs from this session",
+            ));
+        }
+        let adapter = state
+            .adapters
+            .get(&session.adapter)
+            .ok_or("adapter")?
+            .clone();
+        let mut run = Vec::new();
+        let run_id = token();
+        let mut records = vec![
+            self.run_record(
+                &mut run,
+                &run_id,
+                "created",
+                json!({"request":digest_of(input)}),
+                now,
+            )?,
+            self.run_record(
+                &mut run,
+                &run_id,
+                "admitted",
+                json!({"request":digest_of(input)}),
+                now,
+            )?,
+            self.run_record(
+                &mut run,
+                &run_id,
+                "dispatched",
+                json!({"request":digest_of(input),"binding":native,"operation":"close"}),
+                now,
+            )?,
+        ];
+        session.close_run = run;
+        session.closing_native = true;
+        session.phase = "unknown".into();
+        session.quiescent = false;
+        let key = format!(
+            "{}:{}:{}",
+            self.pubkey(),
+            session.id,
+            command["command"].as_str().ok_or("command")?
+        );
+        let pending = self.control_result(
+            state,
+            actor,
+            input,
+            "unknown",
+            None,
+            Some("unavailable"),
+            now,
+        )?;
+        state.priors.insert(
+            key,
+            Prior {
+                fingerprint: digest_of(input).into(),
+                result: pending,
+            },
+        );
+        self.write_state(state, session, now)?;
+        state.sessions.insert(session.id.clone(), session.clone());
+        self.save(state)?;
+        // An unknown native close is never sent again, even with a new command.
+        self.engines
+            .borrow_mut()
+            .get_mut(&adapter.engine)
+            .ok_or("engine")?
+            .close(&native)?;
+        records.extend(self.capture(state, session, now)?);
+        records.push(self.run_record(
+            &mut session.close_run,
+            &run_id,
+            "resolved",
+            json!({"outcome":"completed","dispatched":true,"operation":"close"}),
+            now,
+        )?);
+        session.closing_native = false;
+        session.quiescent = true;
+        session.phase = "closed".into();
+        Ok(records)
     }
 
     fn intent(&self, session: &Session, reference: &Value, now: u64) -> Result<Value> {
@@ -1905,7 +2017,7 @@ impl SessionHost {
                     interaction.state = "cancelled".into();
                 }
                 session.phase = if session.phase == "closing" {
-                    "closed"
+                    "closing"
                 } else if session.protocol_fault.is_some() {
                     "faulted"
                 } else {
