@@ -1,0 +1,8 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: [build, -f, deploy/coder-sync/Dockerfile, -t, 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:${_TAG}', .]
+images:
+  - 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:${_TAG}'
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: 1800s

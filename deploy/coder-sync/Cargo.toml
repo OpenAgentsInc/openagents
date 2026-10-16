@@ -1,0 +1,34 @@
+# Server-only image packaging. Source stays in crates/coder-sync/src/server.
+# This workspace never includes the frozen Coder client library.
+[workspace]
+
+[package]
+name = "coder-sync-service"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.98.1"
+publish = false
+
+[lib]
+name = "coder_sync"
+path = "lib.rs"
+
+[[bin]]
+name = "coder-sync"
+path = "../../crates/coder-sync/src/main.rs"
+
+[features]
+server = []
+
+[dependencies]
+axum = { version = "0.8", features = ["ws"] }
+bytes = { version = "1" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = { version = "2" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "signal"] }
+tokio-postgres = { version = "0.7.18" }
+tracing = { version = "0.1" }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1", features = ["v4"] }

@@ -6,7 +6,24 @@ rust-version.workspace = true
 publish.workspace = true
 description = "Save Coder chats to the signed-in openagents.com account: the setting, the screened upload, and the background sender."
 
+[[bin]]
+name = "coder-sync"
+path = "src/main.rs"
+required-features = ["server"]
+
+[features]
+# Keep the frozen Coder client library and its default dependency graph intact.
+server = ["dep:axum", "dep:bytes", "dep:thiserror", "dep:tokio-postgres", "dep:tracing", "dep:tracing-subscriber", "dep:uuid", "tokio/rt-multi-thread", "tokio/macros", "tokio/net", "tokio/signal", "tokio/sync"]
+
 [dependencies]
+axum = { version = "0.8", features = ["ws"], optional = true }
+bytes = { version = "1", optional = true }
+thiserror = { version = "2", optional = true }
+tokio-postgres = { version = "0.7.18", optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"], optional = true }
+uuid = { version = "1", features = ["v4"], optional = true }
+
 user-home = { path = "../user-home" }
 atif = { path = "../atif" }
 mac-jobs = { path = "../mac-jobs" }
@@ -19,6 +36,7 @@ sha2 = "0.10"
 tokio = { version = "1", features = ["rt", "time"] }
 
 [dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
 axum = "0.8"
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "net", "rt", "rt-multi-thread", "time"] }

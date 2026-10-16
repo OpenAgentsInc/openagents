@@ -5,7 +5,7 @@ edit by hand. `scripts/dependency-inventory.py --check` fails when this
 file is stale. License policy and review notes live in
 [dependencies.md](dependencies.md).
 
-1371 external packages.
+1472 external packages.
 
 | Package | Version | License | Source |
 | --- | --- | --- | --- |
@@ -29,6 +29,7 @@ file is stale. License policy and review notes live in
 | ahash | 0.8.12 | MIT OR Apache-2.0 | crates.io |
 | aho-corasick | 1.1.5 | Unlicense OR MIT | crates.io |
 | aliasable | 0.1.3 | MIT | crates.io |
+| aligned-vec | 0.6.4 | MIT | crates.io |
 | allocator-api2 | 0.2.21 | MIT OR Apache-2.0 | crates.io |
 | alloy-consensus | 1.8.3 | MIT OR Apache-2.0 | crates.io |
 | alloy-consensus-any | 1.8.3 | MIT OR Apache-2.0 | crates.io |
@@ -96,9 +97,18 @@ file is stale. License policy and review notes live in
 | ark-std | 0.4.0 | MIT/Apache-2.0 | crates.io |
 | ark-std | 0.5.0 | MIT/Apache-2.0 | crates.io |
 | ark-std | 0.6.0 | MIT/Apache-2.0 | crates.io |
+| array-macro | 2.1.8 | MIT OR Apache-2.0 | crates.io |
 | arrayref | 0.3.9 | BSD-2-Clause | crates.io |
 | arrayvec | 0.7.8 | MIT OR Apache-2.0 | crates.io |
+| arrow-array | 60.0.0 | Apache-2.0 AND MIT | crates.io |
+| arrow-buffer | 60.0.0 | Apache-2.0 | crates.io |
+| arrow-cmp | 60.0.0 | Apache-2.0 | crates.io |
+| arrow-data | 60.0.0 | Apache-2.0 | crates.io |
+| arrow-ipc | 60.0.0 | Apache-2.0 | crates.io |
+| arrow-schema | 60.0.0 | Apache-2.0 | crates.io |
+| arrow-select | 60.0.0 | Apache-2.0 | crates.io |
 | as-raw-xcb-connection | 1.0.1 | MIT OR Apache-2.0 | crates.io |
+| ascii | 1.1.0 | Apache-2.0 OR MIT | crates.io |
 | ash | 0.38.0+1.3.281 | MIT OR Apache-2.0 | crates.io |
 | asn1-rs | 0.7.2 | MIT OR Apache-2.0 | crates.io |
 | asn1-rs-derive | 0.6.0 | MIT OR Apache-2.0 | crates.io |
@@ -150,9 +160,9 @@ file is stale. License policy and review notes live in
 | bip21 | 0.5.0 | MITNFA | crates.io |
 | bip32 | 0.5.3 | Apache-2.0 OR MIT | crates.io |
 | bip39 | 2.2.2 | CC0-1.0 | crates.io |
+| bit-set | 0.10.0 | Apache-2.0 OR MIT | crates.io |
 | bit-set | 0.5.3 | MIT/Apache-2.0 | crates.io |
 | bit-set | 0.8.0 | Apache-2.0 OR MIT | crates.io |
-| bit-set | 0.9.1 | Apache-2.0 OR MIT | crates.io |
 | bit-vec | 0.6.3 | MIT/Apache-2.0 | crates.io |
 | bit-vec | 0.8.0 | Apache-2.0 OR MIT | crates.io |
 | bit-vec | 0.9.1 | Apache-2.0 OR MIT | crates.io |
@@ -175,10 +185,18 @@ file is stale. License policy and review notes live in
 | block2 | 0.6.2 | MIT | crates.io |
 | blocking | 1.7.0 | Apache-2.0 OR MIT | crates.io |
 | blst | 0.3.17 | Apache-2.0 | crates.io |
+| boa_ast | 0.22.0 | Unlicense OR MIT | crates.io |
+| boa_engine | 0.22.0 | Unlicense OR MIT | crates.io |
+| boa_gc | 0.22.0 | Unlicense OR MIT | crates.io |
+| boa_interner | 0.22.0 | Unlicense OR MIT | crates.io |
+| boa_macros | 0.22.0 | Unlicense OR MIT | crates.io |
+| boa_parser | 0.22.0 | Unlicense OR MIT | crates.io |
+| boa_string | 0.22.0 | Unlicense OR MIT | crates.io |
 | boltz-client | 0.1.0 | (none declared) | path |
 | borrow-or-share | 0.2.4 | MIT-0 | crates.io |
 | borsh | 1.8.1 | MIT OR Apache-2.0 | crates.io |
 | borsh-derive | 1.8.1 | Apache-2.0 | crates.io |
+| branches | 0.3.0 | MIT | crates.io |
 | breez-sdk-common | 0.1.0 | (none declared) | https://github.com/breez/spark-sdk?tag=0.26.0 |
 | breez-sdk-spark | 0.1.0 | (none declared) | https://github.com/breez/spark-sdk?tag=0.26.0 |
 | bs58 | 0.5.1 | MIT/Apache-2.0 | crates.io |
@@ -194,6 +212,7 @@ file is stale. License policy and review notes live in
 | byteorder-lite | 0.1.0 | Unlicense OR MIT | crates.io |
 | bytes | 1.12.1 | MIT | crates.io |
 | c-kzg | 2.1.8 | Apache-2.0 | crates.io |
+| calendrical_calculations | 0.2.4 | Apache-2.0 | crates.io |
 | calloop | 0.13.0 | MIT | crates.io |
 | calloop | 0.14.4 | MIT | crates.io |
 | calloop-wayland-source | 0.3.0 | MIT | crates.io |
@@ -210,7 +229,10 @@ file is stale. License policy and review notes live in
 | cfg_aliases | 0.2.2 | MIT | crates.io |
 | cgmath | 0.18.0 | Apache-2.0 | crates.io |
 | chacha20 | 0.10.2 | MIT OR Apache-2.0 | crates.io |
+| chacha20 | 0.9.1 | Apache-2.0 OR MIT | crates.io |
 | chacha20-poly1305 | 0.1.2 | CC0-1.0 | crates.io |
+| chacha20poly1305 | 0.10.1 | Apache-2.0 OR MIT | crates.io |
+| choice | 0.0.2 | MIT | crates.io |
 | chrono | 0.4.45 | MIT OR Apache-2.0 | crates.io |
 | chunked_transfer | 1.5.0 | MIT OR Apache-2.0 | crates.io |
 | cipher | 0.4.4 | MIT OR Apache-2.0 | crates.io |
@@ -234,10 +256,13 @@ file is stale. License policy and review notes live in
 | const-hex | 1.19.3 | MIT OR Apache-2.0 | crates.io |
 | const-oid | 0.10.2 | Apache-2.0 OR MIT | crates.io |
 | const-oid | 0.9.6 | Apache-2.0 OR MIT | crates.io |
+| const-random | 0.1.18 | MIT OR Apache-2.0 | crates.io |
+| const-random-macro | 0.1.16 | MIT OR Apache-2.0 | crates.io |
 | const_format | 0.2.36 | Zlib | crates.io |
 | const_format_proc_macros | 0.2.34 | Zlib | crates.io |
 | constant_time_eq | 0.4.2 | CC0-1.0 OR MIT-0 OR Apache-2.0 | crates.io |
 | convert_case | 0.10.0 | MIT | crates.io |
+| convert_case | 0.4.0 | MIT | crates.io |
 | cordyceps | 0.3.5 | MIT | crates.io |
 | core-foundation | 0.10.1 | MIT OR Apache-2.0 | crates.io |
 | core-foundation | 0.9.4 | MIT OR Apache-2.0 | crates.io |
@@ -245,7 +270,9 @@ file is stale. License policy and review notes live in
 | core-graphics | 0.23.2 | MIT OR Apache-2.0 | crates.io |
 | core-graphics-types | 0.1.3 | MIT OR Apache-2.0 | crates.io |
 | core_detect | 1.0.0 | MIT/Apache-2.0 | crates.io |
+| core_maths | 0.1.1 | MIT | crates.io |
 | coreaudio-rs | 0.14.2 | MIT/Apache-2.0 | crates.io |
+| cow-utils | 0.1.3 | MIT | crates.io |
 | cpal | 0.18.2 | Apache-2.0 | crates.io |
 | cpp_demangle | 0.5.1 | MIT OR Apache-2.0 | crates.io |
 | cpubits | 0.1.1 | MIT OR Apache-2.0 | crates.io |
@@ -295,6 +322,7 @@ file is stale. License policy and review notes live in
 | darling_macro | 0.23.0 | MIT | crates.io |
 | darling_macro | 0.24.1 | MIT | crates.io |
 | dary_heap | 0.3.9 | MIT OR Apache-2.0 | crates.io |
+| dashmap | 6.2.1 | MIT | crates.io |
 | dasp_sample | 0.11.0 | MIT OR Apache-2.0 | crates.io |
 | data-encoding | 2.11.1 | MIT | crates.io |
 | data-encoding-macro | 0.1.21 | MIT | crates.io |
@@ -313,9 +341,11 @@ file is stale. License policy and review notes live in
 | deranged | 0.5.8 | MIT OR Apache-2.0 | crates.io |
 | derivative | 2.2.0 | MIT/Apache-2.0 | crates.io |
 | derive-getters | 0.5.0 | MIT | crates.io |
+| derive_arbitrary | 1.4.2 | MIT OR Apache-2.0 | crates.io |
 | derive_builder | 0.20.2 | MIT OR Apache-2.0 | crates.io |
 | derive_builder_core | 0.20.2 | MIT OR Apache-2.0 | crates.io |
 | derive_builder_macro | 0.20.2 | MIT OR Apache-2.0 | crates.io |
+| derive_more | 0.99.20 | MIT | crates.io |
 | derive_more | 2.1.1 | MIT | crates.io |
 | derive_more-impl | 2.1.1 | MIT | crates.io |
 | diatomic-waker | 0.2.3 | MIT OR Apache-2.0 | crates.io |
@@ -341,6 +371,8 @@ file is stale. License policy and review notes live in
 | dyn-clone | 1.0.20 | MIT OR Apache-2.0 | crates.io |
 | dyn-stack | 0.13.2 | MIT | crates.io |
 | dyn-stack-macros | 0.1.3 | MIT | crates.io |
+| dynify | 0.1.2 | MIT OR Apache-2.0 | crates.io |
+| dynify-macros | 0.1.2 | MIT OR Apache-2.0 | crates.io |
 | ecdsa | 0.16.9 | Apache-2.0 OR MIT | crates.io |
 | ed25519 | 3.0.0 | Apache-2.0 OR MIT | crates.io |
 | ed25519-dalek | 3.0.0 | BSD-3-Clause | crates.io |
@@ -362,6 +394,8 @@ file is stale. License policy and review notes live in
 | enumflags2_derive | 0.7.12 | MIT OR Apache-2.0 | crates.io |
 | env_filter | 2.0.0 | MIT OR Apache-2.0 | crates.io |
 | env_logger | 0.11.11 | MIT OR Apache-2.0 | crates.io |
+| equator | 0.4.2 | MIT | crates.io |
+| equator-macro | 0.4.2 | MIT | crates.io |
 | equivalent | 1.0.2 | Apache-2.0 OR MIT | crates.io |
 | erased-serde | 0.4.10 | MIT OR Apache-2.0 | crates.io |
 | errno | 0.3.14 | MIT OR Apache-2.0 | crates.io |
@@ -377,6 +411,7 @@ file is stale. License policy and review notes live in
 | fancy-regex | 0.11.0 | MIT | crates.io |
 | fancy-regex | 0.16.2 | MIT | crates.io |
 | fancy-regex | 0.18.0 | MIT | crates.io |
+| fast-float2 | 0.2.4 | MIT OR Apache-2.0 | crates.io |
 | fastrand | 2.5.0 | Apache-2.0 OR MIT | crates.io |
 | fastrlp | 0.3.1 | MPL-2.0 | crates.io |
 | fastrlp | 0.4.0 | MPL-2.0 | crates.io |
@@ -394,14 +429,17 @@ file is stale. License policy and review notes live in
 | fixedbitset | 0.5.7 | MIT OR Apache-2.0 | crates.io |
 | flagset | 0.4.7 | Apache-2.0 | crates.io |
 | flashnet | 0.1.0 | (none declared) | https://github.com/breez/spark-sdk?tag=0.26.0 |
+| flatbuffers | 25.12.19 | Apache-2.0 | crates.io |
 | flate2 | 1.1.10 | MIT OR Apache-2.0 | crates.io |
 | float-cmp | 0.9.0 | MIT | crates.io |
+| float16 | 0.1.7 | MIT OR Apache-2.0 | crates.io |
 | float8 | 0.7.0 | MIT | crates.io |
 | fluent-uri | 0.3.2 | MIT | crates.io |
 | fnv | 1.0.7 | Apache-2.0 / MIT | crates.io |
 | foldhash | 0.1.5 | Zlib | crates.io |
 | foldhash | 0.2.0 | Zlib | crates.io |
 | font-types | 0.12.5 | MIT OR Apache-2.0 | crates.io |
+| fontdb | 0.24.0 | MIT | crates.io |
 | foreign-types | 0.5.0 | MIT/Apache-2.0 | crates.io |
 | foreign-types-macros | 0.2.4 | MIT/Apache-2.0 | crates.io |
 | foreign-types-shared | 0.3.1 | MIT/Apache-2.0 | crates.io |
@@ -416,6 +454,7 @@ file is stale. License policy and review notes live in
 | futures | 0.3.34 | MIT OR Apache-2.0 | crates.io |
 | futures-buffered | 0.2.13 | MIT | crates.io |
 | futures-channel | 0.3.34 | MIT OR Apache-2.0 | crates.io |
+| futures-concurrency | 7.7.1 | MIT OR Apache-2.0 | crates.io |
 | futures-core | 0.3.34 | MIT OR Apache-2.0 | crates.io |
 | futures-executor | 0.3.34 | MIT OR Apache-2.0 | crates.io |
 | futures-io | 0.3.34 | MIT OR Apache-2.0 | crates.io |
@@ -458,8 +497,6 @@ file is stale. License policy and review notes live in
 | gltf-json | 1.4.1 | MIT OR Apache-2.0 | crates.io |
 | glutin_wgl_sys | 0.6.1 | Apache-2.0 | crates.io |
 | gpu-allocator | 0.28.0 | MIT OR Apache-2.0 | crates.io |
-| gpu-descriptor | 0.3.2 | MIT OR Apache-2.0 | crates.io |
-| gpu-descriptor-types | 0.2.0 | MIT OR Apache-2.0 | crates.io |
 | graphql-introspection-query | 0.3.0 | Apache-2.0 OR MIT | crates.io |
 | graphql-parser | 0.4.1 | MIT/Apache-2.0 | crates.io |
 | graphql_client | 0.16.0 | Apache-2.0 OR MIT | crates.io |
@@ -468,6 +505,7 @@ file is stale. License policy and review notes live in
 | group | 0.13.0 | MIT/Apache-2.0 | crates.io |
 | h2 | 0.4.19 | MIT | crates.io |
 | half | 2.7.1 | MIT OR Apache-2.0 | crates.io |
+| harfrust | 0.12.0 | MIT | crates.io |
 | hash32 | 0.2.1 | MIT OR Apache-2.0 | crates.io |
 | hashbrown | 0.12.3 | MIT OR Apache-2.0 | crates.io |
 | hashbrown | 0.13.2 | MIT OR Apache-2.0 | crates.io |
@@ -485,7 +523,6 @@ file is stale. License policy and review notes live in
 | hex-conservative | 0.2.3 | CC0-1.0 | crates.io |
 | hex-conservative | 1.3.0 | CC0-1.0 | crates.io |
 | hex_lit | 0.1.1 | MITNFA | crates.io |
-| hexf-parse | 0.2.1 | CC0-1.0 | crates.io |
 | hickory-proto | 0.26.3 | MIT OR Apache-2.0 | crates.io |
 | hkdf | 0.12.4 | MIT OR Apache-2.0 | crates.io |
 | hkdf | 0.13.0 | MIT OR Apache-2.0 | crates.io |
@@ -493,6 +530,7 @@ file is stale. License policy and review notes live in
 | hmac | 0.13.0 | MIT OR Apache-2.0 | crates.io |
 | hmac-sha256 | 1.1.15 | ISC | crates.io |
 | home | 0.5.12 | MIT OR Apache-2.0 | crates.io |
+| hpke | 0.12.0 | MIT/Apache-2.0 | crates.io |
 | http | 1.5.0 | MIT OR Apache-2.0 | crates.io |
 | http-body | 1.1.0 | MIT | crates.io |
 | http-body-util | 0.1.5 | MIT | crates.io |
@@ -505,14 +543,19 @@ file is stale. License policy and review notes live in
 | hyper-util | 0.1.20 | MIT | crates.io |
 | iana-time-zone | 0.1.65 | MIT OR Apache-2.0 | crates.io |
 | iana-time-zone-haiku | 0.1.2 | MIT OR Apache-2.0 | crates.io |
+| icu_calendar | 2.3.0 | Unicode-3.0 | crates.io |
+| icu_calendar_data | 2.3.0 | Unicode-3.0 | crates.io |
 | icu_collections | 2.3.0 | Unicode-3.0 | crates.io |
 | icu_locale_core | 2.3.0 | Unicode-3.0 | crates.io |
+| icu_locale_fallback | 2.3.0 | Unicode-3.0 | crates.io |
+| icu_locale_fallback_data | 2.3.0 | Unicode-3.0 | crates.io |
 | icu_normalizer | 2.3.0 | Unicode-3.0 | crates.io |
 | icu_normalizer_data | 2.3.0 | Unicode-3.0 | crates.io |
 | icu_properties | 2.3.0 | Unicode-3.0 | crates.io |
 | icu_properties_data | 2.3.0 | Unicode-3.0 | crates.io |
 | icu_provider | 2.3.1 | Unicode-3.0 | crates.io |
 | id-arena | 2.3.0 | MIT/Apache-2.0 | crates.io |
+| id-set | 0.2.2 | MIT/Apache-2.0 | crates.io |
 | ident_case | 1.0.1 | MIT/Apache-2.0 | crates.io |
 | identity-hash | 0.1.0 | Apache-2.0 OR MIT | crates.io |
 | idna | 1.1.0 | MIT OR Apache-2.0 | crates.io |
@@ -534,6 +577,7 @@ file is stale. License policy and review notes live in
 | input | 0.9.1 | MIT | crates.io |
 | input-sys | 1.19.0 | MIT | crates.io |
 | instability | 0.3.13 | MIT | crates.io |
+| intrusive-collections | 0.10.3 | MIT OR Apache-2.0 | crates.io |
 | io-lifetimes | 1.0.11 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | crates.io |
 | ipconfig | 0.3.4 | MIT/Apache-2.0 | crates.io |
 | ipnet | 2.12.2 | MIT OR Apache-2.0 | crates.io |
@@ -549,9 +593,11 @@ file is stale. License policy and review notes live in
 | itertools | 0.10.5 | MIT/Apache-2.0 | crates.io |
 | itertools | 0.13.0 | MIT OR Apache-2.0 | crates.io |
 | itertools | 0.14.0 | MIT OR Apache-2.0 | crates.io |
+| itertools | 0.15.0 | MIT OR Apache-2.0 | crates.io |
 | itoa | 1.0.18 | MIT OR Apache-2.0 | crates.io |
 | ittapi | 0.4.0 | GPL-2.0-only OR BSD-3-Clause | crates.io |
 | ittapi-sys | 0.4.0 | GPL-2.0-only OR BSD-3-Clause | crates.io |
+| ixdtf | 0.6.6 | Unicode-3.0 | crates.io |
 | jiff | 0.2.37 | Unlicense OR MIT | crates.io |
 | jiff-core | 0.1.1 | Unlicense OR MIT | crates.io |
 | jiff-static | 0.2.37 | Unlicense OR MIT | crates.io |
@@ -569,6 +615,7 @@ file is stale. License policy and review notes live in
 | jsonschema | 0.33.0 | MIT | crates.io |
 | k256 | 0.13.4 | Apache-2.0 OR MIT | crates.io |
 | kasuari | 0.4.12 | MIT OR Apache-2.0 | crates.io |
+| katexit | 0.1.5 | MIT OR Apache-2.0 | crates.io |
 | keccak | 0.2.2 | Apache-2.0 OR MIT | crates.io |
 | keccak-asm | 0.1.9 | BSD-3-Clause | crates.io |
 | keyring | 4.2.0 | MIT OR Apache-2.0 | crates.io |
@@ -645,6 +692,7 @@ file is stale. License policy and review notes live in
 | matchers | 0.2.0 | MIT | crates.io |
 | matchit | 0.7.3 | MIT AND BSD-3-Clause | crates.io |
 | matchit | 0.8.4 | MIT AND BSD-3-Clause | crates.io |
+| matext4cgmath | 0.1.0 | Apache-2.0 | https://github.com/bherbruck/solidcraft?rev=229de1484ce7c4df3c28df5e5c111078ca9e53a3 |
 | matrixmultiply | 0.3.11 | MIT/Apache-2.0 | crates.io |
 | maud | 0.27.0 | MIT OR Apache-2.0 | crates.io |
 | maud_macros | 0.27.0 | MIT OR Apache-2.0 | crates.io |
@@ -676,7 +724,8 @@ file is stale. License policy and review notes live in
 | n0-error-macros | 1.0.1 | MIT OR Apache-2.0 | crates.io |
 | n0-future | 0.3.2 | MIT OR Apache-2.0 | crates.io |
 | n0-watcher | 1.0.0 | MIT OR Apache-2.0 | crates.io |
-| naga | 29.0.4 | MIT OR Apache-2.0 | crates.io |
+| naga | 30.0.1 | MIT OR Apache-2.0 | crates.io |
+| naga-types | 30.0.1 | MIT OR Apache-2.0 | crates.io |
 | ndarray | 0.17.2 | MIT OR Apache-2.0 | crates.io |
 | ndk | 0.9.0 | MIT OR Apache-2.0 | crates.io |
 | ndk-context | 0.1.1 | MIT OR Apache-2.0 | crates.io |
@@ -692,6 +741,7 @@ file is stale. License policy and review notes live in
 | netlink-sys | 0.9.0 | MIT | crates.io |
 | netwatch | 0.19.3 | MIT OR Apache-2.0 | crates.io |
 | nix | 0.29.0 | MIT | crates.io |
+| nohash-hasher | 0.2.0 | Apache-2.0 OR MIT | crates.io |
 | nom | 7.1.3 | MIT | crates.io |
 | nom | 8.0.0 | MIT | crates.io |
 | noq | 1.3.0 | MIT OR Apache-2.0 | crates.io |
@@ -702,6 +752,7 @@ file is stale. License policy and review notes live in
 | nu-ansi-term | 0.50.3 | MIT | crates.io |
 | num | 0.4.3 | MIT OR Apache-2.0 | crates.io |
 | num-bigint | 0.4.8 | MIT OR Apache-2.0 | crates.io |
+| num-bigint | 0.5.1 | MIT OR Apache-2.0 | crates.io |
 | num-bigint-dig | 0.8.6 | MIT/Apache-2.0 | crates.io |
 | num-cmp | 0.1.0 | MIT/Apache-2.0 | crates.io |
 | num-complex | 0.4.6 | MIT OR Apache-2.0 | crates.io |
@@ -756,6 +807,7 @@ file is stale. License policy and review notes live in
 | oid-registry | 0.8.1 | MIT OR Apache-2.0 | crates.io |
 | once_cell | 1.21.4 | MIT OR Apache-2.0 | crates.io |
 | once_cell_polyfill | 1.70.2 | MIT OR Apache-2.0 | crates.io |
+| oneshot | 0.2.1 | MIT OR Apache-2.0 | crates.io |
 | onig | 6.5.3 | MIT | crates.io |
 | onig_sys | 69.9.3 | MIT | crates.io |
 | opaque-debug | 0.3.1 | MIT OR Apache-2.0 | crates.io |
@@ -769,6 +821,8 @@ file is stale. License policy and review notes live in
 | os_pipe | 1.2.3 | MIT | crates.io |
 | outref | 0.5.2 | MIT | crates.io |
 | owned_ttf_parser | 0.25.1 | Apache-2.0 | crates.io |
+| p256 | 0.13.2 | Apache-2.0 OR MIT | crates.io |
+| p384 | 0.13.1 | Apache-2.0 OR MIT | crates.io |
 | palette | 0.7.7 | MIT OR Apache-2.0 | crates.io |
 | palette_derive | 0.7.7 | MIT OR Apache-2.0 | crates.io |
 | palette_math | 0.7.7 | MIT OR Apache-2.0 | crates.io |
@@ -778,11 +832,13 @@ file is stale. License policy and review notes live in
 | parking | 2.2.1 | Apache-2.0 OR MIT | crates.io |
 | parking_lot | 0.12.5 | MIT OR Apache-2.0 | crates.io |
 | parking_lot_core | 0.9.12 | MIT OR Apache-2.0 | crates.io |
+| parquet | 60.0.0 | Apache-2.0 | crates.io |
 | paste | 1.0.15 | MIT OR Apache-2.0 | crates.io |
 | pastey | 0.2.3 | MIT OR Apache-2.0 | crates.io |
 | pbkdf2 | 0.12.2 | MIT OR Apache-2.0 | crates.io |
 | peeking_take_while | 0.1.2 | Apache-2.0/MIT | crates.io |
 | pem | 4.0.0 | MIT | crates.io |
+| pem-rfc7468 | 0.7.0 | Apache-2.0 OR MIT | crates.io |
 | pem-rfc7468 | 1.0.0 | Apache-2.0 OR MIT | crates.io |
 | percent-encoding | 2.3.2 | MIT OR Apache-2.0 | crates.io |
 | percent-encoding-rfc3986 | 0.1.3 | MIT/Apache-2.0 | crates.io |
@@ -820,6 +876,7 @@ file is stale. License policy and review notes live in
 | png | 0.18.1 | MIT OR Apache-2.0 | crates.io |
 | polling | 3.11.0 | Apache-2.0 OR MIT | crates.io |
 | pollster | 0.4.0 | Apache-2.0/MIT | crates.io |
+| poly1305 | 0.8.0 | Apache-2.0 OR MIT | crates.io |
 | polycool | 0.4.0 | MIT OR Apache-2.0 | crates.io |
 | polyval | 0.6.2 | Apache-2.0 OR MIT | crates.io |
 | portable-atomic | 1.15.0 | Apache-2.0 OR MIT | crates.io |
@@ -837,8 +894,11 @@ file is stale. License policy and review notes live in
 | presser | 0.3.1 | MIT OR Apache-2.0 | crates.io |
 | prettyplease | 0.1.25 | MIT OR Apache-2.0 | crates.io |
 | prettyplease | 0.2.37 | MIT OR Apache-2.0 | crates.io |
+| primeorder | 0.13.6 | Apache-2.0 OR MIT | crates.io |
 | primitive-types | 0.12.2 | MIT OR Apache-2.0 | crates.io |
 | proc-macro-crate | 3.5.0 | MIT OR Apache-2.0 | crates.io |
+| proc-macro-error | 1.0.4 | MIT OR Apache-2.0 | crates.io |
+| proc-macro-error-attr | 1.0.4 | MIT OR Apache-2.0 | crates.io |
 | proc-macro-error-attr3 | 3.0.1 | MIT OR Apache-2.0 | crates.io |
 | proc-macro-error3 | 3.0.1 | MIT OR Apache-2.0 | crates.io |
 | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 | crates.io |
@@ -904,6 +964,7 @@ file is stale. License policy and review notes live in
 | rayon-cond | 0.4.0 | Apache-2.0/MIT | crates.io |
 | rayon-core | 1.13.0 | MIT OR Apache-2.0 | crates.io |
 | rcgen | 0.14.10 | MIT OR Apache-2.0 | crates.io |
+| rclite | 0.2.8 | MIT OR Apache-2.0 | crates.io |
 | read-fonts | 0.41.0 | MIT OR Apache-2.0 | crates.io |
 | reborrow | 0.5.5 | MIT | crates.io |
 | redox_syscall | 0.4.1 | MIT | crates.io |
@@ -918,6 +979,7 @@ file is stale. License policy and review notes live in
 | regex-automata | 0.4.18 | MIT OR Apache-2.0 | crates.io |
 | regex-lite | 0.1.9 | MIT OR Apache-2.0 | crates.io |
 | regex-syntax | 0.8.11 | MIT OR Apache-2.0 | crates.io |
+| regress | 0.12.0 | MIT OR Apache-2.0 | crates.io |
 | renderdoc-sys | 1.1.0 | MIT OR Apache-2.0 | crates.io |
 | reqwest | 0.12.28 | MIT OR Apache-2.0 | crates.io |
 | reqwest | 0.13.5 | MIT OR Apache-2.0 | crates.io |
@@ -928,6 +990,7 @@ file is stale. License policy and review notes live in
 | ring | 0.17.14 | Apache-2.0 AND ISC | crates.io |
 | ripemd | 0.1.3 | MIT OR Apache-2.0 | crates.io |
 | rlp | 0.5.2 | MIT OR Apache-2.0 | crates.io |
+| robust | 1.2.0 | MIT OR Apache-2.0 | crates.io |
 | roxmltree | 0.21.1 | MIT OR Apache-2.0 | crates.io |
 | rqrr | 0.11.0 | (MIT OR Apache-2.0) AND ISC | crates.io |
 | rsa | 0.9.10 | MIT OR Apache-2.0 | crates.io |
@@ -1023,15 +1086,25 @@ file is stale. License policy and review notes live in
 | skrifa | 0.44.0 | MIT OR Apache-2.0 | crates.io |
 | slab | 0.4.12 | MIT | crates.io |
 | slotmap | 1.1.1 | Zlib | crates.io |
+| small_btree | 0.1.0 | Unlicense OR MIT | crates.io |
 | smallvec | 1.16.1 | MIT OR Apache-2.0 | crates.io |
 | smithay | 0.7.0 | MIT | crates.io |
 | smithay-client-toolkit | 0.19.2 | MIT | crates.io |
 | smol_str | 0.1.24 | MIT OR Apache-2.0 | crates.io |
 | smol_str | 0.2.2 | MIT OR Apache-2.0 | crates.io |
+| snap | 1.1.2 | BSD-3-Clause | crates.io |
 | socket2 | 0.5.10 | MIT OR Apache-2.0 | crates.io |
 | socket2 | 0.6.5 | MIT OR Apache-2.0 | crates.io |
 | socks | 0.3.4 | MIT/Apache-2.0 | crates.io |
+| solidcraft-doc | 0.10.0 | MIT OR Apache-2.0 | https://github.com/bherbruck/solidcraft?rev=229de1484ce7c4df3c28df5e5c111078ca9e53a3 |
+| solidcraft-engine | 0.10.0 | MIT OR Apache-2.0 | https://github.com/bherbruck/solidcraft?rev=229de1484ce7c4df3c28df5e5c111078ca9e53a3 |
+| solidcraft-geom | 0.10.0 | MIT OR Apache-2.0 | https://github.com/bherbruck/solidcraft?rev=229de1484ce7c4df3c28df5e5c111078ca9e53a3 |
+| solidcraft-io | 0.10.0 | MIT OR Apache-2.0 | https://github.com/bherbruck/solidcraft?rev=229de1484ce7c4df3c28df5e5c111078ca9e53a3 |
+| solidcraft-kernel | 0.10.0 | MIT OR Apache-2.0 | https://github.com/bherbruck/solidcraft?rev=229de1484ce7c4df3c28df5e5c111078ca9e53a3 |
+| solidcraft-render | 0.10.0 | MIT OR Apache-2.0 | https://github.com/bherbruck/solidcraft?rev=229de1484ce7c4df3c28df5e5c111078ca9e53a3 |
+| solidcraft-sketch | 0.10.0 | MIT OR Apache-2.0 | https://github.com/bherbruck/solidcraft?rev=229de1484ce7c4df3c28df5e5c111078ca9e53a3 |
 | sorted-index-buffer | 0.2.1 | MIT OR Apache-2.0 | crates.io |
+| spade | 2.15.1 | MIT OR Apache-2.0 | crates.io |
 | spark | 0.1.0 | (none declared) | https://github.com/breez/spark-sdk?tag=0.26.0 |
 | spark-primitives | 0.2.0 | Apache-2.0 | crates.io |
 | spark-wallet | 0.1.0 | (none declared) | https://github.com/breez/spark-sdk?tag=0.26.0 |
@@ -1043,6 +1116,7 @@ file is stale. License policy and review notes live in
 | spki | 0.8.0 | Apache-2.0 OR MIT | crates.io |
 | spm_precompiled | 0.1.4 | Apache-2.0 | crates.io |
 | stable_deref_trait | 1.2.1 | MIT OR Apache-2.0 | crates.io |
+| stateright | 0.31.0 | MIT | crates.io |
 | static_assertions | 1.1.0 | MIT OR Apache-2.0 | crates.io |
 | streaming-iterator | 0.1.9 | MIT OR Apache-2.0 | crates.io |
 | strict-num | 0.1.1 | MIT | crates.io |
@@ -1067,14 +1141,17 @@ file is stale. License policy and review notes live in
 | system-configuration | 0.7.0 | MIT OR Apache-2.0 | crates.io |
 | system-configuration | 0.8.0 | MIT OR Apache-2.0 | crates.io |
 | system-configuration-sys | 0.6.0 | MIT OR Apache-2.0 | crates.io |
+| tag_ptr | 0.1.0 | Unlicense OR MIT | crates.io |
 | tap | 1.0.1 | MIT | crates.io |
 | target-lexicon | 0.13.5 | Apache-2.0 WITH LLVM-exception | crates.io |
 | tempfile | 3.27.0 | MIT OR Apache-2.0 | crates.io |
+| temporal_rs | 0.2.6 | MIT OR Apache-2.0 | crates.io |
 | termcolor | 1.4.1 | Unlicense OR MIT | crates.io |
 | termina | 0.3.3 | MIT OR MPL-2.0 | crates.io |
 | terminfo | 0.9.0 | WTFPL | crates.io |
 | termios | 0.3.3 | MIT | crates.io |
 | termwiz | 0.23.3 | MIT | crates.io |
+| thin-vec | 0.2.21 | MIT OR Apache-2.0 | crates.io |
 | thiserror | 1.0.69 | MIT OR Apache-2.0 | crates.io |
 | thiserror | 2.0.20 | MIT OR Apache-2.0 | crates.io |
 | thiserror-impl | 1.0.69 | MIT OR Apache-2.0 | crates.io |
@@ -1087,11 +1164,13 @@ file is stale. License policy and review notes live in
 | time | 0.3.55 | MIT OR Apache-2.0 | crates.io |
 | time-core | 0.1.9 | MIT OR Apache-2.0 | crates.io |
 | time-macros | 0.2.32 | MIT OR Apache-2.0 | crates.io |
+| timezone_provider | 0.2.6 | MIT OR Apache-2.0 | crates.io |
 | tiny-keccak | 2.0.2 | CC0-1.0 | crates.io |
 | tiny-skia | 0.11.4 | BSD-3-Clause | crates.io |
 | tiny-skia | 0.12.0 | BSD-3-Clause | crates.io |
 | tiny-skia-path | 0.11.4 | BSD-3-Clause | crates.io |
 | tiny-skia-path | 0.12.0 | BSD-3-Clause | crates.io |
+| tiny_http | 0.12.0 | MIT OR Apache-2.0 | crates.io |
 | tinystr | 0.8.4 | Unicode-3.0 | crates.io |
 | tinyvec | 1.13.3 | Zlib OR Apache-2.0 OR MIT | crates.io |
 | tokenizers | 0.22.2 | Apache-2.0 | crates.io |
@@ -1145,12 +1224,23 @@ file is stale. License policy and review notes live in
 | tree-sitter-rust | 0.24.2 | MIT | crates.io |
 | tree-sitter-typescript | 0.23.2 | MIT | crates.io |
 | tree_magic_mini | 3.2.2 | MIT | crates.io |
+| truck-base | 0.5.0 | Apache-2.0 | crates.io |
+| truck-derivers | 0.1.0 | Apache-2.0 | crates.io |
+| truck-geometry | 0.5.0 | Apache-2.0 | crates.io |
+| truck-geotrait | 0.4.0 | Apache-2.0 | crates.io |
+| truck-meshalgo | 0.4.0 | Apache-2.0 | https://github.com/bherbruck/solidcraft?rev=229de1484ce7c4df3c28df5e5c111078ca9e53a3 |
+| truck-modeling | 0.6.0 | Apache-2.0 | crates.io |
+| truck-polymesh | 0.6.0 | Apache-2.0 | crates.io |
+| truck-shapeops | 0.4.0 | Apache-2.0 | https://github.com/bherbruck/solidcraft?rev=229de1484ce7c4df3c28df5e5c111078ca9e53a3 |
+| truck-stepio | 0.3.0 | Apache-2.0 | https://github.com/bherbruck/solidcraft?rev=229de1484ce7c4df3c28df5e5c111078ca9e53a3 |
+| truck-topology | 0.6.0 | Apache-2.0 | crates.io |
 | try-lock | 0.2.5 | MIT | crates.io |
 | ttf-parser | 0.25.1 | MIT OR Apache-2.0 | crates.io |
 | tungstenite | 0.28.0 | MIT OR Apache-2.0 | crates.io |
 | tungstenite | 0.29.0 | MIT OR Apache-2.0 | crates.io |
 | tungstenite | 0.30.0 | MIT OR Apache-2.0 | crates.io |
 | two-face | 0.4.5 | MIT OR Apache-2.0 | crates.io |
+| twox-hash | 2.1.5 | MIT | crates.io |
 | typed-path | 0.12.3 | MIT OR Apache-2.0 | crates.io |
 | typeid | 1.0.3 | MIT OR Apache-2.0 | crates.io |
 | typenum | 1.20.1 | MIT OR Apache-2.0 | crates.io |
@@ -1165,8 +1255,10 @@ file is stale. License policy and review notes live in
 | unicode-normalization | 0.1.25 | MIT OR Apache-2.0 | crates.io |
 | unicode-normalization-alignments | 0.1.12 | MIT/Apache-2.0 | crates.io |
 | unicode-properties | 0.1.4 | MIT/Apache-2.0 | crates.io |
+| unicode-script | 0.5.8 | MIT OR Apache-2.0 | crates.io |
 | unicode-segmentation | 1.13.3 | MIT OR Apache-2.0 | crates.io |
 | unicode-truncate | 2.0.1 | MIT OR Apache-2.0 | crates.io |
+| unicode-vo | 0.1.0 | MIT/Apache-2.0 | crates.io |
 | unicode-width | 0.2.0 | MIT OR Apache-2.0 | crates.io |
 | unicode-xid | 0.2.6 | MIT OR Apache-2.0 | crates.io |
 | unicode_categories | 0.1.1 | MIT OR Apache-2.0 | crates.io |
@@ -1179,6 +1271,7 @@ file is stale. License policy and review notes live in
 | urlencoding | 2.1.3 | MIT | crates.io |
 | usvg | 0.48.1 | Apache-2.0 OR MIT | crates.io |
 | utf-8 | 0.7.6 | MIT OR Apache-2.0 | crates.io |
+| utf16_iter | 1.0.5 | Apache-2.0 OR MIT | crates.io |
 | utf8-zero | 0.8.1 | MIT OR Apache-2.0 | crates.io |
 | utf8_iter | 1.0.4 | Apache-2.0 OR MIT | crates.io |
 | utf8parse | 0.2.2 | Apache-2.0 OR MIT | crates.io |
@@ -1256,15 +1349,15 @@ file is stale. License policy and review notes live in
 | wezterm-dynamic | 0.2.1 | MIT | crates.io |
 | wezterm-dynamic-derive | 0.1.1 | MIT | crates.io |
 | wezterm-input-types | 0.1.0 | MIT | crates.io |
-| wgpu | 29.0.4 | MIT OR Apache-2.0 | crates.io |
-| wgpu-core | 29.0.4 | MIT OR Apache-2.0 | crates.io |
-| wgpu-core-deps-apple | 29.0.4 | MIT OR Apache-2.0 | crates.io |
-| wgpu-core-deps-emscripten | 29.0.4 | MIT OR Apache-2.0 | crates.io |
-| wgpu-core-deps-wasm | 29.0.4 | MIT OR Apache-2.0 | crates.io |
-| wgpu-core-deps-windows-linux-android | 29.0.4 | MIT OR Apache-2.0 | crates.io |
-| wgpu-hal | 29.0.4 | MIT OR Apache-2.0 | crates.io |
-| wgpu-naga-bridge | 29.0.4 | MIT OR Apache-2.0 | crates.io |
-| wgpu-types | 29.0.4 | MIT OR Apache-2.0 | crates.io |
+| wgpu | 30.0.1 | MIT OR Apache-2.0 | crates.io |
+| wgpu-core | 30.0.1 | MIT OR Apache-2.0 | crates.io |
+| wgpu-core-deps-apple | 30.0.1 | MIT OR Apache-2.0 | crates.io |
+| wgpu-core-deps-emscripten | 30.0.1 | MIT OR Apache-2.0 | crates.io |
+| wgpu-core-deps-wasm | 30.0.1 | MIT OR Apache-2.0 | crates.io |
+| wgpu-core-deps-windows-linux-android | 30.0.1 | MIT OR Apache-2.0 | crates.io |
+| wgpu-hal | 30.0.1 | MIT OR Apache-2.0 | crates.io |
+| wgpu-naga-bridge | 30.0.1 | MIT OR Apache-2.0 | crates.io |
+| wgpu-types | 30.0.1 | MIT OR Apache-2.0 | crates.io |
 | which | 4.4.2 | MIT | crates.io |
 | which | 8.0.6 | MIT | crates.io |
 | whoami | 2.1.3 | Apache-2.0 OR BSL-1.0 OR MIT | crates.io |
@@ -1333,12 +1426,14 @@ file is stale. License policy and review notes live in
 | wit-parser | 0.254.2 | Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT | crates.io |
 | wl-clipboard-rs | 0.9.4 | MIT OR Apache-2.0 | crates.io |
 | wmi | 0.18.4 | MIT OR Apache-2.0 | crates.io |
+| write16 | 1.0.0 | Apache-2.0 OR MIT | crates.io |
 | writeable | 0.6.4 | Unicode-3.0 | crates.io |
 | ws_stream_wasm | 0.7.5 | Unlicense | crates.io |
 | wyz | 0.5.1 | MIT | crates.io |
 | x11-dl | 2.21.0 | MIT | crates.io |
 | x11rb | 0.13.2 | MIT OR Apache-2.0 | crates.io |
 | x11rb-protocol | 0.13.2 | MIT OR Apache-2.0 | crates.io |
+| x25519-dalek | 2.0.1 | BSD-3-Clause | crates.io |
 | x509-cert | 0.2.5 | Apache-2.0 OR MIT | crates.io |
 | x509-parser | 0.18.1 | MIT OR Apache-2.0 | crates.io |
 | xcursor | 0.3.11 | MIT | crates.io |
@@ -1346,6 +1441,8 @@ file is stale. License policy and review notes live in
 | xkbcommon-dl | 0.4.2 | MIT | crates.io |
 | xkeysym | 0.2.1 | MIT OR Apache-2.0 OR Zlib | crates.io |
 | xml-rs | 0.8.29 | MIT | crates.io |
+| xmlwriter | 0.1.0 | MIT | crates.io |
+| xsum | 0.1.6 | MIT | crates.io |
 | yaml-rust | 0.4.5 | MIT/Apache-2.0 | crates.io |
 | yasna | 0.6.0 | MIT OR Apache-2.0 | crates.io |
 | yazi | 0.2.1 | Apache-2.0 OR MIT | crates.io |
@@ -1369,12 +1466,16 @@ file is stale. License policy and review notes live in
 | zerotrie | 0.2.5 | Unicode-3.0 | crates.io |
 | zerovec | 0.11.8 | Unicode-3.0 | crates.io |
 | zerovec-derive | 0.11.6 | Unicode-3.0 | crates.io |
+| zip | 3.0.0 | MIT | crates.io |
 | zip | 8.6.0 | MIT | crates.io |
 | zlib-rs | 0.6.8 | Zlib | crates.io |
 | zmij | 1.0.23 | MIT | crates.io |
+| zopfli | 0.8.4 | Apache-2.0 | crates.io |
 | zstd | 0.13.3 | MIT | crates.io |
+| zstd | 0.14.2 | BSD-3-Clause | crates.io |
 | zstd-safe | 7.3.0 | BSD-3-Clause | crates.io |
-| zstd-sys | 2.1.0+zstd.1.5.7 | BSD-3-Clause | crates.io |
+| zstd-safe | 8.1.0 | BSD-3-Clause | crates.io |
+| zstd-sys | 2.1.1+zstd.1.5.7 | BSD-3-Clause | crates.io |
 | zune-core | 0.5.3 | MIT OR Apache-2.0 OR Zlib | crates.io |
 | zune-jpeg | 0.5.15 | MIT OR Apache-2.0 OR Zlib | crates.io |
 | zvariant | 5.15.0 | MIT | crates.io |
