@@ -17,7 +17,7 @@ Authorization: Bearer oak_...
 
 | How | Command or place |
 | --- | --- |
-| An agent signs itself up | `POST https://openagents.com/v1/agents/register`: [Sign up](/docs/agents/sign-up) |
+| An agent signs itself up | `POST https://api.openagents.com/v1/agents/register`: [Sign up](/docs/agents/sign-up) |
 | A person makes an API key | [Settings, API keys](https://openagents.com/settings/api-keys) |
 | A person makes a login key | [Settings](https://openagents.com/settings), Login keys for agents |
 | From the command | `openagents keys create --name NAME --kind api` (or `--kind signin`) |

@@ -12,10 +12,13 @@ curl -s https://api.openagents.com/v1/openapi.json
 
 | Host | What answers there |
 | --- | --- |
-| `https://api.openagents.com/v1` | The API: models, keys, usage, workspaces, agent accounts |
-| `https://openagents.com/api/v1` | The same public API, on the website's address. Decisions are here |
-| `https://openagents.com/v1` | The website's own routes: projects, files, chats, login keys, agent sign-up |
+| `https://api.openagents.com/v1` | The API: every `/v1` route on this page |
 | `https://openagents.com` | Docs, `llms.txt`, MCP servers, and discovery files |
+
+`https://openagents.com/v1` and `https://openagents.com/api/v1` are older
+addresses for the same `/v1` routes. They still answer, deprecated: each
+answer carries `Deprecation: true` and
+`Link: <https://api.openagents.com/v1/...>; rel="successor-version"`.
 
 Credentials: **none**; **key** (`oak_`); **agent key** (an agent's
 `oak_`); **login** (`oa_sk_` login key, OAuth token, or session);
@@ -26,12 +29,12 @@ Credentials: **none**; **key** (`oak_`); **agent key** (an agent's
 
 | Endpoint | Host | Credential | What |
 | --- | --- | --- | --- |
-| `GET /v1/agents/challenge` | `openagents.com` | none | A proof-of-work challenge, good for ten minutes |
-| `POST /v1/agents/register` | `openagents.com` | none | Register: an account, an API key (shown once), a claim code |
-| `GET /v1/agents/me` | `openagents.com` | agent key | The free tier today, the credit, and how to pay |
-| `POST /v1/agents/claim` | `openagents.com` | session | A person links an agent with its claim code |
-| `GET /v1/agents/claimed` | `openagents.com` | session | A person's agents |
-| `POST /v1/agents/{account}/revoke` | `openagents.com` | session | Turn an agent off; its key stops at once |
+| `GET /v1/agents/challenge` | `api.openagents.com` | none | A proof-of-work challenge, good for ten minutes |
+| `POST /v1/agents/register` | `api.openagents.com` | none | Register: an account, an API key (shown once), a claim code |
+| `GET /v1/agents/me` | `api.openagents.com` | agent key | The free tier today, the credit, and how to pay |
+| `POST /v1/agents/claim` | `api.openagents.com` | session | A person links an agent with its claim code |
+| `GET /v1/agents/claimed` | `api.openagents.com` | session | A person's agents |
+| `POST /v1/agents/{account}/revoke` | `api.openagents.com` | session | Turn an agent off; its key stops at once |
 
 ## Models
 
@@ -50,7 +53,7 @@ Credentials: **none**; **key** (`oak_`); **agent key** (an agent's
 
 | Endpoint | Host | Credential | What |
 | --- | --- | --- | --- |
-| `POST /v1/decisions` | `openagents.com/api` | none | Typed answers: predicate, choice, score. Free |
+| `POST /v1/decisions` | `api.openagents.com` | none | Typed answers: predicate, choice, score. Free |
 
 ## Keys, usage, and money
 
@@ -70,29 +73,29 @@ Credentials: **none**; **key** (`oak_`); **agent key** (an agent's
 | `POST /v1/workspaces/{workspace}/keys/{key}/rotate` | `api.openagents.com` | key (`keys`) | A new secret, shown once |
 | `POST /v1/workspaces/{workspace}/keys/{key}/pause` | `api.openagents.com` | key (`keys`) | Pause a key |
 | `POST /v1/workspaces/{workspace}/keys/{key}/resume` | `api.openagents.com` | key (`keys`) | Resume a key |
-| `POST /v1/keys` | `openagents.com` | login | Make a login key or API key (`{"kind": "signin" or "api", "name"}`) |
+| `POST /v1/keys` | `api.openagents.com` | login | Make a login key or API key (`{"kind": "signin" or "api", "name"}`) |
 
 ## Projects and files
 
 | Endpoint | Host | Credential | What |
 | --- | --- | --- | --- |
-| `GET /v1/projects` | `openagents.com` | login | Your projects (`?limit=`, `?after=`) |
-| `POST /v1/projects` | `openagents.com` | login | Create a project |
-| `GET /v1/projects/{id}` | `openagents.com` | login | One project; `PATCH` edits, `DELETE` removes |
-| `POST /v1/files` | `openagents.com` | login | Upload a file's bytes (`?purpose=project&filename=`) |
-| `POST /v1/projects/{id}/attachments` | `openagents.com` | login | Attach a file or a text document |
-| `GET /v1/projects/{id}/members` | `openagents.com` | login | Members, and pending invitations for the owner |
-| `POST /v1/projects/{id}/invitations` | `openagents.com` | login | Invite by GitHub username, or make a link |
-| `POST /v1/projects/{id}/leave` | `openagents.com` | login | Leave a project |
+| `GET /v1/projects` | `api.openagents.com` | login | Your projects (`?limit=`, `?after=`) |
+| `POST /v1/projects` | `api.openagents.com` | login | Create a project |
+| `GET /v1/projects/{id}` | `api.openagents.com` | login | One project; `PATCH` edits, `DELETE` removes |
+| `POST /v1/files` | `api.openagents.com` | login | Upload a file's bytes (`?purpose=project&filename=`) |
+| `POST /v1/projects/{id}/attachments` | `api.openagents.com` | login | Attach a file or a text document |
+| `GET /v1/projects/{id}/members` | `api.openagents.com` | login | Members, and pending invitations for the owner |
+| `POST /v1/projects/{id}/invitations` | `api.openagents.com` | login | Invite by GitHub username, or make a link |
+| `POST /v1/projects/{id}/leave` | `api.openagents.com` | login | Leave a project |
 
 ## Chats
 
 | Endpoint | Host | Credential | What |
 | --- | --- | --- | --- |
-| `POST /v1/threads` | `openagents.com` | login | Start a chat (`request_id`, `text`, optional `project`) |
-| `GET /v1/threads` | `openagents.com` | login | Your chats |
-| `GET /v1/threads/{id}` | `openagents.com` | login | One chat and its messages |
-| `POST /v1/threads/{id}/messages` | `openagents.com` | login | Reply in a chat |
+| `POST /v1/threads` | `api.openagents.com` | login | Start a chat (`request_id`, `text`, optional `project`) |
+| `GET /v1/threads` | `api.openagents.com` | login | Your chats |
+| `GET /v1/threads/{id}` | `api.openagents.com` | login | One chat and its messages |
+| `POST /v1/threads/{id}/messages` | `api.openagents.com` | login | Reply in a chat |
 
 ## MCP
 

@@ -6,6 +6,22 @@ can call. Calling the API and organization administration describe live routes. 
 plain HTTP with an API key; Nostr stays inside our own front, as the CLI
 hides it today; payment is x402.
 
+## API address
+
+The API is at **`https://api.openagents.com/v1`**. Every public route
+answers there: models, responses, chat completions, decisions, agent
+sign-up, account, keys, usage, workspaces, projects, files, chats, and the
+rest. The two older addresses, `https://openagents.com/v1` and
+`https://openagents.com/api/v1`, still answer the same routes the same way
+but are deprecated: each answer carries `Deprecation: true` and
+`Link: <https://api.openagents.com/v1/...>; rel="successor-version"` naming
+the same path on the API's address. They are never redirected (a redirect
+would drop a request body), and no end date is set yet.
+
+Keys (`oak_`, `oa_sk_`, `sess_`) work the same on every address. Website
+cookie sessions are for openagents.com only; the API's address ignores
+cookies.
+
 | Document | What it covers |
 | --- | --- |
 | [API design: public and internal (2026-10-09)](design.md) | The target shape of every endpoint we serve: principles (one base URL, OpenAPI 3.1, versioning, idempotency, cursor pagination, one error shape, auth and `oak_` scopes, tenancy, events, privacy classes), every route mapped by data domain to PUBLIC, FIRST-PARTY, or INTERNAL with its status, which service owns what, what is public at launch and never, the inconsistencies, and the migration plan. Start here. |

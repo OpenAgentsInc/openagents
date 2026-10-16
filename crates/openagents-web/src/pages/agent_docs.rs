@@ -391,7 +391,7 @@ mod tests {
         );
     }
 
-    /// The catalog's credential labels and hosts are the ones it defines.
+    /// Every `/v1` row is on the API's address, api.openagents.com.
     #[test]
     fn the_endpoint_catalog_names_a_host_for_every_row() {
         let (_, catalog) = AGENT_DOCS
@@ -403,15 +403,14 @@ mod tests {
             if cells.len() < 5 || !cells[1].contains(" /") {
                 continue;
             }
-            assert!(
-                [
-                    "`api.openagents.com`",
-                    "`openagents.com`",
-                    "`openagents.com/api`"
-                ]
-                .contains(&cells[2]),
-                "{row}"
-            );
+            // The API's one address is api.openagents.com/v1; the website
+            // keeps its MCP servers.
+            let want = if cells[1].contains(" /v1/") {
+                "`api.openagents.com`"
+            } else {
+                "`openagents.com`"
+            };
+            assert_eq!(cells[2], want, "{row}");
         }
     }
 }

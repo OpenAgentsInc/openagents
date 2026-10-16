@@ -378,7 +378,7 @@ described in OpenAPI at <code>https://api.openagents.com/v1/openapi.json</code>.
 fn llms() -> String {
     let mut out = String::from(
         "# OpenAgents API\n\n> One API for many models: Open Responses and Chat Completions at \
-https://api.openagents.com/v1 (also https://openagents.com/api/v1). Beta.\n\n## Guides\n\n",
+https://api.openagents.com/v1. Beta.\n\n## Guides\n\n",
     );
     for (slug, text) in API_DOCS {
         out.push_str(&format!(

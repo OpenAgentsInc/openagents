@@ -2,7 +2,7 @@
 """Conformance of `POST /v1/decisions` with an OpenAI SDK client
 (docs/api/decisions.md, method of docs/inference/2026-10-09-acceptance-run.md).
 
-    scripts/dev/decisions-conformance.py --base-url https://openagents.com/api/v1 \
+    scripts/dev/decisions-conformance.py --base-url https://api.openagents.com/v1 \
         [--model openagents/decide] [--json out.json]
 
 The official OpenAI Python SDK (2.48.0, 2026-10-12) has no

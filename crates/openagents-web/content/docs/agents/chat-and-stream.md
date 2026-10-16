@@ -94,7 +94,7 @@ It can run tools and Coder, and it shows on the website and phone.
 ### Step 1: start the chat
 
 ```sh
-curl -s https://openagents.com/v1/threads \
+curl -s https://api.openagents.com/v1/threads \
   -H "Authorization: Bearer $OPENAGENTS_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"request_id\": \"$(uuidgen)\", \"text\": \"What changed in my repo this week?\"}"
@@ -112,7 +112,7 @@ a project. Text is at most 4,000 characters.
 ### Step 2: read it until the answer is done
 
 ```sh
-curl -s https://openagents.com/v1/threads/THREAD_ID \
+curl -s https://api.openagents.com/v1/threads/THREAD_ID \
   -H "Authorization: Bearer $OPENAGENTS_TOKEN"
 ```
 
@@ -126,7 +126,7 @@ last `assistant` message grows as the answer is written.
 ### Step 3: reply
 
 ```sh
-curl -s https://openagents.com/v1/threads/THREAD_ID/messages \
+curl -s https://api.openagents.com/v1/threads/THREAD_ID/messages \
   -H "Authorization: Bearer $OPENAGENTS_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"request_id\": \"$(uuidgen)\", \"text\": \"Only the main branch, please.\"}"

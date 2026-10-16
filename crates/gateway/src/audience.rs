@@ -405,7 +405,7 @@ pub fn first_party_document() -> Value {
         "info": {
             "title": "OpenAgents first-party API",
             "version": "1.0.0-beta",
-            "description": "Routes our own web, mobile, desktop, and terminal clients call. Not a public contract: they may change with a client release and keep working for the two newest releases (docs/api/design.md, section 2.4). The public API is https://openagents.com/api/v1/openapi.json.",
+            "description": "Routes our own web, mobile, desktop, and terminal clients call. Not a public contract: they may change with a client release and keep working for the two newest releases (docs/api/design.md, section 2.4). The public API is https://api.openagents.com/v1/openapi.json.",
             "license": {"name": "CC0-1.0", "identifier": "CC0-1.0"}
         },
         "servers": [{"url": "https://api.openagents.com"}],

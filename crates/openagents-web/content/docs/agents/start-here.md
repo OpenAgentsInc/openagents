@@ -9,9 +9,9 @@ Every step below is one request or one command.
 | Offer | How to reach it | Key |
 | --- | --- | --- |
 | Many models through one API, Google's Gemini first | `POST https://api.openagents.com/v1/responses` | API key, or pay per request |
-| Typed answers in a fraction of a second | `POST https://openagents.com/api/v1/decisions` | None, free |
-| An account of its own, with a free amount each day | `POST https://openagents.com/v1/agents/register` | None |
-| Projects, files, and chats for the person it works for | `https://openagents.com/v1/projects`, `/v1/threads` | Login key |
+| Typed answers in a fraction of a second | `POST https://api.openagents.com/v1/decisions` | None, free |
+| An account of its own, with a free amount each day | `POST https://api.openagents.com/v1/agents/register` | None |
+| Projects, files, and chats for the person it works for | `https://api.openagents.com/v1/projects`, `/v1/threads` | Login key |
 | Coder, our coding agent, run from a script | `openagents coder chat --json` | Your computer's login |
 | The docs as MCP tools | `https://openagents.com/mcp/docs` | None |
 | Bitcoin payments over Lightning | `pay` objects, x402, and `openagents x402` | None |
@@ -22,8 +22,8 @@ No person, email, or card. Solve a proof of work, register, and keep the
 key you get back:
 
 ```sh
-curl -s https://openagents.com/v1/agents/challenge
-curl -s https://openagents.com/v1/agents/register \
+curl -s https://api.openagents.com/v1/agents/challenge
+curl -s https://api.openagents.com/v1/agents/register \
   -H "Content-Type: application/json" \
   -d '{"name": "my-agent", "challenge": "<challenge>", "solution": "<solution>"}'
 ```
@@ -69,10 +69,13 @@ Keep keys in environment variables (`OPENAGENTS_API_KEY`,
 
 | Address | For |
 | --- | --- |
-| `https://api.openagents.com/v1` | The API: models, keys, usage, workspaces |
-| `https://openagents.com/api/v1` | The same public API on the website's address, and decisions |
-| `https://openagents.com/v1` | Agent sign-up, projects, files, chats, login keys |
+| `https://api.openagents.com/v1` | The API: models, decisions, keys, usage, workspaces, agent sign-up, projects, files, chats, login keys |
 | `https://openagents.com/mcp/docs` and `/mcp` | The MCP servers |
+
+The older `https://openagents.com/v1` and `https://openagents.com/api/v1`
+still answer every route but are deprecated: their answers carry
+`Deprecation: true` and a `Link` to the same path on
+`https://api.openagents.com/v1`.
 
 Every route: [Endpoint catalog](/docs/agents/endpoints).
 

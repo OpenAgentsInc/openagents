@@ -11,6 +11,10 @@
 # (docs/deployment/account-storage.md). There is no coder-serve sidecar
 # any more (docs/deployment/coder-serve-retirement.md): paths the site
 # doesn't own answer 404, /v1 goes to the gateway. Nothing is printed.
+# --api-host: api.openagents.com/v1 is the API's address; its load balancer
+# sends /v1/... here (deploy/production/api-url-map.yaml), and the older
+# openagents.com/v1 and /api/v1 answer marked deprecated
+# (crates/openagents-web/src/api_host.rs).
 set -eu
 umask 077
 p=/tmp/private
@@ -68,6 +72,7 @@ fi
 # spaces, split on purpose.
 # shellcheck disable=SC2086
 exec /usr/local/bin/openagents-web "$@" $environments $github_app \
+    --api-host api.openagents.com \
     --cloud-config "$p/cloud.json" --github-oauth "$p/github-oauth.json" \
     --cloud-byo "$byo" --plan-meter /tmp/plan-meter.sqlite \
     --inference http://127.0.0.1:8791 --own-runs-token "$stack/own-runs.key"

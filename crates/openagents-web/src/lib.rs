@@ -24,6 +24,7 @@ mod agents_page;
 pub mod analytics;
 mod answer_ui;
 mod api_alias;
+mod api_host;
 mod api_keys;
 pub mod ask;
 pub mod attribution;
@@ -300,6 +301,13 @@ pub struct Config {
     /// may reach the public pages (for example `openagents.com`). The task
     /// browser answers only the local hosts.
     pub public_hosts: Vec<String>,
+    /// The API's own host (`--api-host`, `api.openagents.com` in
+    /// production): it answers the `/v1/...` paths exactly as the public
+    /// hosts do, with no cookies either way, and nothing else. With it set,
+    /// `/v1/...` and `/api/v1/...` on the public hosts are deprecated
+    /// addresses: they answer as before, marked with `Deprecation` and a
+    /// `Link` to the same path here ([`api_host`]).
+    pub api_host: Option<String>,
     /// The Blue Rush Studios hosts (`--studio-host`, defaulting to
     /// [`pages::STUDIO_HOSTS`]): their `/` is the studio's homepage, and
     /// they answer only the studio's pages and the game
@@ -454,6 +462,7 @@ impl Config {
             customer: None,
             port: 4300,
             public_hosts: Vec::new(),
+            api_host: None,
             studio_hosts: pages::STUDIO_HOSTS
                 .iter()
                 .map(|h| (*h).to_owned())
@@ -518,6 +527,7 @@ pub fn router(config: Config) -> Router {
     let hosts = Hosts {
         port: app.config.port,
         public: app.config.public_hosts.clone(),
+        api_host: app.config.api_host.clone(),
         studio: app.config.studio_hosts.clone(),
         upstream: app.config.upstream.clone(),
         api: app.config.inference.is_some(),
@@ -666,6 +676,8 @@ pub(crate) fn local_request(headers: &axum::http::HeaderMap) -> bool {
 struct Hosts {
     port: u16,
     public: Vec<String>,
+    /// The API's own host ([`Config::api_host`]).
+    api_host: Option<String>,
     /// The Blue Rush Studios hosts, public like `public` but mapped to the
     /// studio's pages before routing.
     studio: Vec<String>,
@@ -703,7 +715,12 @@ fn loopback_peer(request: &Request) -> bool {
 /// Answers only the configured hosts, keeps the task browser local, sends
 /// what the site doesn't own to the upstream, and sets the security headers
 /// every response of its own carries.
-async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
+async fn guard(hosts: Hosts, request: Request, next: Next) -> Response {
+    api_host::guard(hosts, request, next).await
+}
+
+/// [`guard`] for one request, after [`api_host::guard`] has placed it.
+async fn host_guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
     let host = request
         .headers()
         .get(header::HOST)
@@ -748,7 +765,9 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
         || path.starts_with("/share/")
         || path == "/ask"
         || path.starts_with("/composer/");
-    let public = hosts.public.contains(&host) || hosts.studio.contains(&host);
+    let public = hosts.public.contains(&host)
+        || hosts.studio.contains(&host)
+        || api_host::serves(hosts.api_host.as_deref(), &host, path);
     let cloud_cookie = request
         .headers()
         .get_all(header::COOKIE)

@@ -225,7 +225,7 @@ fn public_agent_card() -> Value {
         "supportedInterfaces": [
             {"url": format!("{API}/responses"), "protocolBinding": "HTTP+JSON", "protocolVersion": "openresponses.v1"},
             {"url": format!("{API}/chat/completions"), "protocolBinding": "HTTP+JSON", "protocolVersion": "openai.chat-completions.v1"},
-            {"url": format!("{SITE}/api/v1/decisions"), "protocolBinding": "HTTP+JSON", "protocolVersion": "openagents.decisions.v1"},
+            {"url": format!("{API}/decisions"), "protocolBinding": "HTTP+JSON", "protocolVersion": "openagents.decisions.v1"},
             {"url": format!("{SITE}/mcp/docs"), "protocolBinding": "MCP", "protocolVersion": "2025-06-18"},
         ],
         "capabilities": {
@@ -234,16 +234,16 @@ fn public_agent_card() -> Value {
             "extendedAgentCard": false,
         },
         "securitySchemes": {
-            "bearer": {"type": "http", "scheme": "bearer", "description": format!("An API key, `oak_<id>.<secret>`. An agent gets its own with no person: GET {SITE}/v1/agents/challenge, solve it, then POST {SITE}/v1/agents/register ({SITE}/docs/agents/sign-up). A person makes one at {SITE}/settings/api-keys. Projects, files, and chats take a login key (`oa_sk_`) from {SITE}/settings. Keys and scopes: {SITE}/docs/agents/scopes.")}
+            "bearer": {"type": "http", "scheme": "bearer", "description": format!("An API key, `oak_<id>.<secret>`. An agent gets its own with no person: GET {API}/agents/challenge, solve it, then POST {API}/agents/register ({SITE}/docs/agents/sign-up). A person makes one at {SITE}/settings/api-keys. Projects, files, and chats take a login key (`oa_sk_`) from {SITE}/settings. Keys and scopes: {SITE}/docs/agents/scopes.")}
         },
         "security": [{"bearer": []}],
         "defaultInputModes": ["application/json", "text/plain"],
         "defaultOutputModes": ["application/json", "text/event-stream"],
         "skills": [
             {"id": "models", "name": "Models", "description": format!("Answer with many models through one API, Google's Gemini first: POST {API}/responses or {API}/chat/completions, one answer or a stream. OpenAI SDKs work with base_url {API}. {SITE}/docs/agents/chat-and-stream"), "tags": ["inference", "models", "streaming"]},
-            {"id": "decisions", "name": "Decisions", "description": format!("Typed answers in a fraction of a second: the chance a condition is true, one choice from a set, or a score. POST {SITE}/api/v1/decisions, no key, free. {SITE}/docs/agents/decisions"), "tags": ["decision", "classification", "routing"]},
-            {"id": "agent-signup", "name": "Sign up as an agent", "description": format!("Make an account with no person, email, or card: solve a proof of work at {SITE}/v1/agents/challenge and register at {SITE}/v1/agents/register for an oak_ key, a claim code for the person you work for, and a daily free amount. {SITE}/docs/agents/sign-up"), "tags": ["signup", "keys"]},
-            {"id": "projects", "name": "Projects, files, and chats", "description": format!("Read and change the projects, files, and chats of the person you work for at {SITE}/v1/projects and {SITE}/v1/threads, with their login key. {SITE}/docs/agents/projects"), "tags": ["projects", "files", "chats"]},
+            {"id": "decisions", "name": "Decisions", "description": format!("Typed answers in a fraction of a second: the chance a condition is true, one choice from a set, or a score. POST {API}/decisions, no key, free. {SITE}/docs/agents/decisions"), "tags": ["decision", "classification", "routing"]},
+            {"id": "agent-signup", "name": "Sign up as an agent", "description": format!("Make an account with no person, email, or card: solve a proof of work at {API}/agents/challenge and register at {API}/agents/register for an oak_ key, a claim code for the person you work for, and a daily free amount. {SITE}/docs/agents/sign-up"), "tags": ["signup", "keys"]},
+            {"id": "projects", "name": "Projects, files, and chats", "description": format!("Read and change the projects, files, and chats of the person you work for at {API}/projects and {API}/threads, with their login key. {SITE}/docs/agents/projects"), "tags": ["projects", "files", "chats"]},
             {"id": "coder", "name": "Coder", "description": format!("Run Coder, our coding agent, from a script: openagents coder chat -p \"...\" --json. {SITE}/docs/agents/coder-headless"), "tags": ["coding", "cli"]},
             {"id": "documentation", "name": "Documentation", "description": format!("List, read, and search our docs as MCP tools at {SITE}/mcp/docs, no key. Every page is also Markdown: {SITE}/llms.txt. {SITE}/docs/agents/mcp"), "tags": ["docs", "mcp"]},
             {"id": "lightning-payments", "name": "Pay in bitcoin", "description": format!("Buy credit over Lightning ({SITE}/docs/agents/buy-credits), or pay each request with no key over x402 ({SITE}/docs/agents/x402)."), "tags": ["payments", "lightning", "x402"]},
@@ -408,7 +408,7 @@ mod tests {
                 [
                     "https://api.openagents.com/v1/responses",
                     "https://api.openagents.com/v1/chat/completions",
-                    "https://openagents.com/api/v1/decisions",
+                    "https://api.openagents.com/v1/decisions",
                     "https://openagents.com/mcp/docs",
                 ]
             );

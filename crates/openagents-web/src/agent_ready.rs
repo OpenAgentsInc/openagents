@@ -341,7 +341,7 @@ pub(crate) fn site_index_json() -> Value {
             "agent_skills": format!("{SITE}/.well-known/agent-skills/index.json"),
             "skill": format!("{SITE}/skill.md"),
             "auth": format!("{SITE}/auth.md"),
-            "agent_register": format!("{SITE}/v1/agents/register"),
+            "agent_register": format!("{}/v1/agents/register", crate::api_host::API_ORIGIN),
         },
     })
 }
@@ -595,7 +595,7 @@ fn api_list(absolute: bool) -> String {
 }
 
 const API_LEAD: &str = "One API for many models: Open Responses and Chat Completions at \
-`https://api.openagents.com/v1` (also `https://openagents.com/api/v1`). Beta.";
+`https://api.openagents.com/v1`. Beta.";
 
 async fn docs_md() -> Response {
     let canonical = format!("{SITE}/docs");
@@ -655,7 +655,7 @@ Every page here is also Markdown: add `.md` to its address, or send `Accept: tex
 - [Start here]({SITE}/docs/agents/start-here.md) if you are an agent: what we offer, sign-up, keys, and errors.\n\
 - [Docs for agents]({SITE}/docs/agents.md): every page below, grouped.\n{}\n## API\n\n- [API docs]({SITE}/docs/api.md): {API_LEAD}\n{}\
 - [Authentication]({SITE}/auth.md): get an API key and send it.\n\
-- [Agent sign-up]({SITE}/auth.md#register-yourself-as-an-agent): an agent registers itself with a small proof of work (`POST {SITE}/v1/agents/register`), gets a key and a small daily free tier, and pays over Lightning past it.\n\
+- [Agent sign-up]({SITE}/auth.md#register-yourself-as-an-agent): an agent registers itself with a small proof of work (`POST https://api.openagents.com/v1/agents/register`), gets a key and a small daily free tier, and pays over Lightning past it.\n\
 - [For agents]({SITE}/docs/api/for-agents.md): find us, say who you are, and pay. {}\n\
 - [OpenAPI]({SITE}/openapi.json): the API's machine-readable description.\n\
 - [API catalog]({SITE}/.well-known/api-catalog): where each API and its description live.\n\n\
@@ -956,12 +956,10 @@ pub(crate) fn api_catalog_json(origin: &str, methods: &[crate::payments::Method]
                 "anchor": format!("{origin}/.well-known/api-catalog"),
                 "item": [
                     {"href": "https://api.openagents.com/v1"},
-                    {"href": format!("{origin}/api/v1")},
                     {"href": format!("{origin}{MCP_PATH}")}
                 ]
             },
             api("https://api.openagents.com/v1"),
-            api(&format!("{origin}/api/v1")),
             {
                 "anchor": format!("{origin}{MCP_PATH}"),
                 "service-desc": [{"href": format!("{origin}/.well-known/mcp/server-card.json"), "type": "application/json"}],

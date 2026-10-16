@@ -42,8 +42,9 @@ thread, run, computer.
 
 ## 1. Summary
 
-- **One API, one address.** `https://api.openagents.com/v1`, with
-  `https://openagents.com/api/v1` as an alias. Resource-oriented JSON over
+- **One API, one address.** `https://api.openagents.com/v1`.
+  `https://openagents.com/v1` and `https://openagents.com/api/v1` still
+  answer, deprecated ([API address](README.md#api-address)). Resource-oriented JSON over
   HTTPS, Open Responses for model calls, OpenAPI 3.1 as the contract.
 - **Three audiences.** Every endpoint is exactly one of:
 
@@ -72,7 +73,7 @@ thread, run, computer.
 | Rule | Detail |
 | --- | --- |
 | Address | `https://api.openagents.com/v1` (decision D6). It points at the API front, never at the website, so site cookies never ride along. |
-| Alias | `https://openagents.com/api/v1/...` is forwarded to the same front as `/v1/...` with cookies removed (built: `api_proxy` in `crates/openagents-web/src/lib.rs`). One service either way. |
+| Older addresses | `https://openagents.com/v1/...` and `https://openagents.com/api/v1/...` answer exactly as `https://api.openagents.com/v1/...` does (one service: `crates/openagents-web/src/api_host.rs`), deprecated since 2026-10-15: every answer carries `Deprecation: true` and a `successor-version` `Link` to the same path on `api.openagents.com`. Never a redirect. |
 | Local | A computer's own host (`coder-host`) may serve the same paths on `http://127.0.0.1:<port>/v1` (API doc section 2). Same JSON. |
 | Website routes | Pages, forms, and HTML fragments on `openagents.com` are not API. They are the web client and may change any time (section 5). |
 | Relay | `wss://relay.openagents.com` is an open Nostr relay: a protocol surface, specified by our [NIPs](../../nips/openagents/README.md), not part of the HTTP API. |

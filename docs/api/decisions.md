@@ -1,6 +1,6 @@
 # Decisions
 
-2026-10-12. **Live** at `https://openagents.com/api/v1/decisions`, keyless
+2026-10-12. **Live** at `https://api.openagents.com/v1/decisions`, keyless
 and free, answered first by our own always-on H100
 ([clef-decisions-h100.md](../inference/clef-decisions-h100.md)). Underneath,
 each call is the [NIP-DEC](../../nips/openagents/NIP-DEC.md) request that
@@ -10,8 +10,7 @@ What is not live yet: images are accepted but answered with a per-question
 `refusal` (`unsupported_input`), because our CUDA Clef does not read them;
 `openagents.receipt` is not filled (the decision route keeps the decision
 record, not a sealed receipt); the rate card and x402 payment do not list
-decisions (calls are free); `api.openagents.com` does not answer yet, so use
-`https://openagents.com/api/v1`; `GET /v1/models` does not list the
+decisions (calls are free); `GET /v1/models` does not list the
 decision models.
 
 The Decisions API reads text, images, or both and returns typed answers: the
@@ -27,8 +26,7 @@ relay: open-weight Clef models on Pylons and our own GPUs first, then
 backups. The same call can go over HTTP with an API key, over Nostr as a
 decision job, or to a Pylon you run yourself.
 
-It is a PUBLIC surface on `https://openagents.com/api/v1` (later also
-`https://api.openagents.com/v1`) and follows [the API design](design.md):
+It is a PUBLIC surface on `https://api.openagents.com/v1` and follows [the API design](design.md):
 one error object, `oak_` keys, sats, and no house rate limit on your own
 keys. Headers, the workspace, and body size that every call shares are in
 [Calling the API](calling.md).
@@ -55,7 +53,7 @@ keys. Headers, the workspace, and body size that every call shares are in
 ## Quick start
 
 ```bash
-curl https://openagents.com/api/v1/decisions \
+curl https://api.openagents.com/v1/decisions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "openagents/decide",
@@ -113,7 +111,7 @@ checks.)
 ```python
 from openai import OpenAI
 
-client = OpenAI(base_url="https://openagents.com/api/v1", api_key=OPENAGENTS_API_KEY or "none")
+client = OpenAI(base_url="https://api.openagents.com/v1", api_key=OPENAGENTS_API_KEY or "none")
 decision = client.decisions.create(
     model="openagents/decide",
     input="Export fails in Safari but works in Chrome.",
@@ -392,7 +390,7 @@ to add a machine: [clef-decisions-h100.md](../inference/clef-decisions-h100.md).
 
 Speed measured in production from a Mac in the US on 2026-10-12, three
 questions (a predicate, a choice of four, a score of three) about one short
-input, through `https://openagents.com/api/v1/decisions`:
+input, through `https://api.openagents.com/v1/decisions`:
 
 | Model | Door | Time at the gateway (median) | Time seen from the Mac (median, includes the internet) |
 | --- | --- | ---: | ---: |

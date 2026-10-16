@@ -149,6 +149,8 @@ pub(crate) fn authorization_server(origin: &str) -> Value {
     let authorize = format!("{origin}{AUTHORIZE}");
     let token = format!("{origin}{TOKEN}");
     let register = format!("{origin}{REGISTER}");
+    // Agent sign-up is an API route: on the API's address.
+    let api = crate::api_host::api_origin(origin);
     json!({
         "issuer": origin,
         "authorization_endpoint": authorize,
@@ -166,23 +168,23 @@ pub(crate) fn authorization_server(origin: &str) -> Value {
         "agent_auth": {
             "skill": format!("{origin}/auth.md"),
             // Agents register themselves (#11630): no person, no email.
-            "register_uri": format!("{origin}/v1/agents/register"),
+            "register_uri": format!("{api}/v1/agents/register"),
             "identity_types_supported": ["anonymous"],
             "anonymous": {
                 "credential_types_supported": ["api_key"],
-                "challenge_uri": format!("{origin}/v1/agents/challenge"),
-                "register_uri": format!("{origin}/v1/agents/register"),
+                "challenge_uri": format!("{api}/v1/agents/challenge"),
+                "register_uri": format!("{api}/v1/agents/register"),
                 "proof": "sha256 proof of work",
             },
-            "claim_uri": format!("{origin}/v1/agents/claim"),
+            "claim_uri": format!("{api}/v1/agents/claim"),
             "claim_page": format!("{origin}/settings/agent-accounts"),
             "registration_methods": [
                 {
                     "type": "anonymous",
-                    "challenge_uri": format!("{origin}/v1/agents/challenge"),
-                    "register_uri": format!("{origin}/v1/agents/register"),
+                    "challenge_uri": format!("{api}/v1/agents/challenge"),
+                    "register_uri": format!("{api}/v1/agents/register"),
                     "credential_types": ["api_key"],
-                    "claim_uri": format!("{origin}/v1/agents/claim"),
+                    "claim_uri": format!("{api}/v1/agents/claim"),
                     "approval": "None: the agent solves a small proof of work.",
                     "documentation": format!("{origin}/auth.md"),
                 },
@@ -1315,7 +1317,7 @@ mod tests {
         // Is It Agent Ready's authMd check looks for.
         assert_eq!(
             server["agent_auth"]["register_uri"],
-            "https://openagents.com/v1/agents/register"
+            "https://api.openagents.com/v1/agents/register"
         );
         assert_eq!(
             server["agent_auth"]["identity_types_supported"],
@@ -1327,7 +1329,7 @@ mod tests {
         );
         assert_eq!(
             server["agent_auth"]["claim_uri"],
-            "https://openagents.com/v1/agents/claim"
+            "https://api.openagents.com/v1/agents/claim"
         );
         assert!(
             !server["agent_auth"]["registration_methods"]

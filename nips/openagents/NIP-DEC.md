@@ -218,7 +218,7 @@ status. OpenRouter's Decisions API puts the HTTP status number in
 ### The OpenAgents decision API
 
 Since 2026-10-10 ([#11225](https://github.com/OpenAgentsInc/openagents/issues/11225))
-OpenAgents serves decisions at `POST https://openagents.com/api/v1/systemone`
+OpenAgents serves decisions at `POST https://api.openagents.com/v1/systemone`
 with no key (`crates/gateway`, `decision_dispatch`). It answers any `jev-…`
 or `typesafe/…` model name, `openagents/decide`, and `clef-flash`, and asks
 these doors in order, each only when every door before it could not answer:

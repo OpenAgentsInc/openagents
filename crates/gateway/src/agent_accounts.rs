@@ -935,7 +935,7 @@ async fn register(
             "workspace": {"id": made.workspace.id},
             "api_key": issued.token,
             "key": {"id": issued.key.id, "scopes": SCOPES},
-            "use": "Send the API key as `Authorization: Bearer <api_key>` to https://openagents.com/v1 (or https://openagents.com/api/v1). It is shown only now.",
+            "use": "Send the API key as `Authorization: Bearer <api_key>` to https://api.openagents.com/v1. It is shown only now.",
             "claim": {
                 "code": format!("{CLAIM_PREFIX}{}.{secret}", made.account.id),
                 "page": CLAIM_PAGE,

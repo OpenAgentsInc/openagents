@@ -268,7 +268,7 @@ Implemented in `crates/openagents-web` (`src/agent_ready.rs`, `src/docs_mcp.rs`,
 | `/pricing` | Redirects to `/docs/pricing` |
 | `Link` headers, `<head>` | `api-catalog`, `service-doc`, `service-desc`, `describedby`, Markdown `alternate`; meta description, Open Graph, canonical, `rel=ai-catalog`, JSON-LD (`Organization`, `WebSite`, page type) |
 | `/auth.md` | Getting and using an `oak_` key |
-| `/.well-known/api-catalog` | RFC 9727 linkset for `api.openagents.com/v1`, `openagents.com/api/v1`, and the docs MCP server |
+| `/.well-known/api-catalog` | RFC 9727 linkset for `api.openagents.com/v1` and the docs MCP server |
 | `/.well-known/ai-catalog.json` | ARD catalog |
 | `/mcp/docs` | Public Streamable HTTP MCP server: `list_docs`, `search_docs`, `read_doc`, `list_models`, guides as resources |
 | `/.well-known/mcp/server-card.json`, `/.well-known/mcp.json` | Its server card |

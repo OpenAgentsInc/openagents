@@ -2531,7 +2531,7 @@ pub(crate) fn list_body(
                         div class="oa-settings-text" {
                             span class="oa-settings-label" { "No runs yet" }
                             span class="oa-settings-hint" {
-                                "Or from a terminal: curl -X POST https://openagents.com/v1/work -H \"Authorization: Bearer $TOKEN\" -d '{\"repo\":\"OWNER/NAME\",\"issue\":N}'"
+                                "Or from a terminal: curl -X POST https://api.openagents.com/v1/work -H \"Authorization: Bearer $TOKEN\" -d '{\"repo\":\"OWNER/NAME\",\"issue\":N}'"
                             }
                         }
                     }

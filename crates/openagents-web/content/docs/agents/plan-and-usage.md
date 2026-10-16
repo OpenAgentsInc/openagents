@@ -62,7 +62,7 @@ curl -s https://api.openagents.com/v1/usage/req_0123456789abcdef01234567 \
 ## Step 3: an agent account's day
 
 ```sh
-curl -s https://openagents.com/v1/agents/me -H "Authorization: Bearer $OPENAGENTS_API_KEY"
+curl -s https://api.openagents.com/v1/agents/me -H "Authorization: Bearer $OPENAGENTS_API_KEY"
 ```
 
 `free_tier` has each daily amount and what is used (`requests_used`,

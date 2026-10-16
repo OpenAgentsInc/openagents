@@ -60,7 +60,7 @@ What is missing:
 Steps 1 to 4 below are built (step 4, files, on 2026-10-12 as well). Where the proposal above and below differs
 from the code, this is how it works today:
 
-| Route (served by the website, `https://openagents.com/v1/...`) | Answer |
+| Route (served by the website, `https://api.openagents.com/v1/...`) | Answer |
 | --- | --- |
 | `GET /v1/projects` | `{data: [Project], next}`, oldest first, `?limit` (default 100, at most 200) and `?after` |
 | `POST /v1/projects` `{"name", "instructions"?, "repositories"?: ["owner/name", …], "protection"?}` | `201` Project. Always a new project, even when another has the same name or repository. A name is enough; the first repository is the primary. `{"repository": "owner/name"}` alone (the older form) makes a project named after it |
@@ -121,9 +121,9 @@ from the code, this is how it works today:
 
 ## Setup: credentials and base URL
 
-Base URL `https://openagents.com/v1`. These routes are served by the
-website; `https://api.openagents.com/v1` and `https://openagents.com/api/v1`
-do not answer them. Today they take the sign-in (`sess_`) or a sign-in key
+Base URL `https://api.openagents.com/v1` (the website serves these routes
+there too; the older `https://openagents.com/v1` still answers, deprecated).
+Today they take the sign-in (`sess_`) or a sign-in key
 (`oa_sk_`); `oak_` keys with `projects:*` scopes are not accepted yet.
 
 | Caller | Credential | How to get it |
@@ -165,7 +165,7 @@ empty `title`, and messages without content until it is purged.
 | `DELETE /v1/projects/{id}` | Delete it. `409 project_has_threads` while threads are attached, unless `?detach_threads=true` (threads stay and lose their project). |
 
 ```bash
-curl -sS https://openagents.com/v1/projects \
+curl -sS https://api.openagents.com/v1/projects \
   -H "Authorization: Bearer $OPENAGENTS_TOKEN"
 ```
 
@@ -346,10 +346,10 @@ A project holds three kinds of attachment, told apart by `type`:
 Uploading private data to a project is two calls, or one for text:
 
 ```bash
-id=$(curl -sS "https://openagents.com/v1/files?purpose=project&filename=statements-2026-09.pdf" \
+id=$(curl -sS "https://api.openagents.com/v1/files?purpose=project&filename=statements-2026-09.pdf" \
   -H "Authorization: Bearer $OPENAGENTS_TOKEN" \
   --data-binary @statements-2026-09.pdf | jq -r .id)
-curl -sS https://openagents.com/v1/projects/name:finances/attachments \
+curl -sS https://api.openagents.com/v1/projects/name:finances/attachments \
   -H "Authorization: Bearer $OPENAGENTS_TOKEN" -H "Content-Type: application/json" \
   -d "{\"file\":\"$id\"}"
 ```

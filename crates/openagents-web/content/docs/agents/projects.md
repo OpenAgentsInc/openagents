@@ -6,7 +6,7 @@ account's login, not an API key.
 
 | | |
 | --- | --- |
-| Base URL | `https://openagents.com/v1` |
+| Base URL | `https://api.openagents.com/v1` |
 | Credential | `Authorization: Bearer oa_sk_...` (a login key) or a session |
 | An `oak_` API key | Refused: `401 signed_out` |
 
@@ -21,7 +21,7 @@ export OPENAGENTS_TOKEN=oa_sk_...
 ## Step 1: create a project
 
 ```sh
-curl -s https://openagents.com/v1/projects \
+curl -s https://api.openagents.com/v1/projects \
   -H "Authorization: Bearer $OPENAGENTS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"name": "Launch notes", "instructions": "Answer in short lists.", "repositories": ["OpenAgentsInc/openagents"]}'
@@ -55,7 +55,7 @@ List your projects with `GET /v1/projects` (`?limit=` up to 200, and
 `?after=` with the `next` value for the next page):
 
 ```sh
-curl -s https://openagents.com/v1/projects -H "Authorization: Bearer $OPENAGENTS_TOKEN"
+curl -s https://api.openagents.com/v1/projects -H "Authorization: Bearer $OPENAGENTS_TOKEN"
 ```
 
 ## Step 2: add a file
@@ -63,7 +63,7 @@ curl -s https://openagents.com/v1/projects -H "Authorization: Bearer $OPENAGENTS
 Two calls: upload the file's bytes, then attach the file to the project.
 
 ```sh
-curl -s "https://openagents.com/v1/files?purpose=project&filename=notes.pdf" \
+curl -s "https://api.openagents.com/v1/files?purpose=project&filename=notes.pdf" \
   -H "Authorization: Bearer $OPENAGENTS_TOKEN" \
   --data-binary @notes.pdf
 ```
@@ -78,7 +78,7 @@ The body is the raw file, not a form. The answer is `201`:
 Then attach it:
 
 ```sh
-curl -s https://openagents.com/v1/projects/prj_3f9a1c0d2b7e4a51/attachments \
+curl -s https://api.openagents.com/v1/projects/prj_3f9a1c0d2b7e4a51/attachments \
   -H "Authorization: Bearer $OPENAGENTS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"file": "file_..."}'
@@ -102,7 +102,7 @@ openagents projects files add "Launch notes" notes.pdf --json
 ## Step 3: invite a person by GitHub username
 
 ```sh
-curl -s https://openagents.com/v1/projects/prj_3f9a1c0d2b7e4a51/invitations \
+curl -s https://api.openagents.com/v1/projects/prj_3f9a1c0d2b7e4a51/invitations \
   -H "Authorization: Bearer $OPENAGENTS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"github": "octocat", "role": "editor"}'
@@ -134,7 +134,7 @@ openagents projects invite "Launch notes" --github octocat --role editor
 ## Step 4: check who is in it
 
 ```sh
-curl -s https://openagents.com/v1/projects/prj_3f9a1c0d2b7e4a51/members \
+curl -s https://api.openagents.com/v1/projects/prj_3f9a1c0d2b7e4a51/members \
   -H "Authorization: Bearer $OPENAGENTS_TOKEN"
 ```
 

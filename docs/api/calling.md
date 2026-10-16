@@ -2,7 +2,7 @@
 
 2026-10-12. Authentication, the workspace header, request ids, list cursors, and the 1 MiB body ceiling are live. Counts, batches, files, and managed agents are proposed on their own pages.
 
-The HTTP API is `https://api.openagents.com/v1`. The same routes answer at `https://openagents.com/api/v1`. You send UTF-8 JSON and read JSON back. This page is the contract those calls share: which header authenticates you, which workspace the call runs in, how a list pages, how large a body may be, and which path does which job.
+The HTTP API is `https://api.openagents.com/v1`. The older `https://openagents.com/v1` and `https://openagents.com/api/v1` still answer the same routes but are deprecated ([API address](README.md#api-address)). You send UTF-8 JSON and read JSON back. This page is the contract those calls share: which header authenticates you, which workspace the call runs in, how a list pages, how large a body may be, and which path does which job.
 
 It follows [the API design](design.md): `oak_` keys, cursor lists, one error object, and caps you set yourself. Words for the objects are in the [glossary](../glossary.md).
 

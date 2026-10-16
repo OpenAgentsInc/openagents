@@ -308,7 +308,7 @@ staging smoke 92/0, candidate 51/0, production 59/0). Rollback:
 `scripts/deploy/web.sh rollback coder-web-19a2dcd41e-20261012224256`.
 
 ```sh
-curl -s https://openagents.com/api/v1/systemone -H 'content-type: application/json' -H 'X-Decision-Order: tpu' \
+curl -s https://api.openagents.com/v1/systemone -H 'content-type: application/json' -H 'X-Decision-Order: tpu' \
   -d '{"model":"clef-flash","state":{"ticket":"Checkout returns a 500 for every card payment."},"questions":{"urgent":{"type":"noul","instructions":"Is this urgent?"}}}'
 # X-Decision-Backend: tpu, psionic.backend "tpu"
 ```

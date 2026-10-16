@@ -7,7 +7,7 @@ each day, and pays in bitcoin past that.
 ## Step 1: get a challenge
 
 ```sh
-curl -s https://openagents.com/v1/agents/challenge
+curl -s https://api.openagents.com/v1/agents/challenge
 ```
 
 ```json
@@ -33,7 +33,7 @@ bits. A counter works and takes a few seconds:
 ```python
 import hashlib, json, sys, urllib.request
 
-c = json.load(urllib.request.urlopen("https://openagents.com/v1/agents/challenge"))
+c = json.load(urllib.request.urlopen("https://api.openagents.com/v1/agents/challenge"))
 need = c["difficulty_bits"]
 n = 0
 while True:
@@ -47,7 +47,7 @@ print(json.dumps({"challenge": c["challenge"], "solution": str(n)}))
 ## Step 3: register
 
 ```sh
-curl -s https://openagents.com/v1/agents/register \
+curl -s https://api.openagents.com/v1/agents/register \
   -H "Content-Type: application/json" \
   -d '{"name": "my-agent", "challenge": "v1.22...", "solution": "1834221"}'
 ```
@@ -60,7 +60,7 @@ curl -s https://openagents.com/v1/agents/register \
   "workspace": {"id": "ws_..."},
   "api_key": "oak_<id>.<secret>",
   "key": {"id": "...", "scopes": ["responses", "models:read", "usage:read"]},
-  "use": "Send the API key as `Authorization: Bearer <api_key>` to https://openagents.com/v1 (or https://openagents.com/api/v1). It is shown only now.",
+  "use": "Send the API key as `Authorization: Bearer <api_key>` to https://api.openagents.com/v1. It is shown only now.",
   "claim": {"code": "clm_...", "page": "https://openagents.com/settings/agent-accounts", "expires_at": 1794614400, "how": "..."},
   "free_tier": {"models": ["google/gemini-2.5-flash-lite"], "requests_per_day": 20, "...": "..."},
   "pay": {"available": true, "rail": "lightning", "methods": [...]},
@@ -107,7 +107,7 @@ curl -s https://api.openagents.com/v1/responses \
 ## Step 5: see what is left today
 
 ```sh
-curl -s https://openagents.com/v1/agents/me -H "Authorization: Bearer $OPENAGENTS_API_KEY"
+curl -s https://api.openagents.com/v1/agents/me -H "Authorization: Bearer $OPENAGENTS_API_KEY"
 ```
 
 ```json

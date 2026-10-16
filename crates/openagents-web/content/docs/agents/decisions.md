@@ -7,7 +7,7 @@ second. Use it to classify, route, filter, and rank.
 
 | | |
 | --- | --- |
-| Endpoint | `POST https://openagents.com/api/v1/decisions` |
+| Endpoint | `POST https://api.openagents.com/v1/decisions` |
 | Key | None needed. Calls are free |
 | Models | `openagents/decide` (we pick), `clef-flash`, `clef` |
 | Shape | OpenAI's Decisions API, field for field |
@@ -15,7 +15,7 @@ second. Use it to classify, route, filter, and rank.
 ## Step 1: ask one question
 
 ```sh
-curl -s https://openagents.com/api/v1/decisions \
+curl -s https://api.openagents.com/v1/decisions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "openagents/decide",
@@ -63,7 +63,7 @@ Up to 64 questions share one `input`, and each gets its own answer, in
 the order you sent them.
 
 ```sh
-curl -s https://openagents.com/api/v1/decisions \
+curl -s https://api.openagents.com/v1/decisions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "openagents/decide",
@@ -122,7 +122,7 @@ returns the first answer; a different body with the same key is `409
 idempotency_conflict`.
 
 ```sh
-curl -s https://openagents.com/api/v1/decisions \
+curl -s https://api.openagents.com/v1/decisions \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: ticket-4821" \
   -d '{"model": "openagents/decide", "input": "Refund please.", "questions": [{"type": "predicate", "instructions": "Is this a refund request?"}]}'
@@ -139,13 +139,13 @@ curl -s https://openagents.com/api/v1/decisions \
 
 ## With an OpenAI SDK
 
-Set the base URL to `https://openagents.com/api/v1`. In Python, until the
+Set the base URL to `https://api.openagents.com/v1`. In Python, until the
 SDK has a `decisions` resource, post the same body:
 
 ```python
 from openai import OpenAI
 
-client = OpenAI(base_url="https://openagents.com/api/v1", api_key="none")
+client = OpenAI(base_url="https://api.openagents.com/v1", api_key="none")
 decision = client.post("/decisions", body={
     "model": "openagents/decide",
     "input": "I was charged twice.",

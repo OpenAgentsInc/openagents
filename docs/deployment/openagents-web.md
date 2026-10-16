@@ -28,6 +28,15 @@ original Host so sign-in and billing links stay on openagents.com. Removed
 sections stay 404. `OPENAGENTS_WEB_ASK_SALT` is the secret
 `openagents-web-ask-salt`.
 
+Since 2026-10-15 the `web` container also runs with `--api-host
+api.openagents.com` (`deploy/production/web.sh`): it answers `/v1/...` with
+that Host exactly as on openagents.com, with no cookies either way, and
+marks `openagents.com/v1/...` and `/api/v1/...` answers deprecated
+(`crates/openagents-web/src/api_host.rs`). api.openagents.com's load
+balancer sends its `/v1/...` to this service through backend
+`openagents-coder-api-backend` (serverless NEG `openagents-coder-neg`);
+the route rules are `deploy/production/api-url-map.yaml`.
+
 - Since 2026-10-09: `scripts/deploy/web.sh` (below, "promote by digest")
   replaces the steps in this item.
 - Deploy a new site build: build the image with Cloud Build, then replace

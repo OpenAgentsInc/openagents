@@ -10,7 +10,7 @@ Your registration answer, `GET /v1/agents/me`, and every `402` carry a
 `pay` object:
 
 ```sh
-curl -s https://openagents.com/v1/agents/me -H "Authorization: Bearer $OPENAGENTS_API_KEY"
+curl -s https://api.openagents.com/v1/agents/me -H "Authorization: Bearer $OPENAGENTS_API_KEY"
 ```
 
 ```json
@@ -95,7 +95,7 @@ Sending the same proof again credits nothing and says
 ## Step 5: check your balance
 
 ```sh
-curl -s https://openagents.com/v1/agents/me -H "Authorization: Bearer $OPENAGENTS_API_KEY" | jq .balance_usd
+curl -s https://api.openagents.com/v1/agents/me -H "Authorization: Bearer $OPENAGENTS_API_KEY" | jq .balance_usd
 ```
 
 ```json

@@ -11,7 +11,6 @@ open yet; the guides here show how it works when they are.
 | | |
 | --- | --- |
 | Base URL | `https://api.openagents.com/v1` |
-| Same API, one domain | `https://openagents.com/api/v1` |
 | Key | `Authorization: Bearer oak_...` |
 
 ## 1. Get a key

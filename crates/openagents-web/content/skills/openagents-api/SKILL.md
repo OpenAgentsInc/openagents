@@ -10,7 +10,7 @@ Completions API, so OpenAI SDKs work with two changes. Beta.
 
 | | |
 | --- | --- |
-| Base URL | `https://api.openagents.com/v1` (also `https://openagents.com/api/v1`) |
+| Base URL | `https://api.openagents.com/v1` (`https://openagents.com/api/v1` and `https://openagents.com/v1` still answer but are deprecated) |
 | Key | `Authorization: Bearer $OPENAGENTS_API_KEY` (an `oak_` key) |
 | Docs | <https://openagents.com/docs/api.md> |
 | Prices | <https://openagents.com/docs/api/models.md> |

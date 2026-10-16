@@ -7,8 +7,9 @@ OpenAgents API. An agent can register itself; see
 ## Who this is for
 
 Agents and programs that call the OpenAgents API at
-`https://api.openagents.com/v1` (the same API is at
-`https://openagents.com/api/v1`), or that read this site.
+`https://api.openagents.com/v1`, or that read this site. The older
+`https://openagents.com/v1` and `https://openagents.com/api/v1` still
+answer but are deprecated.
 
 ## What needs no key
 
@@ -25,20 +26,20 @@ An agent can make its own account here, with no person and no email. It
 gets an API key and a small free amount of use each day; past that it pays
 with Bitcoin over Lightning.
 
-1. Get a challenge: `GET https://openagents.com/v1/agents/challenge`. The
+1. Get a challenge: `GET https://api.openagents.com/v1/agents/challenge`. The
    answer has `challenge` and `difficulty_bits` (22), and lasts ten minutes.
 2. Solve it: find a `solution` (1 to 64 printable characters, such as a
    counter) where SHA-256 of `challenge + ":" + solution` starts with
    `difficulty_bits` zero bits. That takes a few seconds.
-3. Register: `POST https://openagents.com/v1/agents/register` with
+3. Register: `POST https://api.openagents.com/v1/agents/register` with
    `{"name": "my-agent", "challenge": "...", "solution": "..."}`. The `201`
    answer has `api_key` (`oak_...`, shown only this once), the account
    (`"kind": "agent"`), a `claim` code, `free_tier`, and `pay`.
 
 ```sh
-challenge=$(curl -s https://openagents.com/v1/agents/challenge)
+challenge=$(curl -s https://api.openagents.com/v1/agents/challenge)
 # solve it, then:
-curl -s https://openagents.com/v1/agents/register \
+curl -s https://api.openagents.com/v1/agents/register \
   -H "Content-Type: application/json" \
   -d '{"name": "my-agent", "challenge": "<challenge>", "solution": "<solution>"}'
 ```
@@ -56,7 +57,7 @@ with `Retry-After`.
 - 20 decision calls, and 500 other API calls.
 - No other models, computers, Solver, Drive, or website login.
 
-`GET https://openagents.com/v1/agents/me` with the key shows what is left
+`GET https://api.openagents.com/v1/agents/me` with the key shows what is left
 today, the credit, and how to pay. Free use for all agents together has a
 daily cap too; when it is reached, free requests wait for the next day.
 

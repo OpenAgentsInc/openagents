@@ -8,7 +8,7 @@ facing description is [`/auth.md`](https://openagents.com/auth.md)
 
 ## The flow
 
-| Step | Route (gateway, also under `openagents.com/api/v1`) |
+| Step | Route (on `https://api.openagents.com/v1`) |
 | --- | --- |
 | Get a proof-of-work challenge (10 minutes) | `GET /v1/agents/challenge` |
 | Register: `{name, challenge, solution}` where SHA-256(`challenge:solution`) has 22 leading zero bits | `POST /v1/agents/register` → `201` with `api_key` (shown once), the account (`kind: agent`), a `claim` code, `free_tier`, `pay` |

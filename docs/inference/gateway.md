@@ -85,9 +85,10 @@ Base URL: `https://api.openagents.com/v1`, the host the
 [OpenAgents API design](../api/2026-10-02-openagents-api.md) already chose
 (D6). It points straight at the gateway, so the website's sign-in cookies
 never ride along with API calls and the API caches, limits, and fails
-apart from the site. `https://openagents.com/api/v1` is an alias: the
-website passes `/api/*` through to the same gateway, for callers who want
-one domain. One service either way (decided 2026-10-09). The agent API and the inference gateway share the host, keys,
+apart from the site. `https://openagents.com/v1` and
+`https://openagents.com/api/v1` are older addresses for the same routes,
+deprecated since 2026-10-15 ([API address](../api/README.md#api-address)).
+One service either way. The agent API and the inference gateway share the host, keys,
 balances, and error shapes. The agent is one more model id there
 (`openagents`); raw models are the rest of the catalog.
 

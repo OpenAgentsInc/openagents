@@ -32,7 +32,7 @@ fn preview_is_not_the_origins_card() {
     assert_eq!(value["agent_card"]["url"], "https://api.openagents.com/v1");
     assert_eq!(
         value["agent_card"]["supportedInterfaces"][2]["url"],
-        "https://openagents.com/api/v1/decisions"
+        "https://api.openagents.com/v1/decisions"
     );
     assert!(value.get("remote").is_none());
 }

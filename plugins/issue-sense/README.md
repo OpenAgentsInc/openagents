@@ -3,7 +3,7 @@
 Our hosted Clef judges issue work at the points where a typed answer is
 cheaper than a Claude session or a guess
 ([#11484](https://github.com/OpenAgentsInc/openagents/issues/11484)). It
-answers from the H100 and A100 pool behind `openagents.com/api/v1/decisions`
+answers from the H100 and A100 pool behind `api.openagents.com/v1/decisions`
 in about 0.2 s, with no key and no charge
 ([`docs/inference/clef-decisions-h100.md`](../../docs/inference/clef-decisions-h100.md)).
 

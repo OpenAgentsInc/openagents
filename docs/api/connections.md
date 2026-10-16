@@ -50,7 +50,7 @@ account is the one that asked, so a link can't connect someone else's
 Google to your account.
 
 ```sh
-curl -s -X POST https://openagents.com/v1/connections/google/connect \
+curl -s -X POST https://api.openagents.com/v1/connections/google/connect \
   -H "Authorization: Bearer $OPENAGENTS_TOKEN" -d '{"sheets": true}'
 # {"url": "https://openagents.com/auth/google/connect", ...}
 openagents connections connect google --sheets
@@ -96,11 +96,11 @@ openagents projects sources remove finances FOLDER_ID
 Start a chat in the project and read the answer:
 
 ```sh
-curl -s -X POST https://openagents.com/v1/threads \
+curl -s -X POST https://api.openagents.com/v1/threads \
   -H "Authorization: Bearer $OPENAGENTS_TOKEN" \
   -d '{"request_id": "'"$(uuidgen | tr A-Z a-z)"'", "project": "name:finances", "text": "What did I spend on groceries in October?"}'
 # {"id": "…", "answering": true}
-curl -s https://openagents.com/v1/threads/ID/messages -H "Authorization: Bearer $OPENAGENTS_TOKEN"
+curl -s https://api.openagents.com/v1/threads/ID/messages -H "Authorization: Bearer $OPENAGENTS_TOKEN"
 ```
 
 or `openagents chat send "What did I spend on groceries in October?" --project finances`.
@@ -141,10 +141,10 @@ looked at, with its link.
   logged, and nothing is kept after the request.
 - Video tokens cost the most: the answer's `Cost:` line and the tool
   route's `cost_usd` are priced at Gemini's list price
-  ([/v1/rates](https://openagents.com/v1/rates)).
+  ([/v1/rates](https://api.openagents.com/v1/rates)).
 
 ```sh
-curl -s -X POST https://openagents.com/v1/threads \
+curl -s -X POST https://api.openagents.com/v1/threads \
   -H "Authorization: Bearer $OPENAGENTS_TOKEN" \
   -d '{"request_id": "'"$(uuidgen | tr A-Z a-z)"'", "project": "name:devlog", "text": "Describe the three most recent videos in the Devlog folder."}'
 ```
