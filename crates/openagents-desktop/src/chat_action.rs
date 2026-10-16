@@ -3,6 +3,9 @@ use serde::Serialize;
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum Action {
+    FileTab {
+        target: openagents_chat_app::workspace_tabs::Target,
+    },
     SavedSelect {
         id: String,
     },

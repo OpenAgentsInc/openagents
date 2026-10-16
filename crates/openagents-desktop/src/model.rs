@@ -148,6 +148,7 @@ pub enum Intent {
 /// A request for the shell to run.
 #[derive(Clone, PartialEq, Eq)]
 pub enum Request {
+    WorkspaceFile(openagents_chat_app::workspace_tabs::Read),
     Saved {
         ticket: u64,
         request: openagents_chat_app::retained::Request,
@@ -212,6 +213,10 @@ pub enum Request {
 impl std::fmt::Debug for Request {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Request::WorkspaceFile(read) => f
+                .debug_tuple("WorkspaceFile")
+                .field(&read.document)
+                .finish(),
             Request::Chat { ticket, .. } => write!(f, "Chat {{ ticket: {ticket}, .. }}"),
             Request::Saved { ticket, .. } => write!(f, "Saved {{ ticket: {ticket}, .. }}"),
             Request::TaskChat { ticket, .. } => write!(f, "TaskChat {{ ticket: {ticket}, .. }}"),
@@ -330,6 +335,10 @@ pub struct Started {
 /// A finished request.
 #[derive(Clone, PartialEq, Eq)]
 pub enum Outcome {
+    WorkspaceFile {
+        read: openagents_chat_app::workspace_tabs::Read,
+        result: Box<Result<route_contract::workspace::Output, String>>,
+    },
     Saved {
         ticket: u64,
         result: Box<
@@ -390,6 +399,7 @@ impl std::fmt::Debug for Outcome {
 
 fn outcome_name(outcome: &Outcome) -> &'static str {
     match outcome {
+        Outcome::WorkspaceFile { .. } => "WorkspaceFile",
         Outcome::Chat { .. } => "Chat",
         Outcome::Saved { .. } => "Saved",
         Outcome::TaskChat { .. } => "TaskChat",
@@ -797,7 +807,8 @@ impl Model {
     /// Applies a finished request.
     pub fn outcome(&mut self, outcome: Outcome, now: Instant) -> Vec<Request> {
         match outcome {
-            Outcome::Chat { .. }
+            Outcome::WorkspaceFile { .. }
+            | Outcome::Chat { .. }
             | Outcome::TaskChat { .. }
             | Outcome::CoderRun { .. }
             | Outcome::Saved { .. } => Vec::new(),
@@ -1018,7 +1029,8 @@ mod tests {
             let mut queue: std::collections::VecDeque<Request> = requests.into();
             while let Some(request) = queue.pop_front() {
                 let outcome = match request {
-                    Request::Chat { .. }
+                    Request::WorkspaceFile(_)
+                    | Request::Chat { .. }
                     | Request::TaskChat { .. }
                     | Request::CoderRun { .. }
                     | Request::Saved { .. } => {

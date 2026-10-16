@@ -24,6 +24,7 @@ pub struct Target {
 pub enum Need {
     Reference,
     Read(wire::Request),
+    File(crate::workspace_tabs::Open),
 }
 #[derive(Default)]
 pub struct Inspector {
@@ -36,6 +37,9 @@ pub struct Inspector {
     error: Option<String>,
 }
 impl Inspector {
+    pub fn reference(&self) -> Option<&wire::Reference> {
+        self.reference.as_ref()
+    }
     pub fn reference_turn(&self) -> Option<usize> {
         self.reference.as_ref().map(|reference| reference.turn)
     }
@@ -191,12 +195,15 @@ impl Inspector {
             }
             Control::Row(index) => {
                 let row = self.output.as_ref()?.1.rows.get(index)?.clone();
-                self.page = row.line.unwrap_or(1).saturating_sub(1) / 12;
-                return self.read(if row.kind == wire::Kind::Directory {
-                    wire::Operation::List { path: row.path }
-                } else {
-                    wire::Operation::Read { path: row.path }
-                });
+                if row.kind == wire::Kind::Directory {
+                    self.page = 0;
+                    return self.read(wire::Operation::List { path: row.path });
+                }
+                return Some(Need::File(crate::workspace_tabs::Open {
+                    reference: self.reference.clone()?,
+                    path: row.path,
+                    line: row.line,
+                }));
             }
             _ => {}
         }

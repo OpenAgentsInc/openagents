@@ -330,6 +330,7 @@ pub struct Run {
     children: children::Inspector,
     child_due: Option<route_contract::children::Read>,
     workspace: workspace::Inspector,
+    workspace_file: Option<crate::workspace_tabs::Open>,
     workspace_due: Option<workspace::Need>,
 }
 
@@ -421,6 +422,7 @@ impl Run {
             children: children::Inspector::default(),
             child_due: None,
             workspace: workspace::Inspector::default(),
+            workspace_file: None,
             workspace_due: None,
         }
     }
@@ -495,6 +497,9 @@ impl Run {
         self.children.view(intent)
     }
 
+    pub fn take_workspace_file(&mut self) -> Option<crate::workspace_tabs::Open> {
+        self.workspace_file.take()
+    }
     pub fn workspace(&self) -> &workspace::Inspector {
         &self.workspace
     }
@@ -524,6 +529,7 @@ impl Run {
     fn workspace_request(&self, need: &workspace::Need) -> Option<Request> {
         let task = self.task.clone()?;
         Some(match need {
+            workspace::Need::File(_) => return None,
             workspace::Need::Reference => Request::WorkspaceOpen { task },
             workspace::Need::Read(request) => Request::WorkspaceRead {
                 task,
@@ -1750,6 +1756,8 @@ impl Run {
                 let need = self.workspace.apply(&target);
                 if !self.workspace.visible {
                     self.workspace_due = None;
+                } else if let Some(workspace::Need::File(open)) = need {
+                    self.workspace_file = Some(open);
                 } else if let Some(need) = need {
                     self.workspace_due = Some(need);
                 }

@@ -109,3 +109,36 @@ An unqualified full-parity claim requires all missing/partial rows to be closed
 or have an explicit approved exception, plus verification of the supported
 end-to-end journeys. Counts of rows, code volume, passing unrelated tests, or
 visual resemblance of the empty chat screen cannot establish it.
+
+### Conversation file tabs
+
+[#11776](https://github.com/OpenAgentsInc/openagents/issues/11776) adds the first
+read-only text-file tab workflow to the Rust desktop adapter and shared
+`openagents-chat-app` state. Directory and search results open conversation-owned
+tabs through the existing local task owner service. The pane sits beside chat
+when space permits and uses the available column in a narrow window. Native
+text selection, copying, scrolling, search-result line jumps, tab navigation,
+refresh, and returning focus to the composer work without submitting a message.
+The file contents are also available to the desktop accessibility adapter.
+
+Tabs, selection, vertical scroll, and composer drafts survive conversation
+switches within the running app. File identity includes the conversation, host,
+task, checkout, physical target, and relative path. Old-window, closed-tab, and
+changed-checkout replies cannot replace a current document. Failed refreshes
+keep the last readable text and show an error. Binary files, unavailable owners,
+and truncated reads use the existing owner contract; the viewer never reads a
+local path as a fallback.
+
+Limits are eight tabs per conversation, 64 tabs across 32 conversations, 2 MiB
+of cached text, two outstanding reads, and 64 KiB per file read. One native file
+renderer serves the selected tab; hiding it releases the renderer. Cached text
+can be evicted and loaded again through its owner.
+
+Validation uses shared-state tests, desktop interaction and native offscreen
+layout/painting tests, and a worker test with temporary owner state and a fake
+provider. These cover draft and scroll preservation, stale responses, cache and
+tab limits, binary files, and replacement of a checkout at the same path. No
+live engine, production account, or interactive macOS run is part of this check.
+This implements a local text-file subset of NAV-01/02/06, WRK-02/04/05, and
+TRN-07. Restart persistence, editing, file mutations, Git views, images, Markdown
+preview, and remote file transport remain open.

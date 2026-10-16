@@ -58,3 +58,5 @@ pub mod retained;
 pub mod review_comments;
 
 pub mod visual;
+
+pub mod workspace_tabs;

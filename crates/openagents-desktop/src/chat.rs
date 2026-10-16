@@ -1,5 +1,6 @@
 //! Desktop chat presentation and local drafts over host-owned conversation state.
 mod access;
+mod workspace;
 
 use crate::chat_action::Action;
 use crate::chrome::{Chat, Section, State};
@@ -71,6 +72,9 @@ pub struct Panel {
     menu_navigation: bool,
     search: Field,
     workspace_query: Field,
+    files: openagents_chat_app::workspace_tabs::Workspaces,
+    file_view: workspace::DocumentView,
+    file_focus: bool,
     rename: Option<(String, Field)>,
     rename_pending: Option<(u64, String, String)>,
     rename_focus: usize,
@@ -116,6 +120,7 @@ pub struct Panel {
     born: Instant,
     pub viewport: (f32, f32, f32),
     pub column_width: f32,
+    pub workspace_width: f32,
     pub transcript: Transcript,
     fonts: Fonts,
     transcript_rows: Vec<Arc<Node<()>>>,
@@ -227,6 +232,9 @@ impl Panel {
                 field.set_placeholder("Search this folder");
                 field
             },
+            files: Default::default(),
+            file_view: Default::default(),
+            file_focus: false,
             rename: None,
             rename_pending: None,
             rename_focus: 0,
@@ -263,6 +271,7 @@ impl Panel {
             task_editor: BTreeMap::new(),
             born: now,
             viewport: (1200.0, 840.0, 1.0),
+            workspace_width: 0.0,
             column_width: 768.0,
             transcript,
             fonts: Fonts::new(),
@@ -793,6 +802,11 @@ impl Panel {
                 request,
             });
         }
+        if let Some(chat) = self.session.selected.as_deref()
+            && let Some(read) = self.files.next_read(chat)
+        {
+            return Some(Request::WorkspaceFile(read));
+        }
         // The shown chat's run first, then the others.
         let selected = self.session.selected.clone();
         let mut chats: Vec<String> = self.runs.keys().cloned().collect();
@@ -1029,7 +1043,19 @@ impl Panel {
             return;
         };
         let revision = run.revision;
+        let had_workspace = run.workspace().reference().is_some();
+        let continued = matches!(
+            run.pending_request(ticket),
+            Some(
+                coder_run::Request::Continue { .. }
+                    | coder_run::Request::ContinueConfigured { .. }
+                    | coder_run::Request::ContinueInput { .. }
+            )
+        );
         let accepted = run.outcome(ticket, result, Instant::now());
+        if continued && accepted || had_workspace && run.workspace().reference().is_none() {
+            self.files.invalidate(&chat);
+        }
         if revision != run.revision && self.session.selected.as_ref() == Some(&chat) {
             self.rows_dirty = true;
         }
@@ -1037,6 +1063,9 @@ impl Panel {
         for id in run.take_delivered_ids() {
             self.session.images.remove(&chat, &id);
             self.rows_dirty = true;
+        }
+        if let Some(reference) = run.workspace().reference().cloned() {
+            self.files.bind(&chat, &reference);
         }
         let submission = self.run_submissions.remove(&(chat.clone(), ticket));
         if accepted
@@ -1103,6 +1132,7 @@ impl Panel {
             images,
             drafts,
         );
+        let open_file = run.take_workspace_file();
         let restored = run.take_restored_input();
         let changed = revision != run.revision;
         let consumed = run.take_consumed_input();
@@ -1152,6 +1182,20 @@ impl Panel {
                 }
             }
             self.rows_dirty = true;
+        }
+        if let Some(open) = open_file {
+            self.file_view.remember(&mut self.files);
+            let previous = self.files.selected(&chat).map(|tab| tab.id.clone());
+            if let Some(selected) = self.files.open(&chat, open) {
+                if previous.as_ref() != Some(&selected) {
+                    self.file_view.release();
+                }
+                self.file_focus = true;
+                self.files.focus(&chat, true);
+                if let Some(field) = self.fields.get_mut(&chat) {
+                    field.focused = false;
+                }
+            }
         }
         let (ticket, request) = requested?;
         Some(Request::CoderRun {
@@ -1504,6 +1548,17 @@ impl Panel {
         }
     }
     fn selected_changed(&mut self, previous: Option<String>) {
+        self.file_view.remember(&mut self.files);
+        self.file_view.release();
+        if let Some(chat) = previous.as_deref() {
+            self.files.focus(chat, self.file_focus);
+        }
+        self.files.activate(self.session.selected.as_deref());
+        self.file_focus = self
+            .session
+            .selected
+            .as_deref()
+            .is_some_and(|chat| self.files.focused(chat));
         self.search.input(TextInput::FocusLost, 0);
         self.workspace_query.input(TextInput::FocusLost, 0);
         self.rename = None;
@@ -1517,11 +1572,13 @@ impl Panel {
                 .fields
                 .entry(id.clone())
                 .or_insert_with(|| chat_field(openagents_chat_app::coder_run::PLACEHOLDER));
-            field.focused = true;
+            field.focused = !self.file_focus;
             if let Some(waker) = &self.waker {
                 field.start(waker.clone());
             }
         }
+        self.workspace_query = search_field();
+        self.workspace_query.set_placeholder("Search this folder");
         self.transcript = chat_transcript();
         if let Some(waker) = &self.waker {
             let wake = waker.clone();
@@ -1555,6 +1612,8 @@ impl Panel {
     /// highlighter, and the metrics at `size` (they carry the inline-code
     /// ink). The views read the scheme when they are next built.
     pub fn apply_visual(&mut self, size: openagents_chat_app::preferences::TextSize) {
+        self.file_view.remember(&mut self.files);
+        self.file_view.release();
         let visual = openagents_chat_app::visual::current();
         self.transcript.set_palette(&visual.colors);
         self.transcript.set_syntax_palette(visual.syntax);
@@ -1765,6 +1824,7 @@ impl Panel {
                 .get(chat)
                 .is_none_or(|run| run.task.as_ref().is_some_and(|task| *task != binding.task));
             if replace {
+                self.files.invalidate(chat);
                 self.runs.insert(
                     chat.clone(),
                     Run::follow(chat, &binding.task, binding.project.clone(), Instant::now()),
@@ -1963,6 +2023,10 @@ impl Panel {
         now: Instant,
     ) -> Option<Request> {
         match &action {
+            Action::FileTab { target } => {
+                self.file_action(target.clone());
+                return None;
+            }
             Action::Resource { target } => {
                 self.workspace_query.input(TextInput::FocusLost, 0);
                 return self.run_action(RunAction::Resource(target.clone()), view);
@@ -1971,6 +2035,16 @@ impl Panel {
                 return self.run_action(RunAction::Child(target.clone()), view);
             }
             Action::Workspace { target } => {
+                self.file_focus = false;
+                if target.control == coder_run::workspace::Control::Open
+                    && let Some(chat) = self.session.selected.as_deref()
+                    && !self.files.show(chat)
+                {
+                    self.notice = Some(
+                        "Close file tabs in another conversation before opening more files.".into(),
+                    );
+                    return None;
+                }
                 if target.control == coder_run::workspace::Control::Close {
                     self.workspace_query.input(TextInput::FocusLost, 0);
                 }
@@ -2082,7 +2156,8 @@ impl Panel {
         }
         let id = self.session.selected.clone()?;
         match action {
-            Action::Resource { .. }
+            Action::FileTab { .. }
+            | Action::Resource { .. }
             | Action::Child { .. }
             | Action::Workspace { .. }
             | Action::CodingSettings
@@ -2101,6 +2176,13 @@ impl Panel {
             | Action::DismissOverlay
             | Action::Command { .. } => None,
             Action::Card { key } if key == "changes-open" && self.show_changes() => {
+                self.file_view.remember(&mut self.files);
+                let hide = self
+                    .files
+                    .target(&id, openagents_chat_app::workspace_tabs::Control::Hide);
+                self.files.apply(&hide);
+                self.file_view.release();
+                self.file_focus = false;
                 self.changes_open = true;
                 self.changes_scroll = 0.0;
                 None
@@ -2407,6 +2489,10 @@ impl Panel {
         self.commands.kind.is_some() || self.rename.is_some()
     }
     pub fn focus_composer(&mut self) {
+        self.file_focus = false;
+        if let Some(chat) = self.session.selected.as_deref() {
+            self.files.focus(chat, false);
+        }
         self.workspace_query.input(TextInput::FocusLost, 0);
         if let Some(field) = self.field() {
             field.focused = true;
@@ -2671,6 +2757,12 @@ impl Panel {
         view: &ValidatedView<Intent>,
         now: Instant,
     ) -> bool {
+        if self.file_shortcut(event) {
+            return true;
+        }
+        if self.file_focus && self.files_open() && !self.modal() {
+            return false;
+        }
         if self.workspace_query.focused && !self.modal() {
             return false;
         }
@@ -2886,6 +2978,10 @@ impl Panel {
         Some(request)
     }
     pub fn input(&mut self, event: TextInput<'_>, now: Instant) -> FieldAction {
+        if self.file_focus && self.files_open() && !self.modal() {
+            self.file_shortcut(&event);
+            return FieldAction::Edited;
+        }
         if self.workspace_query.focused && !self.modal() {
             let at = now.duration_since(self.born).as_millis() as u64;
             let result = self.workspace_query.input(event, at);
@@ -3075,6 +3171,12 @@ impl Panel {
             .map_or(FieldAction::Unhandled, |field| field.input(event, at))
     }
     pub fn surface(&mut self, resource: &str, event: SurfaceInput, now: Instant) -> bool {
+        if resource == workspace::DOCUMENT {
+            return self.file_surface(event, now);
+        }
+        if matches!(event, SurfaceInput::Down { .. }) {
+            self.file_focus = false;
+        }
         if matches!(event, SurfaceInput::Down { .. }) {
             let at = now.duration_since(self.born).as_millis() as u64;
             if resource != WORKSPACE_QUERY {
@@ -3269,6 +3371,11 @@ impl Panel {
             WORKSPACE_QUERY => Some(self.workspace_query.version()),
             RENAME => self.rename.as_ref().map(|(_, field)| field.version()),
             TRANSCRIPT => Some(self.transcript.version()),
+            workspace::DOCUMENT => {
+                self.session.selected.as_deref().map(|chat| {
+                    self.files.revision(chat) ^ self.file_view.version().wrapping_mul(2)
+                })
+            }
             CHANGES => Some(
                 (self.changes_scroll.to_bits() as u64)
                     ^ u64::from(u8::from(self.changes_open))
@@ -3325,6 +3432,7 @@ impl Panel {
                 .max(40.0),
             )),
             CHANGES => Some((available, self.changes_viewport())),
+            workspace::DOCUMENT => Some((available, (self.viewport.1 - 480.0).max(80.0))),
             COMPOSER => Some((available, composer_height)),
             resource if resource.starts_with("image:") => {
                 self.image_surface(resource).map(|(width, height, _)| {
@@ -3337,6 +3445,10 @@ impl Panel {
     }
     pub fn paint(&mut self, resource: &str, frame: &mut Frame, rect: PxRect) -> bool {
         let scale = self.viewport.2;
+        if resource == workspace::DOCUMENT {
+            self.paint_file(frame, rect);
+            return true;
+        }
         if resource == command_panel::RULE_HEADER {
             self.command_band.0 = Some(rect);
         } else if resource == command_panel::RULE_FOOTER {
@@ -4145,6 +4257,18 @@ impl Panel {
         }
         let mut body = stack("chat-body", Axis::Vertical, children);
         body.style.fill_height = Some(true);
+        if self.files_open() {
+            if !self.files_beside() {
+                return self.file_pane();
+            }
+            let mut split = stack(
+                "workspace-split",
+                Axis::Horizontal,
+                vec![body, self.file_pane()],
+            );
+            split.style.fill_height = Some(true);
+            return split;
+        }
         if self.changes_open && self.show_changes() {
             let mut split = stack(
                 "chat-split",
@@ -4581,29 +4705,16 @@ impl Panel {
         if task.is_none()
             && cfg!(unix)
             && let Some(run) = run
-            && !run.resource_open()
+            && !self.files_open()
         {
-            let search = Node {
-                key: "workspace-query".into(),
-                style: Style::default(),
-                element: Element::Composer {
-                    token: format!("workspace:{id}"),
-                    placeholder: "Search this folder".into(),
-                    max_bytes: 256,
-                    enabled: true,
-                    busy: false,
-                    stop: None,
-                    choices: vec![],
-                    draft: Some(run.workspace().query.clone()),
-                    focus: self.workspace_query.focused,
-                    attach: None,
+            content.push(button(
+                "workspace-entry",
+                "Files",
+                Action::Workspace {
+                    target: run.workspace().target(coder_run::workspace::Control::Open),
                 },
-            };
-            if let Some(inspector) = run.workspace_view(Some(search), |target| Intent::Chat {
-                action: Action::Workspace { target },
-            }) {
-                content.push(inspector);
-            }
+                true,
+            ));
         }
         if let Some(run) = run
             && !run.resource_open()
@@ -6480,9 +6591,15 @@ mod live_sdk_tests {
     }
 
     fn mount(panel: &mut Panel, revision: u64) {
-        let view = rust_native::View::new("native-question", revision, panel.footer())
-            .validate()
-            .unwrap();
+        let body = panel.body();
+        let footer = panel.footer();
+        let view = rust_native::View::new(
+            "native-question",
+            revision,
+            stack("sdk-test", Axis::Vertical, vec![body, footer]),
+        )
+        .validate()
+        .unwrap();
         panel.mounted(&view);
     }
 

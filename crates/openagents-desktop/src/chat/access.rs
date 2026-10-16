@@ -11,6 +11,7 @@ impl Panel {
         match key {
             "chat-composer" => Some(self.draft().to_owned()),
             "chat-search" => Some(self.search.text().to_owned()),
+            "workspace-query" => Some(self.workspace_query.text().to_owned()),
             "command-query" => Some(self.command_query.text().to_owned()),
             "chat-rename" => self
                 .rename
@@ -32,6 +33,8 @@ impl Panel {
             "chat-search"
         } else if self.command_query.focused {
             "command-query"
+        } else if self.workspace_query.focused {
+            "workspace-query"
         } else if self.rename.as_ref().is_some_and(|(_, field)| field.focused) {
             "chat-rename"
         } else if composer {
@@ -42,8 +45,21 @@ impl Panel {
         Some(key.into())
     }
 
-    /// The transcript's rows, with the bounds of those on screen.
+    /// The transcript or file rows, with the bounds of those on screen.
     pub fn access_content(&self, resource: &str) -> Option<Content> {
-        (resource == TRANSCRIPT).then(|| self.transcript.access())
+        match resource {
+            TRANSCRIPT => Some(self.transcript.access()),
+            super::workspace::DOCUMENT
+                if self.files_open()
+                    && self
+                        .session
+                        .selected
+                        .as_deref()
+                        .is_some_and(|chat| !self.files.browser_visible(chat)) =>
+            {
+                Some(self.file_view.access())
+            }
+            _ => None,
+        }
     }
 }

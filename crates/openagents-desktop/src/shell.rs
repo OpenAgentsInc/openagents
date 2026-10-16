@@ -839,7 +839,11 @@ impl DesktopApp {
                     .clamp(chrome::SIDEBAR_MIN, chrome::SIDEBAR_MAX)
                     .min((chat.viewport.0 - 360.0).max(0.0))
             };
-            let pane = if chat.changes_open() { 420.0 } else { 0.0 };
+            let pane = if !chat.files_open() && chat.changes_open() {
+                420.0
+            } else {
+                0.0
+            };
             let content = chat.viewport.0 - leading - pane - 16.0;
             // The Terminal beside the chat takes its share first (#11180).
             let terminal = match &mut self.terminal {
@@ -853,7 +857,13 @@ impl DesktopApp {
                 }
                 _ => 0.0,
             };
-            chat.column_width = (content - terminal).clamp(1.0, 768.0);
+            chat.workspace_width = (content - terminal).max(1.0);
+            let files = if chat.files_open() && chat.workspace_width >= 840.0 {
+                chat.workspace_width / 2.0
+            } else {
+                0.0
+            };
+            chat.column_width = (content - terminal - files).clamp(1.0, 768.0);
             chat.show_saved(
                 state.page == Page::Saved,
                 self.model.project().map(|project| project.label.clone()),
@@ -1041,6 +1051,10 @@ impl DesktopApp {
                             if let Some(chat) = &mut self.chat {
                                 chat.outcome(ticket, *result);
                             }
+                        } else if let Outcome::WorkspaceFile { read, result } = outcome {
+                            if let Some(panel) = &mut self.chat {
+                                panel.file_outcome(read, *result);
+                            }
                         } else if let Outcome::CoderRun {
                             chat,
                             ticket,
@@ -1087,6 +1101,12 @@ impl DesktopApp {
             if let Outcome::Chat { ticket, result } = outcome {
                 if let Some(chat) = &mut self.chat {
                     chat.outcome(ticket, *result);
+                }
+                continue;
+            }
+            if let Outcome::WorkspaceFile { read, result } = outcome {
+                if let Some(panel) = &mut self.chat {
+                    panel.file_outcome(read, *result);
                 }
                 continue;
             }

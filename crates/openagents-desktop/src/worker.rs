@@ -88,7 +88,8 @@ struct LocalLane {
 
 /// Whether `request` runs on the Coder lane.
 fn coder(request: &Request) -> bool {
-    matches!(request, Request::CoderRun { request, .. } if *request != coder_run::Request::Choose)
+    matches!(request, Request::WorkspaceFile(_))
+        || matches!(request, Request::CoderRun { request, .. } if *request != coder_run::Request::Choose)
 }
 
 /// Whether `request` runs on the local lane.
@@ -503,6 +504,20 @@ pub fn answer_hint(chat: &str) -> String {
 
 impl CoderLane {
     fn run(&mut self, request: Request) -> Option<Outcome> {
+        if let Request::WorkspaceFile(read) = request {
+            let result = if self.fake && self.local.is_none() {
+                Err("Files aren't available in this preview.".into())
+            } else if !read.valid() {
+                Err("This file couldn't be opened. Choose it from the workspace again.".into())
+            } else {
+                self.local()
+                    .read_workspace(&read.request.reference.task, &read.request)
+            };
+            return Some(Outcome::WorkspaceFile {
+                read,
+                result: Box::new(result),
+            });
+        }
         let Request::CoderRun {
             chat,
             ticket,
@@ -1091,6 +1106,161 @@ impl Worker {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn file_tabs_read_only_the_owning_checkout_and_reject_replacement_and_binary_files() {
+        use coder::task::{
+            adapter,
+            autostart::{Engine, Launch, Launched},
+            capacity::{Connection, Provider},
+        };
+        use openagents_chat_app::workspace_tabs::{Open, Workspaces};
+        struct Held;
+        impl Launch for Held {
+            fn launch(
+                &self,
+                _: &Engine,
+                _: &std::path::Path,
+                _: &std::path::Path,
+            ) -> Result<Launched, String> {
+                Ok(Launched {
+                    owner_process: std::process::id(),
+                    grant_digest: "fixture".into(),
+                })
+            }
+        }
+        fn connected(_: Provider) -> Connection {
+            Connection::Connected
+        }
+        let root = tempfile::tempdir().unwrap();
+        let top = root.path().join("repo");
+        std::fs::create_dir(&top).unwrap();
+        for args in [
+            vec!["init", "-q"],
+            vec![
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "fixture",
+            ],
+        ] {
+            assert!(
+                Command::new("git")
+                    .args(args)
+                    .current_dir(&top)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        let local = coder::task::local::Local::new(root.path().join("tasks"))
+            .with_probe(connected)
+            .with_controller(std::env::current_exe().unwrap())
+            .with_launcher(Box::new(Held));
+        let record = local
+            .start_requested(
+                &top,
+                "Files",
+                "Read the file",
+                None,
+                &[],
+                Some(Provider::Claude),
+            )
+            .unwrap();
+        let grant = std::fs::read(
+            local
+                .store()
+                .join("local/grants")
+                .join(format!("{}-1.grant.json", record.task)),
+        )
+        .unwrap();
+        let host = adapter::Host::admit(local.store(), &grant).await.unwrap();
+        std::fs::write(host.workspace().join("file.txt"), "owner text\n").unwrap();
+        let reference = local.workspace_reference(&record.task).unwrap();
+        let fake = FakeHost::new("Fixture", 1_790_000_000);
+        let mut context = Context::new(Box::new(fake), None, None, None, root.path().to_path_buf())
+            .with_coder(local);
+        let mut state = Workspaces::default();
+        state
+            .open(
+                "chat",
+                Open {
+                    reference,
+                    path: "file.txt".into(),
+                    line: None,
+                },
+            )
+            .unwrap();
+        let read = state.next_read("chat").unwrap();
+        let Some(Outcome::WorkspaceFile {
+            read: returned,
+            result,
+        }) = context.run(Request::WorkspaceFile(read.clone()))
+        else {
+            panic!("file outcome")
+        };
+        assert_eq!(returned, read);
+        let output = result.unwrap();
+        assert_eq!(output.text.as_deref(), Some("owner text\n"));
+        assert!(state.received(&read, Ok(output)));
+        std::fs::write(host.workspace().join("file.txt"), b"binary\0bytes").unwrap();
+        state.apply(&state.target(
+            "chat",
+            openagents_chat_app::workspace_tabs::Control::Refresh,
+        ));
+        let read = state.next_read("chat").unwrap();
+        let Some(Outcome::WorkspaceFile { result, .. }) =
+            context.run(Request::WorkspaceFile(read.clone()))
+        else {
+            panic!("binary outcome")
+        };
+        assert!(result.is_err());
+        state.received(&read, *result);
+        assert_eq!(
+            state
+                .selected("chat")
+                .unwrap()
+                .content
+                .as_deref()
+                .map(String::as_str),
+            Some("owner text\n")
+        );
+        let moved = root.path().join("original-worktree");
+        std::fs::rename(host.workspace(), &moved).unwrap();
+        std::fs::create_dir(host.workspace()).unwrap();
+        std::fs::write(
+            host.workspace().join("file.txt"),
+            "different folder, same path",
+        )
+        .unwrap();
+        let Some(Outcome::WorkspaceFile { result, .. }) =
+            context.run(Request::WorkspaceFile(read.clone()))
+        else {
+            panic!("changed folder")
+        };
+        assert!(result.is_err());
+        std::fs::remove_dir_all(host.workspace()).unwrap();
+        std::fs::rename(&moved, host.workspace()).unwrap();
+        let outside = root.path().join("viewer.txt");
+        std::fs::write(&outside, "viewer text").unwrap();
+        let mut invalid = read;
+        invalid.request.operation = route_contract::workspace::Operation::Read {
+            path: outside.display().to_string(),
+        };
+        let Some(Outcome::WorkspaceFile { result, .. }) =
+            context.run(Request::WorkspaceFile(invalid))
+        else {
+            panic!("invalid path")
+        };
+        assert!(result.is_err());
+        host.finish("model_finished", true, serde_json::json!({}))
+            .unwrap();
+    }
+
     use super::*;
 
     #[test]
