@@ -773,3 +773,11 @@ repeats that opening. The unknown opening continues to reserve its session ID
 and resume lineage. Closing or archiving cannot assert native termination or
 release an uncertain resume binding; this profile refuses close while the
 opening is unknown. Exact retries still require the owner's current authority.
+
+Required native messages that an adapter cannot handle, including questions
+from an adapter without question support, produce an inspectable RUN fault
+linked to the native capture and an unknown turn result with cause
+`protocol_fault`. The fault remains in status and portable history after
+restart or a later terminal observation. It blocks new input, steering,
+configuration, interaction answers, and promotion. Observation and stopping
+remain available; positive terminal evidence does not silently restore dispatch.

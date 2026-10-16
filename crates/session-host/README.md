@@ -114,6 +114,13 @@ another command cannot reuse the session ID or resume lineage. An unknown
 opening cannot be closed to make that lineage available again. Archiving only
 hides it and does not assert that the native engine stopped.
 
+A required native message that the adapter cannot handle records a protocol
+fault. The host keeps the actual native capture and a RUN record, exposes the
+fault in status and portable history, and leaves the turn's outcome unknown.
+New input, steering, configuration, answers, and queue promotion refuse.
+Observation and stopping remain available. A later terminal result can prove
+quiescence but does not erase the fault or make the session ready again.
+
 The store retains at most 64 sessions and 256 queued intents per session.
 Limits stop new admissions and never discard history. All fixtures use
 throwaway keys and local state; no money moves.

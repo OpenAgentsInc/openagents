@@ -133,6 +133,8 @@ struct Session {
     opening: bool,
     #[serde(default)]
     opening_run: Vec<Value>,
+    #[serde(default)]
+    protocol_fault: Option<Value>,
     connection: String,
     ordinal: u64,
     generation: u64,
@@ -611,13 +613,28 @@ impl SessionHost {
             .get(&session.adapter)
             .ok_or("adapter")?
             .clone();
-        let description = self.store.json(&adapter.reference)?;
         let captures: Vec<Capture> = self
             .engines
             .borrow_mut()
             .get_mut(&adapter.engine)
             .map(|e| e.captures())
             .unwrap_or_default();
+        self.retain_captures(state, session, captures, now)
+    }
+
+    fn retain_captures(
+        &self,
+        state: &mut State,
+        session: &mut Session,
+        captures: Vec<Capture>,
+        now: u64,
+    ) -> Result<Vec<Value>> {
+        let adapter = state
+            .adapters
+            .get(&session.adapter)
+            .ok_or("adapter")?
+            .clone();
+        let description = self.store.json(&adapter.reference)?;
         let mut refs = Vec::new();
         for capture in captures {
             let payload = match &capture.payload {
@@ -660,7 +677,7 @@ impl SessionHost {
         let description = self.store.json(&adapter.reference)?;
         let portable = self
             .store
-            .put_json(&json!({"session":session.id,"turns":session.results}))?;
+            .put_json(&json!({"session":session.id,"turns":session.results,"protocol_fault":session.protocol_fault}))?;
         let resume = match (&session.native, self.support(state, session, "resume")?) {
             (Some(native), Support::Native) => self
                 .engines
@@ -1054,6 +1071,7 @@ impl SessionHost {
             native: None,
             opening: import.is_none(),
             opening_run: run,
+            protocol_fault: None,
             connection: token(),
             ordinal: 0,
             generation: 0,
@@ -1249,6 +1267,17 @@ impl SessionHost {
         let payload = &body["payload"];
         if session.opening && action != "archive" {
             return Err(refuse("unavailable", "native opening is still unknown"));
+        }
+        if session.protocol_fault.is_some()
+            && !matches!(
+                action.as_str(),
+                "interrupt" | "close" | "archive" | "cancel_queued"
+            )
+        {
+            return Err(refuse(
+                "unavailable",
+                "the native protocol needs operator attention",
+            ));
         }
         if session.phase == "closed" && action != "archive" {
             return Err(refuse("unavailable", "session is closed"));
@@ -1762,7 +1791,53 @@ impl SessionHost {
         };
         let captured = self.capture(state, session, now)?;
         let mut result = Value::Null;
+        let fault = match &observation {
+            Observation::ProtocolFault { request } => {
+                let refs = self.retain_captures(state, session, vec![request.clone()], now)?;
+                Some((refs.last().cloned(), "unhandled_required_message"))
+            }
+            Observation::Question { .. }
+                if self.support(state, session, "questions")? == Support::Unsupported =>
+            {
+                Some((captured.last().cloned(), "unsupported_question"))
+            }
+            _ => None,
+        };
+        if let Some((native_request, reason)) = fault {
+            if session.protocol_fault.is_some() {
+                return Ok(json!({"phase":session.phase,"state":session.state,
+                    "protocol_fault":session.protocol_fault}));
+            }
+            let fault = self.run_record(
+                &mut turn.run,
+                &turn.id,
+                "unknown",
+                json!({"protocol_fault":{"native_request":native_request,"reason":reason},
+                    "dispatched":true}),
+                now,
+            )?;
+            session.protocol_fault = Some(fault.clone());
+            session.phase = "faulted".into();
+            session.quiescent = false;
+            if let Some(active) = session.active.as_mut() {
+                active.run = turn.run;
+            }
+            let result = json!({"v":"openagents.session-turn-result.v1","requires":[],
+                "scope":session.scope(self.pubkey()),"turn":turn.id,"intent":turn.intent,
+                "run":fault,"outcome":"unknown","dispatched":true,"cause":"protocol_fault",
+                "outputs":[],"receipt":fault,"verification":"not_run",
+                "integration":"not_requested","quiescence":null});
+            let result = self.sign(state, &result, &session.owner.clone(), now)?;
+            session.results.push(result.clone());
+            session.revision += 1;
+            self.write_state(state, session, now)?;
+            return Ok(
+                json!({"phase":session.phase,"state":session.state,"result":result,
+                "protocol_fault":session.protocol_fault}),
+            );
+        }
         match observation {
+            Observation::ProtocolFault { .. } => unreachable!("fault handled before observation"),
             Observation::Running => {
                 return Ok(json!({"phase":session.phase,"state":session.state}));
             }
@@ -1774,35 +1849,30 @@ impl SessionHost {
                 {
                     return Ok(json!({"phase":session.phase,"state":session.state}));
                 }
-                let support = self.support(state, session, "questions")?;
                 let native_request = captured.last().cloned().ok_or("native request")?;
-                if support == Support::Unsupported {
-                    session.phase = "faulted".into();
-                } else {
-                    let question = json!({"v":"openagents.session-question.v1","requires":[],
+                let question = json!({"v":"openagents.session-question.v1","requires":[],
                         "prompt":self.store.put(&prompt,"application/json",None)?,
                         "answer_schema":self.store.put(&serde_json::to_vec(&answer_schema()).map_err(|e| e.to_string())?,SCHEMA_MEDIA_TYPE,None)?});
-                    let question = self.sign(state, &question, &session.owner.clone(), now)?;
-                    let id = token();
-                    let expires_at = now + 3600;
-                    let body = json!({"v":"openagents.session-interaction.v1","requires":[],"interaction":id,
+                let question = self.sign(state, &question, &session.owner.clone(), now)?;
+                let id = token();
+                let expires_at = now + 3600;
+                let body = json!({"v":"openagents.session-interaction.v1","requires":[],"interaction":id,
                         "scope":session.scope(self.pubkey()),"turn":turn.id,"turn_revision":session.turn_revision.unwrap_or(0),
                         "native_request":native_request,"kind":"question","recipient":session.owner,"body":question,
                         "expires_at":expires_at,"state":"pending"});
-                    let reference = self.sign(state, &body, &session.owner.clone(), now)?;
-                    session.interactions.push(Interaction {
-                        id,
-                        current: reference.clone(),
-                        reference,
-                        native_id,
-                        recipient: session.owner.clone(),
-                        turn: turn.id.clone(),
-                        expires_at,
-                        state: "pending".into(),
-                        claim: None,
-                    });
-                    session.phase = "blocked".into();
-                }
+                let reference = self.sign(state, &body, &session.owner.clone(), now)?;
+                session.interactions.push(Interaction {
+                    id,
+                    current: reference.clone(),
+                    reference,
+                    native_id,
+                    recipient: session.owner.clone(),
+                    turn: turn.id.clone(),
+                    expires_at,
+                    state: "pending".into(),
+                    claim: None,
+                });
+                session.phase = "blocked".into();
             }
             Observation::Finished {
                 outcome,
@@ -1836,6 +1906,8 @@ impl SessionHost {
                 }
                 session.phase = if session.phase == "closing" {
                     "closed"
+                } else if session.protocol_fault.is_some() {
+                    "faulted"
                 } else {
                     "ready"
                 }
@@ -1857,7 +1929,12 @@ impl SessionHost {
                     "integration":"not_requested","quiescence":null});
                 // Unknown work blocks automatic promotion and is never rerun.
                 session.quiescent = false;
-                session.phase = "unknown".into();
+                session.phase = if session.protocol_fault.is_some() {
+                    "faulted"
+                } else {
+                    "unknown"
+                }
+                .into();
                 session.active = None;
                 session.turn_revision = None;
             }
@@ -1988,6 +2065,12 @@ impl SessionHost {
             || body["scope"]["generation"] != session.generation
         {
             return Err(refuse("stale", "scope generation"));
+        }
+        if session.protocol_fault.is_some() {
+            return Err(refuse(
+                "unavailable",
+                "the native protocol needs operator attention",
+            ));
         }
         if let Some(claim) = &interaction.claim {
             if claim.fingerprint == digest_of(input) {
@@ -2196,7 +2279,7 @@ impl SessionHost {
             "queue":session.queue.iter().map(|q| json!({"intent":q.id,"state":q.state,"turn":q.turn})).collect::<Vec<_>>(),
             "interactions":session.interactions.iter().map(|i| json!({"interaction":i.reference,"state":i.state})).collect::<Vec<_>>(),
             "results":session.results,"steers":session.steers,"children":session.children,"read_only":session.read_only,
-            "admission":session.admission,"effective":session.effective}),
+            "admission":session.admission,"effective":session.effective,"protocol_fault":session.protocol_fault}),
         )
     }
 }

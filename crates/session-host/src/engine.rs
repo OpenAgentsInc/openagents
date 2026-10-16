@@ -73,6 +73,11 @@ pub enum Observation {
         cause: &'static str,
         output: Vec<u8>,
     },
+    /// A required native message the adapter cannot handle. Keep its actual
+    /// capture; the host blocks input and never fabricates a successful reply.
+    ProtocolFault {
+        request: Capture,
+    },
     /// The engine cannot report this turn (for example after a restart).
     Lost,
 }
@@ -125,6 +130,8 @@ pub struct LoopEngine {
     pub fail_start: bool,
     /// Fault: lose the opening acknowledgment after creating the native session.
     pub fail_open: bool,
+    /// Fault: emit a required reverse request the adapter does not support.
+    pub protocol_fault: bool,
 }
 
 fn features(pairs: &[(&'static str, Support)]) -> BTreeMap<&'static str, Support> {
@@ -212,6 +219,7 @@ impl LoopEngine {
             fail_answer: false,
             fail_start: false,
             fail_open: false,
+            protocol_fault: false,
         }
     }
     fn capture(
@@ -307,6 +315,17 @@ impl Engine for LoopEngine {
                 outcome: "cancelled",
                 cause: "user_interrupt",
                 output: serde_json::to_vec(&output).unwrap_or_default(),
+            };
+        }
+        if self.protocol_fault {
+            self.protocol_fault = false;
+            return Observation::ProtocolFault {
+                request: Capture {
+                    direction: "from_engine",
+                    method: "unsupported/required".into(),
+                    native_id: Some(format!("{}-unknown", run.turn)),
+                    payload: Some(br#"{"required":true,"operation":"unknown"}"#.to_vec()),
+                },
             };
         }
         if let Some(question) = run.ask.clone()

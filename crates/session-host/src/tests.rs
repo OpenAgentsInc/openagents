@@ -1212,3 +1212,82 @@ fn an_unknown_resume_keeps_its_lineage_exclusive() {
         "conflict"
     );
 }
+
+#[test]
+fn a_required_native_protocol_fault_keeps_evidence_and_blocks_input_after_terminal() {
+    for unsupported_question in [false, true] {
+        let mut fx = Fx::new();
+        let mut engine = LoopEngine::mid_turn();
+        engine.protocol_fault = !unsupported_question;
+        let host = fx.host_with(engine, LoopEngine::boundary());
+        let name = if unsupported_question {
+            "loop-boundary"
+        } else {
+            "loop-mid-turn"
+        };
+        let (session, _) = fx.open(&host, name);
+        let mut input = json!({"prompt":"once","steps":2});
+        if unsupported_question {
+            input["ask"] = json!("required question");
+        }
+        let intent = fx.intent(&host, &session, input, fx.now + 600);
+        let submit = fx.command(&host, &session, "submit", json!({"intent":intent}));
+        let binding = fx.binding();
+        assert_eq!(
+            fx.send(&host, OWNER, &submit, Some(&binding))["status"],
+            "accepted"
+        );
+        let queued = fx.intent(&host, &session, json!({"prompt":"later"}), fx.now + 600);
+        let enqueue = fx.command(&host, &session, "enqueue", json!({"intent":queued}));
+        assert_eq!(fx.send(&host, OWNER, &enqueue, None)["status"], "accepted");
+        let observed = host.observe(&session, fx.now).unwrap();
+        assert_eq!(observed["phase"], "faulted");
+        let result = host.store().json(&observed["result"]).unwrap();
+        assert_eq!(result["cause"], "protocol_fault");
+        assert_eq!(result["outcome"], "unknown");
+        assert!(result["quiescence"].is_null());
+        let fault = host.store().json(&observed["protocol_fault"]).unwrap();
+        let detail = &fault["record"]["data"]["session"]["protocol_fault"];
+        let native = host.store().json(&detail["native_request"]).unwrap();
+        assert_eq!(native["direction"], "from_engine");
+        assert_eq!(native["scope"]["session"], session);
+        let raw = host.store().get(&native["payload"]).unwrap();
+        assert!(!raw.is_empty());
+        assert_eq!(host.started(name), 1);
+        let another = fx.command(&host, &session, "enqueue", json!({"intent":queued}));
+        assert_eq!(fx.send(&host, OWNER, &another, None)["status"], "refused");
+        assert!(host.promote(&session, Some(&binding), fx.now).is_err());
+        // Even positive terminal evidence does not erase the protocol fault.
+        if unsupported_question {
+            let status = host.status(&session).unwrap();
+            let interrupt = fx.command(&host, &session, "interrupt",
+                json!({"turn":status["active_turn"],"expected_turn_revision":status["turn_revision"],"reason":"stop after protocol fault"}));
+            assert_eq!(
+                fx.send(&host, OWNER, &interrupt, None)["status"],
+                "accepted"
+            );
+        }
+        let terminal = fx.finish(&host, &session);
+        assert!(!terminal["quiescence"].is_null());
+        assert_eq!(host.status(&session).unwrap()["phase"], "faulted");
+        assert_eq!(
+            host.status(&session).unwrap()["protocol_fault"],
+            observed["protocol_fault"]
+        );
+        assert!(host.promote(&session, Some(&binding), fx.now).is_err());
+        let history = host.export(&session, fx.now).unwrap();
+        let portable = host
+            .store()
+            .json(&host.store().json(&history).unwrap()["portable"])
+            .unwrap();
+        assert_eq!(portable["protocol_fault"], observed["protocol_fault"]);
+        let restarted = fx.host();
+        assert_eq!(restarted.status(&session).unwrap()["phase"], "faulted");
+        assert_eq!(
+            restarted.status(&session).unwrap()["protocol_fault"],
+            observed["protocol_fault"]
+        );
+        assert!(restarted.promote(&session, Some(&binding), fx.now).is_err());
+        assert_eq!(restarted.started(name), 0);
+    }
+}
