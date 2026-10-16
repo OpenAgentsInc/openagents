@@ -209,8 +209,10 @@ pub struct Identity<'a> {
     pub max_output_bytes: u64,
 }
 
-/// Request IDs this worker has opened, until they expire.
-#[derive(Default, Debug)]
+/// Request IDs this worker has opened, until they expire. A worker keeps
+/// it on durable storage (it serializes) so a restart cannot reopen a
+/// request it already answered.
+#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReplayGuard {
     seen: BTreeMap<String, u64>,
 }

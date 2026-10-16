@@ -132,7 +132,14 @@ commands, explicit pure CJ delegation and independent checks, scoped WS readers,
 GitHub import proposals, and an admitted LAB port in `work-host`.
 COORD has native scopes, fenced CJ worker intake, shared child call allowances,
 independent checks, conditional Git integration, and finite read-only observations
-in `coordination-host`. Other COORD/WORK effectful adapters, wider ENV/AUTO/SESS
+in `coordination-host`. LAB's post-execution roles (worker, reviewer, buyer,
+resolver, rework, cancellation, obligations) are in `labor-roles`. ATT adds
+raw TDX/SEV-SNP/NRAS verification (`att-platforms`), HPKE carriage with
+sealed streamed output (`att-seal`), and Rekor, rebuild, approval-set and
+sealed-receipt checks (`att-release`); VAULT adds `vault-sealed` and
+`vault-operator`. The role-by-role matrix with exact tests is
+`docs/research/dhruv/conformance-matrix.md`, checked by
+`cargo test -p dhruv-conformance`. Other COORD/WORK effectful adapters, wider ENV/AUTO/SESS
 roles, production LIVE media transports (the `live-host` controller exists), and
 POL/EXT lifecycle
 additions remain unfinished. The index, glossary, and older

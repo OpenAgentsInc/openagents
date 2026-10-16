@@ -5458,6 +5458,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "dhruv-conformance"
+version = "1.0.0"
+dependencies = [
+ "att-platforms",
+ "att-release",
+ "att-seal",
+ "base64 0.22.1",
+ "labor-roles",
+ "nostr",
+ "oa-att",
+ "p384",
+ "pay-ledger",
+ "secp256k1 0.31.1",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "diatomic-waker"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,26 @@
+[package]
+name = "dhruv-conformance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Cross-contract conformance fixtures for the Dhruv protocol roadmap: role-by-role matrix checks and composed in-process runs over the implementing crates, with fake funds only."
+
+[dependencies]
+
+[dev-dependencies]
+nostr = { path = "../nostr" }
+oa-att = { path = "../oa-att" }
+att-platforms = { path = "../att-platforms" }
+att-seal = { path = "../att-seal" }
+att-release = { path = "../att-release" }
+labor-roles = { path = "../labor-roles" }
+pay-ledger = { path = "../pay-ledger" }
+p384 = { version = "0.13", features = ["ecdsa", "pkcs8", "pem"] }
+secp256k1 = "0.31.1"
+base64 = "0.22"
+serde_json = "1"
+tempfile = "3"
+
+[lints]
+workspace = true

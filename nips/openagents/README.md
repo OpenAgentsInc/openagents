@@ -265,6 +265,10 @@ declared distribution per adopted contribution, is derived by a reader from
 
 All contracts in this set are v1 drafts. They define protocol behavior;
 conformance requires validation and enforcement for each advertised role.
+The [Dhruv conformance matrix](../../docs/research/dhruv/conformance-matrix.md)
+lists the implemented roles with the exact Rust test behind each, checked by
+`cargo test -p dhruv-conformance`; fixture support there is not live
+qualification.
 
 | Contract | Responsibility | Kinds |
 | --- | --- | --- |
