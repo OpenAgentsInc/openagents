@@ -20,10 +20,23 @@ case "$action" in
     if [[ $route == *-space ]]; then
       image=${LAYERTREE_PROBE_IMAGE:?set the digest-pinned research image}
       [[ $image =~ ^us-central1-docker.pkg.dev/openagentsgemini/layertree-research/attestation-probe@sha256:[a-f0-9]{64}$ ]] || { echo 'Use the pinned research image.' >&2; exit 2; }
+      metadata="^~^tee-image-reference=$image~tee-container-log-redirect=true~tee-restart-policy=Never"
+      if [[ -n ${LAYERTREE_SEALED_BLOB_FILE:-} ]]; then
+        sealed=$(python3 - "$LAYERTREE_SEALED_BLOB_FILE" <<'PY_SEALED'
+import base64,json,sys
+raw=open(sys.argv[1],'rb').read()
+assert len(raw)<=8192
+value=json.loads(raw)
+assert value['v']=='openagents.layertree.sealed-key.v1'
+print(base64.b64encode(raw).decode())
+PY_SEALED
+)
+        metadata+="~tee-env-LAYERTREE_SEALED_BLOB=$sealed"
+      fi
       args=(--service-account=oa-layertree-probe@openagentsgemini.iam.gserviceaccount.com
         --scopes=cloud-platform
         --image=projects/confidential-space-images/global/images/confidential-space-260900
-        --metadata="^~^tee-image-reference=$image~tee-container-log-redirect=true~tee-restart-policy=Never")
+        --metadata="$metadata")
     fi
     gcloud compute instances create "$vm" --project "$project" --zone "$zone" \
       --machine-type "$machine" --confidential-compute-type "$technology" \

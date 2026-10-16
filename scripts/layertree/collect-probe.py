@@ -30,7 +30,7 @@ for entry in logs:
             value = json.loads(message)
         except ValueError:
             continue
-        if isinstance(value, dict) and value.get('schema') == 'openagents.layertree.attestation-probe.v1':
+        if isinstance(value, dict) and value.get('schema') in ('openagents.layertree.attestation-probe.v1', 'openagents.layertree.key-lifecycle.v1'):
             if not isinstance(value.get('token'), str):
                 raise RuntimeError('The workload response has no token.')
             found[value['token']] = value

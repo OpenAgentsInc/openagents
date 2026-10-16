@@ -22,6 +22,9 @@ use crate::rules::{self, Op, Record, Reject, TreeParams, TreeState};
 use crate::tree::{Tree, TreeError, exit_auth_msg, tagged_hash};
 use crate::unroll::{self, UnrollPackage};
 
+#[cfg(feature = "gcp-sealing")]
+pub mod sealed;
+
 /// Parameters chosen by the operator; the enclave adds its own key.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -94,18 +97,18 @@ pub struct Prepared {
 }
 
 impl Enclave {
-    /// Boot: make the key inside, bind it and the parameters into the
-    /// report the hardware signs.
-    pub fn launch(
-        cfg: Config,
-        measurement: [u8; 48],
-        vendor: &FakeVendor,
-        platform: Platform,
-    ) -> (Enclave, Report) {
+    /// Generate a key in the guest. Hardware evidence is requested separately.
+    /// This method accepts no private key and returns no key material.
+    pub fn launch_in_guest(cfg: Config) -> Enclave {
         let secp = Secp256k1::new();
-        let (key, pk) = secp.generate_keypair(&mut bitcoin::secp256k1::rand::thread_rng());
+        let (key, _) = secp.generate_keypair(&mut bitcoin::secp256k1::rand::thread_rng());
+        Self::from_guest_key(cfg, key)
+    }
+
+    fn from_guest_key(cfg: Config, key: SecretKey) -> Enclave {
+        let secp = Secp256k1::new();
         let params = TreeParams {
-            enclave_key: XOnlyPublicKey::from(pk),
+            enclave_key: XOnlyPublicKey::from(key.public_key(&secp)),
             operator_key: cfg.operator_key,
             tree_id: cfg.tree_id,
             depth: cfg.depth,
@@ -113,8 +116,7 @@ impl Enclave {
             unroll_delay: cfg.unroll_delay,
             migration_m: cfg.migration_m,
         };
-        let report = vendor.sign_report(&secp, platform, measurement, report_data(&params));
-        let e = Enclave {
+        Enclave {
             secp,
             key,
             params,
@@ -129,8 +131,24 @@ impl Enclave {
             mirrors: None,
             guardian: None,
             halted: false,
-        };
-        (e, report)
+        }
+    }
+
+    /// Make the model's fake vendor report for a fresh guest key.
+    pub fn launch(
+        cfg: Config,
+        measurement: [u8; 48],
+        vendor: &FakeVendor,
+        platform: Platform,
+    ) -> (Enclave, Report) {
+        let enclave = Self::launch_in_guest(cfg);
+        let report = vendor.sign_report(
+            &enclave.secp,
+            platform,
+            measurement,
+            report_data(&enclave.params),
+        );
+        (enclave, report)
     }
 
     pub fn params(&self) -> &TreeParams {

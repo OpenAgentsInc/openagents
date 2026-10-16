@@ -18,8 +18,16 @@ bitcoin = { version = "=0.32.102", default-features = false, features = ["std", 
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "=1.0.151", optional = true }
 
+# Opt-in GCP image-bound restart recovery; absent from the pure predicate.
+aes-gcm = { version = "=0.10.3", optional = true, default-features = false, features = ["aes", "alloc"] }
+base64 = { version = "=0.22.1", optional = true }
+crc = { version = "=3.4.0", optional = true }
+reqwest = { version = "=0.12.28", optional = true, default-features = false, features = ["blocking", "json", "rustls-tls"] }
+zeroize = { version = "=1.9.0", optional = true }
+
 [features]
 events = ["dep:serde", "dep:serde_json"]
+gcp-sealing = ["events", "dep:aes-gcm", "dep:base64", "dep:crc", "dep:reqwest", "dep:zeroize"]
 # The ignored bitcoind harness in tests/regtest.rs (#11781); run it with
 # scripts/layertree-regtest.sh. Adds no dependencies.
 regtest = ["events"]
@@ -35,6 +43,10 @@ hex = "=0.4.3"
 [[example]]
 name = "attestation_probe"
 required-features = ["events"]
+
+[[example]]
+name = "key_lifecycle_probe"
+required-features = ["gcp-sealing"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
