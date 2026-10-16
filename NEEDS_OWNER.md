@@ -2565,3 +2565,15 @@ approved limits, required controls, and review triggers in #11761; keep legal
 advice and customer details private. Complete this before enabling LND
 third-party payouts or any mainnet asset trial. No legal outcome or spending
 approval was recorded during implementation.
+
+## Qualify remote sovereign custody with real keys (#11739)
+
+The standalone `sov-custody` library and admin tool have isolated NIP-46 signer,
+guardian, outage, replay, and policy-change fixtures. Before using real keys,
+configure the admitted agent, remote-signer and client transport identities,
+current policy authority, independent guardian members, and disclosure rules;
+qualify the actual remote transport and its recovery behavior. Keep signer
+and guardian authority separate. Connecting this adapter to `openagents sov`
+requires an explicitly authorized next host release; the current frozen host
+continues its local-key/no-spend profile. Hardware and threshold custody remain
+unsupported. See [the custody guide](crates/sov-custody/README.md).

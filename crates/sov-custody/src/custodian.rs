@@ -167,8 +167,28 @@ impl Custodian {
         Ok(custodian)
     }
     /// Mount the NIP-46 connection for an agent's remote signer.
-    pub fn mount(&self, agent: &str, connection: Nip46) {
+    pub fn mount(&self, agent: &str, connection: Nip46) -> Result<()> {
+        let _lock = self.store.lock()?;
+        let state = self.state()?;
+        if connection.expected_agent() != agent || !state.config.authorities.contains_key(agent) {
+            return Err(refuse(
+                "identity_mismatch",
+                "connection names another agent",
+            ));
+        }
+        if let Some(reference) = state.custody.get(agent) {
+            let policy = self.json(reference)?;
+            if policy["signer"] != connection.remote()
+                || policy["transport"] != connection.transport_pubkey()
+            {
+                return Err(refuse(
+                    "identity_mismatch",
+                    "connection differs from the admitted custody policy",
+                ));
+            }
+        }
         self.nip46.borrow_mut().insert(agent.into(), connection);
+        Ok(())
     }
     pub fn pubkey(&self) -> &str {
         self.signer.pubkey()
@@ -624,7 +644,40 @@ impl Custodian {
                 ));
             }
             // Exact retry: the retained outcome, never another signer call.
-            let disclose = op.purpose == "nip44_decrypt" && !state.revoked.contains(signer);
+            let current_policy = state
+                .custody
+                .get(&agent)
+                .filter(|p| same(p, &body["policy"]))
+                .map(|p| self.json(p))
+                .transpose()?;
+            let same_guardians = match state.guardian.get(&agent) {
+                Some(policy) => same(policy, &body["guardian"]),
+                None => body["guardian"].is_null(),
+            };
+            let disclose = op.purpose == "nip44_decrypt"
+                && !state.revoked.contains(signer)
+                && state
+                    .config
+                    .profiles
+                    .get(&agent)
+                    .is_some_and(|p| same(p, &body["profile"]))
+                && body["generation"] == state.generations.get(&agent).copied().unwrap_or(1)
+                && body["deadline"]
+                    .as_u64()
+                    .is_some_and(|deadline| now < deadline)
+                && same_guardians
+                && current_policy.as_ref().is_some_and(|policy| {
+                    policy["starts_at"]
+                        .as_u64()
+                        .is_some_and(|start| start <= now)
+                        && policy["expires_at"].as_u64().is_some_and(|end| now < end)
+                        && policy["callers"]
+                            .as_array()
+                            .is_some_and(|callers| callers.iter().any(|v| v == signer))
+                        && policy["purposes"]
+                            .as_array()
+                            .is_some_and(|purposes| purposes.iter().any(|v| v == "nip44_decrypt"))
+                });
             return Ok(
                 json!({"status":op.status,"reason":op.reason,"receipt":op.receipt,
                 "plaintext":if disclose { op.plaintext.clone() } else { None }}),
@@ -675,6 +728,7 @@ impl Custodian {
             return Err(refuse("not_admitted", "purpose is not admitted"));
         }
         if body["deadline"].as_u64().unwrap_or(0) <= now
+            || now < policy["starts_at"].as_u64().unwrap_or(u64::MAX)
             || now >= policy["expires_at"].as_u64().unwrap_or(0)
         {
             return Err(refuse("stale", "deadline or policy expiry"));

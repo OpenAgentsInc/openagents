@@ -68,6 +68,7 @@ impl SignerTransport for InProcessSigner {
 pub struct Nip46 {
     client: SecretKey,
     remote: XOnlyPublicKey,
+    agent: XOnlyPublicKey,
     transport: Box<dyn SignerTransport>,
     connected: bool,
     secret: Option<String>,
@@ -85,12 +86,14 @@ impl Nip46 {
     pub fn new(
         client: SecretKey,
         remote: &str,
+        agent: &str,
         transport: Box<dyn SignerTransport>,
         bunker_secret: Option<String>,
     ) -> Result<Self> {
         Ok(Self {
             client,
             remote: XOnlyPublicKey::from_str(remote).map_err(|_| "malformed: signer key")?,
+            agent: XOnlyPublicKey::from_str(agent).map_err(|_| "malformed: agent key")?,
             transport,
             connected: false,
             secret: bunker_secret,
@@ -98,6 +101,9 @@ impl Nip46 {
     }
     pub fn remote(&self) -> String {
         self.remote.to_string()
+    }
+    pub fn expected_agent(&self) -> String {
+        self.agent.to_string()
     }
     pub fn transport_pubkey(&self) -> String {
         self.client
@@ -121,14 +127,17 @@ impl Nip46 {
             return Call::Refused("malformed".into());
         };
         match self.transport.exchange(&event, now) {
-            Ok(response) => match open_response(&response, &self.client) {
-                Ok(r) if r.id == request.id => match (r.result, r.error) {
-                    (Some(result), None) => Call::Result(result),
-                    (_, Some(error)) => Call::Refused(error),
+            Ok(response) if response.pubkey == self.remote.to_string() => {
+                match open_response(&response, &self.client) {
+                    Ok(r) if r.id == request.id => match (r.result, r.error) {
+                        (Some(result), None) => Call::Result(result),
+                        (_, Some(error)) => Call::Refused(error),
+                        _ => Call::Unknown,
+                    },
                     _ => Call::Unknown,
-                },
-                _ => Call::Unknown,
-            },
+                }
+            }
+            Ok(_) => Call::Unknown,
             Err(Exchange::Unreachable) => Call::Refused("unavailable".into()),
             Err(Exchange::Lost) => Call::Unknown,
         }
@@ -141,11 +150,19 @@ impl Nip46 {
         if let Some(secret) = &self.secret {
             params.push(secret.clone());
         }
-        let outcome = self.call("connect", params, now);
-        if matches!(outcome, Call::Result(_)) {
-            self.connected = true;
+        match self.call("connect", params, now) {
+            Call::Result(ack) if ack == "ack" || self.secret.as_deref() == Some(ack.as_str()) => {}
+            Call::Result(_) => return Call::Unknown,
+            other => return other,
         }
-        outcome
+        match self.call("get_public_key", vec![], now) {
+            Call::Result(key) if key == self.agent.to_string() => {
+                self.connected = true;
+                Call::Result("ack".into())
+            }
+            Call::Result(_) => Call::Refused("identity_mismatch".into()),
+            other => other,
+        }
     }
     /// Sign one exact unsigned event.
     pub fn sign_event(&mut self, unsigned: &str, now: u64) -> Call {

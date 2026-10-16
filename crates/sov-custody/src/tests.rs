@@ -89,16 +89,19 @@ impl Fx {
             secret(AGENT),
             Some("bunker-secret".into()),
         )));
-        custodian.mount(
-            &pk(AGENT),
-            Nip46::new(
-                secret(TRANSPORT),
-                &pk(REMOTE),
-                Box::new(Shared(signer.clone())),
-                Some("bunker-secret".into()),
+        custodian
+            .mount(
+                &pk(AGENT),
+                Nip46::new(
+                    secret(TRANSPORT),
+                    &pk(REMOTE),
+                    &pk(AGENT),
+                    Box::new(Shared(signer.clone())),
+                    Some("bunker-secret".into()),
+                )
+                .unwrap(),
             )
-            .unwrap(),
-        );
+            .unwrap();
         let pay = json!({"id":format!("{}:sov/pay",pk(AUTHORITY)),"artifact":put(&mut artifacts,b"pay operation",None)});
         Self {
             _temp: temp,
@@ -415,4 +418,204 @@ fn signer_outages_refuse_or_stay_unknown_without_a_second_call() {
     fx.signer.borrow_mut().lose_reply = false;
     assert_eq!(fx.send(CALLER, &request, vec![])["status"], "unknown");
     assert_eq!(fx.signer.borrow().served, served);
+}
+
+struct ReplySubstitution {
+    signer: nostr::domain::RemoteSigner,
+    foreign_author: bool,
+    invalid_ack: bool,
+    foreign_on_operation: bool,
+    methods: Rc<RefCell<Vec<String>>>,
+}
+impl SignerTransport for ReplySubstitution {
+    fn exchange(&mut self, request: &Event, now: u64) -> Result<Event, Exchange> {
+        use nostr::domain::{RelaySigner, RemoteRequest, Tag, open_response};
+        let client = request.pubkey.parse().unwrap();
+        let clear = nostr::nip44::decrypt(
+            &request.content,
+            &nostr::nip44::conversation_key(&secret(REMOTE), &client),
+        )
+        .unwrap();
+        let request_body: RemoteRequest = serde_json::from_str(&clear).unwrap();
+        self.methods.borrow_mut().push(request_body.method.clone());
+        let event = self.signer.handle(request, now, [31; 32]).unwrap();
+        let foreign = self.foreign_author
+            && (!self.foreign_on_operation || request_body.method == "nip44_encrypt");
+        if !foreign && !(self.invalid_ack && request_body.method == "connect") {
+            return Ok(event);
+        }
+        let mut body = open_response(&event, &secret(TRANSPORT)).unwrap();
+        if self.invalid_ack && request_body.method == "connect" {
+            body.result = Some("not-an-acknowledgment".into());
+        }
+        let author = secret(if self.foreign_author {
+            STRANGER
+        } else {
+            REMOTE
+        });
+        let content = nostr::nip44::encrypt(
+            &serde_json::to_string(&body).unwrap(),
+            &nostr::nip44::conversation_key(&author, &client),
+            [32; 32],
+        )
+        .unwrap();
+        Ok(
+            RelaySigner::from_secret_hex(&author.display_secret().to_string())
+                .unwrap()
+                .sign(
+                    now,
+                    24133,
+                    vec![Tag::new(vec!["p".into(), request.pubkey.clone()])],
+                    content,
+                ),
+        )
+    }
+}
+
+#[test]
+fn custody_transport_rejects_foreign_authors_wrong_agents_and_invalid_acknowledgments() {
+    for (foreign_author, wrong_agent, invalid_ack, foreign_on_operation) in [
+        (true, false, false, false),
+        (true, false, false, true),
+        (false, true, false, false),
+        (false, false, true, false),
+    ] {
+        let methods = Rc::new(RefCell::new(Vec::new()));
+        let transport = ReplySubstitution {
+            signer: nostr::domain::RemoteSigner::new(
+                secret(REMOTE),
+                secret(if wrong_agent { STRANGER } else { AGENT }),
+                None,
+                vec![],
+            ),
+            foreign_author,
+            invalid_ack,
+            foreign_on_operation,
+            methods: methods.clone(),
+        };
+        let mut connection = Nip46::new(
+            secret(TRANSPORT),
+            &pk(REMOTE),
+            &pk(AGENT),
+            Box::new(transport),
+            None,
+        )
+        .unwrap();
+        let outcome = connection.nip44("nip44_encrypt", &pk(PEER), "private memory", crate::now());
+        assert!(
+            !matches!(outcome, crate::signer::Call::Result(_)),
+            "untrusted connection was accepted"
+        );
+        assert_eq!(
+            methods.borrow().iter().any(|m| m == "nip44_encrypt"),
+            foreign_on_operation
+        );
+    }
+}
+
+#[test]
+fn retained_plaintext_requires_current_policy_generation_and_request_deadline() {
+    for change in [
+        "policy",
+        "generation",
+        "deadline",
+        "guardian",
+        "policy-expiry",
+    ] {
+        let mut fx = Fx::new();
+        fx.admit_custody();
+        let key = nostr::nip44::conversation_key(&secret(PEER), &pk(AGENT).parse().unwrap());
+        let ciphertext = nostr::nip44::encrypt("private memory", &key, [35; 32]).unwrap();
+        let operand = put(
+            &mut fx.artifacts,
+            &serde_json::to_vec(&json!({"peer":pk(PEER),"text":ciphertext,"recipient":pk(CALLER)}))
+                .unwrap(),
+            None,
+        );
+        let operation = fx.other_op();
+        let mut request = fx.request("nip44_decrypt", &operand, operation, Value::Null, None);
+        if change == "policy-expiry" {
+            request["deadline"] = json!(fx.now + 7200);
+        }
+        let opened = fx.send(CALLER, &request, vec![]);
+        assert_eq!(opened["plaintext"], "private memory");
+        let served = fx.signer.borrow().served;
+        match change {
+            "policy" => {
+                let mut policy = fx.custody_policy("nip46");
+                policy["revision"] = json!(1);
+                policy["previous"] = fx.custody.clone();
+                policy["callers"] = json!([pk(STRANGER)]);
+                assert_eq!(fx.send(AUTHORITY, &policy, vec![])["status"], "accepted");
+            }
+            "generation" => {
+                fx.custodian.advance_generation(&pk(AGENT)).unwrap();
+            }
+            "deadline" => {
+                fx.now += 301;
+            }
+            "policy-expiry" => {
+                fx.now += 3601;
+            }
+            "guardian" => {
+                fx.admit_guardians(Value::Null, 0);
+            }
+            _ => unreachable!(),
+        }
+        let replay = fx.send(CALLER, &request, vec![]);
+        assert_eq!(replay["status"], "completed");
+        assert!(
+            replay["plaintext"].is_null(),
+            "plaintext was redisclosed after {change}"
+        );
+        assert_eq!(fx.signer.borrow().served, served);
+    }
+}
+
+#[test]
+fn custody_policy_cannot_authorize_before_its_start_time() {
+    let mut fx = Fx::new();
+    let mut policy = fx.custody_policy("nip46");
+    policy["starts_at"] = json!(fx.now + 100);
+    assert_eq!(fx.send(AUTHORITY, &policy, vec![])["status"], "accepted");
+    fx.custody = reference(&policy);
+    let input = fx.unsigned("future policy");
+    let op = fx.other_op();
+    let request = fx.request("sign", &input, op, Value::Null, None);
+    assert_eq!(fx.send(CALLER, &request, vec![])["reason"], "stale");
+    assert_eq!(fx.signer.borrow().served, 0);
+}
+
+#[test]
+fn remount_cannot_replace_an_admitted_signer_transport_or_agent() {
+    let mut fx = Fx::new();
+    fx.admit_custody();
+    for changed in ["signer", "transport", "agent"] {
+        let remote = if changed == "signer" {
+            STRANGER
+        } else {
+            REMOTE
+        };
+        let client = if changed == "transport" {
+            STRANGER
+        } else {
+            TRANSPORT
+        };
+        let agent = if changed == "agent" { STRANGER } else { AGENT };
+        let connection = Nip46::new(
+            secret(client),
+            &pk(remote),
+            &pk(agent),
+            Box::new(InProcessSigner::new(secret(remote), secret(agent), None)),
+            None,
+        )
+        .unwrap();
+        let error = fx.custodian.mount(&pk(AGENT), connection).unwrap_err();
+        assert_eq!(crate::custodian::code(&error), "identity_mismatch");
+    }
+    let input = fx.unsigned("original connection");
+    let op = fx.other_op();
+    let request = fx.request("sign", &input, op, Value::Null, None);
+    assert_eq!(fx.send(CALLER, &request, vec![])["status"], "completed");
+    assert!(fx.signer.borrow().served > 0);
 }

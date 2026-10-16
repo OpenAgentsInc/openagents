@@ -550,6 +550,17 @@ supported records:
 | `openagents.sovereign-custody-receipt.v1` | `request`, `status` (`completed`, `refused`, or `unknown`), `result` (signed event or ciphertext; never plaintext), `quorum`, `evidence`, `reason`. |
 | `openagents.sovereign-quorum-admission.v1` | `action`, `policy`, the counted `approvals`, `generation`, and `consumed_at`. |
 
+The custody client pins both the remote transport identity and the expected
+agent identity. It accepts responses only from that remote signer, validates
+the connection acknowledgment, and checks `get_public_key` against the
+expected agent before signing or NIP-44 operations. Mounting a connection
+must preserve the admitted signer, transport, and agent bindings.
+
+An exact retry may return retained status after authority changes, but may
+redisclose plaintext only while the original request, profile, custody and
+guardian revisions, controller generation, and recipient's current permission
+remain valid. Expiry or changed authority never creates another signer call.
+
 Idempotency is `(agent, requester, nonce)` with the request digest. A gated
 operation consumes its quorum atomically, together with the dispatch intent,
 before the signer is called.
