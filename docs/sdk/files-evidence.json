@@ -2,14 +2,16 @@
   "format": "openagents.sdk.files.qualification.v1",
   "issue": 11866,
   "parent": 11857,
-  "status": "Source checks complete; final schema deployment pending.",
   "authorization_fix": {
     "commit": "93a492df5b04487ed199025c63b97bab51652931",
     "production_revision": "coder-web-e4956a9cb4-20261016145019",
     "regressions": [
       "External session revocation now returns 401 immediately instead of cached 200.",
       "A demoted storage owner cannot delete an attached file; removed members cannot read it without a project query."
-    ]
+    ],
+    "build": "b0b60537-810a-495e-b91e-dd049a27505b",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:e4956a9cb45ddb1d89a4c451a92e1e7f3eb40c455228a4de34f1f0ff16f9a6d3",
+    "staging_revision": "openagents-web-1-staging-fileauth-93a492df5b"
   },
   "scope": {
     "operations": 13,
@@ -49,5 +51,549 @@
     "private_session_file_removed": true,
     "post_revocation_file_status": 401,
     "shared_master_key_revoked": false
-  }
+  },
+  "checks": {
+    "web_tests": {
+      "count": 23,
+      "commands": [
+        "cargo +1.97.1 test -p openagents-web projects::tests::files --lib (7; includes both authorization regressions and resumable upload failures/cleanup)",
+        "cargo +1.97.1 test -p openagents-web files::openapi --lib (1)",
+        "cargo +1.97.1 test -p openagents-web app_openapi --lib (5)",
+        "cargo +1.97.1 test -p openagents-web computers_subset_and_examples --lib (1)",
+        "cargo +1.97.1 test -p openagents-web projects::tests::members --lib (9)"
+      ]
+    },
+    "sdk_tests": "cargo +1.97.1 test -p openagents-sdk --test computers_contract: 5 passed.",
+    "python_tests": "6 public-reference drift tests passed with system Python; 6 Computers generator tests passed with Python 3.13. An initial broad discovery run hit incompatible Python dependencies; focused suites passed with their required interpreters.",
+    "schemas": "15 file JSON Schema definitions passed Draft 2020-12 meta-validation. Actual isolated handler responses and serializer examples passed Rust JSON Schema validation.",
+    "generation": "54 app operations; 18 Computers operations unchanged, with unrelated security schemes removed from that subset. Generated Rust bindings and operation index match their export. All existing app operations and schema components retained their previous values.",
+    "formatting": "Changed Rust files passed rustfmt; git diff --check passed."
+  },
+  "limits": "Configured upload and account quotas remain in force; ordinary direct uploads default to 10 MiB with a hard 16 MiB body limit. Resumable parts are 8 MiB.",
+  "owner_steps": [],
+  "source_commit": "398c9361184846d57b0eaa08ce8ce53fb83d1694",
+  "build": "ea987894-a8da-42d9-84b0-833d7c089d8a",
+  "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:bea4984d134291fbbf72ee820be72b5bf22b46526d2fc5a035530350bc63eb90",
+  "staging_revision": "openagents-web-1-staging-files-398c936118",
+  "production_revision": "coder-web-bea4984d13-20261016152006",
+  "previous_production_revision": "coder-web-e4956a9cb4-20261016145019",
+  "deployed": {
+    "staging": {
+      "files": {
+        "operations": 112,
+        "file_operations": 13,
+        "routing_probes": [
+          {
+            "method": "POST",
+            "url": "https://staging.openagents.com/v1/files?filename=probe.txt",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "url": "https://staging.openagents.com/v1/files/file_000000000000000000000000",
+            "status": 401
+          },
+          {
+            "method": "DELETE",
+            "url": "https://staging.openagents.com/v1/files/file_000000000000000000000000",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "url": "https://staging.openagents.com/v1/files/file_000000000000000000000000/content",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "url": "https://staging.openagents.com/v1/projects/prj_0000000000000000/attachments",
+            "status": 401
+          },
+          {
+            "method": "POST",
+            "url": "https://staging.openagents.com/v1/projects/prj_0000000000000000/attachments",
+            "status": 401
+          },
+          {
+            "method": "DELETE",
+            "url": "https://staging.openagents.com/v1/projects/prj_0000000000000000/attachments/file_000000000000000000000000",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "url": "https://staging.openagents.com/v1/projects/prj_0000000000000000/documents/pdoc_000000000000000000000000",
+            "status": 401
+          },
+          {
+            "method": "POST",
+            "url": "https://staging.openagents.com/v1/files/uploads",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "url": "https://staging.openagents.com/v1/files/uploads/upl_000000000000000000000000?project=prj_0000000000000000",
+            "status": 401
+          },
+          {
+            "method": "DELETE",
+            "url": "https://staging.openagents.com/v1/files/uploads/upl_000000000000000000000000?project=prj_0000000000000000",
+            "status": 401
+          },
+          {
+            "method": "PUT",
+            "url": "https://staging.openagents.com/v1/files/uploads/upl_000000000000000000000000/parts/0?project=prj_0000000000000000",
+            "status": 401
+          },
+          {
+            "method": "POST",
+            "url": "https://staging.openagents.com/v1/files/uploads/upl_000000000000000000000000/complete?project=prj_0000000000000000",
+            "status": 401
+          }
+        ],
+        "credentials_used": false,
+        "objects_created": 0
+      },
+      "projects": {
+        "operations": 112,
+        "project_operations": 15,
+        "routing_probes": [
+          {
+            "method": "GET",
+            "url": "https://staging.openagents.com/v1/projects",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "POST",
+            "url": "https://staging.openagents.com/v1/projects",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "DELETE",
+            "url": "https://staging.openagents.com/v1/projects/schema-probe",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "GET",
+            "url": "https://staging.openagents.com/v1/projects/prj_0000000000000000",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "PATCH",
+            "url": "https://staging.openagents.com/v1/projects/prj_0000000000000000",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "POST",
+            "url": "https://staging.openagents.com/v1/projects/prj_0000000000000000/repositories",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "DELETE",
+            "url": "https://staging.openagents.com/v1/projects/prj_0000000000000000/repositories/example/repository",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "GET",
+            "url": "https://staging.openagents.com/v1/projects/prj_0000000000000000/members",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "PATCH",
+            "url": "https://staging.openagents.com/v1/projects/prj_0000000000000000/members/schema-probe",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "DELETE",
+            "url": "https://staging.openagents.com/v1/projects/prj_0000000000000000/members/schema-probe",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "POST",
+            "url": "https://staging.openagents.com/v1/projects/prj_0000000000000000/leave",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "GET",
+            "url": "https://staging.openagents.com/v1/projects/prj_0000000000000000/access",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "POST",
+            "url": "https://staging.openagents.com/v1/projects/prj_0000000000000000/invitations",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "POST",
+            "url": "https://staging.openagents.com/v1/projects/invitations/preview",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "POST",
+            "url": "https://staging.openagents.com/v1/projects/invitations/accept",
+            "status": 401,
+            "code": "signed_out"
+          }
+        ],
+        "credentials_used": false,
+        "keys_created": 0,
+        "keys_revoked": 0,
+        "projects_created": 0,
+        "projects_deleted": 0
+      },
+      "keys": {
+        "operations": 112,
+        "key_operations": 3,
+        "routing_probes": [
+          {
+            "method": "GET",
+            "url": "https://staging.openagents.com/v1/keys",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "POST",
+            "url": "https://staging.openagents.com/v1/keys",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "DELETE",
+            "url": "https://staging.openagents.com/v1/keys/schema-probe",
+            "status": 401,
+            "code": "signed_out"
+          }
+        ],
+        "credentials_used": false,
+        "keys_created": 0,
+        "keys_revoked": 0,
+        "projects_created": 0,
+        "projects_deleted": 0
+      },
+      "discovery": {
+        "at_utc": "2026-10-16T15:19:57.212228+00:00",
+        "api": "https://staging.openagents.com",
+        "website": "https://staging.openagents.com",
+        "schema_sha256": "5386609d2bbfaad02d21ba76b712808dc3b61a0ab760061d344620e75b0695a9",
+        "operations": 112,
+        "systemone_slice": "matches owning generated operations and components",
+        "discovery": "agent card, API catalog, MCP card, llms.txt and guide passed",
+        "unpublished_operations": "classification and jobs absent",
+        "malformed_calls": [],
+        "browser_assets": "unchanged"
+      }
+    },
+    "production": {
+      "files": {
+        "operations": 112,
+        "file_operations": 13,
+        "routing_probes": [
+          {
+            "method": "POST",
+            "url": "https://api.openagents.com/v1/files?filename=probe.txt",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "url": "https://api.openagents.com/v1/files/file_000000000000000000000000",
+            "status": 401
+          },
+          {
+            "method": "DELETE",
+            "url": "https://api.openagents.com/v1/files/file_000000000000000000000000",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "url": "https://api.openagents.com/v1/files/file_000000000000000000000000/content",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "url": "https://api.openagents.com/v1/projects/prj_0000000000000000/attachments",
+            "status": 401
+          },
+          {
+            "method": "POST",
+            "url": "https://api.openagents.com/v1/projects/prj_0000000000000000/attachments",
+            "status": 401
+          },
+          {
+            "method": "DELETE",
+            "url": "https://api.openagents.com/v1/projects/prj_0000000000000000/attachments/file_000000000000000000000000",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "url": "https://api.openagents.com/v1/projects/prj_0000000000000000/documents/pdoc_000000000000000000000000",
+            "status": 401
+          },
+          {
+            "method": "POST",
+            "url": "https://api.openagents.com/v1/files/uploads",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "url": "https://api.openagents.com/v1/files/uploads/upl_000000000000000000000000?project=prj_0000000000000000",
+            "status": 401
+          },
+          {
+            "method": "DELETE",
+            "url": "https://api.openagents.com/v1/files/uploads/upl_000000000000000000000000?project=prj_0000000000000000",
+            "status": 401
+          },
+          {
+            "method": "PUT",
+            "url": "https://api.openagents.com/v1/files/uploads/upl_000000000000000000000000/parts/0?project=prj_0000000000000000",
+            "status": 401
+          },
+          {
+            "method": "POST",
+            "url": "https://api.openagents.com/v1/files/uploads/upl_000000000000000000000000/complete?project=prj_0000000000000000",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "url": "https://openagents.com/v1/files/file_000000000000000000000000",
+            "status": 401
+          },
+          {
+            "method": "GET",
+            "url": "https://openagents.com/api/v1/files/file_000000000000000000000000",
+            "status": 404
+          }
+        ],
+        "credentials_used": false,
+        "objects_created": 0
+      },
+      "projects": {
+        "operations": 112,
+        "project_operations": 15,
+        "routing_probes": [
+          {
+            "method": "GET",
+            "url": "https://api.openagents.com/v1/projects",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "POST",
+            "url": "https://api.openagents.com/v1/projects",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "DELETE",
+            "url": "https://api.openagents.com/v1/projects/schema-probe",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "GET",
+            "url": "https://openagents.com/v1/projects",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "POST",
+            "url": "https://openagents.com/v1/projects",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "DELETE",
+            "url": "https://openagents.com/v1/projects/schema-probe",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "GET",
+            "url": "https://openagents.com/api/v1/projects",
+            "status": 404
+          },
+          {
+            "method": "POST",
+            "url": "https://openagents.com/api/v1/projects",
+            "status": 404
+          },
+          {
+            "method": "DELETE",
+            "url": "https://openagents.com/api/v1/projects/schema-probe",
+            "status": 404
+          },
+          {
+            "method": "GET",
+            "url": "https://api.openagents.com/v1/projects/prj_0000000000000000",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "PATCH",
+            "url": "https://api.openagents.com/v1/projects/prj_0000000000000000",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "POST",
+            "url": "https://api.openagents.com/v1/projects/prj_0000000000000000/repositories",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "DELETE",
+            "url": "https://api.openagents.com/v1/projects/prj_0000000000000000/repositories/example/repository",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "GET",
+            "url": "https://api.openagents.com/v1/projects/prj_0000000000000000/members",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "PATCH",
+            "url": "https://api.openagents.com/v1/projects/prj_0000000000000000/members/schema-probe",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "DELETE",
+            "url": "https://api.openagents.com/v1/projects/prj_0000000000000000/members/schema-probe",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "POST",
+            "url": "https://api.openagents.com/v1/projects/prj_0000000000000000/leave",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "GET",
+            "url": "https://api.openagents.com/v1/projects/prj_0000000000000000/access",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "POST",
+            "url": "https://api.openagents.com/v1/projects/prj_0000000000000000/invitations",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "POST",
+            "url": "https://api.openagents.com/v1/projects/invitations/preview",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "POST",
+            "url": "https://api.openagents.com/v1/projects/invitations/accept",
+            "status": 401,
+            "code": "signed_out"
+          }
+        ],
+        "credentials_used": false,
+        "keys_created": 0,
+        "keys_revoked": 0,
+        "projects_created": 0,
+        "projects_deleted": 0
+      },
+      "keys": {
+        "operations": 112,
+        "key_operations": 3,
+        "routing_probes": [
+          {
+            "method": "GET",
+            "url": "https://api.openagents.com/v1/keys",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "POST",
+            "url": "https://api.openagents.com/v1/keys",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "DELETE",
+            "url": "https://api.openagents.com/v1/keys/schema-probe",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "GET",
+            "url": "https://openagents.com/v1/keys",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "POST",
+            "url": "https://openagents.com/v1/keys",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "DELETE",
+            "url": "https://openagents.com/v1/keys/schema-probe",
+            "status": 401,
+            "code": "signed_out"
+          },
+          {
+            "method": "GET",
+            "url": "https://openagents.com/api/v1/keys",
+            "status": 404
+          },
+          {
+            "method": "POST",
+            "url": "https://openagents.com/api/v1/keys",
+            "status": 404
+          },
+          {
+            "method": "DELETE",
+            "url": "https://openagents.com/api/v1/keys/schema-probe",
+            "status": 404
+          }
+        ],
+        "credentials_used": false,
+        "keys_created": 0,
+        "keys_revoked": 0,
+        "projects_created": 0,
+        "projects_deleted": 0
+      },
+      "discovery": {
+        "at_utc": "2026-10-16T15:22:45.979427+00:00",
+        "api": "https://api.openagents.com",
+        "website": "https://openagents.com",
+        "schema_sha256": "177aa4a5ba1e92f1c080bb6e092eeee5b4e6f3e7d2ecd920a15a4adbc2fa039f",
+        "operations": 112,
+        "systemone_slice": "matches owning generated operations and components",
+        "discovery": "agent card, API catalog, MCP card, llms.txt and guide passed",
+        "unpublished_operations": "classification and jobs absent",
+        "malformed_calls": [],
+        "browser_assets": "unchanged"
+      }
+    }
+  },
+  "deployment_readiness": {
+    "initial_result": "The candidate reference returned 502 while its gateway waited for production traffic. The shell continued to shift despite that failed check; an immediate production probe returned 502 and triggered rollback.",
+    "rollback_result": "The previous revision had a brief 429 no-available-instance interval during traffic recovery.",
+    "resolution": "Shifted back to the staged image, allowed the gateway to take its store and listen, then all production checks passed. No code or configuration change was required.",
+    "final_result": "112-operation reference, 15 file routing probes, 21 project routing probes, 9 key routing probes, discovery, and unchanged browser asset hashes passed."
+  },
+  "test_data": "Isolated local fake accounts; one dedicated staging test session and project/file for frozen-client compatibility, all removed or revoked. No owner account mutations, inference, payments, or package publication."
 }
