@@ -1,0 +1,17 @@
+- **Research date:** October 15, 2026; U.S. homeschool context.
+- **Read next:** [Brand direction and prompts](branding.md).
+- **Audience hypothesis:** Independence-minded homeschooling mothers who embrace technology themselves or share a household with an accelerationist partner.
+- **Evidence limit:** These sources do not establish this segment's size, spending, or preferred aesthetic; recommendations require parent interviews.
+- **Homeschool motivations:** In 2022–23, 83% cited school environment, 72% family life, and 72% dissatisfaction with academics as important reasons; multiple answers were allowed. [NCES report, table A-7](https://nces.ed.gov/pubs2024/2024113.pdf).
+- **Implication:** Test family choice, useful skills, and enjoyable time together as purchase reasons; ideological identity alone is insufficient.
+- **Possible inspiration:** The Good and the Beautiful began with Jenny Phillips writing for her own children; it explicitly combines Christian faith, nature, art, and convenient lessons. Identity match is unconfirmed. [Founder story](https://www.goodandbeautiful.com/pages/about-us).
+- **Borrow:** A clear worldview, attractive materials, and low preparation; use an authentic founder story only if true.
+- **Change:** Express optimism through invention, ocean exploration, and AI; avoid devotional copy and nostalgic pastoral styling.
+- **Seasteading:** The Seasteading Institute connects ocean communities with choice, experimentation, and engineering. [Institute FAQ](https://www.seasteading.org/faq/).
+- **Implication:** Floating neighborhoods, marine laboratories, and working harbors give independence a concrete visual setting.
+- **Technology optimism:** Andreessen's manifesto emphasizes practical skills, teamwork, invention, and technological progress; it is an adjacent worldview, not audience research. [Primary essay](https://a16z.com/the-techno-optimist-manifesto/).
+- **Prisma:** Markets future preparation and projects while keeping human coaches central; its AI guidance distinguishes younger learners from older builders. [Prisma FAQ](https://www.joinprisma.com/faqs).
+- **Khanmigo:** Positions AI as a tutor and gives parents a route to child access. [Khan Academy's parent overview](https://www.khanacademy.org/khan-for-parents/khan-for-families/x47d2dcef03b6d5f6%3Awelcome-to-khan-academy/x47d2dcef03b6d5f6%3Ameet-khanmigo/v/khan-academy-for-families-what-is-khanmigo).
+- **Alpha:** Markets AI-supported academics plus practical workshops; its learning-speed claims are marketing, not evidence for Blue Rush. [Alpha program](https://alpha.school/the-program/).
+- **Proposed opening:** Playful ocean futures with meaningful AI experiences and parent choice; a positioning hypothesis, not proven market whitespace.
+- **Current fit:** Blue Rush already uses “Play the future” and ocean imagery; Snap Station supplies a building-game connection. [Studio source](../../crates/openagents-web/src/pages/blue_rush.rs), [Snap Station](../verse/games/snap-station.md).

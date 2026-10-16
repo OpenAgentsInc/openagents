@@ -1,0 +1,28 @@
+- **Recommendation:** An optimistic ocean frontier for families raising curious, capable builders.
+- **Basis:** [Research and sources](research.md); proposed direction, pending audience testing.
+- **Brand:** Keep Blue Rush Studios; “Blue” supports the ocean setting, while playful pacing can soften “Rush.”
+- **Category:** Games and creative experiences; explore homeschool use without claiming a complete curriculum.
+- **Primary audience:** Mothers who choose homeschooling and want their children to create with technology.
+- **Second audience:** Mothers who value family independence but need concrete reasons to welcome AI.
+- **Relationship:** Address mothers as decision-makers; include fathers and children in the experience.
+- **Promise:** Give children inviting worlds where they can explore, experiment, and build.
+- **Worldview:** Family choice, personal initiative, scientific curiosity, cooperation, and technological abundance.
+- **AI direction:** Make AI a visible creative tool; demonstrate what the child chooses, changes, and learns.
+- **Concept to prototype:** Design a floating home with an AI helper, test its balance, and improve it; label this as a concept until playable.
+- **Parent proof:** Show actual play, age guidance, session length, AI behavior, and available parent controls before making promises.
+- **Visual direction:** Sunlit floating towns, ocean research stations, friendly robots, gardens, and children building together.
+- **Palette to test:** Ocean blue `#146EF5`, aqua `#52D6CA`, cloud `#F6FAFF`, coral `#FF806B`, and navy `#12304A`; verify text contrast in implementation.
+- **Typography:** Clear rounded sans serif; readable labels; generous space; restrained technical diagrams.
+- **Avoid:** Cottagecore, devotional styling, beige nostalgia, dystopian machinery, crypto speculation, and militant independence imagery.
+- **Voice:** Curious, confident, warm, and concrete; express accelerationism through making useful things.
+- **Headline:** “Play the future.”
+- **Supporting line:** “Games for curious kids who love to explore and build.”
+- **AI line to test when supported:** “Imagine it. Build it with AI. See what happens.”
+- **Parent line to test when supported:** “You choose how AI joins the adventure.”
+- **Design prompt:** “Create a Blue Rush Studios homepage: bright ocean frontier, floating maker town, mothers and children inventing together, helpful robots, clear game cards, readable type.”
+- **Concept prompt:** “Show three directions: ocean explorers, floating neighborhood builders, and family invention lab; keep AI visible and the mood welcoming.”
+- **Interview prompt:** “Tell me about the last learning game you chose. What convinced you? What made you stop using one?”
+- **AI prompt:** “What would you want your child to do with AI? What would you want to approve yourself?”
+- **Brand test:** Show all three concepts in rotating order to 8–12 target mothers, including AI enthusiasts and hesitant partners; treat results as qualitative.
+- **Decision prompt:** “Who is this for? What would your child do? Which would you try, and why?”
+- **Success signal:** Parents describe invention, family choice, and an appealing future without needing an explanation of accelerationism.
