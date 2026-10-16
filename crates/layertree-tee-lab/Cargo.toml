@@ -31,3 +31,7 @@ proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
 # Only for the opt-in cross-check against upstream's published vectors.
 serde_json = "=1.0.151"
 hex = "=0.4.3"
+
+[[example]]
+name = "attestation_probe"
+required-features = ["events"]
