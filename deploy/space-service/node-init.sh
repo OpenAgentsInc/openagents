@@ -42,6 +42,10 @@ if ! printf '%s  /usr/local/bin/k3s\n' "$space_k3s_sha" | sha256sum --check --st
   rm /space/config/k3s.new
 fi
 if [[ $space_role == worker ]]; then
+  if [[ -s /run/oa-space/k3s-join ]]; then
+    install -m 0600 /run/oa-space/k3s-join /space/config/k3s-join
+    rm /run/oa-space/k3s-join
+  fi
   test -s /space/config/k3s-join
   python3 - <<'PY'
 import fcntl, os

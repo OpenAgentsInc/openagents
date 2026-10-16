@@ -29,7 +29,7 @@ def cloud(*args, data=None, missing=False):
     )
     if result.returncode:
         error = result.stderr.decode(errors="replace")
-        if missing and any(word in error.lower() for word in ("not found", "not_found", "does not exist")):
+        if missing and any(word in error.lower() for word in ("not found", "not_found", "does not exist", "cannot find service [")):
             return None
         # Commands never place credentials in arguments; secret upload failures
         # still omit stderr to keep provider diagnostics from echoing input.
