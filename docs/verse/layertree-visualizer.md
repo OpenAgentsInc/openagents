@@ -204,3 +204,22 @@ The corresponding Video Lab documents are
 `docs/verse/film/layertree-signet-tree-scene.json` and
 `docs/verse/film/layertree-signet-transitions-scene.json`. Final signet alarm
 and unroll replacements still wait for actual #11793/#11794 results.
+
+
+The separate `signet-halt-waiting.jsonl` records the real guardian HALT at
+height 326605 and the actual early `non-BIP68-final` refusal. At the observed
+tip 326607, all five members remain owed their full amounts; the escape is
+first valid in block 326616. Its still and eight-second clip are explicitly
+labelled as waiting, with no payout or physical VM-kill claim. Re-render
+with `scripts/layertree-captures.py --signet-halt` and the same viewer,
+film-shot, and scratch arguments above. Final recovery footage still
+requires the actual confirmed escape and fee child.
+
+The [HALT waiting evidence](../research/layertree/evidence/signet-halt-waiting-2026-10-16.tar.gz)
+contains 43 selected public files plus its manifest, including historical
+Google tokens, release/Rekor and rebuild signatures, the saved escape, and
+the observed HALT/refusal. SHA-256:
+`6edd198a5440c0299c706f0ae72e824eed2e90cbdf2b6e72592cb2c62d67f365`.
+The exporter also refused changed refusal and delay fields and an unsupported
+payout claim without writing events. Re-exporting the original normal run
+produced the identical 21-event fixture.

@@ -53,6 +53,6 @@
     },
     "crf": 12
   },
-  "notes": "Confirmed regtest joins, updates, claim, exit and heartbeat. Test keys and test-vendor attestation; no Confidential VM.",
-  "out": "~/work/film-out/verse/layertree-transitions.mp4"
+  "notes": "Confirmed public signet transactions 326595\u2013326599; Google-backed TDX capture checks, test keys and coins.",
+  "out": "~/work/film-out/verse/layertree-signet-transitions.mp4"
 }

@@ -223,5 +223,14 @@
     "network": "signet",
     "txid": null,
     "caption": "Negative verifier check: expected tree ID changed for a captured signet token; not a live service failure."
+  },
+  {
+    "image": "signet-halt-waiting.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/signet-halt-waiting.jsonl",
+    "sha256": "0e8a0ad41144f78a5f17262de2f2e832d07d7a25d320ccc3bf2d7fa4cacc3115",
+    "seq": 7,
+    "network": "signet",
+    "txid": "bab5f1752dc24432e1d760642d4d26c335a83b57a4401bdb39cfeeb2ef0b492f",
+    "caption": "Guardian HALT observed at block 326605; signing refused; escape first valid at 326616; no payouts yet."
   }
 ]

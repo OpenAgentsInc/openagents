@@ -1,0 +1,59 @@
+{
+  "renderer": "verse-film-shot",
+  "shot": {
+    "name": "layertree-signet-halt-waiting",
+    "notes": "Actual guardian HALT at signet height 326605, exact Halted refusal, and non-BIP68-final escape rejection. Snapshot at 326607; first valid escape block 326616; no payouts or physical VM kill claimed.",
+    "scene": {
+      "kind": "layer_tree",
+      "events": "crates/layertree-tee-lab/fixtures/events/signet-halt-waiting.jsonl",
+      "at": 3,
+      "caption": "Signet guardian HALT; escape valid from block 326616; no payouts yet",
+      "play": true,
+      "from": 3,
+      "to": 7,
+      "rate": 0.5
+    },
+    "duration": 8,
+    "fps": 24.0,
+    "width": 1920,
+    "height": 1080,
+    "subframes": 1,
+    "prewarm": 1,
+    "rig": {
+      "keys": [
+        {
+          "t": 0.0,
+          "eye": [
+            6.0,
+            18.0,
+            30.0
+          ],
+          "target": [
+            1.0,
+            8.0,
+            0.0
+          ],
+          "focal_mm": 38.0,
+          "ease": "in_out"
+        },
+        {
+          "t": 8.0,
+          "eye": [
+            -6.0,
+            18.0,
+            30.0
+          ],
+          "target": [
+            1.0,
+            8.0,
+            0.0
+          ],
+          "focal_mm": 38.0
+        }
+      ]
+    },
+    "crf": 12
+  },
+  "notes": "Actual guardian HALT at signet height 326605, exact Halted refusal, and non-BIP68-final escape rejection. Snapshot at 326607; first valid escape block 326616; no payouts or physical VM kill claimed.",
+  "out": "~/work/film-out/verse/layertree-signet-halt-waiting.mp4"
+}

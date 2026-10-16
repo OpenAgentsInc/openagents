@@ -226,5 +226,14 @@ Negative verifier check: expected tree ID changed for a captured signet token; n
 
 Source: [crates/layertree-tee-lab/fixtures/events/signet-negative-policy.jsonl](../../../../crates/layertree-tee-lab/fixtures/events/signet-negative-policy.jsonl), event 21.
 
+## signet halt waiting
+
+![Guardian HALT observed at block 326605; signing refused; escape first valid at 326616; no payouts yet.](signet-halt-waiting.jpg)
+
+Guardian HALT observed at block 326605; signing refused; escape first valid at 326616; no payouts yet.
+
+Source: [crates/layertree-tee-lab/fixtures/events/signet-halt-waiting.jsonl](../../../../crates/layertree-tee-lab/fixtures/events/signet-halt-waiting.jsonl), event 7.
+Signet transaction: `bab5f1752dc24432e1d760642d4d26c335a83b57a4401bdb39cfeeb2ef0b492f`.
+
 Normal signet operations are captured above. Signet alarm and final recovery views
 remain #11793/#11794 measurements; the regtest images are not substitutes.

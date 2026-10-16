@@ -50,6 +50,6 @@
     },
     "crf": 12
   },
-  "notes": "Tree balances from the checked-in regtest run. Gold value flows toward the root above the engine Grid.",
-  "out": "~/work/film-out/verse/layertree-tree.mp4"
+  "notes": "Confirmed public signet transactions 326595\u2013326599; Google-backed TDX capture checks, test keys and coins.",
+  "out": "~/work/film-out/verse/layertree-signet-tree.mp4"
 }

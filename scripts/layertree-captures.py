@@ -14,6 +14,7 @@ parser.add_argument("--viewer", required=True, type=Path)
 parser.add_argument("--film-shot", type=Path)
 parser.add_argument("--scratch", required=True, type=Path)
 parser.add_argument("--signet", action="store_true", help="Render the confirmed signet and separate negative-policy views.")
+parser.add_argument("--signet-halt", action="store_true", help="Render the measured guardian HALT while its escape waits for CSV.")
 parser.add_argument("--clips", type=Path, default=Path.home() / "work/film-out/verse")
 args = parser.parse_args()
 args.scratch.mkdir(parents=True, exist_ok=True)
@@ -63,6 +64,10 @@ if args.signet:
         ("signet-negative-policy", negative, lambda e: e["seq"] == len(read(negative)) - 1,
          "Negative verifier check: expected tree ID changed for a captured signet token; not a live service failure."),
     ]
+if args.signet_halt:
+    halted = "crates/layertree-tee-lab/fixtures/events/signet-halt-waiting.jsonl"
+    plans = [("signet-halt-waiting", halted, lambda e: e["seq"] == len(read(halted)) - 1,
+              "Guardian HALT observed at block 326605; signing refused; escape first valid at 326616; no payouts yet.")]
 existing = output / "sources.json"
 sources = json.loads(existing.read_text()) if existing.exists() else []
 replacing = {name + ".jpg" for name, *_ in plans}
@@ -74,13 +79,16 @@ for name, path, select, caption in plans:
     png = args.scratch / f"{name}.png"
     subprocess.run([str(args.viewer.resolve()), "--events", str(REPO / path), "--at", str(seq),
                     "--size", "1920x1080", "--scale", "1.5", "--caption",
-                    ("Negative check: captured signet token; expected tree ID changed" if name == "signet-negative-policy" else
+                    ("Signet guardian HALT; escape first valid at block 326616; test coins" if name == "signet-halt-waiting" else
+                     "Negative check: captured signet token; expected tree ID changed" if name == "signet-negative-policy" else
                      f"Signet: confirmed block {event['height']}; test coins; Google-backed TDX" if event["network"] == "signet" else
                      "Regtest: test keys and coins; test-vendor attestation" if event["network"] == "regtest" else
                      "Simulation: illustrative data; no hardware attestation"), "--capture", str(png)], check=True, cwd=REPO)
     subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(png),
                     "-frames:v", "1", "-q:v", "2", "-pix_fmt", "yuvj444p", str(output / f"{name}.jpg")], check=True)
     txid = event.get("txid")
+    if name == "signet-halt-waiting":
+        txid = next(e["outpoint"].split(":")[0] for e in events if e["kind"] == "tree_open")
     if name == "alarm":
         txid = next(e["txid"] for e in reversed(events[:seq + 1]) if e["kind"] == "transition")
     if name == "unroll":
@@ -105,7 +113,7 @@ lines += ["Normal signet operations are captured above. Signet alarm and final r
 (output / "README.md").write_text("\n".join(lines))
 if args.film_shot:
     args.clips.mkdir(parents=True, exist_ok=True)
-    names = ["signet-tree", "signet-transitions"] if args.signet else ["tree", "transitions", "alarm", "unroll"]
+    names = ["signet-halt-waiting"] if args.signet_halt else ["signet-tree", "signet-transitions"] if args.signet else ["tree", "transitions", "alarm", "unroll"]
     for name in names:
         shot = REPO / f"docs/verse/film/verse-shots/layertree-{name}.json"
         subprocess.run([str(args.film_shot.resolve()), str(shot), "--out", str(args.clips / f"layertree-{name}.mp4")],

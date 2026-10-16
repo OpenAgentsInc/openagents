@@ -1,0 +1,34 @@
+{
+  "schema": "openagents.layertree.signet-view.v1",
+  "chain_reader_tip": 326607,
+  "historical_attestation": true,
+  "recovery": {
+    "kind": "guardian_halt",
+    "physical_vm_kill": false,
+    "halt_height": 326605,
+    "tree_confirmation_height": 326604,
+    "first_valid_block": 326616,
+    "halt_state_sha256": "e62bb2745e64dd49fded1b0fc9332187c1690e6b811a272aeebcbbea37095911",
+    "parent_txid": "4cff145e6592bd1899f015b9187a6957541752a9c56eff1fc558a9d0c7fea747",
+    "status": "waiting_csv",
+    "observed_tip": 326607
+  },
+  "negative_view": "Expected tree ID changed; real captured token rejected with report_data_mismatch; service history remains separate.",
+  "output_sha256": "0e8a0ad41144f78a5f17262de2f2e832d07d7a25d320ccc3bf2d7fa4cacc3115",
+  "events": 8,
+  "members": 5,
+  "paid_sat": 0,
+  "sources": [
+    {
+      "txid": "bab5f1752dc24432e1d760642d4d26c335a83b57a4401bdb39cfeeb2ef0b492f",
+      "confirmation_height": 326604,
+      "authorization_height": 326603,
+      "capture": "capture-1792151793-status",
+      "capture_time": 1792151793,
+      "source_commit": "6fb4b4e71d4fb21d8bbd008ee5a4775cf0cbdea6",
+      "token_sha256": "adc5471215d18b67a073ccbe6fa3a5d3616aedb3d759f795f272f7b07e962bdd",
+      "fee_sat": 500,
+      "vsize": 154
+    }
+  ]
+}

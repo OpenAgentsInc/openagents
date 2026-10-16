@@ -63,11 +63,231 @@ fn confirmed(core: &Core, txid: &str) -> Result<(bitcoin::Transaction, u32)> {
     }
     Ok((tx, height))
 }
+fn transaction_fee(core: &Core, tx: &bitcoin::Transaction) -> Result<u64> {
+    let mut inputs = 0u64;
+    for input in &tx.input {
+        let previous = core.call(
+            "getrawtransaction",
+            json!([input.previous_output.txid.to_string(), true]),
+        )?;
+        let previous = rpc::transaction(
+            previous["hex"]
+                .as_str()
+                .ok_or("missing input transaction")?,
+        )?;
+        inputs = inputs
+            .checked_add(
+                previous
+                    .output
+                    .get(input.previous_output.vout as usize)
+                    .ok_or("missing input output")?
+                    .value
+                    .to_sat(),
+            )
+            .ok_or("input overflow")?;
+    }
+    let outputs = tx
+        .output
+        .iter()
+        .try_fold(0u64, |sum, o| sum.checked_add(o.value.to_sat()))
+        .ok_or("output overflow")?;
+    inputs
+        .checked_sub(outputs)
+        .ok_or("negative transaction fee".into())
+}
+fn halt_events(root: &Path, core: &Core, tip: u32, writer: &mut Writer) -> Result<Value> {
+    use layertree_tee_lab::{output::TreeOutput, rules::TreeState, unroll::UnrollPackage};
+    let path = root.join("halt-observer-state.json");
+    let status: Value = read(&path)?;
+    let point_text = status["halted_state"]["outpoint"]
+        .as_str()
+        .ok_or("missing halted output")?;
+    let point = rpc::outpoint(point_text)?;
+    let halted = u32::try_from(
+        status["halted_at_height"]
+            .as_u64()
+            .ok_or("missing HALT height")?,
+    )
+    .map_err(|_| "invalid HALT height")?;
+    if status["halted_state"]["halted"] != true
+        || status["signing_refusal"] != "Halted"
+        || halted > tip
+    {
+        return Err("missing observed HALT and exact signing refusal".into());
+    }
+    let snapshot: rpc::Snapshot = read(recorded(root, point_text)?.join("state-before.json"))?;
+    let params = snapshot.params.params()?;
+    let tree = rpc::tree(params.depth, &snapshot.leaves)?;
+    let node = tree.root().map_err(|_| "invalid recovery tree")?;
+    let state = TreeState {
+        tree,
+        outpoint: point,
+        output: TreeOutput {
+            root_hash: node.hash,
+            unroll_key: snapshot
+                .unroll_key
+                .as_deref()
+                .ok_or("missing saved unroll key")?
+                .parse()
+                .map_err(|_| "invalid saved unroll key")?,
+        },
+    };
+    let package = UnrollPackage::decode(&rpc::bytes(
+        snapshot.unroll.as_deref().ok_or("missing saved unroll")?,
+    )?)
+    .map_err(|_| "invalid saved unroll")?;
+    for member in state.tree.leaves().values() {
+        layertree_tee_lab::unroll::verify_package(
+            &bitcoin::secp256k1::Secp256k1::verification_only(),
+            &params,
+            state.output,
+            state.outpoint,
+            state.amount(),
+            state.tree.leaves(),
+            &package,
+            member,
+        )
+        .map_err(|e| format!("saved escape refused: {e:?}"))?;
+    }
+    if package.txs.len() != 1 {
+        return Err("this experiment requires a flat escape package".into());
+    }
+    let (_, opened) = confirmed(core, &point.txid.to_string())?;
+    let first = opened
+        .checked_add(u32::from(params.unroll_delay))
+        .ok_or("height overflow")?;
+    if halted < opened || status["first_valid_unroll_block"] != first {
+        return Err("HALT timing differs from the confirmed output and CSV delay".into());
+    }
+    writer.push(Some(halted), Body::EnclaveDown {});
+    writer.push(
+        Some(halted),
+        Body::Rejected {
+            op: OpKind::Refresh,
+            reject: "Halted".into(),
+        },
+    );
+    let parent = &package.txs[0];
+    let parent_id = parent.compute_txid().to_string();
+    let mut result = json!({"kind":"guardian_halt","physical_vm_kill":false,
+        "halt_height":halted,"tree_confirmation_height":opened,"first_valid_block":first,
+        "halt_state_sha256":sha256::Hash::hash(&fs::read(path).map_err(|_|"cannot read HALT observation")?).to_string(),
+        "parent_txid":parent_id,"status":"waiting_csv"});
+    if status["phase"] != "paid" {
+        core.output(point, true)?;
+        if status["unroll"]["status"] != "waiting_csv"
+            || tip.checked_add(1).ok_or("height overflow")? >= first
+        {
+            return Err(
+                "capture the original broadcast or payout before exporting this recovery stage"
+                    .into(),
+            );
+        }
+        let tests = status["unroll"]["testmempoolaccept"]
+            .as_array()
+            .ok_or("missing early CSV test")?;
+        if tests.len() != 1
+            || tests[0]["txid"] != parent_id
+            || tests[0]["allowed"] != false
+            || tests[0]["reject-reason"] != "non-BIP68-final"
+        {
+            return Err("the early escape was not refused for its actual CSV delay".into());
+        }
+        writer.push(Some(tip), Body::Block { spent: vec![] });
+        writer.push(
+            Some(tip),
+            Body::Measured {
+                what: "blocks_until_first_valid_block".into(),
+                value: u64::from(first - tip - 1),
+                unit: "blocks".into(),
+                level: Some(0),
+            },
+        );
+        result["observed_tip"] = tip.into();
+        return Ok(result);
+    }
+    let plan: Value = read(root.join("unroll-package.json"))?;
+    let (actual, paid) = confirmed(core, &parent_id)?;
+    let child_id = plan["child_txid"].as_str().ok_or("missing CPFP child")?;
+    let (child, child_height) = confirmed(core, child_id)?;
+    let planned_parent = rpc::transaction(plan["parent"].as_str().ok_or("missing parent bytes")?)?;
+    let planned_child = rpc::transaction(plan["child"].as_str().ok_or("missing child bytes")?)?;
+    let fee = transaction_fee(core, &child)?;
+    let submitted = u32::try_from(plan["height"].as_u64().ok_or("missing broadcast height")?)
+        .map_err(|_| "invalid broadcast height")?;
+    if &actual != parent
+        || actual != planned_parent
+        || child != planned_child
+        || paid < first
+        || submitted.checked_add(1).ok_or("height overflow")? < first
+        || submitted > paid
+        || fee > 10000
+        || plan["fee_sat"] != fee
+        || transaction_fee(core, &actual)? != 0
+    {
+        return Err("confirmed escape or CPFP differs from its saved package and timing".into());
+    }
+    let anchor = bitcoin::OutPoint {
+        txid: parent.compute_txid(),
+        vout: state.tree.leaves().len() as u32,
+    };
+    if !child.input.iter().any(|i| i.previous_output == anchor) {
+        return Err("confirmed fee child does not spend the saved escape anchor".into());
+    }
+    writer.push(
+        Some(submitted),
+        Body::UnrollBroadcast {
+            level: 0,
+            txid: parent_id.clone(),
+            cpfp_fee: fee,
+        },
+    );
+    writer.push(
+        Some(paid),
+        Body::UnrollConfirmed {
+            level: 0,
+            txid: parent_id.clone(),
+        },
+    );
+    let mut payouts = Vec::new();
+    for (index, (pos, leaf)) in state.tree.leaves().iter().enumerate() {
+        let output = actual
+            .output
+            .get(index)
+            .ok_or("missing confirmed member payout")?;
+        if output.value.to_sat() != leaf.amount
+            || output.script_pubkey != layertree_tee_lab::output::p2tr_raw(&leaf.exit_key)
+        {
+            return Err("confirmed escape pays a different member or amount".into());
+        }
+        writer.push(Some(paid), Body::payout(&leaf.exit_key, leaf.amount));
+        payouts.push(
+            json!({"position":pos,"amount_sat":leaf.amount,"exit_key":rpc::hex(&leaf.exit_key),
+            "outpoint":format!("{parent_id}:{index}")}),
+        );
+    }
+    writer.push(
+        Some(child_height),
+        Body::Measured {
+            what: "escape_package_fee".into(),
+            value: fee,
+            unit: "sat".into(),
+            level: Some(0),
+        },
+    );
+    result["status"] = "paid".into();
+    result["confirmation_height"] = paid.into();
+    result["child_confirmation_height"] = child_height.into();
+    result["fee_sat"] = fee.into();
+    result["payouts"] = payouts.into();
+    Ok(result)
+}
 fn export(
     root: &Path,
     release_dir: &Path,
     output: &Path,
     refusal_output: Option<&Path>,
+    halt: bool,
 ) -> Result<Value> {
     let core = Core::new(
         std::env::var_os("LAYERTREE_CHAIN_COOKIE").ok_or("set the scratch signet cookie path")?,
@@ -304,6 +524,11 @@ fn export(
             "capture":capture.file_name().and_then(|s|s.to_str()),"capture_time":now,"source_commit":checked.source_commit,
             "token_sha256":sha256::Hash::hash(token.as_bytes()).to_string(),"fee_sat":fee,"vsize":tx.vsize()}));
     }
+    let recovery = if halt {
+        Some(halt_events(root, &core, tip, &mut writer)?)
+    } else {
+        None
+    };
     let text = writer.to_jsonl();
     let checked = events::read(&text).map_err(|e| format!("exported events refused: {e:?}"))?;
     write_new(output, text.as_bytes())?;
@@ -315,7 +540,7 @@ fn export(
         write_new(path, text.as_bytes())?;
     }
     let summary = json!({"schema":"openagents.layertree.signet-view.v1","chain_reader_tip":tip,
-        "historical_attestation":true,"negative_view":"Expected tree ID changed; real captured token rejected with report_data_mismatch; service history remains separate.",
+        "historical_attestation":true,"recovery":recovery,"negative_view":"Expected tree ID changed; real captured token rejected with report_data_mismatch; service history remains separate.",
         "output_sha256":sha256::Hash::hash(text.as_bytes()).to_string(),"events":checked.events.len(),"members":checked.tree.leaves().len(),"paid_sat":checked.paid,"sources":sources});
     write_new(
         &output.with_extension("sources.json"),
@@ -332,11 +557,14 @@ fn main() {
             Path::new(&args[0]),
             Path::new(&args[1]),
             Path::new(&args[2]),
-            args.get(3).map(Path::new),
+            args.get(3)
+                .filter(|s| s.as_str() != "--halt")
+                .map(Path::new),
+            args.get(3).map(String::as_str) == Some("--halt"),
         )
     } else {
         Err(
-            "use PUBLIC_CAPTURE_DIRECTORY RELEASE_DIRECTORY OUTPUT.jsonl [REFUSAL_VIEW.jsonl]"
+            "use PUBLIC_CAPTURE_DIRECTORY RELEASE_DIRECTORY OUTPUT.jsonl [REFUSAL_VIEW.jsonl|--halt]"
                 .into(),
         )
     };

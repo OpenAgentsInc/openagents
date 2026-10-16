@@ -53,7 +53,7 @@ Publication requires acknowledgement and retrieval on a new connection.
 It uses a separate research Nostr key and publishes no wallet credentials.
 
 
-`export-signet PUBLIC_CAPTURES RELEASE OUTPUT.jsonl [NEGATIVE_VIEW.jsonl]`
+`export-signet PUBLIC_CAPTURES RELEASE OUTPUT.jsonl [NEGATIVE_VIEW.jsonl|--halt]`
 rechecks the selected public captures at their recorded attestation times
 and reads each actual transaction and confirmation through the separate
 signet Core node (`LAYERTREE_CHAIN_COOKIE`). It exports only confirmed
@@ -63,3 +63,13 @@ that the real captured token is refused; it never adds that refusal to
 normal service history. Each output has a source list separating
 confirmation height from the server's authorization tip. The exporter
 reads no private test keys and sends no transaction.
+
+
+`--halt` additionally checks the recorded guardian HALT, exact `Halted`
+refusal, and every member's saved escape-package signatures. A waiting
+view requires an unspent confirmed tree and the actual `non-BIP68-final`
+rejection; it records the observed tip and first valid block without
+claiming payouts. A paid view requires the original parent and fee child
+to confirm, checks their complete bytes, CSV timing, independently computed
+fees, the anchor spend, and every member's exact exit output. The source
+file labels this as guardian HALT, rather than physical VM deletion.
