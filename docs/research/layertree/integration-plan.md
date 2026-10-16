@@ -8,13 +8,23 @@ The design itself is in [analysis.md](analysis.md).
 
 ## Decision in brief
 
-- **Track LayerTree. Do not build on it for production.** It needs soft
-  forks that are not active anywhere, not even on a public signet.
+- **Track LayerTree. Do not build on it for production.** The covenant
+  version needs soft forks that are not active anywhere, not even on a
+  public signet.
+- **A mainnet route without a soft fork exists, at a cost in trust.** An
+  enclave co-signer can enforce the same rules, with a pre-signed,
+  timelocked unroll as the escape hatch
+  ([TEE spec](2026-10-15-mainnet-tee-spec.md)). It does not wait for a
+  soft fork. It waits for the owner's go/no-go and the custody review in
+  #11761 before any real money, and for a LICENSE file before any reuse of
+  upstream code.
 - **Run it now where it runs**: the upstream Python simulator, Go builders
   and Lean model, at a pinned commit, in a scratch clone.
-- **Prototype the off-chain half in Rust** in a sandbox crate,
-  `openagents/crates/layertree-lab`: the tree, proofs, path maintenance and
-  vouchers, checked byte for byte against upstream test vectors. Then run the
+- **Prototype the off-chain half in Rust** in one sandbox crate,
+  `openagents/crates/layertree-tee-lab` (planned earlier as
+  `layertree-lab`): the tree, proofs, path maintenance and vouchers,
+  checked byte for byte against upstream test vectors, plus the TEE
+  predicate. Then run the
   real payout ledger through it in shadow mode, with no money and no chain.
 - **Go deeper only on a trigger**: a public test build with one tier's
   opcodes, activation signalling on mainnet, Lightning Labs operator
@@ -149,12 +159,14 @@ nearest thing deployable today is the LSPS4 JIT receive we already use.
 | Lightning Labs ships operator software (lnd, tapd or Loop integration) | a reference operator to interoperate with | E4 on LND via `lnd-sdk` |
 | Activation signalling for CCV, `OP_CAT` + `OP_TWEAKADD`, or GSR + `OP_TX` + CSFS on mainnet | production planning | custody and legal review; payout pilot design |
 | A LICENSE file plus an external review or audit | code reuse and trust in the bytecode | consider porting script generators to Rust |
+| None: the TEE route needs no consensus change | a capped mainnet pilot with an enclave co-signer | P0 to P3 of the [TEE spec](2026-10-15-mainnet-tee-spec.md), with the owner deciding before P1 VMs and before P2 mainnet money |
 | A native Merkle-sum opcode proposal | exits near 580 vB at 1M members | re-run the cost model for micro-balances |
 
 ## Experiment plan
 
-All experiments live in the `openagents` monorepo, in a sandbox crate
-`crates/layertree-lab`. LayerTree is not Taproot Assets work, so it does not
+All experiments live in the `openagents` monorepo, in the sandbox crate
+`crates/layertree-tee-lab` (its own workspace, listed in the root
+`exclude`). LayerTree is not Taproot Assets work, so it does not
 belong in `tap-ldk`. `immortal` has strict dependency allowlists and a
 different product. Payments, wallet and payout surfaces are owned by
 `openagents`. The crate stays out of the default build and the product
@@ -179,7 +191,20 @@ clone afterwards.
 
 ### E1: the off-chain tree in Rust (one to two weeks)
 
-`crates/layertree-lab`, written fresh from the spec:
+`crates/layertree-tee-lab`, written fresh from the spec.
+
+**Status, 2026-10-15:** mostly done.
+
+- Done: the leaf, tagged hashes, nodes, `enc64`, the dense tree, fold,
+  paths and `E_h`; path maintenance; the voucher and `EXIT^t` messages;
+  `TREE_SPK_CCV`; and property tests for conservation, path maintenance and
+  voucher non-replay, named after upstream's Lean theorems.
+- An opt-in test matches upstream's empty nodes, leaf bytes, leaf hashes,
+  example root, `tree_id` and state key.
+- Not done: the FULL-tier `TREE_SPK(r, m)` with a real `m` (it needs
+  upstream's script set), the cumulative voucher, and `REWRITE`.
+
+The original scope was:
 
 - the 116-byte leaf, tagged hashes, Merkle-sum nodes and `enc64`;
 - a dense tree with fold, sibling paths and `E_h`;
@@ -393,9 +418,13 @@ version and the dependency set.
 
 - Whether server-side Taproot Assets moves to `tapd` through `lnd-sdk`,
   making `tap-ldk` embedded-wallet research only.
-- Whether to start `crates/lnd-sdk` now (regtest-only first milestone), or
-  wait for a concrete payout need.
+- ~~Whether to start `crates/lnd-sdk` now.~~ Since settled: `crates/lnd-sdk`
+  exists and drives `oa-lnd-1` ([lnd-host.md](../../payments/lnd-host.md)).
 - Whether credit-leaf "redeem without us" earnings (fit 2) is worth a
   custody and legal review once a trigger fires.
 
-None of these is needed for E0 to E2, which can start now.
+- The TEE route's own decisions, listed in section 10 of the
+  [TEE spec](2026-10-15-mainnet-tee-spec.md): custody (#11761), the
+  guardian key, caps, the spend on P1 VMs, and the P2 go/no-go.
+
+None of these is needed for E0 to E2 or for the TEE spec's P0.

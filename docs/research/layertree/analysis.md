@@ -437,19 +437,22 @@ runs on Bitcoin today."
 | Python simulator | **Yes.** A tapscript interpreter for both leaf versions computes the real BIP-341 sighash and runs every compiled script. It needs only the standard library. | `python3 tools/test_scripts.py` and its siblings. |
 | Go builders | **Yes, offline.** They build, sign and verify every transition of every tier against the simulator's sighash, but Go cannot execute the covenant. | `go test ./...` |
 | Lean model | **Yes.** | `cd formal && lake build` with a Lean 4 toolchain. |
+| Mainnet with a TEE in place of covenants | Not built upstream. roasbeef suggested it on 2026-10-15. Our [TEE spec](2026-10-15-mainnet-tee-spec.md) designs it, and `crates/layertree-tee-lab` tests the predicate, the unroll and light clients in process. | An enclave co-signer on a Confidential VM, owner decisions, and the custody review (#11761). It trades theft-prevention-by-consensus for trust in the TEE, with caps. |
 | Liquid | Not built, but the paper notes MID is "close to expressible there" (OP_CAT, CSFS, introspection, 64-bit arithmetic). | A port. Liquid is a federated sidechain, outside our Bitcoin-mainnet rails. |
 
 So what runs today is the **simulator, the Go builders and the Lean model**.
-Anything on a node is a research bet on soft forks.
+Anything on a node is a research bet on soft forks, unless a TEE stands in
+for the covenant. That route is covered in the
+[TEE spec](2026-10-15-mainnet-tee-spec.md).
 
 ## Repository and maturity
 
 | Fact | Value |
 | --- | --- |
-| Created | 2026-09-17 (repo and spec header); about 70 commits by 2026-10-15 |
+| Created | first commit 2026-09-16 (spec header: 2026-09-17); 516 commits by 2026-10-15, all by one author |
 | Languages | Python (reference + simulator, ~22k lines), Go (~20k lines on btcd, lnd/tlv and taproot-assets), Lean 4 (~4.6k lines), TeX, a static HTML site |
 | Go module path | `github.com/roasbeef/layertree` (the repo lives at `lightninglabs/layertree`) |
-| Licence | **No LICENSE file**, and GitHub reports none. The spec header says `License: BSD-3-Clause`. Treat the code as unlicensed for reuse until a LICENSE file lands. |
+| Licence | **No LICENSE file**, and GitHub reports none (rechecked 2026-10-15 at `f6c4d29`: `license: null`). The spec header says `License: BSD-3-Clause`. Treat the code as unlicensed for reuse until a LICENSE file lands. |
 | Spec | `spec/layertree.md` v0.15.2, Draft, RFC 2119 language |
 | Tests | 1,610 FULL, 1,391 MID, 57 MIN, 4,295 CCV, 220 channel-leaf and 222 hypothetical-opcode checks; 427 Go end-to-end cases and 156 negative cases. CI runs the Python suites, a golden-vector diff, and `go build`/`go vet`. |
 | Open items | P model of the off-chain protocol (not started), verified compiler, regtest harness (blocked on opcodes), message framing, `SLASH` bond (open issue #11) |

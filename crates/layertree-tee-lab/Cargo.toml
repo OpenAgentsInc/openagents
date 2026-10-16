@@ -1,0 +1,20 @@
+[package]
+name = "layertree-tee-lab"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Sandbox: LayerTree's off-chain tree and rules, enforced by a modelled TEE co-signer on today's Bitcoin. Research only; outside the default build."
+
+# Its own workspace, so it never joins the monorepo build (the root
+# Cargo.toml also lists it under `exclude`). See README.md.
+[workspace]
+
+[dependencies]
+# Same version as the monorepo's Cargo.lock; it brings secp256k1 0.29.
+bitcoin = { version = "=0.32.102", default-features = false, features = ["std", "rand-std"] }
+
+[dev-dependencies]
+proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
+# Only for the opt-in cross-check against upstream's published vectors.
+serde_json = "=1.0.151"
+hex = "=0.4.3"

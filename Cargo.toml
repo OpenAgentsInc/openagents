@@ -9,6 +9,9 @@ exclude = [
     "crates/psionic",
     # Vendored third-party workspaces, patched in by path; see each one.
     "vendor",
+    # LayerTree TEE sandbox: research only, its own workspace, never built
+    # by default (docs/research/layertree/2026-10-15-mainnet-tee-spec.md).
+    "crates/layertree-tee-lab",
 ]
 resolver = "2"
 
