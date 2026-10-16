@@ -1,0 +1,12 @@
+.git
+**/target
+docs
+bench
+os
+swift
+bins
+nips
+plugins
+deploy
+!deploy/space-service
+!deploy/space-service/key-broker.Dockerfile
