@@ -8,13 +8,13 @@ run on the application's Tokio runtime.
 
 ```toml
 [dependencies]
-openagents-sdk = { git = "https://github.com/OpenAgentsInc/openagents.git", rev = "c2baf83c52356aee1f7d119d689e077ce07ae768" }
+openagents-sdk = { git = "https://github.com/OpenAgentsInc/openagents.git", rev = "ceabf529d2698fce04c3d433e222258457b74e41" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
-This pin passed an outside-checkout build and an account/workspace read against
-the public API with a dedicated test account; see the
-[verification record](../../docs/sdk/auth-client-evidence.json).
+This pin passed an outside-checkout build, account/workspace discovery, and
+complete saved-history reads against the public API with a dedicated test
+account; see the [verification record](../../docs/sdk/history-client-evidence.json).
 
 ```rust
 use openagents_sdk::{CancellationToken, Client, Deployment};
@@ -94,3 +94,19 @@ not successful completion. Cancel readers on account changes and compare the
 returned `ChatRef` before applying a late result to a view. Clear or replace
 cached shared content when access is refreshed; every new server read uses the
 existing access check (up to 30 seconds of successful-check caching).
+
+```rust
+use openagents_sdk::{CancellationToken, ChatRef, Client, Error, Session};
+
+async fn read_selected(
+    client: &Client, session: &Session, selected: &ChatRef, cancel: &CancellationToken,
+) -> Result<usize, Error> {
+    let mut reader = client.transcript(session, selected)?.with_page_size(100)?;
+    let mut count = 0;
+    while let Some(page) = reader.next_page(client, session, cancel).await? {
+        // Render this account-bound page before requesting another one.
+        count += page.data.len();
+    }
+    Ok(count)
+}
+```

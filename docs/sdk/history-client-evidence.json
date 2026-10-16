@@ -1,0 +1,32 @@
+{
+  "schema": "openagents.sdk.history-client-evidence.v1",
+  "sdk_commit": "ceabf529d2698fce04c3d433e222258457b74e41",
+  "rust_toolchain": "1.97.1",
+  "server_commit": "73742de53573e515174d821a29d8ce4fddd1bfe9",
+  "production_revision": "coder-web-0c9769ff13-20261016041038",
+  "staging_revision": "openagents-web-1-staging-00155-6rp",
+  "server_image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:0c9769ff133dc16536ebd1dc60d80d13664522304df20497ef3d2c14174eb834",
+  "schema_sha256": "0f3b9b10424c046e5b86ab4f2c3a9c25b550ffb652221b7380b043d1b09d0b7f",
+  "checks": {
+    "sdk_auth_tests": 10,
+    "sdk_history_tests": 5,
+    "sdk_copy_tests": 1,
+    "real_handler_transcript_messages": 405,
+    "external_git_build": "passed",
+    "external_normal_dependencies": {
+      "normal_host_dependencies": [],
+      "login_features": [],
+      "packages": 139
+    },
+    "production_external_read": {
+      "chats": 3,
+      "messages": 615,
+      "tools": "passed",
+      "thinking": "passed",
+      "writes_by_sdk": 0
+    },
+    "synthetic_chat_cleanup": "passed"
+  },
+  "test_account": "dedicated production test account; no owner data",
+  "publication": "not authorized or performed"
+}
