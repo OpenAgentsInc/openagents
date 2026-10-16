@@ -1,0 +1,275 @@
+{
+  "schema": "openagents.space_computers_qualification.v1",
+  "issue": 11810,
+  "date": "2026-10-16",
+  "upstream": {
+    "repository": "https://github.com/perplexityai/SPACE",
+    "commit": "de87b436c35dac056564bdd5b2a113c9046e189b",
+    "source_patch": null,
+    "profile": "Kind-hosted control plane using the Direct substrate on one registered worker; no customer node-CLI creates"
+  },
+  "openagents_build": {
+    "base_commit": "7d1eb70f60e52a213f1957a7cbf5d935cf454109",
+    "overlay_commit": "e000b13c78",
+    "overlay_files": [
+      "crates/computer-driver/src/space.rs",
+      "crates/computer-conformance/tests/space.rs"
+    ],
+    "overlay_patch": "measured-source.patch",
+    "service_sha256": "c7d979aeb1a3ec9b18367a814e99088fa5c7f1d6674e0ef9c33c6cc816e4682e",
+    "root_lock_sha256": "fbb6c82264af6cdec4526862686d4a8e233f9586612e64cc391285b1a20ce3a7",
+    "rust": "1.97.1",
+    "profile": "debug; CARGO_INCREMENTAL=0, CARGO_PROFILE_DEV_DEBUG=0, CARGO_PROFILE_TEST_DEBUG=0",
+    "note": "The measured service uses the production 7d baseline plus the create-operation fix. Later command-cleanup changes are outside this measured binary; SDK rollout and durable recovery remain separate work."
+  },
+  "template": "seed@sha256:2728d439a511dc9a8755ef229f718a20d12a8cad83fe0d198e3e541f0afcc0a5",
+  "execution": {
+    "runtime": {
+      "kind": "firecracker",
+      "version": "1.15.1"
+    },
+    "guest": {
+      "os": "linux",
+      "architecture": "x86_64"
+    },
+    "state_format": {
+      "format": "firecracker-snapshot",
+      "version": "9.0.0"
+    },
+    "components": [
+      {
+        "kind": "kernel",
+        "role": "boot",
+        "version": "legacy-e20e46d0c36c",
+        "digest": "sha256:e20e46d0c36c55c0d1014eb20576171b3f3d922260d9f792017aeff53af3d4f2",
+        "format": "vmlinux"
+      }
+    ]
+  },
+  "actual_shape": {
+    "vcpu": 2,
+    "memory_mib": 1024
+  },
+  "conditions": {
+    "concurrency": 1,
+    "template_cache": "warm",
+    "ready_guest_pool": false,
+    "service_poll_ms": 25,
+    "driver_poll_ms": 25,
+    "client_poll_ms": 20,
+    "operation_poll_ms": 100,
+    "settled_revisit_ms": 30000,
+    "measurement": "Computers create request through first successful true command; includes host boot/shape observation, equivalent retry, operation confirmation and command-result polling",
+    "transport": "Loopback measurement proxies; configured attachment origin remains checked; proxy records timing and IDs only",
+    "positive_runner_sha256": "6fc7d4c91249b09579b4d5f439e3f806507d71fa23f1a352e4ecedb2bbedb25d",
+    "percentiles": "Nearest rank; sorted samples 10 and 18 of 20; every failed sample fails qualification"
+  },
+  "results": {
+    "cold": {
+      "count": 20,
+      "failures": 0,
+      "p50_ms": 1744.7401859999445,
+      "p90_ms": 1811.0511680006312,
+      "passed": true
+    },
+    "snapshot": {
+      "count": 20,
+      "failures": 0,
+      "p50_ms": 750.5401299995356,
+      "p90_ms": 811.169487999905,
+      "passed": true
+    }
+  },
+  "conformance": {
+    "passed": 10,
+    "total": 10,
+    "profiles": [
+      "core",
+      "suspend"
+    ],
+    "snapshot": "unsupported and refused",
+    "fork": "unsupported and refused"
+  },
+  "size_policy": {
+    "small": "Template shape; verified clean base when compatible, otherwise cold if no matching base exists",
+    "medium": {
+      "boot_mode": "cold",
+      "shape": {
+        "vcpu": 4,
+        "memory_mib": 4096
+      },
+      "first_command_ms": 2396.4231299996754
+    },
+    "large": {
+      "boot_mode": "cold",
+      "shape": {
+        "vcpu": 8,
+        "memory_mib": 8192
+      },
+      "first_command_ms": 2754.6151080005075
+    }
+  },
+  "snapshot_failures": {
+    "missing_base": "Twenty cold creates with no matching base; actual cold mode and unchanged logical retry identity verified",
+    "stale_base": "Base lookup is scoped by immutable template digest and shape; another build is not a matching base",
+    "corrupt_vm_state": {
+      "operation": "failed",
+      "provider_lookup_status": 404,
+      "computer_retry_same_identity": true,
+      "provider_retry_same_identity": true,
+      "provider_deleted": true,
+      "database_fixture_removed": true,
+      "driver_outcome": "unknown after accepted failure; the test inspects the provider before disposing its isolated database"
+    },
+    "original_clean_base_restored": true,
+    "operator_compatibility_guards": "Retained real inventory passes; changed runtime, state format, kernel, and guest platform refuse before policy mutation"
+  },
+  "diagnostic_attempts": [
+    {
+      "file": "direct-cold-pilot-11810.json",
+      "result": "failed",
+      "reason": "Selected worker lacked the cached seed template"
+    },
+    {
+      "file": "direct-cold-pilot-v2-11810.json",
+      "result": "failed",
+      "reason": "Accepted create observed before its sandbox existed; initial cleanup delay retained, later provider absence verified"
+    },
+    {
+      "file": "direct-cold-pilot-v3-11810.json",
+      "result": "failed",
+      "reason": "Measurement harness expected succeeded instead of the legacy turn API done state; corrected before the two complete arms"
+    }
+  ],
+  "verification": {
+    "rust_driver": 16,
+    "rust_conformance_mock": 6,
+    "live_conformance": 10,
+    "formatting": "Affected Rust formatting, shell syntax, Python compilation and diff checks passed"
+  },
+  "cleanup": {
+    "schema": "openagents.space.cloud_cleanup.v1",
+    "instance": "oa-space-spike-11810",
+    "instance_id": "284715725837299414",
+    "started_at": "2026-10-16T18:06:47.863431+00:00",
+    "root_verified_firecracker_process_count": 0,
+    "evidence_download_sha256": "e480bffbb8090885485d6354b44964b04bd7827cc636b5c19a8cb83ec55e7a73",
+    "finished_at": "2026-10-16T18:10:35.039514+00:00",
+    "remaining": {
+      "instances": 0,
+      "disks": 0,
+      "networks": 0,
+      "routers": 0,
+      "firewall-rules": 0,
+      "networks subnets": 0
+    },
+    "complete": true
+  },
+  "cost": {
+    "billed_usd": null,
+    "estimated_usd": 0.946591,
+    "components_usd": {
+      "vm": 0.6735106877429466,
+      "local_ssd": 0.07124969376080686,
+      "boot_pd": 0.023749854576689,
+      "nat_gateway": 0.0024311258665555553,
+      "nat_ip": 0.008682592380555555,
+      "nat_processed_bytes": 0.16696701086126267
+    },
+    "resource_hours": {
+      "vm_and_disks": 1.7337431983333333,
+      "nat_router": 1.736518476111111
+    },
+    "rates_usd": {
+      "n2_standard_8_per_hour": 0.388472,
+      "local_ssd_per_gib_hour": 0.000109589,
+      "pd_balanced_per_gib_hour": 0.000136986,
+      "nat_gateway_per_hour": 0.0014,
+      "nat_ip_per_hour": 0.005,
+      "nat_processed_per_gib": 0.045
+    },
+    "sources": [
+      "https://cloud.google.com/products/compute/pricing/general-purpose",
+      "https://cloud.google.com/compute/disks-image-pricing",
+      "https://cloud.google.com/nat/pricing"
+    ],
+    "nat_metrics": {
+      "received": {
+        "total_bytes": 3975739105,
+        "latest_point": "2026-10-16T18:03:00Z",
+        "points": 288,
+        "series": 3
+      },
+      "sent": {
+        "total_bytes": 8248957,
+        "latest_point": "2026-10-16T18:03:00Z",
+        "points": 288,
+        "series": 3
+      }
+    },
+    "method": "List-price estimate; conservatively end resource lifetimes at completed deletion of the host infrastructure.",
+    "exclusions": [
+      "Billed amounts and discounts unavailable; final metric reporting lag and separately billed internet transfer are excluded.",
+      "The pre-existing shared builder is outside this disposable host estimate."
+    ]
+  },
+  "adoption": {
+    "api_snapshot_p50_under_two_seconds": true,
+    "production_default": "boat",
+    "space_enabled_in_production": false,
+    "remaining_issues": [
+      11811,
+      11812,
+      11813,
+      11814,
+      11815,
+      11816
+    ],
+    "scope": "Supported API boot-path proof, without a production durability or complete development-toolchain claim"
+  },
+  "retained_artifact": {
+    "path": "docs/cloud/evidence/space-computers-2026-10-16.tar.gz",
+    "sha256": "e146239cb18b479439f6a98de73e30162ba103643ca0cbeacee8ca8bddd6163a",
+    "bytes": 47339,
+    "files": 38,
+    "members_sha256": {
+      "cloud-cleanup.json": "8bf654ba870da62dc8ebec6692960c4fc9911f91b6c42a6b5f89ada6fb796ee7",
+      "cost.json": "702d975e9dcf819b57506f86ab16ebed51e807be4d78e8684c2fcdf7e76cb94e",
+      "direct-base-on-11810.json": "9612db8639bbc67a1edd784ed5711d6fb57cda94462d9e6fbef11b2f719977ae",
+      "direct-cold-pilot-11810.json": "d6d447317fdc6b83b90f0e59b6e9853c186ad72228cd11e39d17bed5377f8083",
+      "direct-cold-pilot-v2-11810.json": "d8e67140a97614f4eac5555230ce1b0ba91b98fd583555b5d891f4a039cfbc24",
+      "direct-cold-pilot-v3-11810.json": "5c538e8bb019f29d29fb231dee777675eb3c6820deab729f5e48ce36bef14ea6",
+      "direct-cold20-11810.json": "19c3a4b42cef5e21ccfd3d9e8dcf17e16223621313c59c86260520ebc65053fd",
+      "direct-conformance-11810.txt": "73144dc7d23f9a3af8ad3929c049fb589706a447a85911d4794f56b5d2d89904",
+      "direct-controller-pauses-11810.json": "8c4da71bf3ea872835ca635fd45157b6c9007c1578cda68f31f627cbe9bccdff",
+      "direct-corrupt-refusal-11810.json": "327deff3177631101441cbbdc3e4a7403244e29755552510ef900819b4cfa80c",
+      "direct-corruption-11810.json": "e610eb2ff8f8b6db85b88b530713e7ccc95c7a69965a5c70fb09ff520d8c3100",
+      "direct-fault-sequence-11810.json": "b6e2f6b2b2bd66d763a1e3fc1ca804f2b8fe001c44d39ba5beeca5dc6c9f0235",
+      "direct-final-guest-cleanup-11810.json": "94ebd54690a5945ddb7d31b5ed96c3ee6d2781a0cb3d1c191f25c0edc52a4a62",
+      "direct-incompatible-large-11810.json": "c2d37926b084a16aab9de6e92387d30a3d9d7aeffb7b67f1282653b4b52b0f53",
+      "direct-incompatible-medium-11810.json": "972ce0c82608a0a32defd9914de1ce8f78eac0a63d2a7e0ece5c76f3469e35a3",
+      "direct-node-admission-11810.json": "80d2bd053dc273f50984cf2a5c84b256fd93d3252fa0ff20bca9d4aef2643bd5",
+      "direct-pilot-v2-cleanup-11810.json": "15c3308b37d87a9d09a743bd7dce40e8b0f43c0e0387e3f906d366de596aadd4",
+      "direct-positive-sequence-11810.json": "e6e35bae42df0a927ec41d1a6365dd1a1c00d1b77d39934a1effc755e026b3cb",
+      "direct-profile-11810.json": "2fc37926aaead9102a8e966374c2771caf25dcb7698d908758bd8b01d926a4c0",
+      "direct-snapshot-pilot-11810.json": "70807ef4071aaf03bbd8db2d06994f47b017b1d6ad415a9819669ae4a69d4774",
+      "direct-snapshot20-11810.json": "549af19f7d22df0f7f81bc54d5ecf672b79a4e1c9fb0e8765de15a472b10579e",
+      "direct-tool-identities-11810.json": "4d6b2d5884169e9f213b7a3acd439136fd785ee009df348622497cd80f8fb817",
+      "direct-worker-preparation-11810.json": "3c3767a2e77b263d012cae9629303161e1636b271334d782a1cf10a4118043ba",
+      "measured-source.patch": "197fd1d75188ac7927412d09384b03eb21bcbd105c1651324d1963bdfb15b5cb",
+      "operator-inventory-guard-checks.json": "99f2f1c938d68ab6bef10e3a281d2d8943fda8cf9d473ab3577e091edc73c0cc",
+      "qualification.json": "a41203ea25ac97c05f5ba7ed8a8e3cbb9ab1e0dd66a70ae8619aae548c186615",
+      "sources/boot-mode.py": "acbef38c09525c1b65798c7fae6a6fea95d5d2f79de84d63ef10f81290440551",
+      "sources/computers-bench-faults-11810.py": "ddd15e5a5c3e4943b0f18b593996c94f258f33283f6ae8bae24abba42e6549c9",
+      "sources/computers-bench-qualified-11810.py": "6fc7d4c91249b09579b4d5f439e3f806507d71fa23f1a352e4ecedb2bbedb25d",
+      "sources/corrupt-snapshot.py": "94cde2f2a96fa5647eeca6405b2961d3dca68838c7363f722ae2990aeebaa1d1",
+      "sources/delivered-prepare-snapshot.py": "fef0c49ea063470ef9903c7396d2679e42a731da4ada6966d64f92639fea1872",
+      "sources/delivered-prepare-worker.py": "277fa8b9036fafeb2fb886870bbecbbd5962bc3d86493c3fe43b3583ef4f38e0",
+      "sources/prepare-direct.py": "e9377ec00c2344af81a5193d8b2c3085c8f18e03f609dce944efc3727b6da785",
+      "sources/prepare-snapshot.py": "3417e767a5a0fe514906b75124eccd0cde9b0a404dcb2a731ed2ca9cbe245907",
+      "sources/prepare-worker.py": "ce893fa7aefe48fe166e509bb03fcaddc49869b61d2227adc6d80b2267a009b4",
+      "sources/space-11810-after-cold.py": "8a8a763d87d6f5cfe1a6b00a7e9c627fdedbeae613a41959d4b011d93ce0239a",
+      "sources/space-11810-after-positive.py": "4078a79ff43e5578b9ecfcf131c14e58eb9abdd4f08978f180ce1db5e416068a"
+    }
+  }
+}

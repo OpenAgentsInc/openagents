@@ -31,10 +31,59 @@ process and full 1 GiB buffer hash across suspend/wake; wake-to-answer was
 9.293 seconds. GitHub access succeeded, while a DNS-bypassed request to a
 host-verified `example.com` address was reset.
 
-The Kind HTTP path still cold-boots when base snapshots are enabled. Its
-boot-mode guard correctly failed. Native snapshots meet the two-second
-target, but the HTTP driver's adoption gate remains unmet. A production
-driver needs a deployment path that actually selects those snapshots.
+That Kind HTTP run cold-boots even with a base snapshot. Its boot-mode guard
+correctly failed. The Direct run below qualifies a separate API boot path.
+
+## Direct API through Computers
+
+Issue [#11810](https://github.com/OpenAgentsInc/openagents/issues/11810) uses
+unmodified SPACE at the same source pin, with one Direct worker on a disposable
+Google Cloud host. The control-plane services run in Kind and select the Direct
+substrate for this worker. Creates and commands go through `oa-computers` and
+its Rust driver.
+The driver waits for each accepted create operation before observing its
+sandbox. This prevents an early `404` from being mistaken for deletion.
+
+| Path | Samples | First-command p50 | First-command p90 | Failures |
+| --- | --- | --- | --- | --- |
+| Computers, Direct cold | 20 | 1,744.7 ms | 1,811.1 ms | 0 |
+| Computers, Direct snapshot | 20 | 750.5 ms | 811.2 ms | 0 |
+
+The [2026-10-16 evidence](evidence/2026-10-16-space-computers.json) links the raw
+measurements and checks. All guests, the test host, its disks, and its network
+resources were deleted. The list-price estimate is $0.95; billed cost and
+separate internet transfer charges were unavailable.
+
+Both arms use the same clean seed template, 2 vCPUs, and 1024 MiB. Every sample
+checks the running Firecracker process and its CPU and memory configuration.
+The timer includes service polling, host observation, attachment, and a
+successful `true` command. Samples run one at a time with cached template files
+and no pool of ready guests. The evidence records each timing boundary, runtime
+and kernel identity, snapshot format, retries, failed preliminary attempts,
+and cleanup.
+
+`small` uses the template's declared shape and a compatible clean base snapshot
+when available; a missing base falls back to cold. `medium` explicitly requests
+4 vCPUs and 4096 MiB; `large` requests 8 vCPUs and 8192 MiB. Both custom shapes
+use cold boot. Shared bases come only from the clean seed build. A stale base
+for another template digest is not selected. A corrupt VM-state file fails its
+create operation; retries keep the same computer and provider identity. The
+driver reports that accepted failure as unknown. The fault check confirms
+provider deletion before removing its isolated database.
+
+On the isolated issue 11810 host, run `prepare-direct.py`, then
+`prepare-worker.py`, as `space-spike`. The latter prepares the pinned clean seed
+cache and two native network slots. Its six-hour pauses keep template settings
+local while inventory publication continues. `prepare-snapshot.py` changes the
+clean base policy and checks the selected runtime, kernel, and snapshot format
+against the worker inventory. These tools refuse another host or template
+identity. To upgrade SPACE, pin the new source and clean template, rebuild the
+base, and repeat both twenty-sample runs and the conformance and fault checks.
+Retain the evidence before teardown.
+
+Boat remains the production default. The maintained private deployment and
+public SDK rollout remain separate work in #11814 and #11816; durable lifecycle
+recovery remains #11812.
 
 ## Driver
 
@@ -74,7 +123,8 @@ request explicit shapes and therefore cold-boot in this SPACE version.
 ## Disposable GCE setup
 
 Use the configured gcloud login. The scripts create only resources named
-`oa-space-spike-11728` in `openagentsgemini`, with a dedicated network,
+`oa-space-spike-11728` in `openagentsgemini` (or `oa-space-spike-11810` with
+`SPACE_SPIKE_ISSUE=11810`), with a dedicated network,
 Cloud NAT, IAP SSH, no VM external address, and no service account.
 The `n2-standard-8` VM has nested virtualization and a 375 GiB btrfs local
 SSD. It automatically deletes after six hours; run teardown to remove the

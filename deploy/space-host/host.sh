@@ -5,7 +5,14 @@ set -euo pipefail
 PROJECT=${SPACE_GCP_PROJECT:-openagentsgemini}
 ZONE=${SPACE_GCP_ZONE:-us-central1-a}
 REGION=${ZONE%-*}
-NAME=oa-space-spike-11728
+ISSUE=${SPACE_SPIKE_ISSUE:-11728}
+case "$ISSUE" in
+  11728) SUBNET_RANGE=10.217.28.0/24 ;;
+  11810) SUBNET_RANGE=10.218.10.0/24 ;;
+  *) echo 'Choose a supported SPACE spike issue.' >&2; exit 2 ;;
+esac
+NAME=oa-space-spike-$ISSUE
+DESCRIPTION="SPACE spike #$ISSUE"
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 g() { gcloud --project "$PROJECT" --quiet "$@"; }
 ssh_host() { g compute ssh "space-admin@$NAME" --zone "$ZONE" --tunnel-through-iap "$@"; }
@@ -20,6 +27,10 @@ case ${1:-help} in
   create)
     # Fail before creating anything if the configured login cannot reach GCP.
     g compute zones describe "$ZONE" --format='value(name)' >/dev/null
+    agent_labels=${SPACE_AGENT_LABELS:-}
+    if [[ -n ${OA_RUN_ID:-} ]]; then
+      agent_labels=$(python3 "$ROOT/scripts/dev/agent-run.py" labels)
+    fi
     if g compute instances describe "$NAME" --zone "$ZONE" >/dev/null 2>&1; then
       owned instances --zone "$ZONE"
       echo "SPACE spike host already exists."
@@ -27,14 +38,14 @@ case ${1:-help} in
     fi
     # These names belong solely to this issue. Do not reuse production networks.
     if ! g compute networks describe "$NAME" >/dev/null 2>&1; then
-      g compute networks create "$NAME" --subnet-mode=custom --description='SPACE spike #11728'
+      g compute networks create "$NAME" --subnet-mode=custom --description="$DESCRIPTION"
     fi
-    [[ $(g compute networks describe "$NAME" --format='value(description)') == 'SPACE spike #11728' ]] || { echo 'Network ownership check failed.' >&2; exit 1; }
+    [[ $(g compute networks describe "$NAME" --format='value(description)') == "$DESCRIPTION" ]] || { echo 'Network ownership check failed.' >&2; exit 1; }
     if ! g compute networks subnets describe "$NAME" --region "$REGION" >/dev/null 2>&1; then
-      g compute networks subnets create "$NAME" --network "$NAME" --region "$REGION" --range=10.217.28.0/24 --enable-private-ip-google-access
+      g compute networks subnets create "$NAME" --network "$NAME" --region "$REGION" --range="$SUBNET_RANGE" --enable-private-ip-google-access
     fi
     if ! g compute firewall-rules describe "$NAME-iap" >/dev/null 2>&1; then
-      g compute firewall-rules create "$NAME-iap" --network "$NAME" --allow=tcp:22 --source-ranges=35.235.240.0/20 --target-tags="$NAME" --description='SPACE spike #11728'
+      g compute firewall-rules create "$NAME-iap" --network "$NAME" --allow=tcp:22 --source-ranges=35.235.240.0/20 --target-tags="$NAME" --description="$DESCRIPTION"
     fi
     if ! g compute routers describe "$NAME" --region "$REGION" >/dev/null 2>&1; then
       g compute routers create "$NAME" --network "$NAME" --region "$REGION"
@@ -47,7 +58,7 @@ case ${1:-help} in
       --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
       --boot-disk-size=100GB --boot-disk-type=pd-balanced --local-ssd=interface=NVME \
       --network="$NAME" --subnet="$NAME" --no-address --no-service-account --no-scopes \
-      --tags="$NAME" --labels=openagents-managed=space-spike,issue=11728 \
+      --tags="$NAME" --labels="openagents-managed=space-spike,issue=$ISSUE${agent_labels:+,$agent_labels}" \
       --metadata=block-project-ssh-keys=TRUE,enable-oslogin=FALSE \
       --max-run-duration=6h --instance-termination-action=DELETE
     ;;
@@ -70,7 +81,7 @@ case ${1:-help} in
   runtime)
     owned instances --zone "$ZONE"
     image=${SPACE_RUNTIME_IMAGE:-oa-coder-main-20261015}
-    g compute disks create "$NAME-runtime" --zone "$ZONE" --image="$image" --type=pd-balanced --labels=openagents-managed=space-spike,issue=11728
+    g compute disks create "$NAME-runtime" --zone "$ZONE" --image="$image" --type=pd-balanced --labels="openagents-managed=space-spike,issue=$ISSUE"
     runtime_cleanup() {
       g compute instances detach-disk "$NAME" --zone "$ZONE" --disk="$NAME-runtime" || true
       g compute disks delete "$NAME-runtime" --zone "$ZONE"
@@ -122,7 +133,7 @@ case ${1:-help} in
     fi
     # Check the issue description before deleting the dedicated network.
     description=$(g compute networks describe "$NAME" --format='value(description)' 2>/dev/null || true)
-    [[ -z "$description" || "$description" == 'SPACE spike #11728' ]] || { echo 'Network ownership check failed.' >&2; exit 1; }
+    [[ -z "$description" || "$description" == "$DESCRIPTION" ]] || { echo 'Network ownership check failed.' >&2; exit 1; }
     if [[ -n "$description" ]]; then
       if g compute routers describe "$NAME" --region "$REGION" >/dev/null 2>&1; then
         g compute routers delete "$NAME" --region "$REGION"
