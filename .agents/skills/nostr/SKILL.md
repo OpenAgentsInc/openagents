@@ -119,7 +119,8 @@ Read the spec before the code. The files you need most often:
   including what it deliberately doesn't advertise.
 
 The OpenAgents lane contains 33 NIPs plus the shared contracts. Status is
-role-specific: SESS has a retained-history observer; WS has source-owned Git
+role-specific: SESS has a retained-history observer and managed sessions
+over in-process adapters in `session-host`; WS has source-owned Git
 documents, conditional changes, checkpoints/restoration, scoped native views,
 and a portable client in `workspace-host`, alongside activity summaries.
 ENV has SSH host management and the `env-host` allocator (leases, exact

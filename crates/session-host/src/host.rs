@@ -1,0 +1,1885 @@
+//! The managed-session authority. It admits openings and commands under
+//! exact revisions, keeps one durable FIFO per session, dispatches a turn
+//! only under a current ENV execution binding, arbitrates interactions, and
+//! never repeats an engine execution whose outcome is unknown.
+use crate::{
+    Result,
+    engine::{Capture, Engine, Observation, Profile, Support},
+};
+use nostr::{
+    contracts::{self, SCHEMA_MEDIA_TYPE, digest_bytes},
+    domain::{Event, RelaySigner},
+    session as sess,
+};
+use secp256k1::SecretKey;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
+use workspace_host::artifact::{Artifacts, token};
+
+pub const MAX_SESSIONS: usize = 64;
+pub const MAX_QUEUE: usize = 256;
+
+/// The current ENV execution binding for one CJ execution.
+pub trait Bindings {
+    fn check(&self, attachment: &str, fingerprint: &str, now: u64) -> Result<()>;
+}
+
+impl Bindings for env_host::allocator::Allocator {
+    fn check(&self, attachment: &str, fingerprint: &str, now: u64) -> Result<()> {
+        self.check_dispatch(attachment, fingerprint, now)
+    }
+}
+
+/// The attachment the transport delivered this execution under.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Binding {
+    pub attachment: String,
+    pub fingerprint: String,
+    /// The signed ENV attachment grant reference.
+    pub grant: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Policy {
+    pub owners: BTreeSet<String>,
+    pub controllers: BTreeSet<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Prior {
+    fingerprint: String,
+    result: Value,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Adapter {
+    reference: Value,
+    engine: String,
+    definition: Value,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Queued {
+    id: String,
+    intent: Value,
+    state: String,
+    turn: Option<String>,
+    receipt: Value,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Turn {
+    id: String,
+    intent: Value,
+    attachment: Value,
+    run: Vec<Value>,
+    interrupted: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Interaction {
+    id: String,
+    /// The original pending artifact: the identity responses name.
+    reference: Value,
+    /// The latest signed artifact for this interaction.
+    current: Value,
+    native_id: String,
+    recipient: String,
+    turn: String,
+    expires_at: u64,
+    state: String,
+    claim: Option<Prior>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Session {
+    id: String,
+    lineage: String,
+    owner: String,
+    adapter: String,
+    native: Option<String>,
+    connection: String,
+    ordinal: u64,
+    generation: u64,
+    revision: u64,
+    phase: String,
+    read_only: bool,
+    archived: bool,
+    admission: Value,
+    source: Value,
+    effective: Value,
+    projection: Value,
+    active: Option<Turn>,
+    turn_revision: Option<u64>,
+    queue: Vec<Queued>,
+    interactions: Vec<Interaction>,
+    children: Vec<Value>,
+    natives: Vec<Value>,
+    results: Vec<Value>,
+    quiescent: bool,
+    pending_steers: Vec<(Value, Value)>,
+    steers: Vec<Value>,
+    history: Option<Value>,
+    state: Option<Value>,
+    import: Option<Value>,
+}
+
+impl Session {
+    fn scope(&self, authority: &str) -> Value {
+        json!({"authority":authority,"session":self.id,"generation":self.generation})
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct State {
+    policy: Policy,
+    adapters: BTreeMap<String, Adapter>,
+    sessions: BTreeMap<String, Session>,
+    priors: BTreeMap<String, Prior>,
+    signers: BTreeMap<String, BTreeSet<String>>,
+    declarations: BTreeMap<String, Value>,
+    bound: BTreeMap<String, String>,
+}
+
+/// A signed private request with the exact artifacts it references.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Bundle {
+    pub event: Event,
+    #[serde(default)]
+    pub artifacts: BTreeMap<String, Vec<u8>>,
+}
+
+pub struct SessionHost {
+    store: Artifacts,
+    signer: RelaySigner,
+    secret: SecretKey,
+    engines: RefCell<BTreeMap<String, Box<dyn Engine>>>,
+    bindings: Box<dyn Bindings>,
+}
+
+fn refuse(code: &str, detail: &str) -> String {
+    format!("{code}: {detail}")
+}
+
+/// The shared refusal code at the front of an error, or `unavailable`.
+pub fn code(error: &str) -> &'static str {
+    env_host::allocator::code(error)
+}
+
+fn contract(e: contracts::ContractError) -> String {
+    format!("{}: {}", e.code.as_str(), e)
+}
+
+fn digest_of(reference: &Value) -> &str {
+    reference["digest"].as_str().unwrap_or_default()
+}
+
+fn same(a: &Value, b: &Value) -> bool {
+    !digest_of(a).is_empty() && digest_of(a) == digest_of(b)
+}
+
+/// The fixed answer schema for engine questions in this profile.
+pub fn answer_schema() -> Value {
+    json!({"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object",
+        "additionalProperties":false,"required":["text"],
+        "properties":{"text":{"type":"string","maxLength":1024}}})
+}
+
+fn validate_against(schema: &[u8], value: &Value) -> Result<()> {
+    let digest = digest_bytes(schema);
+    let closure = contracts::prepare_closure(&BTreeMap::from([(digest.clone(), schema.to_vec())]))
+        .map_err(contract)?;
+    contracts::validate_instance(&closure, &digest, value).map_err(contract)
+}
+
+impl SessionHost {
+    pub fn initialize(root: PathBuf, secret: SecretKey, policy: Policy) -> Result<()> {
+        let store = Artifacts::new(root)?;
+        if store.root().join("state.json").exists() {
+            return Err("conflict: session host state already exists".into());
+        }
+        let signer = RelaySigner::from_secret_hex(&secret.display_secret().to_string())
+            .map_err(|e| e.to_string())?;
+        store.save(
+            &State {
+                policy,
+                ..State::default()
+            },
+            &signer,
+        )
+    }
+    pub fn open(
+        root: PathBuf,
+        secret: SecretKey,
+        engines: Vec<Box<dyn Engine>>,
+        bindings: Box<dyn Bindings>,
+    ) -> Result<Self> {
+        let store = Artifacts::new(root)?;
+        let signer = RelaySigner::from_secret_hex(&secret.display_secret().to_string())
+            .map_err(|e| e.to_string())?;
+        let engines = engines
+            .into_iter()
+            .map(|e| (e.profile().name.to_string(), e))
+            .collect();
+        let host = Self {
+            store,
+            signer,
+            secret,
+            engines: RefCell::new(engines),
+            bindings,
+        };
+        host.state()?;
+        Ok(host)
+    }
+    pub fn pubkey(&self) -> &str {
+        self.signer.pubkey()
+    }
+    pub fn store(&self) -> &Artifacts {
+        &self.store
+    }
+    fn state(&self) -> Result<State> {
+        self.store.load(&self.signer)
+    }
+    fn save(&self, state: &State) -> Result<()> {
+        self.store.save(state, &self.signer)
+    }
+    /// How many turns an engine instance actually started.
+    pub fn started(&self, engine: &str) -> usize {
+        self.engines.borrow().get(engine).map_or(0, |e| e.started())
+    }
+    /// Test and operator access to an engine instance.
+    pub fn with_engine<T>(&self, name: &str, f: impl FnOnce(&mut dyn Engine) -> T) -> Option<T> {
+        self.engines
+            .borrow_mut()
+            .get_mut(name)
+            .map(|engine| f(engine.as_mut()))
+    }
+
+    fn sign(&self, state: &mut State, body: &Value, recipient: &str, now: u64) -> Result<Value> {
+        if body["v"].as_str().is_some_and(|v| {
+            v.starts_with("openagents.session")
+                || v.starts_with("openagents.turn-")
+                || v.starts_with("openagents.queued-")
+        }) {
+            sess::validate(body).map_err(contract)?;
+        }
+        let reference = self.store.put_json(body)?;
+        let digest = digest_of(&reference).to_string();
+        if !state.declarations.contains_key(&digest) {
+            let event = workspace_host::host::request(&self.secret, recipient, body.clone(), now)?;
+            let event_ref = self.store.put(
+                &serde_json::to_vec(&event).map_err(|e| e.to_string())?,
+                "application/json",
+                None,
+            )?;
+            state.declarations.insert(digest.clone(), event_ref);
+            state
+                .signers
+                .entry(digest)
+                .or_default()
+                .insert(self.pubkey().into());
+        }
+        Ok(reference)
+    }
+
+    fn authenticate(&self, state: &mut State, event: &Event) -> Result<(String, Value, Value)> {
+        let opened =
+            nostr::private_artifact::open(event, &self.secret).map_err(|e| e.to_string())?;
+        let bytes = opened
+            .inline_bytes()
+            .ok_or("malformed: requests carry their artifact inline")?
+            .to_vec();
+        let body = contracts::parse_strict_bounded(&bytes, 1_048_576).map_err(contract)?;
+        let schema = body["v"].as_str().unwrap_or_default().to_string();
+        let reference = self.store.put(
+            &bytes,
+            "application/json",
+            Some(schema.as_str()).filter(|s| !s.is_empty()),
+        )?;
+        let digest = digest_of(&reference).to_string();
+        // The same bytes may be signed by several principals; each request
+        // is attributed to its own verified signer.
+        state
+            .signers
+            .entry(digest.clone())
+            .or_default()
+            .insert(opened.signer().into());
+        let event_ref = self.store.put(
+            &serde_json::to_vec(event).map_err(|e| e.to_string())?,
+            "application/json",
+            None,
+        )?;
+        state
+            .declarations
+            .entry(format!("{digest}:{}", opened.signer()))
+            .or_insert(event_ref);
+        Ok((opened.signer().into(), body, reference))
+    }
+
+    fn bytes(&self, reference: &Value) -> Result<Vec<u8>> {
+        self.store
+            .get(reference)
+            .map_err(|_| refuse("content_unavailable", "referenced bytes are not retained"))
+    }
+    fn body(&self, reference: &Value, schema: &str) -> Result<Value> {
+        let bytes = self.bytes(reference)?;
+        if schema.starts_with("openagents.environment-") {
+            return nostr::environment::verify(reference, &bytes, schema).map_err(contract);
+        }
+        sess::verify(reference, &bytes, schema).map_err(contract)
+    }
+
+    /// Admit one engine adapter by its exact profile and feature matrix.
+    pub fn admit_adapter(&self, engine: &str, now: u64) -> Result<Value> {
+        let _lock = self.store.lock()?;
+        let mut state = self.state()?;
+        let profile: Profile = self
+            .engines
+            .borrow()
+            .get(engine)
+            .map(|e| e.profile())
+            .ok_or_else(|| refuse("unavailable", "no such engine adapter"))?;
+        let host = self.pubkey().to_string();
+        let definition = json!({"id":format!("{host}:session/{}",profile.name),
+            "artifact":self.store.put(&profile.engine,"application/octet-stream",None)?});
+        let mut features = Vec::new();
+        for (name, support) in &profile.features {
+            if *support == Support::Unsupported {
+                features.push(
+                    json!({"feature":name,"support":"unsupported","operation":null,
+                    "semantics":null,"evidence":null,"limitations":[]}),
+                );
+                continue;
+            }
+            let semantics = self.store.put(
+                &serde_json::to_vec(
+                    &json!({"feature":name,"support":support.as_str(),"adapter":profile.name}),
+                )
+                .map_err(|e| e.to_string())?,
+                SCHEMA_MEDIA_TYPE,
+                None,
+            )?;
+            let evidence = if *name == "steer" {
+                let s = profile.steering;
+                self.store
+                    .put_json(&json!({"v":"openagents.session-steering.v1","requires":[],
+                    "native":s.native,"emulation":s.emulation,"acknowledgment":s.acknowledgment}))?
+            } else {
+                self.store.put_json(
+                    &json!({"adapter":profile.name,"feature":name,"support":support.as_str()}),
+                )?
+            };
+            let limitations: Vec<String> = match (*name, support) {
+                ("queue" | "reorder", Support::Emulated) => {
+                    vec!["host-held FIFO; the engine has no native queue".into()]
+                }
+                ("import", Support::Emulated) => {
+                    vec!["read-only foreign history; no native resume".into()]
+                }
+                ("steer", Support::Emulated) => vec![
+                    "cancel_and_continue: interrupts, then the next started turn carries the correction"
+                        .into(),
+                ],
+                _ => Vec::new(),
+            };
+            features.push(json!({"feature":name,"support":support.as_str(),
+                "operation":{"id":format!("{host}:session/{name}"),"artifact":semantics},
+                "semantics":semantics,"evidence":evidence,"limitations":limitations}));
+        }
+        let protocol = self.store.put(&profile.protocol, SCHEMA_MEDIA_TYPE, None)?;
+        let compatibility = self
+            .store
+            .put_json(&json!({"engine":digest_bytes(&profile.engine),
+            "protocol":digest_bytes(&profile.protocol),"verified":"in-process fixture"}))?;
+        let body = json!({"v":"openagents.session-adapter.v1","requires":[],"adapter":definition,
+            "engine":self.store.put(&profile.engine,"application/octet-stream",None)?,
+            "protocol":protocol,"features":features,"compatibility":compatibility});
+        let reference = self.sign(&mut state, &body, &host, now)?;
+        self.store.put(
+            &serde_json::to_vec(&profile.settings_schema).map_err(|e| e.to_string())?,
+            SCHEMA_MEDIA_TYPE,
+            None,
+        )?;
+        state.adapters.insert(
+            digest_of(&reference).into(),
+            Adapter {
+                reference: reference.clone(),
+                engine: engine.into(),
+                definition,
+            },
+        );
+        self.save(&state)?;
+        Ok(reference)
+    }
+
+    fn support(&self, state: &State, session: &Session, feature: &str) -> Result<Support> {
+        let adapter = state.adapters.get(&session.adapter).ok_or("adapter")?;
+        let body = self.store.json(&adapter.reference)?;
+        let entry = body["features"]
+            .as_array()
+            .and_then(|f| f.iter().find(|f| f["feature"] == feature))
+            .ok_or("feature")?;
+        Ok(match entry["support"].as_str() {
+            Some("native") => Support::Native,
+            Some("emulated") => Support::Emulated,
+            _ => Support::Unsupported,
+        })
+    }
+    fn require(&self, state: &State, session: &Session, feature: &str) -> Result<Support> {
+        let support = self.support(state, session, feature)?;
+        if support == Support::Unsupported {
+            return Err(refuse("unsupported_feature", feature));
+        }
+        Ok(support)
+    }
+
+    fn check_configuration(&self, adapter: &Adapter, reference: &Value) -> Result<Value> {
+        let config = self.body(reference, "openagents.session-configuration.v1")?;
+        if config["adapter"] != adapter.definition {
+            return Err(refuse("identity_mismatch", "configuration adapter"));
+        }
+        let profile = self
+            .engines
+            .borrow()
+            .get(&adapter.engine)
+            .map(|e| e.profile())
+            .ok_or("engine")?;
+        let schema = serde_json::to_vec(&profile.settings_schema).map_err(|e| e.to_string())?;
+        if digest_of(&config["settings_schema"]) != digest_bytes(&schema) {
+            return Err(refuse(
+                "incompatible",
+                "settings schema is not the adapter's",
+            ));
+        }
+        let settings = contracts::parse_strict_bounded(&self.bytes(&config["settings"])?, 65_536)
+            .map_err(contract)?;
+        // No unsupported setting is dropped or defaulted: the closed schema refuses it.
+        validate_against(&schema, &settings)
+            .map_err(|_| refuse("unsupported_feature", "a requested setting is unsupported"))?;
+        for field in ["recipient", "model", "policy"] {
+            self.bytes(&config[field])?;
+        }
+        Ok(config)
+    }
+
+    fn effective(
+        &self,
+        state: &mut State,
+        requested: &Value,
+        owner: &str,
+        now: u64,
+    ) -> Result<Value> {
+        let mut body = self.store.json(requested)?;
+        let enforcement = self
+            .store
+            .put_json(&json!({"host":self.pubkey(),"bounds":body["bounds"],
+            "mechanism":"session-host","requested":digest_of(requested)}))?;
+        body["enforcement"] = enforcement;
+        self.sign(state, &body, owner, now)
+    }
+
+    fn run_record(
+        &self,
+        run: &mut Vec<Value>,
+        run_id: &str,
+        kind: &str,
+        detail: Value,
+        now: u64,
+    ) -> Result<Value> {
+        let mut data = match kind {
+            "created" => json!({"owner":self.pubkey(),"request":detail["request"],"base":null,
+                "program":"session","lock":null,"context":null,"policy":null,"parent":null,"recipients":[]}),
+            "admitted" => {
+                json!({"enforcement":null,"reservations":[],"deadlines":{},"retention":{},"input":detail["request"]})
+            }
+            "dispatched" => {
+                json!({"binding":detail["binding"],"attempt":1,"input":detail["request"],
+                "context":null,"effect":"engine","generation":0})
+            }
+            "resolved" => {
+                json!({"outcome":detail["outcome"],"dispatched":detail["dispatched"],"output":null,
+                "receipts":[],"usage":{},"verification":"not_run","integration":"not_requested"})
+            }
+            "unknown" => json!({"attempt":1,"reservation":null,"evidence":[]}),
+            _ => json!({"evidence":[],"sources":[],"complete":true,"provenance":"session-host"}),
+        };
+        data["session"] = detail;
+        let previous = run.last().map(|b| b["digest"].clone());
+        let record = json!({"run":run_id,"seq":run.len(),"previous":previous,"controller":self.pubkey(),
+            "generation":0,"type":kind,"subject":{"step":null,"iteration":null,"attempt":null},"time":now,"data":data});
+        let digest = nostr::run::logical_digest(&record).map_err(contract)?;
+        let body =
+            json!({"v":nostr::run::RECORD_SCHEMA,"requires":[],"record":record,"digest":digest});
+        let mut journal = nostr::run::Journal::default();
+        for body in run.iter().chain(std::iter::once(&body)) {
+            let record = nostr::run::parse_envelope(body).map_err(contract)?;
+            if nostr::run::ingest(&mut journal, record, self.pubkey()).map_err(contract)?
+                != nostr::run::Ingest::Applied
+            {
+                return Err("conflict: RUN did not extend its exact history".into());
+            }
+        }
+        let reference = self.store.put_json(&body)?;
+        run.push(body);
+        Ok(reference)
+    }
+
+    /// Retain native captures as private envelopes.
+    fn capture(&self, state: &mut State, session: &mut Session, now: u64) -> Result<Vec<Value>> {
+        let adapter = state
+            .adapters
+            .get(&session.adapter)
+            .ok_or("adapter")?
+            .clone();
+        let description = self.store.json(&adapter.reference)?;
+        let captures: Vec<Capture> = self
+            .engines
+            .borrow_mut()
+            .get_mut(&adapter.engine)
+            .map(|e| e.captures())
+            .unwrap_or_default();
+        let mut refs = Vec::new();
+        for capture in captures {
+            let payload = match &capture.payload {
+                Some(bytes) => Some(self.store.put(bytes, "application/json", None)?),
+                None => None,
+            };
+            let body = json!({"v":"openagents.session-native.v1","requires":[],
+                "scope":session.scope(self.pubkey()),"adapter":adapter.definition,
+                "engine":description["engine"],"protocol":description["protocol"],
+                "connection":session.connection,"direction":capture.direction,"ordinal":session.ordinal,
+                "method":capture.method,"native_id":capture.native_id,"captured_at":now,
+                "payload":payload,"capture":if capture.payload.is_some(){"complete"}else{"unavailable"}});
+            session.ordinal += 1;
+            let reference = self.sign(state, &body, &session.owner.clone(), now)?;
+            session.natives.push(reference.clone());
+            refs.push(reference);
+        }
+        Ok(refs)
+    }
+
+    fn cut(&self, state: &mut State, session: &Session, now: u64) -> Result<Value> {
+        let body = json!({"v":"openagents.projection-cut.v1","requires":[],"projection":session.projection,
+            "epoch":session.lineage,"sequence":session.revision,"frontiers":[],
+            "consistency":"single_authority","coverage":"complete","captured_at":now});
+        nostr::workspace::validate(&body).map_err(contract)?;
+        self.sign(state, &body, &session.owner.clone(), now)
+    }
+
+    /// Export the session's history: exact native captures, a derived
+    /// portable view, explicit losses, and opaque resume state if supported.
+    fn export_history(&self, state: &mut State, session: &mut Session, now: u64) -> Result<Value> {
+        if let Some(import) = session.import.clone() {
+            return Ok(import);
+        }
+        let adapter = state
+            .adapters
+            .get(&session.adapter)
+            .ok_or("adapter")?
+            .clone();
+        let description = self.store.json(&adapter.reference)?;
+        let portable = self
+            .store
+            .put_json(&json!({"session":session.id,"turns":session.results}))?;
+        let resume = match (&session.native, self.support(state, session, "resume")?) {
+            (Some(native), Support::Native) => self
+                .engines
+                .borrow_mut()
+                .get_mut(&adapter.engine)
+                .and_then(|e| e.resume_state(native))
+                .map(|bytes| self.store.put(&bytes, "application/json", None))
+                .transpose()?,
+            _ => None,
+        };
+        let mut losses = vec![json!({"source":portable,"category":"derived",
+            "reason":"the portable view is derived from retained turn results"})];
+        if resume.is_none() {
+            losses.push(json!({"source":null,"category":"unavailable","reason":"no resume state"}));
+        }
+        let cut = self.cut(state, session, now)?;
+        let body = json!({"v":"openagents.session-history.v1","requires":[],"lineage":session.lineage,
+            "source":{"kind":"managed","admission":session.admission},"adapter":adapter.definition,
+            "engine":description["engine"],"cut":cut,"native":session.natives,"portable":portable,
+            "losses":losses,"resume":resume,"coverage":"complete"});
+        let reference = self.sign(state, &body, &session.owner.clone(), now)?;
+        session.history = Some(reference.clone());
+        Ok(reference)
+    }
+
+    fn write_state(&self, state: &mut State, session: &mut Session, now: u64) -> Result<Value> {
+        let history = self.export_history(state, session, now)?;
+        let queue: Vec<Value> = session
+            .queue
+            .iter()
+            .map(|q| {
+                self.store
+                    .put_json(&json!({"v":"openagents.queued-intent.v1","requires":[],
+                    "intent":q.intent,"state":q.state,"turn":q.turn,"receipt":q.receipt}))
+            })
+            .collect::<Result<_>>()?;
+        let interactions: Vec<Value> = session
+            .interactions
+            .iter()
+            .map(|i| i.current.clone())
+            .collect();
+        let body = json!({"v":"openagents.session-state.v1","requires":[],"admission":session.admission,
+            "scope":session.scope(self.pubkey()),"revision":session.revision,"effective":session.effective,
+            "phase":session.phase,"active_turn":session.active.as_ref().map(|t| t.id.clone()),
+            "turn_revision":session.active.as_ref().and(session.turn_revision),"queue":queue,
+            "interactions":interactions,"history":history,"children":session.children,"archived":session.archived});
+        let reference = self.sign(state, &body, &session.owner.clone(), now)?;
+        session.state = Some(reference.clone());
+        Ok(reference)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn control_result(
+        &self,
+        state: &mut State,
+        recipient: &str,
+        command: &Value,
+        status: &str,
+        receipt: Option<Value>,
+        reason: Option<&str>,
+        now: u64,
+    ) -> Result<Value> {
+        let body = json!({"v":"openagents.session-control-result.v1","requires":[],"command":command,
+            "status":status,"receipt":receipt,"reason":reason});
+        self.sign(state, &body, recipient, now)?;
+        Ok(body)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn receipt(
+        &self,
+        state: &mut State,
+        session: &Session,
+        command: &Value,
+        before: u64,
+        transition: &str,
+        records: Vec<Value>,
+        now: u64,
+    ) -> Result<Value> {
+        let body = json!({"v":"openagents.session-control-receipt.v1","requires":[],"command":command,
+            "scope":session.scope(self.pubkey()),"before_revision":before,"after_revision":session.revision,
+            "transition":transition,"admitted_at":now,"records":records});
+        self.sign(state, &body, &session.owner.clone(), now)
+    }
+
+    /// Admit one signed open, command, or interaction response.
+    pub fn submit(&self, bundle: &Bundle, binding: Option<&Binding>, now: u64) -> Result<Value> {
+        let _lock = self.store.lock()?;
+        let mut state = self.state()?;
+        for (digest, bytes) in &bundle.artifacts {
+            if digest_bytes(bytes) != *digest {
+                return Err(refuse("identity_mismatch", "attached artifact digest"));
+            }
+            self.store.put(bytes, "application/octet-stream", None)?;
+        }
+        let (signer, body, input) = self.authenticate(&mut state, &bundle.event)?;
+        if let Err(e) = sess::validate(&body) {
+            let result = self.control_result(
+                &mut state,
+                &signer,
+                &input,
+                "refused",
+                None,
+                Some(e.code.as_str()),
+                now,
+            )?;
+            self.save(&state)?;
+            return Ok(result);
+        }
+        let outcome = match body["v"].as_str() {
+            Some("openagents.session-open.v1") => {
+                self.open_session(&mut state, &signer, &body, &input, binding, now)
+            }
+            Some("openagents.session-command.v1") => {
+                self.command(&mut state, &signer, &body, &input, binding, now)
+            }
+            Some("openagents.session-interaction-response.v1") => {
+                self.respond(&mut state, &signer, &body, &input, now)
+            }
+            _ => Err(refuse("unsupported_feature", "operation")),
+        };
+        let result = match outcome {
+            Ok(result) => result,
+            Err(error) => {
+                let mut fresh = self.state()?;
+                fresh.signers.extend(state.signers);
+                fresh.declarations.extend(state.declarations);
+                state = fresh;
+                let status = if matches!(code(&error), "conflict" | "idempotency_conflict") {
+                    "conflict"
+                } else {
+                    "refused"
+                };
+                self.control_result(
+                    &mut state,
+                    &signer,
+                    &input,
+                    status,
+                    None,
+                    Some(code(&error)),
+                    now,
+                )?
+            }
+        };
+        self.save(&state)?;
+        Ok(result)
+    }
+
+    fn prior(state: &State, key: &str, fingerprint: &str) -> Result<Option<Value>> {
+        match state.priors.get(key) {
+            Some(prior) if prior.fingerprint == fingerprint => {
+                let mut result = prior.result.clone();
+                if result["status"] == "accepted" {
+                    result["status"] = json!("duplicate");
+                }
+                Ok(Some(result))
+            }
+            Some(_) => Err(refuse(
+                "idempotency_conflict",
+                "same command ID, different bytes",
+            )),
+            None => Ok(None),
+        }
+    }
+
+    fn check_binding(&self, binding: Option<&Binding>, now: u64) -> Result<Value> {
+        let binding = binding.ok_or_else(|| {
+            refuse(
+                "not_admitted",
+                "execution needs a current environment attachment",
+            )
+        })?;
+        self.bindings
+            .check(&binding.attachment, &binding.fingerprint, now)?;
+        Ok(binding.grant.clone())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn open_session(
+        &self,
+        state: &mut State,
+        signer: &str,
+        body: &Value,
+        input: &Value,
+        binding: Option<&Binding>,
+        now: u64,
+    ) -> Result<Value> {
+        let key = format!(
+            "{}:{}:{}",
+            body["authority"].as_str().unwrap_or_default(),
+            body["session"].as_str().unwrap_or_default(),
+            body["command"].as_str().unwrap_or_default()
+        );
+        if let Some(result) = Self::prior(state, &key, digest_of(input))? {
+            return Ok(result);
+        }
+        if body["authority"] != self.pubkey() {
+            return Err(refuse("not_admitted", "open names another authority"));
+        }
+        if body["owner"] != signer || !state.policy.owners.contains(signer) {
+            return Err(refuse(
+                "not_admitted",
+                "owner is not authorized by this host",
+            ));
+        }
+        if sess::number(body, "expires_at").map_err(contract)? <= now {
+            return Err(refuse("stale", "open request expired"));
+        }
+        let id = body["session"].as_str().unwrap_or_default().to_string();
+        if state.sessions.contains_key(&id) {
+            return Err(refuse("conflict", "session ID already used"));
+        }
+        if state.sessions.len() >= MAX_SESSIONS {
+            return Err(refuse("limit_exceeded", "session retention limit"));
+        }
+        let adapter = state
+            .adapters
+            .get(digest_of(&body["adapter"]))
+            .cloned()
+            .ok_or_else(|| refuse("not_admitted", "adapter is not admitted on this host"))?;
+        let kind = body["source"]["kind"].as_str().unwrap_or_default();
+        let feature = match kind {
+            "new" => "create",
+            other => other,
+        };
+        let adapter_body = self.store.json(&adapter.reference)?;
+        if adapter_body["features"]
+            .as_array()
+            .and_then(|f| f.iter().find(|f| f["feature"] == feature))
+            .is_none_or(|f| f["support"] == "unsupported")
+        {
+            return Err(refuse("unsupported_feature", feature));
+        }
+        self.body(&body["lease"], "openagents.environment-lease.v1")?;
+        self.body(
+            &body["materialization"],
+            "openagents.environment-materialization.v1",
+        )?;
+        self.bytes(&body["authorization"])?;
+        self.check_configuration(&adapter, &body["requested"])?;
+        let mut lineage = token();
+        let mut resume = None;
+        let mut import = None;
+        if kind != "new" {
+            let history =
+                self.body(&body["source"]["artifact"], "openagents.session-history.v1")?;
+            if history["adapter"] != adapter.definition && kind != "import" {
+                return Err(refuse("incompatible", "history comes from another adapter"));
+            }
+            match kind {
+                "resume" => {
+                    if history["source"]["kind"] != "managed" || history["resume"].is_null() {
+                        return Err(refuse("unsupported_feature", "history has no resume state"));
+                    }
+                    resume = Some(self.bytes(&history["resume"])?);
+                    let source_lineage = history["lineage"].as_str().unwrap_or_default();
+                    if state
+                        .sessions
+                        .values()
+                        .any(|s| s.lineage == source_lineage && s.phase != "closed")
+                    {
+                        return Err(refuse(
+                            "conflict",
+                            "the lineage is bound to an open session",
+                        ));
+                    }
+                    lineage = source_lineage.into();
+                }
+                "import" => {
+                    if history["source"]["kind"] != "foreign" {
+                        return Err(refuse("incompatible", "import takes foreign history"));
+                    }
+                    import = Some(body["source"]["artifact"].clone());
+                }
+                _ => {}
+            }
+        }
+        let grant = self.check_binding(binding, now)?;
+        let native = if import.is_some() {
+            None
+        } else {
+            let opened = self
+                .engines
+                .borrow_mut()
+                .get_mut(&adapter.engine)
+                .ok_or("engine")?
+                .open(resume.as_deref())?;
+            if let Some(other) = state.bound.get(&opened)
+                && state
+                    .sessions
+                    .get(other)
+                    .is_some_and(|s| s.phase != "closed")
+            {
+                return Err(refuse(
+                    "conflict",
+                    "the native session is bound to another session",
+                ));
+            }
+            Some(opened)
+        };
+        let owner = signer.to_string();
+        let mut run = Vec::new();
+        let created = self.run_record(
+            &mut run,
+            &id,
+            "created",
+            json!({"request":digest_of(input)}),
+            now,
+        )?;
+        self.run_record(
+            &mut run,
+            &id,
+            "admitted",
+            json!({"request":digest_of(input)}),
+            now,
+        )?;
+        let dispatched = self.run_record(
+            &mut run,
+            &id,
+            "dispatched",
+            json!({"request":digest_of(input),"binding":digest_of(&grant)}),
+            now,
+        )?;
+        let effective = self.effective(state, &body["requested"], &owner, now)?;
+        let admission = json!({"v":"openagents.session-admission.v1","requires":[],"request":input,
+            "session":id,"lineage":lineage,"owner":owner,"authority":self.pubkey(),"generation":0,"revision":0,
+            "attachment":grant,"adapter":body["adapter"],"requested":body["requested"],"effective":effective,
+            "source":body["source"],"authorization":body["authorization"],"admitted_at":now});
+        let admission_ref = self.sign(state, &admission, &owner, now)?;
+        let schema = self
+            .store
+            .put(sess::SCHEMA_BYTES, SCHEMA_MEDIA_TYPE, None)?;
+        let projection = json!({"v":"openagents.projection-definition.v1","requires":[],"projection":id,
+            "authority":self.pubkey(),"recipient":owner,"scope":admission_ref,"policy":body["authorization"],
+            "authorization":body["authorization"],"transform":{"id":format!("{}:session/history",self.pubkey()),
+            "artifact":schema},"parameters":self.store.put_json(&json!({"session":id}))?,"row_schema":schema,
+            "sources":[],"retention":{"retain_until":now+30*86_400,"max_items":4096,"max_bytes":16*1_048_576}});
+        nostr::workspace::validate(&projection).map_err(contract)?;
+        let projection = self.sign(state, &projection, &owner, now)?;
+        let mut session = Session {
+            id: id.clone(),
+            lineage,
+            owner: owner.clone(),
+            adapter: digest_of(&adapter.reference).into(),
+            native: native.clone(),
+            connection: token(),
+            ordinal: 0,
+            generation: 0,
+            revision: 0,
+            phase: "ready".into(),
+            read_only: import.is_some(),
+            archived: false,
+            admission: admission_ref,
+            source: body["source"].clone(),
+            effective,
+            projection,
+            active: None,
+            turn_revision: None,
+            queue: Vec::new(),
+            interactions: Vec::new(),
+            children: Vec::new(),
+            natives: Vec::new(),
+            results: Vec::new(),
+            quiescent: true,
+            pending_steers: Vec::new(),
+            steers: Vec::new(),
+            history: None,
+            state: None,
+            import,
+        };
+        if let Some(native) = native {
+            state.bound.insert(native, id.clone());
+        }
+        self.capture(state, &mut session, now)?;
+        let receipt = self.receipt(
+            state,
+            &session,
+            input,
+            0,
+            "open",
+            vec![created, dispatched],
+            now,
+        )?;
+        self.write_state(state, &mut session, now)?;
+        state.sessions.insert(id, session);
+        let result =
+            self.control_result(state, &owner, input, "accepted", Some(receipt), None, now)?;
+        state.priors.insert(
+            key,
+            Prior {
+                fingerprint: digest_of(input).into(),
+                result: result.clone(),
+            },
+        );
+        Ok(result)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn command(
+        &self,
+        state: &mut State,
+        signer: &str,
+        body: &Value,
+        input: &Value,
+        binding: Option<&Binding>,
+        now: u64,
+    ) -> Result<Value> {
+        let scope = &body["scope"];
+        let key = format!(
+            "{}:{}:{}",
+            scope["authority"].as_str().unwrap_or_default(),
+            scope["session"].as_str().unwrap_or_default(),
+            body["command"].as_str().unwrap_or_default()
+        );
+        if let Some(result) = Self::prior(state, &key, digest_of(input))? {
+            return Ok(result);
+        }
+        let id = scope["session"].as_str().unwrap_or_default().to_string();
+        let mut session = state
+            .sessions
+            .remove(&id)
+            .ok_or_else(|| refuse("not_admitted", "unknown session"))?;
+        let outcome = self.command_session(state, &mut session, signer, body, input, binding, now);
+        state.sessions.insert(id, session);
+        let result = outcome?;
+        state.priors.insert(
+            key,
+            Prior {
+                fingerprint: digest_of(input).into(),
+                result: result.clone(),
+            },
+        );
+        Ok(result)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn command_session(
+        &self,
+        state: &mut State,
+        session: &mut Session,
+        signer: &str,
+        body: &Value,
+        input: &Value,
+        binding: Option<&Binding>,
+        now: u64,
+    ) -> Result<Value> {
+        if body["scope"]["authority"] != self.pubkey()
+            || body["scope"]["generation"] != session.generation
+        {
+            return Err(refuse("stale", "scope generation"));
+        }
+        if signer != session.owner && !state.policy.controllers.contains(signer) {
+            return Err(refuse("not_admitted", "session control"));
+        }
+        if sess::number(body, "expires_at").map_err(contract)? <= now {
+            return Err(refuse("stale", "command expired"));
+        }
+        self.bytes(&body["authorization"])?;
+        if body["expected_revision"] != session.revision {
+            return Err(refuse("conflict", "stale session revision"));
+        }
+        let action = body["action"].as_str().unwrap_or_default().to_string();
+        let payload = &body["payload"];
+        if session.phase == "closed" && action != "archive" {
+            return Err(refuse("unavailable", "session is closed"));
+        }
+        if session.read_only
+            && matches!(
+                action.as_str(),
+                "submit" | "enqueue" | "steer" | "interrupt" | "configure"
+            )
+        {
+            return Err(refuse("not_admitted", "imported history is read-only"));
+        }
+        let before = session.revision;
+        let mut records = Vec::new();
+        match action.as_str() {
+            "submit" => {
+                self.require(state, session, "submit")?;
+                if session.active.is_some()
+                    || session.phase != "ready"
+                    || session.queue.iter().any(|q| q.state == "queued")
+                {
+                    return Err(refuse(
+                        "conflict",
+                        "submit needs an idle session with no queued intent",
+                    ));
+                }
+                if !session.quiescent {
+                    return Err(refuse("conflict", "the prior turn is not quiescent"));
+                }
+                let intent = self.intent(session, &payload["intent"], now)?;
+                let _ = intent;
+                let grant = self.check_binding(binding, now)?;
+                records = self.start_turn(state, session, &payload["intent"], grant, now)?;
+            }
+            "enqueue" => {
+                self.require(state, session, "queue")?;
+                let intent = self.intent(session, &payload["intent"], now)?;
+                if session.queue.len() >= MAX_QUEUE {
+                    return Err(refuse("limit_exceeded", "queue limit"));
+                }
+                let id = intent["intent"].as_str().unwrap_or_default().to_string();
+                if session.queue.iter().any(|q| q.id == id) {
+                    return Err(refuse("conflict", "intent already queued"));
+                }
+                session.queue.push(Queued {
+                    id,
+                    intent: payload["intent"].clone(),
+                    state: "queued".into(),
+                    turn: None,
+                    receipt: input.clone(),
+                });
+            }
+            "cancel_queued" => {
+                self.require(state, session, "queue")?;
+                let item = session
+                    .queue
+                    .iter_mut()
+                    .find(|q| {
+                        q.id == payload["intent"].as_str().unwrap_or_default()
+                            && q.state == "queued"
+                    })
+                    .ok_or_else(|| refuse("conflict", "no such queued intent"))?;
+                item.state = "cancelled".into();
+            }
+            "reorder" => {
+                self.require(state, session, "reorder")?;
+                let wanted: Vec<&str> = payload["intents"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .collect();
+                let queued: Vec<&Queued> = session
+                    .queue
+                    .iter()
+                    .filter(|q| q.state == "queued")
+                    .collect();
+                let mut a: Vec<&str> = queued.iter().map(|q| q.id.as_str()).collect();
+                let mut b = wanted.clone();
+                a.sort_unstable();
+                b.sort_unstable();
+                if a != b {
+                    return Err(refuse(
+                        "conflict",
+                        "reorder must name the exact remaining queue",
+                    ));
+                }
+                let mut rest: Vec<Queued> = session
+                    .queue
+                    .iter()
+                    .filter(|q| q.state != "queued")
+                    .cloned()
+                    .collect();
+                for id in wanted {
+                    rest.push(
+                        session
+                            .queue
+                            .iter()
+                            .find(|q| q.id == id)
+                            .cloned()
+                            .ok_or("queue")?,
+                    );
+                }
+                session.queue = rest;
+            }
+            "steer" => {
+                let support = self.require(state, session, "steer")?;
+                let turn = self.active_turn(session, payload)?;
+                let correction = self.body(
+                    &payload["correction"],
+                    "openagents.session-steer-correction.v1",
+                )?;
+                let content = self.bytes(&correction["correction"])?;
+                let adapter = state
+                    .adapters
+                    .get(&session.adapter)
+                    .ok_or("adapter")?
+                    .clone();
+                let steering = self
+                    .engines
+                    .borrow()
+                    .get(&adapter.engine)
+                    .ok_or("engine")?
+                    .profile()
+                    .steering;
+                let native = session.native.clone().ok_or("native session")?;
+                let receipt = match correction["mode"].as_str() {
+                    Some("native") => {
+                        if support != Support::Native || steering.native != "mid_turn" {
+                            return Err(refuse("unsupported_feature", "native mid-turn steering"));
+                        }
+                        let replayed = self
+                            .engines
+                            .borrow_mut()
+                            .get_mut(&adapter.engine)
+                            .ok_or("engine")?
+                            .steer(&native, &turn, &content)?;
+                        let evidence = self.capture(state, session, now)?;
+                        json!({"v":"openagents.session-steer-receipt.v1","requires":[],"scope":session.scope(self.pubkey()),
+                            "turn":turn,"correction":payload["correction"],"mode":"native",
+                            "acknowledgment":if replayed {steering.acknowledgment} else {"input_written"},
+                            "consumed":replayed && steering.acknowledgment == "engine_replay","evidence":evidence})
+                    }
+                    Some("emulated") => {
+                        if steering.emulation != Some("cancel_and_continue") {
+                            return Err(refuse(
+                                "unsupported_feature",
+                                "this adapter has no steering emulation",
+                            ));
+                        }
+                        self.engines
+                            .borrow_mut()
+                            .get_mut(&adapter.engine)
+                            .ok_or("engine")?
+                            .interrupt(&native, &turn)?;
+                        if let Some(active) = session.active.as_mut() {
+                            active.interrupted = true;
+                        }
+                        session.phase = "interrupting".into();
+                        let evidence = self.capture(state, session, now)?;
+                        session.pending_steers.push((
+                            payload["correction"].clone(),
+                            serde_json::from_slice(&content).unwrap_or(Value::Null),
+                        ));
+                        json!({"v":"openagents.session-steer-receipt.v1","requires":[],"scope":session.scope(self.pubkey()),
+                            "turn":turn,"correction":payload["correction"],"mode":"emulated",
+                            "acknowledgment":steering.acknowledgment,"consumed":false,"evidence":evidence})
+                    }
+                    _ => return Err(refuse("unsupported_feature", "steer mode")),
+                };
+                let reference = self.sign(state, &receipt, &session.owner.clone(), now)?;
+                session.steers.push(reference.clone());
+                records.push(reference);
+                session.turn_revision = session.turn_revision.map(|r| r + 1);
+            }
+            "interrupt" => {
+                self.require(state, session, "interrupt")?;
+                let turn = self.active_turn(session, payload)?;
+                let adapter = state
+                    .adapters
+                    .get(&session.adapter)
+                    .ok_or("adapter")?
+                    .clone();
+                let native = session.native.clone().ok_or("native session")?;
+                self.engines
+                    .borrow_mut()
+                    .get_mut(&adapter.engine)
+                    .ok_or("engine")?
+                    .interrupt(&native, &turn)?;
+                if let Some(active) = session.active.as_mut() {
+                    active.interrupted = true;
+                }
+                session.phase = "interrupting".into();
+                records.extend(self.capture(state, session, now)?);
+                session.turn_revision = session.turn_revision.map(|r| r + 1);
+            }
+            "configure" => {
+                self.require(state, session, "configure")?;
+                if session.active.is_some() || session.queue.iter().any(|q| q.state == "queued") {
+                    return Err(refuse(
+                        "conflict",
+                        "configure needs an idle session with an empty queue",
+                    ));
+                }
+                let adapter = state
+                    .adapters
+                    .get(&session.adapter)
+                    .ok_or("adapter")?
+                    .clone();
+                self.check_configuration(&adapter, &payload["requested"])?;
+                session.effective =
+                    self.effective(state, &payload["requested"], &session.owner.clone(), now)?;
+            }
+            "archive" => session.archived = payload["archived"] == true,
+            "close" => {
+                self.require(state, session, "close")?;
+                session.phase = if session.active.is_some() {
+                    "closing"
+                } else {
+                    "closed"
+                }
+                .into();
+                for item in session.queue.iter_mut().filter(|q| q.state == "queued") {
+                    item.state = "cancelled".into();
+                }
+            }
+            _ => return Err(refuse("unsupported_feature", "action")),
+        }
+        session.revision += 1;
+        let receipt = self.receipt(state, session, input, before, &action, records, now)?;
+        self.write_state(state, session, now)?;
+        self.control_result(
+            state,
+            &session.owner.clone(),
+            input,
+            "accepted",
+            Some(receipt),
+            None,
+            now,
+        )
+    }
+
+    fn intent(&self, session: &Session, reference: &Value, now: u64) -> Result<Value> {
+        let intent = self.body(reference, "openagents.turn-intent.v1")?;
+        if sess::number(&intent, "expires_at").map_err(contract)? <= now {
+            return Err(refuse("stale", "intent expired"));
+        }
+        if !same(&intent["configuration"], &session.effective)
+            && !same(
+                &intent["configuration"],
+                &self.store.json(&session.admission)?["requested"],
+            )
+        {
+            return Err(refuse(
+                "incompatible",
+                "intent configuration is not the session's",
+            ));
+        }
+        for field in ["task_frame", "input", "context", "authorization"] {
+            self.bytes(&intent[field])?;
+        }
+        Ok(intent)
+    }
+
+    fn active_turn(&self, session: &Session, payload: &Value) -> Result<String> {
+        let active = session
+            .active
+            .as_ref()
+            .ok_or_else(|| refuse("stale", "no active turn"))?;
+        if payload["turn"] != active.id.as_str() {
+            return Err(refuse("stale", "turn is not active"));
+        }
+        if Some(
+            payload["expected_turn_revision"]
+                .as_u64()
+                .unwrap_or(u64::MAX),
+        ) != session.turn_revision
+        {
+            return Err(refuse("conflict", "stale turn revision"));
+        }
+        Ok(active.id.clone())
+    }
+
+    fn start_turn(
+        &self,
+        state: &mut State,
+        session: &mut Session,
+        intent_ref: &Value,
+        grant: Value,
+        now: u64,
+    ) -> Result<Vec<Value>> {
+        let intent = self.store.json(intent_ref)?;
+        let mut input: Value =
+            contracts::parse_strict_bounded(&self.bytes(&intent["input"])?, 1_048_576)
+                .map_err(contract)?;
+        let carried: Vec<(Value, Value)> = std::mem::take(&mut session.pending_steers);
+        if !carried.is_empty() {
+            input["corrections"] = Value::Array(carried.iter().map(|(_, c)| c.clone()).collect());
+        }
+        let turn = token();
+        let mut run = Vec::new();
+        let mut records = vec![
+            self.run_record(
+                &mut run,
+                &turn,
+                "created",
+                json!({"request":digest_of(intent_ref)}),
+                now,
+            )?,
+            self.run_record(
+                &mut run,
+                &turn,
+                "admitted",
+                json!({"request":digest_of(intent_ref)}),
+                now,
+            )?,
+            self.run_record(
+                &mut run,
+                &turn,
+                "dispatched",
+                json!({"request":digest_of(intent_ref),"binding":digest_of(&grant)}),
+                now,
+            )?,
+        ];
+        let adapter = state
+            .adapters
+            .get(&session.adapter)
+            .ok_or("adapter")?
+            .clone();
+        let native = session.native.clone().ok_or("native session")?;
+        // RUN dispatch intent is retained before the engine effect.
+        self.engines
+            .borrow_mut()
+            .get_mut(&adapter.engine)
+            .ok_or("engine")?
+            .start(
+                &native,
+                &turn,
+                &serde_json::to_vec(&input).map_err(|e| e.to_string())?,
+            )?;
+        let evidence = self.capture(state, session, now)?;
+        for (correction, _) in carried {
+            let steering = self
+                .engines
+                .borrow()
+                .get(&adapter.engine)
+                .ok_or("engine")?
+                .profile()
+                .steering;
+            let receipt = json!({"v":"openagents.session-steer-receipt.v1","requires":[],
+                "scope":session.scope(self.pubkey()),"turn":turn,"correction":correction,"mode":"emulated",
+                "acknowledgment":steering.acknowledgment,"consumed":steering.acknowledgment == "next_turn_start",
+                "evidence":evidence});
+            let reference = self.sign(state, &receipt, &session.owner.clone(), now)?;
+            session.steers.push(reference.clone());
+            records.push(reference);
+        }
+        records.extend(evidence);
+        session.active = Some(Turn {
+            id: turn,
+            intent: intent_ref.clone(),
+            attachment: grant,
+            run,
+            interrupted: false,
+        });
+        session.turn_revision = Some(0);
+        session.phase = "running".into();
+        session.quiescent = false;
+        Ok(records)
+    }
+
+    /// Observe the active turn once. Terminal engine evidence yields a turn
+    /// result and quiescence; a lost observation yields unknown, never a rerun.
+    pub fn observe(&self, session_id: &str, now: u64) -> Result<Value> {
+        let _lock = self.store.lock()?;
+        let mut state = self.state()?;
+        let mut session = state
+            .sessions
+            .remove(session_id)
+            .ok_or_else(|| refuse("not_admitted", "unknown session"))?;
+        let outcome = self.observe_session(&mut state, &mut session, now);
+        state.sessions.insert(session_id.into(), session.clone());
+        let value = outcome?;
+        self.save(&state)?;
+        Ok(value)
+    }
+
+    fn observe_session(&self, state: &mut State, session: &mut Session, now: u64) -> Result<Value> {
+        let Some(mut turn) = session.active.clone() else {
+            return Ok(json!({"phase":session.phase,"state":session.state}));
+        };
+        let adapter = state
+            .adapters
+            .get(&session.adapter)
+            .ok_or("adapter")?
+            .clone();
+        let observation = match (
+            &session.native,
+            self.engines.borrow_mut().get_mut(&adapter.engine),
+        ) {
+            (Some(native), Some(engine)) => engine.step(native),
+            _ => Observation::Lost,
+        };
+        let captured = self.capture(state, session, now)?;
+        let mut result = Value::Null;
+        match observation {
+            Observation::Running => {
+                return Ok(json!({"phase":session.phase,"state":session.state}));
+            }
+            Observation::Question { native_id, prompt } => {
+                if session
+                    .interactions
+                    .iter()
+                    .any(|i| i.native_id == native_id)
+                {
+                    return Ok(json!({"phase":session.phase,"state":session.state}));
+                }
+                let support = self.support(state, session, "questions")?;
+                let native_request = captured.last().cloned().ok_or("native request")?;
+                if support == Support::Unsupported {
+                    session.phase = "faulted".into();
+                } else {
+                    let question = json!({"v":"openagents.session-question.v1","requires":[],
+                        "prompt":self.store.put(&prompt,"application/json",None)?,
+                        "answer_schema":self.store.put(&serde_json::to_vec(&answer_schema()).map_err(|e| e.to_string())?,SCHEMA_MEDIA_TYPE,None)?});
+                    let question = self.sign(state, &question, &session.owner.clone(), now)?;
+                    let id = token();
+                    let expires_at = now + 3600;
+                    let body = json!({"v":"openagents.session-interaction.v1","requires":[],"interaction":id,
+                        "scope":session.scope(self.pubkey()),"turn":turn.id,"turn_revision":session.turn_revision.unwrap_or(0),
+                        "native_request":native_request,"kind":"question","recipient":session.owner,"body":question,
+                        "expires_at":expires_at,"state":"pending"});
+                    let reference = self.sign(state, &body, &session.owner.clone(), now)?;
+                    session.interactions.push(Interaction {
+                        id,
+                        current: reference.clone(),
+                        reference,
+                        native_id,
+                        recipient: session.owner.clone(),
+                        turn: turn.id.clone(),
+                        expires_at,
+                        state: "pending".into(),
+                        claim: None,
+                    });
+                    session.phase = "blocked".into();
+                }
+            }
+            Observation::Finished {
+                outcome,
+                cause,
+                output,
+            } => {
+                let output_ref = self.store.put(&output, "application/json", None)?;
+                let resolved = self.run_record(
+                    &mut turn.run,
+                    &turn.id,
+                    "resolved",
+                    json!({"outcome":outcome,"dispatched":true}),
+                    now,
+                )?;
+                let terminal: Vec<Value> = captured.iter().rev().take(1).cloned().collect();
+                let quiescence = json!({"v":"openagents.session-quiescence.v1","requires":[],
+                    "scope":session.scope(self.pubkey()),"turn":turn.id,"attachment":turn.attachment,
+                    "evidence":terminal,"observed_at":now});
+                let quiescence = self.sign(state, &quiescence, &session.owner.clone(), now)?;
+                result = json!({"v":"openagents.session-turn-result.v1","requires":[],"scope":session.scope(self.pubkey()),
+                    "turn":turn.id,"intent":turn.intent,"run":resolved,"outcome":outcome,"dispatched":true,"cause":cause,
+                    "outputs":[output_ref],"receipt":resolved,"verification":"not_run","integration":"not_requested",
+                    "quiescence":quiescence});
+                session.quiescent = true;
+                for interaction in session
+                    .interactions
+                    .iter_mut()
+                    .filter(|i| i.turn == turn.id && i.state == "pending")
+                {
+                    interaction.state = "cancelled".into();
+                }
+                session.phase = if session.phase == "closing" {
+                    "closed"
+                } else {
+                    "ready"
+                }
+                .into();
+                session.active = None;
+                session.turn_revision = None;
+            }
+            Observation::Lost => {
+                let unknown = self.run_record(
+                    &mut turn.run,
+                    &turn.id,
+                    "unknown",
+                    json!({"lost":true}),
+                    now,
+                )?;
+                result = json!({"v":"openagents.session-turn-result.v1","requires":[],"scope":session.scope(self.pubkey()),
+                    "turn":turn.id,"intent":turn.intent,"run":unknown,"outcome":"unknown","dispatched":true,
+                    "cause":"lost_observation","outputs":[],"receipt":unknown,"verification":"not_run",
+                    "integration":"not_requested","quiescence":null});
+                // Unknown work blocks automatic promotion and is never rerun.
+                session.quiescent = false;
+                session.phase = "unknown".into();
+                session.active = None;
+                session.turn_revision = None;
+            }
+        }
+        if let Some(active) = session.active.as_mut() {
+            active.run = turn.run.clone();
+        }
+        let result_ref = if result.is_null() {
+            Value::Null
+        } else {
+            let reference = self.sign(state, &result, &session.owner.clone(), now)?;
+            session.results.push(reference.clone());
+            reference
+        };
+        session.revision += 1;
+        self.write_state(state, session, now)?;
+        Ok(json!({"phase":session.phase,"state":session.state,"result":result_ref}))
+    }
+
+    /// Promote the queue head after quiescence, under a fresh binding.
+    pub fn promote(&self, session_id: &str, binding: Option<&Binding>, now: u64) -> Result<Value> {
+        let _lock = self.store.lock()?;
+        let mut state = self.state()?;
+        let mut session = state
+            .sessions
+            .remove(session_id)
+            .ok_or_else(|| refuse("not_admitted", "unknown session"))?;
+        let outcome = (|| -> Result<Value> {
+            if session.phase != "ready" || session.active.is_some() {
+                return Err(refuse("conflict", "the session is not idle"));
+            }
+            if !session.quiescent {
+                return Err(refuse("conflict", "the prior turn is not quiescent"));
+            }
+            let index = session
+                .queue
+                .iter()
+                .position(|q| q.state == "queued")
+                .ok_or_else(|| refuse("unavailable", "the queue is empty"))?;
+            let intent_ref = session.queue[index].intent.clone();
+            match self.intent(&session, &intent_ref, now) {
+                Ok(_) => {}
+                Err(e) => {
+                    session.queue[index].state = if code(&e) == "stale" {
+                        "expired"
+                    } else {
+                        "refused"
+                    }
+                    .into();
+                    session.revision += 1;
+                    self.write_state(&mut state, &mut session, now)?;
+                    return Ok(
+                        json!({"promoted":null,"state":session.queue[index].state,"reason":code(&e)}),
+                    );
+                }
+            }
+            self.require(&state, &session, "queue")?;
+            let grant = self.check_binding(binding, now)?;
+            self.start_turn(&mut state, &mut session, &intent_ref, grant, now)?;
+            let turn = session.active.as_ref().map(|t| t.id.clone());
+            session.queue[index].state = "promoted".into();
+            session.queue[index].turn = turn.clone();
+            session.revision += 1;
+            self.write_state(&mut state, &mut session, now)?;
+            Ok(json!({"promoted":turn,"state":"promoted"}))
+        })();
+        state.sessions.insert(session_id.into(), session);
+        let value = outcome?;
+        self.save(&state)?;
+        Ok(value)
+    }
+
+    fn respond(
+        &self,
+        state: &mut State,
+        signer: &str,
+        body: &Value,
+        input: &Value,
+        now: u64,
+    ) -> Result<Value> {
+        let id = body["scope"]["session"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
+        let mut session = state
+            .sessions
+            .remove(&id)
+            .ok_or_else(|| refuse("not_admitted", "unknown session"))?;
+        let outcome = self.respond_session(state, &mut session, signer, body, input, now);
+        state.sessions.insert(id, session);
+        outcome
+    }
+
+    fn respond_session(
+        &self,
+        state: &mut State,
+        session: &mut Session,
+        signer: &str,
+        body: &Value,
+        input: &Value,
+        now: u64,
+    ) -> Result<Value> {
+        let index = session
+            .interactions
+            .iter()
+            .position(|i| same(&i.reference, &body["interaction"]))
+            .ok_or_else(|| refuse("not_admitted", "unknown interaction"))?;
+        let interaction = session.interactions[index].clone();
+        if let Some(claim) = &interaction.claim {
+            if claim.fingerprint == digest_of(input) {
+                // An unknown delivery stays unknown; it is never sent again.
+                let mut result = claim.result.clone();
+                if result["status"] == "accepted" {
+                    result["status"] = json!("duplicate");
+                }
+                return Ok(result);
+            }
+            return Err(refuse("conflict", "the interaction was already answered"));
+        }
+        if body["responder"] != signer || signer != interaction.recipient {
+            return Err(refuse(
+                "not_admitted",
+                "only the admitted recipient may answer",
+            ));
+        }
+        if body["scope"]["generation"] != session.generation {
+            return Err(refuse("stale", "scope generation"));
+        }
+        if interaction.state != "pending"
+            || interaction.expires_at <= now
+            || session
+                .active
+                .as_ref()
+                .is_none_or(|t| t.id != interaction.turn)
+        {
+            return Err(refuse("stale", "the interaction is no longer pending"));
+        }
+        let response = contracts::parse_strict_bounded(&self.bytes(&body["response"])?, 65_536)
+            .map_err(contract)?;
+        let schema = serde_json::to_vec(&answer_schema()).map_err(|e| e.to_string())?;
+        validate_against(&schema, &response)
+            .map_err(|_| refuse("malformed", "answer does not match its schema"))?;
+        // Claim first and persist delivery intent before the engine reply.
+        let mut claimed = session.clone();
+        claimed.interactions[index].state = "unknown".into();
+        claimed.interactions[index].claim = Some(Prior {
+            fingerprint: digest_of(input).into(),
+            result: Value::Null,
+        });
+        let mut snapshot = self.state()?;
+        snapshot.sessions.insert(session.id.clone(), claimed);
+        snapshot.signers.extend(state.signers.clone());
+        snapshot.declarations.extend(state.declarations.clone());
+        self.save(&snapshot)?;
+        let adapter = state
+            .adapters
+            .get(&session.adapter)
+            .ok_or("adapter")?
+            .clone();
+        let native = session.native.clone().ok_or("native session")?;
+        let delivered = self
+            .engines
+            .borrow_mut()
+            .get_mut(&adapter.engine)
+            .ok_or("engine")?
+            .answer(
+                &native,
+                &interaction.native_id,
+                &serde_json::to_vec(&response).map_err(|e| e.to_string())?,
+            );
+        let next = if delivered.is_ok() {
+            "answered"
+        } else {
+            "unknown"
+        };
+        let mut updated = self.store.json(&interaction.current)?;
+        updated["state"] = json!(next);
+        let reference = self.sign(state, &updated, &session.owner.clone(), now)?;
+        self.capture(state, session, now)?;
+        session.interactions[index].state = next.into();
+        session.interactions[index].current = reference;
+        if delivered.is_ok() {
+            session.phase = "running".into();
+        }
+        let before = session.revision;
+        session.revision += 1;
+        let receipt = self.receipt(state, session, input, before, "respond", Vec::new(), now)?;
+        self.write_state(state, session, now)?;
+        let status = if delivered.is_ok() {
+            "accepted"
+        } else {
+            "unknown"
+        };
+        let result = self.control_result(state, signer, input, status, Some(receipt), None, now)?;
+        session.interactions[index].claim = Some(Prior {
+            fingerprint: digest_of(input).into(),
+            result: result.clone(),
+        });
+        Ok(result)
+    }
+
+    /// Build a foreign history export from exact retained source bytes. The
+    /// result is archival: it establishes no native resume or authority.
+    pub fn import_history(&self, source: &Value, content: &[u8], now: u64) -> Result<Value> {
+        let _lock = self.store.lock()?;
+        let mut state = self.state()?;
+        sess::validate(source).map_err(contract)?;
+        if source["v"] != "openagents.session-import-source.v1" {
+            return Err(refuse("unsupported_version", "import source"));
+        }
+        let content_ref = self.store.put(content, "application/octet-stream", None)?;
+        if !same(&content_ref, &source["content"]) {
+            return Err(refuse("identity_mismatch", "import content"));
+        }
+        let source_ref = self.sign(&mut state, source, self.pubkey(), now)?;
+        let mut losses = vec![
+            json!({"source":null,"category":"unsupported","reason":"foreign import has no native resume"}),
+        ];
+        if source["coverage"] != "complete" {
+            losses.push(json!({"source":content_ref,"category":"unavailable","reason":"the source is not complete"}));
+        }
+        let body = json!({"v":"openagents.session-history.v1","requires":[],"lineage":token(),
+            "source":{"kind":"foreign","import":source_ref},"adapter":source["importer"],"engine":source["engine"],
+            "cut":null,"native":[],"portable":content_ref,"losses":losses,"resume":null,"coverage":source["coverage"]});
+        let reference = self.sign(&mut state, &body, self.pubkey(), now)?;
+        self.save(&state)?;
+        Ok(reference)
+    }
+
+    /// Export the current history for the owner.
+    pub fn export(&self, session_id: &str, now: u64) -> Result<Value> {
+        let _lock = self.store.lock()?;
+        let mut state = self.state()?;
+        let mut session = state
+            .sessions
+            .remove(session_id)
+            .ok_or_else(|| refuse("not_admitted", "unknown session"))?;
+        let reference = self.export_history(&mut state, &mut session, now);
+        state.sessions.insert(session_id.into(), session);
+        let reference = reference?;
+        self.save(&state)?;
+        Ok(reference)
+    }
+
+    /// Link a child: managed needs a child admission and delegated
+    /// authorization; observed needs native evidence and grants no control.
+    pub fn link_child(
+        &self,
+        session_id: &str,
+        turn: &str,
+        child: Option<&str>,
+        native: Option<Value>,
+        authorization: Option<Value>,
+        now: u64,
+    ) -> Result<Value> {
+        let _lock = self.store.lock()?;
+        let mut state = self.state()?;
+        let child_admission = match child {
+            Some(id) => Some(
+                state
+                    .sessions
+                    .get(id)
+                    .ok_or_else(|| refuse("not_admitted", "unknown child session"))?
+                    .admission
+                    .clone(),
+            ),
+            None => None,
+        };
+        let mut session = state
+            .sessions
+            .remove(session_id)
+            .ok_or_else(|| refuse("not_admitted", "unknown session"))?;
+        let outcome = (|| -> Result<Value> {
+            if !session
+                .results
+                .iter()
+                .any(|r| self.store.json(r).is_ok_and(|b| b["turn"] == turn))
+                && session.active.as_ref().is_none_or(|t| t.id != turn)
+            {
+                return Err(refuse("not_admitted", "unknown parent turn"));
+            }
+            let relationship = if child_admission.is_some() && authorization.is_some() {
+                "managed"
+            } else {
+                "observed"
+            };
+            let body = json!({"v":"openagents.session-child.v1","requires":[],"parent":session.scope(self.pubkey()),
+                "turn":turn,"child":child_admission,"native_source":native,"relationship":relationship,
+                "authorization":authorization});
+            let reference = self.sign(&mut state, &body, &session.owner.clone(), now)?;
+            session.children.push(reference.clone());
+            session.revision += 1;
+            self.write_state(&mut state, &mut session, now)?;
+            Ok(reference)
+        })();
+        state.sessions.insert(session_id.into(), session);
+        let reference = outcome?;
+        self.save(&state)?;
+        Ok(reference)
+    }
+
+    /// Current session view.
+    pub fn status(&self, session_id: &str) -> Result<Value> {
+        let state = self.state()?;
+        let session = state
+            .sessions
+            .get(session_id)
+            .ok_or_else(|| refuse("not_admitted", "unknown session"))?;
+        Ok(
+            json!({"session":session.id,"lineage":session.lineage,"phase":session.phase,"revision":session.revision,
+            "generation":session.generation,"active_turn":session.active.as_ref().map(|t| t.id.clone()),
+            "turn_revision":session.turn_revision,"state":session.state,"history":session.history,
+            "queue":session.queue.iter().map(|q| json!({"intent":q.id,"state":q.state,"turn":q.turn})).collect::<Vec<_>>(),
+            "interactions":session.interactions.iter().map(|i| json!({"interaction":i.reference,"state":i.state})).collect::<Vec<_>>(),
+            "results":session.results,"steers":session.steers,"children":session.children,"read_only":session.read_only,
+            "admission":session.admission,"effective":session.effective}),
+        )
+    }
+}
+
+/// Build a signed private request envelope for a session host.
+pub fn envelope(secret: &SecretKey, host: &str, body: &Value, now: u64) -> Result<Event> {
+    sess::validate(body).map_err(contract)?;
+    workspace_host::host::request(secret, host, body.clone(), now)
+}

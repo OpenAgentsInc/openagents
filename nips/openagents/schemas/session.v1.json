@@ -1,0 +1,2620 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "openagents.session-contracts.v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/session-adapter"
+    },
+    {
+      "$ref": "#/$defs/session-configuration"
+    },
+    {
+      "$ref": "#/$defs/session-open"
+    },
+    {
+      "$ref": "#/$defs/session-admission"
+    },
+    {
+      "$ref": "#/$defs/session-command"
+    },
+    {
+      "$ref": "#/$defs/turn-intent"
+    },
+    {
+      "$ref": "#/$defs/session-control-result"
+    },
+    {
+      "$ref": "#/$defs/session-control-receipt"
+    },
+    {
+      "$ref": "#/$defs/session-turn-result"
+    },
+    {
+      "$ref": "#/$defs/session-state"
+    },
+    {
+      "$ref": "#/$defs/queued-intent"
+    },
+    {
+      "$ref": "#/$defs/session-child"
+    },
+    {
+      "$ref": "#/$defs/session-interaction"
+    },
+    {
+      "$ref": "#/$defs/session-question"
+    },
+    {
+      "$ref": "#/$defs/session-interaction-response"
+    },
+    {
+      "$ref": "#/$defs/session-native"
+    },
+    {
+      "$ref": "#/$defs/session-history"
+    },
+    {
+      "$ref": "#/$defs/session-import-source"
+    },
+    {
+      "$ref": "#/$defs/session-steering"
+    },
+    {
+      "$ref": "#/$defs/session-steer-correction"
+    },
+    {
+      "$ref": "#/$defs/session-quiescence"
+    },
+    {
+      "$ref": "#/$defs/session-steer-receipt"
+    }
+  ],
+  "$defs": {
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "pubkey",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "pubkey": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "kind": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "coordinate": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "digest",
+        "size",
+        "media_type"
+      ],
+      "properties": {
+        "digest": {
+          "type": "string",
+          "minLength": 71,
+          "maxLength": 71
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "schema": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "event": {
+          "$ref": "#/$defs/event"
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 64,
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "minLength": 0,
+                    "maxLength": 1024
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "event"
+                ],
+                "properties": {
+                  "event": {
+                    "$ref": "#/$defs/event"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "schema": {
+      "$ref": "#/$defs/artifact"
+    },
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "artifact"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        },
+        "artifact": {
+          "$ref": "#/$defs/artifact"
+        },
+        "event": {
+          "$ref": "#/$defs/event"
+        }
+      }
+    },
+    "bound": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bound",
+        "ceiling",
+        "assurance",
+        "mechanism"
+      ],
+      "properties": {
+        "bound": {
+          "enum": [
+            "wall_ms",
+            "memory_bytes",
+            "input_bytes",
+            "output_bytes",
+            "read_bytes",
+            "storage_bytes",
+            "calls",
+            "attempts",
+            "concurrency",
+            "depth",
+            "fuel",
+            "spend_microunits"
+          ]
+        },
+        "ceiling": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "minimum": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "assurance": {
+          "enum": [
+            "host",
+            "trusted_executor"
+          ]
+        },
+        "mechanism": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "currency": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16
+        }
+      }
+    },
+    "bounds": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 12,
+      "items": {
+        "$ref": "#/$defs/bound"
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "session",
+        "generation"
+      ],
+      "properties": {
+        "authority": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "session": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "feature",
+        "support",
+        "operation",
+        "semantics",
+        "evidence",
+        "limitations"
+      ],
+      "properties": {
+        "feature": {
+          "enum": [
+            "create",
+            "resume",
+            "fork",
+            "import",
+            "close",
+            "configure",
+            "submit",
+            "queue",
+            "reorder",
+            "steer",
+            "interrupt",
+            "history",
+            "questions",
+            "approvals"
+          ]
+        },
+        "support": {
+          "enum": [
+            "native",
+            "emulated",
+            "unsupported"
+          ]
+        },
+        "operation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/definition"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "semantics": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/schema"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limitations": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 1024
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "artifact"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "new",
+            "resume",
+            "fork",
+            "import"
+          ]
+        },
+        "artifact": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.session-history.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "loss": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "category",
+        "reason"
+      ],
+      "properties": {
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "category": {
+          "enum": [
+            "omitted",
+            "redacted",
+            "unsupported",
+            "unavailable",
+            "derived"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      }
+    },
+    "history_source": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "admission"
+          ],
+          "properties": {
+            "kind": {
+              "const": "managed"
+            },
+            "admission": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.session-admission.v1"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "import"
+          ],
+          "properties": {
+            "kind": {
+              "const": "foreign"
+            },
+            "import": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.session-import-source.v1"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "payload_submit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent"
+      ],
+      "properties": {
+        "intent": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.turn-intent.v1"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "payload_enqueue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent"
+      ],
+      "properties": {
+        "intent": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.turn-intent.v1"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "payload_cancel_queued": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent"
+      ],
+      "properties": {
+        "intent": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        }
+      }
+    },
+    "payload_reorder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intents"
+      ],
+      "properties": {
+        "intents": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          }
+        }
+      }
+    },
+    "payload_steer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "turn",
+        "expected_turn_revision",
+        "correction"
+      ],
+      "properties": {
+        "turn": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "expected_turn_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "correction": {
+          "$ref": "#/$defs/artifact"
+        }
+      }
+    },
+    "payload_interrupt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "turn",
+        "expected_turn_revision",
+        "reason"
+      ],
+      "properties": {
+        "turn": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "expected_turn_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        }
+      }
+    },
+    "payload_configure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested"
+      ],
+      "properties": {
+        "requested": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-configuration.v1"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "payload_archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archived"
+      ],
+      "properties": {
+        "archived": {
+          "type": "boolean"
+        }
+      }
+    },
+    "payload_close": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reason"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1024
+        }
+      }
+    },
+    "session-adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "adapter",
+        "engine",
+        "protocol",
+        "features",
+        "compatibility"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-adapter.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "adapter": {
+          "$ref": "#/$defs/definition"
+        },
+        "engine": {
+          "$ref": "#/$defs/artifact"
+        },
+        "protocol": {
+          "$ref": "#/$defs/schema"
+        },
+        "features": {
+          "type": "array",
+          "minItems": 14,
+          "maxItems": 14,
+          "items": {
+            "$ref": "#/$defs/feature"
+          }
+        },
+        "compatibility": {
+          "$ref": "#/$defs/artifact"
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "adapter",
+        "recipient",
+        "model",
+        "settings_schema",
+        "settings",
+        "policy",
+        "enforcement",
+        "bounds"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-configuration.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "adapter": {
+          "$ref": "#/$defs/definition"
+        },
+        "recipient": {
+          "$ref": "#/$defs/artifact"
+        },
+        "model": {
+          "$ref": "#/$defs/artifact"
+        },
+        "settings_schema": {
+          "$ref": "#/$defs/schema"
+        },
+        "settings": {
+          "$ref": "#/$defs/artifact"
+        },
+        "policy": {
+          "$ref": "#/$defs/artifact"
+        },
+        "enforcement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bounds": {
+          "$ref": "#/$defs/bounds"
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-open": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "command",
+        "session",
+        "owner",
+        "authority",
+        "workspace",
+        "lease",
+        "materialization",
+        "adapter",
+        "requested",
+        "authorization",
+        "source",
+        "issued_at",
+        "expires_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-open.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "command": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "session": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "authority": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "workspace": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lease": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-lease.v1"
+                }
+              }
+            }
+          ]
+        },
+        "materialization": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-materialization.v1"
+                }
+              }
+            }
+          ]
+        },
+        "adapter": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-adapter.v1"
+                }
+              }
+            }
+          ]
+        },
+        "requested": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-configuration.v1"
+                }
+              }
+            }
+          ]
+        },
+        "authorization": {
+          "$ref": "#/$defs/artifact"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "issued_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "request",
+        "session",
+        "lineage",
+        "owner",
+        "authority",
+        "generation",
+        "revision",
+        "attachment",
+        "adapter",
+        "requested",
+        "effective",
+        "source",
+        "authorization",
+        "admitted_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-admission.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "request": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-open.v1"
+                }
+              }
+            }
+          ]
+        },
+        "session": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "lineage": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "authority": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "attachment": {
+          "$ref": "#/$defs/artifact"
+        },
+        "adapter": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-adapter.v1"
+                }
+              }
+            }
+          ]
+        },
+        "requested": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-configuration.v1"
+                }
+              }
+            }
+          ]
+        },
+        "effective": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-configuration.v1"
+                }
+              }
+            }
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "authorization": {
+          "$ref": "#/$defs/artifact"
+        },
+        "admitted_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "command",
+        "scope",
+        "expected_revision",
+        "authorization",
+        "issued_at",
+        "expires_at",
+        "action",
+        "payload"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-command.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "command": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "expected_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "authorization": {
+          "$ref": "#/$defs/artifact"
+        },
+        "issued_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "action": {
+          "enum": [
+            "submit",
+            "enqueue",
+            "cancel_queued",
+            "reorder",
+            "steer",
+            "interrupt",
+            "configure",
+            "archive",
+            "close"
+          ]
+        },
+        "payload": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/payload_submit"
+            },
+            {
+              "$ref": "#/$defs/payload_enqueue"
+            },
+            {
+              "$ref": "#/$defs/payload_cancel_queued"
+            },
+            {
+              "$ref": "#/$defs/payload_reorder"
+            },
+            {
+              "$ref": "#/$defs/payload_steer"
+            },
+            {
+              "$ref": "#/$defs/payload_interrupt"
+            },
+            {
+              "$ref": "#/$defs/payload_configure"
+            },
+            {
+              "$ref": "#/$defs/payload_archive"
+            },
+            {
+              "$ref": "#/$defs/payload_close"
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "turn-intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "intent",
+        "task_frame",
+        "input",
+        "context",
+        "configuration",
+        "authorization",
+        "bounds",
+        "expires_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.turn-intent.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "intent": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "task_frame": {
+          "$ref": "#/$defs/artifact"
+        },
+        "input": {
+          "$ref": "#/$defs/artifact"
+        },
+        "context": {
+          "$ref": "#/$defs/artifact"
+        },
+        "configuration": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-configuration.v1"
+                }
+              }
+            }
+          ]
+        },
+        "authorization": {
+          "$ref": "#/$defs/artifact"
+        },
+        "bounds": {
+          "$ref": "#/$defs/bounds"
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-control-result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "command",
+        "status",
+        "receipt",
+        "reason"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-control-result.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "command": {
+          "$ref": "#/$defs/artifact"
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "duplicate",
+            "conflict",
+            "refused",
+            "unknown"
+          ]
+        },
+        "receipt": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.session-control-receipt.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "malformed",
+                "unsupported_version",
+                "unsupported_feature",
+                "not_admitted",
+                "unavailable",
+                "content_unavailable",
+                "identity_mismatch",
+                "incompatible",
+                "revoked",
+                "stale",
+                "cannot_enforce",
+                "limit_exceeded",
+                "idempotency_conflict",
+                "conflict"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-control-receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "command",
+        "scope",
+        "before_revision",
+        "after_revision",
+        "transition",
+        "admitted_at",
+        "records"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-control-receipt.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "command": {
+          "$ref": "#/$defs/artifact"
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "before_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "after_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "transition": {
+          "enum": [
+            "open",
+            "respond",
+            "submit",
+            "enqueue",
+            "cancel_queued",
+            "reorder",
+            "steer",
+            "interrupt",
+            "configure",
+            "archive",
+            "close"
+          ]
+        },
+        "admitted_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "records": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-turn-result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "scope",
+        "turn",
+        "intent",
+        "run",
+        "outcome",
+        "dispatched",
+        "cause",
+        "outputs",
+        "receipt",
+        "verification",
+        "integration",
+        "quiescence"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-turn-result.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "turn": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "intent": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.turn-intent.v1"
+                }
+              }
+            }
+          ]
+        },
+        "run": {
+          "$ref": "#/$defs/artifact"
+        },
+        "outcome": {
+          "enum": [
+            "completed",
+            "refused",
+            "failed",
+            "cancelled",
+            "unknown"
+          ]
+        },
+        "dispatched": {
+          "type": "boolean"
+        },
+        "cause": {
+          "enum": [
+            "normal",
+            "user_interrupt",
+            "budget",
+            "deadline",
+            "provider_refusal",
+            "provider_failure",
+            "hook_stop",
+            "policy",
+            "protocol_fault",
+            "lost_observation"
+          ]
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/artifact"
+          }
+        },
+        "receipt": {
+          "$ref": "#/$defs/artifact"
+        },
+        "verification": {
+          "enum": [
+            "passed",
+            "failed",
+            "unverifiable",
+            "not_run"
+          ]
+        },
+        "integration": {
+          "enum": [
+            "accepted",
+            "rejected",
+            "pending",
+            "not_requested"
+          ]
+        },
+        "quiescence": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.session-quiescence.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "admission",
+        "scope",
+        "revision",
+        "effective",
+        "phase",
+        "active_turn",
+        "turn_revision",
+        "queue",
+        "interactions",
+        "history",
+        "children",
+        "archived"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-state.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "admission": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-admission.v1"
+                }
+              }
+            }
+          ]
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "effective": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-configuration.v1"
+                }
+              }
+            }
+          ]
+        },
+        "phase": {
+          "enum": [
+            "attaching",
+            "ready",
+            "running",
+            "blocked",
+            "interrupting",
+            "closing",
+            "closed",
+            "unknown",
+            "faulted"
+          ]
+        },
+        "active_turn": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "turn_revision": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "queue": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/artifact"
+              },
+              {
+                "required": [
+                  "schema"
+                ],
+                "properties": {
+                  "schema": {
+                    "const": "openagents.queued-intent.v1"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "interactions": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/artifact"
+              },
+              {
+                "required": [
+                  "schema"
+                ],
+                "properties": {
+                  "schema": {
+                    "const": "openagents.session-interaction.v1"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "history": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-history.v1"
+                }
+              }
+            }
+          ]
+        },
+        "children": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/artifact"
+              },
+              {
+                "required": [
+                  "schema"
+                ],
+                "properties": {
+                  "schema": {
+                    "const": "openagents.session-child.v1"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "archived": {
+          "type": "boolean"
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "queued-intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "intent",
+        "state",
+        "turn",
+        "receipt"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.queued-intent.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "intent": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.turn-intent.v1"
+                }
+              }
+            }
+          ]
+        },
+        "state": {
+          "enum": [
+            "queued",
+            "promoted",
+            "cancelled",
+            "expired",
+            "refused"
+          ]
+        },
+        "turn": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 64,
+              "maxLength": 64
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "receipt": {
+          "$ref": "#/$defs/artifact"
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-child": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "parent",
+        "turn",
+        "child",
+        "native_source",
+        "relationship",
+        "authorization"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-child.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "parent": {
+          "$ref": "#/$defs/scope"
+        },
+        "turn": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "child": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.session-admission.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "native_source": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/artifact"
+                },
+                {
+                  "required": [
+                    "schema"
+                  ],
+                  "properties": {
+                    "schema": {
+                      "const": "openagents.session-native.v1"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "relationship": {
+          "enum": [
+            "managed",
+            "observed"
+          ]
+        },
+        "authorization": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-interaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "interaction",
+        "scope",
+        "turn",
+        "turn_revision",
+        "native_request",
+        "kind",
+        "recipient",
+        "body",
+        "expires_at",
+        "state"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-interaction.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "interaction": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "turn": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "turn_revision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "native_request": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-native.v1"
+                }
+              }
+            }
+          ]
+        },
+        "kind": {
+          "enum": [
+            "question",
+            "approval"
+          ]
+        },
+        "recipient": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "body": {
+          "$ref": "#/$defs/artifact"
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "answered",
+            "denied",
+            "expired",
+            "cancelled",
+            "unknown"
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "prompt",
+        "answer_schema"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-question.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "prompt": {
+          "$ref": "#/$defs/artifact"
+        },
+        "answer_schema": {
+          "$ref": "#/$defs/schema"
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-interaction-response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "interaction",
+        "scope",
+        "responder",
+        "response",
+        "expires_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-interaction-response.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "interaction": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-interaction.v1"
+                }
+              }
+            }
+          ]
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "responder": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "response": {
+          "$ref": "#/$defs/artifact"
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-native": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "scope",
+        "adapter",
+        "engine",
+        "protocol",
+        "connection",
+        "direction",
+        "ordinal",
+        "method",
+        "native_id",
+        "captured_at",
+        "payload",
+        "capture"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-native.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "adapter": {
+          "$ref": "#/$defs/definition"
+        },
+        "engine": {
+          "$ref": "#/$defs/artifact"
+        },
+        "protocol": {
+          "$ref": "#/$defs/schema"
+        },
+        "connection": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "direction": {
+          "enum": [
+            "to_engine",
+            "from_engine"
+          ]
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "method": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "native_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "captured_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "payload": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "capture": {
+          "enum": [
+            "complete",
+            "redacted",
+            "unavailable",
+            "unsupported"
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-history": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "lineage",
+        "source",
+        "adapter",
+        "engine",
+        "cut",
+        "native",
+        "portable",
+        "losses",
+        "resume",
+        "coverage"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-history.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "lineage": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "source": {
+          "$ref": "#/$defs/history_source"
+        },
+        "adapter": {
+          "$ref": "#/$defs/definition"
+        },
+        "engine": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cut": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "native": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 4096,
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/artifact"
+              },
+              {
+                "required": [
+                  "schema"
+                ],
+                "properties": {
+                  "schema": {
+                    "const": "openagents.session-native.v1"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "portable": {
+          "$ref": "#/$defs/artifact"
+        },
+        "losses": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/loss"
+          }
+        },
+        "resume": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "coverage": {
+          "enum": [
+            "complete",
+            "partial",
+            "unknown"
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-import-source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "content",
+        "format",
+        "importer",
+        "engine",
+        "native_session",
+        "captured_at",
+        "authorization",
+        "coverage"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-import-source.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "content": {
+          "$ref": "#/$defs/artifact"
+        },
+        "format": {
+          "$ref": "#/$defs/schema"
+        },
+        "importer": {
+          "$ref": "#/$defs/definition"
+        },
+        "engine": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "native_session": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "captured_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "authorization": {
+          "$ref": "#/$defs/artifact"
+        },
+        "coverage": {
+          "enum": [
+            "complete",
+            "partial",
+            "unknown"
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-steering": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "native",
+        "emulation",
+        "acknowledgment"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-steering.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "native": {
+          "enum": [
+            "mid_turn",
+            "turn_boundary",
+            "unsupported"
+          ]
+        },
+        "emulation": {
+          "anyOf": [
+            {
+              "enum": [
+                "cancel_and_continue"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "acknowledgment": {
+          "enum": [
+            "engine_replay",
+            "turn_answer",
+            "next_turn_start",
+            "input_written",
+            "none"
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-steer-correction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "correction",
+        "mode"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-steer-correction.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "correction": {
+          "$ref": "#/$defs/artifact"
+        },
+        "mode": {
+          "enum": [
+            "native",
+            "emulated"
+          ]
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-quiescence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "scope",
+        "turn",
+        "attachment",
+        "evidence",
+        "observed_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-quiescence.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "turn": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "attachment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/artifact"
+              },
+              {
+                "required": [
+                  "schema"
+                ],
+                "properties": {
+                  "schema": {
+                    "const": "openagents.session-native.v1"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "observed_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "session-steer-receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "scope",
+        "turn",
+        "correction",
+        "mode",
+        "acknowledgment",
+        "consumed",
+        "evidence"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-steer-receipt.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "turn": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "correction": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-steer-correction.v1"
+                }
+              }
+            }
+          ]
+        },
+        "mode": {
+          "enum": [
+            "native",
+            "emulated"
+          ]
+        },
+        "acknowledgment": {
+          "enum": [
+            "engine_replay",
+            "turn_answer",
+            "next_turn_start",
+            "input_written",
+            "none"
+          ]
+        },
+        "consumed": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 16,
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/artifact"
+              },
+              {
+                "required": [
+                  "schema"
+                ],
+                "properties": {
+                  "schema": {
+                    "const": "openagents.session-native.v1"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

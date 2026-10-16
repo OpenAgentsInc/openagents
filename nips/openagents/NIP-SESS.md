@@ -4,8 +4,11 @@
 are normative. This profile gives clients a common session contract while
 retaining the exact semantics and evidence of each admitted engine adapter.
 It adds no event kinds. The read-only observer profile below has a bounded
-implementation in `crates/coder-connect`; that does not implement managed
-session opening, execution, or turn control.
+implementation in `crates/coder-connect`. Managed sessions (opening, command
+and queue rules, turn control, interactions, history export/import, and child
+linkage) are implemented separately in
+[`session-host`](../../crates/session-host/README.md) for in-process Rust
+adapters; see the [Rust managed-session profile](#rust-managed-session-profile).
 
 A session is a durable conversation lineage, not a process, connection, task,
 account, or RUN controller. One engine process can serve several sessions;
@@ -721,3 +724,24 @@ unprojected items, exact source cuts, explicit redaction, historical losses,
 cache age, and unavailable resume state. An implementation advertises only the
 features and engine identities for which these paths are supported; generated
 types and a successful chat turn do not establish complete adapter support.
+
+## Rust managed-session profile
+
+The [session schemas](schemas/session.v1.json) describe every record above.
+Hosts also enforce the semantic and authority checks in this document. The
+profile pins these supporting records:
+
+| Record | Fields |
+| --- | --- |
+| `openagents.session-steering.v1` | `native`, `emulation`, `acknowledgment`: the steer feature's evidence artifact. |
+| `openagents.session-steer-correction.v1` | `correction` (CTX correction ArtifactRef) and `mode` (`native` or `emulated`). A `steer` command's `correction` names this record, so the caller signs its choice of emulation explicitly. |
+| `openagents.session-steer-receipt.v1` | `scope`, `turn`, `correction`, `mode`, `acknowledgment`, `consumed`, and native `evidence`. `consumed` is true only with `engine_replay`, `turn_answer`, or `next_turn_start` evidence. |
+| `openagents.session-quiescence.v1` | `scope`, `turn`, the turn's ENV `attachment`, terminal native `evidence` (at least one), and `observed_at`. |
+
+A control receipt's `transition` may also be `respond`, for an interaction
+response. Session-history cuts are WS `projection-cut` records over a
+host-signed `projection-definition` whose epoch is the lineage and whose
+sequence is the session revision. Turn input in the in-process adapters is
+JSON; an emulated steer's correction travels in the next turn's input as
+`corrections`. Mapping Claude Code, Codex, and ACP delegate engines to this
+profile is not implemented yet.

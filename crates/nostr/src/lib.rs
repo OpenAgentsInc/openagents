@@ -46,6 +46,7 @@ pub mod push_lease;
 pub mod pylon;
 pub mod read_state_snapshot;
 pub mod run;
+pub mod session;
 pub mod thread_window;
 pub mod work;
 pub mod workspace;

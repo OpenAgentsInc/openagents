@@ -15058,6 +15058,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "session-host"
+version = "1.0.0"
+dependencies = [
+ "env-host",
+ "nostr",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "workspace-host",
+]
+
+[[package]]
 name = "sha1"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

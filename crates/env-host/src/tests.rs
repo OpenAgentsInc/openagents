@@ -976,3 +976,16 @@ mod ssh {
         assert!(matches!(gone.create("other@box", "k"), Create::Refused(_)));
     }
 }
+
+#[test]
+fn a_replayed_body_from_another_signer_cannot_block_the_owner() {
+    let mut fx = Fixture::new();
+    let allocator = fx.allocator();
+    let body = fx.request_body(15, 100, 600);
+    let replay = allocator
+        .submit(&fx.bundle(CONTROLLER, &body), fx.now)
+        .unwrap();
+    assert_eq!(replay["reason"], "not_admitted");
+    let owner = allocator.submit(&fx.bundle(OWNER, &body), fx.now).unwrap();
+    assert_eq!(owner["status"], "accepted", "{owner}");
+}

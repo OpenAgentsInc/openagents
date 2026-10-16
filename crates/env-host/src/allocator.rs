@@ -121,7 +121,7 @@ struct State {
     policy: Policy,
     holds: BTreeMap<String, u64>,
     priors: BTreeMap<String, Prior>,
-    signers: BTreeMap<String, String>,
+    signers: BTreeMap<String, BTreeSet<String>>,
     declarations: BTreeMap<String, Value>,
     leases: BTreeMap<String, Lease>,
 }
@@ -263,7 +263,11 @@ impl Allocator {
                 None,
             )?;
             state.declarations.insert(digest.clone(), event_ref);
-            state.signers.insert(digest, self.pubkey().into());
+            state
+                .signers
+                .entry(digest)
+                .or_default()
+                .insert(self.pubkey().into());
         }
         Ok(reference)
     }
@@ -284,19 +288,22 @@ impl Allocator {
             Some(schema.as_str()).filter(|s| !s.is_empty()),
         )?;
         let digest = digest_of(&reference).to_string();
-        match state.signers.get(&digest) {
-            Some(known) if known != opened.signer() => {
-                return Err(refuse("identity_mismatch", "artifact has another signer"));
-            }
-            _ => {}
-        }
-        state.signers.insert(digest.clone(), opened.signer().into());
+        // The same bytes may be signed by several principals; each request
+        // is attributed to its own verified signer.
+        state
+            .signers
+            .entry(digest.clone())
+            .or_default()
+            .insert(opened.signer().into());
         let event_ref = self.store.put(
             &serde_json::to_vec(event).map_err(|e| e.to_string())?,
             "application/json",
             None,
         )?;
-        state.declarations.entry(digest).or_insert(event_ref);
+        state
+            .declarations
+            .entry(format!("{digest}:{}", opened.signer()))
+            .or_insert(event_ref);
         Ok((opened.signer().into(), body, reference))
     }
 
@@ -318,7 +325,11 @@ impl Allocator {
         }
     }
     fn signed_by(&self, state: &State, reference: &Value, signer: &str) -> Result<()> {
-        if state.signers.get(digest_of(reference)).map(String::as_str) != Some(signer) {
+        if !state
+            .signers
+            .get(digest_of(reference))
+            .is_some_and(|signers| signers.contains(signer))
+        {
             return Err(refuse(
                 "identity_mismatch",
                 "artifact has no retained signature from its expected signer",
