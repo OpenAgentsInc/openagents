@@ -50,7 +50,8 @@ impl Snapshot {
                     if a.pinned_unix.is_some() && b.pinned_unix.is_some() {
                         b.pinned_unix.cmp(&a.pinned_unix)
                     } else {
-                        a.project.cmp(&b.project)
+                        // Newest first: projects show on each row, not as groups.
+                        std::cmp::Ordering::Equal
                     }
                 })
                 .then_with(|| b.updated_unix.cmp(&a.updated_unix))

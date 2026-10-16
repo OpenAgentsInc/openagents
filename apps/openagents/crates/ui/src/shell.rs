@@ -9475,13 +9475,13 @@ impl Shell {
                         // No "Sessions" header (user request) — the list
                         // is the whole column; a little air stands in.
                         .pt(px(SIDEBAR_LIST_PAD_TOP))
-                        .children(self.saved_history.clone())
+                        // This computer's sessions first (the live work),
+                        // then the account's OpenAgents chats, newest first.
                         .when(
                             self.saved_history.is_some() && !self.state.read(cx).chats.is_empty(),
                             |el| {
                                 el.child(
                                     div()
-                                        .pt(px(12.))
                                         .pb(px(6.))
                                         .text_color(theme.text_muted)
                                         .child("On this computer"),
@@ -9493,11 +9493,28 @@ impl Shell {
                             |el| el.child(active_list),
                         )
                         .children(archived_section)
-                        .children(moving_row),
+                        .children(moving_row)
+                        .when_some(self.saved_history.clone(), |el, history| {
+                            el.child(div().pt(px(12.)).child(history))
+                        }),
                 )),
         )
         .fade_overflow_y(&self.sidebar_scroll);
 
+        if let Some(history) = &self.saved_history {
+            let name = self.settings.space_filter.as_deref().and_then(|id| {
+                self.state.read(cx).spaces.iter().find(|s| s.id == id).map(|s| {
+                    s.name.clone().unwrap_or_else(|| {
+                        s.path
+                            .rsplit(['/', '\\'])
+                            .find(|p| !p.is_empty())
+                            .unwrap_or_default()
+                            .to_owned()
+                    })
+                })
+            });
+            history.update(cx, |history, _| history.set_local_project(name));
+        }
         let update_strip = self.render_update_strip(theme, cx);
 
         div()

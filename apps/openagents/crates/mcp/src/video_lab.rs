@@ -14,7 +14,9 @@
 //!
 //! The tools are offered only where a Lab is: `VIDEO_LAB_URL` is set, a Lab
 //! answers on the default address, or the Lab script is on this computer
-//! (`OPENAGENTS_VIDEO_LAB_SCRIPT`, else `~/work/openagents/scripts/film/lab.py`).
+//! (`OPENAGENTS_VIDEO_LAB_SCRIPT`, the repository this app was built from, else
+//! `~/work/openagents/scripts/film/lab.py`). A Lab started here runs in its own
+//! process group, so it outlives the agent run that started it.
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
@@ -42,8 +44,16 @@ pub fn url() -> String {
 /// The Lab script on this computer, if there is one.
 pub fn script() -> Option<PathBuf> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
+    // The repository this app was built from (apps/openagents in the
+    // OpenAgents monorepo), so a stale ~/work/openagents never decides.
+    let from_exe = std::env::current_exe().ok().and_then(|exe| {
+        exe.ancestors()
+            .map(|dir| dir.join("scripts/film/lab.py"))
+            .find(|path| path.is_file())
+    });
     [
         std::env::var_os("OPENAGENTS_VIDEO_LAB_SCRIPT").map(PathBuf::from),
+        from_exe,
         home.map(|h| h.join("work/openagents/scripts/film/lab.py")),
     ]
     .into_iter()
@@ -84,12 +94,21 @@ pub async fn ensure(http: &reqwest::Client, base: &str) -> Result<(), String> {
     std::fs::create_dir_all(&log_dir).map_err(|e| e.to_string())?;
     let log = std::fs::File::create(log_dir.join("serve.log")).map_err(|e| e.to_string())?;
     let err = log.try_clone().map_err(|e| e.to_string())?;
-    std::process::Command::new("python3")
+    let mut command = std::process::Command::new("python3");
+    command
         .arg(&script)
         .arg("serve")
         .stdin(std::process::Stdio::null())
         .stdout(log)
-        .stderr(err)
+        .stderr(err);
+    if let Some(repo) = script.ancestors().nth(3) {
+        command.current_dir(repo);
+    }
+    // Its own process group: the Lab outlives this tool server, which ends
+    // with the agent run that started it.
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    command
         .spawn()
         .map_err(|e| format!("Video Lab couldn't start ({e})"))?;
     for _ in 0..40 {

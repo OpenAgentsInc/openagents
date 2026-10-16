@@ -18,6 +18,9 @@
 
 #[cfg(target_os = "macos")]
 mod player;
+mod service;
+
+pub use service::script as lab_script;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -68,6 +71,10 @@ pub struct LabCard {
     seek_bounds: std::rc::Rc<std::cell::Cell<Option<Bounds<Pixels>>>>,
     retired: Vec<Arc<RenderImage>>,
     _poll: Option<Task<()>>,
+    /// Starting the Lab for a Play or Open click.
+    starting: bool,
+    /// Why the Lab couldn't be reached, in a sentence.
+    notice: Option<String>,
 }
 
 impl LabCard {
@@ -101,6 +108,8 @@ impl LabCard {
             seek_bounds: Default::default(),
             retired: Vec::new(),
             _poll: None,
+            starting: false,
+            notice: None,
         };
         this.follow(cx);
         this
@@ -256,6 +265,38 @@ impl LabCard {
         let _ = (url, window, cx);
     }
 
+    /// Run `then` once the Lab answers, starting it if needed. While it starts
+    /// the card says so; if it can't, the card says why.
+    fn with_lab(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        then: impl FnOnce(&mut Self, &mut Window, &mut Context<Self>) + 'static,
+    ) {
+        let base = self.text("lab");
+        if !local_url(&base) || self.starting {
+            return;
+        }
+        self.starting = true;
+        self.notice = None;
+        cx.notify();
+        cx.spawn_in(window, async move |this, cx| {
+            let ready = cx
+                .background_executor()
+                .spawn(async move { service::ensure(&base) })
+                .await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.starting = false;
+                match ready {
+                    Ok(()) => then(this, window, cx),
+                    Err(error) => this.notice = Some(error),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     fn open(&self, url: &str, window: &mut Window, cx: &mut App) {
         crate::markdown::render::activate_link(
             crate::markdown::links::LinkTarget::new(url, url),
@@ -267,6 +308,12 @@ impl LabCard {
     }
 
     fn state_line(&self) -> Option<String> {
+        if self.starting {
+            return Some("Starting the Video Lab…".into());
+        }
+        if let Some(notice) = &self.notice {
+            return Some(notice.clone());
+        }
         if self.card.get("video").is_some_and(|v| !v.is_null()) {
             return Some(format!("{} ready", capital(&self.text("quality"))));
         }
@@ -408,8 +455,10 @@ impl Render for LabCard {
             );
             #[cfg(target_os = "macos")]
             {
-                screen = screen
-                    .on_click(cx.listener(move |this, _, _, cx| this.toggle(url.clone(), cx)));
+                screen = screen.on_click(cx.listener(move |this, _, window, cx| {
+                    let url = url.clone();
+                    this.with_lab(window, cx, move |this, _, cx| this.toggle(url, cx));
+                }));
             }
         } else if playing {
             #[cfg(target_os = "macos")]
@@ -517,10 +566,10 @@ impl Render for LabCard {
                     let mut el = link(format!("Play v{v}"), side);
                     #[cfg(target_os = "macos")]
                     {
-                        el =
-                            el.on_click(cx.listener(move |this, _, _, cx| {
-                                this.toggle(Some(url.clone()), cx)
-                            }));
+                        el = el.on_click(cx.listener(move |this, _, window, cx| {
+                            let url = Some(url.clone());
+                            this.with_lab(window, cx, move |this, _, cx| this.toggle(url, cx));
+                        }));
                     }
                     #[cfg(not(target_os = "macos"))]
                     let _ = url;
@@ -532,7 +581,12 @@ impl Render for LabCard {
         if !player_url.is_empty() {
             links = links.child(
                 link("Open in the Lab player and timeline".into(), "player").on_click(
-                    cx.listener(move |this, _, window, cx| this.open(&player_url, window, cx)),
+                    cx.listener(move |this, _, window, cx| {
+                        let url = player_url.clone();
+                        this.with_lab(window, cx, move |this, window, cx| {
+                            this.open(&url, window, cx)
+                        });
+                    }),
                 ),
             );
         }

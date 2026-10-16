@@ -15,6 +15,9 @@ pub enum HistoryEvent {
     Reset,
     Close,
 }
+/// Unpinned chats shown before "Show all".
+const RECENT: usize = 10;
+
 pub struct HistoryPanel {
     account: Arc<Controller>,
     pub model: Arc<History>,
@@ -23,6 +26,11 @@ pub struct HistoryPanel {
     selected_scope: Option<Option<String>>,
     archived: bool,
     projects_open: bool,
+    /// The project picked in the sidebar's project filter (lowercased name):
+    /// OpenAgents chats from the project with the same name show with it.
+    local_project: Option<String>,
+    /// Every chat, not only the most recent.
+    show_all: bool,
     _account_watch: Task<()>,
     _history_watch: Task<()>,
 }
@@ -142,6 +150,8 @@ impl HistoryPanel {
             selected_scope: None,
             archived: false,
             projects_open: false,
+            local_project: None,
+            show_all: false,
             _account_watch: account_watch,
             _history_watch: history_watch,
         }
@@ -200,6 +210,20 @@ impl HistoryPanel {
         cx.emit(HistoryEvent::Open(target));
         cx.notify();
     }
+    /// Follow the sidebar's project filter (`None` is all projects).
+    pub fn set_local_project(&mut self, name: Option<String>) {
+        let name = name.map(|n| n.trim().to_lowercase()).filter(|n| !n.is_empty());
+        if self.local_project != name {
+            self.local_project = name;
+            self.show_all = false;
+        }
+    }
+
+    fn toggle_show_all(&mut self, cx: &mut Context<Self>) {
+        self.show_all = !self.show_all;
+        cx.notify();
+    }
+
     pub fn toggle_archived(&mut self, cx: &mut Context<Self>) {
         self.archived = !self.archived;
         cx.notify();
@@ -379,27 +403,41 @@ impl Render for HistoryPanel {
                 SharedString::from(format!("{} chats loaded", self.snapshot.rows.len())),
             ));
         }
-        let rows = self.snapshot.visible_rows(self.archived);
+        let project_name = |id: &Option<String>| {
+            id.as_ref()
+                .and_then(|id| self.snapshot.projects.iter().find(|p| p.id() == id))
+                .map(|p| p.name.clone())
+        };
+        // Newest first. With a project picked in the sidebar's filter, only
+        // chats from the project of the same name (an explicit OpenAgents
+        // project scope above already narrows the list itself).
+        let mut rows = self.snapshot.visible_rows(self.archived);
+        if self.snapshot.project.is_none()
+            && let Some(local) = &self.local_project
+        {
+            rows.retain(|row| {
+                project_name(&row.project).is_some_and(|name| name.trim().to_lowercase() == *local)
+            });
+            if rows.is_empty() {
+                body = body.child(
+                    div()
+                        .px(px(6.))
+                        .pt(px(8.))
+                        .text_color(theme.text_muted)
+                        .child("No OpenAgents chats in this project."),
+                );
+            }
+        }
+        let total = rows.len();
+        let pinned = rows.iter().filter(|r| r.pinned_unix.is_some()).count();
+        if !self.show_all {
+            rows.truncate((pinned + RECENT).min(total));
+        }
         let mut group = None;
         for row in rows {
-            let next = (
-                row.pinned_unix.is_some(),
-                if row.pinned_unix.is_some() {
-                    None
-                } else {
-                    row.project.clone()
-                },
-            );
+            let next = (row.pinned_unix.is_some(), None::<String>);
             if group.as_ref() != Some(&next) {
-                let label = if next.0 {
-                    "Pinned".to_owned()
-                } else {
-                    row.project
-                        .as_ref()
-                        .and_then(|id| self.snapshot.projects.iter().find(|p| p.id() == id))
-                        .map(|p| p.name.clone())
-                        .unwrap_or_else(|| "Chats".into())
-                };
+                let label = if next.0 { "Pinned" } else { "Recent" }.to_owned();
                 body = body.child(
                     div()
                         .px(px(6.))
@@ -425,11 +463,13 @@ impl Render for HistoryPanel {
                     .filter(|_| row.updated_unix != 0)
                     .map(|d| d.format("%b %e, %Y").to_string())
                     .unwrap_or_default();
-            let detail = if activity.is_empty() {
-                source.to_owned()
-            } else {
-                format!("{source} · {activity}")
-            };
+            let mut detail = source.to_owned();
+            if let Some(project) = project_name(&row.project) {
+                detail.push_str(&format!(" · {project}"));
+            }
+            if !activity.is_empty() {
+                detail.push_str(&format!(" · {activity}"));
+            }
             body =
                 body.child(
                     div()
@@ -466,8 +506,21 @@ impl Render for HistoryPanel {
                         ),
                 );
         }
+        if total > pinned + RECENT {
+            body = body.child(self.button(
+                "saved-show-all",
+                if self.show_all {
+                    "Show fewer".to_owned()
+                } else {
+                    format!("Show all {total}")
+                },
+                Self::toggle_show_all,
+                cx,
+            ));
+        }
         match &self.snapshot.state {
             LoadState::Loading | LoadState::Failed { .. } => {}
+            LoadState::Ready if !self.show_all && total > pinned + RECENT => {}
             LoadState::Ready => {
                 let count = self
                     .snapshot
