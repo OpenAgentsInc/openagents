@@ -15368,6 +15368,7 @@ dependencies = [
 name = "session-host"
 version = "1.0.0"
 dependencies = [
+ "coder-sdk",
  "coordination-host",
  "env-host",
  "nostr",
@@ -15375,6 +15376,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "workspace-host",
 ]
 

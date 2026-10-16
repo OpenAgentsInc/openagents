@@ -769,8 +769,14 @@ response. Session-history cuts are WS `projection-cut` records over a
 host-signed `projection-definition` whose epoch is the lineage and whose
 sequence is the session revision. Turn input in the in-process adapters is
 JSON; an emulated steer's correction travels in the next turn's input as
-`corrections`. Mapping Claude Code, Codex, and ACP delegate engines to this
-profile is not implemented yet.
+`corrections`. The optional Rust `session-host/codex` feature maps Codex's
+explicit SDK port to a bounded `codex-managed` profile: create, submit,
+mid-turn steering, interrupt, captured history, and host queue/reorder. It
+requires a trusted installed connector that enforces the declared runtime
+effects and zero monetary cost. The standalone CLI has no Codex launcher.
+Resume, fork, native close, configuration changes, questions, and tool approvals
+remain unsupported for this profile. Claude Code and ACP mappings are not
+implemented. See [the runtime guide](../../crates/session-host/README.md#adapters).
 
 The native host checks current membership and scope generation before returning
 a cached open, command, or interaction response. Possessing an earlier signed

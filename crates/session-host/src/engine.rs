@@ -182,6 +182,16 @@ impl IoBudget {
 
 pub trait Engine {
     fn profile(&self) -> Profile;
+    /// Generative adapters can quote context in owner-visible output. Require
+    /// that the owner already has these bytes before delivering them.
+    fn requires_shared_context(&self) -> bool {
+        true
+    }
+    /// Deny original unsupported requests during bounded cleanup. This cannot
+    /// grant an effect, answer a question, or start another turn.
+    fn reject_required(&mut self, _native: &str) -> Result<()> {
+        Ok(())
+    }
     /// I/O engines honor this absolute ceiling at each write and wait. Pure
     /// in-process engines need no transport timer. A budget grants no operation.
     fn io_budget(&mut self, _budget: IoBudget) -> Result<()> {
@@ -460,6 +470,9 @@ impl LoopEngine {
 }
 
 impl Engine for LoopEngine {
+    fn requires_shared_context(&self) -> bool {
+        false
+    }
     fn approval_actions(&self) -> Vec<ActionProfile> {
         if self.profile.features.get("approvals") != Some(&Support::Native) {
             return Vec::new();

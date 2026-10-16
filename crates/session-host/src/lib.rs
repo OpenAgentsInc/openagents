@@ -4,6 +4,8 @@
 //! managed sessions separately. A session, an ENV execution attachment, a
 //! RUN controller, and a commercial order keep separate identities.
 pub mod cli;
+#[cfg(feature = "codex")]
+pub mod codex;
 pub mod engine;
 pub mod host;
 mod interface;

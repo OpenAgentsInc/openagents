@@ -1125,7 +1125,7 @@ impl SessionHost {
         let compatibility = self
             .store
             .put_json(&json!({"engine":digest_bytes(&profile.engine),
-            "protocol":digest_bytes(&profile.protocol),"verified":"in-process fixture"}))?;
+            "protocol":digest_bytes(&profile.protocol),"verified":"host adapter claim"}))?;
         let mut actions = BTreeMap::new();
         for action in self
             .engines
@@ -2697,7 +2697,7 @@ impl SessionHost {
                             .into(),
                     );
                 }
-                self.prepare_turn_input(adapter, session, &intent)?;
+                self.prepare_turn_input(state, adapter, session, &intent)?;
                 self.unused_intent(
                     state,
                     session,
@@ -3122,10 +3122,28 @@ impl SessionHost {
 
     fn prepare_turn_input(
         &self,
+        state: &State,
         adapter: &Adapter,
         session: &Session,
         intent: &Value,
     ) -> Result<crate::engine::TurnInput> {
+        if self
+            .engines
+            .borrow()
+            .get(&adapter.engine)
+            .ok_or("engine")?
+            .requires_shared_context()
+        {
+            let owner = self.read_scope(state, &session.owner);
+            if ["context", "task_frame"]
+                .iter()
+                .any(|field| !owner.known.contains(digest_of(&intent[*field])))
+            {
+                return Err(
+                    "not_admitted: native context must be shared with the session owner".into(),
+                );
+            }
+        }
         let mut input: Value =
             contracts::parse_strict_bounded(&self.bytes(&intent["input"])?, 1_048_576)
                 .map_err(contract)?;
@@ -3272,7 +3290,7 @@ impl SessionHost {
         }
         let intent_id = intent["intent"].as_str().ok_or("intent")?;
         self.unused_intent(state, session, intent_ref, intent_id)?;
-        let delivery = self.prepare_turn_input(&adapter, session, &intent)?;
+        let delivery = self.prepare_turn_input(state, &adapter, session, &intent)?;
         let carried: Vec<(Value, Value)> = std::mem::take(&mut session.pending_steers);
         let turn = token();
         let mut run = Vec::new();
@@ -3550,6 +3568,23 @@ impl SessionHost {
             session.results.push(result.clone());
             session.revision += 1;
             self.write_state(state, session, now)?;
+            // Persist the fault before a method-correct denial of the original
+            // native request. Cleanup cannot approve or send another input.
+            state.sessions.insert(session.id.clone(), session.clone());
+            self.save(state)?;
+            if let Ok(native) = self
+                .native_session(session, &adapter.engine)
+                .map(str::to_owned)
+            {
+                self.engine_io_budget(&adapter.engine, None, crate::engine::IoPurpose::Cleanup)?;
+                let captures = {
+                    let mut engines = self.engines.borrow_mut();
+                    let engine = engines.get_mut(&adapter.engine).ok_or("engine")?;
+                    let _ = engine.reject_required(&native);
+                    engine.captures()
+                };
+                self.retain_captures(state, session, captures, now)?;
+            }
             return Ok(
                 json!({"phase":session.phase,"state":session.state,"result":result,
                 "protocol_fault":session.protocol_fault}),
@@ -4378,6 +4413,12 @@ impl SessionHost {
         // intent prevents a lost acknowledgment from repeating the command.
         if native.is_some() {
             self.engine_io_budget(&adapter.engine, None, crate::engine::IoPurpose::Cleanup)?;
+            let _ = self
+                .engines
+                .borrow_mut()
+                .get_mut(&adapter.engine)
+                .ok_or("engine")?
+                .reject_required(native.as_deref().ok_or("native")?);
         }
         if let Some(native) = native.filter(|_| signal && !native_ended) {
             let _ = self

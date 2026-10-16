@@ -65,8 +65,28 @@ retains the observed digest. Lost acknowledgments stay unknown across restart.
 Additional approvers, third-party approval delivery, SDK tool approvals, and
 external-effect actions remain unsupported by this profile.
 
-Mapping Claude Code, Codex, and the ACP delegates to this host is still to
-come. Their steering rows stay in their own adapter crates.
+The optional `codex` Cargo feature exposes `codex::CodexEngine` over the SDK's
+explicit app-server port. Its `codex-managed` profile supports native create,
+submit, mid-turn steering, interruption, and captured history, plus host queue
+and reorder. Resume, fork, close, configuration changes, questions, and tool
+approvals are unsupported. Opening accepts only the installed model and low
+reasoning effort; it verifies the native effective-configuration response.
+
+A trusted Rust `Connector` supplies an exclusive connection under current
+admission. Its pinned installation declares the engine, protocol, model,
+provider, directory, and effects. The connector must enforce those effects,
+zero monetary cost, credential isolation, and deadlines. This is a library
+integration boundary; the standalone CLI installs only loop engines and does
+not launch Codex or load a user's login. Native sandbox options alone do not
+establish this enforcement. See the [app-server protocol](https://developers.openai.com/codex/app-server).
+
+SDK reads never send permissions or more input. Commands wait for their exact
+native acknowledgments; lost replies cannot repeat a write. Unsupported
+required requests first produce a saved protocol fault, then cleanup declines
+the original request and interrupts its original native turn. Partial transport
+bytes stay explicit history losses. Generative engines receive context and
+task-frame bytes only when the session owner already has access to them.
+Claude Code and ACP engine mappings remain unsupported by this host.
 
 Configured opening passes the admitted settings and model, recipient, and
 policy content to the adapter. The adapter validates them without effects and

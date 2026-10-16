@@ -31,7 +31,7 @@ impl Real {
             Coordinator::open(self.fx._temp.path().join("coord"), secret(OWNER)).unwrap(),
         ))
     }
-    fn host(&self, engine: LoopEngine) -> SessionHost {
+    fn host(&self, engine: impl Engine + 'static) -> SessionHost {
         SessionHost::open(
             self.fx.root.clone(),
             secret(HOST),
@@ -83,7 +83,7 @@ impl Real {
     fn new() -> Self {
         Self::for_engine(LoopEngine::mid_turn())
     }
-    fn for_engine(engine: LoopEngine) -> Self {
+    fn for_engine(engine: impl Engine + 'static) -> Self {
         let engine_name = engine.profile().name;
         let fx = Fx::new();
         let coordinator =
@@ -295,7 +295,18 @@ impl Real {
         let recipient = put_json(&mut self.fx.artifacts, &json!({"worker":pk(HOST)}));
         let model = put_json(&mut self.fx.artifacts, &json!({"model":"loop"}));
         let policy = put_json(&mut self.fx.artifacts, &json!({"owner":pk(OWNER)}));
-        let schema = serde_json::to_vec(&LoopEngine::mid_turn().profile().settings_schema).unwrap();
+        let name = description["adapter"]["id"]
+            .as_str()
+            .unwrap()
+            .rsplit('/')
+            .next()
+            .unwrap();
+        let schema = serde_json::to_vec(
+            &host
+                .with_engine(name, |engine| engine.profile().settings_schema)
+                .unwrap(),
+        )
+        .unwrap();
         let schema = put(&mut self.fx.artifacts, &schema, SCHEMA_MEDIA_TYPE, None);
         let settings = put_json(&mut self.fx.artifacts, &json!({"effort":"low"}));
         let requested = put_json(
@@ -2555,3 +2566,7 @@ fn a_denied_cj_open_has_a_private_bounded_refusal_without_native_creation() {
             .contains("not_admitted")
     );
 }
+
+#[cfg(feature = "codex")]
+#[path = "codex.rs"]
+mod codex;

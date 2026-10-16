@@ -145,7 +145,18 @@ impl Fx {
     }
     fn configuration(&mut self, host: &SessionHost, adapter: &Value, effort: &str) -> Value {
         let description = host.store().json(adapter).unwrap();
-        let schema = serde_json::to_vec(&LoopEngine::mid_turn().profile().settings_schema).unwrap();
+        let name = description["adapter"]["id"]
+            .as_str()
+            .unwrap()
+            .rsplit('/')
+            .next()
+            .unwrap();
+        let schema = serde_json::to_vec(
+            &host
+                .with_engine(name, |engine| engine.profile().settings_schema)
+                .unwrap(),
+        )
+        .unwrap();
         let body = json!({"v":"openagents.session-configuration.v1","requires":[],"adapter":description["adapter"],
             "recipient":put(&mut self.artifacts,b"recipient","application/json",None),
             "model":put_json(&mut self.artifacts,&json!({"model":"loop"})),
@@ -1990,6 +2001,9 @@ impl OpeningEngine {
     }
 }
 impl Engine for OpeningEngine {
+    fn requires_shared_context(&self) -> bool {
+        self.engine.requires_shared_context()
+    }
     fn owns(&self, native: &str) -> bool {
         self.engine.owns(native)
     }
