@@ -121,7 +121,9 @@ Content-Type: application/json
 
 The complete JSON request is at most 73,728 bytes.
 Command text is at most 65,536 UTF-8 bytes. `cwd` defaults to `.`, relative to
-`/workspace`, and must name an existing directory within that workspace.
+the computer workspace, and must name an existing directory within it. On Boat,
+the service uses `workspace` under the guest user's home; it does not require
+permission to create a directory under `/`.
 Absolute paths, `..` components, and control characters return `400`.
 A missing directory or symlink escape fails with exit code 126 before the shell
 command runs.

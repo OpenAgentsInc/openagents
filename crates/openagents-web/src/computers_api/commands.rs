@@ -326,7 +326,7 @@ pub(super) fn extend_openapi(document: &mut Value) {
     let schemas = json!({
         "AppCreateCommand":{"type":"object","additionalProperties":false,"required":["command"],"properties":{
             "command":{"type":"string","minLength":1,"maxLength":65536,"description":"Shell command. Do not put credentials in command text."},
-            "cwd":{"type":"string","default":".","maxLength":1024,"description":"Existing directory relative to /workspace; traversal and symlink escape refuse."},
+            "cwd":{"type":"string","default":".","maxLength":1024,"description":"Existing directory relative to the computer workspace; traversal and symlink escape refuse."},
             "timeout_seconds":{"type":"integer","minimum":1,"maximum":3600,"default":600},
             "env":{"type":"object","maxProperties":16,"additionalProperties":{"type":"string","maxLength":4096},"description":"Non-secret values only. Names: LANG, LC_ALL, TZ, CI, TERM, or OA_PARAM_*; credential fields refuse."},
             "idempotency_key":{"type":"string","minLength":1,"maxLength":128,"description":"Required here or as Idempotency-Key. Reuse across retries."}

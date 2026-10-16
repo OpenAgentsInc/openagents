@@ -304,12 +304,10 @@ struct CommandGuest(oa_boat::remote::Local);
 impl CommandGuest {
     fn map(&self, host: &str, script: &str) -> String {
         let root = self.0.root.join(host);
-        script
-            .replace(
-                "/tmp/oa-public-commands",
-                root.join("commands").to_str().unwrap(),
-            )
-            .replace("/workspace", root.join("workspace").to_str().unwrap())
+        script.replace(
+            "/tmp/oa-public-commands",
+            root.join("commands").to_str().unwrap(),
+        )
     }
 }
 impl oa_boat::remote::Remote for CommandGuest {
@@ -477,7 +475,7 @@ async fn a_process_killed_mid_provision_finishes_the_same_computer_after_restart
             .unwrap();
         let effect = std::fs::read_dir(boat_dir.path())
             .unwrap()
-            .any(|e| e.is_ok_and(|e| e.path().join("workspace/counter").exists()));
+            .any(|e| e.is_ok_and(|e| e.path().join("home/workspace/counter").exists()));
         if effect {
             assert_eq!(
                 retained.status, "dispatching",
@@ -523,7 +521,7 @@ async fn a_process_killed_mid_provision_finishes_the_same_computer_after_restart
     }
     let counters = std::fs::read_dir(boat_dir.path())
         .unwrap()
-        .filter_map(|e| std::fs::read_to_string(e.ok()?.path().join("workspace/counter")).ok())
+        .filter_map(|e| std::fs::read_to_string(e.ok()?.path().join("home/workspace/counter")).ok())
         .collect::<Vec<_>>();
     assert_eq!(counters, vec!["effect\n".to_owned()]);
 

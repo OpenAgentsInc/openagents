@@ -3306,7 +3306,7 @@
             "type": "string",
             "default": ".",
             "maxLength": 1024,
-            "description": "Existing directory relative to /workspace; traversal and symlink escape refuse."
+            "description": "Existing directory relative to the computer workspace; traversal and symlink escape refuse."
           },
           "timeout_seconds": {
             "type": "integer",

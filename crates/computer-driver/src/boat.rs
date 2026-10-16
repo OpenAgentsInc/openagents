@@ -178,7 +178,7 @@ impl Driver for BoatDriver {
 
     async fn start_command(&self, computer: &str, spec: &CommandSpec) -> Outcome<String> {
         let script =
-            identified::bounded_command_script("/tmp/oa-public-commands", "/workspace", spec);
+            identified::bounded_command_script("/tmp/oa-public-commands", "workspace", spec);
         match self
             .client
             .exec_detached(
