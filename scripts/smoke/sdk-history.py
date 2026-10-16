@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import subprocess
 import urllib.error
 import urllib.request
 import uuid
@@ -17,7 +18,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--api", default="https://api.openagents.com")
     parser.add_argument("--seed-dedicated-account", action="store_true")
+    parser.add_argument("--client-manifest", help="Run a prebuilt independent Cargo client while the synthetic chats exist")
     args = parser.parse_args()
+    assert not args.client_manifest or args.seed_dedicated_account, "The external-client check requires disposable fixtures"
     opener = urllib.request.build_opener(NoRedirect())
     token = os.environ.get("OPENAGENTS_TOKEN")
 
@@ -90,11 +93,18 @@ def main():
             assert status == 200 and len(last["data"]) == 5 and last["next"] is None
             status, _ = call("GET", "/v1/history/" + chat + "/messages?after=msg_199&revision=999999")
             assert status == 409
+        if args.client_manifest:
+            subprocess.run(["cargo", "run", "--locked", "--manifest-path", args.client_manifest], check=True)
         print("PASS dedicated-account ID pages, project directory, saved tools/thinking, and complete 205-message reads")
     finally:
+        failed_cleanup = 0
         for session in sessions:
-            status, _ = call("DELETE", "/v1/threads/synced/" + session)
-            assert status in (200, 204, 404), "Synthetic history cleanup failed"
+            try:
+                status, _ = call("DELETE", "/v1/threads/synced/" + session)
+                failed_cleanup += status not in (200, 204, 404)
+            except (OSError, AssertionError):
+                failed_cleanup += 1
+        assert not failed_cleanup, "Synthetic history cleanup needs retry"
         if sessions:
             print("Cleanup: all synthetic saved chats removed; no computers or tasks started")
 

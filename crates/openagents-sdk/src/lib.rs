@@ -2,11 +2,17 @@
 //! client never adopts CLI credentials, launches a browser, or loads a host.
 
 mod auth;
+pub mod history;
 mod transport;
 
 pub use auth::{
     Account, AccountView, CredentialRecord, CredentialStore, Login, Poll, Session, StorageError,
     Workspace,
+};
+pub use history::{
+    AttachmentRef, CaptureState, ChatReader, ChatRef, ChatSource, ChatSummary, FileKind,
+    HistoryIndex, HistoryPage, HistoryProject, MessageRole, ProjectReader, SavedCapture, SavedFile,
+    SavedMessage, ToolDetail, ToolStatus, TranscriptPage, TranscriptReader,
 };
 pub use tokio_util::sync::CancellationToken;
 pub use transport::{Client, Deployment, Error};

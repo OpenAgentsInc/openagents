@@ -42,7 +42,7 @@ clients; a new SDK does not need to duplicate them before computers are useful.
 
 | Area | Existing pieces | Remaining work |
 | --- | --- | --- |
-| Clients | `openagents-sdk` app authentication, sessions, and account/workspace discovery; decisions in `jev`; generated Boat client and product-specific callers | Complete public history reads, then Computers; maintained public schemas |
+| Clients | `openagents-sdk` app authentication, account/workspace discovery, and typed saved-history readers; decisions in `jev`; generated Boat client and product-specific callers | External desktop integration, then Computers; maintained public schemas |
 | Host | `coder-sdk`, Claude/Codex/ACP transports, hooks, policy and session ownership | Explicit third-party boundary, supported capabilities, and publication evidence |
 | Providers | `computer-driver`, Core/Suspend/Snapshot/Fork declarations, `computer-conformance`, Boat wire schema | Per-computer backend registry and separate external-provider qualification |
 | Computers | `oa-computers` PostgreSQL intent/reconciliation and web chat integration | Public auth/lifecycle/commands/files, shared client consumption, and supported SPACE operation |

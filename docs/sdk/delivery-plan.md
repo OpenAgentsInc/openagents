@@ -56,7 +56,8 @@ route authority. Prefix matching never proves access.
 The [saved history API](chat-history.md) adds bounded ID-order discovery,
 archive/shared-project reads, revision-checked full transcripts, and saved
 files, captures, and tool details. Its schemas are in `openapi.app.json`;
-#11828 exposes the typed SDK methods. The legacy routes keep distinct contracts:
+#11828 exposes typed SDK readers with account-bound references, cancellation,
+unknown content, and explicit changed/missing results. The legacy routes keep distinct contracts:
 
 - `GET /v1/threads`: offset/limit, at most 200 rows per page, with
   `threads`, `total`, `more`, and `next_offset`; excludes archived chats.

@@ -57,7 +57,9 @@ the website can remove it. No credential is adopted from CLI files or
 `OPENAGENTS_TOKEN`, and no browser is launched by this library.
 
 Requests have bounded timeouts (20 seconds by default, configurable up to two
-minutes), a 1 MiB JSON response limit, and no redirects or implicit retries.
+minutes), and no redirects or implicit retries. Auth and list JSON are bounded
+to 1 MiB; saved transcript pages are bounded to 17 MiB. Input files and computer
+captures are bounded to their saved sizes (at most 10 MiB and 15 MiB).
 Typed rate-limit/unavailable errors retain `Retry-After` as seconds or an HTTP
 date. Error diagnostics omit response bodies and credential values.
 
@@ -66,3 +68,29 @@ the CLI's `system` feature is disabled. Server/tenancy dependencies are test
 fixtures only. Tests exercise the real public website handlers over synthetic
 stores, plus cancellation, response loss, redirects, bounds, and account changes.
 See [the SDK plan](../../docs/sdk/delivery-plan.md) for history and Computers work.
+
+The `history` module provides `Client::history`, `history_projects`,
+`shared_history`, `transcript`, and `download`. Readers fetch one page per call,
+accept a cancellation token, and bind every result/reference to the session's
+account and deployment. Use the deployed `/v1/history` contract; the legacy
+`/threads` offset lists and newest-200 previews are not full-history readers.
+`HistoryIndex` optionally merges owned/shared summaries by chat ID and sorts
+pinned and archived lists. Its ordering covers loaded pages; fetch through the
+end before treating the list as complete. Replace it on access refresh and
+clear it on sign-out. The SDK does not persist private history.
+
+Unknown source, role, file-kind, and tool-status values remain `Other(String)`;
+unknown message content remains in `SavedMessage::extra`. Missing tool detail
+is `None`; empty generated-file/artifact arrays mean those objects weren't
+saved. A file/capture without `download_ref()` has unsupported metadata or
+exceeds the supported bound. Valid metadata can still return `NotFound` when
+saved bytes are gone. Downloads use only configured API paths and never follow
+server-supplied URLs or redirects. The library writes no downloaded files.
+
+`Changed` or `InvalidCursor` requires a new reader and a fresh transcript;
+never append pages from different revisions. Transient errors leave the
+position unchanged. Duplicate/nonadvancing IDs and truncated pages are errors,
+not successful completion. Cancel readers on account changes and compare the
+returned `ChatRef` before applying a late result to a view. Clear or replace
+cached shared content when access is refreshed; every new server read uses the
+existing access check (up to 30 seconds of successful-check caching).

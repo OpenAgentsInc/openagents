@@ -482,6 +482,41 @@ async fn sdk_device_login_restore_workspaces_and_sign_out_use_the_public_handler
         client.restore(&record).await.unwrap().account().id,
         account.id
     );
+    // Fixture setup uses the existing sync API; the SDK exposes only reads.
+    let fixture_credential = serde_json::to_value(&record).unwrap()["credential"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let seed = reqwest::Client::new().put(format!("{origin}/v1/threads/synced/phone-sdk-fixture"))
+        .bearer_auth(&fixture_credential).json(&json!({
+            "computer":"Offline fixture", "title":"Long saved chat", "messages":(0..405).map(|n|json!({"role":if n==1 {"thinking"}else{"assistant"},"text":format!("Saved {n}")})).collect::<Vec<_>>()
+        })).send().await.unwrap();
+    assert!(seed.status().is_success());
+    let cancel = CancellationToken::new();
+    let mut chats = client.history(&session).unwrap();
+    let page = chats
+        .next_page(&client, &session, &cancel)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(page.data.len(), 1);
+    assert_eq!(page.data[0].source, openagents_sdk::ChatSource::Phone);
+    let mut transcript = client
+        .transcript(&session, &page.data[0].chat)
+        .unwrap()
+        .with_page_size(200)
+        .unwrap();
+    let mut messages = Vec::new();
+    while let Some(page) = transcript
+        .next_page(&client, &session, &cancel)
+        .await
+        .unwrap()
+    {
+        messages.extend(page.data);
+    }
+    assert_eq!(messages.len(), 405);
+    assert_eq!(messages[1].role, openagents_sdk::MessageRole::Thinking);
+    assert_eq!(messages[404].text, "Saved 404");
     client.sign_out(&session).await.unwrap();
     assert!(matches!(
         client.restore(&record).await,

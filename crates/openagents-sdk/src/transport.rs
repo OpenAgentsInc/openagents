@@ -106,6 +106,10 @@ pub enum Error {
         timeout: bool,
     },
     InvalidResponse,
+    NotFound,
+    Changed,
+    InvalidCursor,
+    InvalidReference,
     TooLarge,
     Redirect,
     RateLimited {
@@ -133,9 +137,13 @@ impl fmt::Display for Error {
             Self::Denied => "Login was denied on the website.",
             Self::ExpiredLogin => "The login code expired. Start again.",
             Self::FinishedLogin => "Start a new login to continue.",
-            Self::Cancelled => "Login canceled.",
+            Self::Cancelled => "Canceled.",
             Self::UncertainLogin(_) => "Login could not be confirmed. Start again.",
             Self::Network { .. } => "Couldn't connect. Check your connection and try again.",
+            Self::NotFound => "This chat or file is no longer available.",
+            Self::Changed => "This chat changed. Load it again.",
+            Self::InvalidCursor => "Start again from the first page.",
+            Self::InvalidReference => "This chat or file could not be opened.",
             Self::InvalidResponse => "That response couldn't be opened. Try again.",
             Self::TooLarge => "The response is too large to open.",
             Self::Redirect => "Check the website address and try again.",
@@ -194,6 +202,51 @@ impl Client {
         body: Option<Value>,
         token: Option<&str>,
     ) -> Result<T, Error> {
+        let response = self.send(method, segments, query, body, token).await?;
+        Self::decode(response, segments, 1024 * 1024).await
+    }
+
+    pub(crate) async fn history_json<T: DeserializeOwned>(
+        &self,
+        segments: &[&str],
+        query: &[(&str, String)],
+        token: &str,
+    ) -> Result<T, Error> {
+        let response = self
+            .send(Method::GET, segments, query, None, Some(token))
+            .await?;
+        let limit = if segments.last() == Some(&"messages") {
+            17 * 1024 * 1024
+        } else {
+            1024 * 1024
+        };
+        Self::decode(response, segments, limit).await
+    }
+
+    pub(crate) async fn history_bytes(
+        &self,
+        segments: &[&str],
+        token: &str,
+        limit: usize,
+    ) -> Result<Vec<u8>, Error> {
+        let response = self
+            .send(Method::GET, segments, &[], None, Some(token))
+            .await?;
+        if !response.status().is_success() {
+            Self::decode::<Value>(response, segments, 1024 * 1024).await?;
+            return Err(Error::InvalidResponse);
+        }
+        Self::read_limited(response, limit).await
+    }
+
+    async fn send(
+        &self,
+        method: Method,
+        segments: &[&str],
+        query: &[(&str, String)],
+        body: Option<Value>,
+        token: Option<&str>,
+    ) -> Result<reqwest::Response, Error> {
         let mut url = self.deployment.api.clone();
         {
             let mut path = url
@@ -215,7 +268,7 @@ impl Client {
         if let Some(body) = body {
             request = request.json(&body);
         }
-        let mut response = request.send().await.map_err(|error| Error::Network {
+        let response = request.send().await.map_err(|error| Error::Network {
             timeout: error.is_timeout(),
         })?;
         let status = response.status();
@@ -250,10 +303,12 @@ impl Client {
         if status.as_u16() == 403 {
             return Err(Error::Forbidden);
         }
-        const MAX_BYTES: usize = 1024 * 1024;
+        Ok(response)
+    }
+    async fn read_limited(mut response: reqwest::Response, limit: usize) -> Result<Vec<u8>, Error> {
         if response
             .content_length()
-            .is_some_and(|size| size > MAX_BYTES as u64)
+            .is_some_and(|size| size > limit as u64)
         {
             return Err(Error::TooLarge);
         }
@@ -261,11 +316,28 @@ impl Client {
         while let Some(chunk) = response.chunk().await.map_err(|error| Error::Network {
             timeout: error.is_timeout(),
         })? {
-            if chunk.len() > MAX_BYTES.saturating_sub(bytes.len()) {
+            if chunk.len() > limit.saturating_sub(bytes.len()) {
                 return Err(Error::TooLarge);
             }
             bytes.extend_from_slice(&chunk);
         }
+        Ok(bytes)
+    }
+    async fn decode<T: DeserializeOwned>(
+        response: reqwest::Response,
+        segments: &[&str],
+        limit: usize,
+    ) -> Result<T, Error> {
+        let status = response.status();
+        let mut bytes = Self::read_limited(
+            response,
+            if status.is_success() {
+                limit
+            } else {
+                1024 * 1024
+            },
+        )
+        .await?;
         let value = serde_json::from_slice::<Value>(&bytes).map_err(|_| Error::InvalidResponse);
         bytes.fill(0);
         let value = value?;
