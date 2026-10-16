@@ -22,6 +22,7 @@ esac
 PROFILE=mobile
 if [[ "${CONFIGURATION:-Debug}" == "Release" ]]; then PROFILE=mobile-dist; fi
 
+CARGO_OUT="${CARGO_TARGET_DIR:-$ROOT/target}"
 OUT="$ROOT/target/ios-core/$PLATFORM"
 mkdir -p "$OUT/include"
 
@@ -37,7 +38,8 @@ run_cargo() {
   env -i HOME="$HOME" USER="${USER:-}" TERM="${TERM:-dumb}" \
     PATH="$HOME/.cargo/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
     IPHONEOS_DEPLOYMENT_TARGET=26.0 \
-    CARGO_TARGET_DIR="$ROOT/target" \
+    RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-1.98.1}" \
+    CARGO_TARGET_DIR="$CARGO_OUT" \
     cargo "$@"
 }
 
@@ -45,11 +47,11 @@ cd "$ROOT"
 run_cargo build --locked -p zeron-mobile --lib --profile "$PROFILE" --target "$TARGET"
 run_cargo build --locked -p zeron-mobile --bin uniffi-bindgen --features bindgen --profile mobile
 
-LIB="$ROOT/target/$TARGET/$PROFILE/libzeron_mobile.a"
+LIB="$CARGO_OUT/$TARGET/$PROFILE/libzeron_mobile.a"
 cp -p "$LIB" "$OUT/libzeron_mobile.a"
 
 GEN="$OUT/gen"
-"$ROOT/target/mobile/uniffi-bindgen" generate --library "$LIB" --language swift --out-dir "$GEN" >/dev/null
+"$CARGO_OUT/mobile/uniffi-bindgen" generate --library "$LIB" --language swift --out-dir "$GEN" >/dev/null
 cp "$GEN/zeron_coreFFI.h" "$OUT/include/zeron_coreFFI.h"
 cp "$GEN/zeron_coreFFI.modulemap" "$OUT/include/module.modulemap"
 # Only touch the Swift file when it changed so Xcode doesn't recompile it.

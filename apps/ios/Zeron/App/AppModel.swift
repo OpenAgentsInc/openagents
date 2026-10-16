@@ -98,7 +98,7 @@ final class AppModel {
         path.pathUpdateHandler = { [weak self] p in
             DispatchQueue.main.async { self?.client?.setNetworkOnline(online: p.status == .satisfied) }
         }
-        path.start(queue: DispatchQueue(label: "sh.zeron.path"))
+        path.start(queue: DispatchQueue(label: "com.openagents.coder.path"))
         let args = ProcessInfo.processInfo.arguments
         #if DEBUG
         // Test hooks (never in release builds): wipe the Keychain, or run
@@ -113,9 +113,11 @@ final class AppModel {
         #endif
         if args.contains("-demo") || args.contains("-route") && Credentials.stored() == nil {
             start(.demo(options: Self.demoOptions()))
-        } else if let stored = Credentials.stored() {
-            start(stored)
         }
+    }
+
+    func openDemo() {
+        if start(.demo(options: Self.demoOptions())) { onSignedIn?() }
     }
 
     static func demoOptions() -> DemoOptions {
@@ -190,7 +192,7 @@ final class AppModel {
         let args = ProcessInfo.processInfo.arguments
         if let i = args.firstIndex(of: "-edge"), i + 1 < args.count { return args[i + 1] }
         #endif
-        return Endpoints.edgeURL.absoluteString
+        return productionEdgeUrl()
     }
 
     static var deviceId: String {
@@ -198,22 +200,6 @@ final class AppModel {
         let id = "ios-" + UUID().uuidString.lowercased().prefix(8)
         UserDefaults.standard.set(id, forKey: "deviceId")
         return id
-    }
-
-    /// WorkOS code → tokens → org (the first, or the only one) → client.
-    func signIn(code: String, chooseOrg: @escaping ([AuthOrg]) async -> AuthOrg?) async throws {
-        let edge = Self.edgeURL
-        let exchange = try await authExchangeCode(edgeUrl: edge, code: code)
-        let orgs = try await authListOrgs(edgeUrl: edge, accessToken: exchange.tokens.accessToken)
-        guard !orgs.isEmpty else { throw CoreError.Auth(message: "This account isn't in an organization yet.") }
-        guard let org = orgs.count == 1 ? orgs[0] : await chooseOrg(orgs) else { return }
-        let tokens = try await authRefresh(edgeUrl: edge, refreshToken: exchange.tokens.refreshToken, organizationId: org.organizationId)
-        let user = exchange.user
-        let name = [user.firstName, user.lastName].compactMap { $0?.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: " ")
-        AccountProfile(name: name.nonEmpty, email: user.email, orgName: org.name).save()
-        let started = await MainActor.run { start(.workOs(userId: exchange.user.id, orgId: org.organizationId, tokens: tokens)) }
-        guard started else { throw CoreError.Auth(message: "Couldn't open your workspace. Try signing in again.") }
-        await MainActor.run { onSignedIn?() }
     }
 
     /// The user signing out: this device forgets the account's local docs.
@@ -544,7 +530,7 @@ final class AppModel {
     var accountDetail: String {
         if isDemo { return "Offline demo workspace" }
         let p = AccountProfile.load()
-        return [p.name != nil ? p.email : nil, p.orgName].compactMap { $0 }.joined(separator: " · ").nonEmpty ?? "Zeron account"
+        return [p.name != nil ? p.email : nil, p.orgName].compactMap { $0 }.joined(separator: " · ").nonEmpty ?? "OpenAgents account"
     }
 
     /// Logins from before profiles were saved: recover the org name (the
@@ -666,7 +652,7 @@ extension Credentials {
         return false
     }
 
-    private static let service = "sh.zeron.ios"
+    private static let service = "com.openagents.coder"
     private static let account = "credentials"
 
     static func stored() -> Credentials? {
@@ -752,7 +738,7 @@ struct AccountProfile: Codable {
     var email: String?
     var orgName: String?
 
-    private static let service = "sh.zeron.ios"
+    private static let service = "com.openagents.coder"
     private static let account = "profile"
 
     static func load() -> AccountProfile {

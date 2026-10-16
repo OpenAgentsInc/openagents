@@ -130,3 +130,34 @@ Known places a user can still see "Zeron" or "zeron":
 | Windows x86_64 | Inno Setup installer + portable `.exe` (`scripts/package-windows.ps1`, `windows-2022`) | Identity edited (installer AppId, names, scheme, icon, data directory); not built or run. |
 | Linux x86_64 / aarch64 | Tarball with `install.sh` (`scripts/package-linux.sh`, Ubuntu 24.04) | Data directory and icon changed; install layout still Zeron's (collides with a Zeron install). Not built or run. |
 | iOS | TestFlight (`testflight.yml`) | Out of scope. |
+
+## iOS identity (#11841)
+
+- `apps/ios/Zeron.xcodeproj` and `Zeron/Info.plist`: OpenAgents Coder,
+  `com.openagents.coder`, isolated extension/test bundle IDs, and
+  `openagents-coder` URL scheme. Upstream has no App Group entitlement.
+- `Zeron/App/AppModel.swift`: isolated keychain services; stored upstream
+  credentials do not start a session. `-demo` and debug `-dev` remain available.
+- `Zeron/Shell/SignInViewController.swift`: signed-out screen with an offline
+  demo; no WorkOS sign-in control. OpenAgents sign-in follows in #11848.
+- `crates/client/src/auth.rs`: production server is `https://sync.openagents.com`.
+  `crates/mobile/src/client_ffi/mod.rs` exports that setting to Swift.
+- `Zeron/Assets.xcassets/AppIcon.appiconset`: OpenAgents icon from the public
+  monorepo's `bins/openagents-ios/host/App/Assets.xcassets/AppIcon.appiconset`.
+- `Zeron/Shell/MoreViewController.swift` and `Zeron/Zeron-MIT.txt`: About
+  attribution and the complete upstream MIT notice.
+- `Zeron/App/PushNotifications.swift`, Settings, and `Zeron.entitlements`:
+  no permission prompt, token registration, or push entitlement in the first
+  release. Push returns through OpenAgents in #11853.
+- `ZeronLiveActivity/VoiceLiveActivity.swift` and `SceneDelegate.swift`:
+  isolated Live Activity deep link. Dispatch and signpost names are isolated.
+- `crates/mobile/src/layout/fixture.md`: demo links use OpenAgents.
+- `scripts/ios/build-core.sh`: honor an external Cargo target directory and
+  preserve the selected Rust toolchain (default 1.98.1) across Xcode's clean
+  build environment.
+
+After upstream merges, review these seams, run the iOS identity tests, and
+scan the built app with `python3 scripts/ios/verify-identity.py PATH_TO_APP`.
+
+Verification scope: upstream has existing workspace formatting differences;
+format only the Rust files changed here rather than rewriting the workspace.

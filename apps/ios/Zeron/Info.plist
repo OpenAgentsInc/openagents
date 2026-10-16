@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Zeron</string>
+	<string>OpenAgents Coder</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -26,10 +26,10 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>sh.zeron.ios.auth</string>
+			<string>com.openagents.coder.auth</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>zeron</string>
+				<string>openagents-coder</string>
 			</array>
 		</dict>
 	</array>

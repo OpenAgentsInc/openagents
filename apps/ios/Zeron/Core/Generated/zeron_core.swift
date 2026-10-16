@@ -16719,6 +16719,16 @@ public func parseUserMessage(content: String) -> ParsedUserMessage  {
 })
 }
 /**
+ * Default sync server for OpenAgents Coder.
+ */
+public func productionEdgeUrl() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_func_production_edge_url(uniffiCallStatus
+    )
+})
+}
+/**
  * Size of the project palette `project_color_index` indexes.
  */
 public func projectColorCount() -> UInt32  {
@@ -16923,6 +16933,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_func_parse_user_message() != 19553) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_func_production_edge_url() != 58148) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_func_project_color_count() != 30925) {

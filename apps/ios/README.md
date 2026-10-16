@@ -1,6 +1,6 @@
-# Zeron for iOS
+# OpenAgents Coder for iOS
 
-A UIKit viewport onto the zeron mesh, built on the Rust mobile core. The phone
+OpenAgents Coder uses a UIKit shell over the Rust mobile core. The phone
 is a **peer device**: it mirrors the workspace registry, joins per-chat session
 rooms, and drives remote engines through the durable command ledger. No agent
 runs on the phone.
@@ -11,14 +11,22 @@ links the same library. See [`docs/mobile-rewrite.md`](../../docs/mobile-rewrite
 
 ## Build & run
 
-Requires Xcode 26+ and a Rust toolchain with the iOS targets:
+Requires Xcode 26+ and Rust 1.98.1 or newer. Keep the upstream scheme and
+internal crate names. The installed app is **OpenAgents Coder**
+(`com.openagents.coder`), alongside an existing Zeron installation.
 
 ```sh
-rustup target add aarch64-apple-ios aarch64-apple-ios-sim
-cd apps/ios
-xcodebuild -project Zeron.xcodeproj -scheme Zeron \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+rustup target add aarch64-apple-ios aarch64-apple-ios-sim --toolchain 1.98.1
+RUSTUP_TOOLCHAIN=1.98.1 CARGO_TARGET_DIR="$HOME/work/coder-desktop-target-agent1" \
+  xcodebuild -project apps/ios/Zeron.xcodeproj -scheme Zeron \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+  CODE_SIGNING_ALLOWED=NO build
 ```
+
+The signed-out screen offers **Try the demo**. OpenAgents sign-in is tracked
+in OpenAgentsInc/openagents#11848. The default sync server comes from
+`zeron-client` (`https://sync.openagents.com`), through the mobile facade.
+See [`FORK.md`](../../FORK.md) for changed seams and verification.
 
 The Zeron target's **Rust core** build phase runs `scripts/ios/build-core.sh`,
 which builds `crates/mobile` for the active platform (always optimized — the
@@ -118,27 +126,12 @@ The test launches the app with `-harness mock`: a chat's configured harness
 wins over the engine's `ZERON_HARNESS` default, so without it a real agent
 would run.
 
-## Session notifications
+## Session notifications and distribution
 
-The edge sends them (`edge/src/push-notify.ts`, `registry-room.ts`): when a
-session's registry row changes it applies the desktop's rule (run finished,
-waiting on your input, run failed) and pushes to every phone that registered
-with `POST /registry/:org/push-target`. The app asks for permission the first
-time a session is started from the phone (or from Settings → Notifications),
-registers its APNs token with the choices from Settings, stays quiet while
-open, and opens the session a notification is tapped for.
+The first OpenAgents Coder release has no push notifications or permission
+prompt. OpenAgentsInc/openagents#11853 tracks their return through our push
+gateway. Voice Live Activity remains a separate extension.
 
-Setup once per deployment: an APNs auth key (Apple Developer → Keys →
-Apple Push Notifications service), then `wrangler secret put APNS_KEY_P8` (the
-`.p8` contents) and `wrangler secret put APNS_KEY_ID` in `edge/`. The
-TestFlight workflow enables the Push capability on the App ID itself.
-`/registry/:org/stats` shows registered phones and recent deliveries.
-
-## TestFlight release
-
-Run the **TestFlight** workflow from GitHub Actions on `main`. It installs the
-Rust iOS targets, selects the next build number from App Store Connect,
-archives (device, Release — the Rust core builds in the archive) with
-automatic signing, and uploads a TestFlight build (internal, or external with
-beta review). Secrets: `AC_API_KEY_P8`, `AC_API_KEY_ID`,
-`AC_API_ISSUER_ID`.
+Local archive and TestFlight preparation are tracked in
+OpenAgentsInc/openagents#11850. Do not use the upstream GitHub Actions release
+workflow or upload a build without the owner's release instruction.

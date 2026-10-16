@@ -23,6 +23,12 @@ use zeron_client as zc;
 pub use session::*;
 pub use types::*;
 
+/// Default sync server for OpenAgents Coder.
+#[uniffi::export]
+pub fn production_edge_url() -> String {
+    zc::auth::PRODUCTION_EDGE_URL.to_owned()
+}
+
 /// Receives coalesced change events (at most one burst per display frame).
 /// Called on a client thread: hop to the main thread and pull there.
 #[uniffi::export(with_foreign)]
@@ -372,7 +378,11 @@ impl CoreClient {
                 .register_push_target(
                     &token,
                     &environment,
-                    zc::PushPrefs { done: prefs.done, input: prefs.input, failed: prefs.failed },
+                    zc::PushPrefs {
+                        done: prefs.done,
+                        input: prefs.input,
+                        failed: prefs.failed,
+                    },
                 )
                 .await
         })
@@ -406,7 +416,12 @@ impl CoreClient {
         query: String,
     ) -> CoreResult<Vec<FileMatch>> {
         let client = self.client.clone();
-        let files = on_runtime(async move { client.search_files(&device_id, chat_id, space_id, &query).await }).await?;
+        let files = on_runtime(async move {
+            client
+                .search_files(&device_id, chat_id, space_id, &query)
+                .await
+        })
+        .await?;
         Ok(files
             .into_iter()
             .map(|f| FileMatch {

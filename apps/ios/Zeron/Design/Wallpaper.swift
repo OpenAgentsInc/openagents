@@ -124,7 +124,7 @@ enum WallpaperStore {
     private static let lock = NSLock()
     private static var cache: [String: Render] = [:]
     private static var generation = 0
-    private static let queue = DispatchQueue(label: "sh.zeron.wallpaper", qos: .userInitiated)
+    private static let queue = DispatchQueue(label: "com.openagents.coder.wallpaper", qos: .userInitiated)
 
     /// Render for an appearance; `completion` runs on the main thread (nil
     /// when no wallpaper is set). Cached until the image or effect changes.

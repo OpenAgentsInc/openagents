@@ -62,39 +62,14 @@ final class PushNotifications: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().delegate = self
     }
 
-    /// Signed in (or launched signed in): re-register if already allowed.
-    /// Tokens can change between launches; the edge keeps the latest.
-    func signedIn() {
-        Task {
-            let settings = await UNUserNotificationCenter.current().notificationSettings()
-            if Self.allowed(settings.authorizationStatus) {
-                UIApplication.shared.registerForRemoteNotifications()
-            }
-        }
-    }
+    // Push registration stays off until #11853.
+    func signedIn() {}
 
-    /// The first time a session is started from this phone: the moment the
-    /// ask makes sense ("tell me when it's done").
-    func askAfterFirstSession() {
-        guard app?.isDemo == false, enabled, !defaults.bool(forKey: Self.askedKey) else { return }
-        defaults.set(true, forKey: Self.askedKey)
-        Task { _ = await self.requestPermission() }
-    }
+    // Keep call sites intact without asking for notification permission.
+    func askAfterFirstSession() {}
 
-    /// Ask the system (once; later it's the Settings app's call).
     @discardableResult
-    func requestPermission() async -> Bool {
-        let center = UNUserNotificationCenter.current()
-        let status = await center.notificationSettings().authorizationStatus
-        let granted: Bool
-        if status == .notDetermined {
-            granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
-        } else {
-            granted = Self.allowed(status)
-        }
-        if granted { UIApplication.shared.registerForRemoteNotifications() }
-        return granted
-    }
+    func requestPermission() async -> Bool { false }
 
     func authorizationStatus() async -> UNAuthorizationStatus {
         await UNUserNotificationCenter.current().notificationSettings().authorizationStatus

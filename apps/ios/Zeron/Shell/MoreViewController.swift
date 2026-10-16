@@ -156,7 +156,7 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             }
             if notificationStatus == .denied {
                 // Only the Settings app can turn them back on.
-                let alert = UIAlertController(title: "Notifications are off", message: "Allow notifications for Zeron in iOS Settings.", preferredStyle: .alert)
+                let alert = UIAlertController(title: "Notifications are off", message: "Allow notifications for Coder in iOS Settings.", preferredStyle: .alert)
                 alert.addAction(UIAlertAction(title: "Not Now", style: .cancel) { [weak self] _ in self?.reload() })
                 alert.addAction(UIAlertAction(title: "Open Settings", style: .default) { [weak self] _ in
                     if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
@@ -192,8 +192,7 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             s.appendSections(["Voice"])
             s.appendItems([Row(id: "voice", title: "Voice", subtitle: app.voice.selectedStyle.map { "Codex voice · \($0.capitalized)" } ?? "Codex voice device and style", symbol: "waveform")])
         }
-        s.appendSections(["Notifications"])
-        s.appendItems(notificationRows())
+        // Push notifications return after the first release (#11853).
         s.appendSections(["Appearance"])
         let style = UserDefaults.standard.integer(forKey: "appearance")
         s.appendItems([
@@ -214,6 +213,8 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             Row(id: "groupByProject", title: "Group by Project", subtitle: "Sessions outside your sections, under their project", symbol: "square.stack.3d.up", accessory: .toggle(app.groupByProject)),
             Row(id: "archived", title: "Archived Sessions", symbol: "archivebox"),
         ])
+        s.appendSections(["About"])
+        s.appendItems([Row(id: "about", title: "OpenAgents Coder", subtitle: "Based on Zeron by Wing, MIT", symbol: "info.circle")])
         s.appendSections([" "])
         s.appendItems([Row(id: "signout", title: "Sign Out", symbol: "rectangle.portrait.and.arrow.right", accessory: .none, destructive: true)])
         dataSource.apply(s, animatingDifferences: false)
@@ -223,6 +224,10 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
         collectionView.deselectItem(at: path, animated: true)
         guard let row = dataSource.itemIdentifier(for: path) else { return }
         switch row.id {
+        case "about":
+            let about = UIAlertController(title: "OpenAgents Coder", message: Bundle.main.url(forResource: "Zeron-MIT", withExtension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) }, preferredStyle: .alert)
+            about.addAction(UIAlertAction(title: "Done", style: .default))
+            present(about, animated: true)
         case "voice": navigationController?.pushViewController(VoiceViewController(app: app), animated: true)
         case let id where id.hasPrefix("appearance:"):
             let style = Int(id.dropFirst(11)) ?? 0

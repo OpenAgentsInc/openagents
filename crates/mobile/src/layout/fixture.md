@@ -2,7 +2,7 @@
 
 The **transcript** is laid out _analytically_: every row's height is known
 before it is shown, so scrolling never guesses. Inline `code spans` get chips,
-[links](https://zeron.sh/docs) are tappable, and ~~old ideas~~ are struck.
+[links](https://openagents.com/docs) are tappable, and ~~old ideas~~ are struck.
 
 ## Steps
 
