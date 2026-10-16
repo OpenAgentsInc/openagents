@@ -853,6 +853,11 @@
         "description": "A live app sess_ session or oa_sk_ sign-in key. Account-bound oak_ keys are accepted only where the operation declares them and their scopes permit it. API cookies are ignored.",
         "scheme": "bearer",
         "type": "http"
+      },
+      "appKeyManagementBearer": {
+        "description": "An account-service-issued live app session (sess_) or sign-in key (oa_sk_). The account service validates it on every request. Cookies and oak_ API keys cannot manage these keys. A sign-in key can create and revoke other sign-in keys for the same account, including itself.",
+        "scheme": "bearer",
+        "type": "http"
       }
     }
   },
