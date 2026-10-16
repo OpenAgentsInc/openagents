@@ -1,0 +1,19 @@
+{
+  "appId": "6807250813",
+  "bundleId": "com.openagents.coder",
+  "version": "1.0.0",
+  "build": "1001",
+  "source": "57c131588f169e05d3557bcbefc2852381d5284e",
+  "usesNonExemptEncryption": false,
+  "uploadId": "91885b92-e373-405a-ab27-2081802c0fdf",
+  "checkedAt": "2026-10-16T14:42:25.236619+00:00",
+  "fileId": "bafb50d4-cf8b-4330-823b-4ae67111ff28",
+  "chunksUploaded": 6,
+  "finalizationResponse": "Accepted",
+  "buildId": "91885b92-e373-405a-ab27-2081802c0fdf",
+  "processingState": "VALID",
+  "uploadedDate": "2026-10-16T07:36:05-07:00",
+  "internalBuildState": "IN_BETA_TESTING",
+  "externalBuildState": "READY_FOR_BETA_SUBMISSION",
+  "testNotesSaved": true
+}

@@ -1,5 +1,29 @@
 # Coder TestFlight preparation
 
+## Build 1001: owner-selected export exemption
+
+The owner requested `ITSAppUsesNonExemptEncryption=false` and another upload
+on 2026-10-16. Fork commit `57c131588f169e05d3557bcbefc2852381d5284e` sets
+that declaration in both the app and Live Activity extension. The marketing
+version stays **1.0.0**; both bundles advance to **1001**.
+
+Seven release tests passed, including rejection of a missing exemption or
+non-exempt declaration. Source metadata checks, the signed iPhone archive,
+strict signatures, and App Store IPA export passed. The final signed bundles
+and exported IPA contain the false flag. All six chunks transferred and Apple
+accepted finalization. Apple reports `VALID`, `IN_BETA_TESTING`, and
+`usesNonExemptEncryption=false` for build 1001. What to Test was saved and
+read back successfully. [Build 1001 receipt](evidence/11850-testflight-1.0.0-1001.json)
+records the processed build; no manual compliance step remains.
+
+Google has issued the sync certificate: a normal HTTPS request to
+`https://sync.openagents.com/health` now returns **200**. This clears the DNS
+and certificate blocker recorded for build 1000. The dedicated physical
+phone check remains in workspace `NEEDS_OWNER.md`.
+
+## Build 1000 history
+
+
 On 2026-10-16, the owner authorized TestFlight upload and requested
 **OpenAgents Coder 1.0.0 (1000)** for the existing `com.openagents.coder` record.
 Fork commit `f8788f1594632237a3702677bb5b68d00d26341e` sets matching app and
