@@ -14,6 +14,8 @@ case "$example" in
   signet_service) features=events; recipe=deploy/layertree/signet-service.Dockerfile ;;
   *) echo 'Use a supported research example.' >&2; exit 2 ;;
 esac
+service_config=${LAYERTREE_SERVICE_CONFIG:-service.json}
+case "$service_config" in service.json|halt-service.json) ;; *) echo 'Use a committed research service configuration.' >&2; exit 2 ;; esac
 mkdir -p "$output"
 output=$(cd "$output" && pwd)
 [[ ! -e $output/build.json && ! -e $output/image.oci.tar ]] || { echo 'Use an empty output directory.' >&2; exit 2; }
@@ -36,11 +38,11 @@ if [[ -n ${LAYERTREE_IMAGE_TAG:-} ]]; then
 fi
 docker buildx build --builder "$builder" --platform linux/amd64 --provenance=false --sbom=false \
     --build-arg "SOURCE_DATE_EPOCH=$epoch" --build-arg "SOURCE_COMMIT=$commit" \
-    --build-arg "PROBE_EXAMPLE=$example" --build-arg "PROBE_FEATURES=$features" \
+    --build-arg "PROBE_EXAMPLE=$example" --build-arg "PROBE_FEATURES=$features" --build-arg "SERVICE_CONFIG=$service_config" \
     --file "$context/$recipe" \
     --output "type=oci,dest=$output/image.oci.tar,rewrite-timestamp=true,oci-mediatypes=true" \
     --metadata-file "$output/buildkit-metadata.json" "${args[@]}" "$context" > "$output/build.log" 2>&1
-python3 - "$output" "$commit" "$epoch" "$example" "$recipe" <<'PY'
+python3 - "$output" "$commit" "$epoch" "$example" "$recipe" "$service_config" <<'PY'
 import hashlib,json,sys,tarfile
 from pathlib import Path
 out=Path(sys.argv[1])
@@ -54,7 +56,8 @@ with tarfile.open(out/'image.oci.tar') as tar:
 result={'schema':'openagents.layertree.image-build.v1','source_commit':sys.argv[2],
         'source_date_epoch':int(sys.argv[3]),'image_digest':digest,'probe_example':sys.argv[4],
         'recipe':sys.argv[5],
-        'signing_service':sys.argv[4]=='signet_service'}
+        'signing_service':sys.argv[4]=='signet_service',
+        'service_config':sys.argv[6] if sys.argv[4]=='signet_service' else None}
 (out/'build.json').write_text(json.dumps(result,indent=2)+'\n')
 print(json.dumps(result))
 PY

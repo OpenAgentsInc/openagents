@@ -1,0 +1,23 @@
+{
+  "operator_key": "6d44078fd983c92db0ccfa7b078db78fade8c3ce8d1f657e25c6415cdd70034b",
+  "tree_id": "6da34b5acfb8f376333b97d1f1a04fa9de69d2bc2cbcc0b36c4b7a5bf34163a9",
+  "depth": 4,
+  "dust_min": 330,
+  "unroll_delay": 12,
+  "radix": 128,
+  "mirrors": [
+    {
+      "key": "cfb1a511852013371f4f94c67aad32970a382945da058c3e0351e984cd9fe785",
+      "url": "http://10.128.0.119:18440"
+    },
+    {
+      "key": "e3a7e5e54529b3a584db24be84109372b594dc873c8c0ca1dd02fb5421f2c05d",
+      "url": "http://10.128.0.120:18440"
+    },
+    {
+      "key": "91d0e5e8911acc1d18ce521810c4e763187735a121136152ca67db587e9f749c",
+      "url": "http://10.128.0.122:18440"
+    }
+  ],
+  "mirror_threshold": 2
+}
