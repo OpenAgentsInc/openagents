@@ -740,6 +740,264 @@ fn replacement_can_resume_only_the_owners_latest_compatible_native_history() {
 }
 
 #[test]
+fn managed_edges_refuse_cycles_and_late_links_while_observed_edges_grant_no_work() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let mut sessions = Vec::new();
+    for _ in 0..3 {
+        let (session, _) = fx.open(&host, "loop-mid-turn");
+        let intent = fx.intent(
+            &host,
+            &session,
+            json!({"prompt":"work","steps":1}),
+            fx.now + 600,
+        );
+        let command = fx.command(&host, &session, "submit", json!({"intent":intent}));
+        let binding = fx.binding();
+        fx.send(&host, OWNER, &command, Some(&binding));
+        sessions.push(session);
+    }
+    let turn = |session: &str| {
+        host.status(session).unwrap()["active_turn"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    let authorization = host
+        .store()
+        .put(b"fixture delegation", "text/plain", None)
+        .unwrap();
+    host.link_child(
+        &sessions[0],
+        &turn(&sessions[0]),
+        Some(&sessions[1]),
+        None,
+        Some(authorization.clone()),
+        fx.now,
+    )
+    .unwrap();
+    assert!(
+        host.link_child(
+            &sessions[1],
+            &turn(&sessions[1]),
+            Some(&sessions[0]),
+            None,
+            Some(authorization.clone()),
+            fx.now
+        )
+        .unwrap_err()
+        .contains("cycle")
+    );
+    assert!(
+        host.link_child(
+            &sessions[1],
+            &turn(&sessions[1]),
+            Some(&sessions[1]),
+            None,
+            Some(authorization.clone()),
+            fx.now
+        )
+        .is_err()
+    );
+    let native = host
+        .store()
+        .json(&host.status(&sessions[1]).unwrap()["history"])
+        .unwrap()["native"][0]
+        .clone();
+    let observed_turn = turn(&sessions[2]);
+    host.link_child(
+        &sessions[2],
+        &observed_turn,
+        None,
+        Some(native),
+        None,
+        fx.now,
+    )
+    .unwrap();
+    assert_eq!(fx.finish(&host, &sessions[2])["outcome"], "completed");
+    assert!(
+        host.link_child(
+            &sessions[2],
+            &observed_turn,
+            Some(&sessions[1]),
+            None,
+            Some(authorization),
+            fx.now
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn managed_child_disposition_follows_retained_native_terminal_evidence() {
+    for stop in [false, true] {
+        let mut fx = Fx::new();
+        let host = fx.host();
+        let (parent, _) = fx.open(&host, "loop-mid-turn");
+        let (child, _) = fx.open(&host, "loop-boundary");
+        let mut commands = Vec::new();
+        for (session, steps) in [(&parent, 1), (&child, 2)] {
+            let intent = fx.intent(
+                &host,
+                session,
+                json!({"prompt":"child work","steps":steps}),
+                fx.now + 600,
+            );
+            let command = fx.command(&host, session, "submit", json!({"intent":intent}));
+            let binding = fx.binding();
+            assert_eq!(
+                fx.send(&host, OWNER, &command, Some(&binding))["status"],
+                "accepted"
+            );
+            commands.push(command);
+        }
+        let turn = host.status(&parent).unwrap()["active_turn"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let authorization = host
+            .store()
+            .put(b"explicit fixture delegation", "text/plain", None)
+            .unwrap();
+        host.link_child(
+            &parent,
+            &turn,
+            Some(&child),
+            None,
+            Some(authorization),
+            fx.now,
+        )
+        .unwrap();
+        let mut revision = None;
+        for _ in 0..3 {
+            assert!(host.observe(&parent, fx.now).unwrap()["result"].is_null());
+            assert_eq!(host.status(&parent).unwrap()["phase"], "blocked");
+            let current = host.status(&parent).unwrap()["revision"].clone();
+            if let Some(previous) = revision {
+                assert_eq!(current, previous);
+            }
+            revision = Some(current);
+        }
+        let interrupt = fx.command(
+            &host,
+            &parent,
+            "interrupt",
+            json!({"turn":turn,"expected_turn_revision":0,"reason":"stop"}),
+        );
+        assert_eq!(
+            fx.send(&host, OWNER, &interrupt, None)["reason"],
+            "conflict"
+        );
+        let result = if stop {
+            let _guard = host.store().lock().unwrap();
+            let mut state = host.state().unwrap();
+            host.cj_stop(
+                &mut state,
+                &workspace_host::artifact::json_ref(&commands[0]).unwrap(),
+                fx.now,
+                "deadline",
+            )
+            .unwrap();
+            host.save(&state).unwrap();
+            drop(_guard);
+            host.store()
+                .json(&host.status(&parent).unwrap()["results"][0])
+                .unwrap()
+        } else {
+            fx.finish(&host, &child);
+            fx.finish(&host, &parent)
+        };
+        assert_eq!(
+            result["outcome"],
+            if stop { "unknown" } else { "completed" }
+        );
+        assert_eq!(result["quiescence"].is_null(), stop);
+        if stop {
+            assert_eq!(result["cause"], "deadline");
+            assert!(host.status(&child).unwrap()["active_turn"].is_string());
+        } else {
+            let evidence = host.store().json(&result["quiescence"]).unwrap()["children"].clone();
+            assert!(
+                evidence
+                    .as_array()
+                    .unwrap()
+                    .contains(&host.status(&child).unwrap()["state"])
+            );
+        }
+        let history = host
+            .store()
+            .json(&host.status(&parent).unwrap()["history"])
+            .unwrap();
+        let methods = history["native"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| {
+                host.store().json(r).unwrap()["method"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(methods.iter().filter(|s| *s == "turn/completed").count(), 1);
+        assert!(!methods.iter().any(|s| s == "turn/interrupt"));
+        assert_eq!(host.started("loop-mid-turn"), 1);
+        assert_eq!(host.started("loop-boundary"), 1);
+    }
+}
+
+#[test]
+fn a_lost_child_keeps_a_known_terminal_parent_unknown_without_stepping_it_again() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let (parent, _) = fx.open(&host, "loop-mid-turn");
+    let (child, _) = fx.open(&host, "loop-boundary");
+    for (session, steps) in [(&parent, 1), (&child, 2)] {
+        let intent = fx.intent(
+            &host,
+            session,
+            json!({"prompt":"work","steps":steps}),
+            fx.now + 600,
+        );
+        let command = fx.command(&host, session, "submit", json!({"intent":intent}));
+        let binding = fx.binding();
+        fx.send(&host, OWNER, &command, Some(&binding));
+    }
+    let turn = host.status(&parent).unwrap()["active_turn"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let authorization = host
+        .store()
+        .put(b"fixture delegation", "text/plain", None)
+        .unwrap();
+    host.link_child(
+        &parent,
+        &turn,
+        Some(&child),
+        None,
+        Some(authorization),
+        fx.now,
+    )
+    .unwrap();
+    host.observe(&parent, fx.now).unwrap();
+    assert_eq!(host.status(&parent).unwrap()["waiting_for_children"], true);
+    drop(host);
+    let host = fx.host();
+    fx.finish(&host, &child);
+    let result = fx.finish(&host, &parent);
+    assert_eq!(result["outcome"], "unknown");
+    assert!(result["quiescence"].is_null());
+    assert_eq!(result["cause"], "lost_observation");
+    assert_eq!(result["outputs"].as_array().unwrap().len(), 1);
+    let output: Value =
+        serde_json::from_slice(&host.store().get(&result["outputs"][0]).unwrap()).unwrap();
+    assert_eq!(output["prompt"], "work");
+    assert_eq!(host.started("loop-mid-turn"), 0);
+    assert_eq!(host.started("loop-boundary"), 0);
+}
+
+#[test]
 fn runtime_replacement_waits_for_managed_child_work_to_finish() {
     let mut fx = Fx::new();
     let host = fx.host();
@@ -753,7 +1011,10 @@ fn runtime_replacement_waits_for_managed_child_work_to_finish() {
     let command = fx.command(&host, &parent, "submit", json!({"intent":intent}));
     let binding = fx.binding();
     fx.send(&host, OWNER, &command, Some(&binding));
-    let parent_result = fx.finish(&host, &parent);
+    let parent_turn = host.status(&parent).unwrap()["active_turn"]
+        .as_str()
+        .unwrap()
+        .to_string();
     let (child, _) = fx.open(&host, "loop-mid-turn");
     let intent = fx.intent(
         &host,
@@ -767,13 +1028,15 @@ fn runtime_replacement_waits_for_managed_child_work_to_finish() {
     let authorization = put_json(&mut fx.artifacts, &json!({"child":child}));
     host.link_child(
         &parent,
-        parent_result["turn"].as_str().unwrap(),
+        &parent_turn,
         Some(&child),
         None,
         Some(authorization),
         fx.now,
     )
     .unwrap();
+    host.observe(&parent, fx.now).unwrap();
+    assert_eq!(host.status(&parent).unwrap()["waiting_for_children"], true);
     let command = replacement(&mut fx, &host, &parent, "loop-boundary");
     let binding = fx.binding();
     assert_ne!(
@@ -782,6 +1045,7 @@ fn runtime_replacement_waits_for_managed_child_work_to_finish() {
     );
     assert_eq!(host.status(&parent).unwrap()["generation"], 0);
     fx.finish(&host, &child);
+    fx.finish(&host, &parent);
     let command = replacement(&mut fx, &host, &parent, "loop-boundary");
     assert_eq!(
         fx.send(&host, OWNER, &command, Some(&binding))["status"],

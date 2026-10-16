@@ -406,6 +406,24 @@ mod tests {
         assert!(validate(&receipt).is_err());
     }
     #[test]
+    fn quiescence_keeps_native_evidence_and_child_state_dispositions_distinct() {
+        let reference = |schema: &str| {
+            let mut r = artifact(schema.as_bytes(), "application/json");
+            r["schema"] = json!(schema);
+            r
+        };
+        let mut body = json!({"v":"openagents.session-quiescence.v1","requires":[],
+            "scope":{"authority":"11".repeat(32),"session":"22".repeat(32),"generation":0},
+            "turn":"33".repeat(32),"attachment":null,"evidence":[reference("openagents.session-native.v1")],
+            "children":[reference("openagents.session-state.v1")],"observed_at":10});
+        validate(&body).unwrap();
+        body["children"][0] = reference("openagents.session-native.v1");
+        assert!(validate(&body).is_err());
+        body["children"][0] = reference("openagents.session-state.v1");
+        body["evidence"] = json!([]);
+        assert!(validate(&body).is_err());
+    }
+    #[test]
     fn private_reads_have_closed_queries_and_current_expiry() {
         let mut query = json!({"v":"openagents.session-read.v1","requires":[],
             "scope":{"authority":"11".repeat(32),"session":"22".repeat(32),"generation":0},

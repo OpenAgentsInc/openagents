@@ -224,9 +224,17 @@ probe cannot implement this admission. Missing live authority refuses.
   from turn results (a recorded `derived` loss), opaque resume state when the
   adapter supports resume, and a signed WS projection cut. A foreign import is
   archival: a new lineage, no native resume, recorded losses.
-- **Children.** A managed child needs the child's admission and a delegated
-  authorization. An observed child needs native evidence and grants no
-  control.
+- **Children.** A managed child needs the child's admission and a separately
+  mounted current delegated-authority check; production refuses an opaque
+  authorization reference alone. Local loop fixtures select explicit test
+  authority. Managed links require a current native parent turn, the same
+  owner, and no cycle. A parent retains its native terminal output and evidence
+  while children finish; unchanged polls do not step the ended engine or write
+  another state. Quiescence includes signed child-state references separately
+  from native captures. An uncertain child, or a stop with unfinished children,
+  leaves the parent unknown without quiescence. An observed child needs native
+  evidence and grants no control. Actual delegated dispatch and POL child
+  authorization remain unfinished roles.
 
 `session-host policy --state DIR --key-file KEY --policy POLICY.json` replaces
 the operator's owner/controller sets. This administrative path needs the host

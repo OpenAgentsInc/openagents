@@ -1231,6 +1231,41 @@ fn a_new_cj_attempt_can_return_a_native_duplicate_without_another_opening() {
 }
 
 #[test]
+fn a_real_allocator_refuses_unmounted_child_delegation_despite_known_admissions() {
+    let mut r = Real::new();
+    let host = r.host(LoopEngine::mid_turn());
+    let parent = r.opened(&host);
+    let child = r.opened(&host);
+    let command = r.submit_command(&host, &parent, 1);
+    let (event, binding) = r.job(&command);
+    host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+        .unwrap();
+    let parent = parent["session"].as_str().unwrap();
+    let child = child["session"].as_str().unwrap();
+    let turn = host.status(parent).unwrap()["active_turn"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let claimed = host
+        .store()
+        .put_json(&json!({"claimed":"delegated child"}))
+        .unwrap();
+    assert!(
+        host.link_child(parent, &turn, Some(child), None, Some(claimed), r.fx.now)
+            .unwrap_err()
+            .contains("cannot_enforce")
+    );
+    assert!(
+        host.status(parent).unwrap()["children"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(host.started("loop-mid-turn"), 1);
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 3);
+}
+
+#[test]
 #[cfg(unix)]
 fn resident_clients_read_and_answer_one_original_charged_turn() {
     use crate::resident::{self, Body, Operation, Outcome, Request, Server};

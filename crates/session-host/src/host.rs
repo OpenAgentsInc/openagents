@@ -32,6 +32,21 @@ pub trait Bindings {
         false
     }
     fn check(&self, attachment: &str, fingerprint: &str, now: u64) -> Result<()>;
+    /// Check independently granted child authority. This metadata check does
+    /// not authorize dispatch, input, spending, or control of the child.
+    fn check_child(
+        &self,
+        _owner: &str,
+        _parent: &Value,
+        _child: &Value,
+        _authorization: &Value,
+        _now: u64,
+    ) -> Result<()> {
+        if self.local_fixture() {
+            return Ok(());
+        }
+        Err("cannot_enforce: delegated child authority is not configured".into())
+    }
     fn with_execution(
         &self,
         _request: &env_host::runtime::RuntimeDispatch<'_>,
@@ -153,6 +168,17 @@ struct Turn {
     interrupted: bool,
     #[serde(default)]
     stop_cause: Option<String>,
+    #[serde(default)]
+    terminal: Option<NativeTerminal>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NativeTerminal {
+    outcome: String,
+    cause: String,
+    output: Value,
+    evidence: Vec<Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1278,7 +1304,8 @@ impl SessionHost {
             "phase":session.phase,"active_turn":session.active.as_ref().map(|t| t.id.clone()),
             "turn_revision":session.active.as_ref().and(session.turn_revision),"queue":queue,
             "interactions":interactions,"history":history,"children":session.children,"archived":session.archived,
-            "meta":{"runtime":session.runtime_binding,"replacement_pending":session.replacing}});
+            "meta":{"runtime":session.runtime_binding,"replacement_pending":session.replacing,
+            "waiting_for_children":session.active.as_ref().is_some_and(|t|t.terminal.is_some())}});
         let reference = self.sign(state, &body, &session.owner.clone(), now)?;
         session.state = Some(reference.clone());
         Ok(reference)
@@ -1538,10 +1565,13 @@ impl SessionHost {
         self.check_runtime_budget()?;
         let adapter = &state.adapters[&session.adapter];
         self.native_session(session, &adapter.engine)?;
+        let active = session.active.as_ref().ok_or("stale: no active turn")?;
+        if active.terminal.is_some() {
+            return Err("conflict: native turn already ended; managed children remain".into());
+        }
         let Some(fence) = fence else {
             return self.require_engine_execution(&adapter.engine, None);
         };
-        let active = session.active.as_ref().ok_or("stale: no active turn")?;
         let opening = self.runtime_request(session)?;
         let engine = self.store.json(&adapter.reference)?["engine"].clone();
         let binding = active
@@ -2918,6 +2948,9 @@ impl SessionHost {
             .active
             .as_ref()
             .ok_or_else(|| refuse("stale", "no active turn"))?;
+        if active.terminal.is_some() {
+            return Err("conflict: native turn already ended; managed children remain".into());
+        }
         if payload["turn"] != active.id.as_str() {
             return Err(refuse("stale", "turn is not active"));
         }
@@ -3027,6 +3060,7 @@ impl SessionHost {
             run: run.clone(),
             interrupted: false,
             stop_cause: None,
+            terminal: None,
         });
         session.turn_revision = Some(0);
         session.phase = "running".into();
@@ -3130,6 +3164,7 @@ impl SessionHost {
             run,
             interrupted: false,
             stop_cause: None,
+            terminal: None,
         });
         session.turn_revision = Some(0);
         session.phase = "running".into();
@@ -3173,8 +3208,11 @@ impl SessionHost {
             .get(&session.adapter)
             .ok_or("adapter")?
             .clone();
+        let retained_terminal = turn.terminal.is_some();
         let owned = self.native_session(session, &adapter.engine).is_ok();
-        let observation = if owned {
+        let observation = if turn.terminal.is_some() {
+            Observation::Running
+        } else if owned {
             match (
                 &session.native,
                 self.engines.borrow_mut().get_mut(&adapter.engine),
@@ -3185,7 +3223,7 @@ impl SessionHost {
         } else {
             Observation::Lost
         };
-        let captured = if owned {
+        let captured = if owned && turn.terminal.is_none() {
             self.capture(state, session, now)?
         } else {
             Vec::new()
@@ -3239,7 +3277,9 @@ impl SessionHost {
         match observation {
             Observation::ProtocolFault { .. } => unreachable!("fault handled before observation"),
             Observation::Running => {
-                return Ok(json!({"phase":session.phase,"state":session.state}));
+                if turn.terminal.is_none() {
+                    return Ok(json!({"phase":session.phase,"state":session.state}));
+                }
             }
             Observation::Question { native_id, prompt } => {
                 if session
@@ -3279,40 +3319,13 @@ impl SessionHost {
                 cause,
                 output,
             } => {
-                let cause = if outcome == "cancelled" {
-                    turn.stop_cause.as_deref().unwrap_or(cause)
-                } else {
-                    cause
-                };
-                let output_ref = self.store.put(&output, "application/json", None)?;
-                let resolved = self.run_record(
-                    &mut turn.run,
-                    &turn.id,
-                    "resolved",
-                    json!({"outcome":outcome,"dispatched":true}),
-                    now,
-                )?;
-                let terminal: Vec<Value> = captured.iter().rev().take(1).cloned().collect();
-                let quiescence = json!({"v":"openagents.session-quiescence.v1","requires":[],
-                    "scope":session.scope(self.pubkey()),"turn":turn.id,"attachment":turn.attachment,
-                    "evidence":terminal,"observed_at":now});
-                let quiescence = self.sign(state, &quiescence, &session.owner.clone(), now)?;
-                result = json!({"v":"openagents.session-turn-result.v1","requires":[],"scope":session.scope(self.pubkey()),
-                    "turn":turn.id,"intent":turn.intent,"run":resolved,"outcome":outcome,"dispatched":true,"cause":cause,
-                    "outputs":[output_ref],"receipt":resolved,"verification":"not_run","integration":"not_requested",
-                    "quiescence":quiescence});
-                session.quiescent = true;
+                turn.terminal = Some(NativeTerminal {
+                    outcome: outcome.into(),
+                    cause: cause.into(),
+                    output: self.store.put(&output, "application/json", None)?,
+                    evidence: captured.iter().rev().take(1).cloned().collect(),
+                });
                 self.end_interactions(state, session, &turn.id, "cancelled", now)?;
-                session.phase = if session.phase == "closing" {
-                    "closing"
-                } else if session.protocol_fault.is_some() {
-                    "faulted"
-                } else {
-                    "ready"
-                }
-                .into();
-                session.active = None;
-                session.turn_revision = None;
             }
             Observation::Lost => {
                 self.end_interactions(state, session, &turn.id, "unknown", now)?;
@@ -3339,8 +3352,15 @@ impl SessionHost {
                 session.turn_revision = None;
             }
         }
+        if turn.terminal.is_some() {
+            result = self.finish_native_turn(state, session, &mut turn, now)?;
+            if retained_terminal && result.is_null() {
+                return Ok(json!({"phase":session.phase,"state":session.state}));
+            }
+        }
         if let Some(active) = session.active.as_mut() {
             active.run = turn.run.clone();
+            active.terminal = turn.terminal.clone();
         }
         let result_ref = if result.is_null() {
             Value::Null
@@ -3352,6 +3372,107 @@ impl SessionHost {
         session.revision += 1;
         self.write_state(state, session, now)?;
         Ok(json!({"phase":session.phase,"state":session.state,"result":result_ref}))
+    }
+
+    fn finish_native_turn(
+        &self,
+        state: &mut State,
+        session: &mut Session,
+        turn: &mut Turn,
+        now: u64,
+    ) -> Result<Value> {
+        let terminal = turn.terminal.clone().ok_or("native terminal evidence")?;
+        let evidence = terminal.evidence.clone();
+        let mut children = Vec::new();
+        let mut seen_children = BTreeSet::new();
+        let mut pending = false;
+        let mut uncertain = false;
+        for reference in &session.children {
+            let link = self.store.json(reference)?;
+            if link["relationship"] != "managed" || link["turn"] != turn.id {
+                continue;
+            }
+            if !seen_children.insert(digest_of(&link["child"]).to_string()) {
+                continue;
+            }
+            let child = state
+                .sessions
+                .values()
+                .find(|child| child.admission == link["child"]);
+            match child {
+                Some(child)
+                    if child.quiescent
+                        && child.active.is_none()
+                        && !child.opening
+                        && !child.closing_native
+                        && !child.replacing =>
+                {
+                    children.push(child.state.clone().ok_or("child disposition")?);
+                }
+                Some(child) => {
+                    pending = true;
+                    uncertain |= matches!(child.phase.as_str(), "unknown" | "faulted");
+                }
+                None => {
+                    pending = true;
+                    uncertain = true;
+                }
+            }
+        }
+        if pending && !uncertain && !turn.interrupted {
+            session.phase = "blocked".into();
+            session.quiescent = false;
+            return Ok(Value::Null);
+        }
+        let outcome = if pending {
+            "unknown"
+        } else {
+            terminal.outcome.as_str()
+        };
+        let cause = if pending {
+            turn.stop_cause.as_deref().unwrap_or("lost_observation")
+        } else if outcome == "cancelled" {
+            turn.stop_cause.as_deref().unwrap_or(&terminal.cause)
+        } else {
+            terminal.cause.as_str()
+        };
+        let resolved = self.run_record(
+            &mut turn.run,
+            &turn.id,
+            if pending { "unknown" } else { "resolved" },
+            json!({"outcome":outcome,"dispatched":true,"managed_children_pending":pending}),
+            now,
+        )?;
+        let quiescence = if pending {
+            Value::Null
+        } else {
+            self.sign(
+                state,
+                &json!({"v":"openagents.session-quiescence.v1","requires":[],
+                "scope":session.scope(self.pubkey()),"turn":turn.id,"attachment":turn.attachment,
+                "evidence":evidence,"children":children,"observed_at":now}),
+                &session.owner,
+                now,
+            )?
+        };
+        let result = json!({"v":"openagents.session-turn-result.v1","requires":[],"scope":session.scope(self.pubkey()),
+            "turn":turn.id,"intent":turn.intent,"run":resolved,"outcome":outcome,"dispatched":true,"cause":cause,
+            "outputs":[terminal.output],"receipt":resolved,"verification":"not_run","integration":"not_requested",
+            "quiescence":quiescence});
+        session.quiescent = !pending;
+        session.phase = if pending {
+            "unknown"
+        } else if session.phase == "closing" {
+            "closing"
+        } else if session.protocol_fault.is_some() {
+            "faulted"
+        } else {
+            "ready"
+        }
+        .into();
+        session.active = None;
+        session.turn_revision = None;
+        Ok(result)
     }
 
     fn end_interactions(
@@ -3702,10 +3823,60 @@ impl SessionHost {
             } else {
                 "observed"
             };
+            if relationship == "managed" {
+                if session
+                    .active
+                    .as_ref()
+                    .is_none_or(|t| t.id != turn || t.terminal.is_some())
+                {
+                    return Err(
+                        "conflict: managed children require a current native parent turn".into(),
+                    );
+                }
+                let child = state
+                    .sessions
+                    .get(child.ok_or("child")?)
+                    .ok_or("not_admitted: child cannot be its parent")?;
+                if child.owner != session.owner {
+                    return Err("not_admitted: cross-owner managed children are unsupported".into());
+                }
+                self.bindings.check_child(
+                    &session.owner,
+                    &session.admission,
+                    &child.admission,
+                    authorization.as_ref().ok_or("child authorization")?,
+                    now,
+                )?;
+                let mut pending = vec![child.admission.clone()];
+                let mut seen = BTreeSet::new();
+                while let Some(admission) = pending.pop() {
+                    if admission == session.admission {
+                        return Err("conflict: managed child cycle".into());
+                    }
+                    if !seen.insert(digest_of(&admission).to_string()) {
+                        continue;
+                    }
+                    if let Some(source) = state.sessions.values().find(|s| s.admission == admission)
+                    {
+                        for reference in &source.children {
+                            let link = self.store.json(reference)?;
+                            if link["relationship"] == "managed" {
+                                pending.push(link["child"].clone());
+                            }
+                        }
+                    }
+                }
+            }
             let body = json!({"v":"openagents.session-child.v1","requires":[],"parent":session.scope(self.pubkey()),
                 "turn":turn,"child":child_admission,"native_source":native,"relationship":relationship,
                 "authorization":authorization});
             let reference = self.sign(&mut state, &body, &session.owner.clone(), now)?;
+            if session.children.contains(&reference) {
+                return Ok(reference);
+            }
+            if session.children.len() >= MAX_QUEUE {
+                return Err("limit_exceeded: child links".into());
+            }
             session.children.push(reference.clone());
             session.revision += 1;
             self.write_state(&mut state, &mut session, now)?;
@@ -3732,7 +3903,8 @@ impl SessionHost {
             "interactions":session.interactions.iter().map(|i| json!({"interaction":i.reference,"state":i.state})).collect::<Vec<_>>(),
             "results":session.results,"steers":session.steers,"children":session.children,"read_only":session.read_only,
             "admission":session.admission,"effective":session.effective,"requested":session.requested,"protocol_fault":session.protocol_fault,
-            "runtime":session.runtime_binding,"replacement_pending":session.replacing}),
+            "runtime":session.runtime_binding,"replacement_pending":session.replacing,
+            "waiting_for_children":session.active.as_ref().is_some_and(|t|t.terminal.is_some())}),
         )
     }
 
@@ -3844,6 +4016,7 @@ impl SessionHost {
             active.stop_cause = Some(cause.into());
         }
         let turn_id = active.id.clone();
+        let native_ended = active.terminal.is_some();
         let adapter = state
             .adapters
             .get(&session.adapter)
@@ -3856,7 +4029,7 @@ impl SessionHost {
         self.save(state)?;
         // This cleanup may stop only the original active turn. Its durable
         // intent prevents a lost acknowledgment from repeating the command.
-        if let Some(native) = native.filter(|_| signal) {
+        if let Some(native) = native.filter(|_| signal && !native_ended) {
             let _ = self
                 .engines
                 .borrow_mut()
@@ -4215,6 +4388,7 @@ impl SessionHost {
                 );
                 if !result["quiescence"].is_null() {
                     let q = self.store.json(&result["quiescence"])?;
+                    files.extend(q["children"].as_array().into_iter().flatten().cloned());
                     for evidence in q["evidence"].as_array().ok_or("quiescence evidence")? {
                         files.push(evidence.clone());
                         let native = self.store.json(evidence)?;

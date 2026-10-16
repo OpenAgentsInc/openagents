@@ -736,7 +736,7 @@ profile pins these supporting records:
 | `openagents.session-steering.v1` | `native`, `emulation`, `acknowledgment`: the steer feature's evidence artifact. |
 | `openagents.session-steer-correction.v1` | `correction` (CTX correction ArtifactRef) and `mode` (`native` or `emulated`). A `steer` command's `correction` names this record, so the caller signs its choice of emulation explicitly. |
 | `openagents.session-steer-receipt.v1` | `scope`, `turn`, `correction`, `mode`, `acknowledgment`, `consumed`, and native `evidence`. `consumed` is true only with `engine_replay`, `turn_answer`, or `next_turn_start` evidence. |
-| `openagents.session-quiescence.v1` | `scope`, `turn`, the turn's ENV `attachment`, terminal native `evidence` (at least one), and `observed_at`. |
+| `openagents.session-quiescence.v1` | `scope`, `turn`, the turn's ENV `attachment`, terminal native `evidence` (at least one), optional `children` (signed child-state ArtifactRefs), and `observed_at`. |
 
 A control receipt's `transition` may also be `respond`, for an interaction
 response. Session-history cuts are WS `projection-cut` records over a
@@ -956,3 +956,19 @@ artifacts plus the state, totaling 4 MiB of bytes, may be returned. Knowing a ha
 or controlling a different session does not grant cache access. Clients can
 request pending interaction records and their prompts in subsequent reads.
 Socket transport does not add relay discovery or a remote deployment service.
+
+The native host retains a turn's exact terminal output and native evidence
+while managed children still need disposition. It remains blocked and cannot
+accept another turn or signal the already ended native turn. Later observation
+uses the retained evidence rather than stepping that native turn again.
+Quiescence's `children` list includes each managed child's signed disposition.
+Native `evidence` remains native protocol records. An uncertain
+child, or a stop deadline with unfinished children, leaves the parent unknown
+without quiescence. An observed child grants no control and does not block this
+managed-work check. This bounded profile links managed children only while the
+parent turn is active, within the same owner, and without cycles; it does not
+infer delegated execution authority from provider parent edges.
+Production child links additionally need a separately mounted current child
+authority check; an opaque authorization reference alone refuses. Local loop
+fixtures select their explicit test authority. Child dispatch still requires
+its own charged execution and cannot use this metadata check as a grant.

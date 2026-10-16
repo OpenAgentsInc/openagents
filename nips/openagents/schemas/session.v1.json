@@ -2540,6 +2540,27 @@
         },
         "meta": {
           "type": "object"
+        },
+        "children": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/artifact"
+              },
+              {
+                "required": [
+                  "schema"
+                ],
+                "properties": {
+                  "schema": {
+                    "const": "openagents.session-state.v1"
+                  }
+                }
+              }
+            ]
+          }
         }
       }
     },
