@@ -16,9 +16,10 @@ sov-custody revoke --state DIR --key-file KEY --caller PUBKEY
 sov-custody generation --state DIR --key-file KEY --agent PUBKEY
 ```
 
-CONFIG maps each agent to its independently admitted policy authority and its
-admitted profile ArtifactRef. The hosting process creates each NIP-46 connection with both the pinned
-remote-signer key and expected agent key, then mounts it (`Custodian::mount`) and submits signed private `3188` requests
+CONFIG maps each agent to its independently admitted policy authority and
+profile ArtifactRef. The hosting process creates each NIP-46 connection with
+both the pinned remote-signer key and expected agent key, then mounts it
+(`Custodian::mount`) and submits signed private `3188` requests
 (`Custodian::submit`). Wiring this into `openagents sov` waits for the next
 Coder release.
 
@@ -29,22 +30,24 @@ Coder release.
   advances by one. Only the `nip46` custody mechanism is supported; `local`,
   `hardware`, and `threshold` refuse with `cannot_enforce`. A custody policy
   must name the mounted signer and transport keys. Mounting a replacement
-  verifies the current policy before changing the existing connection. A guardian policy change
-  voids every pending quorum for the agent, and so does a controller
+  verifies the current policy before changing the existing connection. A
+  guardian policy change voids every pending quorum for the agent, and so does a controller
   generation change.
 - **Custody requests.** A request binds the agent, exact profile, current
   custody and guardian policy revisions, requester, controller generation,
   purpose, operation, complete input, nonce, and deadline. The requester must
   be an admitted caller that has not been revoked. A sign request must carry
   the complete unsigned event for the agent's own key, and the returned event
-  must match it exactly. Decryption returns plaintext only to the request's
+  must match it exactly. The adapter authenticates replies against the pinned
+  signer, validates its acknowledgment, and verifies the expected agent with
+  `get_public_key` before sensitive operations. Decryption returns plaintext
+  only to the request's
   named recipient, in the local reply. Plaintext never goes into an artifact,
   and once its request expires, policy changes, controller changes, or caller
   loses permission, a retry returns status without plaintext.
 - **Idempotency.** `(agent, requester, nonce)` with the request digest. An
   exact retry returns retained status and any currently authorized result
-  without calling the signer again;
-  reusing a nonce with different bytes refuses.
+  without calling the signer again; reusing a nonce with different bytes refuses.
 - **Outages.** Dispatch intent, and any quorum consumption, is persisted
   before the signer is called. An unreachable signer refuses as `unavailable`.
   A lost reply stays `unknown` and is never re-sent.
