@@ -279,8 +279,8 @@ struct Release {
 impl Release {
     fn read(dir: &Path) -> Result<Self, String> {
         Ok(Self {
-            release: read(dir.join("release-event.json"))?,
-            head: read(dir.join("head-event.json"))?,
+            release: read(dir.join("release.json"))?,
+            head: read(dir.join("head.json"))?,
             entry: read(dir.join("rekor-entry.json"))?,
             rebuilds: vec![
                 read(dir.join("local-rebuild.json"))?,

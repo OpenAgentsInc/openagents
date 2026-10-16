@@ -5,9 +5,9 @@ Confidential Space image. Core validates signet blocks locally, has no wallet,
 and listens only on guest loopback. Mutations wait for synchronization and a
 confirmed current output. The service never accepts a host-supplied height.
 
-`service.json` is compiled into the image. The checked-in placeholder refuses
-to start. Configure fresh public operator and mirror keys and a tree ID from
-the creation funding input before building a deployable image. Launch metadata
+`service.json` is compiled into the image and names the first signet run.
+For a new run, configure fresh public keys and a tree ID from its creation
+funding input, then rebuild and log the new image. Launch metadata
 cannot replace the command, configuration, mounts, or environment.
 
 The Bitcoin co-signing key and TLS key are generated separately inside the
