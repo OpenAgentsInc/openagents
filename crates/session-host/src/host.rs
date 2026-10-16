@@ -181,6 +181,10 @@ struct State {
     signers: BTreeMap<String, BTreeSet<String>>,
     declarations: BTreeMap<String, Value>,
     bound: BTreeMap<String, String>,
+    #[serde(default)]
+    known: BTreeMap<String, BTreeSet<String>>,
+    #[serde(default)]
+    public: BTreeSet<String>,
 }
 
 /// A signed private request with the exact artifacts it references.
@@ -198,6 +202,21 @@ pub struct SessionHost {
     secret: SecretKey,
     engines: RefCell<BTreeMap<String, Box<dyn Engine>>>,
     bindings: Box<dyn Bindings>,
+    reader: RefCell<Option<ReadScope>>,
+}
+
+struct ReadScope {
+    principal: String,
+    known: BTreeSet<String>,
+}
+struct ReadGuard<'a> {
+    reader: &'a RefCell<Option<ReadScope>>,
+    previous: Option<ReadScope>,
+}
+impl Drop for ReadGuard<'_> {
+    fn drop(&mut self) {
+        self.reader.replace(self.previous.take());
+    }
 }
 
 fn refuse(code: &str, detail: &str) -> String {
@@ -270,6 +289,7 @@ impl SessionHost {
             secret,
             engines: RefCell::new(engines),
             bindings,
+            reader: RefCell::new(None),
         };
         host.state()?;
         Ok(host)
@@ -330,6 +350,110 @@ impl SessionHost {
             .map(|engine| f(engine.as_mut()))
     }
 
+    fn read_scope(&self, state: &State, principal: &str) -> ReadScope {
+        let mut known = state.known.get(principal).cloned().unwrap_or_default();
+        known.extend(state.public.iter().cloned());
+        ReadScope {
+            principal: principal.into(),
+            known,
+        }
+    }
+    fn with_read_scope<T>(
+        &self,
+        scope: ReadScope,
+        effect: impl FnOnce() -> Result<T>,
+    ) -> Result<T> {
+        let previous = self.reader.replace(Some(scope));
+        let _guard = ReadGuard {
+            reader: &self.reader,
+            previous,
+        };
+        effect()
+    }
+    fn remember(&self, state: &mut State, principal: &str, reference: &Value) -> Result<()> {
+        let digest = digest_of(reference);
+        if digest.is_empty() {
+            return Ok(());
+        }
+        let known = state.known.entry(principal.into()).or_default();
+        if known.len() >= 65_536 && !known.contains(digest) {
+            return Err(refuse("limit_exceeded", "shared artifact retention"));
+        }
+        known.insert(digest.into());
+        if let Some(scope) = self.reader.borrow_mut().as_mut()
+            && scope.principal == principal
+        {
+            scope.known.insert(digest.into());
+        }
+        Ok(())
+    }
+    fn share_output(
+        &self,
+        state: &mut State,
+        body: &Value,
+        recipient: &str,
+        reference: &Value,
+    ) -> Result<()> {
+        self.remember(state, recipient, reference)?;
+        // Share only bytes this record's producer created. Following arbitrary
+        // references would let a refusal or queue receipt disclose other owners'
+        // cached artifacts merely because the caller named their hashes.
+        let fields: &[&str] = match body["v"].as_str() {
+            Some("openagents.session-native.v1") => &["payload"],
+            Some("openagents.session-history.v1") => &["portable", "resume"],
+            Some("openagents.session-configuration.v1") => &["enforcement"],
+            Some("openagents.session-question.v1") => &["prompt", "answer_schema"],
+            Some("openagents.session-turn-result.v1") => &["run", "receipt"],
+            Some("openagents.projection-definition.v1") => &["parameters", "row_schema"],
+            _ => &[],
+        };
+        for field in fields {
+            self.remember(state, recipient, &body[field])?;
+        }
+        let array = match body["v"].as_str() {
+            Some("openagents.session-control-receipt.v1") => Some("records"),
+            Some("openagents.session-state.v1") => Some("queue"),
+            Some("openagents.session-turn-result.v1") => Some("outputs"),
+            _ => None,
+        };
+        if let Some(name) = array {
+            for reference in body[name].as_array().ok_or("record artifact list")? {
+                self.remember(state, recipient, reference)?;
+            }
+        }
+        Ok(())
+    }
+    fn share_adapter(&self, state: &mut State, reference: &Value) -> Result<()> {
+        fn references(value: &Value, out: &mut Vec<Value>) {
+            if contracts::parse_artifact(value).is_ok() {
+                out.push(value.clone());
+            } else {
+                match value {
+                    Value::Object(fields) => fields.values().for_each(|v| references(v, out)),
+                    Value::Array(items) => items.iter().for_each(|v| references(v, out)),
+                    _ => {}
+                }
+            }
+        }
+        let mut queue = vec![reference.clone()];
+        let mut seen = BTreeSet::new();
+        while let Some(reference) = queue.pop() {
+            let digest = digest_of(&reference).to_string();
+            if !seen.insert(digest.clone()) {
+                continue;
+            }
+            if seen.len() > 512 {
+                return Err(refuse("limit_exceeded", "adapter artifact graph"));
+            }
+            let bytes = self.store.get(&reference)?;
+            state.public.insert(digest);
+            if let Ok(body) = contracts::parse_strict_bounded(&bytes, 1_048_576) {
+                references(&body, &mut queue);
+            }
+        }
+        Ok(())
+    }
+
     fn sign(&self, state: &mut State, body: &Value, recipient: &str, now: u64) -> Result<Value> {
         if body["v"].as_str().is_some_and(|v| {
             v.starts_with("openagents.session")
@@ -340,20 +464,22 @@ impl SessionHost {
         }
         let reference = self.store.put_json(body)?;
         let digest = digest_of(&reference).to_string();
-        if !state.declarations.contains_key(&digest) {
+        let declaration = format!("{digest}:to:{recipient}");
+        if !state.declarations.contains_key(&declaration) {
             let event = workspace_host::host::request(&self.secret, recipient, body.clone(), now)?;
             let event_ref = self.store.put(
                 &serde_json::to_vec(&event).map_err(|e| e.to_string())?,
                 "application/json",
                 None,
             )?;
-            state.declarations.insert(digest.clone(), event_ref);
+            state.declarations.insert(declaration, event_ref);
             state
                 .signers
                 .entry(digest)
                 .or_default()
                 .insert(self.pubkey().into());
         }
+        self.share_output(state, body, recipient, &reference)?;
         Ok(reference)
     }
 
@@ -403,6 +529,17 @@ impl SessionHost {
     }
 
     fn bytes(&self, reference: &Value) -> Result<Vec<u8>> {
+        if self
+            .reader
+            .borrow()
+            .as_ref()
+            .is_some_and(|scope| !scope.known.contains(digest_of(reference)))
+        {
+            return Err(refuse(
+                "not_admitted",
+                "referenced bytes were not supplied or shared",
+            ));
+        }
         self.store
             .get(reference)
             .map_err(|_| refuse("content_unavailable", "referenced bytes are not retained"))
@@ -490,6 +627,7 @@ impl SessionHost {
                 definition,
             },
         );
+        self.share_adapter(&mut state, &reference)?;
         self.save(&state)?;
         Ok(reference)
     }
@@ -767,97 +905,110 @@ impl SessionHost {
     pub fn submit(&self, bundle: &Bundle, binding: Option<&Binding>, now: u64) -> Result<Value> {
         let _lock = self.store.lock()?;
         let mut state = self.state()?;
+        if bundle.artifacts.len() > 256
+            || bundle.artifacts.values().map(Vec::len).sum::<usize>() > 8 * 1_048_576
+        {
+            return Err(refuse("limit_exceeded", "session input artifacts"));
+        }
+        let (signer, body, input) = self.authenticate(&mut state, &bundle.event, now)?;
+        self.remember(&mut state, &signer, &input)?;
         for (digest, bytes) in &bundle.artifacts {
             if digest_bytes(bytes) != *digest {
                 return Err(refuse("identity_mismatch", "attached artifact digest"));
             }
-            self.store.put(bytes, "application/octet-stream", None)?;
+            let reference = self.store.put(bytes, "application/octet-stream", None)?;
+            self.remember(&mut state, &signer, &reference)?;
         }
-        let (signer, body, input) = self.authenticate(&mut state, &bundle.event, now)?;
-        if let Err(e) = sess::validate(&body) {
-            let result = self.control_result(
-                &mut state,
-                &signer,
-                &input,
-                "refused",
-                None,
-                Some(e.code.as_str()),
-                now,
-            )?;
-            self.save(&state)?;
-            return Ok(result);
-        }
-        let outcome = match body["v"].as_str() {
-            Some("openagents.session-open.v1") => {
-                self.open_session(&mut state, &signer, &body, &input, binding, now)
-            }
-            Some("openagents.session-command.v1") => {
-                self.command(&mut state, &signer, &body, &input, binding, now)
-            }
-            Some("openagents.session-interaction-response.v1") => {
-                self.respond(&mut state, &signer, &body, &input, now)
-            }
-            _ => Err(refuse("unsupported_feature", "operation")),
-        };
-        let result = match outcome {
-            Ok(result) => result,
-            Err(error) => {
-                let mut fresh = self.state()?;
-                fresh.signers.extend(state.signers);
-                fresh.declarations.extend(state.declarations);
-                state = fresh;
-                let pending_key = match body["v"].as_str() {
-                    Some("openagents.session-command.v1")
-                        if self.command_authority(&state, &signer, &body).is_ok() =>
-                    {
-                        Some(format!(
-                            "{}:{}:{}",
-                            body["scope"]["authority"].as_str().unwrap_or_default(),
-                            body["scope"]["session"].as_str().unwrap_or_default(),
-                            body["command"].as_str().unwrap_or_default()
-                        ))
-                    }
-                    Some("openagents.session-open.v1")
-                        if body["owner"] == signer
-                            && body["authority"] == self.pubkey()
-                            && state.policy.owners.contains(&signer) =>
-                    {
-                        Some(format!(
-                            "{}:{}:{}",
-                            self.pubkey(),
-                            body["session"].as_str().unwrap_or_default(),
-                            body["command"].as_str().unwrap_or_default()
-                        ))
-                    }
-                    _ => None,
-                };
-                if let Some(key) = pending_key {
-                    if let Some(prior) = state.priors.get(&key).filter(|p| {
-                        p.fingerprint == digest_of(&input) && p.result["status"] == "unknown"
-                    }) {
-                        let result = prior.result.clone();
-                        self.save(&state)?;
-                        return Ok(result);
-                    }
-                }
-                let status = if matches!(code(&error), "conflict" | "idempotency_conflict") {
-                    "conflict"
-                } else {
-                    "refused"
-                };
-                self.control_result(
+        let scope = self.read_scope(&state, &signer);
+        self.with_read_scope(scope, || {
+            if let Err(e) = sess::validate(&body) {
+                let result = self.control_result(
                     &mut state,
                     &signer,
                     &input,
-                    status,
+                    "refused",
                     None,
-                    Some(code(&error)),
+                    Some(e.code.as_str()),
                     now,
-                )?
+                )?;
+                self.save(&state)?;
+                return Ok(result);
             }
-        };
-        self.save(&state)?;
-        Ok(result)
+            let outcome = match body["v"].as_str() {
+                Some("openagents.session-open.v1") => {
+                    self.open_session(&mut state, &signer, &body, &input, binding, now)
+                }
+                Some("openagents.session-command.v1") => {
+                    self.command(&mut state, &signer, &body, &input, binding, now)
+                }
+                Some("openagents.session-interaction-response.v1") => {
+                    self.respond(&mut state, &signer, &body, &input, now)
+                }
+                _ => Err(refuse("unsupported_feature", "operation")),
+            };
+            let result = match outcome {
+                Ok(result) => result,
+                Err(error) => {
+                    let mut fresh = self.state()?;
+                    fresh.signers.extend(state.signers);
+                    fresh.declarations.extend(state.declarations);
+                    for (principal, known) in state.known {
+                        fresh.known.entry(principal).or_default().extend(known);
+                    }
+                    state = fresh;
+                    let pending_key = match body["v"].as_str() {
+                        Some("openagents.session-command.v1")
+                            if self.command_authority(&state, &signer, &body).is_ok() =>
+                        {
+                            Some(format!(
+                                "{}:{}:{}",
+                                body["scope"]["authority"].as_str().unwrap_or_default(),
+                                body["scope"]["session"].as_str().unwrap_or_default(),
+                                body["command"].as_str().unwrap_or_default()
+                            ))
+                        }
+                        Some("openagents.session-open.v1")
+                            if body["owner"] == signer
+                                && body["authority"] == self.pubkey()
+                                && state.policy.owners.contains(&signer) =>
+                        {
+                            Some(format!(
+                                "{}:{}:{}",
+                                self.pubkey(),
+                                body["session"].as_str().unwrap_or_default(),
+                                body["command"].as_str().unwrap_or_default()
+                            ))
+                        }
+                        _ => None,
+                    };
+                    if let Some(key) = pending_key {
+                        if let Some(prior) = state.priors.get(&key).filter(|p| {
+                            p.fingerprint == digest_of(&input) && p.result["status"] == "unknown"
+                        }) {
+                            let result = prior.result.clone();
+                            self.save(&state)?;
+                            return Ok(result);
+                        }
+                    }
+                    let status = if matches!(code(&error), "conflict" | "idempotency_conflict") {
+                        "conflict"
+                    } else {
+                        "refused"
+                    };
+                    self.control_result(
+                        &mut state,
+                        &signer,
+                        &input,
+                        status,
+                        None,
+                        Some(code(&error)),
+                        now,
+                    )?
+                }
+            };
+            self.save(&state)?;
+            Ok(result)
+        })
     }
 
     fn prior(state: &State, key: &str, fingerprint: &str) -> Result<Option<Value>> {
@@ -991,6 +1142,21 @@ impl SessionHost {
                     if history["source"]["kind"] != "managed" || history["resume"].is_null() {
                         return Err(refuse("unsupported_feature", "history has no resume state"));
                     }
+                    if !state
+                        .signers
+                        .get(digest_of(&body["source"]["artifact"]))
+                        .is_some_and(|signers| signers.contains(self.pubkey()))
+                        || !state.sessions.values().any(|source| {
+                            source.owner == signer
+                                && source.admission == history["source"]["admission"]
+                                && source.lineage == history["lineage"].as_str().unwrap_or_default()
+                        })
+                    {
+                        return Err(refuse(
+                            "not_admitted",
+                            "resume needs the source session owner's authority",
+                        ));
+                    }
                     resume = Some(self.bytes(&history["resume"])?);
                     let source_lineage = history["lineage"].as_str().unwrap_or_default();
                     if state
@@ -1009,6 +1175,7 @@ impl SessionHost {
                     if history["source"]["kind"] != "foreign" {
                         return Err(refuse("incompatible", "import takes foreign history"));
                     }
+                    self.bytes(&history["portable"])?;
                     import = Some(body["source"]["artifact"].clone());
                 }
                 _ => {}
@@ -1798,8 +1965,22 @@ impl SessionHost {
         snapshot.priors.extend(state.priors.clone());
         snapshot.signers.extend(state.signers.clone());
         snapshot.declarations.extend(state.declarations.clone());
+        for (principal, known) in &state.known {
+            snapshot
+                .known
+                .entry(principal.clone())
+                .or_default()
+                .extend(known.iter().cloned());
+        }
         self.write_state(state, session, now)?;
         snapshot.declarations.extend(state.declarations.clone());
+        for (principal, known) in &state.known {
+            snapshot
+                .known
+                .entry(principal.clone())
+                .or_default()
+                .extend(known.iter().cloned());
+        }
         snapshot
             .sessions
             .insert(session.id.clone(), session.clone());
@@ -2069,7 +2250,14 @@ impl SessionHost {
             .sessions
             .remove(session_id)
             .ok_or_else(|| refuse("not_admitted", "unknown session"))?;
-        let outcome = (|| -> Result<Value> {
+        let requester = session
+            .queue
+            .iter()
+            .find(|q| q.state == "queued")
+            .map(|q| q.requester.clone())
+            .unwrap_or_default();
+        let scope = self.read_scope(&state, &requester);
+        let outcome = self.with_read_scope(scope, || -> Result<Value> {
             if session.phase != "ready" || session.active.is_some() {
                 return Err(refuse("conflict", "the session is not idle"));
             }
@@ -2116,7 +2304,7 @@ impl SessionHost {
             session.revision += 1;
             self.write_state(&mut state, &mut session, now)?;
             Ok(json!({"promoted":turn,"state":"promoted"}))
-        })();
+        });
         state.sessions.insert(session_id.into(), session);
         let value = outcome?;
         self.save(&state)?;
@@ -2224,6 +2412,13 @@ impl SessionHost {
         snapshot.sessions.insert(session.id.clone(), claimed);
         snapshot.signers.extend(state.signers.clone());
         snapshot.declarations.extend(state.declarations.clone());
+        for (principal, known) in &state.known {
+            snapshot
+                .known
+                .entry(principal.clone())
+                .or_default()
+                .extend(known.iter().cloned());
+        }
         self.save(&snapshot)?;
         let adapter = state
             .adapters

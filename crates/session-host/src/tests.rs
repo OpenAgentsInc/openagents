@@ -778,6 +778,7 @@ fn resume_preserves_an_exclusive_lineage_and_import_is_read_only() {
         "engine":null,"native_session":"abc","captured_at":fx.now,
         "authorization":{"digest":digest_bytes(b"auth"),"size":4,"media_type":"application/json"},"coverage":"partial"});
     let foreign = host.import_history(&source, content, fx.now).unwrap();
+    fx.artifacts.insert(digest_bytes(content), content.to_vec());
     let bytes = host.store().get(&foreign).unwrap();
     fx.artifacts.insert(digest_bytes(&bytes), bytes);
     let import = fx.open_body(&host, &adapter, json!({"kind":"import","artifact":foreign}));
@@ -1455,4 +1456,180 @@ fn adapter_operations_are_real_cap_definitions_with_specific_input_schemas() {
         .find(|f| f["feature"] == "submit")
         .unwrap();
     assert_ne!(feature("submit")["operation"], boundary_submit["operation"]);
+}
+
+#[test]
+fn another_owner_cannot_resume_private_cached_history_by_hash() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    host.set_policy(Policy {
+        owners: BTreeSet::from([pk(OWNER), pk(STRANGER)]),
+        controllers: BTreeSet::from([pk(CONTROLLER)]),
+    })
+    .unwrap();
+    let (session, adapter) = fx.open(&host, "loop-mid-turn");
+    let history = host.export(&session, fx.now).unwrap();
+    let history_bytes = host.store().get(&history).unwrap();
+    let history_body: Value = serde_json::from_slice(&history_bytes).unwrap();
+    let resume_ref = history_body["resume"].clone();
+    let resume_bytes = host.store().get(&resume_ref).unwrap();
+    let close = fx.command(&host, &session, "close", json!({"reason":"done"}));
+    assert_eq!(fx.send(&host, OWNER, &close, None)["status"], "accepted");
+    let binding = fx.binding();
+    let mut resume = fx.open_body(&host, &adapter, json!({"kind":"resume","artifact":history}));
+    resume["owner"] = json!(pk(STRANGER));
+    for _ in 0..2 {
+        resume["command"] = json!(fx.next());
+        assert_eq!(
+            fx.send(&host, STRANGER, &resume, Some(&binding))["reason"],
+            "not_admitted"
+        );
+    }
+    // Supplying a history document does not also supply its private resume bytes.
+    fx.artifacts
+        .insert(digest_bytes(&history_bytes), history_bytes);
+    resume["command"] = json!(fx.next());
+    assert_eq!(
+        fx.send(&host, STRANGER, &resume, Some(&binding))["reason"],
+        "not_admitted"
+    );
+    let signer =
+        nostr::domain::RelaySigner::from_secret_hex(&secret(HOST).display_secret().to_string())
+            .unwrap();
+    let state: Value = host.store().load(&signer).unwrap();
+    assert!(
+        !state["known"][pk(STRANGER)]
+            .as_array()
+            .unwrap()
+            .contains(&resume_ref["digest"])
+    );
+    assert_eq!(host.started("loop-mid-turn"), 0);
+    // Even supplying all the bytes does not transfer native-session authority.
+    fx.artifacts
+        .insert(digest_bytes(&resume_bytes), resume_bytes);
+    resume["command"] = json!(fx.next());
+    assert_eq!(
+        fx.send(&host, STRANGER, &resume, Some(&binding))["reason"],
+        "not_admitted"
+    );
+    resume["owner"] = json!(pk(OWNER));
+    let original_source = resume["source"].clone();
+    let mut forged = history_body.clone();
+    forged["coverage"] = json!("partial");
+    resume["source"]["artifact"] = put_json(&mut fx.artifacts, &forged);
+    resume["command"] = json!(fx.next());
+    assert_eq!(
+        fx.send(&host, OWNER, &resume, Some(&binding))["reason"],
+        "not_admitted"
+    );
+    resume["source"] = original_source;
+    resume["command"] = json!(fx.next());
+    assert_eq!(
+        fx.send(&host, OWNER, &resume, Some(&binding))["status"],
+        "accepted"
+    );
+}
+
+#[test]
+fn queued_input_requires_the_requesters_bytes_not_another_owners_cached_hash() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    host.set_policy(Policy {
+        owners: BTreeSet::from([pk(OWNER), pk(STRANGER)]),
+        controllers: BTreeSet::new(),
+    })
+    .unwrap();
+    let (original, adapter) = fx.open(&host, "loop-mid-turn");
+    let secret_input = json!({"prompt":"private owner input","steps":1});
+    let original_intent = fx.intent(&host, &original, secret_input, fx.now + 600);
+    let original_body: Value = serde_json::from_slice(
+        fx.artifacts
+            .get(original_intent["digest"].as_str().unwrap())
+            .unwrap(),
+    )
+    .unwrap();
+    let secret_ref = original_body["input"].clone();
+    let submit = fx.command(
+        &host,
+        &original,
+        "submit",
+        json!({"intent":original_intent}),
+    );
+    let binding = fx.binding();
+    assert_eq!(
+        fx.send(&host, OWNER, &submit, Some(&binding))["status"],
+        "accepted"
+    );
+    let mut opening = fx.open_body(&host, &adapter, json!({"kind":"new","artifact":null}));
+    opening["owner"] = json!(pk(STRANGER));
+    let private_digest = secret_ref["digest"].as_str().unwrap().to_string();
+    let private_bytes = fx.artifacts.remove(&private_digest).unwrap();
+    let binding = fx.binding();
+    assert_eq!(
+        fx.send(&host, STRANGER, &opening, Some(&binding))["status"],
+        "accepted"
+    );
+    let session = opening["session"].as_str().unwrap().to_string();
+    let original_effective = host.status(&original).unwrap()["effective"].clone();
+    assert_eq!(
+        host.status(&session).unwrap()["effective"],
+        original_effective
+    );
+    let signer =
+        nostr::domain::RelaySigner::from_secret_hex(&secret(HOST).display_secret().to_string())
+            .unwrap();
+    let state: Value = host.store().load(&signer).unwrap();
+    for owner in [OWNER, STRANGER] {
+        let key = format!(
+            "{}:to:{}",
+            original_effective["digest"].as_str().unwrap(),
+            pk(owner)
+        );
+        let event: nostr::domain::Event =
+            serde_json::from_slice(&host.store().get(&state["declarations"][key]).unwrap())
+                .unwrap();
+        let opened = nostr::private_artifact::open(&event, &secret(owner)).unwrap();
+        assert_eq!(opened.recipient(), pk(owner));
+    }
+    let safe = fx.intent(&host, &session, json!({"prompt":"own"}), fx.now + 600);
+    let mut intent: Value =
+        serde_json::from_slice(fx.artifacts.get(safe["digest"].as_str().unwrap()).unwrap())
+            .unwrap();
+    intent["input"] = secret_ref;
+    let intent = put_json(&mut fx.artifacts, &intent);
+    for _ in 0..2 {
+        let enqueue = fx.command(&host, &session, "enqueue", json!({"intent":intent}));
+        assert_eq!(
+            fx.send(&host, STRANGER, &enqueue, None)["reason"],
+            "not_admitted"
+        );
+        assert!(
+            host.status(&session).unwrap()["queue"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+    }
+    assert_eq!(host.started("loop-mid-turn"), 1);
+    // Supplying the bytes makes this an explicit input, including after restart.
+    fx.artifacts.insert(private_digest, private_bytes);
+    let enqueue = fx.command(&host, &session, "enqueue", json!({"intent":intent}));
+    assert_eq!(
+        fx.send(&host, STRANGER, &enqueue, None)["status"],
+        "accepted"
+    );
+    let restarted = fx.host();
+    let binding = fx.binding();
+    // No engine exists on this new host, but input admission is no longer denied.
+    assert_eq!(
+        restarted
+            .promote(&session, Some(&binding), fx.now)
+            .unwrap_err(),
+        "unavailable: native session"
+    );
+    assert_eq!(restarted.started("loop-mid-turn"), 0);
+    assert_eq!(
+        restarted.observe(&session, fx.now).unwrap()["phase"],
+        "unknown"
+    );
 }

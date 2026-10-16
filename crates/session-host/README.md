@@ -135,6 +135,14 @@ close makes it closed. A lost reply stays unknown, cannot be sent again under
 another command, and keeps the resume lineage reserved. Read-only imports have
 no native engine to stop. Adapters without native close refuse that operation.
 
+Private reads use the requesting principal's supplied or shared bytes, including
+on queue promotion. A hash, a refusal, or an accepted queue record cannot grant
+access to another owner's cached input or resume state. Adapter definitions are
+explicitly public. Identical private records have separate encrypted declarations
+for each recipient. Resume also needs a host-signed managed export tied to the
+requester's own source session; possessing an export does not transfer control.
+Foreign imports require their actual content and remain read-only.
+
 The store retains at most 64 sessions and 256 queued intents per session.
 Limits stop new admissions and never discard history. All fixtures use
 throwaway keys and local state; no money moves.

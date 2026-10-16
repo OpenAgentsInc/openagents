@@ -797,3 +797,12 @@ action, and operation IDs distinguish adapters. Definitions pin engine and
 protocol identities and state the actual host/engine effects. Unsupported
 features have no operation pins. Definitions alone neither expose CJ dispatch
 nor claim enforcement of unstated bounds or transport idempotency.
+
+Private input reads require bytes supplied by or shared with the requesting
+principal. Promotion uses the original queue requester's access. Reply records
+do not grant access by following arbitrary input references. Public adapter
+definitions are shared explicitly; private declarations are encrypted separately
+for each recipient. Native resume requires a host-signed managed history linked
+to that requester's own source admission. Knowing or supplying export bytes does
+not transfer native control. This profile accepts foreign content only as an
+archive with its actual supplied or shared bytes.
