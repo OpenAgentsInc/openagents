@@ -72,6 +72,20 @@ def check(document, expected_origin=None, complete=True):
         assert origin == expected_origin, 'Wrong deployment origin'
     slices = [json.loads((ROOT / name).read_text()) for name in ('docs/sdk/openapi.app.json', 'docs/sdk/openapi.systemone.json')]
     app = {'paths': {path: item for slice in slices for path, item in slice['paths'].items()}}
+    # Thread execution remains distinct from read-only saved history. Keep
+    # both list envelopes and destructive sync delivery visible to clients.
+    for slice in slices:
+        thread_paths = slice['paths']
+        if '/v1/threads' not in thread_paths:
+            continue
+        listing = thread_paths['/v1/threads']['get']
+        assert len(listing['responses']['200']['content']['application/json']['schema']['oneOf']) == 2
+        take = thread_paths['/v1/threads/synced/{session}/replies']['post']
+        assert 'at most once' in take['description']
+        assert 'revision-pinned' in thread_paths['/v1/threads/{id}/messages']['get']['description']
+        for path, item in thread_paths.items():
+            if path.startswith('/v1/history'):
+                assert set(item) == {'get'}, 'Saved history must remain read-only'
     ids = set()
     operations = 0
     paths = document['paths']

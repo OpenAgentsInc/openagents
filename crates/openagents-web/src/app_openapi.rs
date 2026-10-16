@@ -116,6 +116,7 @@ pub fn document() -> Value {
     });
     crate::history_openapi::extend(&mut document);
     crate::custom_agents_openapi::extend(&mut document);
+    crate::thread_openapi::extend(&mut document);
     crate::key_openapi::extend(&mut document);
     crate::computers_api::extend_openapi(&mut document);
     crate::project_openapi::extend(&mut document);
@@ -154,7 +155,9 @@ pub fn computers_document() -> Value {
         .as_object_mut()
         .unwrap()
         .retain(|path, _| {
-            path.starts_with("/v1/computers")
+            (path.starts_with("/v1/computers")
+                && path != "/v1/computers/check-in"
+                && path != "/v1/computers/{name}/sync")
                 || path.starts_with("/v1/device/")
                 || path == "/v1/account"
         });

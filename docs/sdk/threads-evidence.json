@@ -1,0 +1,33 @@
+{
+  "schema": "openagents.sdk.threads-evidence.v1",
+  "issue": 11867,
+  "date": "2026-10-16",
+  "rust_toolchain": "1.97.1",
+  "scope": "Source-backed contracts for existing thread, sharing, attachment and computer sync handlers; no handler changes or new execution transport.",
+  "checks": {
+    "web_lib": {
+      "passed": 803,
+      "ignored": 15,
+      "unrelated_skipped": 3
+    },
+    "isolated_handler": "passed: synthetic accounts, paging, cross-account denial, repeat upload, duplicate reply, destructive take, sharing revocation, deletion tombstone",
+    "public_reference": "passed: 81 app operations after rebase; existing qualified operations unchanged",
+    "format": "passed: changed Rust modules; whitespace check"
+  },
+  "unrelated_failures": [
+    {
+      "test": "cad_web::world_physics::tests::http_requires_a_checked_account_and_does_not_open_another_accounts_objects",
+      "reason": "Private Cloud configuration is unavailable or changed (existing fixture)."
+    },
+    {
+      "test": "work_runs::computers::tests::withdrawing_a_live_repository_grant_refuses_before_new_effects",
+      "reason": "Private Cloud configuration is unavailable or changed (existing fixture)."
+    },
+    {
+      "test": "tests::the_api_docs_list_every_guide_and_serve_markdown",
+      "reason": "Existing system-one guide no longer contains Beta, but test requires it."
+    }
+  ],
+  "resources": "Temporary local stores and loopback services removed/stopped; no real accounts, inference, computers or payments used.",
+  "deployment": "Pending publication of the generated schema on the public front."
+}

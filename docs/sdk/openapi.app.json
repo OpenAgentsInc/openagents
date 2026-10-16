@@ -1463,6 +1463,3528 @@
         }
       }
     },
+    "/v1/threads": {
+      "get": {
+        "operationId": "listThreads",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Without project: owned, nonarchived chats, pinned first then newest activity; offset pagination, limit defaults to 200 and clamps to 1..200, store discovery ceiling 10000. With project: current authorized project (ID or name:NAME; none means unfiled), after pagination oldest activity first, limit defaults to 100 and clamps to 1..200. These are different response envelopes; neither is a snapshot. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Without project only",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Clamped to 1..200",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Project list only; last returned ID, unknown after value is 400 invalid_cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "project",
+            "in": "query",
+            "description": "Project ID, name:NAME, or none; changes envelope and order",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ThreadList"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ThreadProjectList"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "startThread",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Starts an account-store cloud chat using the existing server runtime and caller allowance. request_id names the chat; retry the same UUID after a lost response. Existing chat returns 200, first start 201. Project is allowed here only. Files must be uploaded under request_id first. No public JSON event stream or stop operation is mounted by this contract; browser HTML events/forms are a separate execution boundary. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadStarted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadStarted"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadReply"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/threads/{id}": {
+      "get": {
+        "operationId": "readThread",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Owner or current shared-project member. Newest 200 nonempty messages; earlier counts omitted messages. Use read-only /v1/history for revision-pinned rich transcript pages. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadRecent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "moveThread",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Owner only; target requires current project editor/owner role. null removes filing. Revision compare-and-swap retries three times; conflicts return 503. Moving resets the branch. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadObject"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "project": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "project"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteThread",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Owner only. Deletes permanently; a running answer refuses 409 busy, a race refuses 409 changed. A repeated delete returns 404, not another effect. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success; no response body"
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/threads/{id}/messages": {
+      "get": {
+        "operationId": "listThreadMessages",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Current owner/shared-project access, oldest first, limit defaults to 100 and clamps to 1..200; after is msg_INDEX. Unknown after value returns 400 invalid_cursor. Unversioned text-only pages; files/generated_files/artifacts are null. Use /v1/history for rich revision-pinned reads. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadMessages"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "replyToThread",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Trimmed nonempty text, at most 4000 characters; secrets refuse 422 secret. Reuse request_id on retry. Terminal queues at most four replies for an online computer, remembers 16 reply IDs; offline/busy return 409. Phone chats refuse 409 phone. Web chats use the existing server turn and caller allowance; busy 409, unavailable 503. project must be absent/null. Shared-project editor/owner can send words to a web chat using their own allowance; viewers refuse 403 project_role, shared terminal/files refuse 400 words_only. This operation accepts a turn; it does not return generated output or an SSE stream. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadAccepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadReply"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/threads/{id}/share": {
+      "get": {
+        "operationId": "readThreadShare",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Owner only, otherwise 404 unknown. A project set to only_me refuses 409 not_shareable. The URL is a read-only bearer link to words, never attachments. Unsharing or deletion revokes it; resharing creates a new token. GET does not create a share. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadShare"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "setThreadShare",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Owner only, otherwise 404 unknown. A project set to only_me refuses 409 not_shareable. The URL is a read-only bearer link to words, never attachments. Unsharing or deletion revokes it; resharing creates a new token. GET does not create a share. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadShare"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "shared"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "shared": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/threads/{id}/files": {
+      "post": {
+        "operationId": "addThreadFile",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Owner-only raw upload for a cloud chat or a not-yet-started request UUID; at most 10 MiB (text 512 KiB), 32 files per chat, four per message. Supports images, PDF, text and supported CAD files. Returns formatted size, not byte count. A retry can create another pending file; keep the returned ID rather than blindly retrying. File validation errors use code file; pending limit is 409 full. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "png",
+                        "jpeg",
+                        "gif",
+                        "webp",
+                        "pdf",
+                        "text",
+                        "step",
+                        "stl"
+                      ]
+                    },
+                    "size": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "kind",
+                    "size",
+                    "url"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "maxLength": 10485760
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/threads/{id}/files/{file}": {
+      "get": {
+        "operationId": "readThreadFile",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Owner-only attachment bytes. Shared project access to transcript words does not grant this route. Missing bytes return 404 not_found. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "file",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Attachment bytes with validated media type",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "removeUnsentThreadFile",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Owner-only removal of a pending attachment; sent attachments refuse. Success is 204; a repeated removal returns a file refusal. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "file",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success; no response body"
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/threads/synced": {
+      "get": {
+        "operationId": "listSyncedThreads",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Account-owned sync session IDs and deletion tombstones, not transcript history. Older /coder/sessions alias remains supported. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadSyncList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/threads/synced/{session}": {
+      "put": {
+        "operationId": "syncThread",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Upsert under authenticated account and session (ASCII letters/digits/_/-, 1..128 bytes). Maximum body 8 MiB, 4000 messages, 256 KiB/message; invalid tool details are omitted (32 KiB input/output). Secret screening refuses 422. Repeated same content returns changed:false; website deletion returns 410 deleted. Does not execute a turn. Older /coder/sessions/{session} alias is unchanged. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadSyncSaved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThreadSyncUpload"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "forgetSyncedThread",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Account-owned session removal. Safe to repeat; deleted boolean; older /coder/sessions/{session} alias is unchanged. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "deleted"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/threads/synced/{session}/status": {
+      "post": {
+        "operationId": "setSyncedThreadStatus",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Sets working status without running a turn; 404 unknown, 410 deleted. Older /coder/sessions/{session}/status alias remains. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadSyncSaved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "working"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "working": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/threads/synced/{session}/replies": {
+      "post": {
+        "operationId": "takeSyncedThreadReplies",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Destructive take: queued replies and asks are delivered at most once. A lost response cannot be retried for redelivery; this is not exactly-once execution. Continued user/assistant messages are oldest first, bounded to 64, each at most 256 KiB. The computer executes work under its own authority. Older /coder/sessions/{session}/replies alias remains. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadSyncTaken"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/threads/synced/{session}/captures/{ask}": {
+      "put": {
+        "operationId": "saveSyncedThreadCapture",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Raw PNG/file bytes for a previously taken ask; at most 15 MiB. Older /coder/sessions/{session}/captures/{ask} alias remains. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ask",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadSyncSaved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "maxLength": 15728640
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/threads/synced/{session}/captures/{ask}/failed": {
+      "post": {
+        "operationId": "failSyncedThreadCapture",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Records a failed capture, no execution. Older /coder/sessions/{session}/captures/{ask}/failed alias remains. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ask",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadSyncSaved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "message"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "message": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/computers/{name}/sync": {
+      "get": {
+        "operationId": "readComputerSyncChoice",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Account-owned sync preference. null on GET means not chosen. PUT accepts all or local. Older /coder/sync alias accepts the computer query/body field. This choice does not itself upload transcripts or start execution. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "choice": {
+                      "enum": [
+                        "all",
+                        "local",
+                        null
+                      ]
+                    }
+                  },
+                  "required": [
+                    "choice"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "x-openagents-retry": "read",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 0
+      },
+      "put": {
+        "operationId": "setComputerSyncChoice",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Account-owned sync preference. null on GET means not chosen. PUT accepts all or local. Older /coder/sync alias accepts the computer query/body field. This choice does not itself upload transcripts or start execution. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "choice": {
+                      "enum": [
+                        "all",
+                        "local",
+                        null
+                      ]
+                    }
+                  },
+                  "required": [
+                    "choice"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "choice"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "choice": {
+                    "enum": [
+                      "all",
+                      "local"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-openagents-retry": "read_and_compare",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 0
+      }
+    },
+    "/v1/computers/check-in": {
+      "post": {
+        "operationId": "checkInSyncComputer",
+        "tags": [
+          "Threads"
+        ],
+        "description": "Records account-owned presence; returns waiting sessions and sync choice. Does not run them. Older /coder/check-in alias remains. Account session or sign-in key required; cookies and oak API keys do not authorize this operation.",
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "waiting": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "sync": {
+                      "enum": [
+                        "all",
+                        "local",
+                        null
+                      ]
+                    }
+                  },
+                  "required": [
+                    "waiting",
+                    "sync"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Refusal. The error code distinguishes invalid input, missing authority/resource, changed/busy state, deleted sync sessions, size/content limits, secret screening, or unavailable service.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "computer"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "computer": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-openagents-retry": "manual_intent",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 0
+      }
+    },
     "/v1/keys": {
       "get": {
         "operationId": "listAccountKeys",
@@ -9437,6 +12959,689 @@
             ]
           }
         }
+      },
+      "ThreadRow": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "line": {
+            "type": "string"
+          },
+          "surface": {
+            "enum": [
+              "web",
+              "terminal",
+              "phone"
+            ]
+          },
+          "computer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_unix": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "working": {
+            "type": "boolean"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "can_reply": {
+            "type": "boolean"
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "messages": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "line",
+          "surface",
+          "computer",
+          "session",
+          "updated_unix",
+          "working",
+          "online",
+          "can_reply",
+          "pinned",
+          "project",
+          "messages"
+        ]
+      },
+      "ThreadObject": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "const": "thread"
+          },
+          "title": {
+            "type": "string"
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "surface": {
+            "enum": [
+              "web",
+              "terminal",
+              "phone"
+            ]
+          },
+          "computer": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "messages": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "started_by": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "you": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "you"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "title",
+          "project",
+          "surface",
+          "computer",
+          "updated_at",
+          "messages",
+          "pinned",
+          "archived"
+        ]
+      },
+      "ThreadReply": {
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "request_id",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "ThreadSyncUpload": {
+        "type": "object",
+        "properties": {
+          "computer": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "maxItems": 4000,
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "enum": [
+                    "user",
+                    "assistant",
+                    "tool",
+                    "thinking"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                },
+                "step": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "summary",
+                        "status"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "summary": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "enum": [
+                            "running",
+                            "done",
+                            "failed"
+                          ]
+                        },
+                        "input": {
+                          "type": "string"
+                        },
+                        "output": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "role",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "repository": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "active_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "computer",
+          "title",
+          "messages"
+        ],
+        "additionalProperties": false
+      },
+      "ThreadComputer": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "seen_unix": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "sync": {
+            "enum": [
+              "all",
+              "local",
+              null
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "online",
+          "seen_unix",
+          "sync"
+        ]
+      },
+      "ThreadList": {
+        "type": "object",
+        "properties": {
+          "threads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadRow"
+            }
+          },
+          "computers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadComputer"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "more": {
+            "type": "boolean"
+          },
+          "next_offset": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "threads",
+          "computers",
+          "total",
+          "more",
+          "next_offset"
+        ]
+      },
+      "ThreadProjectList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadObject"
+            }
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "next"
+        ]
+      },
+      "ThreadRecent": {
+        "type": "object",
+        "properties": {
+          "thread": {
+            "$ref": "#/components/schemas/ThreadRow"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "enum": [
+                    "user",
+                    "assistant",
+                    "tool",
+                    "thinking"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                },
+                "files": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HistoryFile"
+                  }
+                }
+              },
+              "required": [
+                "role",
+                "text"
+              ]
+            }
+          },
+          "earlier": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "waiting": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "thread",
+          "messages",
+          "earlier",
+          "waiting"
+        ]
+      },
+      "ThreadMessages": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "object": {
+                  "const": "message"
+                },
+                "thread": {
+                  "type": "string"
+                },
+                "role": {
+                  "enum": [
+                    "user",
+                    "assistant",
+                    "tool",
+                    "thinking"
+                  ]
+                },
+                "content": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "const": "text"
+                      },
+                      "text": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "text"
+                    ]
+                  }
+                },
+                "files": {
+                  "type": "null"
+                },
+                "generated_files": {
+                  "type": "null"
+                },
+                "artifacts": {
+                  "type": "null"
+                }
+              },
+              "required": [
+                "id",
+                "object",
+                "thread",
+                "role",
+                "content",
+                "files",
+                "generated_files",
+                "artifacts"
+              ]
+            }
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "next"
+        ]
+      },
+      "ThreadAccepted": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "queued": {
+                "const": true
+              }
+            },
+            "required": [
+              "queued"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "answering": {
+                "const": true
+              }
+            },
+            "required": [
+              "answering"
+            ]
+          }
+        ]
+      },
+      "ThreadStarted": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "answering": {
+            "const": true
+          }
+        },
+        "required": [
+          "id",
+          "answering"
+        ]
+      },
+      "ThreadShare": {
+        "type": "object",
+        "properties": {
+          "shared": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "shared",
+          "url"
+        ]
+      },
+      "ThreadSyncSaved": {
+        "type": "object",
+        "properties": {
+          "chat": {
+            "type": "string"
+          },
+          "changed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "chat",
+          "changed"
+        ]
+      },
+      "ThreadSyncList": {
+        "type": "object",
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "session": {
+                  "type": "string"
+                },
+                "deleted": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "session",
+                "deleted"
+              ]
+            }
+          }
+        },
+        "required": [
+          "sessions"
+        ]
+      },
+      "ThreadSyncTaken": {
+        "type": "object",
+        "properties": {
+          "replies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "text"
+              ]
+            }
+          },
+          "continued": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "enum": [
+                    "user",
+                    "assistant",
+                    "tool",
+                    "thinking"
+                  ]
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "role",
+                "text"
+              ]
+            }
+          },
+          "asks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "action": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "screenshot"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "const": "pull"
+                        },
+                        "path": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "path"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "action"
+              ]
+            }
+          }
+        },
+        "required": [
+          "replies",
+          "continued",
+          "asks"
+        ]
       },
       "AppManagedKeySignin": {
         "type": "object",

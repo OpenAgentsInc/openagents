@@ -100,6 +100,7 @@ mod tasks;
 mod terminal_connect;
 pub mod test_runs;
 pub mod theme;
+mod thread_openapi;
 mod trace_view;
 mod traces;
 pub mod ui_page;
