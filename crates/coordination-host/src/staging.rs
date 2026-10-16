@@ -156,7 +156,12 @@ impl Coordinator {
                         continue;
                     }
                     match value {
-                        Value::Object(fields) => nodes.extend(fields.values()),
+                        Value::Object(fields) => nodes.extend(
+                            fields
+                                .iter()
+                                .filter(|(key, _)| key.as_str() != "meta")
+                                .map(|(_, value)| value),
+                        ),
                         Value::Array(items) => nodes.extend(items),
                         _ => {}
                     }

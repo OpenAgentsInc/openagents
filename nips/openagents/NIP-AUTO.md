@@ -355,8 +355,13 @@ The worker returns the exact typed automation input as data. Pause and cancel
 share a fence with actual worker intake. Unknown outcomes retain their original
 holds and active occurrence; another timer cannot dispatch a replacement.
 
-Source observation, checked continuation, controller CAP/CJ exchange, broader
-recovery, and effectful session/environment adapters remain unfinished in
+The controller CAP/CJ endpoint serves the exact admitted policy, schema, lock,
+context, and requirements. It stores one request identity book across plans.
+Interrupted calls recover their exact saved result or a fenced proof that the
+operation never changed plan state; recovery does not call the operation again.
+
+Source observation, checked continuation, broader occurrence cleanup recovery,
+and effectful session/environment adapters remain unfinished in
 #11735. Their records have closed validators, but unsupported triggers and
 bindings refuse at admission. A queue acknowledgment or model self-claim cannot
 complete work. See [the runtime guide](../../crates/automation-host/README.md).

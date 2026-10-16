@@ -9,7 +9,7 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
-pub const USAGE: &str = "usage: automation-host ACTION --state DIR --key-file FILE --coordinator-state DIR --coordinator-key-file FILE [--input FILE] [--json]\nActions: init, policy, put, inspect, admit, tick, advance, run, result, check, control, sign.\nWorker actions need --worker-state and --worker-key-file. Checking needs --checker-key-file.";
+pub const USAGE: &str = "usage: automation-host ACTION --state DIR --key-file FILE --coordinator-state DIR --coordinator-key-file FILE [--input FILE] [--json]\nActions: init, policy, put, inspect, admit, tick, advance, run, result, check, control, sign, transport, invoke, serve, recover.\nWorker actions need --worker-state and --worker-key-file. Checking needs --checker-key-file.";
 fn key(path: &Path) -> Result<secp256k1::SecretKey> {
     let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
     if !meta.is_file() || meta.len() > 256 {
@@ -72,6 +72,9 @@ pub fn run(args: Vec<String>) -> Result<Value> {
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| e.to_string())?
         .as_secs();
+    if args[0] == "transport" {
+        return Automation::open(root, secret, coordinator)?.transport();
+    }
     if args[0] == "policy" {
         return Automation::open(root, secret, coordinator)?.policy();
     }
@@ -95,6 +98,29 @@ pub fn run(args: Vec<String>) -> Result<Value> {
     let reference = &input["plan"];
     match args[0].as_str() {
         "put" => host.put_local_json(&input),
+        "invoke" => serde_json::to_value(coordination_host::transport::invoke(
+            &key(Path::new(&option("--participant-key-file")?))?,
+            host.authority(),
+            &host.transport()?,
+            input["body"].clone(),
+            input["request"].as_str().ok_or("request")?.into(),
+            now,
+        )?)
+        .map_err(|e| e.to_string()),
+        "serve" | "recover" => {
+            let event: Event =
+                serde_json::from_value(input["event"].clone()).map_err(|_| "controller request")?;
+            let (event, artifacts) = if args[0] == "recover" {
+                host.recover_controller(&event, now)?
+            } else {
+                host.serve(&event, &files(&input)?, now)?
+            };
+            let artifacts = artifacts
+                .into_iter()
+                .map(|(d, b)| Ok((d, contracts::parse_strict(&b).map_err(|e| e.to_string())?)))
+                .collect::<Result<BTreeMap<_, _>>>()?;
+            Ok(json!({"event":event,"artifacts":artifacts}))
+        }
         "inspect" => host.inspect(reference),
         "admit" => host.admit(
             &serde_json::from_value::<Event>(input["event"].clone()).map_err(|_| "owner event")?,

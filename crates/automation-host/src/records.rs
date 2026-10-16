@@ -7,6 +7,9 @@ use nostr::{automation, domain::Event};
 use serde_json::{Value, json};
 impl Automation {
     pub(crate) fn authenticate(&self, event: &Event, now: u64) -> Result<(String, Value)> {
+        if event.kind == nostr::execution::REQUEST_KIND {
+            return self.authenticated_cj(event, now);
+        }
         let opened =
             nostr::private_artifact::open(event, &self.secret).map_err(|e| e.to_string())?;
         if opened.recipient() != self.authority()

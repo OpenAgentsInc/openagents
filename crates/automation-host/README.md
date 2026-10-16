@@ -39,6 +39,13 @@ reserved ceilings after a checked result; actual coordinator call records remain
 separate evidence. Plan completion means finite scheduling completed, with no
 WORK, LAB, payment, or goal-acceptance effect.
 
-Source triggers, continuation, controller CAP/CJ exchange, broader recovery, and
+`transport` distributes the exact controller CAP and pins. `invoke` signs a
+plan/control request with `--participant-key-file`; `serve` retains its CJ
+acceptance, RUN root, intent, result, and output artifacts. Exact retries return
+the original response. `recover` returns an interrupted call's saved result or
+fences a proven absence; it never dispatches the operation again. A remote hash
+lookup or a relay claim cannot replace these admitted pins.
+
+Source triggers, continuation, broader occurrence cleanup recovery, and
 session/environment/effect adapters remain in #11735. Unsupported bindings refuse
 before activation. The released Coder commands remain unchanged.

@@ -10,6 +10,7 @@ impl Automation {
         }
         let _guard = self.store.lock()?;
         let mut state = self.state()?;
+        self.current_invocation(&state, event)?;
         let id = Self::plan_key(&state, &body["plan"])?;
         let mut record = state.plans[&id].clone();
         if record.body["owner"] != actor || !state.policy.owners.contains(&actor) {
@@ -21,7 +22,10 @@ impl Automation {
             if previous["fingerprint"] != fp {
                 return Err("idempotency_conflict: automation control changed".into());
             }
-            return Ok(previous["result"].clone());
+            let result = previous["result"].clone();
+            self.remember_invocation(&mut state, event, &result);
+            self.save(&state)?;
+            return Ok(result);
         }
         if record.controls.len() >= 1024 {
             return Err("automation control retention bound".into());
@@ -33,6 +37,7 @@ impl Automation {
                 .controls
                 .insert(command, json!({"fingerprint":fp,"result":result}));
             state.plans.insert(id, record);
+            self.remember_invocation(&mut state, event, &result);
             self.save(&state)?;
             return Ok(result);
         }
@@ -90,6 +95,7 @@ impl Automation {
             .controls
             .insert(command, json!({"fingerprint":fp,"result":result}));
         state.plans.insert(id, record);
+        self.remember_invocation(&mut state, event, &result);
         self.save(&state)?;
         Ok(result)
     }

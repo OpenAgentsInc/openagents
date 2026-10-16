@@ -269,3 +269,223 @@ fn owner_identity_pins_and_parent_reuse_refuse_before_activation() {
             .contains("immutable")
     );
 }
+#[test]
+fn controller_cj_pins_exact_retries_and_independent_plan_run_are_enforced() {
+    let (t, auto, plan) = setup(json!({"kind":"once","at":110}));
+    let bundle = auto.transport().unwrap();
+    let card: Value =
+        serde_json::from_slice(&auto.store.get(&bundle["target"]["artifact"]).unwrap()).unwrap();
+    nostr::cap::parse_definition(&card).unwrap();
+    let request = coordination_host::transport::invoke(
+        &secret(1),
+        auto.authority(),
+        &bundle,
+        plan.clone(),
+        workspace_host::artifact::token(),
+        100,
+    )
+    .unwrap();
+    assert!(auto.admit(&request, &BTreeMap::new(), 100).is_err());
+    let (response, files) = auto.serve(&request, &BTreeMap::new(), 100).unwrap();
+    let execute = nostr::execution::open_request(
+        &request,
+        &key(5),
+        &secret(5),
+        100,
+        nostr::execution::Window::DEFAULT,
+    )
+    .unwrap();
+    let nostr::execution::Body::Execute(execute) = execute.body else {
+        panic!()
+    };
+    let result = nostr::execution::bind_worker_event(
+        &response,
+        &nostr::execution::Pending {
+            worker: &key(5),
+            customer: &key(1),
+            request: &execute.request,
+            attempt: 1,
+            execute_event: &request.id,
+        },
+        &secret(1),
+    )
+    .unwrap();
+    assert_eq!(result["outcome"], "completed");
+    let output: Value =
+        serde_json::from_slice(&files[result["output"]["digest"].as_str().unwrap()]).unwrap();
+    assert_eq!(output["status"], "accepted");
+    assert!(files.values().map(Vec::len).sum::<usize>() <= 1048576);
+    let reference = output["input"].clone();
+    assert_eq!(auto.inspect(&reference).unwrap()["state"]["occurrences"], 0);
+    assert_eq!(
+        auto.serve(&request, &BTreeMap::new(), 120).unwrap().0,
+        response
+    );
+    drop(auto);
+    let coor =
+        coordination_host::book::Coordinator::open(t.path().join("coor"), secret(1)).unwrap();
+    let auto = Automation::open(t.path().join("auto"), secret(5), coor).unwrap();
+    assert_eq!(auto.recover_controller(&request, 120).unwrap().0, response);
+    let mut bad_bundle = bundle;
+    bad_bundle["requirements"] = bad_bundle["context"].clone();
+    let bad = coordination_host::transport::invoke(
+        &secret(1),
+        auto.authority(),
+        &bad_bundle,
+        plan,
+        workspace_host::artifact::token(),
+        120,
+    )
+    .unwrap();
+    assert!(
+        auto.serve(&bad, &BTreeMap::new(), 120)
+            .unwrap_err()
+            .contains("pins")
+    );
+}
+#[test]
+fn interrupted_controller_recovers_exact_domain_result_or_fenced_absence() {
+    for complete_domain in [false, true] {
+        let (_t, auto, plan) = setup(json!({"kind":"once","at":110}));
+        let request = coordination_host::transport::invoke(
+            &secret(1),
+            auto.authority(),
+            &auto.transport().unwrap(),
+            plan.clone(),
+            workspace_host::artifact::token(),
+            100,
+        )
+        .unwrap();
+        let opened = nostr::execution::open_request(
+            &request,
+            auto.authority(),
+            &secret(5),
+            100,
+            nostr::execution::Window::DEFAULT,
+        )
+        .unwrap();
+        {
+            let _guard = auto.store.lock().unwrap();
+            let mut state = auto.state().unwrap();
+            let nostr::execution::Admission::Reserved { claim, root } = state
+                .service
+                .prepare(&opened, 100, &workspace_host::artifact::token())
+                .unwrap()
+            else {
+                panic!()
+            };
+            let reference = auto
+                .store
+                .put(&root, "application/json", Some(nostr::run::RECORD_SCHEMA))
+                .unwrap();
+            state
+                .reply_artifacts
+                .insert(claim.key.clone(), vec![reference]);
+            state.service.acknowledge(&claim.key, &root).unwrap();
+            state.service.intend(&claim.key).unwrap();
+            auto.save(&state).unwrap();
+        }
+        let result = if complete_domain {
+            Some(auto.admit(&request, &BTreeMap::new(), 100).unwrap())
+        } else {
+            None
+        };
+        assert!(
+            auto.serve(&request, &BTreeMap::new(), 101)
+                .unwrap_err()
+                .contains("no replay")
+        );
+        let (reply, files) = auto.recover_controller(&request, 101).unwrap();
+        let nostr::execution::Body::Execute(execute) = opened.body else {
+            panic!()
+        };
+        let body = nostr::execution::bind_worker_event(
+            &reply,
+            &nostr::execution::Pending {
+                worker: &key(5),
+                customer: &key(1),
+                request: &execute.request,
+                attempt: 1,
+                execute_event: &request.id,
+            },
+            &secret(1),
+        )
+        .unwrap();
+        assert_eq!(body["dispatched"], complete_domain);
+        let output: Value =
+            serde_json::from_slice(&files[body["output"]["digest"].as_str().unwrap()]).unwrap();
+        assert_eq!(
+            output["status"],
+            if complete_domain {
+                "accepted"
+            } else {
+                "refused"
+            }
+        );
+        if let Some(result) = result {
+            assert_eq!(output, result);
+        }
+        assert!(
+            auto.admit(&request, &BTreeMap::new(), 101)
+                .unwrap_err()
+                .contains("revoked")
+        );
+        assert_eq!(
+            auto.state().unwrap().plans.len(),
+            usize::from(complete_domain)
+        );
+    }
+}
+#[test]
+fn cj_byte_bound_and_foreign_owner_refuse_before_creating_service_history() {
+    let (_t, auto, plan) = setup(json!({"kind":"once","at":110}));
+    let good = coordination_host::transport::invoke(
+        &secret(1),
+        auto.authority(),
+        &auto.transport().unwrap(),
+        plan.clone(),
+        workspace_host::artifact::token(),
+        100,
+    )
+    .unwrap();
+    let opened = nostr::execution::open_request(
+        &good,
+        auto.authority(),
+        &secret(5),
+        100,
+        nostr::execution::Window::DEFAULT,
+    )
+    .unwrap();
+    let nostr::execution::Body::Execute(execute) = opened.body else {
+        panic!()
+    };
+    let mut payload = execute.payload;
+    payload["bounds"]["output_bytes"] = json!(1);
+    let signer = RelaySigner::from_secret_hex(&secret(1).display_secret().to_string()).unwrap();
+    let peer = key(5).parse::<secp256k1::XOnlyPublicKey>().unwrap();
+    let bad = nostr::execution::Seal {
+        signer: &signer,
+        conversation: nostr::nip44::conversation_key(&secret(1), &peer),
+        nonce: secp256k1::rand::random(),
+        created_at: 100,
+    }
+    .event(nostr::execution::REQUEST_KIND, good.tags.clone(), &payload)
+    .unwrap();
+    assert!(
+        auto.serve(&bad, &BTreeMap::new(), 100)
+            .unwrap_err()
+            .contains("bounds")
+    );
+    let foreign = coordination_host::transport::invoke(
+        &secret(2),
+        auto.authority(),
+        &auto.transport().unwrap(),
+        plan,
+        workspace_host::artifact::token(),
+        100,
+    )
+    .unwrap();
+    assert!(auto.serve(&foreign, &BTreeMap::new(), 100).is_err());
+    assert!(auto.state().unwrap().service.claims.is_empty());
+    assert!(auto.state().unwrap().plans.is_empty());
+}

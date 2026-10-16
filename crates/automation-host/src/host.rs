@@ -51,6 +51,8 @@ pub(crate) struct State {
     pub plans: BTreeMap<String, Record>,
     pub originals: BTreeMap<String, Vec<Event>>,
     pub service: nostr::execution::Service,
+    #[serde(default)]
+    pub invocations: BTreeMap<String, Value>,
     pub replies: BTreeMap<String, Event>,
     pub reply_artifacts: BTreeMap<String, Vec<Value>>,
 }
@@ -108,6 +110,7 @@ impl Automation {
             plans: BTreeMap::new(),
             originals: BTreeMap::new(),
             service: nostr::execution::Service::new(host.authority(), 1, 9_007_199_254_740_991),
+            invocations: BTreeMap::new(),
             replies: BTreeMap::new(),
             reply_artifacts: BTreeMap::new(),
         })?;
