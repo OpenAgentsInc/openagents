@@ -41,11 +41,13 @@ attested endpoint. Tier `user` (device only) is unchanged.
 There is no path for unattended decryption: every opening needs a fresh
 request that carries the share under a current lease.
 
-The fixtures run the workload in-process with a fixture endpoint and a local
-KMS. The real-endpoint test confirms that the captured TDX endpoint, which
-serves another workload and has no session key, is refused. Deploying the
-vault workload on Confidential Space with an attestation-bound KMS key is an
-owner step.
+The local fixtures use an assumed endpoint and LocalKms. A separate
+[TDX research run](../../docs/research/dhruv/conformance-evidence-2026-10-16.md)
+verified an actual Google token, image, signing key, and HPKE binding before
+opening a synthetic object. Its public capture and signed completion verify
+in `dhruv-conformance`. The earlier captured endpoint for another workload
+remains refused. Production files, a remote client, and attestation-bound
+Cloud KMS remain owner qualification steps.
 
 `examples/cloud_fixture.rs` is a separate, one-shot research workload. Build
 it with `OA_VAULT_RESEARCH_COMMIT` set to the source commit and package the

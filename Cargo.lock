@@ -5495,6 +5495,7 @@ dependencies = [
  "labor-roles",
  "nostr",
  "oa-att",
+ "oa-vault",
  "openagents-x402",
  "p384",
  "pay-ledger",
@@ -5503,6 +5504,7 @@ dependencies = [
  "sha2 0.10.9",
  "sov-treasury",
  "tempfile",
+ "vault-sealed",
 ]
 
 [[package]]

@@ -271,6 +271,9 @@ The [Dhruv conformance matrix](../../docs/research/dhruv/conformance-matrix.md)
 lists the implemented roles with the exact Rust test behind each, checked by
 `cargo test -p dhruv-conformance`; fixture support there is not live
 qualification.
+The [2026-10-16 composition evidence](../../docs/research/dhruv/conformance-evidence-2026-10-16.md)
+adds LAB income through durable credit, actual ENV/COORD/SESS execution, and
+a synthetic vault run with a verified Google-attested HPKE endpoint.
 
 | Contract | Responsibility | Kinds |
 | --- | --- | --- |

@@ -81,6 +81,10 @@ The funded labor run follows one ledger payout through SOV income, X402
 settlement, durable credit, and metered use. A lost credit reply recovers
 after both accounting hosts restart without another wallet send. Its v2
 economic statement preserves unmeasured fees as null.
+The synthetic vault composition now includes a real Google-attested TDX
+endpoint with HPKE. Its retained signed completion verifies offline; its
+same-process client and ephemeral LocalKms leave production qualification
+separate. See the [composition evidence](conformance-evidence-2026-10-16.md).
 
 Review, 2026-10-15: the [OpenAgents NIP directory](../../../nips/openagents/README.md)
 contains 33 specifications plus shared contracts and JSON schemas. Together

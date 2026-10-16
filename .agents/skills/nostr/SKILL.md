@@ -141,7 +141,9 @@ sealed streamed output (`att-seal`), and Rekor, rebuild, approval-set and
 sealed-receipt checks (`att-release`); VAULT adds `vault-sealed` and
 `vault-operator`. The role-by-role matrix with exact tests is
 `docs/research/dhruv/conformance-matrix.md`, checked by
-`cargo test -p dhruv-conformance`. Other COORD/WORK effectful adapters, wider ENV/AUTO/SESS
+`cargo test -p dhruv-conformance`. Its vault composition includes retained
+Google TDX evidence with HPKE, a same-process client, and ephemeral LocalKms;
+production KMS and remote-client qualification remain separate. Other COORD/WORK effectful adapters, wider ENV/AUTO/SESS
 roles, broader LIVE audio/video and physical device profiles (native text
 mailbox transport and Git-document capture/input run in `live-host`), and
 POL/EXT lifecycle

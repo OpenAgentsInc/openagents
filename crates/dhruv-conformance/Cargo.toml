@@ -11,6 +11,8 @@ description = "Cross-contract conformance fixtures for the Dhruv protocol roadma
 [dev-dependencies]
 nostr = { path = "../nostr", features = ["test-invoice"] }
 oa-att = { path = "../oa-att" }
+vault-sealed = { path = "../vault-sealed" }
+oa-vault = { path = "../oa-vault" }
 att-platforms = { path = "../att-platforms" }
 att-seal = { path = "../att-seal" }
 att-release = { path = "../att-release" }

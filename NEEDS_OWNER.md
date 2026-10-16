@@ -71,15 +71,16 @@ The released Coder 1.0.0 remains unchanged. Under the binary freeze, the owner
 must decide whether this security fix warrants a release; no release or channel
 change was made for this work.
 
-## Deploy the sealed vault workload on attested hardware (#11743)
+## Qualify production sealed vault storage (#11743)
 
-The sealed vault tier works in Rust, against a fixture endpoint and a local
-key service. To use it with real files, run the `vault` workload as a
+A bounded TDX research run verified a real Google-attested HPKE endpoint
+and opened a synthetic object. Its client shared the workload's process and
+used an ephemeral local key service. To use real files, run the `vault` workload as a
 Confidential Space release on Intel TDX. Bind its Cloud KMS key so that only
 that attested release can decrypt it, and publish its NIP-ATT release, head,
 and endpoint, including the HPKE session key. Then confirm that a client
 verifies the endpoint at `tee-cloud`, accepts its system key certificate, and
-opens one sealed file through a one-use lease. See
+opens one sealed file through a one-use lease from a separate client. See
 [the sealed vault guide](crates/vault-sealed/README.md).
 
 ## Qualify the agent treasury loop with real money (#11741)

@@ -19,8 +19,9 @@ accounting.
 
 ## Cross-contract runs
 
-These compose several owners in one process. Each is a separate test in
-`crates/dhruv-conformance/tests/`.
+These runs compose the actual owners with isolated state. Each row names its
+executable test. The cloud-vault reader verifies a retained hardware run at
+its capture time; it does not recreate that machine's private keys.
 
 | Run | Contracts joined | Fixture | Cases |
 | --- | --- | --- | --- |
@@ -31,6 +32,11 @@ These compose several owners in one process. Each is a separate test in
 | Managed execution | ENV allocator and local resource, COORD claims and call accounting, SESS native loop engine, CJ | `crates/session-host/src/tests/cj.rs::real_cj_open_and_turn_share_actual_environment_and_call_fences` | I (exact retries, one native turn, one charge per operation) |
 | Uncertain native start | The same ENV, COORD, and SESS owners | `crates/session-host/src/tests/cj.rs::cj_lost_start_and_restart_keep_the_original_charge_and_unknown_outcome` | I, $ (restart retains unknown and its original charge; no second start) |
 | Revoked execution | The same ENV, COORD, and SESS owners | `crates/session-host/src/tests/cj.rs::current_coord_revocation_and_environment_drain_block_native_continuations` | R, C (either authority stops native continuation without another call charge) |
+| Synthetic cloud vault | ATT Google chain, image, signing key and HPKE binding; VAULT certificate, object, lease, and private answer | `crates/dhruv-conformance/tests/sealed_vault.rs::a_captured_attested_vault_run_verifies_its_endpoint_and_completion` | R (one use, revocation, expiry), C (substituted HPKE key); real TDX, same-process client, ephemeral LocalKms |
+| Vault evidence reader | The same ATT and VAULT records and signed completion | `crates/dhruv-conformance/tests/sealed_vault.rs::changed_vault_records_certificates_ciphertexts_and_completion_are_refused` | C (changed records, certificate, ciphertexts, or result), R (expired endpoint); retained public evidence |
+
+[Composition evidence from 2026-10-16](conformance-evidence-2026-10-16.md)
+records the cloud image, source, synthetic limits, and instance cleanup.
 
 ## Trajectories — ATIF
 
@@ -144,7 +150,7 @@ These compose several owners in one process. Each is a separate test in
 
 Each needs an owner step, recorded in `NEEDS_OWNER.md`, and none holds the
 code open: raw TDX, SEV-SNP and H100 hardware runs (#11745); the sealed
-vault workload on attested hardware (#11743); the agent treasury loop with
+vault with a remote client and attestation-bound Cloud KMS (#11743); the agent treasury loop with
 real money (#11741); a paid labor order between separately run parties
 (#11748). Cost rows record what was metered; unmetered costs stay null and
 no all-in cost is claimed.
