@@ -50,6 +50,7 @@ pub mod read_state_snapshot;
 pub mod run;
 pub mod session;
 pub mod sovereign;
+pub mod sovereign_lifecycle;
 pub mod thread_window;
 pub mod work;
 pub mod workspace;

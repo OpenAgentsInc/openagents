@@ -4,8 +4,11 @@
 profiles and runs a finite local lifecycle with explicit local-key custody.
 [`sov-custody`](../../crates/sov-custody/README.md) implements NIP-46 remote
 custody and guardian quorum admission (see the
-[Rust custody profile](#rust-custody-profile)). Treasury, hardware and
-threshold custody, and portable recovery remain unfinished
+[Rust custody profile](#rust-custody-profile)), and
+[`sov-lifecycle`](../../crates/sov-lifecycle/README.md) implements fenced
+two-host transfer and bounded recovery (see the
+[Rust lifecycle profile](#rust-lifecycle-profile)). Treasury and hardware and
+threshold custody remain unfinished
 ([backlog](https://github.com/OpenAgentsInc/openagents/issues/11729)).
 The [shared contracts](contracts.md) are normative. SOV composes durable agent
 identity, bounded initiative, private state, key custody, and economic activity
@@ -547,3 +550,23 @@ supported records:
 Idempotency is `(agent, requester, nonce)` with the request digest. A gated
 operation consumes its quorum atomically, together with the dispatch intent,
 before the signer is called.
+
+## Rust lifecycle profile
+
+The [lifecycle schemas](schemas/sovereign-lifecycle.v1.json) describe the
+activation and checkpoint records above, plus these supported records:
+
+| Record | Fields |
+| --- | --- |
+| `openagents.sovereign-activation-request.v1` | `agent`, `activation`, `profile`, `plan`, `controller`, `claim`, `reservation`, `environment`, `dispatchers` (every participating effect dispatcher, including the controller), `checkpoint` (null, or a predecessor's latest checkpoint for recovery), `expires_at`. The authority signs it; the coordinator signs the resulting activation. |
+| `openagents.sovereign-transfer.v1` | `agent`, `from` (the claim-holding activation), `checkpoint` (its latest), `to` (the new activation request), `reason`. Only the authority may sign it. |
+| `openagents.sovereign-transfer-acceptance.v1` | `transfer`, `controller`, `environment`: the target controller's acceptance of that exact placement. |
+| `openagents.sovereign-fencing.v1` | `activation`, `generation`, `dispatcher`, `status` (`fenced` or `unreachable`), `unknown` (unresolved effect references), `observed_at`. |
+| `openagents.sovereign-lifecycle-control.v1` | `agent`, `activation`, `command`, `action` (`stop`, `revoke`, or `rollback`), `reason`. |
+| `openagents.sovereign-state-disclosure.v1` | `recipients`: the hosts that may receive the agent's private state. A profile's `disclosure` names this record. |
+| `openagents.sovereign-late-result.v1` | `activation`, `generation`, `controller`, `record`, `received_at`: evidence of a submission from a fenced controller. |
+| `openagents.sovereign-lifecycle-result.v1` | `request`, `status` (`accepted`, `duplicate`, `pending`, `conflict`, `refused`, or `unknown`), `activation`, `state`, `value`, `reason`. |
+
+The coordinator is the trusted shared fencing authority bound at admission. A
+transfer completes only when the authority has signed, the target has
+accepted, and every listed dispatcher has acknowledged fencing.
