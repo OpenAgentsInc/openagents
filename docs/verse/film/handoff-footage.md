@@ -158,3 +158,13 @@ Found, not fixed:
    production deploy, a PR merge, DNS, secrets, payments). None can be
    staged honestly for the film yet.
 3. Second-person editing: needs shared chats in the product.
+
+## Four-app intro (2026-10-16, #11869)
+
+The new intro shows the same account chat in the Zeron-derived Coder desktop
+and iPhone apps, web, and released terminal. The native readers follow saved
+updates; replies come from terminal and web. The 1080p, eight-second edit and
+all raw sources are under `~/work/film-out/episode-290-four-apps/`.
+`scripts/film/footage/four-surface.mjs` records a dedicated test account and
+cleans it up; `four-surface-cut.mjs` applies identical cuts to all four views.
+See [verification](four-app-intro-evidence.json).

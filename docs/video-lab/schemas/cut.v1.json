@@ -69,6 +69,7 @@
         "speed": {"type": "number", "exclusiveMinimum": 0},
         "dark_ok": {"type": "boolean"},
         "hold_ok": {"type": "number", "minimum": 0},
+        "still_ok": {"type": "number", "minimum": 0, "description": "Allow this many seconds of intentional stillness, such as reading a live chat; otherwise the limit is 0.4 seconds."},
         "label": {"type": "string"},
         "fit": {"type": "string", "enum": ["pad", "blur", "crop"], "description": "A clip of another shape: whole on black, whole over a blurred copy of itself, or cropped to fill."},
         "focus": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 1}, "minItems": 2, "maxItems": 2, "description": "With fit crop: the part kept, x and y from 0 to 1."},

@@ -205,6 +205,11 @@ class LabTest(unittest.TestCase):
         self.assertAlmostEqual(found[0]["from"], 2.0, delta=0.1)
         self.assertAlmostEqual(found[0]["to"], 3.5, delta=0.1)
         self.assertIn("pauses mid-shot 1 times", lab.pauses_text(found))
+        cut["shots"][1]["still_ok"] = 2.0
+        self.assertEqual(lab.check("cut.v1", cut)[0], [], "The schema accepts the renderer's existing stillness limit")
+        self.assertEqual(lab.render_pauses(frozen, cut), [])
+        cut["shots"][1]["still_ok"] = -1
+        self.assertTrue(lab.check("cut.v1", cut)[0], "A negative allowance is invalid")
 
     def test_a_preview_an_edit_queued_is_skipped_once_a_later_edit_replaces_it(self):
         lab.create("queue", "cut.v1", "Queue film", self.cut, "First", "test")

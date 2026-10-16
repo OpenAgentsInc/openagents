@@ -1,0 +1,63 @@
+{
+  "issue": 11869,
+  "date": "2026-10-16",
+  "fork_commit": "4091b7b5bd52c784b0779ba82c7263d4270f8c72",
+  "terminal": "coder 1.0.0, 3230ded51181aa438656825da8245cea6c8e717c",
+  "account": "dedicated test account; owner account unused",
+  "conversation": "60f73402-e6ca-4ece-bbc4-ec497dfcee8d",
+  "messages": 6,
+  "surfaces": [
+    "Coder Desktop GPUI native account reader",
+    "OpenAgents Coder fork UIKit/Rust iOS account reader on iOS Simulator",
+    "openagents.com web application",
+    "released Coder terminal, real PTY and recorded output"
+  ],
+  "capture_seconds": 30.621,
+  "intro_seconds": 8,
+  "intro_size": [
+    1920,
+    1080
+  ],
+  "intro_sha256": "2196ecc823ca3096f1691572c9967c405a7a13b81c0e69fa39dff0549ad89cda",
+  "common_clock": "All four views use the same four source-time intervals; no independent retiming. Desktop frames, web frames, simulator start, and PTY output retain wall-clock stamps.",
+  "cuts": [
+    [
+      1792159944.385,
+      1792159946.385
+    ],
+    [
+      1792159949.649,
+      1792159951.649
+    ],
+    [
+      1792159952.948,
+      1792159954.948
+    ],
+    [
+      1792159970.849,
+      1792159972.849
+    ]
+  ],
+  "checks": [
+    "same conversation ID and final six messages in native reader observations and public history",
+    "terminal and website replies observed in all four applications",
+    "nine shared-reader regression tests, including paging bounds, stale selection, background cancellation, outage and authorization loss",
+    "49 mobile tests passed; one preexisting ignored",
+    "native phone arrival, offline/reconnect, background/resume, and sign-out check passed",
+    "native four-app capture and native desktop latest-message visibility inspected",
+    "normal iOS simulator build and identity scan passed",
+    "26 Video Lab tests passed"
+  ],
+  "cleanup": {
+    "synced_chat_removed": true,
+    "temporary_computer_removed": true,
+    "native_test_login_cleared": true,
+    "terminal_login_file_removed": true
+  },
+  "artifacts": "Private local files under ~/work/film-out/episode-290-four-apps/; raw sources retained separately from the eight-second edit.",
+  "limits": [
+    "Native account readers follow completed saved updates every two seconds; they do not send messages or render every in-flight token. Terminal and web handle replies.",
+    "Phone capture uses iOS Simulator, not a physical device.",
+    "No frozen CLI binary changed, no TestFlight upload, and no owner host or account used."
+  ]
+}

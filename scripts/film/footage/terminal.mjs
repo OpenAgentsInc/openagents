@@ -26,7 +26,7 @@ export function meaningful(text) {
 }
 
 export class Session {
-  constructor({ cols, rows, command, cwd, env }) {
+  constructor({ cols, rows, command, cwd, env, inheritEnv = true }) {
     this.cols = cols;
     this.rows = rows;
     this.events = [];
@@ -36,7 +36,7 @@ export class Session {
     this.epoch0 = Date.now() / 1000;
     this.child = spawn("python3", [path.join(here, "ptyrun.py"), String(cols), String(rows), "--", ...command], {
       cwd,
-      env: { ...process.env, ...env },
+      env: { ...(inheritEnv ? process.env : { PATH: process.env.PATH, TERM: "xterm-256color", LANG: "en_US.UTF-8" }), ...env },
       stdio: ["pipe", "pipe", "inherit"],
     });
     this.child.stdout.on("data", (buf) => {
