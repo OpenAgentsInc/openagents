@@ -174,6 +174,7 @@ pub(crate) fn extend(document: &mut Value) -> Result<(), &'static str> {
             entries.insert(name.clone(), value.clone());
         }
     }
+    crate::systemone_openapi::extend(document)?;
     validate_operations(document)?;
     document["x-openagents-reference"] = json!({
         "coverage": "partial",

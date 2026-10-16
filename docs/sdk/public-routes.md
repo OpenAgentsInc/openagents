@@ -44,7 +44,7 @@ key have interchangeable authority.
 | --- | --- | --- | --- |
 | `/v1/models`, `/responses*`, `/chat/completions`, `/rates`, `/usage*`, `/key` | Gateway through front allowlist | Gateway account/API key; catalog reads are public where declared; stored responses and usage belong to the caller | Gateway inference schema; [inference contract](../inference/gateway.md). The front removes operations it does not forward. |
 | `/v1/messages` | Existing compatibility/older upstream path; not a new inference schema operation | Owning service auth remains in force | Keep the 1.0 Anthropic-compatible address working; this inventory does not claim a qualified combined schema. |
-| `/v1/decisions`, `/systemone` | Gateway/decision door through front | Account service key, subscribed workspace and door authorization; request admission and settlement apply | Decisions included; System One has its [own verified contract](../decision-models/service/gateway.md) and discovery schema. Combining that slice remains a gap. |
+| `/v1/decisions`, `/systemone` | Gateway/decision door through front | Account service key, subscribed workspace and door authorization; request admission and settlement apply | Both are included with distinct request shapes. System One uses a [generated public slice](openapi.systemone.json) from the [owning decision contract](../decision-models/api/openapi.yaml); classification and jobs remain standalone-gateway operations. |
 | `/v1/device/{code,token,sign-out}`, `/account` | Web device handlers and account discovery | No credential to request a code; single-use device code to poll; website GitHub session approves; issued app session or supported account credential for account reads | Qualified app schema and [auth evidence](auth-client-evidence.json). Browser approval stays outside the app API. |
 | `/v1/keys` | Web sign-in-key management over account service | Account session/sign-in key; only its own account's keys | Implemented, not the workspace `oak_` key route. Public request/response coverage remains incomplete. |
 | `/v1/account/access`, `/workspaces*`, `/invitations*` | Gateway public allowlist | Account service plus workspace role, scoped key and invitation checks | Gateway audience schemas include these operations. Some are summary schemas; field-level qualification remains incremental. |
@@ -102,7 +102,7 @@ sequence; unrelated coverage is not a prerequisite for the first SDK client.
 Incremental follow-ups are [#11857](https://github.com/OpenAgentsInc/openagents/issues/11857)
 for project/thread/file/sign-in-key contracts and
 [#11858](https://github.com/OpenAgentsInc/openagents/issues/11858) for the
-verified public System One slice and discovery links. Separately served voice,
+public System One slice and discovery links, now implemented. Separately served voice,
 payments, legacy services, and configured work surfaces retain the coverage gaps
 listed above; they need their owners' contracts before client generation.
 
@@ -120,7 +120,9 @@ The app fixture remains deterministic:
 ```sh
 cargo run -p openagents-web --example app_openapi > docs/sdk/openapi.app.json
 python3 scripts/api/public_reference.py --write-inventory
-python3 scripts/api/public_reference.py --schema docs/sdk/openapi.app.json
+python3 scripts/api/public_reference.py --schema docs/sdk/openapi.app.json --slice
+python3 scripts/api/systemone_openapi.py --check
+python3 scripts/api/public_reference.py --schema docs/sdk/openapi.systemone.json --slice
 python3 -m unittest discover -s scripts/api -p 'test_public_reference.py'
 cargo test -p openagents-web app_openapi
 cargo test -p openagents-web combined_reference_has_one
@@ -136,3 +138,10 @@ fixtures and clean them up. No GitHub workflow or package publication is needed.
 The [deployment evidence](public-reference-evidence.json) records the qualified
 source/image, staging and production revisions, 74 checked operations, legacy
 aliases, unchanged model catalogs/browser assets, checks, and cleanup.
+
+The System One artifact is generated with
+`python3 scripts/api/systemone_openapi.py` (requires PyYAML). It follows only
+references reachable from the owning `/v1/systemone` operation and prefixes
+component names with `SystemOne`. The web front adds it separately from the
+app fixture; the auth/history SDK fixture keeps its existing scope. Drift checks
+compare operation bodies and component definitions, not only path names.

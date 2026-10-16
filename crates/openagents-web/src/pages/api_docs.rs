@@ -28,12 +28,16 @@ use crate::markdown;
 use crate::ui_page::{UiPage, action_link, problem, prose};
 
 /// The guides, by slug, in reading order.
-pub(crate) const API_DOCS: [(&str, &str); 12] = [
+pub(crate) const API_DOCS: [(&str, &str); 13] = [
     (
         "quickstart",
         include_str!("../../content/docs/api/quickstart.md"),
     ),
     ("models", include_str!("../../content/docs/api/models.md")),
+    (
+        "system-one",
+        include_str!("../../content/docs/api/system-one.md"),
+    ),
     (
         "decisions",
         include_str!("../../content/docs/api/decisions.md"),

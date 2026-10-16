@@ -90,6 +90,7 @@ mod ship_lab;
 pub mod shutdown;
 mod sign_in_keys;
 mod suggestions;
+mod systemone_openapi;
 mod tasks;
 mod terminal_connect;
 pub mod test_runs;

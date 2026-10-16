@@ -61,7 +61,7 @@ def source_inventory():
             'forwarding_rules': [{'pattern': p, 'methods': sorted(m)} for p, m in rules()]}
 
 
-def check(document, expected_origin=None):
+def check(document, expected_origin=None, complete=True):
     assert document.get('openapi') == '3.1.0', 'Expected OpenAPI 3.1'
     servers = document.get('servers', [])
     assert len(servers) == 1, 'Expected one canonical server'
@@ -70,7 +70,8 @@ def check(document, expected_origin=None):
     assert not origin.endswith('/v1') and not origin.endswith('/'), 'Paths already contain /v1; server must be an origin'
     if expected_origin:
         assert origin == expected_origin, 'Wrong deployment origin'
-    app = json.loads((ROOT / 'docs/sdk/openapi.app.json').read_text())
+    slices = [json.loads((ROOT / name).read_text()) for name in ('docs/sdk/openapi.app.json', 'docs/sdk/openapi.systemone.json')]
+    app = {'paths': {path: item for slice in slices for path, item in slice['paths'].items()}}
     ids = set()
     operations = 0
     paths = document['paths']
@@ -85,9 +86,17 @@ def check(document, expected_origin=None):
             ids.add(ident)
             operations += 1
     for path, item in app['paths'].items():
+        if not complete and path not in paths:
+            continue
         for method, operation in item.items():
             if method in METHODS:
                 assert paths.get(path, {}).get(method) == operation, 'Qualified app operation drift: ' + method + ' ' + path
+    for slice in slices:
+        if not complete and not any(path in paths for path in slice['paths']):
+            continue
+        for section, entries in slice['components'].items():
+            for name, value in entries.items():
+                assert document.get('components', {}).get(section, {}).get(name) == value, 'Qualified component drift: ' + section + '/' + name
     def refs(value):
         if isinstance(value, dict):
             for key, child in value.items():
@@ -108,6 +117,7 @@ def check(document, expected_origin=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--schema', type=Path, help='Validate a saved public document')
+    parser.add_argument('--slice', action='store_true', help='For --schema only: validate a standalone qualified slice without requiring other domains')
     parser.add_argument('--api', help='Read only: fetch ORIGIN/v1/openapi.json without credentials')
     parser.add_argument('--write-inventory', action='store_true')
     args = parser.parse_args()
@@ -115,7 +125,7 @@ def main():
         INVENTORY.write_text(json.dumps(source_inventory(), indent=2) + '\n')
     assert json.loads(INVENTORY.read_text()) == source_inventory(), 'Route inventory drift; run --write-inventory and review the change'
     if args.schema:
-        print('PASS public reference:', check(json.loads(args.schema.read_text())), 'operations')
+        print('PASS public reference:', check(json.loads(args.schema.read_text()), complete=not args.slice), 'operations')
     if args.api:
         origin = args.api.rstrip('/')
         assert origin.startswith('https://'), 'Use an HTTPS public origin'

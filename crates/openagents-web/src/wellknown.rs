@@ -53,6 +53,48 @@ pub(crate) fn agent_card_with(
     methods: &[crate::payments::Method],
 ) -> serde_json::Value {
     let mut card = discovery::site::agent_card(origin);
+    let api = crate::api_host::api_origin(origin);
+    if !matches!(
+        origin.trim_end_matches('/'),
+        "https://openagents.com" | "https://api.openagents.com"
+    ) {
+        card["name"] = serde_json::json!("OpenAgents API");
+        card["description"] = serde_json::json!(
+            "The OpenAgents public API front. See its reference for the available operations and the access each needs."
+        );
+        card["url"] = serde_json::json!(format!("{api}/v1"));
+        card["documentationUrl"] = serde_json::json!(format!("{origin}/docs/api/system-one"));
+    }
+    // This is the web front's card; the standalone decision service has its own.
+    if let Some(interfaces) = card["supportedInterfaces"].as_array_mut() {
+        interfaces.retain(|interface| {
+            let url = interface["url"].as_str().unwrap_or_default();
+            !url.ends_with("/v1/classify")
+                && !url.contains("/v1/jobs")
+                && !url.ends_with("/v1/systemone")
+        });
+        interfaces.push(serde_json::json!({
+            "url": format!("{api}/v1/systemone"),
+            "protocolBinding": "HTTP+JSON", "protocolVersion": "openagents.systemone.v1"
+        }));
+    }
+    if let Some(skills) = card["skills"].as_array_mut() {
+        skills.retain(|skill| {
+            !matches!(
+                skill["id"].as_str(),
+                Some("batch-classification" | "durable-jobs" | "typed-decision")
+            )
+        });
+        skills.push(serde_json::json!({
+            "id": "system-one", "name": "System One",
+            "description": format!("Typed yes/no, choice, and score answers through POST {api}/v1/systemone. The selected door and deployment determine access. See {origin}/docs/api/system-one."),
+            "tags": ["decision", "systemone"]
+        }));
+    }
+    card["x-openagents-api-reference"] = serde_json::json!({
+        "url": format!("{api}/v1/openapi.json"),
+        "scope": "Public API-front operations; standalone decision-gateway classification and jobs have a separate contract."
+    });
     if methods.is_empty() {
         return card;
     }

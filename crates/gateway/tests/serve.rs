@@ -6328,3 +6328,47 @@ async fn the_decisions_api_answers_the_typesafe_docs_examples() {
     }
     assert_eq!(forwards.load(Ordering::SeqCst), 5);
 }
+
+#[tokio::test]
+async fn public_systemone_answer_matches_the_published_result_and_headers() {
+    let expected = json!({
+        "model": "kev-0.6b",
+        "answers": {"q1": {"type": "noul", "noul": 0.9}},
+        "usage": {"input_tokens": 8, "output_tokens": 1}
+    });
+    let (endpoint, forwards) = backend(honest(artifact('b'), expected.clone())).await;
+    let deployment = deploy(
+        manifest(None),
+        [("acme-kev".to_owned(), endpoint)].into_iter().collect(),
+    )
+    .await;
+    let response = send_call(
+        &deployment,
+        &call("acme-kev"),
+        Some(&deployment.tokens["acme"]),
+    )
+    .await;
+    assert_eq!(response.status(), 200);
+    for name in ["x-request-id", "x-attempt", "x-outcome", "x-receipt"] {
+        assert!(response.headers().contains_key(name), "{name}");
+    }
+    assert_eq!(response.headers()["x-outcome"], "answered");
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body, expected);
+    let schema: Value =
+        serde_json::from_str(include_str!("../../../docs/sdk/openapi.systemone.json")).unwrap();
+    for field in schema["components"]["schemas"]["SystemOneResult"]["required"]
+        .as_array()
+        .unwrap()
+    {
+        assert!(body.get(field.as_str().unwrap()).is_some());
+    }
+    assert_eq!(
+        body["answers"]["q1"]["type"],
+        schema["components"]["schemas"]["SystemOneNoulAnswer"]["properties"]["type"]["const"]
+    );
+    assert_eq!(forwards.load(Ordering::SeqCst), 1);
+    let receipts = receipt_log(&deployment.dir);
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].outcome, receipts::execution::Outcome::Answered);
+}

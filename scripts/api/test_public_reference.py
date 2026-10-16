@@ -9,6 +9,10 @@ import public_reference as reference
 class PublicReference(unittest.TestCase):
     def setUp(self):
         self.document = json.loads((reference.ROOT / 'docs/sdk/openapi.app.json').read_text())
+        systemone = json.loads((reference.ROOT / 'docs/sdk/openapi.systemone.json').read_text())
+        self.document['paths'].update(systemone['paths'])
+        for section, values in systemone['components'].items():
+            self.document['components'].setdefault(section, {}).update(values)
 
     def test_qualified_fixture_and_public_front_patterns(self):
         self.assertGreater(reference.check(self.document), 0)
@@ -47,7 +51,7 @@ class PublicReference(unittest.TestCase):
     def test_broken_references_and_app_contract_changes_are_detected(self):
         document = copy.deepcopy(self.document)
         del document['components']['schemas']['AppAccount']
-        with self.assertRaises(KeyError):
+        with self.assertRaisesRegex(AssertionError, 'component drift'):
             reference.check(document)
         document = copy.deepcopy(self.document)
         document['paths']['/v1/device/code']['post']['responses'] = {}

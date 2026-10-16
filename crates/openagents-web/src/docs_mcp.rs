@@ -179,6 +179,7 @@ pub(crate) fn server_card(origin: &str) -> Value {
         "description": "Read and search the OpenAgents docs and the OpenAgents API's model prices. No key needed.",
         "documentationUrl": format!("{origin}/llms.txt"),
         "websiteUrl": format!("{origin}/"),
+        "x-openagents-api-reference": format!("{}/v1/openapi.json", crate::api_host::api_origin(origin)),
         "transport": {
             "type": "streamable-http",
             "endpoint": format!("{origin}{MCP_PATH}")

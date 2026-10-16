@@ -1,0 +1,430 @@
+{
+  "components": {
+    "headers": {
+      "SystemOneAttempt": {
+        "description": "The attempt that produced this response.",
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "SystemOneOutcome": {
+        "description": "How the settled attempt ended.",
+        "schema": {
+          "enum": [
+            "answered",
+            "refused",
+            "unavailable",
+            "unattempted"
+          ],
+          "type": "string"
+        }
+      },
+      "SystemOneReceipt": {
+        "description": "The sealed execution receipt's digest.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "SystemOneRequestId": {
+        "description": "The request's identity — the `Idempotency-Key` when sent, else minted.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "SystemOneTypedError": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/SystemOneTypedError"
+            }
+          }
+        },
+        "description": "A typed refusal — see the `error.code` table in `gateway.md`.",
+        "headers": {
+          "x-request-id": {
+            "$ref": "#/components/headers/SystemOneRequestId"
+          }
+        }
+      }
+    },
+    "schemas": {
+      "SystemOneCall": {
+        "properties": {
+          "model": {
+            "description": "The door to answer through.",
+            "type": "string"
+          },
+          "questions": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SystemOneQuestion"
+            },
+            "description": "Question id to question. Ids are for the caller and are not sent to the model.",
+            "type": "object"
+          },
+          "state": {
+            "description": "The JSON or text the questions read."
+          }
+        },
+        "required": [
+          "model",
+          "state",
+          "questions"
+        ],
+        "type": "object"
+      },
+      "SystemOneChoiceAnswer": {
+        "properties": {
+          "choice": {
+            "type": "string"
+          },
+          "confidence": {
+            "description": "How concentrated the distribution is — not a correctness guarantee.",
+            "type": "number"
+          },
+          "probabilities": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object"
+          },
+          "type": {
+            "const": "choice"
+          }
+        },
+        "required": [
+          "type",
+          "choice",
+          "confidence",
+          "probabilities"
+        ],
+        "type": "object"
+      },
+      "SystemOneNoulAnswer": {
+        "properties": {
+          "noul": {
+            "description": "The probability of yes.",
+            "type": "number"
+          },
+          "selected": {
+            "description": "The estimator's own pick, when the door reports one.",
+            "type": "string"
+          },
+          "type": {
+            "const": "noul"
+          }
+        },
+        "required": [
+          "type",
+          "noul"
+        ],
+        "type": "object"
+      },
+      "SystemOneQuestion": {
+        "properties": {
+          "criteria": {
+            "description": "`noul`: optional `{\"true\": …, \"false\": …}`. `choice`: required object of option to description (at most 255). `score`: required array of 2–10 ordered level descriptions."
+          },
+          "instructions": {
+            "description": "The judgment to make — a string or a structured object."
+          },
+          "type": {
+            "enum": [
+              "noul",
+              "choice",
+              "score"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
+      "SystemOneResult": {
+        "properties": {
+          "answers": {
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SystemOneNoulAnswer"
+                },
+                {
+                  "$ref": "#/components/schemas/SystemOneChoiceAnswer"
+                },
+                {
+                  "$ref": "#/components/schemas/SystemOneScoreAnswer"
+                }
+              ]
+            },
+            "type": "object"
+          },
+          "model": {
+            "description": "The served identity that answered.",
+            "type": "string"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/SystemOneUsage"
+          }
+        },
+        "required": [
+          "model",
+          "answers"
+        ],
+        "type": "object"
+      },
+      "SystemOneScoreAnswer": {
+        "properties": {
+          "confidence": {
+            "type": "number"
+          },
+          "legend": {
+            "type": "object"
+          },
+          "probabilities": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object"
+          },
+          "score": {
+            "description": "The probability-weighted mean level.",
+            "type": "number"
+          },
+          "selected": {
+            "type": "string"
+          },
+          "type": {
+            "const": "score"
+          }
+        },
+        "required": [
+          "type",
+          "score",
+          "confidence",
+          "legend"
+        ],
+        "type": "object"
+      },
+      "SystemOneTypedError": {
+        "properties": {
+          "error": {
+            "properties": {
+              "attempt": {
+                "type": "integer"
+              },
+              "code": {
+                "description": "Gateway-owned codes are listed here; a backend may pass through its own typed refusal with a code outside this set.",
+                "examples": [
+                  "malformed",
+                  "unauthenticated",
+                  "door_not_bound",
+                  "invalid_request",
+                  "too_many_questions",
+                  "too_many_options",
+                  "idempotency_conflict",
+                  "rate_limited",
+                  "busy",
+                  "overloaded",
+                  "quota_exhausted",
+                  "door_unavailable",
+                  "identity_mismatch",
+                  "unavailable",
+                  "registry_unavailable",
+                  "ledger_unavailable",
+                  "job_not_found",
+                  "job_running",
+                  "job_deleted",
+                  "job_unavailable",
+                  "unsupported_kind",
+                  "invalid_notify",
+                  "notify_not_configured",
+                  "bad_cursor",
+                  "cursor_expired"
+                ],
+                "type": "string"
+              },
+              "job": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "SystemOneUsage": {
+        "description": "Either field is absent when the backend does not count it.",
+        "properties": {
+          "input_tokens": {
+            "type": "integer"
+          },
+          "output_tokens": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "SystemOneBearer": {
+        "description": "An issued `oak_<id>.<secret>` key, or an account session supported by this gateway's account configuration. Scope, workspace membership, door binding, and funding checks remain operation-specific. Anonymous access is available only when the operation and shared-door policy allow it.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "Only POST /v1/systemone and its referenced components. Other decision-gateway routes are not public API-front operations.",
+    "title": "OpenAgents public System One slice",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v1/systemone": {
+      "post": {
+        "description": "One state, one set of typed questions, one typed answer per question. The `model` field names a door the credential is bound to; the gateway verifies the backend's published identity against the binding before a byte of the request is forwarded. A credential must resolve through the gateway's configured key or account store; a recognizable prefix is not authorization. With accounts enabled, user sessions require their current workspace membership. A request without a credential is allowed only by the deployment's shared-door and funding policy. Admission reserves quota before forwarding and settles one attempt with an execution receipt.",
+        "operationId": "answerSystemOne",
+        "parameters": [
+          {
+            "description": "Required for a user session when workspace membership is enforced. The gateway checks current membership and the selected door's policy.",
+            "in": "header",
+            "name": "X-Workspace-Id",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The request's stable identity. Retries repeat it with an incrementing `X-Attempt`; a settled pair refuses reuse, and a pair reused against different content is `409 idempotency_conflict`.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The attempt number of this request; `1` when absent.",
+            "in": "header",
+            "name": "X-Attempt",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SystemOneCall"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemOneResult"
+                }
+              }
+            },
+            "description": "Every question answered.",
+            "headers": {
+              "x-attempt": {
+                "$ref": "#/components/headers/SystemOneAttempt"
+              },
+              "x-outcome": {
+                "$ref": "#/components/headers/SystemOneOutcome"
+              },
+              "x-receipt": {
+                "$ref": "#/components/headers/SystemOneReceipt"
+              },
+              "x-request-id": {
+                "$ref": "#/components/headers/SystemOneRequestId"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/SystemOneTypedError"
+          },
+          "401": {
+            "$ref": "#/components/responses/SystemOneTypedError"
+          },
+          "403": {
+            "$ref": "#/components/responses/SystemOneTypedError"
+          },
+          "409": {
+            "$ref": "#/components/responses/SystemOneTypedError"
+          },
+          "422": {
+            "$ref": "#/components/responses/SystemOneTypedError"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemOneTypedError"
+                }
+              }
+            },
+            "description": "Rate, concurrency, or daily-quota bound. `Retry-After` accompanies `rate_limited`, `busy`, `overloaded`, and `quota_exhausted`.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "x-request-id": {
+                "$ref": "#/components/headers/SystemOneRequestId"
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/SystemOneTypedError"
+          }
+        },
+        "security": [
+          {
+            "SystemOneBearer": []
+          },
+          {}
+        ],
+        "summary": "Answer typed questions about one state",
+        "tags": [
+          "System One"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.openagents.com"
+    }
+  ],
+  "x-openagents-source": {
+    "path": "docs/decision-models/api/openapi.yaml",
+    "sha256": "325e852940b38e98f9bd1b00d80560f5916abbd7c02cf30cfa5bda60ffa5e732"
+  }
+}

@@ -335,7 +335,7 @@ pub(crate) fn site_index_json() -> Value {
             "api_docs": format!("{SITE}/docs/api.md"),
             "agent_docs": format!("{SITE}/docs/agents.md"),
             "api_catalog": format!("{SITE}/.well-known/api-catalog"),
-            "openapi": format!("{SITE}/openapi.json"),
+            "openapi": "https://api.openagents.com/v1/openapi.json",
             "ai_catalog": format!("{SITE}/.well-known/ai-catalog.json"),
             "mcp_server_card": format!("{SITE}/.well-known/mcp/server-card.json"),
             "mcp_server": format!("{SITE}{MCP_PATH}"),
@@ -659,7 +659,7 @@ Every page here is also Markdown: add `.md` to its address, or send `Accept: tex
 - [Authentication]({SITE}/auth.md): get an API key and send it.\n\
 - [Agent sign-up]({SITE}/auth.md#register-yourself-as-an-agent): an agent registers itself with a small proof of work (`POST https://api.openagents.com/v1/agents/register`), gets a key and a small daily free tier, and pays over Lightning past it.\n\
 - [For agents]({SITE}/docs/api/for-agents.md): find us, say who you are, and pay. {}\n\
-- [OpenAPI]({SITE}/openapi.json): the API's machine-readable description.\n\
+- [OpenAPI](https://api.openagents.com/v1/openapi.json): the public API reference, including typed System One decisions.\n\
 - [API catalog]({SITE}/.well-known/api-catalog): where each API and its description live.\n\n\
 ## Blog\n\n{}\n\
 ## Agent tools\n\n\
@@ -928,6 +928,7 @@ async fn sitemap(State(app): State<App>) -> Response {
 /// `/.well-known/api-catalog` (RFC 9727): each API, where its description
 /// and docs are.
 pub(crate) fn api_catalog_json(origin: &str, methods: &[crate::payments::Method]) -> Value {
+    let api_base = format!("{}/v1", crate::api_host::api_origin(origin));
     let payment: Vec<Value> = methods
         .iter()
         .map(|method| json!({"href": method.spec, "title": method.name, "id": method.id}))
@@ -935,7 +936,7 @@ pub(crate) fn api_catalog_json(origin: &str, methods: &[crate::payments::Method]
     let api = |anchor: &str| {
         let mut entry = json!({
             "anchor": anchor,
-            "service-desc": [{"href": format!("{origin}/openapi.json"), "type": "application/json"}],
+            "service-desc": [{"href": format!("{}/v1/openapi.json", crate::api_host::api_origin(origin)), "type": "application/json"}],
             "service-doc": [
                 {"href": format!("{origin}/docs/api"), "type": "text/html"},
                 {"href": format!("{origin}/docs/api.md"), "type": "text/markdown"},
@@ -957,11 +958,11 @@ pub(crate) fn api_catalog_json(origin: &str, methods: &[crate::payments::Method]
             {
                 "anchor": format!("{origin}/.well-known/api-catalog"),
                 "item": [
-                    {"href": "https://api.openagents.com/v1"},
+                    {"href": api_base},
                     {"href": format!("{origin}{MCP_PATH}")}
                 ]
             },
-            api("https://api.openagents.com/v1"),
+            api(&api_base),
             {
                 "anchor": format!("{origin}{MCP_PATH}"),
                 "service-desc": [{"href": format!("{origin}/.well-known/mcp/server-card.json"), "type": "application/json"}],
@@ -1387,10 +1388,10 @@ mod tests {
             "/llms-full.txt",
             MCP_PATH,
             "/.well-known/api-catalog",
-            "/openapi.json",
         ] {
             assert!(llms.contains(&format!("{SITE}{path})")), "{path}");
         }
+        assert!(llms.contains("https://api.openagents.com/v1/openapi.json)"));
         assert!(llms.contains("\n## Optional\n"));
     }
 

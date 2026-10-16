@@ -183,7 +183,7 @@ async fn the_catalogs_name_the_api_and_the_mcp_server() {
         .iter()
         .map(|entry| entry["anchor"].as_str().unwrap())
         .collect();
-    assert!(anchors.contains(&"https://api.openagents.com/v1"));
+    assert!(anchors.contains(&"http://localhost:4300/v1"));
     assert!(anchors.iter().any(|a| a.ends_with("/mcp/docs")));
     for entry in &catalog["linkset"].as_array().unwrap()[1..] {
         assert!(entry["service-desc"][0]["href"].is_string(), "{entry}");
@@ -434,7 +434,7 @@ async fn every_surface_lists_exactly_the_ways_to_pay_the_api_takes() {
             .as_array()
             .unwrap()
             .iter()
-            .find(|entry| entry["anchor"] == "https://api.openagents.com/v1")
+            .find(|entry| entry["anchor"] == "http://localhost:4300/v1")
             .unwrap();
         let listed: Vec<&str> = api[agent_ready::PAYMENT_REL]
             .as_array()
@@ -649,4 +649,162 @@ async fn combined_reference_has_one_https_base_and_unique_public_operations() {
         assert_eq!(doc["x-openagents-reference"]["coverage"], "partial");
     }
     task.abort();
+}
+
+#[test]
+fn web_discovery_names_only_front_routes_and_keeps_gateway_cards_separate() {
+    for origin in [
+        "https://openagents.com",
+        "https://staging.openagents.com",
+        "http://localhost:4300",
+    ] {
+        let api = crate::api_host::api_origin(origin);
+        let reference = format!("{api}/v1/openapi.json");
+        let card = wellknown::agent_card_with(origin, &[]);
+        assert_eq!(card["x-openagents-api-reference"]["url"], reference);
+        let interfaces = card["supportedInterfaces"].as_array().unwrap();
+        assert!(
+            interfaces
+                .iter()
+                .any(|i| i["url"] == format!("{api}/v1/systemone"))
+        );
+        assert!(
+            interfaces
+                .iter()
+                .all(|i| !i["url"].as_str().unwrap().ends_with("/v1/classify"))
+        );
+        assert!(card["skills"].as_array().unwrap().iter().all(|s| !matches!(
+            s["id"].as_str(),
+            Some("durable-jobs" | "batch-classification")
+        )));
+        assert_eq!(
+            docs_mcp::server_card(origin)["x-openagents-api-reference"],
+            reference
+        );
+        let catalog = agent_ready::api_catalog_json(origin, &[]);
+        assert_eq!(catalog["linkset"][1]["anchor"], format!("{api}/v1"));
+        assert_eq!(catalog["linkset"][1]["service-desc"][0]["href"], reference);
+    }
+    let standalone = discovery::site::agent_card("http://localhost:8080");
+    assert!(
+        standalone["supportedInterfaces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["url"] == "http://localhost:8080/v1/classify")
+    );
+    assert!(agent_ready::llms_txt(&[]).contains("https://api.openagents.com/v1/openapi.json"));
+}
+
+#[tokio::test]
+async fn systemone_preserves_body_authority_and_retry_metadata_through_every_alias() {
+    use std::sync::{Arc, Mutex};
+    let root = tempfile::tempdir().unwrap();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let received = seen.clone();
+    let gateway = axum::Router::new().route(
+        "/v1/systemone",
+        axum::routing::post(move |request: Request<Body>| {
+            let received = received.clone();
+            async move {
+                let headers = request.headers().clone();
+                let body = to_bytes(request.into_body(), 4096).await.unwrap();
+                received.lock().unwrap().push((headers, body));
+                (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    [
+                        ("retry-after", "3"),
+                        ("x-request-id", "fixture-request"),
+                        ("x-attempt", "2"),
+                        ("x-outcome", "refused"),
+                        ("x-receipt", "fixture-receipt"),
+                    ],
+                    axum::Json(json!({"error":{"code":"busy","message":"Try again later."}})),
+                )
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let task = tokio::spawn(async move { axum::serve(listener, gateway).await.unwrap() });
+    let mut config = Config::development(root.path().join("tasks"));
+    config.public_hosts.push("openagents.com".into());
+    config.api_host = Some("api.openagents.com".into());
+    config.inference = Some(Arc::new(
+        upstream::Upstream::new(&format!("http://{addr}")).unwrap(),
+    ));
+    let app = router(config);
+    // The stand-in records transport bytes; gateway admission tests qualify the payload and authority.
+    let payload = r#"{"model":"fixture-door","state":{},"questions":{}}"#;
+    for (host, path) in [
+        ("api.openagents.com", "/v1/systemone"),
+        ("openagents.com", "/v1/systemone"),
+        ("openagents.com", "/api/v1/systemone"),
+    ] {
+        let (status, headers, body) = send(
+            app.clone(),
+            Request::builder()
+                .method("POST")
+                .uri(path)
+                .header(header::HOST, host)
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::AUTHORIZATION, "Bearer fixture-credential")
+                .header(header::COOKIE, "unrelated=fixture")
+                .header("x-workspace-id", "fixture-workspace")
+                .header("idempotency-key", "fixture-request")
+                .header("x-attempt", "2")
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(headers["retry-after"], "3");
+        assert_eq!(headers["x-request-id"], "fixture-request");
+        assert_eq!(headers["x-attempt"], "2");
+        assert_eq!(headers["x-outcome"], "refused");
+        assert_eq!(headers["x-receipt"], "fixture-receipt");
+        assert_eq!(
+            serde_json::from_str::<Value>(&body).unwrap()["error"]["code"],
+            "busy"
+        );
+        if host != "api.openagents.com" {
+            assert_eq!(headers["deprecation"], "true");
+        }
+    }
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 3);
+    for (headers, body) in seen.iter() {
+        assert_eq!(headers[header::AUTHORIZATION], "Bearer fixture-credential");
+        assert!(headers.get(header::COOKIE).is_none());
+        assert_eq!(headers["x-workspace-id"], "fixture-workspace");
+        assert_eq!(headers["idempotency-key"], "fixture-request");
+        assert_eq!(headers["x-attempt"], "2");
+        assert_eq!(body.as_ref(), payload.as_bytes());
+    }
+    task.abort();
+}
+
+#[tokio::test]
+async fn systemone_guide_is_available_in_markdown_html_and_docs_mcp() {
+    let root = tempfile::tempdir().unwrap();
+    for path in ["/docs/api/system-one", "/docs/api/system-one.md"] {
+        let (status, _, body) = fetch(site(root.path()), path, None).await;
+        assert_eq!(status, StatusCode::OK, "{path}");
+        assert!(body.contains("https://api.openagents.com/v1/openapi.json"));
+        assert!(body.contains("X-Workspace-Id"));
+    }
+    let (status, reply) = mcp(
+        site(root.path()),
+        json!({
+            "jsonrpc":"2.0", "id":1, "method":"tools/call",
+            "params":{"name":"read_doc","arguments":{"name":"api/system-one"}}
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(reply.get("error").is_none(), "{reply}");
+    let text = reply["result"]["content"][0]["text"].as_str().unwrap();
+    assert!(text.starts_with("# Typed decisions with System One"));
+    assert!(text.contains("https://api.openagents.com/v1/openapi.json"));
+    assert!(text.contains("not public API-front operations"));
 }

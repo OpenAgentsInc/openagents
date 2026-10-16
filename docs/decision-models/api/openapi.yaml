@@ -356,8 +356,25 @@ paths:
         One state, one set of typed questions, one typed answer per
         question. The `model` field names a door the credential is bound
         to; the gateway verifies the backend's published identity against
-        the binding before a byte of the request is forwarded.
+        the binding before a byte of the request is forwarded. A credential
+        must resolve through the gateway's configured key or account store;
+        a recognizable prefix is not authorization. With accounts enabled,
+        user sessions require their current workspace membership. A request
+        without a credential is allowed only by the deployment's shared-door
+        and funding policy. Admission reserves quota before forwarding and
+        settles one attempt with an execution receipt.
+      security:
+        - bearer: []
+        - {}
       parameters:
+        - name: X-Workspace-Id
+          in: header
+          required: false
+          schema:
+            type: string
+          description: >-
+            Required for a user session when workspace membership is enforced.
+            The gateway checks current membership and the selected door's policy.
         - name: Idempotency-Key
           in: header
           required: false
@@ -430,7 +447,11 @@ components:
     bearer:
       type: http
       scheme: bearer
-      description: "An issued key: `oak_<id>.<secret>`. Omitted entirely for anonymous access to shared doors."
+      description: >-
+        An issued `oak_<id>.<secret>` key, or an account session supported by
+        this gateway's account configuration. Scope, workspace membership,
+        door binding, and funding checks remain operation-specific. Anonymous
+        access is available only when the operation and shared-door policy allow it.
   headers:
     RequestId:
       schema:
@@ -577,7 +598,7 @@ components:
           properties:
             code:
               type: string
-              enum:
+              examples:
                 - malformed
                 - unauthenticated
                 - door_not_bound

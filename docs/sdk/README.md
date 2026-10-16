@@ -256,3 +256,10 @@ The [public route inventory](public-routes.md) distinguishes verified schemas,
 implemented gaps, gated/internal routes, and separately served API families.
 Its manual drift checks keep the combined public reference tied to the front
 without delaying the independent Computers delivery.
+
+The public reference also composes the [System One slice](openapi.systemone.json)
+from its owning decision contract. It does not publish standalone classification
+or jobs routes. The app facade's auth/history fixture remains separate; `jev`
+continues to own the existing decision caller. See the
+[System One guide](https://openagents.com/docs/api/system-one) for request identity,
+workspace access, responses, and refusals.
