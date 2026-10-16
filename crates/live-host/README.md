@@ -24,6 +24,12 @@ broker, capture source, and device behind the same roles.
 
 ## Rules the controller enforces
 
+- **Artifact reads.** Each caller can read bytes they supplied or the host
+  explicitly shared with them. Hashes and encrypted declarations from another
+  signer grant no access. Consent is verified privately. Current session rights
+  are checked before cached results or session details are returned. Host
+  declarations are encrypted separately for each intended recipient. The local
+  host-key APIs and artifact store are operator interfaces.
 - **Plans.** The owner signs the plan, and it must name this controller and a
   task that already exists. The conversation scope must match its participants
   (`owner_private`, `direct`, or `group`). Bounds must be finite for wall time,

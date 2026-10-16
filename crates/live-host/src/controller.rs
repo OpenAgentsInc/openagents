@@ -22,6 +22,7 @@ use std::{
 };
 use workspace_host::artifact::{Artifacts, token};
 mod input;
+mod readers;
 pub use input::InputGrant;
 
 pub const MAX_PARTICIPANTS: usize = 64;
@@ -109,6 +110,8 @@ struct State {
     declarations: BTreeMap<String, Value>,
     #[serde(default)]
     input_rules: input::Book,
+    #[serde(default)]
+    known: BTreeMap<String, BTreeSet<String>>,
 }
 
 /// A signed request, its exact artifacts, and further signed declarations
@@ -136,6 +139,7 @@ pub struct Controller {
     secret: SecretKey,
     adapters: RefCell<Adapters>,
     delivery: RefCell<BTreeMap<(String, String), String>>,
+    reader: RefCell<Option<readers::ReadScope>>,
     pub(crate) capture_clocks: RefCell<BTreeMap<String, std::time::Instant>>,
 }
 
@@ -217,6 +221,7 @@ impl Controller {
             secret,
             adapters: RefCell::new(adapters),
             delivery: RefCell::new(BTreeMap::new()),
+            reader: RefCell::new(None),
             capture_clocks: RefCell::new(BTreeMap::new()),
         };
         controller.state()?;
@@ -247,26 +252,43 @@ impl Controller {
         }
         let reference = self.store.put_json(body)?;
         let digest = digest_of(&reference).to_string();
-        if !state.declarations.contains_key(&digest) {
+        let declaration = format!("{digest}:to:{recipient}");
+        if !state.declarations.contains_key(&declaration) {
             let event = workspace_host::host::request(&self.secret, recipient, body.clone(), now)?;
             let event_ref = self.store.put(
                 &serde_json::to_vec(&event).map_err(|e| e.to_string())?,
                 "application/json",
                 None,
             )?;
-            state.declarations.insert(digest.clone(), event_ref);
+            state
+                .declarations
+                .entry(digest.clone())
+                .or_insert_with(|| event_ref.clone());
+            state.declarations.insert(declaration, event_ref);
             state
                 .signers
                 .entry(digest)
                 .or_default()
                 .insert(self.pubkey().into());
         }
+        self.share_output(state, body, recipient, &reference)?;
         Ok(reference)
     }
 
-    fn authenticate(&self, state: &mut State, event: &Event) -> Result<(String, Value, Value)> {
+    fn authenticate(
+        &self,
+        state: &mut State,
+        event: &Event,
+        now: u64,
+    ) -> Result<(String, Value, Value)> {
         let opened =
             nostr::private_artifact::open(event, &self.secret).map_err(|e| e.to_string())?;
+        if opened.recipient() != self.pubkey()
+            || opened.body().issued_at > now.saturating_add(300)
+            || now > opened.body().retain_until
+        {
+            return Err(refuse("not_admitted", "request recipient or time differs"));
+        }
         let bytes = opened
             .inline_bytes()
             .ok_or("malformed: requests carry their artifact inline")?
@@ -293,10 +315,19 @@ impl Controller {
             .declarations
             .entry(format!("{digest}:{}", opened.signer()))
             .or_insert(event_ref);
+        self.remember(state, opened.signer(), &reference)?;
         Ok((opened.signer().into(), body, reference))
     }
 
     fn bytes(&self, reference: &Value) -> Result<Vec<u8>> {
+        if self.reader.borrow().as_ref().is_some_and(|scope| {
+            scope.principal != self.pubkey() && !scope.known.contains(digest_of(reference))
+        }) {
+            return Err(refuse(
+                "not_admitted",
+                "referenced bytes were not supplied or shared",
+            ));
+        }
         self.store
             .get(reference)
             .map_err(|_| refuse("content_unavailable", "referenced bytes are not retained"))
@@ -390,104 +421,127 @@ impl Controller {
             self.store.put(bytes, "application/octet-stream", None)?;
         }
         for declaration in &bundle.declarations {
-            self.authenticate(&mut state, declaration)?;
+            self.authenticate(&mut state, declaration, now)?;
         }
-        let (signer, body, input) = self.authenticate(&mut state, &bundle.event)?;
-        if let Err(e) = live::validate(&body) {
-            let result = self.result(
-                &mut state,
-                &signer,
-                &input,
-                None,
-                "refused",
-                Some(e.code.as_str()),
-                None,
-                Vec::new(),
-                now,
-            )?;
-            self.save(&state)?;
-            return Ok(result);
+        let (signer, body, input) = self.authenticate(&mut state, &bundle.event, now)?;
+        for digest in bundle.artifacts.keys() {
+            self.remember(&mut state, &signer, &json!({"digest":digest}))?;
         }
-        let session_id = if body["v"] == "openagents.live-plan.v1" {
-            body["session"].as_str().map(str::to_string)
-        } else {
-            // A request naming a superseded plan reaches its session and is
-            // refused as stale there.
-            state.plans.get(digest_of(&body["plan"])).cloned()
-        };
-        let request = match body["v"].as_str() {
-            Some("openagents.live-plan.v1") => format!("plan-{}", body["expected_revision"]),
-            _ => body["request"].as_str().unwrap_or_default().to_string(),
-        };
-        let key = format!(
-            "{signer}:{}:{request}",
-            session_id.clone().unwrap_or_default()
-        );
-        let outcome = match state.priors.get(&key) {
-            Some(prior) if prior.fingerprint == digest_of(&input) => {
-                let mut result = prior.result.clone();
-                if result["status"] == "accepted" {
-                    result["status"] = json!("duplicate");
-                }
-                self.save(&state)?;
-                return Ok(result);
-            }
-            Some(_) => Err(refuse(
-                "idempotency_conflict",
-                "same request, different bytes",
-            )),
-            None => self.dispatch(
-                &mut state,
-                session_id.as_deref(),
-                &signer,
-                &body,
-                &input,
-                now,
-                received,
-            ),
-        };
-        let result = match outcome {
-            Ok((result, remember)) => {
-                if remember {
-                    state.priors.insert(
-                        key,
-                        Prior {
-                            fingerprint: digest_of(&input).into(),
-                            result: result.clone(),
-                        },
-                    );
-                }
-                result
-            }
-            Err(error) => {
-                let mut fresh = self.state()?;
-                fresh.signers.extend(state.signers);
-                fresh.declarations.extend(state.declarations);
-                state = fresh;
-                let session = session_id
-                    .as_ref()
-                    .and_then(|id| state.sessions.get(id))
-                    .cloned();
-                let status = if matches!(code(&error), "conflict" | "idempotency_conflict") {
-                    "conflict"
-                } else {
-                    "refused"
-                };
-                self.result(
+        self.with_read_scope(self.read_scope(&state, &signer)?, || {
+            if let Err(e) = live::validate(&body) {
+                let result = self.result(
                     &mut state,
                     &signer,
                     &input,
-                    session.as_ref(),
-                    status,
-                    Some(code(&error)),
+                    None,
+                    "refused",
+                    Some(e.code.as_str()),
                     None,
                     Vec::new(),
                     now,
-                )?
+                )?;
+                self.save(&state)?;
+                return Ok(result);
             }
-        };
-        self.save(&state)?;
-        Ok(result)
+            let session_id = if body["v"] == "openagents.live-plan.v1" {
+                body["session"].as_str().map(str::to_string)
+            } else {
+                // A request naming a superseded plan reaches its session and is
+                // refused as stale there.
+                state.plans.get(digest_of(&body["plan"])).cloned()
+            };
+            let request = match body["v"].as_str() {
+                Some("openagents.live-plan.v1") => format!("plan-{}", body["expected_revision"]),
+                _ => body["request"].as_str().unwrap_or_default().to_string(),
+            };
+            let key = format!(
+                "{signer}:{}:{request}",
+                session_id.clone().unwrap_or_default()
+            );
+            if !self.may_request(&state, session_id.as_deref(), &signer, &body, now) {
+                let result = self.result(
+                    &mut state,
+                    &signer,
+                    &input,
+                    None,
+                    "refused",
+                    Some("not_admitted"),
+                    None,
+                    Vec::new(),
+                    now,
+                )?;
+                self.save(&state)?;
+                return Ok(result);
+            }
+            let outcome = match state.priors.get(&key) {
+                Some(prior) if prior.fingerprint == digest_of(&input) => {
+                    let mut result = prior.result.clone();
+                    if result["status"] == "accepted" {
+                        result["status"] = json!("duplicate");
+                    }
+                    self.save(&state)?;
+                    return Ok(result);
+                }
+                Some(_) => Err(refuse(
+                    "idempotency_conflict",
+                    "same request, different bytes",
+                )),
+                None => self.dispatch(
+                    &mut state,
+                    session_id.as_deref(),
+                    &signer,
+                    &body,
+                    &input,
+                    now,
+                    received,
+                ),
+            };
+            let result = match outcome {
+                Ok((result, remember)) => {
+                    if remember {
+                        state.priors.insert(
+                            key,
+                            Prior {
+                                fingerprint: digest_of(&input).into(),
+                                result: result.clone(),
+                            },
+                        );
+                    }
+                    result
+                }
+                Err(error) => {
+                    let mut fresh = self.state()?;
+                    fresh.signers.extend(state.signers);
+                    fresh.declarations.extend(state.declarations);
+                    for (principal, known) in state.known {
+                        fresh.known.entry(principal).or_default().extend(known);
+                    }
+                    state = fresh;
+                    let session = session_id
+                        .as_ref()
+                        .and_then(|id| state.sessions.get(id))
+                        .cloned();
+                    let status = if matches!(code(&error), "conflict" | "idempotency_conflict") {
+                        "conflict"
+                    } else {
+                        "refused"
+                    };
+                    self.result(
+                        &mut state,
+                        &signer,
+                        &input,
+                        session.as_ref(),
+                        status,
+                        Some(code(&error)),
+                        None,
+                        Vec::new(),
+                        now,
+                    )?
+                }
+            };
+            self.save(&state)?;
+            Ok(result)
+        })
     }
 
     fn dispatch(
@@ -779,7 +833,12 @@ impl Controller {
             let ok = consent.iter().any(|reference| {
                 Self::signed_by(state, reference, participant)
                     && self
-                        .body(reference, "openagents.live-consent.v1")
+                        .store
+                        .get(reference)
+                        .and_then(|bytes| {
+                            live::verify(reference, &bytes, "openagents.live-consent.v1")
+                                .map_err(contract)
+                        })
                         .is_ok_and(|c| {
                             same(&c["plan"], &session.plan)
                                 && c["participant"] == participant

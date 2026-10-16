@@ -1134,3 +1134,85 @@ fn device_input_contracts_refuse_changed_frames_bindings_and_script_inputs() {
         assert!(device.borrow().applied.is_empty());
     }
 }
+
+#[test]
+fn input_cannot_read_another_signers_artifact_by_hash_or_carried_declaration() {
+    let mut fx = Fx::new();
+    let c = fx.controller();
+    fx.active(&c);
+    let writes = tracked_input(&c);
+    appoint_input(&fx, &c);
+    let observation = fx.capture(&c, "screen", "observation")["value"].clone();
+    let private = json!({"type":"another caller's private input"});
+    let private_bytes = jcs(&private).unwrap();
+    let mut supplied = BTreeMap::new();
+    let private_ref = put(&mut supplied, &private_bytes, None);
+    let stranger_status = json!({"v":"openagents.live-control.v1","requires":[],"request":fx.next(),
+        "plan":fx.plan,"action":"status","expected_revision":0,"reason":""});
+    let mut bundle = fx.bundle(STRANGER, &stranger_status, vec![]);
+    bundle.artifacts = supplied;
+    let refused = c.submit(&bundle, fx.now).unwrap();
+    assert_eq!(refused["reason"], "not_admitted");
+    assert!(refused["plan"].is_null());
+    let reference = input_proposal(&mut fx, &c, &observation, b"{\"click\":[1,2]}");
+    let mut proposal: Value =
+        serde_json::from_slice(&fx.artifacts[reference["digest"].as_str().unwrap()]).unwrap();
+    proposal["input"] = private_ref.clone();
+    // The owner has the hash, but not the plaintext from the other request.
+    assert_eq!(fx.send(&c, OWNER, &proposal)["reason"], "not_admitted");
+    let mut inline_ref = private_ref.clone();
+    inline_ref["schema"] = json!("private.input.v1");
+    let encrypted = nostr::private_artifact::seal(
+        &json!({"v":"openagents.artifact-envelope.v1","requires":[],"artifact":inline_ref,
+            "inline":private,"issued_at":fx.now,"retain_until":fx.now+3600}),
+        &secret(STRANGER),
+        &pk(HOST).parse().unwrap(),
+        &fx.next(),
+        fx.now,
+        secp256k1::rand::random(),
+    )
+    .unwrap();
+    let carried = fx.bundle(OWNER, &proposal, vec![encrypted]);
+    assert_eq!(
+        c.submit(&carried, fx.now).unwrap()["reason"],
+        "not_admitted"
+    );
+    assert!(writes.borrow().applied.is_empty());
+    // Supplying the actual bytes proves knowledge; preparation is still inert.
+    fx.artifacts
+        .insert(digest_bytes(&private_bytes), private_bytes);
+    assert_eq!(fx.send(&c, OWNER, &proposal)["status"], "accepted");
+    assert!(writes.borrow().applied.is_empty());
+}
+
+#[test]
+fn current_session_rights_protect_cached_results_and_refusal_details() {
+    let mut fx = Fx::new();
+    let c = fx.controller();
+    fx.active(&c);
+    let status = json!({"v":"openagents.live-control.v1","requires":[],"request":fx.next(),
+        "plan":fx.plan,"action":"status","expected_revision":0,"reason":""});
+    for who in [ALICE, STRANGER] {
+        let result = fx.send(&c, who, &status);
+        assert_eq!(result["reason"], "not_admitted");
+        assert!(result["plan"].is_null());
+        assert!(result["record"].is_null());
+        assert_eq!(result["revision"], 0);
+    }
+    let floor = json!({"v":"openagents.live-input-floor-request.v1","requires":[],"request":fx.next(),"plan":fx.plan,
+        "participant":pk(ALICE),"track":"mic","destination":fx.destination,"processing":fx.asr,
+        "expected_revision":fx.revision(&c),"action":"acquire","until":fx.now+600,"nonce":"6b".repeat(32)});
+    assert_eq!(fx.send(&c, ALICE, &floor)["status"], "accepted");
+    assert_eq!(fx.send(&c, ALICE, &floor)["status"], "duplicate");
+    let revoke = json!({"v":"openagents.live-participant.v1","requires":[],"request":fx.next(),"plan":fx.plan,
+        "participant":pk(ALICE),"action":"revoke","expected_revision":fx.revision(&c),"tracks":[],"rights":[],
+        "consent":[],"expires_at":fx.now+1800});
+    assert_eq!(fx.send(&c, OWNER, &revoke)["status"], "accepted");
+    let replay = fx.send(&c, ALICE, &floor);
+    assert_eq!(replay["reason"], "not_admitted");
+    assert!(replay["plan"].is_null());
+    assert!(replay["value"].is_null());
+    let mut self_revoke = revoke;
+    self_revoke["request"] = json!(fx.next());
+    assert_eq!(fx.send(&c, ALICE, &self_revoke)["reason"], "not_admitted");
+}

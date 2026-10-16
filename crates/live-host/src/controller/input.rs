@@ -15,7 +15,7 @@ pub struct InputGrant {
 #[serde(deny_unknown_fields)]
 pub(super) struct Book {
     generation: u64,
-    rules: Vec<Value>,
+    pub(super) rules: Vec<Value>,
 }
 fn validate(schema: &Value, value: &Value) -> Result<()> {
     let bytes = contracts::jcs(schema).map_err(contract)?;
@@ -141,7 +141,9 @@ impl Controller {
             return Err("identity_mismatch: installed input operation".into());
         }
         for reference in &state.input_rules.rules {
-            let rule = self.body(reference, "openagents.live-input-rule.v1")?;
+            let bytes = self.store.get(reference)?;
+            let rule = live::verify(reference, &bytes, "openagents.live-input-rule.v1")
+                .map_err(contract)?;
             if rule["plan"] == session.plan
                 && rule["owner"] == session.owner
                 && rule["operation"] == *operation
@@ -303,6 +305,13 @@ impl Controller {
         );
         snapshot.signers.extend(state.signers.clone());
         snapshot.declarations.extend(state.declarations.clone());
+        for (principal, known) in &state.known {
+            snapshot
+                .known
+                .entry(principal.clone())
+                .or_default()
+                .extend(known.iter().cloned());
+        }
         self.save(&snapshot)?;
         let applied = self.adapters.borrow_mut().device.apply_checked(
             proposal["operation"]["id"].as_str().unwrap_or_default(),
