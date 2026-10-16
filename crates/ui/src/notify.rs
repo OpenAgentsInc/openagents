@@ -79,7 +79,7 @@ fn post_impl(title: &str, body: &str, chat_id: Option<&str>) {
 /// The identity banners are attributed to — the packaged app's bundle id
 /// (`dist/macos/Info.plist`), which the center resolves to its name + icon.
 #[cfg(target_os = "macos")]
-const MACOS_BUNDLE_ID: &std::ffi::CStr = c"sh.zeron.app";
+const MACOS_BUNDLE_ID: &std::ffi::CStr = coder_brand::BUNDLE_ID_C;
 
 /// `userInfo` key carrying the banner's chat id back to the click handler.
 #[cfg(target_os = "macos")]
@@ -323,7 +323,7 @@ fn post_impl(title: &str, body: &str, _chat_id: Option<&str>) {
         // `--` ends option parsing: session titles are model-generated, so a
         // `-`-leading one must land as the summary, not as a flag.
         let result = std::process::Command::new("notify-send")
-            .args(["--app-name=Zeron", "--", &title, &body])
+            .args(["--app-name=Coder", "--", &title, &body])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status();

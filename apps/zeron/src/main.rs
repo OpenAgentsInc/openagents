@@ -15,12 +15,12 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "zeron",
     version,
-    about = "Multi-device controller for coding agents"
+    about = "Coder Desktop: a desktop for coding agents (based on Zeron)"
 )]
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
-    /// Open a Zeron conversation URL.
+    /// Open a Coder conversation URL (`coder-desktop://open/chat/...`).
     #[arg(value_name = "URL")]
     open_url: Option<String>,
     #[cfg(windows)]
@@ -77,21 +77,24 @@ enum DaemonCommand {
     Status,
 }
 
-/// Production edge (Cloudflare Worker + Durable Objects on the zeron.sh zone).
-/// `ZERON_EDGE_URL` overrides (local dev / self-hosting).
-const DEFAULT_EDGE_URL: &str = "https://edge.zeron.sh";
-
-/// Production WorkOS AuthKit client id — public knowledge (it appears in every
-/// authorize URL), so baking it in is safe. Overridden by `ZERON_WORKOS_CLIENT_ID`;
-/// set it to the empty string — or set a dev bearer via `ZERON_EDGE_TOKEN` — to
-/// force dev-mode auth instead.
-const DEFAULT_WORKOS_CLIENT_ID: &str = "client_01KWD0EAKZKD50YCQJNYSRE4BY";
-
+/// Coder Desktop: the hosted edge and its WorkOS sign-in are off by default
+/// (`coder_brand::HOSTED_EDGE_URL`, `coder_brand::WORKOS_CLIENT_ID`), so a
+/// plain start never contacts Zeron's services. `ZERON_EDGE_URL` and
+/// `ZERON_WORKOS_CLIENT_ID` still override for local development.
 fn edge_url_from_env() -> String {
     std::env::var("ZERON_EDGE_URL")
         .ok()
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| DEFAULT_EDGE_URL.into())
+        .unwrap_or_else(|| coder_brand::default_edge_url().into())
+}
+
+/// The engine IPC port: `ZERON_IPC_PORT`, else Coder's own default (not
+/// Zeron's, so both apps can run side by side).
+fn ipc_port_from_env() -> u16 {
+    std::env::var("ZERON_IPC_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(coder_brand::DEFAULT_IPC_PORT)
 }
 
 /// WorkOS client id resolution: explicit env wins (empty string = dev mode);
@@ -103,7 +106,7 @@ fn workos_client_id_from_env(edge_token: &Option<String>) -> Option<String> {
         Ok(v) if v.trim().is_empty() => None,
         Ok(v) => Some(v),
         Err(_) if edge_token.is_some() => None,
-        Err(_) => Some(DEFAULT_WORKOS_CLIENT_ID.into()),
+        Err(_) => coder_brand::WORKOS_CLIENT_ID.map(Into::into),
     }
 }
 
@@ -144,12 +147,28 @@ fn spawn_malloc_trimmer() {
     }
 }
 
+/// Coder Desktop: resolve the data directory and IPC port once and export them
+/// as `ZERON_DATA_DIR` / `ZERON_IPC_PORT` before any thread starts. Engine
+/// subsystems and child processes (MCP bridge, agent adapters) that read those
+/// variables, or fall back to Zeron's `~/.zeron` defaults, then all use
+/// Coder's own directory and port.
+fn pin_coder_environment() {
+    let data_dir = paths::data_dir();
+    let ipc_port = ipc_port_from_env();
+    // SAFETY: called at the top of `main`, before any other thread exists.
+    unsafe {
+        std::env::set_var("ZERON_DATA_DIR", &data_dir);
+        std::env::set_var("ZERON_IPC_PORT", ipc_port.to_string());
+    }
+}
+
 fn main() -> anyhow::Result<()> {
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--noop-browser")) {
         return Ok(());
     }
     #[cfg(windows)]
     attach_parent_console();
+    pin_coder_environment();
     let cli = Cli::parse();
     #[cfg(windows)]
     if let Some(pid) = cli.wait_for_exit {
@@ -290,10 +309,7 @@ fn main() -> anyhow::Result<()> {
             // daemon, or embeds the engine in-process (ARCHITECTURE §1).
             zeron_ui::run_app(zeron_ui::UiConfig {
                 data_dir: paths::data_dir(),
-                ipc_port: std::env::var("ZERON_IPC_PORT")
-                    .ok()
-                    .and_then(|p| p.parse().ok())
-                    .unwrap_or(27654),
+                ipc_port: ipc_port_from_env(),
                 edge_url: edge_url_from_env(),
                 workos_client_id: workos_client_id_from_env(&edge_token),
                 edge_token,
@@ -340,10 +356,7 @@ fn engine_config_from_env() -> zeron_engine::EngineConfig {
     zeron_engine::EngineConfig {
         data_dir: paths::data_dir(),
         edge_url: edge_url_from_env(),
-        ipc_port: std::env::var("ZERON_IPC_PORT")
-            .ok()
-            .and_then(|p| p.parse().ok())
-            .unwrap_or(27654),
+        ipc_port: ipc_port_from_env(),
         default_harness: harness_from_env(),
         // WorkOS mode: the signed-in session's org wins; ZERON_ORG_ID (dev
         // default "dev-org") scopes the workspace room otherwise.

@@ -59,6 +59,7 @@ name = "compact-picker-fixture"
 required-features = ["compact-picker-fixture"]
 
 [dependencies]
+coder-brand.workspace = true
 zeron-voice-media.workspace = true
 zeron-voice-session.workspace = true
 zeron-orb.workspace = true

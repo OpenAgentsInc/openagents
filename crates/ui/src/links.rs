@@ -43,7 +43,8 @@ pub fn workspace_locator(
 
 pub fn zeron_conversation_link(chat_id: &str, workspace: &str) -> String {
     format!(
-        "zeron://open/chat/{}?workspace={}",
+        "{}://open/chat/{}?workspace={}",
+        coder_brand::URL_SCHEME,
         encode_component(chat_id),
         encode_component(workspace)
     )
@@ -51,8 +52,9 @@ pub fn zeron_conversation_link(chat_id: &str, workspace: &str) -> String {
 
 pub fn parse_zeron_conversation_link(url: &str) -> Result<ConversationDeepLink, &'static str> {
     let rest = url
-        .strip_prefix("zeron://open/chat/")
-        .ok_or("not a Zeron conversation link")?;
+        .strip_prefix(coder_brand::URL_SCHEME)
+        .and_then(|rest| rest.strip_prefix("://open/chat/"))
+        .ok_or("not a Coder conversation link")?;
     let (chat_id, query) = rest.split_once('?').ok_or("missing workspace locator")?;
     if chat_id.is_empty() || chat_id.contains('/') {
         return Err("invalid conversation id");
@@ -162,8 +164,10 @@ mod tests {
     #[test]
     fn malformed_or_foreign_links_are_rejected() {
         assert!(parse_zeron_conversation_link("https://example.com").is_err());
-        assert!(parse_zeron_conversation_link("zeron://open/chat/id").is_err());
-        assert!(parse_zeron_conversation_link("zeron://open/chat/%GG?workspace=x").is_err());
+        assert!(parse_zeron_conversation_link("coder-desktop://open/chat/id").is_err());
+        assert!(
+            parse_zeron_conversation_link("coder-desktop://open/chat/%GG?workspace=x").is_err()
+        );
     }
 
     #[test]

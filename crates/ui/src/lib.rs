@@ -213,7 +213,7 @@ pub fn run_app(config: UiConfig) {
         terminal::panel::init(cx);
         app_menus::init(cx);
         app_update::AppUpdate::init(config.boot().edge_url, data_dir.clone(), cx);
-        cx.register_url_scheme("zeron").detach();
+        cx.register_url_scheme(coder_brand::URL_SCHEME).detach();
 
         let state = cx.new(|cx| {
             let mut state = state::AppState::new();
@@ -412,7 +412,7 @@ fn open_main_window(
                 // Linux/Windows `appears_transparent` hides the system titlebar
                 // for our custom-drawn chrome; harmless where unsupported.
                 titlebar: Some(TitlebarOptions {
-                    title: cfg!(target_os = "windows").then(|| "Zeron".into()),
+                    title: Some(coder_brand::NAME.into()),
                     appears_transparent: true,
                     // Native lights are 14px tall: top 14 → center 21, matching
                     // the 38px titlebar row with 4px top-only content padding.

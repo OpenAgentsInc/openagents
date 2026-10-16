@@ -25,6 +25,7 @@ members = [
     "crates/text",
     "crates/visual",
     "crates/visual-gpu",
+    "crates/brand",
     "apps/zeron",
 ]
 
@@ -35,6 +36,7 @@ license = "MIT"
 publish = false
 
 [workspace.dependencies]
+coder-brand = { path = "crates/brand" }
 zeron-voice-session = { path = "crates/voice-session" }
 zeron-orb = { path = "crates/orb" }
 zeron-veil = { path = "crates/veil" }

@@ -29,7 +29,7 @@ pub use zeron::{Origin, Zeron};
 /// How `zeron mcp` finds the engine and who it speaks for.
 #[derive(Debug, Clone)]
 pub struct McpConfig {
-    /// Loopback IPC port of the engine to proxy (`ZERON_IPC_PORT`, default 27654).
+    /// Loopback IPC port of the engine to proxy (`ZERON_IPC_PORT`, default `coder_brand::DEFAULT_IPC_PORT`).
     pub ipc_port: u16,
     /// The chat whose agent spawned this server, when injected by the engine.
     pub origin: Origin,
@@ -42,7 +42,7 @@ impl McpConfig {
         let ipc_port = std::env::var("ZERON_IPC_PORT")
             .ok()
             .and_then(|p| p.parse().ok())
-            .unwrap_or(27654);
+            .unwrap_or(coder_brand::DEFAULT_IPC_PORT);
         Self {
             ipc_port,
             origin: Origin::from_env(),

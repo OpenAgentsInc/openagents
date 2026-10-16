@@ -5736,7 +5736,7 @@ mod tests {
         assert_eq!(project_label(Some("~")), "No project");
         assert_eq!(project_label(Some("~/")), "No project");
         assert_eq!(
-            project_label(Some("~/.zeron/scratch/2026-10-11-3e4f5a6b")),
+            project_label(Some("~/.coder-desktop/scratch/2026-10-11-3e4f5a6b")),
             "No project"
         );
         assert_eq!(project_label(Some("   ")), "No project");
@@ -5802,7 +5802,7 @@ mod tests {
         c.branch = None;
         assert_eq!(chat_location(&c), None);
         // Projectless: no project name, no folder.
-        for cwd in ["~", "~/.zeron/scratch/2026-10-11-3e4f5a6b"] {
+        for cwd in ["~", "~/.coder-desktop/scratch/2026-10-11-3e4f5a6b"] {
             c.cwd = Some(cwd.into());
             assert_eq!(chat_location(&c), None);
         }

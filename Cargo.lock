@@ -1637,6 +1637,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-brand"
+version = "0.2.113"
+
+[[package]]
 name = "codespan-reporting"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13555,6 +13559,7 @@ version = "0.2.113"
 dependencies = [
  "anyhow",
  "clap",
+ "coder-brand",
  "embed-resource",
  "libc",
  "mimalloc",
@@ -13589,6 +13594,7 @@ version = "0.2.113"
 dependencies = [
  "async-trait",
  "chrono",
+ "coder-brand",
  "futures",
  "loro",
  "reqwest",
@@ -13631,6 +13637,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "coder-brand",
  "dunce",
  "fff-search",
  "futures",
@@ -13675,6 +13682,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.22.1",
+ "coder-brand",
  "deser-hjson",
  "futures",
  "libc",
@@ -13711,6 +13719,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "coder-brand",
  "futures",
  "serde",
  "serde_json",
@@ -13785,6 +13794,7 @@ name = "zeron-proto"
 version = "0.2.113"
 dependencies = [
  "chrono",
+ "coder-brand",
  "pulldown-cmark",
  "serde",
  "serde_json",
@@ -13913,6 +13923,7 @@ dependencies = [
  "block",
  "block2 0.6.2",
  "chrono",
+ "coder-brand",
  "core-foundation 0.10.1",
  "core-graphics 0.24.0",
  "fontdb",
@@ -13983,6 +13994,7 @@ name = "zeron-update"
 version = "0.2.113"
 dependencies = [
  "anyhow",
+ "coder-brand",
  "futures",
  "reqwest",
  "serde",

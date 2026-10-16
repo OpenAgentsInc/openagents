@@ -23,7 +23,7 @@ const BACKUP: &str = "zeron.exe.old";
 const INCOMING: &str = ".zeron-update-incoming.exe";
 /// The installer's uninstall entry (`AppId` in `dist/windows/zeron.iss`, plus
 /// Inno Setup's `_is1` suffix). Settings → Apps reads `DisplayVersion` here.
-const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{AD5DEC34-E254-467B-8F24-8127EBAF4DA6}_is1";
+const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{0FBFAAA3-AC9B-4542-8219-5C1638A1FB18}_is1";
 
 #[derive(serde::Deserialize)]
 struct Config {

@@ -317,11 +317,24 @@ fn validate_release_override(value: &str) -> anyhow::Result<String> {
 /// The project's GitHub releases page — the advisory update strip opens this
 /// for unmanaged installs (source builds, hand-copied binaries), where no
 /// updater flow exists to drive.
-pub const RELEASES_PAGE: &str = "https://github.com/zeronsh/zeron/releases";
+pub const RELEASES_PAGE: &str = coder_brand::DOWNLOAD_URL;
 
 /// The newest release's page — the download destination offered when this
 /// installation cannot replace itself.
-pub const LATEST_RELEASE_PAGE: &str = "https://github.com/zeronsh/zeron/releases/latest";
+pub const LATEST_RELEASE_PAGE: &str = coder_brand::DOWNLOAD_URL;
+
+/// Shown when no update feed is configured (Coder Desktop has none yet).
+pub const NO_FEED_MESSAGE: &str =
+    "Coder doesn't update itself yet. Get new versions at openagents.com/download.";
+
+/// Whether this build has an update feed: the developer override
+/// `ZERON_RELEASES_URL`, or `coder_brand::UPDATE_FEED`. Without one the
+/// updater never contacts any server; in particular it never reads Zeron's
+/// release feed, so the app can't offer a Zeron release as an update.
+pub fn feed_configured() -> bool {
+    std::env::var("ZERON_RELEASES_URL").is_ok_and(|url| !url.trim().is_empty())
+        || coder_brand::UPDATE_FEED.is_some()
+}
 
 fn release_base(edge_url: &str) -> anyhow::Result<String> {
     if let Ok(url) = std::env::var("ZERON_RELEASES_URL")
@@ -333,7 +346,20 @@ fn release_base(edge_url: &str) -> anyhow::Result<String> {
     if let Some(url) = windows::release_url()? {
         return Ok(url.trim_end_matches('/').to_owned());
     }
-    Ok(format!("{}/releases", edge_url.trim_end_matches('/')))
+    // Upstream's unit tests serve a fake feed at `{edge}/releases`.
+    if cfg!(test) {
+        return Ok(format!("{}/releases", edge_url.trim_end_matches('/')));
+    }
+    // Coder Desktop: the feed comes from `coder_brand::UPDATE_FEED`, never
+    // from the edge (Zeron's feed lives at `{edge}/releases`).
+    configured_feed(coder_brand::UPDATE_FEED)
+}
+
+fn configured_feed(feed: Option<&str>) -> anyhow::Result<String> {
+    match feed {
+        Some(feed) => validate_release_override(feed),
+        None => bail!("{NO_FEED_MESSAGE}"),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -373,12 +399,12 @@ impl std::fmt::Display for UpdateBlocker {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Translocated | Self::DiskImage => f.write_str(
-                "Zeron is running from a temporary, read-only location. Move Zeron to your \
+                "Coder is running from a temporary, read-only location. Move Coder to your \
                  Applications folder and reopen it to turn on updates.",
             ),
             Self::NotWritable(dir) => write!(
                 f,
-                "Zeron doesn't have permission to replace itself in {}.",
+                "Coder doesn't have permission to replace itself in {}.",
                 dir.display()
             ),
         }
@@ -537,7 +563,7 @@ fn detect_install_from_for_os(exe: &Path, home: Option<&Path>, os: &str) -> Inst
     }
     if let Some(home) = home {
         // `current_exe` resolves the `current` symlink to the versioned dir.
-        let app_root = home.join(".zeron").join("app");
+        let app_root = home.join(coder_brand::HOME_WORK_DIR).join("app");
         if exe.starts_with(&app_root) {
             return InstallKind::Managed { app_root };
         }
@@ -768,7 +794,7 @@ pub fn apply_headless(app_root: &Path, version: &str) -> anyhow::Result<()> {
 /// `XPC_SERVICE_NAME`.
 pub fn running_as_installed_service() -> bool {
     if cfg!(target_os = "macos") {
-        std::env::var("XPC_SERVICE_NAME").is_ok_and(|label| label == "sh.zeron.app")
+        std::env::var("XPC_SERVICE_NAME").is_ok_and(|label| label == coder_brand::LAUNCHD_LABEL)
     } else if cfg!(target_os = "linux") {
         std::fs::read_to_string("/proc/self/cgroup")
             .is_ok_and(|cgroups| in_zeron_service_cgroup(&cgroups))
@@ -781,7 +807,10 @@ fn in_zeron_service_cgroup(cgroups: &str) -> bool {
     cgroups
         .lines()
         .filter_map(|line| line.rsplit(':').next())
-        .any(|path| path.split('/').any(|part| part == "zeron.service"))
+        .any(|path| {
+            path.split('/')
+                .any(|part| part == coder_brand::SYSTEMD_UNIT)
+        })
 }
 
 /// Restart the installed engine service (the same units `zeron daemon` and the
@@ -795,12 +824,16 @@ pub fn restart_service() -> anyhow::Result<()> {
         let uid = String::from_utf8_lossy(&output.stdout).trim().to_string();
         run(
             "launchctl",
-            &["kickstart", "-k", &format!("gui/{uid}/sh.zeron.app")],
+            &[
+                "kickstart",
+                "-k",
+                &format!("gui/{uid}/{}", coder_brand::LAUNCHD_LABEL),
+            ],
         )
     } else {
         run(
             "systemctl",
-            &["--user", "--no-block", "restart", "zeron.service"],
+            &["--user", "--no-block", "restart", coder_brand::SYSTEMD_UNIT],
         )
     }
 }
@@ -1068,6 +1101,10 @@ impl Updater {
         // before the background task first polls and be lost behind the
         // initial delay.
         let wakes = updater.wake_tx.subscribe();
+        // Coder Desktop: no feed, no background checks (and no network).
+        if !feed_configured() {
+            return updater;
+        }
         let for_loop = updater.clone();
         let task = tokio::spawn(async move { for_loop.check_loop(wakes, initial_delay).await });
         *updater.check_task.lock().unwrap() = Some(task);
@@ -1590,6 +1627,19 @@ mod tests {
     }
 
     #[test]
+    fn coder_build_has_no_update_feed_and_never_uses_the_edge() {
+        assert!(coder_brand::UPDATE_FEED.is_none());
+        let err = configured_feed(coder_brand::UPDATE_FEED).unwrap_err();
+        assert_eq!(err.to_string(), NO_FEED_MESSAGE);
+        assert_eq!(
+            configured_feed(Some("https://openagents.com/releases/")).unwrap(),
+            "https://openagents.com/releases"
+        );
+        assert!(!RELEASES_PAGE.contains("zeron"));
+        assert!(!LATEST_RELEASE_PAGE.contains("zeron"));
+    }
+
+    #[test]
     fn update_feed_override_requires_an_https_base_url() {
         assert_eq!(
             validate_release_override(" https://example.com/releases/ ").unwrap(),
@@ -1624,12 +1674,12 @@ mod tests {
     fn install_kind_detection() {
         assert_eq!(
             detect_install_from_for_os(
-                Path::new("/home/u/.zeron/app/0.1.1/zeron"),
+                Path::new("/home/u/.coder-desktop/app/0.1.1/zeron"),
                 Some(Path::new("/home/u")),
                 "linux",
             ),
             InstallKind::Managed {
-                app_root: PathBuf::from("/home/u/.zeron/app")
+                app_root: PathBuf::from("/home/u/.coder-desktop/app")
             }
         );
         assert_eq!(
@@ -1830,16 +1880,16 @@ mod tests {
     #[test]
     fn systemd_service_cgroup_is_recognized() {
         assert!(in_zeron_service_cgroup(
-            "0::/user.slice/user-1000.slice/user@1000.service/app.slice/zeron.service\n"
+            "0::/user.slice/user-1000.slice/user@1000.service/app.slice/coder-desktop.service\n"
         ));
         assert!(in_zeron_service_cgroup(
-            "12:pids:/user.slice/user@1000.service/zeron.service\n1:name=systemd:/x\n"
+            "12:pids:/user.slice/user@1000.service/coder-desktop.service\n1:name=systemd:/x\n"
         ));
         assert!(!in_zeron_service_cgroup(
             "0::/user.slice/user-1000.slice/session-3.scope\n"
         ));
         assert!(!in_zeron_service_cgroup(
-            "0::/user.slice/user@1000.service/app.slice/zeron.service.d\n"
+            "0::/user.slice/user@1000.service/app.slice/coder-desktop.service.d\n"
         ));
     }
 

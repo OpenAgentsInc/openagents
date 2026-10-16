@@ -169,7 +169,7 @@ pub fn app_menus() -> Vec<Menu> {
     // what we pass, but gpui still wants a name.
     let mut app_items = vec![
         // The native AppKit about panel; no equivalent elsewhere yet.
-        MenuItem::action("About Zeron", About).disabled(!macos),
+        MenuItem::action(format!("About {}", coder_brand::NAME), About).disabled(!macos),
         // Sparkle's placement: directly under About. Other platforms reach
         // the same check from the account menu.
         MenuItem::action("Check for Updates…", CheckForUpdates),
@@ -181,16 +181,19 @@ pub fn app_menus() -> Vec<Menu> {
         app_items.extend([
             MenuItem::os_submenu("Services", SystemMenuType::Services),
             MenuItem::separator(),
-            MenuItem::action("Hide Zeron", Hide),
+            MenuItem::action(format!("Hide {}", coder_brand::NAME), Hide),
             MenuItem::action("Hide Others", HideOthers),
             MenuItem::action("Show All", ShowAll),
             MenuItem::separator(),
         ]);
     }
-    app_items.push(MenuItem::action("Quit Zeron", Quit));
+    app_items.push(MenuItem::action(
+        format!("Quit {}", coder_brand::NAME),
+        Quit,
+    ));
 
     let mut menus = vec![
-        Menu::new("Zeron").items(app_items),
+        Menu::new(coder_brand::NAME).items(app_items),
         // Standard clipboard verbs tied to the composer's existing actions via
         // their native selectors (`OsAction` → cut:/copy:/paste:/selectAll:),
         // so the OS Edit menu routes through the responder chain to the focused
@@ -382,33 +385,40 @@ mod tests {
 
 // Standard AppKit about panel. Icon and copyright still come from the bundle's
 // Info.plist; name and version are passed explicitly so unbundled dev builds
-// (`cargo run`) show "Zeron" and the crate version instead of the process name.
+// (`cargo run`) show "Coder" and the crate version instead of the process name.
 #[cfg(target_os = "macos")]
 mod about_panel {
     use objc2::MainThreadMarker;
     use objc2::runtime::AnyObject;
     use objc2_app_kit::{
         NSAboutPanelOptionApplicationName, NSAboutPanelOptionApplicationVersion,
-        NSAboutPanelOptionVersion, NSApplication,
+        NSAboutPanelOptionCredits, NSAboutPanelOptionVersion, NSApplication,
     };
-    use objc2_foundation::{NSDictionary, NSString};
+    use objc2_foundation::{NSAttributedString, NSDictionary, NSString};
 
     pub(super) fn show() {
         let Some(mtm) = MainThreadMarker::new() else {
             return;
         };
-        let name = NSString::from_str("Zeron");
+        let name = NSString::from_str(coder_brand::NAME);
         let version = NSString::from_str(env!("CARGO_PKG_VERSION"));
         // Empty build version: CFBundleVersion equals the marketing version, and
         // AppKit would otherwise render "Version 0.2.61 (0.2.61)".
         let build = NSString::from_str("");
-        let values: [&AnyObject; 3] = [&name, &version, &build];
+        // Coder Desktop: the formal name and the upstream attribution.
+        let credits = NSAttributedString::from_nsstring(&NSString::from_str(&format!(
+            "{}\n{}",
+            coder_brand::LONG_NAME,
+            coder_brand::ATTRIBUTION
+        )));
+        let values: [&AnyObject; 4] = [&name, &version, &build, &credits];
         unsafe {
             let options = NSDictionary::from_slices(
                 &[
                     NSAboutPanelOptionApplicationName,
                     NSAboutPanelOptionApplicationVersion,
                     NSAboutPanelOptionVersion,
+                    NSAboutPanelOptionCredits,
                 ],
                 &values,
             );
