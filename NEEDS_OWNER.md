@@ -2549,3 +2549,13 @@ approved limits, required controls, and review triggers in #11761; keep legal
 advice and customer details private. Complete this before enabling LND
 third-party payouts or any mainnet asset trial. No legal outcome or spending
 approval was recorded during implementation.
+## Qualify production Computers access with the dedicated test account (#11801)
+
+Restore the dedicated production test credential at
+`~/work/.secrets/openagents-test-account.env`, or provide its approved Secret
+Manager location. That credential is missing on this machine. If needed, add
+only that account to the existing cloud access list. Keep general access gated.
+After the qualified image is promoted, check create, observe, stop, wake, and
+delete through `https://api.openagents.com/v1/computers`, then confirm the test
+computer is gone. Never substitute the owner's account or computers. The issue
+records staging qualification and the exact deployed images.

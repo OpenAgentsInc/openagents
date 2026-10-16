@@ -75,6 +75,18 @@ async fn provider(State(state): State<Arc<Native>>, request: Request) -> Respons
     );
     let path = request.uri().path().to_owned();
     let method = request.method().to_string();
+    // Cloud Run rejects bodyless POSTs without an explicit zero length,
+    // before the request reaches the application.
+    if method == "POST"
+        && path != "/v1/computers"
+        && request
+            .headers()
+            .get(header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            != Some("0")
+    {
+        return (StatusCode::LENGTH_REQUIRED, Json(json!({"message":CANARY}))).into_response();
+    }
     state
         .calls
         .lock()
@@ -122,6 +134,7 @@ async fn serve(router: Router) -> (String, tokio::task::JoinHandle<()>) {
 #[tokio::test]
 async fn public_lifecycle_uses_current_account_authority_and_keeps_service_credentials_private() {
     let dir = tempfile::tempdir().unwrap();
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let state = Arc::new(Native::default());
     let (auth_base, auth_task) = serve(
         Router::new()

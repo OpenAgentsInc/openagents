@@ -135,6 +135,7 @@ impl Client {
         account: &str,
         body: Option<Value>,
     ) -> Result<(u16, Value), String> {
+        let empty_post = method == reqwest::Method::POST && body.is_none();
         let mut request = self
             .http
             .request(method, format!("{}{path}", self.base))
@@ -142,6 +143,9 @@ impl Client {
             .header("X-OpenAgents-Account", account);
         if let Some(body) = body {
             request = request.json(&body);
+        } else if empty_post {
+            // Cloud Run requires a length even when a POST has no body.
+            request = request.header(reqwest::header::CONTENT_LENGTH, "0");
         }
         let mut response = request
             .send()

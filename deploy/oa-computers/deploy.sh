@@ -27,7 +27,6 @@ esac
 [[ $sdk_commit =~ ^[0-9a-f]{40}$ ]] || { echo 'Use a full commit ID.' >&2; exit 2; }
 git fetch -q origin main
 git merge-base --is-ancestor "$sdk_commit" origin/main || { echo 'Push the commit to main before deploying.' >&2; exit 1; }
-git merge-base --is-ancestor origin/main "$sdk_commit" || { echo 'Rebase onto current main before deploying.' >&2; exit 1; }
 if [[ $sdk_environment == staging ]]; then
  if ! gcloud secrets describe "$sdk_token" --project "$sdk_project" >/dev/null 2>&1; then
   python3 -c 'import secrets; print(secrets.token_urlsafe(48), end="")' |
@@ -37,12 +36,18 @@ if [[ $sdk_environment == staging ]]; then
   --member="serviceAccount:$sdk_runtime" --role=roles/secretmanager.secretAccessor >/dev/null
 fi
 
-if ! gcloud artifacts docker images describe "$sdk_repo:$sdk_commit" --project "$sdk_project" >/dev/null 2>&1; then
+sdk_digest=$(gcloud artifacts docker images describe "$sdk_repo:$sdk_commit" --project "$sdk_project" \
+ --format='value(image_summary.digest)' 2>/dev/null || true)
+if [[ -z $sdk_digest ]]; then
+ git merge-base --is-ancestor origin/main "$sdk_commit" || { echo 'Rebase onto current main before building.' >&2; exit 1; }
  gcloud builds submit --no-source --config deploy/oa-computers/cloudbuild.yaml \
   --substitutions "_COMMIT=$sdk_commit" --project "$sdk_project" --region "$sdk_region" \
   --service-account "projects/$sdk_project/serviceAccounts/oa-mvp-automation@$sdk_project.iam.gserviceaccount.com" \
   --gcs-log-dir "gs://openagentsgemini-oa-mvp-cloud-build-logs/$sdk_service"
+ sdk_digest=$(gcloud artifacts docker images describe "$sdk_repo:$sdk_commit" --project "$sdk_project" \
+  --format='value(image_summary.digest)')
 fi
+[[ $sdk_digest =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'The built image digest is unavailable.' >&2; exit 1; }
 
 # A newer deployment must not be replaced by an older checkout after the build.
 sdk_previous=$(gcloud run services describe "$sdk_service" --project "$sdk_project" --region "$sdk_region" \
@@ -60,7 +65,7 @@ if [[ -n $sdk_previous ]]; then
 fi
 
 gcloud run deploy "$sdk_service" --project "$sdk_project" --region "$sdk_region" \
- --image "$sdk_repo:$sdk_commit" --service-account "$sdk_runtime" \
+ --image "$sdk_repo@$sdk_digest" --service-account "$sdk_runtime" \
  --add-cloudsql-instances "$sdk_project:$sdk_region:$sdk_database" \
  --update-secrets "OA_COMPUTERS_DATABASE_URL=$sdk_dsn:latest,OA_COMPUTERS_TOKEN=$sdk_token:latest,BOAT_API_KEY=oa-boat-api-key:latest" \
  --update-env-vars 'OA_COMPUTERS_DRIVER=boat,BOAT_API_BASE=https://oa-boat-157437760789.us-central1.run.app/api/v1' \
@@ -69,4 +74,7 @@ gcloud run deploy "$sdk_service" --project "$sdk_project" --region "$sdk_region"
 sdk_running=$(gcloud run services describe "$sdk_service" --project "$sdk_project" --region "$sdk_region" \
  --format='value(spec.template.metadata.labels.openagents-commit)')
 [[ $sdk_running == "$sdk_commit" ]] || { echo 'The running service commit does not match.' >&2; exit 1; }
-printf '%s is running %s\n' "$sdk_service" "$sdk_running"
+sdk_running_image=$(gcloud run services describe "$sdk_service" --project "$sdk_project" --region "$sdk_region" \
+ --format='value(spec.template.spec.containers[0].image)')
+[[ $sdk_running_image == "$sdk_repo@$sdk_digest" ]] || { echo 'The running service image does not match.' >&2; exit 1; }
+printf '%s is running %s (%s)\n' "$sdk_service" "$sdk_running" "$sdk_digest"

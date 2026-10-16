@@ -921,7 +921,7 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
                 path = os.path.join(home, "install.sh")
                 with open(path, "wb") as f:
                     f.write(script.body)
-                env = {"HOME": home, "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+                env = {"HOME": home, "PATH": os.environ.get("PATH", os.defpath),
                        "CODER_NO_PATH_UPDATE": "1", "CODER_BIN_DIR": os.path.join(home, "bin")}
                 run_ = subprocess.run(["sh", path], env=env, capture_output=True, text=True, timeout=600)
                 coder = os.path.join(home, "bin", "coder")

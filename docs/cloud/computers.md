@@ -74,8 +74,10 @@ create transactions. Paging is by `(created_at, id)` under the same owner.
 
 Staging uses its own `oa-computers-staging` service, staging account database,
 and `oa-computers-staging-token`. Deploy the appropriate lifecycle service from
-current pushed main with `deploy/oa-computers/deploy.sh staging|production COMMIT`;
-the helper verifies the running commit and refuses to replace a newer build.
+current pushed main with `deploy/oa-computers/deploy.sh staging|production COMMIT`.
+New builds require current main. Promotion reuses the exact image digest after
+main advances. The helper verifies the running commit and image and refuses to
+replace a newer build.
 The web staging renderer points to that isolated service. Public gating and
 account isolation stay the same in staging and production.
 
