@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build and run an isolated macOS development bundle. Zeron.app may remain
-# open: this bundle has a separate LaunchServices/TCC identity, data directory,
-# and engine IPC port.
+# Build and run an isolated Coder Desktop development bundle ("Coder Dev.app").
+# Coder.app, Zeron.app and Zeron Dev.app may remain open: this bundle has its
+# own LaunchServices/TCC identity, data directory, and engine IPC port.
 # Set ZERON_DEV_BUILD_ONLY=1 to prepare the signed bundle without launching it.
 
 set -euo pipefail
@@ -10,14 +10,16 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 command -v cargo >/dev/null 2>&1 || PATH="$HOME/.cargo/bin:$PATH"
 VERSION="$(grep -m1 '^version' "$ROOT/Cargo.toml" | sed 's/.*"\(.*\)".*/\1/')"
 DEV_ROOT="$ROOT/target/macos-dev"
-APP="$DEV_ROOT/Zeron Dev.app"
+APP="$DEV_ROOT/Coder Dev.app"
 CONTENTS="$APP/Contents"
+# The dev bundle keeps the checkout-local data the fork has used since it was
+# created (it holds the owner's dev sessions); never a real install's data.
 DATA_DIR="${ZERON_DEV_DATA_DIR:-$DEV_ROOT/data}"
 IPC_PORT="${ZERON_DEV_IPC_PORT:-49777}"
-BUNDLE_ID="${ZERON_DEV_BUNDLE_ID:-sh.zeron.app.dev}"
+BUNDLE_ID="${ZERON_DEV_BUNDLE_ID:-com.openagents.coder.desktop.dev}"
 
 if pgrep -f -x "$CONTENTS/MacOS/zeron" >/dev/null 2>&1; then
-  echo "Zeron Dev is already running. Quit it before rebuilding the signed bundle." >&2
+  echo "Coder Dev is already running. Quit it before rebuilding the signed bundle." >&2
   exit 1
 fi
 
@@ -38,16 +40,9 @@ fi
 mkdir -p "$CONTENTS/Resources/licenses"
 cp "$ROOT/crates/voice/NOTICE.md" "$CONTENTS/Resources/licenses"/parakeet-v3.txt
 
-if [[ ! -f "$CONTENTS/Resources/zeron.icns" ]]; then
-  ICONSET="$DEV_ROOT/zeron-dev.iconset"
-  mkdir -p "$ICONSET"
-  for size in 16 32 128 256 512; do
-    sips -z "$size" "$size" "$ROOT/dist/macos/icon-1024.png" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
-    retina=$((size * 2))
-    sips -z "$retina" "$retina" "$ROOT/dist/macos/icon-1024.png" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
-  done
-  iconutil -c icns "$ICONSET" -o "$CONTENTS/Resources/zeron.icns"
-fi
+# Coder Desktop icon, generated from dist/coder/icon-1024.png (the OpenAgents
+# app icon); see FORK.md.
+install -m 644 "$ROOT/dist/coder/coder.icns" "$CONTENTS/Resources/coder.icns"
 
 # A real Apple Development identity gives TCC a stable signing requirement
 # across rebuilds. Set ZERON_DEV_CODESIGN_IDENTITY explicitly when more than
@@ -68,7 +63,7 @@ if [[ "${ZERON_DEV_BUILD_ONLY:-0}" == "1" ]]; then
   exit 0
 fi
 
-echo "running Zeron Dev (bundle $BUNDLE_ID, data $DATA_DIR, IPC $IPC_PORT)" >&2
+echo "running Coder Dev (bundle $BUNDLE_ID, data $DATA_DIR, IPC $IPC_PORT)" >&2
 # LaunchServices must own the process. Launching Contents/MacOS/zeron directly
 # makes TCC attribute Screen Recording to the terminal (Warp, Terminal, etc.).
 # -W keeps the script attached until the app exits. Runtime logs remain in the

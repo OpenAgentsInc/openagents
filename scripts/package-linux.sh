@@ -32,7 +32,9 @@ rm -rf "$STAGE" "$TARBALL"
 mkdir -p "$STAGE"
 install -m 755 "$BIN" "$STAGE/zeron"
 install -m 644 "$ROOT/dist/zeron.desktop" "$STAGE/zeron.desktop"
-install -m 644 "$ROOT/dist/zeron.png" "$STAGE/zeron.png"
+# Coder Desktop: the Coder icon under the inherited file name. The rest of the
+# Linux layout is still Zeron's (~/.zeron/app, zeron.desktop); see FORK.md.
+install -m 644 "$ROOT/dist/coder/coder.png" "$STAGE/zeron.png"
 install -m 644 "$ROOT/LICENSE" "$ROOT/THIRD_PARTY_NOTICES.md" "$STAGE/"
 mkdir -p "$STAGE/licenses/fonts"
 cp "$ROOT/crates/ui/assets/fonts/licenses/"* "$STAGE/licenses/fonts/"
