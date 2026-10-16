@@ -1,0 +1,1559 @@
+{
+  "format": "openagents.route-inventory.v1",
+  "scope": "Literal web mounts and gateway audience declarations; not a public schema or permission to expose a route. Constants/dynamic mounts remain in owning route tests.",
+  "web_literal_mounts": [
+    {
+      "path": "/v1/openapi.json",
+      "source": "crates/openagents-web/src/agent_ready.rs",
+      "line": 108
+    },
+    {
+      "path": "/v1/connections/google/gmail/drafts/{id}",
+      "source": "crates/openagents-web/src/connections/mail.rs",
+      "line": 62
+    },
+    {
+      "path": "/v1/connections/google/projects/{project}",
+      "source": "crates/openagents-web/src/connections/mail.rs",
+      "line": 66
+    },
+    {
+      "path": "/v1/projects/{id}/sources",
+      "source": "crates/openagents-web/src/connections/sources.rs",
+      "line": 37
+    },
+    {
+      "path": "/v1/projects/{id}/sources/{source}",
+      "source": "crates/openagents-web/src/connections/sources.rs",
+      "line": 38
+    },
+    {
+      "path": "/v1/history",
+      "source": "crates/openagents-web/src/history_api.rs",
+      "line": 21
+    },
+    {
+      "path": "/v1/history/projects",
+      "source": "crates/openagents-web/src/history_api.rs",
+      "line": 22
+    },
+    {
+      "path": "/v1/history/{id}/messages",
+      "source": "crates/openagents-web/src/history_api.rs",
+      "line": 23
+    },
+    {
+      "path": "/v1/history/{id}/files/{file}",
+      "source": "crates/openagents-web/src/history_api.rs",
+      "line": 24
+    },
+    {
+      "path": "/v1/history/{id}/captures/{capture}",
+      "source": "crates/openagents-web/src/history_api.rs",
+      "line": 25
+    },
+    {
+      "path": "/v1/computers/{name}/mac-jobs",
+      "source": "crates/openagents-web/src/mac_jobs.rs",
+      "line": 108
+    },
+    {
+      "path": "/v1/computers/{name}/mac-jobs/{id}",
+      "source": "crates/openagents-web/src/mac_jobs.rs",
+      "line": 109
+    },
+    {
+      "path": "/v1/computers/{name}/mac-jobs/{id}/artifacts/{file}",
+      "source": "crates/openagents-web/src/mac_jobs.rs",
+      "line": 110
+    },
+    {
+      "path": "/v1/mac-jobs",
+      "source": "crates/openagents-web/src/mac_jobs.rs",
+      "line": 114
+    },
+    {
+      "path": "/v1/mac-jobs/macs",
+      "source": "crates/openagents-web/src/mac_jobs.rs",
+      "line": 115
+    },
+    {
+      "path": "/v1/mac-jobs/events",
+      "source": "crates/openagents-web/src/mac_jobs.rs",
+      "line": 116
+    },
+    {
+      "path": "/v1/mac-jobs/{id}",
+      "source": "crates/openagents-web/src/mac_jobs.rs",
+      "line": 117
+    },
+    {
+      "path": "/v1/mac-jobs/{id}/cancel",
+      "source": "crates/openagents-web/src/mac_jobs.rs",
+      "line": 118
+    },
+    {
+      "path": "/v1/mac-jobs/{id}/artifacts/{file}",
+      "source": "crates/openagents-web/src/mac_jobs.rs",
+      "line": 119
+    },
+    {
+      "path": "/v1/computers/{name}/runs",
+      "source": "crates/openagents-web/src/own_runs.rs",
+      "line": 96
+    },
+    {
+      "path": "/v1/computers/{name}/runs/{id}",
+      "source": "crates/openagents-web/src/own_runs.rs",
+      "line": 97
+    },
+    {
+      "path": "/v1/own-runs",
+      "source": "crates/openagents-web/src/own_runs.rs",
+      "line": 98
+    },
+    {
+      "path": "/v1/own-runs/capacity",
+      "source": "crates/openagents-web/src/own_runs.rs",
+      "line": 99
+    },
+    {
+      "path": "/v1/own-runs/{id}",
+      "source": "crates/openagents-web/src/own_runs.rs",
+      "line": 100
+    },
+    {
+      "path": "/v1/own-runs/{id}/cancel",
+      "source": "crates/openagents-web/src/own_runs.rs",
+      "line": 101
+    },
+    {
+      "path": "/v1/threads/{id}/share",
+      "source": "crates/openagents-web/src/pages/chat_share.rs",
+      "line": 65
+    },
+    {
+      "path": "/v1/threads",
+      "source": "crates/openagents-web/src/phone_api.rs",
+      "line": 82
+    },
+    {
+      "path": "/v1/threads/{id}",
+      "source": "crates/openagents-web/src/phone_api.rs",
+      "line": 83
+    },
+    {
+      "path": "/v1/threads/{id}/messages",
+      "source": "crates/openagents-web/src/phone_api.rs",
+      "line": 89
+    },
+    {
+      "path": "/v1/threads/{id}/files",
+      "source": "crates/openagents-web/src/phone_api.rs",
+      "line": 93
+    },
+    {
+      "path": "/v1/threads/{id}/files/{file}",
+      "source": "crates/openagents-web/src/phone_api.rs",
+      "line": 99
+    },
+    {
+      "path": "/v1/computers",
+      "source": "crates/openagents-web/src/phone_api.rs",
+      "line": 103
+    },
+    {
+      "path": "/v1/computers/{name}",
+      "source": "crates/openagents-web/src/phone_api.rs",
+      "line": 109
+    },
+    {
+      "path": "/v1/computers/{name}/stop",
+      "source": "crates/openagents-web/src/phone_api.rs",
+      "line": 113
+    },
+    {
+      "path": "/v1/computers/{name}/wake",
+      "source": "crates/openagents-web/src/phone_api.rs",
+      "line": 117
+    },
+    {
+      "path": "/v1/computers/{name}/sync",
+      "source": "crates/openagents-web/src/phone_api.rs",
+      "line": 121
+    },
+    {
+      "path": "/v1/computers/{name}/activity",
+      "source": "crates/openagents-web/src/phone_api.rs",
+      "line": 122
+    },
+    {
+      "path": "/v1/agents",
+      "source": "crates/openagents-web/src/phone_api.rs",
+      "line": 123
+    },
+    {
+      "path": "/v1/agents/actions",
+      "source": "crates/openagents-web/src/phone_api.rs",
+      "line": 124
+    },
+    {
+      "path": "/v1/projects/{id}",
+      "source": "crates/openagents-web/src/projects/api.rs",
+      "line": 66
+    },
+    {
+      "path": "/v1/projects/{id}/repositories",
+      "source": "crates/openagents-web/src/projects/api.rs",
+      "line": 67
+    },
+    {
+      "path": "/v1/projects/{id}/repositories/{owner}/{name}",
+      "source": "crates/openagents-web/src/projects/api.rs",
+      "line": 71
+    },
+    {
+      "path": "/v1/files/uploads",
+      "source": "crates/openagents-web/src/projects/files/uploads.rs",
+      "line": 122
+    },
+    {
+      "path": "/v1/files/uploads/{id}",
+      "source": "crates/openagents-web/src/projects/files/uploads.rs",
+      "line": 126
+    },
+    {
+      "path": "/v1/files/uploads/{id}/parts/{part}",
+      "source": "crates/openagents-web/src/projects/files/uploads.rs",
+      "line": 127
+    },
+    {
+      "path": "/v1/files/uploads/{id}/complete",
+      "source": "crates/openagents-web/src/projects/files/uploads.rs",
+      "line": 131
+    },
+    {
+      "path": "/v1/files",
+      "source": "crates/openagents-web/src/projects/files.rs",
+      "line": 73
+    },
+    {
+      "path": "/v1/files/{id}",
+      "source": "crates/openagents-web/src/projects/files.rs",
+      "line": 77
+    },
+    {
+      "path": "/v1/files/{id}/content",
+      "source": "crates/openagents-web/src/projects/files.rs",
+      "line": 78
+    },
+    {
+      "path": "/v1/projects/{id}/attachments",
+      "source": "crates/openagents-web/src/projects/files.rs",
+      "line": 79
+    },
+    {
+      "path": "/v1/projects/{id}/attachments/{attachment}",
+      "source": "crates/openagents-web/src/projects/files.rs",
+      "line": 85
+    },
+    {
+      "path": "/v1/projects/{id}/documents/{doc}",
+      "source": "crates/openagents-web/src/projects/files.rs",
+      "line": 89
+    },
+    {
+      "path": "/v1/projects/{id}/members",
+      "source": "crates/openagents-web/src/projects/members.rs",
+      "line": 40
+    },
+    {
+      "path": "/v1/projects/{id}/members/{member}",
+      "source": "crates/openagents-web/src/projects/members.rs",
+      "line": 41
+    },
+    {
+      "path": "/v1/projects/{id}/invitations",
+      "source": "crates/openagents-web/src/projects/members.rs",
+      "line": 45
+    },
+    {
+      "path": "/v1/projects/{id}/leave",
+      "source": "crates/openagents-web/src/projects/members.rs",
+      "line": 46
+    },
+    {
+      "path": "/v1/projects/{id}/access",
+      "source": "crates/openagents-web/src/projects/members.rs",
+      "line": 47
+    },
+    {
+      "path": "/v1/projects/invitations/preview",
+      "source": "crates/openagents-web/src/projects/members.rs",
+      "line": 48
+    },
+    {
+      "path": "/v1/projects/invitations/accept",
+      "source": "crates/openagents-web/src/projects/members.rs",
+      "line": 49
+    },
+    {
+      "path": "/v1/work/{id}",
+      "source": "crates/openagents-web/src/work_runs.rs",
+      "line": 120
+    },
+    {
+      "path": "/v1/work/{id}/events",
+      "source": "crates/openagents-web/src/work_runs.rs",
+      "line": 121
+    },
+    {
+      "path": "/v1/work/{id}/cancel",
+      "source": "crates/openagents-web/src/work_runs.rs",
+      "line": 122
+    },
+    {
+      "path": "/v1/work-hosts/{name}/claim",
+      "source": "crates/openagents-web/src/work_runs.rs",
+      "line": 123
+    },
+    {
+      "path": "/v1/work-hosts/{name}/runs/{id}",
+      "source": "crates/openagents-web/src/work_runs.rs",
+      "line": 124
+    }
+  ],
+  "web_constant_mounts": [
+    {
+      "path": "/v1/schedules",
+      "source": "crates/openagents-web/src/account_schedules.rs",
+      "constant": "API"
+    },
+    {
+      "path": "/v1/schedules/sync",
+      "source": "crates/openagents-web/src/account_schedules.rs",
+      "constant": "SYNC"
+    },
+    {
+      "path": "/v1/threads/synced",
+      "source": "crates/openagents-web/src/coder_sync.rs",
+      "constant": "SYNCED"
+    },
+    {
+      "path": "/v1/computers/check-in",
+      "source": "crates/openagents-web/src/coder_sync.rs",
+      "constant": "CHECK_IN"
+    },
+    {
+      "path": "/v1/admin/access/drive-connections",
+      "source": "crates/openagents-web/src/connections/access.rs",
+      "constant": "API"
+    },
+    {
+      "path": "/v1/device/code",
+      "source": "crates/openagents-web/src/device.rs",
+      "constant": "CODE"
+    },
+    {
+      "path": "/v1/device/token",
+      "source": "crates/openagents-web/src/device.rs",
+      "constant": "TOKEN"
+    },
+    {
+      "path": "/v1/device/sign-out",
+      "source": "crates/openagents-web/src/device.rs",
+      "constant": "SIGN_OUT"
+    },
+    {
+      "path": "/v1/projects",
+      "source": "crates/openagents-web/src/projects/api.rs",
+      "constant": "API"
+    },
+    {
+      "path": "/v1/sales",
+      "source": "crates/openagents-web/src/sales_remote.rs",
+      "constant": "PATH"
+    },
+    {
+      "path": "/v1/keys",
+      "source": "crates/openagents-web/src/sign_in_keys.rs",
+      "constant": "API"
+    },
+    {
+      "path": "/v1/keys/{id}",
+      "source": "crates/openagents-web/src/sign_in_keys.rs",
+      "constant": "API_ONE"
+    },
+    {
+      "path": "/v1/work",
+      "source": "crates/openagents-web/src/work_runs.rs",
+      "constant": "PREFIX"
+    }
+  ],
+  "gateway_audience": [
+    {
+      "path": "/v1/responses",
+      "audience": "Public",
+      "domain": "Inference",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/chat/completions",
+      "audience": "Public",
+      "domain": "Inference",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/decisions",
+      "audience": "Public",
+      "domain": "Decisions",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/responses/compact",
+      "audience": "Public",
+      "domain": "Inference",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/responses/{id}",
+      "audience": "Public",
+      "domain": "Inference",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/models",
+      "audience": "Public",
+      "domain": "Catalog",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/rates",
+      "audience": "Public",
+      "domain": "Catalog",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/usage/tokens-served",
+      "audience": "Public",
+      "domain": "Catalog",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/openapi.json",
+      "audience": "Public",
+      "domain": "Catalog",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/key",
+      "audience": "Public",
+      "domain": "Account",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/usage/{request_id}",
+      "audience": "Public",
+      "domain": "Account",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/keys",
+      "audience": "Public",
+      "domain": "Account",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/keys/{key}",
+      "audience": "Public",
+      "domain": "Account",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/keys/{key}/limits",
+      "audience": "Public",
+      "domain": "Account",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/provider-keys",
+      "audience": "Public",
+      "domain": "Account",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/provider-keys/{provider}",
+      "audience": "Public",
+      "domain": "Account",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/account",
+      "audience": "Public",
+      "domain": "Account",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/account/access",
+      "audience": "Public",
+      "domain": "Account",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/keys/{key}/copy",
+      "audience": "Public",
+      "domain": "Account",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/keys/{key}/pause",
+      "audience": "Public",
+      "domain": "Account",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/keys/{key}/resume",
+      "audience": "Public",
+      "domain": "Account",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/keys/{key}/rotate",
+      "audience": "Public",
+      "domain": "Account",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces",
+      "audience": "Public",
+      "domain": "Workspaces",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}",
+      "audience": "Public",
+      "domain": "Workspaces",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/invitations",
+      "audience": "Public",
+      "domain": "Workspaces",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/invitations/{invitation}",
+      "audience": "Public",
+      "domain": "Workspaces",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/invitations/accept",
+      "audience": "Public",
+      "domain": "Workspaces",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/invitations/accept-reviewed",
+      "audience": "Public",
+      "domain": "Workspaces",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/members/{account}",
+      "audience": "Public",
+      "domain": "Workspaces",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/transfer",
+      "audience": "Public",
+      "domain": "Workspaces",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/access",
+      "audience": "Public",
+      "domain": "Workspaces",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/team-policy",
+      "audience": "Public",
+      "domain": "Workspaces",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/sso",
+      "audience": "Public",
+      "domain": "Workspaces",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/sso/links",
+      "audience": "Public",
+      "domain": "Workspaces",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/sso/unlink",
+      "audience": "Public",
+      "domain": "Workspaces",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/sso/sign-in",
+      "audience": "Public",
+      "domain": "Workspaces",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/sso/audit",
+      "audience": "Public",
+      "domain": "Workspaces",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/agents/challenge",
+      "audience": "Public",
+      "domain": "Agents",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/agents/register",
+      "audience": "Public",
+      "domain": "Agents",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/agents/me",
+      "audience": "Public",
+      "domain": "Agents",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/agents/claim",
+      "audience": "Public",
+      "domain": "Agents",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/agents/claimed",
+      "audience": "Public",
+      "domain": "Agents",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/agents/{account}/revoke",
+      "audience": "Public",
+      "domain": "Agents",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/agents/credit",
+      "audience": "Public",
+      "domain": "Agents",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/admin/agents",
+      "audience": "FirstParty",
+      "domain": "Agents",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/usage",
+      "audience": "Public",
+      "domain": "Usage",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/usage/activity",
+      "audience": "Public",
+      "domain": "Usage",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/usage/timeseries",
+      "audience": "Public",
+      "domain": "Usage",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/usage/receipts/{digest}",
+      "audience": "Public",
+      "domain": "Usage",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/usage/export",
+      "audience": "Public",
+      "domain": "Usage",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/balance",
+      "audience": "Public",
+      "domain": "Usage",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/balance",
+      "audience": "Public",
+      "domain": "Usage",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/topups/{door}",
+      "audience": "Public",
+      "domain": "Usage",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/decision-funding/{door}",
+      "audience": "Public",
+      "domain": "Usage",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/budgets",
+      "audience": "Public",
+      "domain": "Usage",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/sessions",
+      "audience": "FirstParty",
+      "domain": "Sessions",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/session",
+      "audience": "FirstParty",
+      "domain": "Sessions",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/sessions/device",
+      "audience": "FirstParty",
+      "domain": "Sessions",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/sessions/device/poll",
+      "audience": "FirstParty",
+      "domain": "Sessions",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/identities/github",
+      "audience": "FirstParty",
+      "domain": "Sessions",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/sessions",
+      "audience": "FirstParty",
+      "domain": "Sessions",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/sessions/{session}",
+      "audience": "FirstParty",
+      "domain": "Sessions",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/sign-in-keys",
+      "audience": "FirstParty",
+      "domain": "Sessions",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/sign-in-keys/{key}",
+      "audience": "FirstParty",
+      "domain": "Sessions",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/recovery",
+      "audience": "FirstParty",
+      "domain": "Sessions",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/recovery/redeem",
+      "audience": "FirstParty",
+      "domain": "Sessions",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/github",
+      "audience": "FirstParty",
+      "domain": "GitHub",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/github/grant",
+      "audience": "FirstParty",
+      "domain": "GitHub",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/github/repositories",
+      "audience": "FirstParty",
+      "domain": "GitHub",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/github/app/grant",
+      "audience": "FirstParty",
+      "domain": "GitHub",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/github/app/refresh",
+      "audience": "FirstParty",
+      "domain": "GitHub",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/github/broker",
+      "audience": "FirstParty",
+      "domain": "GitHub",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/github/git-credential",
+      "audience": "FirstParty",
+      "domain": "GitHub",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/projects",
+      "audience": "FirstParty",
+      "domain": "Projects",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/projects/{id}",
+      "audience": "FirstParty",
+      "domain": "Projects",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/projects/{id}/members",
+      "audience": "FirstParty",
+      "domain": "Projects",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/projects/{id}/members/{member}",
+      "audience": "FirstParty",
+      "domain": "Projects",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/projects/{id}/leave",
+      "audience": "FirstParty",
+      "domain": "Projects",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/projects/{id}/access",
+      "audience": "FirstParty",
+      "domain": "Projects",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/projects/{id}/invitations",
+      "audience": "FirstParty",
+      "domain": "Projects",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/projects/invitations/preview",
+      "audience": "FirstParty",
+      "domain": "Projects",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/projects/invitations/accept",
+      "audience": "FirstParty",
+      "domain": "Projects",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/projects",
+      "audience": "FirstParty",
+      "domain": "Projects",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/projects/{id}",
+      "audience": "FirstParty",
+      "domain": "Projects",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/commercial/{product}",
+      "audience": "FirstParty",
+      "domain": "Billing",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/plugin-reader",
+      "audience": "FirstParty",
+      "domain": "Billing",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/purchase-context/{door}",
+      "audience": "FirstParty",
+      "domain": "Billing",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/plans",
+      "audience": "FirstParty",
+      "domain": "Billing",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/billing/sessions/{checkout}",
+      "audience": "FirstParty",
+      "domain": "Billing",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/billing",
+      "audience": "FirstParty",
+      "domain": "Billing",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/billing/subscribe",
+      "audience": "FirstParty",
+      "domain": "Billing",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/billing/checkout",
+      "audience": "FirstParty",
+      "domain": "Billing",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/billing/portal",
+      "audience": "FirstParty",
+      "domain": "Billing",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/billing/plan",
+      "audience": "FirstParty",
+      "domain": "Billing",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/billing/cancel",
+      "audience": "FirstParty",
+      "domain": "Billing",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/card-funding/{door}",
+      "audience": "FirstParty",
+      "domain": "Billing",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/earnings",
+      "audience": "FirstParty",
+      "domain": "Earnings",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/earnings/{party}",
+      "audience": "FirstParty",
+      "domain": "Earnings",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/earnings/{party}/export",
+      "audience": "FirstParty",
+      "domain": "Earnings",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/earnings/{party}/destination",
+      "audience": "FirstParty",
+      "domain": "Earnings",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/earnings/{party}/payouts/{payout}",
+      "audience": "FirstParty",
+      "domain": "Earnings",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/acquisition",
+      "audience": "FirstParty",
+      "domain": "Referrals",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/referrers",
+      "audience": "FirstParty",
+      "domain": "Referrals",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/attribution/policy",
+      "audience": "FirstParty",
+      "domain": "Referrals",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/attribution",
+      "audience": "FirstParty",
+      "domain": "Referrals",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/attribution/confirm",
+      "audience": "FirstParty",
+      "domain": "Referrals",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/affiliate",
+      "audience": "FirstParty",
+      "domain": "Referrals",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/admin/affiliates",
+      "audience": "FirstParty",
+      "domain": "Referrals",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/referral-terms",
+      "audience": "FirstParty",
+      "domain": "Referrals",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/referral-agreement",
+      "audience": "FirstParty",
+      "domain": "Referrals",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/attribution",
+      "audience": "FirstParty",
+      "domain": "Referrals",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/referrers/{referrer}/lineage",
+      "audience": "FirstParty",
+      "domain": "Referrals",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/referrers/{referrer}",
+      "audience": "FirstParty",
+      "domain": "Referrals",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/referrers/{referrer}/link",
+      "audience": "FirstParty",
+      "domain": "Referrals",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/referrers/{referrer}/migration",
+      "audience": "FirstParty",
+      "domain": "Referrals",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/referrers/{referrer}/migration/accept",
+      "audience": "FirstParty",
+      "domain": "Referrals",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/skills",
+      "audience": "FirstParty",
+      "domain": "Skills",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/skills/{name}",
+      "audience": "FirstParty",
+      "domain": "Skills",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/skills/{name}/versions/{version}",
+      "audience": "FirstParty",
+      "domain": "Skills",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/skills/{name}/versions/{version}/SKILL.md",
+      "audience": "FirstParty",
+      "domain": "Skills",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/skills/{name}/versions/{version}/review",
+      "audience": "FirstParty",
+      "domain": "Skills",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/skills/{name}/versions/{version}/withdraw",
+      "audience": "FirstParty",
+      "domain": "Skills",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/submissions",
+      "audience": "FirstParty",
+      "domain": "Skills",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/submissions/{submission}/appeal",
+      "audience": "FirstParty",
+      "domain": "Skills",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/reports",
+      "audience": "FirstParty",
+      "domain": "Reports",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/reports/export",
+      "audience": "FirstParty",
+      "domain": "Reports",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/reports/evidence",
+      "audience": "FirstParty",
+      "domain": "Reports",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/systemone",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": true
+    },
+    {
+      "path": "/v1/classify",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/jobs",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/jobs/{id}",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/jobs/{id}/cancel",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/jobs/{id}/results",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/jobs/{id}/notify/rotate",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/feedback",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/feedback/{id}",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/updates",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/accounts",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/sessions/github",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/sessions/device/lookup",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/sessions/device/decide",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/sessions/device/paired",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/github/token",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/billing/webhook",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/billing/prepaid/webhook",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/workspaces/{workspace}/billing/reconcile",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/admin/inference/status",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/admin/inference/outcomes",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    }
+  ],
+  "forwarding_rules": [
+    {
+      "pattern": "/v1/responses",
+      "methods": [
+        "get",
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/responses/compact",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/responses/*",
+      "methods": [
+        "delete",
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/chat/completions",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/models",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/models/*",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/rates",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/openapi.json",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/systemone",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/decisions",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/agents/challenge",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/agents/register",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/agents/me",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/agents/claim",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/agents/claimed",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/agents/*/revoke",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/agents/credit",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/key",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/usage/*",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/balance",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/account",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/account/access",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/workspaces",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/workspaces/*",
+      "methods": [
+        "get",
+        "patch"
+      ]
+    },
+    {
+      "pattern": "/v1/workspaces/*/keys/**",
+      "methods": [
+        "delete",
+        "get",
+        "head",
+        "options",
+        "patch",
+        "post",
+        "put",
+        "trace"
+      ]
+    },
+    {
+      "pattern": "/v1/workspaces/*/provider-keys/**",
+      "methods": [
+        "delete",
+        "get",
+        "head",
+        "options",
+        "patch",
+        "post",
+        "put",
+        "trace"
+      ]
+    },
+    {
+      "pattern": "/v1/workspaces/*/invitations/**",
+      "methods": [
+        "delete",
+        "get",
+        "head",
+        "options",
+        "patch",
+        "post",
+        "put",
+        "trace"
+      ]
+    },
+    {
+      "pattern": "/v1/workspaces/*/members/*",
+      "methods": [
+        "delete",
+        "patch"
+      ]
+    },
+    {
+      "pattern": "/v1/workspaces/*/transfer",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/workspaces/*/access",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/workspaces/*/team-policy",
+      "methods": [
+        "get",
+        "put"
+      ]
+    },
+    {
+      "pattern": "/v1/workspaces/*/sso/**",
+      "methods": [
+        "delete",
+        "get",
+        "head",
+        "options",
+        "patch",
+        "post",
+        "put",
+        "trace"
+      ]
+    },
+    {
+      "pattern": "/v1/workspaces/*/usage/**",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/workspaces/*/balance",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/workspaces/*/topups/*",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/workspaces/*/decision-funding/*",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/workspaces/*/budgets",
+      "methods": [
+        "get",
+        "put"
+      ]
+    },
+    {
+      "pattern": "/v1/workspaces/*/audit",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/invitations/accept",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/invitations/accept-reviewed",
+      "methods": [
+        "post"
+      ]
+    }
+  ]
+}

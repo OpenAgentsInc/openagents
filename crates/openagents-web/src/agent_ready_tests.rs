@@ -597,3 +597,56 @@ async fn the_homepage_has_one_heading_a_contact_and_links_to_llms_txt() {
     }
     assert!(html.contains("\"contactPoint\""));
 }
+
+#[tokio::test]
+async fn combined_reference_has_one_https_base_and_unique_public_operations() {
+    let root = tempfile::tempdir().unwrap();
+    let gateway = axum::Router::new().route(
+        "/openapi.json",
+        axum::routing::get(|| async {
+            axum::Json(
+                json!({"openapi":"3.1.0", "servers":[{"url":"http://api.openagents.com/v1"}],
+                "paths":{
+                    "/models":{"get":{"operationId":"listModels"}},
+                    "/account":{"get":{"operationId":"getAccount"}},
+                    "/sessions/device/decide":{"post":{"operationId":"internalApproval"}}
+                }}),
+            )
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let task = tokio::spawn(async move { axum::serve(listener, gateway).await.unwrap() });
+    let mut config = Config::development(root.path().join("tasks"));
+    config.public_hosts = vec!["openagents.com".into()];
+    config.api_host = Some("api.openagents.com".into());
+    config.inference = Some(std::sync::Arc::new(
+        upstream::Upstream::new(&format!("http://{addr}")).unwrap(),
+    ));
+    let app = router(config);
+    for (host, path) in [
+        ("api.openagents.com", "/v1/openapi.json"),
+        ("openagents.com", "/openapi.json"),
+        ("openagents.com", "/api/v1/openapi.json"),
+    ] {
+        let (status, headers, body) = send(
+            app.clone(),
+            Request::builder()
+                .uri(path)
+                .header(header::HOST, host)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{path}: {body}");
+        assert_eq!(headers[header::ACCESS_CONTROL_ALLOW_ORIGIN], "*");
+        let doc: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(doc["servers"][0]["url"], "https://api.openagents.com");
+        assert!(doc["paths"]["/v1/models"]["get"].is_object());
+        assert!(doc["paths"]["/v1/account"]["get"].is_object());
+        assert!(doc["paths"].get("/account").is_none());
+        assert!(doc["paths"].get("/v1/sessions/device/decide").is_none());
+        assert_eq!(doc["x-openagents-reference"]["coverage"], "partial");
+    }
+    task.abort();
+}

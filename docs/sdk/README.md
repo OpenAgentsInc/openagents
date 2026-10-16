@@ -251,3 +251,8 @@ Additional generated product clients live only in an explicitly approved
 location. The historical `openagents-ai` reference does not authorize reviving
 that repository or publishing packages. These decisions do not prevent the
 first Rust client and public API from being implemented and exercised.
+
+The [public route inventory](public-routes.md) distinguishes verified schemas,
+implemented gaps, gated/internal routes, and separately served API families.
+Its manual drift checks keep the combined public reference tied to the front
+without delaying the independent Computers delivery.

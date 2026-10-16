@@ -119,27 +119,98 @@ pub fn document() -> Value {
     document
 }
 
-/// Add the app's implemented operations without replacing unrelated gateway routes.
-pub(crate) fn extend(document: &mut Value) {
+/// Compose the web front's public reference. Gateway paths are relative to `/v1`;
+/// app paths already include it. Filter forwarding operations before merging.
+pub(crate) fn extend(document: &mut Value) -> Result<(), &'static str> {
     let app = self::document();
-    for section in ["paths", "components"] {
-        if !document[section].is_object() {
-            document[section] = json!({});
+    let mut paths = serde_json::Map::new();
+    if let Some(upstream) = document["paths"].as_object() {
+        for (path, item) in upstream {
+            let path = if path.starts_with("/v1/") {
+                path.clone()
+            } else {
+                format!("/v1{path}")
+            };
+            let Some(mut item) = item.as_object().cloned() else {
+                return Err("Invalid path item");
+            };
+            let mut operations = 0;
+            item.retain(|method, _| {
+                if !is_method(method) {
+                    return true;
+                }
+                let allowed = axum::http::Method::from_bytes(method.to_uppercase().as_bytes())
+                    .is_ok_and(|method| crate::api_alias::forwards(&method, &path, false));
+                operations += usize::from(allowed);
+                allowed
+            });
+            if operations != 0 && paths.insert(path, Value::Object(item)).is_some() {
+                return Err("Duplicate public path");
+            }
         }
     }
-    document["paths"]
-        .as_object_mut()
-        .unwrap()
-        .extend(app["paths"].as_object().unwrap().clone());
+    for (path, item) in app["paths"].as_object().unwrap() {
+        // The front's account handler intentionally replaces the gateway GET.
+        // Preserve any unrelated method on a path shared by both owners.
+        let entry = paths.entry(path.clone()).or_insert_with(|| json!({}));
+        entry
+            .as_object_mut()
+            .ok_or("Invalid path item")?
+            .extend(item.as_object().unwrap().clone());
+    }
+    document["paths"] = Value::Object(paths);
+    if !document["components"].is_object() {
+        document["components"] = json!({});
+    }
     for section in ["schemas", "securitySchemes"] {
         if !document["components"][section].is_object() {
             document["components"][section] = json!({});
         }
-        document["components"][section]
-            .as_object_mut()
-            .unwrap()
-            .extend(app["components"][section].as_object().unwrap().clone());
+        let entries = document["components"][section].as_object_mut().unwrap();
+        for (name, value) in app["components"][section].as_object().unwrap() {
+            if entries.get(name).is_some_and(|previous| previous != value) {
+                return Err("Conflicting public component");
+            }
+            entries.insert(name.clone(), value.clone());
+        }
     }
+    validate_operations(document)?;
+    document["x-openagents-reference"] = json!({
+        "coverage": "partial",
+        "inventory": "https://github.com/OpenAgentsInc/openagents/blob/main/docs/sdk/public-routes.md",
+        "description": "Only qualified public operations are described. The inventory names uncovered, gated, separately served, and internal families. Missing schemas do not imply missing handlers."
+    });
+    Ok(())
+}
+
+fn is_method(value: &str) -> bool {
+    matches!(
+        value,
+        "get" | "post" | "put" | "patch" | "delete" | "head" | "options" | "trace"
+    )
+}
+
+fn validate_operations(document: &Value) -> Result<(), &'static str> {
+    let mut ids = std::collections::BTreeSet::new();
+    for item in document["paths"]
+        .as_object()
+        .ok_or("Missing paths")?
+        .values()
+    {
+        for (method, operation) in item.as_object().ok_or("Invalid path item")? {
+            if !is_method(method) {
+                continue;
+            }
+            let id = operation["operationId"]
+                .as_str()
+                .filter(|id| !id.is_empty())
+                .ok_or("Missing operation ID")?;
+            if !ids.insert(id) {
+                return Err("Duplicate operation ID");
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -153,9 +224,69 @@ mod tests {
             fixture,
             "regenerate with cargo run -p openagents-web --example app_openapi"
         );
-        let mut gateway = serde_json::json!({"paths": {"/v1/models": {"get": {}}}});
-        super::extend(&mut gateway);
+        let mut gateway =
+            serde_json::json!({"paths": {"/v1/models": {"get": {"operationId":"listModels"}}}});
+        super::extend(&mut gateway).unwrap();
         assert!(gateway["paths"]["/v1/models"].is_object());
         assert!(gateway["paths"].get("/v1/session").is_none());
+    }
+    #[test]
+    fn composition_uses_one_path_base_and_one_account_operation() {
+        let mut document = serde_json::json!({"paths": {
+            "/models": {"get": {"operationId":"listModels"}},
+            "/account": {"get": {"operationId":"getAccount", "description":"gateway"}},
+            "/sessions/device/decide": {"post": {"operationId":"internalApproval"}},
+            "/admin/inference/status": {"get": {"operationId":"operatorStatus"}},
+            "/accounts": {"post": {"operationId":"operatorSignup"}},
+            "/not-public": {"get": {"operationId":"notPublic"}}
+        }});
+        super::extend(&mut document).unwrap();
+        assert!(document["paths"].get("/models").is_none());
+        assert!(document["paths"]["/v1/models"]["get"].is_object());
+        assert_eq!(
+            document["paths"]["/v1/account"]["get"]["operationId"],
+            "getAccount"
+        );
+        assert_ne!(
+            document["paths"]["/v1/account"]["get"]["description"],
+            "gateway"
+        );
+        assert!(
+            document["paths"]
+                .get("/v1/sessions/device/decide")
+                .is_none()
+        );
+        assert!(
+            document["paths"]
+                .get("/v1/admin/inference/status")
+                .is_none()
+        );
+        assert!(document["paths"].get("/v1/accounts").is_none());
+        assert!(document["paths"].get("/v1/not-public").is_none());
+        assert_eq!(document["x-openagents-reference"]["coverage"], "partial");
+    }
+
+    #[test]
+    fn duplicate_missing_or_conflicting_contracts_fail_closed() {
+        for paths in [
+            serde_json::json!({"/models":{"get":{"operationId":"duplicate"}},"/rates":{"get":{"operationId":"duplicate"}}}),
+            serde_json::json!({"/models":{"get":{}}}),
+            serde_json::json!({"/models":{"get":{"operationId":"a"}},"/v1/models":{"get":{"operationId":"b"}}}),
+        ] {
+            assert!(super::extend(&mut serde_json::json!({"paths":paths})).is_err());
+        }
+        let mut conflict =
+            serde_json::json!({"components":{"schemas":{"AppAccount":{"type":"number"}}}});
+        assert!(super::extend(&mut conflict).is_err());
+    }
+
+    #[test]
+    fn path_metadata_is_not_an_operation_and_wrong_methods_are_removed() {
+        let mut document = serde_json::json!({"paths": {
+            "/models": {"parameters":[],"get":{"operationId":"listModels"},"post":{"operationId":"cannotCreateModel"}}
+        }});
+        super::extend(&mut document).unwrap();
+        assert!(document["paths"]["/v1/models"]["parameters"].is_array());
+        assert!(document["paths"]["/v1/models"].get("post").is_none());
     }
 }

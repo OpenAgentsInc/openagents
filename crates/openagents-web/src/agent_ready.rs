@@ -1124,7 +1124,12 @@ pub(crate) async fn openapi(State(app): State<App>, request: Request) -> Respons
     if !document.is_object() {
         return StatusCode::BAD_GATEWAY.into_response();
     }
-    crate::app_openapi::extend(&mut document);
+    if crate::app_openapi::extend(&mut document).is_err() {
+        return StatusCode::BAD_GATEWAY.into_response();
+    }
+    document["servers"] = json!([{
+        "url": crate::api_host::api_origin(&crate::wellknown::origin(&app))
+    }]);
     (
         [(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")],
         axum::Json(document),

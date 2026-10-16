@@ -40,3 +40,7 @@ cookies.
 Related: the existing keyed HTTP [decision gateway](../decision-models/service/gateway.md)
 (System One judgments, not the agent), the [chat worker](../deployment/chat-worker.md)
 that serves OpenAgents chat today, and the [NIPs](../../nips/openagents/README.md).
+
+For current implementation and schema coverage, see the
+[public route inventory](../sdk/public-routes.md). The design describes the
+target; the combined reference includes only qualified public operations.
