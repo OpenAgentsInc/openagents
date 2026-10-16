@@ -19,6 +19,7 @@ pub mod channel_window;
 pub mod cj_conversation;
 pub mod contracts;
 pub mod control;
+pub mod coordination;
 pub mod decision;
 pub mod domain;
 pub mod engram;

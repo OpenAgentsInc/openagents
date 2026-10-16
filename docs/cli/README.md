@@ -2068,3 +2068,13 @@ versions, prepares conditional changes, and serves scoped finite views. It also
 captures document checkpoints and prepares separately admitted restorations. See
 [the workspace guide](../../crates/workspace-host/README.md) for source
 requirements, limits, and the distinction between a Git ref and worktree files.
+
+## Coordinated tasks
+
+`coordination-host` uses explicit owner-selected state, keys, operation
+definitions, and workspace source mounts to propose tasks, claim resources, run
+bounded native workers, check their output independently, and integrate exact
+Git replacements conditionally. `coordination-host --help` lists the event and local
+administration commands. Read the [native coordinator guide](../../crates/coordination-host/README.md)
+for scope admission, shared allowances, finite background observations, and
+recovery.

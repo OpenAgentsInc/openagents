@@ -22,6 +22,13 @@ pub struct Capture {
     pub position: String,
 }
 impl GitDocument {
+    /// All documents on one ref share its atomic mutation domain.
+    pub fn conflict_domain(&self) -> Result<String> {
+        self.check()?;
+        let bytes = serde_json::to_vec(&(&self.common, &self.reference, self.identity))
+            .map_err(|e| e.to_string())?;
+        Ok(nostr::contracts::digest_bytes(&bytes))
+    }
     pub fn same_ref(&self, other: &Self) -> bool {
         self.common == other.common
             && self.reference == other.reference

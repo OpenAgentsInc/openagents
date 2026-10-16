@@ -73,6 +73,13 @@ GitHub observations, and an explicitly mounted `coder-labor` book validates
 commercial linkage. External writes, session controls, and effectful executors
 keep their owning admission paths.
 
+[NIP-COORD](NIP-COORD.md) has native coordinator, CJ client/worker, checker,
+conditional Git integration, and finite background-observation roles in
+[`coordination-host`](../../crates/coordination-host/README.md) and
+`coordination-host`. Shared call reservations survive restart and
+unknown outcomes. Other effect adapters, paid workers, and controller migration
+require separate admission.
+
 [NIP-VAULT](NIP-VAULT.md)'s device-only `user` tier is implemented in
 `crates/oa-vault`, its browser client, and `openagents vault`. The `sealed` and
 `operator` tiers remain designed. [NIP-ATT](NIP-ATT.md) supports Google

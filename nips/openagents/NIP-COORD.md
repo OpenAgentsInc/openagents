@@ -6,6 +6,7 @@ controller fencing; [NIP-CJ](NIP-CJ.md) supplies authenticated invocation.
 This NIP defines task, claim, and background-result artifacts exchanged by
 participants. Relay event replacement is not a lock, transaction, or scheduler.
 
+The [v1 schemas](schemas/coordination.v1.json) define the closed wire shapes.
 All artifacts include `v`, `requires`, and optional inert `meta`. Private
 `3188` envelopes carry separately signed proposals/receipts. RUN records refer
 to accepted transitions. No additional event kind or consensus algorithm is
@@ -219,3 +220,55 @@ is not a workspace lock. NIP-AE mutable memory can index retained task frames
 but does not replace immutable history. Advertise `nip-coord-v1` only for the
 tested coordinator/client role. A relay forwarding CJ or `3188` alone cannot
 claim to schedule tasks, prevent conflicting writes, or enforce budgets.
+
+## Rust native coordinator profile
+
+The native coordinator admits one owner-selected descriptor and policy into a
+private store. Scope creation is local administration; signed participant
+records cannot create a scope or enlarge its resource namespace. Participant operations use CJ execution or private `3188`
+envelopes; native owner controls use `3188`. Both check the scope's current
+rights and retained command identity. A restart loads the existing epoch, claim token counter,
+reservations, original declarations, and RUN records.
+
+The initial operation bindings are a bounded Rust data operation and conditional
+Git document changes through `workspace-host`. A Git resource's conflict domain
+comes from its admitted source's canonical repository identity and branch ref;
+two document IDs on one ref do not become independent writers. Immutable
+snapshot reads can share. Live reads and writes conflict, and unconfirmed prior
+writes retain their claims. Other writers and unsupported bounds refuse before
+admission. The destination's Git compare-and-swap still checks independent
+writers outside this coordinator.
+
+The [Rust runtime guide](../../crates/coordination-host/README.md) describes
+commands and the supported adapter limits.
+
+An independently admitted native policy fixes recipients, supported operations,
+effect ceilings, claim duration, and call limits. Native zero-dollar child
+reservations share a scope allowance; independent monetary parents refuse. Separate
+participant grants select proposal, claim, control, finding, and integration
+rights. The policy explicitly lists recipients; native frame data is shared only
+within that admitted audience. A digest cannot retrieve unrelated private cache
+bytes, and administrative policy and grant bodies stay withheld. Child claims
+draw from the same durable ancestor allowance. Renewing a
+lease, releasing a known result, a new period, or restarting a controller cannot
+replenish spent calls or unknown holds. An exact retry reuses its existing
+reservation; a new trial consumes a new one. Reuse requires the exact immutable
+input and independently compatible current rights, not display text.
+
+A worker's actual CJ intake verifies the configured coordinator, named worker,
+exact proposal/input, current epoch/token, deadline, and resource observations.
+The native dispatcher serializes that final fence check with cancellation and
+resource admission. Git dispatch additionally uses the source owner's scoped
+write grant, lease expiry, and required approval verifier. A signed claim alone
+cannot invoke the source outside that registered dispatcher.
+
+Background subscriptions admit read-only operations over explicit immutable
+source observations, with finite task/operation lifetimes, retained evidence,
+and a `retain_as_stale` policy. Session lifetimes, view publication, and automatic
+stale-work cancellation need their owning adapters and refuse in this profile. Source changes coalesce by exact snapshot identity; the
+host retains stale findings and disables a closed lifetime. Findings are signed
+worker output. Integration is a separate conditional destination operation with
+current claims and independent verification; reading a finding executes nothing.
+The native profile exposes no arbitrary shell, network purchase, or controller
+takeover. A replacement controller needs the separately admitted RUN fencing
+and recovery profile before it can dispatch.

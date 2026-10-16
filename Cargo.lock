@@ -4473,6 +4473,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "coordination-host"
+version = "1.0.0"
+dependencies = [
+ "nostr",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "workspace-host",
+]
+
+[[package]]
 name = "cordyceps"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
