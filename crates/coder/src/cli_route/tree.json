@@ -28514,6 +28514,161 @@
       ]
     },
     {
+      "name": "dm",
+      "summary": "Private messages between Nostr keys (NIP-17): send, and read your inbox.",
+      "children": [
+        {
+          "name": "send",
+          "leaf": {
+            "path": [
+              "dm",
+              "send"
+            ],
+            "usage": [
+              "send TO TEXT|- [--as PROFILE] [--relay URL]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "send"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "TO"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "TEXT|-"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "as",
+                    "value": "PROFILE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "relay",
+                    "value": "URL",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Send a private message to TO: an npub, a hex public key, or the name of one of your profiles. TEXT `-` reads it from stdin. Only TO and you can read it; the relay sees who it's for, not who sent it.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "inbox",
+          "leaf": {
+            "path": [
+              "dm",
+              "inbox"
+            ],
+            "usage": [
+              "inbox [--with WHO] [--since UNIX] [--as PROFILE] [--relay URL] [--wait SECONDS]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "inbox"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "with",
+                    "value": "WHO",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "since",
+                    "value": "UNIX",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "as",
+                    "value": "PROFILE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "relay",
+                    "value": "URL",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "wait",
+                    "value": "SECONDS",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Read your private messages, sent and received, oldest first. --with keeps one conversation.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "as",
+          "value": "PROFILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "relay",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "with",
+          "value": "WHO",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "since",
+          "value": "UNIX",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "wait",
+          "value": "SECONDS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "wallet",
       "summary": "Your OpenAgents wallet: your balance and an address to get paid at.",
       "children": [
