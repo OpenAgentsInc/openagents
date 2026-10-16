@@ -1,0 +1,24 @@
+[package]
+name = "openagents-dashboard"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Portable Home dashboards, typed summaries, and layout packages."
+
+[features]
+schema = ["dep:schemars"]
+views = ["dep:rust-native"]
+
+[dependencies]
+schemars = { version = "1", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+rust-native = { path = "../rust-native", optional = true, default-features = false }
+
+[dev-dependencies]
+oa-copy = { path = "../oa-copy" }
+
+[lints]
+workspace = true

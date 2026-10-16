@@ -68,6 +68,8 @@ required-features = ["compact-picker-fixture"]
 [dependencies]
 coder-brand.workspace = true
 coder-account.workspace = true
+openagents-dashboard = { path = "../../../../crates/openagents-dashboard", features = ["views"] }
+rust-native = { path = "../../../../crates/rust-native", default-features = false }
 gethostname.workspace = true
 zeron-voice-media.workspace = true
 zeron-voice-session.workspace = true

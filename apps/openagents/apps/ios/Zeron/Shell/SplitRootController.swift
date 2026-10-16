@@ -3,6 +3,7 @@ import UIKit
 /// Navigation entry points the scene and screens use without knowing which
 /// shell is on screen (iPhone tabs or the iPad split).
 protocol AppRouter: AnyObject {
+    func showHome()
     func openSession(_ chatId: String)
     func presentNewSession(prompt: String?)
     func showSettings()
@@ -47,17 +48,19 @@ final class SplitRootController: UISplitViewController, UISplitViewControllerDel
         detail.navigationBar.tintColor = Palette.text
         setViewController(detail, for: .secondary)
         setViewController(tabs, for: .compact)
-        showDraft(prompt: nil, focus: false)
+        detail.setViewControllers([HomeViewController(app: app)], animated: false)
     }
 
     override var keyCommands: [UIKeyCommand]? {
         [
+            UIKeyCommand(title: "Home", action: #selector(homeCommand), input: "h", modifierFlags: [.command, .shift]),
             UIKeyCommand(title: "New Session", action: #selector(newSessionCommand), input: "n", modifierFlags: .command),
             UIKeyCommand(title: "Search", action: #selector(searchCommand), input: "f", modifierFlags: [.command, .shift]),
             UIKeyCommand(title: "Toggle Sidebar", action: #selector(toggleSidebarCommand), input: "b", modifierFlags: .command),
         ]
     }
 
+    @objc private func homeCommand() { showHome() }
     @objc private func newSessionCommand() { presentNewSession(prompt: nil) }
     @objc private func searchCommand() { showSearch() }
     @objc private func toggleSidebarCommand() {
@@ -67,6 +70,13 @@ final class SplitRootController: UISplitViewController, UISplitViewControllerDel
     }
 
     // MARK: AppRouter
+
+    func showHome() {
+        guard !isCollapsed else { return tabs.showHome() }
+        currentChatId = nil
+        sidebar.currentChatId = nil
+        detail.setViewControllers([HomeViewController(app: app)], animated: false)
+    }
 
     func openSession(_ chatId: String) {
         if presentedViewController != nil { dismiss(animated: true) }
@@ -236,6 +246,11 @@ final class SidebarViewController: UIViewController, UISearchResultsUpdating {
         list.navigationItem.searchController = search
         list.navigationItem.hidesSearchBarWhenScrolling = false
         list.navigationItem.preferredSearchBarPlacement = .stacked
+        let home = UIBarButtonItem(image: UIImage(systemName: "house"), primaryAction: UIAction { [weak self] _ in
+            self?.router?.showHome()
+        })
+        home.accessibilityLabel = "Home"
+        home.accessibilityIdentifier = "sidebar-home"
         let settings = UIBarButtonItem(image: UIImage(systemName: "gearshape"), primaryAction: UIAction { [weak self] _ in
             self?.router?.showSettings()
         })
@@ -251,14 +266,14 @@ final class SidebarViewController: UIViewController, UISearchResultsUpdating {
         compose.accessibilityLabel = "New session"
         compose.accessibilityIdentifier = "new-session"
         list.navigationItem.rightBarButtonItem = nil
-        list.toolbarItems = [settings, options, .flexibleSpace(), compose]
+        list.toolbarItems = [home, settings, options, .flexibleSpace(), compose]
         nav.isToolbarHidden = false
         // Voice beside compose, once a host can run it.
         let voiceBar = VoiceBarItem(app: app, host: self)
         self.voiceBar = voiceBar
         let syncVoice = { [weak self, weak voiceBar] in
             guard let self, let voiceBar else { return }
-            let items = voiceBar.visible ? [settings, options, .flexibleSpace(), voiceBar.item, compose] : [settings, options, .flexibleSpace(), compose]
+            let items = voiceBar.visible ? [home, settings, options, .flexibleSpace(), voiceBar.item, compose] : [home, settings, options, .flexibleSpace(), compose]
             if self.list.toolbarItems?.count != items.count {
                 self.list.setToolbarItems(items, animated: self.view.window != nil)
             }

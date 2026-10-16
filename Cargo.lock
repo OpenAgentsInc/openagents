@@ -11820,6 +11820,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-dashboard"
+version = "1.0.0"
+dependencies = [
+ "oa-copy",
+ "rust-native",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "openagents-deck"
 version = "1.0.0"
 dependencies = [
@@ -11916,9 +11928,11 @@ dependencies = [
  "httpdate",
  "oa-auth",
  "oa-copy",
+ "openagents-dashboard",
  "openagents-login",
  "openagents-web",
  "reqwest 0.12.28",
+ "schemars 1.2.2",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -12057,6 +12071,7 @@ dependencies = [
  "oa-vault",
  "oa-vault-web",
  "openagents-chat",
+ "openagents-dashboard",
  "openagents-sdk",
  "openagents-ui",
  "openagents-wallet",
@@ -12075,6 +12090,7 @@ dependencies = [
  "rust-native",
  "rust-native-web",
  "sand-garden",
+ "schemars 1.2.2",
  "secp256k1 0.31.1",
  "secret-screen",
  "serde",

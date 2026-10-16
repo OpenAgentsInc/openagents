@@ -50,6 +50,8 @@ mod computers_api;
 pub mod connections;
 mod custom_agents;
 mod custom_agents_openapi;
+mod dashboard;
+mod dashboard_openapi;
 mod demo;
 mod device;
 mod docs_mcp;
@@ -598,6 +600,7 @@ pub fn router(config: Config) -> Router {
         .merge(history_api::routes())
         .merge(custom_agents::routes())
         .merge(agent_assignments::routes())
+        .merge(dashboard::routes())
         .merge(own_runs::routes())
         .merge(mac_jobs::routes())
         .merge(mac_jobs_page::routes())

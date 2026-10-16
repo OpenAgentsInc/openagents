@@ -31,8 +31,11 @@ final class MainTabController: UITabBarController, UITabBarControllerDelegate, A
             Self.nav(SearchViewController(app: app))
         }
         search.automaticallyActivatesSearch = true
-        tabs = [sessions, more, search]
-        selectedTab = sessions
+        let home = UITab(title: "Home", image: UIImage(systemName: "house"), identifier: "home") { [app] _ in
+            Self.nav(HomeViewController(app: app))
+        }
+        tabs = [home, sessions, more, search]
+        selectedTab = home
 
         bottomAccessory = accessory
         delegate = self
@@ -150,6 +153,8 @@ final class MainTabController: UITabBarController, UITabBarControllerDelegate, A
     func showSettings() {
         selectedTab = tabs.first { $0.identifier == "more" }
     }
+
+    func showHome() { selectedTab = tabs.first { $0.identifier == "home" } }
 
     func showSearch() {
         selectedTab = tabs.first { $0 is UISearchTab }

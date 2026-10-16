@@ -4,6 +4,7 @@
 pub mod agents;
 mod auth;
 pub mod computers;
+pub mod dashboard;
 pub mod generated;
 pub mod history;
 mod transport;

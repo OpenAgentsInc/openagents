@@ -1,3 +1,17 @@
+## Check Home dashboards on iPhone (#11912)
+
+Install OpenAgents TestFlight build 1005. With your GitHub-connected account,
+choose the OpenAgents project in Home and compare open issues and issues
+assigned to you with GitHub. Check a GitHub Projects board if you use one.
+The dedicated automation account has no GitHub connection; automated issue
+checks use synthetic GitHub replies rather than the owner's grant.
+
+Check active agents across computers, open a session from Home, rearrange and
+resize widgets, cancel an edit, and restart with a saved default. Try large
+text and VoiceOver reordering. Import or install a layout on a second account,
+choose that account's projects, and check that only its data appears. Report a
+new issue if a device check finds a defect.
+
 ## Check custom agents on iPhone (#11902, #11908, #11909)
 
 Update and restart OpenAgents Dev from current `main` after its active work
@@ -1237,7 +1251,7 @@ every verification task afterward. Scratch tests cover both source formats,
 the native reader, real broker admission, exact prompt bytes, acknowledgment
 retries, restart identity, cancellation, and archive without owner state.
 
-## Desktop playable Grid (#10038)
+## Desktop playable Grid (#10058)
 
 Install a desktop bundle built from current `main` on macOS and on Linux
 Wayland/X11. Choose **The Grid → Play**. Verify right-drag look, left-drag
@@ -1260,7 +1274,7 @@ and Linux binary checks are recorded in
 `docs/desktop/verification/2026-09-30-playable-grid/verification.md`.
 Native OS cursor grabs, protected-store prompts, and the signed Mac bundle
 need device checks. Windows Verse remains tracked by #10027. Open a new issue
-if any installed-device check finds a defect; these checks do not keep #10038 open.
+if any installed-device check finds a defect; these checks do not keep #10058 open.
 
 ## Cloud artifact signing (#10227)
 

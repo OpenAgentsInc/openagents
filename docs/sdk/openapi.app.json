@@ -1463,6 +1463,1308 @@
         }
       }
     },
+    "/v1/home/projects": {
+      "get": {
+        "operationId": "homeProjects",
+        "tags": [
+          "Home"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [],
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "responses": {
+          "200": {
+            "description": "Private, no-store result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeProjects"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/home/issues": {
+      "post": {
+        "operationId": "homeIssueSummary",
+        "tags": [
+          "Home"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [],
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "responses": {
+          "200": {
+            "description": "Private, no-store result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeIssueSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HomeIssueFilter"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/home/work": {
+      "get": {
+        "operationId": "homeWork",
+        "tags": [
+          "Home"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "responses": {
+          "200": {
+            "description": "Private, no-store result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeWorkPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/home/dashboards": {
+      "get": {
+        "operationId": "homeDashboards",
+        "tags": [
+          "Home"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [],
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "responses": {
+          "200": {
+            "description": "Private, no-store result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeLibrary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "saveHomeDashboards",
+        "tags": [
+          "Home"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [],
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "responses": {
+          "200": {
+            "description": "Private, no-store result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeLibrary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HomeSave"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/home/templates": {
+      "get": {
+        "operationId": "findHomeTemplates",
+        "tags": [
+          "Home"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "author",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          {
+            "name": "mine",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "responses": {
+          "200": {
+            "description": "Private, no-store result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeDirectory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/home/templates/{id}": {
+      "get": {
+        "operationId": "getHomeTemplate",
+        "tags": [
+          "Home"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "responses": {
+          "200": {
+            "description": "Private, no-store result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeListing"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "publishHomeTemplate",
+        "tags": [
+          "Home"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "responses": {
+          "200": {
+            "description": "Private, no-store result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeListing"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HomePublish"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "removeHomeTemplate",
+        "tags": [
+          "Home"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "responses": {
+          "200": {
+            "description": "Private, no-store result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeListing"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HomeRemove"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/home/templates/{id}/report": {
+      "post": {
+        "operationId": "reportHomeTemplate",
+        "tags": [
+          "Home"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "responses": {
+          "200": {
+            "description": "Private, no-store result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeReportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid settings, signed out, access refused, unavailable layout, conflicting revision/request, body limit, rate limit, or unavailable source.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HomeReport"
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/threads": {
       "get": {
         "operationId": "listThreads",
@@ -4983,6 +6285,618 @@
         "x-openagents-no-implicit-retry": true,
         "x-openagents-max-response-bytes": 1048576,
         "x-openagents-max-request-bytes": 0
+      }
+    },
+    "/v1/agent-assignments": {
+      "post": {
+        "operationId": "createAgentAssignment",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [],
+        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
+        "responses": {
+          "200": {
+            "description": "Account-owned assignment or page, no-store/private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAssignmentValue"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentAssignmentCreate"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listAgentAssignments",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "host",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_.-]+$"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
+        "responses": {
+          "200": {
+            "description": "Account-owned assignment or page, no-store/private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAssignmentPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent-assignments/{id}": {
+      "get": {
+        "operationId": "getAgentAssignment",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
+        "responses": {
+          "200": {
+            "description": "Account-owned assignment or page, no-store/private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAssignmentValue"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent-assignments/{id}/commands": {
+      "post": {
+        "operationId": "commandAgentAssignment",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
+        "responses": {
+          "200": {
+            "description": "Account-owned assignment or page, no-store/private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAssignmentValue"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentAssignmentCommand"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agent-assignments/{id}/report": {
+      "post": {
+        "operationId": "reportAgentAssignment",
+        "tags": [
+          "Custom agents"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        ],
+        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
+        "responses": {
+          "200": {
+            "description": "Account-owned assignment or page, no-store/private.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAssignmentValue"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentAssignmentReport"
+              }
+            }
+          }
+        }
       }
     },
     "/v1/keys": {
@@ -12310,618 +14224,6 @@
           }
         }
       }
-    },
-    "/v1/agent-assignments": {
-      "post": {
-        "operationId": "createAgentAssignment",
-        "tags": [
-          "Custom agents"
-        ],
-        "security": [
-          {
-            "appBearer": []
-          }
-        ],
-        "parameters": [],
-        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
-        "responses": {
-          "200": {
-            "description": "Account-owned assignment or page, no-store/private.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentAssignmentValue"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentAssignmentCreate"
-              }
-            }
-          }
-        }
-      },
-      "get": {
-        "operationId": "listAgentAssignments",
-        "tags": [
-          "Custom agents"
-        ],
-        "security": [
-          {
-            "appBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "host",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128,
-              "pattern": "^[A-Za-z0-9_.-]+$"
-            }
-          },
-          {
-            "name": "after",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-f]{64}$"
-            }
-          }
-        ],
-        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
-        "responses": {
-          "200": {
-            "description": "Account-owned assignment or page, no-store/private.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentAssignmentPage"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agent-assignments/{id}": {
-      "get": {
-        "operationId": "getAgentAssignment",
-        "tags": [
-          "Custom agents"
-        ],
-        "security": [
-          {
-            "appBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-f]{64}$"
-            }
-          }
-        ],
-        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
-        "responses": {
-          "200": {
-            "description": "Account-owned assignment or page, no-store/private.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentAssignmentValue"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agent-assignments/{id}/commands": {
-      "post": {
-        "operationId": "commandAgentAssignment",
-        "tags": [
-          "Custom agents"
-        ],
-        "security": [
-          {
-            "appBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-f]{64}$"
-            }
-          }
-        ],
-        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
-        "responses": {
-          "200": {
-            "description": "Account-owned assignment or page, no-store/private.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentAssignmentValue"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentAssignmentCommand"
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agent-assignments/{id}/report": {
-      "post": {
-        "operationId": "reportAgentAssignment",
-        "tags": [
-          "Custom agents"
-        ],
-        "security": [
-          {
-            "appBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-f]{64}$"
-            }
-          }
-        ],
-        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
-        "responses": {
-          "200": {
-            "description": "Account-owned assignment or page, no-store/private.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentAssignmentValue"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Invalid assignment, signed out, denied, missing, assignment_conflict, too large, quota_exhausted, or unavailable.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AppAccountError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentAssignmentReport"
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components": {
@@ -13666,6 +14968,1485 @@
           }
         }
       },
+      "HomeProjects": {
+        "title": "Array_of_Project",
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "repositories": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "repositories"
+          ]
+        }
+      },
+      "HomeIssueFilter": {
+        "title": "IssueFilter",
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "object",
+            "properties": {
+              "project": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "repositories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": []
+              },
+              "board": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "owner": {
+                    "type": "string"
+                  },
+                  "number": {
+                    "type": "integer",
+                    "format": "uint32",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "owner",
+                  "number"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "mine": {
+            "type": "boolean"
+          },
+          "assignee": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "format": "uint32",
+            "minimum": 0,
+            "default": 1
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "scope",
+          "mine",
+          "labels"
+        ]
+      },
+      "HomeIssueSummary": {
+        "title": "IssueSummary",
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "observed_at": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "query": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "repository": {
+                  "type": "string"
+                },
+                "number": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "repository",
+                "number",
+                "title"
+              ]
+            }
+          },
+          "unavailable": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "next_page": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "uint32",
+            "minimum": 0,
+            "default": null
+          },
+          "board_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "total",
+          "complete",
+          "observed_at",
+          "query",
+          "items",
+          "unavailable"
+        ]
+      },
+      "HomeWorkPage": {
+        "title": "WorkPage",
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "session": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "destination": {
+                  "anyOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "type": "string",
+                              "const": "session"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "type": "string",
+                              "const": "chat"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "type": "string",
+                              "const": "work"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "type": "string",
+                              "const": "mac_job"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "id"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "agent_board"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "unknown"
+                            }
+                          },
+                          "required": [
+                            "kind"
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                },
+                "parent": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "agent": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "project": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "host": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "online": {
+                  "type": "boolean"
+                },
+                "observed_at": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "id",
+                "agent",
+                "title",
+                "host",
+                "state",
+                "online",
+                "observed_at"
+              ]
+            }
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "computers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "online": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "name",
+                "online"
+              ]
+            }
+          }
+        },
+        "required": [
+          "data",
+          "complete",
+          "computers"
+        ]
+      },
+      "HomeLibrary": {
+        "title": "Library",
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "default": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dashboards": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "schema": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "name": {
+                  "type": "string"
+                },
+                "scope": {
+                  "type": "object",
+                  "properties": {
+                    "project": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "repositories": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "default": []
+                    },
+                    "board": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "owner": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "integer",
+                          "format": "uint32",
+                          "minimum": 0
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "owner",
+                        "number"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "widgets": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "version": {
+                        "type": "integer",
+                        "format": "uint32",
+                        "minimum": 0
+                      },
+                      "size": {
+                        "type": "string",
+                        "enum": [
+                          "compact",
+                          "full"
+                        ]
+                      },
+                      "scope": {
+                        "type": [
+                          "object",
+                          "null"
+                        ],
+                        "properties": {
+                          "project": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "repositories": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "default": []
+                          },
+                          "board": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "owner": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "type": "integer",
+                                "format": "uint32",
+                                "minimum": 0
+                              }
+                            },
+                            "additionalProperties": false,
+                            "required": [
+                              "owner",
+                              "number"
+                            ]
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "labels": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        },
+                        "default": []
+                      },
+                      "assignee": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "agent": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "host": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "window_hours": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "uint32",
+                        "minimum": 0
+                      }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                      "id",
+                      "kind",
+                      "version",
+                      "size"
+                    ]
+                  }
+                },
+                "source": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "format": "uint64",
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "version"
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "schema",
+                "id",
+                "revision",
+                "name",
+                "scope",
+                "widgets"
+              ]
+            }
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "revision",
+          "dashboards"
+        ]
+      },
+      "HomeSave": {
+        "title": "SaveLibrary",
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "library": {
+            "type": "object",
+            "properties": {
+              "revision": {
+                "type": "integer",
+                "format": "uint64",
+                "minimum": 0
+              },
+              "default": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "dashboards": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "type": "integer",
+                      "format": "uint64",
+                      "minimum": 0
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "object",
+                      "properties": {
+                        "project": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "repositories": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "default": []
+                        },
+                        "board": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "owner": {
+                              "type": "string"
+                            },
+                            "number": {
+                              "type": "integer",
+                              "format": "uint32",
+                              "minimum": 0
+                            }
+                          },
+                          "additionalProperties": false,
+                          "required": [
+                            "owner",
+                            "number"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "widgets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer",
+                            "format": "uint32",
+                            "minimum": 0
+                          },
+                          "size": {
+                            "type": "string",
+                            "enum": [
+                              "compact",
+                              "full"
+                            ]
+                          },
+                          "scope": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "project": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "repositories": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                },
+                                "default": []
+                              },
+                              "board": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "properties": {
+                                  "owner": {
+                                    "type": "string"
+                                  },
+                                  "number": {
+                                    "type": "integer",
+                                    "format": "uint32",
+                                    "minimum": 0
+                                  }
+                                },
+                                "additionalProperties": false,
+                                "required": [
+                                  "owner",
+                                  "number"
+                                ]
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "labels": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "default": []
+                          },
+                          "assignee": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "agent": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "host": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "window_hours": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "format": "uint32",
+                            "minimum": 0
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "id",
+                          "kind",
+                          "version",
+                          "size"
+                        ]
+                      }
+                    },
+                    "source": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "format": "uint64",
+                          "minimum": 0
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "version"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "schema",
+                    "id",
+                    "revision",
+                    "name",
+                    "scope",
+                    "widgets"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "revision",
+              "dashboards"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "expected_revision",
+          "library"
+        ]
+      },
+      "HomePublish": {
+        "title": "Publish",
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "package": {
+            "type": "object",
+            "properties": {
+              "schema": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "title": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "widgets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "format": "uint32",
+                      "minimum": 0
+                    },
+                    "size": {
+                      "type": "string",
+                      "enum": [
+                        "compact",
+                        "full"
+                      ]
+                    },
+                    "scope": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "project": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "repositories": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "default": []
+                        },
+                        "board": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "owner": {
+                              "type": "string"
+                            },
+                            "number": {
+                              "type": "integer",
+                              "format": "uint32",
+                              "minimum": 0
+                            }
+                          },
+                          "additionalProperties": false,
+                          "required": [
+                            "owner",
+                            "number"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "labels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "default": []
+                    },
+                    "assignee": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "agent": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "host": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "window_hours": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "format": "uint32",
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "kind",
+                    "version",
+                    "size"
+                  ]
+                }
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "hash": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "schema",
+              "version",
+              "title",
+              "description",
+              "tags",
+              "widgets",
+              "inputs",
+              "hash"
+            ]
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "private",
+              "unlisted",
+              "public"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "expected_revision",
+          "package",
+          "visibility"
+        ]
+      },
+      "HomeRemove": {
+        "title": "Remove",
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "expected_revision"
+        ]
+      },
+      "HomeReport": {
+        "title": "Report",
+        "type": "object",
+        "properties": {
+          "request_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "reason"
+        ]
+      },
+      "HomeListing": {
+        "title": "Listing",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0
+          },
+          "author": {
+            "type": "string"
+          },
+          "author_id": {
+            "type": "string",
+            "default": ""
+          },
+          "owned": {
+            "type": "boolean",
+            "default": false
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "private",
+              "unlisted",
+              "public"
+            ]
+          },
+          "package": {
+            "type": "object",
+            "properties": {
+              "schema": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer",
+                "format": "uint32",
+                "minimum": 0
+              },
+              "title": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "widgets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "format": "uint32",
+                      "minimum": 0
+                    },
+                    "size": {
+                      "type": "string",
+                      "enum": [
+                        "compact",
+                        "full"
+                      ]
+                    },
+                    "scope": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "project": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "repositories": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "default": []
+                        },
+                        "board": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "owner": {
+                              "type": "string"
+                            },
+                            "number": {
+                              "type": "integer",
+                              "format": "uint32",
+                              "minimum": 0
+                            }
+                          },
+                          "additionalProperties": false,
+                          "required": [
+                            "owner",
+                            "number"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "labels": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "default": []
+                    },
+                    "assignee": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "agent": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "host": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "window_hours": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "format": "uint32",
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "kind",
+                    "version",
+                    "size"
+                  ]
+                }
+              },
+              "inputs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "hash": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "schema",
+              "version",
+              "title",
+              "description",
+              "tags",
+              "widgets",
+              "inputs",
+              "hash"
+            ]
+          },
+          "removed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "author",
+          "visibility",
+          "package",
+          "removed"
+        ]
+      },
+      "HomeDirectory": {
+        "title": "Directory",
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0
+                },
+                "author": {
+                  "type": "string"
+                },
+                "author_id": {
+                  "type": "string",
+                  "default": ""
+                },
+                "owned": {
+                  "type": "boolean",
+                  "default": false
+                },
+                "visibility": {
+                  "type": "string",
+                  "enum": [
+                    "private",
+                    "unlisted",
+                    "public"
+                  ]
+                },
+                "package": {
+                  "type": "object",
+                  "properties": {
+                    "schema": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "format": "uint32",
+                      "minimum": 0
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "widgets": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer",
+                            "format": "uint32",
+                            "minimum": 0
+                          },
+                          "size": {
+                            "type": "string",
+                            "enum": [
+                              "compact",
+                              "full"
+                            ]
+                          },
+                          "scope": {
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "properties": {
+                              "project": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "repositories": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                },
+                                "default": []
+                              },
+                              "board": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "properties": {
+                                  "owner": {
+                                    "type": "string"
+                                  },
+                                  "number": {
+                                    "type": "integer",
+                                    "format": "uint32",
+                                    "minimum": 0
+                                  }
+                                },
+                                "additionalProperties": false,
+                                "required": [
+                                  "owner",
+                                  "number"
+                                ]
+                              }
+                            },
+                            "additionalProperties": false
+                          },
+                          "labels": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "default": []
+                          },
+                          "assignee": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "agent": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "host": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "window_hours": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ],
+                            "format": "uint32",
+                            "minimum": 0
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "id",
+                          "kind",
+                          "version",
+                          "size"
+                        ]
+                      }
+                    },
+                    "inputs": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "hash": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "schema",
+                    "version",
+                    "title",
+                    "description",
+                    "tags",
+                    "widgets",
+                    "inputs",
+                    "hash"
+                  ]
+                },
+                "removed": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "version",
+                "author",
+                "visibility",
+                "package",
+                "removed"
+              ]
+            }
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "HomeReportResult": {
+        "type": "object",
+        "required": [
+          "reported"
+        ],
+        "properties": {
+          "reported": {
+            "const": true
+          }
+        }
+      },
       "ThreadRow": {
         "type": "object",
         "properties": {
@@ -14348,6 +17129,263 @@
           "continued",
           "asks"
         ]
+      },
+      "AgentAssignmentSpec": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "agent",
+          "agent_revision",
+          "host",
+          "task"
+        ],
+        "properties": {
+          "agent": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "agent_revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "host": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          },
+          "task": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 65536,
+            "description": "Nonblank, no NUL, at most 65,536 UTF-8 bytes."
+          }
+        }
+      },
+      "AgentAssignmentCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "spec"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/AgentAssignmentSpec"
+          }
+        }
+      },
+      "AgentAssignmentCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "action"
+        ],
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "action": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "action",
+                  "text"
+                ],
+                "properties": {
+                  "action": {
+                    "const": "follow_up"
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 65536,
+                    "description": "Nonblank, no NUL, at most 65,536 UTF-8 bytes."
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "action"
+                ],
+                "properties": {
+                  "action": {
+                    "enum": [
+                      "stop",
+                      "archive"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "AgentAssignmentReport": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "request_id",
+          "host",
+          "expected_revision",
+          "state"
+        ],
+        "properties": {
+          "active_command": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "after_seq": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "request_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "host": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_.-]+$"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "state": {
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "stopped",
+              "unknown"
+            ]
+          },
+          "result": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4096,
+            "description": "At most 4,096 UTF-8 bytes; no NUL."
+          }
+        }
+      },
+      "AgentAssignmentValue": {
+        "type": "object",
+        "required": [
+          "id",
+          "revision",
+          "spec",
+          "definition",
+          "chat",
+          "state",
+          "commands",
+          "result",
+          "archived"
+        ],
+        "properties": {
+          "active_command": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "after_seq": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "spec": {
+            "$ref": "#/components/schemas/AgentAssignmentSpec"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/CustomAgentDefinition"
+          },
+          "chat": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed",
+              "stopped",
+              "unknown"
+            ]
+          },
+          "commands": {
+            "type": "array",
+            "maxItems": 128,
+            "items": {
+              "$ref": "#/components/schemas/AgentAssignmentCommand"
+            }
+          },
+          "result": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 4096
+          },
+          "archived": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AgentAssignmentPage": {
+        "type": "object",
+        "required": [
+          "data",
+          "next"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "$ref": "#/components/schemas/AgentAssignmentValue"
+            }
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "AppManagedKeySignin": {
         "type": "object",
@@ -16934,263 +19972,6 @@
             "text": "Example text."
           }
         ]
-      },
-      "AgentAssignmentSpec": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "agent",
-          "agent_revision",
-          "host",
-          "task"
-        ],
-        "properties": {
-          "agent": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$"
-          },
-          "agent_revision": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "host": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128,
-            "pattern": "^[A-Za-z0-9_.-]+$"
-          },
-          "project": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "minLength": 1,
-            "maxLength": 128,
-            "pattern": "^[A-Za-z0-9_.-]+$"
-          },
-          "task": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 65536,
-            "description": "Nonblank, no NUL, at most 65,536 UTF-8 bytes."
-          }
-        }
-      },
-      "AgentAssignmentCreate": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "request_id",
-          "spec"
-        ],
-        "properties": {
-          "request_id": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$"
-          },
-          "spec": {
-            "$ref": "#/components/schemas/AgentAssignmentSpec"
-          }
-        }
-      },
-      "AgentAssignmentCommand": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "request_id",
-          "action"
-        ],
-        "properties": {
-          "request_id": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$"
-          },
-          "action": {
-            "oneOf": [
-              {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "action",
-                  "text"
-                ],
-                "properties": {
-                  "action": {
-                    "const": "follow_up"
-                  },
-                  "text": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 65536,
-                    "description": "Nonblank, no NUL, at most 65,536 UTF-8 bytes."
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "additionalProperties": false,
-                "required": [
-                  "action"
-                ],
-                "properties": {
-                  "action": {
-                    "enum": [
-                      "stop",
-                      "archive"
-                    ]
-                  }
-                }
-              }
-            ]
-          }
-        }
-      },
-      "AgentAssignmentReport": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "request_id",
-          "host",
-          "expected_revision",
-          "state"
-        ],
-        "properties": {
-          "active_command": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "pattern": "^[0-9a-f]{64}$"
-          },
-          "after_seq": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "request_id": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$"
-          },
-          "host": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128,
-            "pattern": "^[A-Za-z0-9_.-]+$"
-          },
-          "expected_revision": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "state": {
-            "enum": [
-              "running",
-              "completed",
-              "failed",
-              "stopped",
-              "unknown"
-            ]
-          },
-          "result": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "maxLength": 4096,
-            "description": "At most 4,096 UTF-8 bytes; no NUL."
-          }
-        }
-      },
-      "AgentAssignmentValue": {
-        "type": "object",
-        "required": [
-          "id",
-          "revision",
-          "spec",
-          "definition",
-          "chat",
-          "state",
-          "commands",
-          "result",
-          "archived"
-        ],
-        "properties": {
-          "active_command": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "after_seq": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "id": {
-            "type": "string",
-            "pattern": "^[0-9a-f]{64}$"
-          },
-          "revision": {
-            "type": "integer",
-            "minimum": 1
-          },
-          "spec": {
-            "$ref": "#/components/schemas/AgentAssignmentSpec"
-          },
-          "definition": {
-            "$ref": "#/components/schemas/CustomAgentDefinition"
-          },
-          "chat": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "state": {
-            "enum": [
-              "queued",
-              "running",
-              "completed",
-              "failed",
-              "stopped",
-              "unknown"
-            ]
-          },
-          "commands": {
-            "type": "array",
-            "maxItems": 128,
-            "items": {
-              "$ref": "#/components/schemas/AgentAssignmentCommand"
-            }
-          },
-          "result": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "maxLength": 4096
-          },
-          "archived": {
-            "type": "boolean"
-          }
-        }
-      },
-      "AgentAssignmentPage": {
-        "type": "object",
-        "required": [
-          "data",
-          "next"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "maxItems": 8,
-            "items": {
-              "$ref": "#/components/schemas/AgentAssignmentValue"
-            }
-          },
-          "next": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
       }
     }
   }

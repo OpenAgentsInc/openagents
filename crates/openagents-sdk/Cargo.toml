@@ -6,8 +6,13 @@ rust-version.workspace = true
 publish.workspace = true
 description = "The lightweight public OpenAgents client: app authentication and account resources."
 
+[features]
+schema = ["dep:schemars", "openagents-dashboard/schema"]
+
 [dependencies]
 agent-contract = { path = "../agent-contract" }
+schemars = { version = "1", optional = true }
+openagents-dashboard = { path = "../openagents-dashboard" }
 openagents-login = { path = "../openagents-login", default-features = false }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 serde = { version = "1", features = ["derive"] }

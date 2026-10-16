@@ -1,3 +1,20 @@
+# OpenAgents 1.0.0 (1005)
+
+Home opens first and shows open issues, issues assigned to you, and work across
+agents and computers. Choose a project, add widgets, change their size, and
+rearrange them with drag or Move up/Move down. Save several dashboards and choose
+a default. Your layout returns after restarting the app.
+
+Layouts can be exported, imported, saved to your account, and shared through the
+layout directory. Review a shared layout and choose your own projects before
+saving it. Publishing is a separate choice; private is the default. Updates
+preserve your widget settings, order, and removals for review.
+
+Try Home with several active agents, an unavailable computer, and GitHub issues.
+Open an issue or agent from its widget, then return Home. Check large text,
+VoiceOver, background and foreground, sign-out, and sign-in to another account.
+GitHub must be connected to the same OpenAgents account for issue counts.
+
 OpenAgents 1.0.0 (1004)
 
 Create your own agents from the agent picker when starting a conversation.

@@ -23,8 +23,9 @@ account-fixture = ["dep:reqwest"]
 bindgen = ["uniffi/cli"]
 
 [dependencies]
-coder-account.workspace = true
+openagents-dashboard = { path = "../../../../crates/openagents-dashboard", features = ["views"] }
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
+coder-account.workspace = true
 sha2.workspace = true
 reqwest = { workspace = true, optional = true }
 zeron-voice-session.workspace = true

@@ -60,3 +60,10 @@ selection, and the Rust Native form. UIKit's `AgentFormController` renders that
 form and forwards versioned field and activation events. The new-session menu
 adds personal agents beside existing models. Rust Native's optional syntax
 feature keeps forms independent of the app's separate syntax-engine version.
+
+- [OpenAgents #11912](https://github.com/OpenAgentsInc/openagents/issues/11912):
+  customizable Home dashboards. `coder-account::dashboard` owns layout edits,
+  summary reads, import/export, account saves, and the layout directory. UIKit
+  `HomeViewController` and GPUI `home` mount the same Rust Native cards. Hooks
+  add the Home destination, account lifecycle callbacks, mobile FFI, and one
+  read-only session-report accessor; no separate chat path or engine starts.

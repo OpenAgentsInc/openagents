@@ -8,6 +8,9 @@ publication, external providers, additional language packages, and automatic
 payments have separate activation conditions. This document does not claim
 those surfaces are already implemented or published.
 
+The [Home dashboard client](dashboard.md) supplies mobile and desktop widgets,
+account layouts, and reusable layout packages (#11912).
+
 Start with the [delivery plan](delivery-plan.md),
 [saved chat reads](chat-history.md),
 [Computers contract](computers.md), and umbrella

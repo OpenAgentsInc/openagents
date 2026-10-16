@@ -53,6 +53,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         window.makeKeyAndVisible()
         if !args.contains("-lab") { shellShown() }
+        openLayouts(connectionOptions.urlContexts)
 
         #if DEBUG
         if args.contains("-voice-preview") {
@@ -79,6 +80,10 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard app.isSignedIn else { return }
         if !app.isDemo { PushNotifications.shared.signedIn() }
         PushNotifications.shared.shellReady()
+        if let link = app.pendingHomeLink {
+            (window?.rootViewController as? AppRouter)?.showHome()
+            app.openHomeLink(link)
+        }
     }
 
     private func showRoot(animated: Bool) {
@@ -104,10 +109,17 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     /// `openagents://voice` (the call's Live Activity) returns to the stage.
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        openLayouts(URLContexts)
         guard URLContexts.contains(where: { $0.url.scheme == "openagents" && $0.url.host == "voice" }),
               app.voice.live, let root = window?.rootViewController
         else { return }
         root.presentVoiceStage(app: app, source: nil)
+    }
+
+    private func openLayouts(_ contexts: Set<UIOpenURLContext>) {
+        guard let url = contexts.first(where: { $0.url.scheme == "openagents" && $0.url.host == "layout" })?.url else { return }
+        (window?.rootViewController as? AppRouter)?.showHome()
+        app.openHomeLink(url.absoluteString)
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {

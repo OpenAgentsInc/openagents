@@ -688,6 +688,7 @@ fn settings_open_route(route: &str, remembered: SettingsSection) -> Option<Setti
 /// What the main outlet shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Route {
+    Home,
     Chat,
     SavedHistory,
     PullRequests,
@@ -844,6 +845,7 @@ impl SessionPanels {
 /// history — every route the user visited, browser-style).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NavEntry {
+    Home,
     SavedHistory(coder_account::openagents::ChatSummary),
     /// A chat route; the id of the selected chat ("" = the new-chat canvas).
     Chat(String),
@@ -1954,6 +1956,8 @@ enum PendingExit {
 }
 
 pub struct Shell {
+    home: Option<Entity<crate::home::HomePage>>,
+    _home_events: Option<Subscription>,
     saved_reader: Option<Entity<crate::openagents_reader::SavedReader>>,
     _saved_reader_events: Option<Subscription>,
     saved_history: Option<Entity<crate::openagents_history::HistoryPanel>>,
@@ -2491,8 +2495,11 @@ impl Shell {
                 state.update(cx, |s, _| s.auto_selected = true);
                 Route::Chat
             }
-            _ => Route::Chat,
+            _ => Route::Home,
         };
+        if route == Route::Home {
+            state.update(cx, |s, _| s.auto_selected = true);
+        }
         // More capture knobs of the same kind: `ZERON_OPEN_DIALOG=rename|delete`
         // opens that dialog for the first chat once chats land; `=model` pops
         // the combined harness/model menu once the shell is Ready;
@@ -2527,6 +2534,7 @@ impl Shell {
             .as_ref()
             .map(|panel| cx.observe(panel, |_, _, cx| cx.notify()));
         let nav = NavHistory::new(match route {
+            Route::Home => NavEntry::Home,
             Route::Chat | Route::SavedHistory => NavEntry::Chat(String::new()),
             Route::PullRequests => NavEntry::PullRequests,
             Route::Settings(section) => NavEntry::Settings(section),
@@ -2542,6 +2550,8 @@ impl Shell {
             _observation: cx.observe(&shell, |_, _, cx| cx.notify()),
         });
         Self {
+            home: None,
+            _home_events: None,
             saved_reader,
             _saved_reader_events: saved_reader_events,
             saved_history,
@@ -5015,6 +5025,9 @@ impl Shell {
     // ---- routes / settings ----
 
     fn set_route(&mut self, route: Route, cx: &mut Context<Self>) {
+        if let Some(home) = &self.home {
+            home.read(cx).set_visible(route == Route::Home);
+        }
         self.command_palette = None;
         let was_pull_requests = matches!(self.route, Route::PullRequests);
         let will_show_pull_requests = matches!(route, Route::PullRequests);
@@ -5551,6 +5564,7 @@ impl Shell {
     fn apply_nav(&mut self, entry: NavEntry, cx: &mut Context<Self>) {
         self.suspend_file_images(cx);
         match entry {
+            NavEntry::Home => self.set_route(Route::Home, cx),
             NavEntry::SavedHistory(summary) => {
                 if let Some(panel) = self.saved_history.clone() {
                     panel.update(cx, |panel, cx| panel.reopen(summary, cx));
@@ -9475,6 +9489,20 @@ impl Shell {
                         // No "Sessions" header (user request) — the list
                         // is the whole column; a little air stands in.
                         .pt(px(SIDEBAR_LIST_PAD_TOP))
+                        .child(
+                            div()
+                                .id("open-home")
+                                .p(px(10.))
+                                .cursor_pointer()
+                                .tab_index(0)
+                                .role(gpui::Role::Button)
+                                .child("Home")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.set_route(Route::Home, cx);
+                                    this.nav.push(NavEntry::Home);
+                                    cx.notify();
+                                })),
+                        )
                         // This computer's sessions first (the live work),
                         // then the account's OpenAgents chats, newest first.
                         .when(
@@ -11111,6 +11139,21 @@ impl Shell {
         transcript_width: f32,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        if self.route == Route::Home {
+            if self.home.is_none() {
+                let home = cx.new(|cx| crate::home::HomePage::new(self.state.clone(), cx));
+                self._home_events = Some(cx.subscribe(&home, |this, _, event, cx| {
+                    match event {
+                        crate::home::HomeEvent::Open(id) => {
+                            this.apply_nav(NavEntry::Chat(id.clone()), cx)
+                        }
+                    }
+                    cx.notify();
+                }));
+                self.home = Some(home);
+            }
+            return self.home.clone().unwrap().into_any_element();
+        }
         let theme_owned = Theme::of(cx).clone();
         let theme = &theme_owned;
         let (border, text, faint) = (theme.border, theme.text, theme.text_faint);

@@ -12,6 +12,7 @@ use std::{
 };
 use tokio::sync::watch;
 pub mod chat_entries;
+pub mod dashboard;
 pub mod desktop;
 pub mod history;
 mod platform;

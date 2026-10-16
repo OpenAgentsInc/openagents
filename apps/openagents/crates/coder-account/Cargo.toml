@@ -6,6 +6,9 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+openagents-dashboard = { path = "../../../../crates/openagents-dashboard", features = ["views"] }
+rust-native = { path = "../../../../crates/rust-native", default-features = false }
+serde = { version = "1", features = ["derive"] }
 zeron-doc.workspace = true
 zeron-proto.workspace = true
 coder-brand.workspace = true
@@ -18,5 +21,6 @@ sha2.workspace = true
 security-framework = "3"
 
 [dev-dependencies]
+oa-copy = { path = "../../../../crates/oa-copy" }
 axum = "0.8"
 tempfile.workspace = true

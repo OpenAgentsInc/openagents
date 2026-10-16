@@ -13,8 +13,10 @@
 
 mod account;
 mod custom_agents;
+mod home;
 pub use account::*;
 pub use custom_agents::*;
+pub use home::*;
 mod saved;
 pub use saved::*;
 mod session;

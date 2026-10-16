@@ -689,6 +689,11 @@ impl Client {
         self.inner.workspace.snapshot()
     }
 
+    /// Host reports from the existing registry, without opening a chat document.
+    pub fn reported_sessions(&self) -> Vec<zeron_proto::Session> {
+        self.inner.workspace.state().0.sessions.clone()
+    }
+
     pub fn connectivity(&self) -> Connectivity {
         self.inner.connectivity()
     }

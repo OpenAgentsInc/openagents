@@ -1,8 +1,10 @@
 # Home dashboard and widgets
 
-2026-10-16. Status: proposed product and SDK contract. This document specifies
-new work; it does not claim that Home, widget APIs, or a layout directory ship
-today. Mobile comes first, followed by desktop and other app surfaces.
+2026-10-16. The implementation is tracked in
+[#11912](https://github.com/OpenAgentsInc/openagents/issues/11912). Home uses a
+shared Rust controller in `apps/openagents/crates/coder-account`, native iOS
+and GPUI adapters, and the [public Home SDK](sdk/dashboard.md). Android and
+other app hosts can mount the same Rust cards when those hosts are available.
 
 ## Product outcome
 
@@ -323,5 +325,5 @@ widget versions, concurrent layout edits, uncertain saves, directory access,
 unpublication, and template updates that preserve customizations. Use synthetic
 fixtures and dedicated accounts; do not leave test work on the owner's account.
 Run targeted checks for the crates changed in each implementation stage under
-the [verification policy](verification.md). This specification itself needs local
-link and diff checks, not a Rust build or an app/store release.
+the [verification policy](verification.md). Documentation edits need local link and diff checks. App and server changes
+need their targeted Rust and native checks before release.

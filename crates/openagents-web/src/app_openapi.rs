@@ -116,6 +116,7 @@ pub fn document() -> Value {
     });
     crate::history_openapi::extend(&mut document);
     crate::custom_agents_openapi::extend(&mut document);
+    crate::dashboard_openapi::extend(&mut document);
     crate::thread_openapi::extend(&mut document);
     crate::agent_assignments_openapi::extend(&mut document);
     crate::key_openapi::extend(&mut document);

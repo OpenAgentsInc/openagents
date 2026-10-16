@@ -1701,8 +1701,12 @@ version = "0.2.113"
 dependencies = [
  "axum",
  "coder-brand",
+ "oa-copy",
+ "openagents-dashboard",
  "openagents-sdk",
+ "rust-native",
  "security-framework",
+ "serde",
  "serde_json",
  "sha2",
  "tempfile",
@@ -7156,6 +7160,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-dashboard"
+version = "1.0.0"
+dependencies = [
+ "rust-native",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "openagents-login"
 version = "1.0.0"
 dependencies = [
@@ -7173,6 +7187,7 @@ dependencies = [
  "base64 0.22.1",
  "getrandom 0.4.3",
  "httpdate",
+ "openagents-dashboard",
  "openagents-login",
  "reqwest",
  "serde",
@@ -13942,6 +13957,7 @@ dependencies = [
  "async-trait",
  "coder-account",
  "oa-copy",
+ "openagents-dashboard",
  "reqwest",
  "rust-native",
  "serde",
@@ -14159,12 +14175,14 @@ dependencies = [
  "objc2-core-video",
  "objc2-foundation 0.3.2",
  "objc2-web-kit",
+ "openagents-dashboard",
  "png 0.18.1",
  "pulldown-cmark 0.12.2",
  "raw-window-handle",
  "reqwest",
  "roxmltree 0.21.1",
  "rust-embed",
+ "rust-native",
  "serde",
  "serde_json",
  "sha2",
