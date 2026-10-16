@@ -341,6 +341,12 @@ the current grant, exact session generations, the same current owner, and both
 original native instances. This authorizes relationship metadata only. It
 neither dispatches child work nor delegates a COORD claim, budget, tools, or
 control. Child execution keeps its separately admitted ENV/COORD authority.
+Concurrent parent and child turns use distinct ENV leases and attachments.
+An owner can reserve their individual execution claims under one admitted COORD
+container, whose shared call ceiling and current lifetime govern both. They
+execute through the ordinary CJ endpoint; the metadata link supplies no
+execution shortcut. A cancelled container blocks a prepared child, and unknown
+child work retains the shared allowance and prevents parent quiescence.
 An operator can replace the link grants through a signed private
 `openagents.session-child-policy.v1` request carrying a random `command`,
 `expected_generation`, and `grants` (at most 64 entries, each `parent`, `turn`,

@@ -249,8 +249,9 @@ Reading does not advance an engine or follow nested private references. A client
 can read a pending interaction, its question, and its prompt in successive
 queries. `resident::read_reply` verifies the host, caller, exact query, scope,
 artifact bytes, and signed state before use. CJ event replies still use the
-existing execution verifier. Real engine processes and relay/direct transport
-remain unfinished; this socket profile does not advertise those roles.
+existing execution verifier. The standalone server does not launch SDK processes or serve relay/direct
+transports. The optional SDK connector and SSH carriage are separate roles
+described above.
 
 The production binding reads the allocator's actual saved attachment. It
 checks the requesting controller, executor key, lease, materialization, and
@@ -316,7 +317,8 @@ probe cannot implement this admission. Missing live authority refuses.
   another state. Quiescence includes signed child-state references separately
   from native captures. An uncertain child, or a stop with unfinished children,
   leaves the parent unknown without quiescence. An observed child needs native
-  evidence and grants no control. Delegated child dispatch remains unfinished.
+  evidence and grants no control. Provider-owned sub-agents cannot create
+  managed children without separate admission.
 
 The operator can grant an exact same-owner child relationship through
 `SessionHost::set_child_grants`, or send a host-key-signed
@@ -335,6 +337,16 @@ policy invalidates earlier grants, and expiry or a lost native instance refuses
 new links. Existing links still wait for the child's disposition. This grant
 authorizes relationship metadata; child execution keeps its own ENV/COORD
 admission, and no child budget or control rights transfer through the link.
+
+For concurrent parent and child execution, the owner admits a COORD container
+with a finite shared call allowance, then reserves a separate claim for each
+session turn. Each uses its own ENV lease and attachment and the existing CJ
+execute endpoint. The signed link records the relationship without another
+execution charge. A third claim cannot exceed the shared container's remaining
+allowance; cancellation of the container blocks an already prepared child.
+The parent retains its native result until child work ends. A restart that
+loses child execution leaves both results unknown, with no quiescence and no
+release of the shared reservations.
 
 `session-host policy --state DIR --key-file KEY --policy POLICY.json` replaces
 the operator's owner/controller sets. This administrative path needs the host

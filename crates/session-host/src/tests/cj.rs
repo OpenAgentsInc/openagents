@@ -12,6 +12,8 @@ struct Real {
     scope: Value,
     frame: Value,
     target: Value,
+    container: Value,
+    parent: Option<(String, Value)>,
     adapter: Value,
     allocator_root: PathBuf,
     resource_root: PathBuf,
@@ -84,6 +86,12 @@ impl Real {
         Self::for_engine(LoopEngine::mid_turn())
     }
     fn for_engine(engine: impl Engine + 'static) -> Self {
+        Self::with_child_container(engine, false)
+    }
+    fn for_children() -> Self {
+        Self::with_child_container(LoopEngine::mid_turn(), true)
+    }
+    fn with_child_container(engine: impl Engine + 'static, children: bool) -> Self {
         let engine_name = engine.profile().name;
         let fx = Fx::new();
         let coordinator =
@@ -109,6 +117,8 @@ impl Real {
             scope: Value::Null,
             frame: Value::Null,
             target: Value::Null,
+            container: Value::Null,
+            parent: None,
             adapter: Value::Null,
             allocator_root,
             resource_root,
@@ -128,6 +138,11 @@ impl Real {
             .unwrap();
         let mut effects = cap["effects"].clone();
         effects["delegates"] = json!(true);
+        let mut targets = vec![r.target.clone()];
+        if children {
+            r.container = r.coordinator.container_operation(effects.clone()).unwrap();
+            targets.push(r.container.clone());
+        }
         r.scope = r
             .coordinator
             .create_scope(
@@ -144,7 +159,7 @@ impl Real {
                     parent: None,
                 },
                 vec![],
-                vec![r.target.clone()],
+                targets,
                 r.fx.now,
             )
             .unwrap();
@@ -354,13 +369,13 @@ impl Real {
             .unwrap();
         let proposal=self.coordinator.propose(&self.signed(json!({"v":"openagents.task-proposal.v1",
             "requires":[],"task":workspace_host::artifact::token(),"coordinator":self.scope,"frame":self.frame,
-            "parent":null,"target":self.target,"lock":lock,"input":input,"context":context,
+            "parent":self.parent.as_ref().map(|(task,_)|task),"target":self.target,"lock":lock,"input":input,"context":context,
             "dependencies":[],"effects":cap["effects"],"bounds":[
                 {"bound":"calls","ceiling":2,"assurance":"host","mechanism":"native-ledger"}],
             "acceptance":frame["acceptance"][0],"reuse":"never"})),&BTreeMap::new(),self.fx.now).unwrap()["value"].clone();
         let claim=self.coordinator.claim(&self.signed(json!({"v":"openagents.claim-request.v1","requires":[],
             "proposal":proposal,"worker":pk(HOST),"resources":[],"expected_revision":self.revision(),
-            "requested_until":self.fx.now+seconds,"reservation":self.coordinator.scope(&self.scope).unwrap()["allowance"]})),
+            "requested_until":self.fx.now+seconds,"reservation":self.parent.as_ref().map(|(_,reservation)|reservation.clone()).unwrap_or_else(||self.coordinator.scope(&self.scope).unwrap()["allowance"].clone())})),
             self.fx.now).unwrap()["value"].clone();
         let event = self
             .coordinator
@@ -2570,3 +2585,6 @@ fn a_denied_cj_open_has_a_private_bounded_refusal_without_native_creation() {
 #[cfg(feature = "codex")]
 #[path = "codex.rs"]
 mod codex;
+
+#[path = "children.rs"]
+mod children;
