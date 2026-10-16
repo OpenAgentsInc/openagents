@@ -2577,3 +2577,16 @@ and guardian authority separate. Connecting this adapter to `openagents sov`
 requires an explicitly authorized next host release; the current frozen host
 continues its local-key/no-spend profile. Hardware and threshold custody remain
 unsupported. See [the custody guide](crates/sov-custody/README.md).
+
+## Qualify the shared sovereign lifecycle coordinator (#11740)
+
+The standalone `sov-lifecycle` coordinator has isolated two-host transfer,
+fencing, rollback, expiry, recovery, and competing-controller fixtures.
+Before an authorized future host release uses it, configure one trusted shared
+coordinator, admitted controllers, current environment leases, exact private
+state disclosure, and every effect dispatcher's fencing check and acknowledgment.
+Qualify actual remote interruption and recovery while retaining unknown work
+and child reservations. Multiple independent coordinators and direct child
+COORD-host integration remain outside this profile and need their own
+cross-contract qualification (#11749). The frozen host is unchanged. See
+[the lifecycle guide](crates/sov-lifecycle/README.md).

@@ -22,13 +22,16 @@ private `3188` request and the exact artifacts it references. Wiring this into
 - **One lifecycle per agent.** The authority admits an activation request.
   The coordinator binds `(agent, activation ID)` to its exact bytes forever:
   an exact retry is a duplicate, changed bytes refuse, and a stopped ID never
-  reopens. One exclusive lifecycle claim covers every listed dispatcher, and a
+  reopens. An activation ID cannot replace any other agent's lifecycle in
+  this coordinator. Exact retries still require the governing authority.
+  One exclusive lifecycle claim covers every listed dispatcher, and a
   second lifecycle refuses until the claim is released or transferred.
 - **Exact closure.** The profile must be the admitted one. The ENV lease and
   materialization must be exact retained records whose executor is the named
   controller. The reservation must parse, and the plan and claim bytes must be
-  retained. The profile's state-disclosure policy must admit the controller
-  host.
+  retained. The lease must be current and cover the activation's full
+  lifetime; a future materialization observation refuses. The profile's
+  state-disclosure policy must admit the controller host.
 - **Checkpoints.** Only the current controller generation of an active
   lifecycle may checkpoint. Revisions chain exactly. The referenced RUN record
   must belong to this activation and generation and bind the exact state
@@ -41,8 +44,10 @@ private `3188` request and the exact artifacts it references. Wiring this into
   reservation. The old lifecycle stops dispatch at once (`fencing`). The new
   activation is admitted at generation + 1, starting from that checkpoint and
   carrying any unknown effects, only after the target controller accepts and
-  every old dispatcher acknowledges fencing. An unreachable dispatcher, or a
-  target whose signer is down, leaves the transfer pending. The authority can
+  every old dispatcher acknowledges fencing. Final admission rechecks target
+  expiry and placement; a refusal retains valid fencing and unknown effects.
+  The target's original request remains the activation's retry identity.
+  An unreachable dispatcher, or a target whose signer is down, leaves the transfer pending. The authority can
   then roll back to the same host under a fresh generation; the fenced
   generation stays fenced.
 - **Recovery.** A new activation can start from the latest checkpoint of a

@@ -449,3 +449,197 @@ fn expiry_releases_the_claim_and_stops_dispatch() {
     let next = fx.request(HOST_B, HOST_B, Value::Null);
     assert_eq!(fx.send(AUTHORITY, &next)["status"], "accepted");
 }
+
+#[test]
+fn activation_ids_cannot_replace_another_agents_controller() {
+    let mut fx = Fx::new();
+    let agent_b = pk(10);
+    let authority_b = pk(11);
+    let mut profile_b: Value =
+        serde_json::from_slice(&fx.artifacts[fx.profile["digest"].as_str().unwrap()]).unwrap();
+    profile_b["agent"] = json!(agent_b);
+    profile_b["authority"] = json!(authority_b);
+    let profile_b = put_json(&mut fx.artifacts, &profile_b);
+    let root = fx._temp.path().join("two-agents");
+    Coordinator::initialize(
+        root.clone(),
+        secret(COORD),
+        Config {
+            authorities: BTreeMap::from([
+                (pk(AGENT), pk(AUTHORITY)),
+                (agent_b.clone(), authority_b),
+            ]),
+            profiles: BTreeMap::from([
+                (pk(AGENT), fx.profile.clone()),
+                (agent_b.clone(), profile_b.clone()),
+            ]),
+            hosts: BTreeSet::from([pk(HOST_A), pk(HOST_B)]),
+        },
+    )
+    .unwrap();
+    fx.c = Coordinator::open(root, secret(COORD)).unwrap();
+    let first = fx.request(HOST_A, HOST_A, Value::Null);
+    assert_eq!(fx.send(AUTHORITY, &first)["status"], "accepted");
+    let id = first["activation"].as_str().unwrap();
+    let mut other = fx.request(HOST_B, HOST_B, Value::Null);
+    let next = other["activation"].clone();
+    other["agent"] = json!(agent_b);
+    other["profile"] = profile_b;
+    other["activation"] = first["activation"].clone();
+    let refused = fx.send(11, &other);
+    assert_eq!(refused["reason"], "conflict", "{refused}");
+    fx.c.check_dispatch(&pk(AGENT), id, &pk(HOST_A), 1, fx.now)
+        .unwrap();
+    assert!(
+        fx.c.check_dispatch(&pk(AGENT), id, &pk(HOST_B), 1, fx.now)
+            .is_err()
+    );
+    assert!(
+        fx.c.check_dispatch(&pk(10), id, &pk(HOST_B), 1, fx.now)
+            .is_err()
+    );
+    other["activation"] = next;
+    assert_eq!(fx.send(11, &other)["status"], "accepted");
+    fx.c.check_dispatch(&pk(AGENT), id, &pk(HOST_A), 1, fx.now)
+        .unwrap();
+}
+
+#[test]
+fn activation_placement_must_be_current_and_cover_its_entire_lifetime() {
+    for case in [
+        "expired-lease",
+        "future-lease",
+        "future-observation",
+        "overlong-activation",
+    ] {
+        let mut fx = Fx::new();
+        let mut request = fx.request(HOST_A, HOST_A, Value::Null);
+        let mut lease: Value = serde_json::from_slice(
+            &fx.artifacts[request["environment"]["lease"]["digest"].as_str().unwrap()],
+        )
+        .unwrap();
+        let mut material: Value = serde_json::from_slice(
+            &fx.artifacts[request["environment"]["materialization"]["digest"]
+                .as_str()
+                .unwrap()],
+        )
+        .unwrap();
+        match case {
+            "expired-lease" => {
+                lease["created_at"] = json!(fx.now - 200);
+                lease["not_after"] = json!(fx.now - 1);
+            }
+            "future-lease" => {
+                lease["created_at"] = json!(fx.now + 10);
+            }
+            "future-observation" => {
+                material["observed_at"] = json!(fx.now + 10);
+            }
+            "overlong-activation" => {
+                request["expires_at"] = json!(fx.now + 3601);
+            }
+            _ => unreachable!(),
+        }
+        let lease = put_json(&mut fx.artifacts, &lease);
+        material["lease"] = lease.clone();
+        request["environment"]["lease"] = lease;
+        request["environment"]["materialization"] = put_json(&mut fx.artifacts, &material);
+        let result = fx.send(AUTHORITY, &request);
+        assert_eq!(result["status"], "refused", "{case}: {result}");
+        assert!(
+            fx.c.check_dispatch(
+                &pk(AGENT),
+                request["activation"].as_str().unwrap(),
+                &pk(HOST_A),
+                1,
+                fx.now
+            )
+            .is_err()
+        );
+    }
+}
+
+#[test]
+fn exact_activation_replay_does_not_bypass_its_authority() {
+    let mut fx = Fx::new();
+    let request = fx.request(HOST_A, HOST_A, Value::Null);
+    assert_eq!(fx.send(AUTHORITY, &request)["status"], "accepted");
+    assert_eq!(fx.send(STRANGER, &request)["reason"], "not_admitted");
+    assert_eq!(fx.send(AUTHORITY, &request)["status"], "duplicate");
+}
+
+#[test]
+fn a_delayed_transfer_rechecks_placement_and_retains_fencing_evidence() {
+    let mut fx = Fx::new();
+    let (id, activation) = fx.activate();
+    let (_, checkpoint) = fx.checkpoint(
+        &id,
+        &activation,
+        HOST_A,
+        1,
+        0,
+        Value::Null,
+        json!("transfer"),
+    );
+    let (pending, transfer) = fx.transfer(AUTHORITY, &activation, &checkpoint, HOST_B, HOST_B);
+    assert_eq!(pending["status"], "pending");
+    assert_eq!(
+        fx.fence(HOST_A, &activation, 1, true, vec![])["status"],
+        "pending"
+    );
+    assert_eq!(fx.accept(&transfer)["status"], "pending");
+    fx.now += 3601;
+    let unresolved = put(&mut fx.artifacts, b"unresolved child effect", None);
+    let refused = fx.fence(CHILD, &activation, 1, true, vec![unresolved.clone()]);
+    assert_eq!(refused["reason"], "stale", "{refused}");
+    assert!(
+        fx.c.check_dispatch(&pk(AGENT), &id, &pk(HOST_A), 1, fx.now)
+            .is_err()
+    );
+    assert!(
+        fx.c.check_dispatch(
+            &pk(AGENT),
+            transfer["to"]["activation"].as_str().unwrap(),
+            &pk(HOST_B),
+            2,
+            fx.now
+        )
+        .is_err()
+    );
+    let signer =
+        nostr::domain::RelaySigner::from_secret_hex(&secret(COORD).display_secret().to_string())
+            .unwrap();
+    let saved: Value = fx.c.store().load(&signer).unwrap();
+    assert_eq!(
+        saved["activations"][&id]["fencing"]
+            .as_object()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(saved["activations"][&id]["status"], "fencing");
+    assert_eq!(saved["activations"][&id]["unknown"], json!([unresolved]));
+}
+
+#[test]
+fn transferred_activation_replays_its_original_target_request() {
+    let mut fx = Fx::new();
+    let (id, activation) = fx.activate();
+    let (_, checkpoint) = fx.checkpoint(
+        &id,
+        &activation,
+        HOST_A,
+        1,
+        0,
+        Value::Null,
+        json!("transfer"),
+    );
+    let (_, transfer) = fx.transfer(AUTHORITY, &activation, &checkpoint, HOST_B, HOST_B);
+    fx.fence(HOST_A, &activation, 1, true, vec![]);
+    fx.accept(&transfer);
+    let admitted = fx.fence(CHILD, &activation, 1, true, vec![]);
+    assert_eq!(admitted["status"], "accepted");
+    let replay = fx.send(AUTHORITY, &transfer["to"]);
+    assert_eq!(replay["status"], "duplicate", "{replay}");
+    assert_eq!(replay["activation"], admitted["activation"]);
+}

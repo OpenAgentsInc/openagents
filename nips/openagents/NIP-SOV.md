@@ -581,6 +581,19 @@ activation and checkpoint records above, plus these supported records:
 | `openagents.sovereign-late-result.v1` | `activation`, `generation`, `controller`, `record`, `received_at`: evidence of a submission from a fenced controller. |
 | `openagents.sovereign-lifecycle-result.v1` | `request`, `status` (`accepted`, `duplicate`, `pending`, `conflict`, `refused`, or `unknown`), `activation`, `state`, `value`, `reason`. |
 
+Exact activation retries still require the agent's current governing authority.
+A transfer rechecks the target placement and expiry when the last fencing and
+acceptance records arrive. If target admission refuses, valid fencing records
+and unknown effects remain retained and the old controller stays fenced.
+The target activation ID binds its exact original request bytes.
+
+Activation IDs are unique across all agents admitted by one coordinator;
+reuse cannot replace another agent's lifecycle, including during transfer.
+A dispatch check verifies the stored activation's agent as well as its ID,
+controller, and generation. Admission requires a currently valid environment
+lease, bounds activation expiry by that lease, and refuses materialization
+observations from the future.
+
 The coordinator is the trusted shared fencing authority bound at admission. A
 transfer completes only when the authority has signed, the target has
 accepted, and every listed dispatcher has acknowledged fencing.

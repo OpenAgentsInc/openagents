@@ -416,6 +416,7 @@ impl Coordinator {
         unknown: Vec<Value>,
         now: u64,
     ) -> Result<String> {
+        self.check_request(state, request, now)?;
         let id = request["activation"]
             .as_str()
             .unwrap_or_default()
@@ -463,6 +464,15 @@ impl Coordinator {
 
     fn check_request(&self, state: &State, request: &Value, now: u64) -> Result<()> {
         let agent = request["agent"].as_str().unwrap_or_default();
+        if state
+            .activations
+            .contains_key(request["activation"].as_str().unwrap_or_default())
+        {
+            return Err(refuse(
+                "conflict",
+                "activation ID already belongs to an admitted lifecycle",
+            ));
+        }
         if !state
             .config
             .profiles
@@ -479,6 +489,19 @@ impl Coordinator {
         }
         let controller = request["controller"].as_str().unwrap_or_default();
         self.placement(state, agent, controller, &request["environment"])?;
+        let lease = self.json(&request["environment"]["lease"])?;
+        let materialization = self.json(&request["environment"]["materialization"])?;
+        let lease_end = lease["not_after"].as_u64().unwrap_or(0);
+        if lease["created_at"].as_u64().unwrap_or(u64::MAX) > now
+            || lease_end <= now
+            || request["expires_at"].as_u64().unwrap_or(u64::MAX) > lease_end
+            || materialization["observed_at"].as_u64().unwrap_or(u64::MAX) > now
+        {
+            return Err(refuse(
+                "stale",
+                "the environment lease must cover this activation's lifetime",
+            ));
+        }
         contracts::parse_reservation(&self.json(&request["reservation"])?).map_err(contract)?;
         self.bytes(&request["plan"])?;
         self.bytes(&request["claim"])?;
@@ -494,6 +517,7 @@ impl Coordinator {
         now: u64,
     ) -> Result<Value> {
         let agent = body["agent"].as_str().unwrap_or_default().to_string();
+        Self::authority(state, &agent, signer)?;
         let key = format!(
             "{agent}:{}",
             body["activation"].as_str().unwrap_or_default()
@@ -510,7 +534,6 @@ impl Coordinator {
                 "activation ID already bound to other bytes",
             ));
         }
-        Self::authority(state, &agent, signer)?;
         if let Some(holder) = state.claims.get(&agent)
             && state
                 .activations
@@ -885,6 +908,25 @@ impl Coordinator {
                 now,
             );
         }
+        // A target may expire while its controller or dispatchers are offline.
+        // Retain valid fencing evidence even when final admission refuses.
+        if let Err(error) = self.check_request(state, &transfer.body["to"], now) {
+            let status = if code(&error) == "conflict" {
+                "conflict"
+            } else {
+                "refused"
+            };
+            return self.result(
+                state,
+                signer,
+                input,
+                status,
+                Some(&from),
+                None,
+                Some(code(&error)),
+                now,
+            );
+        }
         let generation = from.generation + 1;
         let new_id = self.admit(
             state,
@@ -918,7 +960,7 @@ impl Coordinator {
         state.bindings.insert(
             key,
             Binding {
-                fingerprint: digest_of(&transfer.reference).into(),
+                fingerprint: digest_bytes(&contracts::jcs(&transfer.body["to"]).map_err(contract)?),
                 result: result.clone(),
             },
         );
@@ -1007,6 +1049,7 @@ impl Coordinator {
             .get(activation)
             .ok_or_else(|| refuse("not_admitted", "unknown activation"))?;
         if current != activation
+            || a.agent != agent
             || a.status != "active"
             || a.controller != controller
             || a.generation != generation
