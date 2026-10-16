@@ -644,6 +644,16 @@ only from bytes supplied by that owner or explicitly shared with that owner.
 Refusals do not disclose another owner's lease or state. An attachment's frame
 must equal the actual live COORD claim's frame.
 
+An environment may be allocated and materialized before its eventual session
+invocation is constructed. The native profile permits independently parented
+resource and invocation holds only when both explicitly reserve zero USD. The
+allocator still checks its own resource hold; the actual COORD authority checks
+the invocation reservation against its current claim and charges its call
+allowance before disclosure. Neither reservation is reparented. Nonzero holds
+retain the existing lease-reservation ancestry requirement. Unknown operating
+costs, attachment exclusivity, current resource/frame checks, and expiry keep
+their existing rules. This separation grants no model or wallet spending rights.
+
 The legacy `coder-ssh` mapping cannot condition removal on the full ENV
 ownership generation. Its ENV adapter must refuse destruction without calling
 unguarded removal. Comparing the stopped process afterward is too late;

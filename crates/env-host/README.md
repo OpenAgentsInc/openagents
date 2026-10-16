@@ -152,6 +152,14 @@ lease, so waiting for intake cannot extend its authority. The native
 reservation is a zero-spend child of the
 actual claim reservation in the same currency.
 
+A session can use a lease created before its own invocation claim. The resource
+and invocation reservations may have independent parents when both hold exactly
+zero USD. The allocator checks the resource hold, and the actual COORD authority
+checks and charges the invocation's own allowance. Nonzero holds still require
+the existing lease ancestry. This supports pinning an existing lease and
+materialization in the session input before constructing its CJ request; it
+does not change provider cost holds or grant spending authority.
+
 `env-host run` uses that execute and the explicit worker state/key. The worker's
 ENV decoder runs only on this path; generic worker intake refuses the binding.
 The allocator keeps its active attachment fence through actual COORD input

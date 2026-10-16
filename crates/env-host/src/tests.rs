@@ -247,6 +247,7 @@ struct Fixture {
     reservation: Value,
     frame: Value,
     now: u64,
+    preallocated: Option<String>,
 }
 
 fn put(map: &mut BTreeMap<String, Vec<u8>>, bytes: &[u8], schema: Option<&str>) -> Value {
@@ -326,6 +327,7 @@ impl Fixture {
             reservation,
             frame,
             now: crate::now(),
+            preallocated: None,
         }
     }
     fn allocator(&self) -> Allocator {
@@ -1368,13 +1370,15 @@ fn native_environment_job(
     Event,
     Value,
 ) {
-    let (h, scope, claim, event, payload, _) = native_environment_job_with_parent(fx, false, false);
+    let (h, scope, claim, event, payload, _) =
+        native_environment_job_with_parent(fx, false, false, false);
     (h, scope, claim, event, payload)
 }
 fn native_environment_job_with_parent(
     fx: &mut Fixture,
     with_parent: bool,
     external: bool,
+    preallocate: bool,
 ) -> (
     coordination_host::book::Coordinator,
     Value,
@@ -1456,6 +1460,31 @@ fn native_environment_job_with_parent(
     let instructions=h.put_local_json(&json!({"v":"openagents.instructions.v1","requires":[],"task":task,"revision":0,"resolver":{"id":format!("{}:coord/empty-instructions",pk(OWNER)),"artifact":precedence},"precedence":precedence,"snapshot":snapshot,"entries":[]})).unwrap();
     let frame=h.put_local_json(&json!({"v":"openagents.task-frame.v1","requires":[],"task":task,"owner":pk(OWNER),"controller":pk(OWNER),"revision":0,"previous":null,"objective":text,"origin":"user","constraints":[],"acceptance":[acceptance],"snapshot":snapshot,"instructions":instructions,"variables":[],"attempts":[],"unresolved":[],"corrections":[]})).unwrap();
     h.frame(&send(json!({"v":"openagents.coordination-native-frame.v1","requires":[],"coordinator":scope,"command":workspace_host::artifact::token(),"expected_revision":h.scope(&scope).unwrap()["revision"],"frame":frame})),&h.get_local_bytes(&frame).unwrap(),now).unwrap();
+    fx.frame = frame.clone();
+    let mut queue = vec![frame.clone()];
+    let mut seen = BTreeSet::new();
+    while let Some(reference) = queue.pop() {
+        let digest = reference["digest"].as_str().unwrap().to_string();
+        if !seen.insert(digest.clone()) {
+            continue;
+        }
+        let bytes = h.get_local_bytes(&reference).unwrap();
+        fx.artifacts.insert(digest, bytes.clone());
+        if let Ok(body) = nostr::contracts::parse_strict(&bytes) {
+            let mut stack = vec![&body];
+            while let Some(value) = stack.pop() {
+                if nostr::contracts::parse_artifact(value).is_ok() {
+                    queue.push(value.clone());
+                    continue;
+                }
+                match value {
+                    Value::Object(o) => stack.extend(o.values()),
+                    Value::Array(a) => stack.extend(a),
+                    _ => {}
+                }
+            }
+        }
+    }
     let input=h.put_local_json(&json!({"v":"openagents.fixture-input.v1","requires":[],"trial":workspace_host::artifact::token(),"text":"native environment data"})).unwrap();
     let lock=h.put_local_json(&json!({"v":"openagents.lock.v1","requires":[],"root":target,"entries":[{"id":target["id"],"definition":target,"dependencies":[]}]})).unwrap();
     let descriptor: Value = serde_json::from_slice(&h.get_local_bytes(&scope).unwrap()).unwrap();
@@ -1473,6 +1502,109 @@ fn native_environment_job_with_parent(
             serde_json::from_slice(&h.get_local_bytes(&budget).unwrap()).unwrap();
         parent_reservation = parent_body["reservation"].clone();
     }
+    let input = if preallocate {
+        assert!(with_parent && external);
+        fx.reservation =
+            serde_json::from_slice(&h.get_local_bytes(&parent_reservation).unwrap()).unwrap();
+        let allocator = fx.allocator().with_claims(Box::new(
+            coordination_host::book::Coordinator::open(
+                fx._temp.path().join("coord"),
+                secret(OWNER),
+            )
+            .unwrap(),
+        ));
+        let mut request = fx.request_body(90, 0, 1800);
+        request["bounds"][1]["currency"] = json!("USD");
+        let result = allocator.submit(&fx.bundle(OWNER, &request), now).unwrap();
+        assert_eq!(result["status"], "accepted", "{result}");
+        let lease = allocator.store().json(&result["lease"]).unwrap();
+        let id = lease["lease"].as_str().unwrap().to_string();
+        allocator.materialize(&id, &fx.spec(), now).unwrap();
+        let state = allocator
+            .store()
+            .json(&allocator.status(&id).unwrap()["state"])
+            .unwrap();
+        let materialization = state["materialization"].clone();
+        // The owner explicitly supplies the actual lease/materialization graph.
+        let mut queue = vec![result["lease"].clone(), materialization.clone()];
+        let mut seen = BTreeSet::new();
+        while let Some(reference) = queue.pop() {
+            let digest = reference["digest"].as_str().unwrap().to_string();
+            if !seen.insert(digest.clone()) {
+                continue;
+            }
+            let bytes = allocator
+                .store()
+                .get(&reference)
+                .or_else(|_| {
+                    fx.artifacts
+                        .get(&digest)
+                        .cloned()
+                        .ok_or("fixture artifact unavailable")
+                })
+                .unwrap_or_else(|_| panic!("missing preallocation artifact: {reference}"));
+            h.put_local_bytes(&bytes, "application/octet-stream", None)
+                .unwrap();
+            fx.artifacts.insert(digest, bytes.clone());
+            if let Ok(body) = nostr::contracts::parse_strict(&bytes) {
+                let mut nodes = vec![&body];
+                while let Some(value) = nodes.pop() {
+                    if nostr::contracts::parse_artifact(value).is_ok() {
+                        queue.push(value.clone());
+                        continue;
+                    }
+                    match value {
+                        Value::Object(fields) => nodes.extend(
+                            fields
+                                .iter()
+                                .filter(|(k, _)| k.as_str() != "meta")
+                                .map(|(_, v)| v),
+                        ),
+                        Value::Array(items) => nodes.extend(items),
+                        _ => {}
+                    }
+                }
+            }
+        }
+        let schema = h
+            .put_local_bytes(b"true", "application/schema+json", None)
+            .unwrap();
+        let evidence = h
+            .put_local_json(&json!({"fixture":"preallocated session input"}))
+            .unwrap();
+        let features = nostr::session::FEATURES
+            .iter()
+            .map(|name| {
+                if *name == "create" {
+                    json!({"feature":name,"support":"native","operation":target,
+                    "semantics":schema,"evidence":evidence,"limitations":[]})
+                } else {
+                    json!({"feature":name,"support":"unsupported","operation":null,
+                    "semantics":null,"evidence":null,"limitations":[]})
+                }
+            })
+            .collect::<Vec<_>>();
+        let adapter = json!({"v":"openagents.session-adapter.v1","requires":[],"adapter":target,
+            "engine":fx.definition["runtime"]["artifact"],"protocol":schema,
+            "features":features,"compatibility":evidence});
+        nostr::session::validate(&adapter).unwrap();
+        let adapter = h.put_local_json(&adapter).unwrap();
+        let settings = h.put_local_json(&json!({})).unwrap();
+        let configuration=h.put_local_json(&json!({"v":"openagents.session-configuration.v1",
+            "requires":[],"adapter":target,"recipient":evidence,"model":evidence,
+            "settings_schema":schema,"settings":settings,"policy":evidence,"enforcement":null,"bounds":[]})).unwrap();
+        let body = json!({"v":"openagents.session-open.v1","requires":[],
+            "command":workspace_host::artifact::token(),"session":workspace_host::artifact::token(),
+            "owner":pk(OWNER),"authority":pk(WORKER),"workspace":null,
+            "lease":result["lease"],"materialization":materialization,"adapter":adapter,
+            "requested":configuration,"authorization":evidence,
+            "source":{"kind":"new","artifact":null},"issued_at":now,"expires_at":now+300});
+        nostr::session::validate(&body).unwrap();
+        fx.preallocated = Some(id);
+        h.put_local_json(&body).unwrap()
+    } else {
+        input
+    };
     let proposal=h.propose(&send(json!({"v":"openagents.task-proposal.v1","requires":[],"task":workspace_host::artifact::token(),"coordinator":scope,"frame":frame,"parent":parent_task,"target":target,"lock":lock,"input":input,"context":context,"dependencies":[],"effects":effects,"bounds":[{"bound":"calls","ceiling":2,"assurance":"host","mechanism":"native-ledger"}],"acceptance":acceptance,"reuse":"never"})),&BTreeMap::new(),now).unwrap()["value"].clone();
     let claim=h.claim(&send(json!({"v":"openagents.claim-request.v1","requires":[],"proposal":proposal,"worker":pk(WORKER),"resources":[],"expected_revision":h.scope(&scope).unwrap()["revision"],"requested_until":now+300,"reservation":parent_reservation})),now).unwrap()["value"].clone();
     let dispatch = send(
@@ -1499,36 +1631,11 @@ fn native_environment_job_with_parent(
         &h.get_local_bytes(&claim).unwrap(),
         Some("openagents.claim.v1"),
     );
-    fx.frame = frame.clone();
-    let mut queue = vec![frame];
-    let mut seen = BTreeSet::new();
-    while let Some(reference) = queue.pop() {
-        let digest = reference["digest"].as_str().unwrap().to_string();
-        if !seen.insert(digest.clone()) {
-            continue;
-        }
-        let bytes = h.get_local_bytes(&reference).unwrap();
-        fx.artifacts.insert(digest, bytes.clone());
-        if let Ok(body) = nostr::contracts::parse_strict(&bytes) {
-            let mut stack = vec![&body];
-            while let Some(value) = stack.pop() {
-                if nostr::contracts::parse_artifact(value).is_ok() {
-                    queue.push(value.clone());
-                    continue;
-                }
-                match value {
-                    Value::Object(o) => stack.extend(o.values()),
-                    Value::Array(a) => stack.extend(a),
-                    _ => {}
-                }
-            }
-        }
-    }
     (h, scope, claim, event, execute.payload, budget)
 }
 #[test]
 fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() {
-    for mode in [
+    native_environment_modes(&[
         "run",
         "revoke",
         "drain",
@@ -1540,10 +1647,22 @@ fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() 
         "external-runtime-lost",
         "external-revoked",
         "external-runtime-race",
-    ] {
+    ]);
+}
+#[test]
+fn session_open_uses_an_environment_materialized_before_its_execution_claim() {
+    native_environment_modes(&["external-preallocated-session"]);
+}
+fn native_environment_modes(modes: &[&str]) {
+    for &mode in modes {
         let mut fx = Fixture::new();
         let (coordinator, scope, claim, event, payload) = if mode.starts_with("external-") {
-            let (h, s, c, e, p, _) = native_environment_job_with_parent(&mut fx, false, true);
+            let (h, s, c, e, p, _) = native_environment_job_with_parent(
+                &mut fx,
+                mode == "external-preallocated-session",
+                true,
+                mode == "external-preallocated-session",
+            );
             (h, s, c, e, p)
         } else {
             native_environment_job(&mut fx)
@@ -1563,22 +1682,27 @@ fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() 
         } else {
             fx.allocator().with_claims(Box::new(mounted))
         };
-        let mut request = fx.request_body(91, 0, 1800);
-        request["bounds"][1]["currency"] = json!("USD");
-        if mode == "different-frame" {
-            request["frame"] =
-                workspace_host::artifact::reference(b"frame", "application/octet-stream", None);
-        }
-        let result = allocator
-            .submit(&fx.bundle(OWNER, &request), fx.now)
-            .unwrap();
-        assert_eq!(result["status"], "accepted", "{result}");
-        let lease_id = allocator.store().json(&result["lease"]).unwrap()["lease"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        let spec = fx.spec();
-        allocator.materialize(&lease_id, &spec, fx.now).unwrap();
+        let lease_id = if let Some(id) = fx.preallocated.take() {
+            id
+        } else {
+            let mut request = fx.request_body(91, 0, 1800);
+            request["bounds"][1]["currency"] = json!("USD");
+            if mode == "different-frame" {
+                request["frame"] =
+                    workspace_host::artifact::reference(b"frame", "application/octet-stream", None);
+            }
+            let result = allocator
+                .submit(&fx.bundle(OWNER, &request), fx.now)
+                .unwrap();
+            assert_eq!(result["status"], "accepted", "{result}");
+            let lease_id = allocator.store().json(&result["lease"]).unwrap()["lease"]
+                .as_str()
+                .unwrap()
+                .to_string();
+            let spec = fx.spec();
+            allocator.materialize(&lease_id, &spec, fx.now).unwrap();
+            lease_id
+        };
         let mut job = job(&mut fx, &allocator, &lease_id, "unused", b"opaque claim");
         job.event = event;
         job.payload = payload;
@@ -1587,9 +1711,38 @@ fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() 
         job.attach["controller"] = json!(pk(OWNER));
         job.attach["execute"] = put_json(&mut fx.artifacts, &declaration);
         job.attach["input_digest"] = json!(digest_value(&job.payload["input"]).unwrap());
+        if mode == "external-preallocated-session" {
+            let invocation = json!({"v":"openagents.reservation.v1","requires":[],
+                "id":workspace_host::artifact::token(),"parent":fx.reservation["id"],
+                "currency":"USD","ceiling_microunits":0,"spent_microunits":0,"unknown":false});
+            job.attach["reservation"] = put_json(&mut fx.artifacts, &invocation);
+        }
         job.attach["claim"] = claim;
         job.declaration_event =
             envelope(&secret(OWNER), allocator.pubkey(), &declaration, fx.now).unwrap();
+        if mode == "external-preallocated-session" {
+            let original =
+                fx.artifacts[job.attach["reservation"]["digest"].as_str().unwrap()].clone();
+            let invocation: Value = serde_json::from_slice(&original).unwrap();
+            for (field, value) in [
+                ("parent", json!(workspace_host::artifact::token())),
+                ("ceiling_microunits", json!(1)),
+                ("unknown", json!(true)),
+                ("currency", json!("SAT")),
+            ] {
+                let mut forged = invocation.clone();
+                forged[field] = value;
+                let mut attach = job.attach.clone();
+                attach["reservation"] = put_json(&mut fx.artifacts, &forged);
+                let mut bad = fx.bundle(OWNER, &attach);
+                bad.declarations.push(job.declaration_event.clone());
+                let refused = allocator.submit(&bad, fx.now).unwrap();
+                assert_eq!(refused["status"], "refused", "{refused}");
+                assert_eq!(coordinator.scope(&scope).unwrap()["calls"], 0);
+                assert!(allocator.status(&lease_id).unwrap()["attachment"].is_null());
+            }
+            assert_eq!(fx.faults.borrow().creates, 1);
+        }
         let mut bundle = fx.bundle(OWNER, &job.attach);
         bundle.declarations.push(job.declaration_event.clone());
         let result = allocator.submit(&bundle, fx.now).unwrap();
@@ -1773,7 +1926,17 @@ fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() 
                                     [job.payload["input"]["artifact"]["digest"].as_str().unwrap()],
                             )
                             .unwrap();
-                            assert_eq!(input["text"], "native environment data");
+                            if mode == "external-preallocated-session" {
+                                assert_eq!(input["v"], "openagents.session-open.v1");
+                                assert_eq!(input["lease"], fence.lease().clone());
+                                assert_eq!(
+                                    input["materialization"],
+                                    fence.materialization().clone()
+                                );
+                                nostr::session::validate(&input).unwrap();
+                            } else {
+                                assert_eq!(input["text"], "native environment data");
+                            }
                             calls += 1;
                             Ok(())
                         })
@@ -1791,7 +1954,10 @@ fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() 
                 assert_eq!(coordinator.scope(&scope).unwrap()["calls"], 0);
                 continue;
             }
-            assert_eq!(result.is_ok(), mode == "external-runtime");
+            assert_eq!(
+                result.is_ok(),
+                matches!(mode, "external-runtime" | "external-preallocated-session")
+            );
             assert_eq!(calls, 1);
             assert_eq!(coordinator.scope(&scope).unwrap()["calls"], 1);
             let restarted = fx.allocator().with_claims(Box::new(
@@ -2027,7 +2193,7 @@ fn bootstrap_fixture(
     MaterializeSpec,
 ) {
     let (coordinator, scope, claim, _event, _payload, budget) =
-        native_environment_job_with_parent(fx, true, false);
+        native_environment_job_with_parent(fx, true, false, false);
     let mounted =
         coordination_host::book::Coordinator::open(fx._temp.path().join("coord"), secret(OWNER))
             .unwrap();
@@ -2271,4 +2437,40 @@ fn observing_components_enforces_the_total_read_bound_after_files_change() {
             .observe_components(&resource, &["a".into(), "b".into()])
             .is_err()
     );
+}
+
+#[test]
+fn independent_attachment_holds_refuse_nonzero_resources_and_other_currencies() {
+    for (currency, ceiling) in [("USD", 1), ("SAT", 0)] {
+        let mut fx = Fixture::new();
+        fx.reservation["currency"] = json!(currency);
+        let allocator = fx.allocator();
+        let mut request = fx.request_body(72, ceiling, 1800);
+        request["bounds"][1]["currency"] = json!(currency);
+        let allocated = allocator
+            .submit(&fx.bundle(OWNER, &request), fx.now)
+            .unwrap();
+        assert_eq!(allocated["status"], "accepted", "{allocated}");
+        let lease = allocator.store().json(&allocated["lease"]).unwrap();
+        let id = lease["lease"].as_str().unwrap().to_string();
+        allocator.materialize(&id, &fx.spec(), fx.now).unwrap();
+        let mut job = job(
+            &mut fx,
+            &allocator,
+            &id,
+            "independent-hold",
+            b"fixture claim",
+        );
+        let invocation = json!({"v":"openagents.reservation.v1","requires":[],
+            "id":workspace_host::artifact::token(),"parent":workspace_host::artifact::token(),
+            "currency":currency,"ceiling_microunits":0,"spent_microunits":0,"unknown":false});
+        job.attach["reservation"] = put_json(&mut fx.artifacts, &invocation);
+        let mut bundle = fx.bundle(CONTROLLER, &job.attach);
+        bundle.declarations.push(job.declaration_event);
+        let refused = allocator.submit(&bundle, fx.now).unwrap();
+        assert_eq!(refused["status"], "refused", "{refused}");
+        assert_eq!(refused["reason"], "limit_exceeded");
+        assert!(allocator.status(&id).unwrap()["attachment"].is_null());
+        assert_eq!(fx.faults.borrow().creates, 1);
+    }
 }

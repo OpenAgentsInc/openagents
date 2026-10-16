@@ -1679,8 +1679,17 @@ impl Allocator {
             &self.body(&body["reservation"], "openagents.reservation.v1")?,
         )
         .map_err(contract)?;
-        if reservation.id != lease.reservation_id
-            && reservation.parent.as_deref() != Some(lease.reservation_id.as_str())
+        let resource_child = reservation.id == lease.reservation_id
+            || reservation.parent.as_deref() == Some(lease.reservation_id.as_str());
+        // A preallocated resource and its later invocation have separate
+        // authorities. The live COORD check above verifies the invocation's
+        // actual parent. Only explicit zero-dollar holds can be independent;
+        // neither immutable reservation is reparented or given spending rights.
+        let independent_no_spend = lease.currency == "USD"
+            && lease.reserved == 0
+            && reservation.ceiling_microunits == Some(0)
+            && !reservation.unknown;
+        if !resource_child && !independent_no_spend
             || reservation.currency != lease.currency
             || reservation
                 .ceiling_microunits
