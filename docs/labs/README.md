@@ -35,11 +35,19 @@ Every Lab we have follows the same pattern, first set by
 | [CAD](../cad-lab/README.md) | `part.v1`, `assembly.v1` | B-rep rebuild, mass properties, sketch freedom (`crates/cad`) | glTF, STEP, 3MF, STL, PDF and DXF drawings, hero image | 3D viewport with face picking | `crates/cad-lab` on loopback 8794, **and hosted on openagents.com** (#11653, `cad_web.rs`) |
 | [Game](../game-lab/README.md) | `game.v1` | The bot plays it; still winnable (`icecream-rules`) | Playtest numbers, a WebGL build | Playable game, numbers | `crates/game-lab`, loopback |
 | [Robot](../lab/README.md) | Robot, environment, experiment versions | Description import, dependencies (`crates/robot-lab`) | Simulation runs, replays, policy results | 3D or video replay | Loopback plus paired-host remote reads; the phone mounts Rust Native cards |
+| [Agent](../agent-lab/README.md) | Agent drafts, task suites, experiment versions | SDK spec validation, compatible runtimes, task checks, finite limits | Existing SDK assignments, conversations, comparison reports | Report, compare | Custom-agent SDK and iOS creation/delegation implemented (#11902); Lab workbench proposed |
 | Ship (#11651) | `spacecraft.v1` | Mass budget, thrust line, burn, latches (`verse_lagrange2::ship`) | A Verse zone file | Numbers, 3D | `crates/ship-lab`, loopback |
 | Photo, Film, others | Not built | | | Image, compare, video | |
 
 `crates/briefing-lab`, `layertree-tee-lab` and `verse-zone-lab` (Physics Lab
 in Verse) are named Labs but are not chat Labs. They stay out of scope.
+
+[Agent Lab](../agent-lab/README.md) extends the same workbench to creating,
+trying, comparing, and improving agents. It reuses the account agent catalog
+and existing session assignments; its Lab jobs coordinate finite experiments
+rather than introducing another execution engine. Saving a tested candidate
+for the mobile picker is an explicit action. Its initial Report card needs no
+new standard view, and its hosted delivery shares the dependencies below.
 
 ### What is shared and what is not, today
 
@@ -297,6 +305,7 @@ and Coder 1.0.0 keep working throughout.
 | P1 | #11884 | iPhone: Lab row and standard views | D1 |
 | T1 | #11885 | `labs bridge` for Coder 1.0.0, and the next-release entry | L5 |
 | D2 | #11886 | Video timeline editor in Coder Desktop over `video-lab` | V2, D1 |
+| Agent | [Proposed A1–A6 slices](../agent-lab/README.md#delivery-slices-and-exit-checks) | Agent drafts, bounded trials, comparison evidence, and explicit saving to the agent picker | Custom agents #11902; L2, L3, L5–L7 and shared views for hosted delivery |
 
 ## Owner decisions
 

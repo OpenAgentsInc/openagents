@@ -17,6 +17,12 @@ change the experiment by talking, and compare what happens. The chat is the
 workbench. A lab opens as a room in Verse, using the same documents,
 robot definitions, and saved runs.
 
+Robot Lab is one kind on the [shared Labs platform](../labs/README.md).
+[Agent Lab](../agent-lab/README.md) applies this experiment-and-comparison
+pattern to saved agents. A future agent can prepare or inspect a Robot Lab
+experiment through its typed tools; simulation and physical-control rights
+remain with Robot Lab's existing handlers.
+
 Example: “Put an SO-101 on a table with a red cube.” The conversation shows a
 3D card. “Move the cube farther away” creates another scene version.
 “Replay this demonstration” shows the arm's motion. Once simulation and a

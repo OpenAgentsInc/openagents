@@ -29,6 +29,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Reuse knowledge and components | [Knowledge](coder/guides/knowledge-base.md), [extension packages](extensions/README.md), [programs](programs.md) |
 | Build agent labor | [Market infrastructure](agents/market-infrastructure.md), [free labor host](coder/runtime/free-labor.md) |
 | Inspect decision and coding evidence | [Gym](gym/README.md), [Terminal-Bench](terminal-bench/README.md) |
+| Create custom agents and plan experiments to improve them | [Custom-agent SDK and mobile flow](custom-agents.md), [Agent Lab](agent-lab/README.md), [shared Labs platform](labs/README.md) |
 | Design robot experiments inside chat | [Robot Lab proposal](lab/README.md) |
 | Design the Lagrange 2 spacecraft and its orbit | [Spacecraft design knowledge](spacecraft-design/README.md) |
 | Make delegated runs cheaper and faster than raw Codex or Claude Code | [System One cost efficiency audit](cost/2026-10-02-system-one-cost-efficiency-audit.md) |

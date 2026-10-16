@@ -37,6 +37,11 @@ Fixtures remove their chats, definitions, assignments, and test computers.
 A live Claude assignment and physical iPhone check remain in
 [NEEDS_OWNER.md](../NEEDS_OWNER.md); native Claude instruction binding is tested.
 
+The next workbench is [Agent Lab](agent-lab/README.md): versioned drafts,
+bounded tests, conversation inspection, comparisons, and an explicit save back
+to this same agent catalog. That document describes proposed Lab work; it does
+not add features to the current definition or runner contract.
+
 People should be able to define an agent through the Rust SDK, see it beside
 Claude Code and Codex in the OpenAgents mobile app, and assign work to it through
 the same session flow. The phone also needs a **Create agent** screen that saves
