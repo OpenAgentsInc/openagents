@@ -89,6 +89,29 @@ fn the_binding_stage_includes_the_hpke_key_when_present() {
             .binding,
         binding
     );
+    // Verifying a key does not give the existing NIP-44 decision client
+    // permission to substitute another carriage for HPKE.
+    let secret = secp256k1::SecretKey::from_byte_array([7; 32]).unwrap();
+    let signer =
+        oa_att::nostr::domain::RelaySigner::from_secret_hex(&secret.display_secret().to_string())
+            .unwrap();
+    let refused = oa_att::sealed_request(
+        &signer,
+        &secret,
+        &parsed,
+        Level::TeeCloud,
+        "state",
+        "question",
+        &"12".repeat(32),
+        [8; 32],
+        now,
+    )
+    .err()
+    .unwrap();
+    assert_eq!(
+        refused.0,
+        "this decision client cannot send to this endpoint"
+    );
     parsed.endpoint.body.hpke = Some(STANDARD.encode([0x72; 32]));
     assert!(oa_att::bind(&parsed, &claims, &policy, None).is_err());
     parsed.endpoint.body.hpke = Some(STANDARD.encode([0x71; 31]));

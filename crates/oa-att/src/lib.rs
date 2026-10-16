@@ -500,7 +500,8 @@ fn short(hex: &str) -> String {
 ///
 /// # Errors
 ///
-/// When the body is out of bounds.
+/// When the body is out of bounds or the endpoint needs HPKE carriage,
+/// which this NIP-44 decision client does not implement.
 #[allow(clippy::too_many_arguments)]
 pub fn sealed_request(
     client: &nostr::domain::RelaySigner,
@@ -513,6 +514,9 @@ pub fn sealed_request(
     nonce: [u8; 32],
     now: u64,
 ) -> Result<(Event, nostr::decision::RequestBody, Value), Refused> {
+    if parsed.endpoint.body.hpke.is_some() {
+        return refuse("this decision client cannot send to this endpoint");
+    }
     let model = parsed
         .release
         .models
