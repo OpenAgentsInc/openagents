@@ -5,7 +5,7 @@ steps:
   - name: gcr.io/cloud-builders/docker
     args: [build, -f, deploy/coder-sync/Dockerfile, --target, build, --cache-from, 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:builder', -t, 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:builder', .]
   - name: gcr.io/cloud-builders/docker
-    args: [build, -f, deploy/coder-sync/Dockerfile, -t, 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:${_TAG}', .]
+    args: [build, -f, deploy/coder-sync/Dockerfile, --cache-from, 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:builder', -t, 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:${_TAG}', .]
 images:
   - 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:${_TAG}'
   - 'us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:builder'
