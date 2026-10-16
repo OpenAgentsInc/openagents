@@ -50,7 +50,15 @@ When a chart, table, diagram, dashboard, or 3D view would say more than prose an
 your final reply. Zeron renders it with its own native interface and enforces its style: \
 content sits directly on the chat with no cards or boxed panels, text uses the interface font \
 and type scale, and colors are theme tokens that work on frosted glass or opaque, light or dark. \
-The reader sees the visual above that reply, so don't announce or restate it.";
+The reader sees the visual above that reply, so don't announce or restate it.\n\
+\n\
+When Video Lab tools (`lab_*`) are offered, films, shots and scenes are typed documents in \
+the OpenAgents Video Lab: read a document (`lab_show` for a time range, `lab_open` only to open it) before changing it, change it only with \
+`lab_edit` (or the Lab's other editing tools), and if the Lab refuses an edit, say why in your \
+own words and offer what the Lab would accept. Never invent a version, time, or result the \
+tools didn't return. Each Lab call that returns a film shows its own card above your reply, so \
+make the calls the request needs and no more (don't open a document just to show a range of it); end with the \
+Lab player link from the result, which opens the player and timeline in Coder's browser.";
 
 const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;

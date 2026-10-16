@@ -19,6 +19,7 @@
 mod jsonrpc;
 mod tools;
 mod transcript;
+pub mod video_lab;
 mod zeron;
 
 pub use jsonrpc::serve_stdio;
@@ -53,6 +54,7 @@ impl McpConfig {
 /// Run the MCP server on this process's stdin/stdout until stdin closes.
 pub async fn run(config: McpConfig) -> anyhow::Result<()> {
     let zeron = Zeron::new(format!("ws://127.0.0.1:{}", config.ipc_port), config.origin);
+    video_lab::prime().await;
     let tools = Tools::new(std::sync::Arc::new(zeron));
     serve_stdio(std::sync::Arc::new(tools)).await
 }

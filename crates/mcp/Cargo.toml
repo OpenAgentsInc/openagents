@@ -20,6 +20,8 @@ uuid.workspace = true
 chrono.workspace = true
 async-trait.workspace = true
 futures.workspace = true
+reqwest.workspace = true
 
 [dev-dependencies]
 zeron-visual.workspace = true
+image = { version = "0.25.10", default-features = false, features = ["png"] }

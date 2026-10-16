@@ -667,6 +667,7 @@ impl Tools {
         catalog()
             .into_iter()
             .filter(|tool| in_chat || tool.name != SHOW_VISUAL)
+            .chain(crate::video_lab::tools().iter().cloned())
             .collect()
     }
 
@@ -695,6 +696,7 @@ impl Tools {
             "respond_to_input" => self.respond_to_input(parse(args)?).await,
             "archive_chat" => self.archive_chat(parse(args)?).await,
             SHOW_VISUAL => self.show_visual(parse(args)?).await,
+            lab if crate::video_lab::has(lab) => return self.video_lab(lab, args).await,
             other => return Err(format!("unknown tool: {other}")),
         };
         result.map_err(|e| format!("{e:#}"))
@@ -1230,6 +1232,55 @@ impl Tools {
             "visual": shown,
             "message": "Shown to the reader above your reply. Don't mention or describe the visual; reply with only what it doesn't already say.",
         }))
+    }
+
+    /// Run a Video Lab tool and, inside a chat, show its card above the
+    /// reply (the same native visual `show_visual` publishes).
+    async fn video_lab(&self, name: &str, args: Value) -> Result<Value, String> {
+        let mut result = crate::video_lab::call(name, args).await?;
+        let Some(chat_id) = self.zeron.origin().chat_id.clone() else {
+            return Ok(result);
+        };
+        let Some(card) = result.get("card").cloned() else {
+            return Ok(result);
+        };
+        let Some(visual) = crate::video_lab::card_visual(&card).await else {
+            return Ok(result);
+        };
+        let mut paths = std::collections::BTreeMap::new();
+        if let Some((name, path)) = &visual.picture {
+            paths.insert(name.clone(), path.display().to_string());
+        }
+        let shown = match read_visual_assets(&paths).await {
+            Ok(assets) => self
+                .zeron
+                .call(
+                    zeron_rpc::methods::PUBLISH_VISUAL,
+                    json!({
+                        "chatId": chat_id,
+                        "title": visual.title,
+                        "script": visual.script,
+                        "assets": assets,
+                    }),
+                )
+                .await
+                .map_err(|e| format!("{e:#}")),
+            Err(e) => Err(format!("{e:#}")),
+        };
+        if let Some(object) = result.as_object_mut() {
+            match shown {
+                Ok(_) => {
+                    object.insert(
+                        "shown".into(),
+                        json!("Coder shows this result's Video Lab card (picture, render state, links to play it and to open the Lab player) above your reply. Don't describe the card; end with the player link."),
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "video lab card not shown");
+                }
+            }
+        }
+        Ok(result)
     }
 
     async fn interrupt_chat(&self, args: ChatArgs) -> anyhow::Result<Value> {

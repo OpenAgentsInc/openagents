@@ -346,3 +346,25 @@ The `mcp_standalone_session_executes_on_the_selected_device` test in
 `device_routing` additionally runs two engines with a shared registry and device
 relay, verifies execution on the selected host (and absence of execution on the
 caller), and retrieves responses through MCP.
+
+## Video Lab tools
+
+Every agent Coder runs also gets the OpenAgents Video Lab's tools (`lab_open`,
+`lab_show`, `lab_frame`, `lab_edit`, `lab_render`, `lab_compare`, `lab_notes`,
+`lab_versions`, `lab_import`, `lab_splice`, `lab_voice`, and the rest) when a Lab
+is on this computer. The tool list and descriptions come from the running Lab
+(`GET /api/tools`), so Coder offers exactly the tools that Lab has, and calls go
+to `POST /api/tool/{name}`. The Lab is `VIDEO_LAB_URL` (default
+`http://127.0.0.1:8792`). If it isn't running and its script is on this computer
+(`OPENAGENTS_VIDEO_LAB_SCRIPT`, else `~/work/openagents/scripts/film/lab.py`),
+Coder starts it. A computer without a Lab offers none of these tools. Code:
+`crates/mcp/src/video_lab.rs`.
+
+Inside a chat, each result that carries a Lab card is shown above the reply as a
+native visual, through the same path as `show_visual`. The card shows the
+document, version and summary, and the picture the Lab made: a frame, a frame
+strip, a side-by-side compare, or the poster. It also shows the render state and
+whether the film stays on this Mac. Its links play the render or the compared
+versions, and open the Lab player and timeline (versions, compare, notes,
+editing). The links open in a Coder Browser tab. Plan:
+[OpenAgents Labs](https://github.com/OpenAgentsInc/openagents/blob/main/docs/labs/README.md).
