@@ -106,15 +106,7 @@ impl Automation {
                     "prepare" => {
                         json!({"v":"openagents.coordination-native-auxiliary.v1","requires":[],"coordinator":record.body["coordinator"],"claim":parent["claim"],"command":workspace_host::artifact::token(),"purpose":"prepare","request":occurrence["body"]["request"],"fingerprint":contracts::digest_value(&occurrence["body"]).map_err(|e|e.to_string())?})
                     }
-                    "propose" => {
-                        let mut bounds = record.body["per_occurrence"].clone();
-                        for b in bounds.as_array_mut().ok_or("bounds")? {
-                            if b["bound"] == "calls" {
-                                b["ceiling"] = json!(2);
-                            }
-                        }
-                        json!({"v":"openagents.task-proposal.v1","requires":[],"task":occurrence["body"]["task"],"coordinator":record.body["coordinator"],"frame":record.body["frame"],"parent":record.body["task"],"target":record.body["target"],"lock":record.body["lock"],"input":occurrence["input"],"context":record.body["context"],"dependencies":[],"effects":record.body["effects"],"bounds":bounds,"acceptance":record.body["acceptance"],"reuse":"never"})
-                    }
+                    "propose" => self.occurrence_proposal(&record, &occurrence)?,
                     "claim" => {
                         json!({"v":"openagents.claim-request.v1","requires":[],"proposal":occurrence["proposal"],"worker":state.policy.worker,"resources":if record.body["trigger"]["kind"]=="source"{let observation=self.store.json(&occurrence["body"]["observation"])?;json!([{"id":record.body["trigger"]["resource"],"mode":"read","snapshot":observation["evidence"]}])}else{json!([])},"expected_revision":self.coordinator.scope(&record.body["coordinator"])?["revision"],"requested_until":occurrence["body"]["deadline"],"reservation":record.body["reservation"]})
                     }
@@ -196,7 +188,19 @@ impl Automation {
         let mut state = self.state()?;
         let id = Self::plan_key(&state, reference)?;
         let mut record = state.plans[&id].clone();
-        let active = record.active.clone().ok_or("no active occurrence")?;
+        let active = record
+            .occurrences
+            .iter()
+            .find(|(_, o)| {
+                o["execute"]["id"].as_str().is_some_and(|id| {
+                    event
+                        .tags
+                        .iter()
+                        .any(|t| t.0 == vec!["e".to_string(), id.to_string()])
+                })
+            })
+            .map(|(id, _)| id.clone())
+            .ok_or("not_admitted: result has no admitted occurrence")?;
         let occurrence = record.occurrences[&active].clone();
         let execute: Event =
             serde_json::from_value(occurrence["execute"].clone()).map_err(|_| "worker request")?;
@@ -212,6 +216,12 @@ impl Automation {
             || result["run"] != occurrence["body"]["run"]
         {
             return Err("identity_mismatch: occurrence result differs".into());
+        }
+        if occurrence["result"].is_object() {
+            if self.store.json(&occurrence["result"])? != result {
+                return Err("conflict: occurrence result fork".into());
+            }
+            return Ok(occurrence["result"].clone());
         }
         for (digest, bytes) in files {
             if contracts::digest_bytes(bytes) != *digest {
@@ -255,9 +265,19 @@ impl Automation {
         let mut state = self.state()?;
         let id = Self::plan_key(&state, reference)?;
         let mut record = state.plans[&id].clone();
-        let active = record.active.clone().ok_or("no active occurrence")?;
+        let Some(active) = record.active.clone() else {
+            return record
+                .outcomes
+                .values()
+                .max_by_key(|v| v["ordinal"].as_u64())
+                .map(|v| v["reference"].clone())
+                .ok_or("no result to check".into());
+        };
+        if let Some(outcome) = record.outcomes.get(&active) {
+            return Ok(outcome["reference"].clone());
+        }
         let occurrence = record.occurrences[&active].clone();
-        if record.state["status"] != "active" || occurrence["phase"] != "check" {
+        if occurrence["phase"] != "check" {
             return Err("not_admitted: active independently checkable result required".into());
         }
         if checker.authority() != state.policy.checker {
@@ -265,11 +285,21 @@ impl Automation {
         }
         // The checker's actual signed response and current COORD grant are verified
         // before this controller records a known terminal outcome.
-        let (check_ref, report) = if occurrence["check"].is_object() {
+        if now >= record.body["expires_at"].as_u64().ok_or("expiry")?
+            && !occurrence["check"].is_object()
+        {
+            return Err(
+                "not_admitted: plan expired before a new check; reconcile the known result".into(),
+            );
+        }
+        let worker_result = self.store.json(&occurrence["result"])?;
+        let successful = worker_result["outcome"] == "completed";
+        let (check_ref, report) = if !successful {
+            (Value::Null, Value::Null)
+        } else if occurrence["check"].is_object() {
             (
                 occurrence["check"].clone(),
-                serde_json::from_value::<Event>(occurrence["check_event"].clone())
-                    .map_err(|_| "retained checker event")?,
+                occurrence["check_event"].clone(),
             )
         } else {
             let report = checker.check(
@@ -286,9 +316,6 @@ impl Automation {
                 contracts::parse_strict(&self.coordinator.get_local_bytes(&check_ref)?)
                     .map_err(|e| e.to_string())?;
             self.store.put_json(&check_body)?;
-            if check_body["passed"] != true {
-                return Err("unknown: independent occurrence check did not pass".into());
-            }
             let item = record
                 .occurrences
                 .get_mut(&active)
@@ -297,7 +324,16 @@ impl Automation {
             item["check_event"] = serde_json::to_value(&report).map_err(|e| e.to_string())?;
             state.plans.insert(id.clone(), record.clone());
             self.save(&state)?;
-            (check_ref, report)
+            (
+                check_ref,
+                serde_json::to_value(report).map_err(|e| e.to_string())?,
+            )
+        };
+        let passed = successful && self.store.json(&check_ref)?["passed"] == true;
+        let evidence = if check_ref.is_object() {
+            vec![check_ref.clone()]
+        } else {
+            vec![]
         };
         let request = if let Some(pending) = &record.pending {
             if pending["phase"] != "release" {
@@ -306,7 +342,7 @@ impl Automation {
             serde_json::from_value::<Event>(pending["event"].clone())
                 .map_err(|_| "retained release event")?
         } else {
-            let request=self.coor_request(json!({"v":"openagents.coordination-control.v1","requires":[],"coordinator":record.body["coordinator"],"proposal":occurrence["proposal"],"claim":occurrence["claim"],"action":"release","expected_revision":self.coordinator.scope(&record.body["coordinator"])?["revision"],"requested_until":null,"evidence":[check_ref]}),now)?;
+            let request=self.coor_request(json!({"v":"openagents.coordination-control.v1","requires":[],"coordinator":record.body["coordinator"],"proposal":occurrence["proposal"],"claim":occurrence["claim"],"action":"release","expected_revision":self.coordinator.scope(&record.body["coordinator"])?["revision"],"requested_until":null,"evidence":evidence}),now)?;
             record.pending = Some(json!({"phase":"release","event":request}));
             state.plans.insert(id.clone(), record.clone());
             self.save(&state)?;
@@ -325,7 +361,7 @@ impl Automation {
         // does not infer unused capacity from incomplete timing or byte telemetry.
         record.accounting.settle(&active, Some(reserved))?;
         let settlement=self.store.put_json(&json!({"v":"openagents.automation-native-settlement.v1","requires":[],"occurrence":occurrence["reference"],"ledger":record.accounting,"checker_event":report,"check":check_ref}))?;
-        let outcome = json!({"v":"openagents.automation-outcome.v1","requires":[],"occurrence":occurrence["reference"],"proposal":occurrence["proposal"],"claim":occurrence["claim"],"result":occurrence["result"],"settled":occurrence["terminal"],"evidence":[check_ref],"usage":[settlement]});
+        let outcome = json!({"v":"openagents.automation-outcome.v1","requires":[],"occurrence":occurrence["reference"],"proposal":occurrence["proposal"],"claim":occurrence["claim"],"result":occurrence["result"],"settled":occurrence["terminal"],"evidence":evidence,"usage":[settlement]});
         automation::validate(&outcome).map_err(|e| e.to_string())?;
         let outcome_ref = self.declare(
             &mut state,
@@ -337,21 +373,28 @@ impl Automation {
             active.clone(),
             json!({"reference":outcome_ref,"ordinal":occurrence["body"]["ordinal"]}),
         );
+        let current = record.state["status"].as_str().ok_or("status")?.to_string();
+        let evaluation_pending = passed
+            && !record.body["completion"].is_null()
+            && !matches!(current.as_str(), "cancelled" | "expired" | "exhausted");
         record.occurrences.get_mut(&active).ok_or("occurrence")?["phase"] =
-            json!(if record.body["completion"].is_null() {
-                "settled"
-            } else {
+            json!(if evaluation_pending {
                 "evaluate"
+            } else {
+                "settled"
             });
-        if record.body["completion"].is_null() {
+        if !evaluation_pending {
             record.active = None;
         }
-        let status =
-            if record.body["trigger"]["kind"] == "once" && record.body["completion"].is_null() {
-                "complete"
-            } else {
-                "active"
-            };
+        let status = if current != "active" {
+            current.as_str()
+        } else if !passed {
+            "paused"
+        } else if record.body["trigger"]["kind"] == "once" && !evaluation_pending {
+            "complete"
+        } else {
+            "active"
+        };
         self.transition(
             &mut state,
             &mut record,

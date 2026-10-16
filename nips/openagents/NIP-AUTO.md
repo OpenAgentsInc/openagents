@@ -389,8 +389,17 @@ the checker cannot substitute a model's completion text. Only a policy-valid
 checker reply recovers exactly without another call. Budget or occurrence
 exhaustion stops scheduling without claiming success.
 
-Broader occurrence cleanup recovery remains unfinished in #11735. The profile
-refuses session/environment/effect bindings before activation; these require
+Owner cancellation propagates to managed coordinator claims. Expiry fences
+queued work before input disclosure. The local recovery command reads saved
+worker/source/checker replies without starting another call. Exact task fences
+also cover proposals interrupted before admission. Known unstarted work can
+release after authority expires, with an original coordinator RUN refusal;
+dispatched unknown work retains its holds. Late results preserve terminal
+scheduling status. A different empty receiver store cannot prove absence.
+Explicit resume refreshes authority and allowance and requires reconciled prior
+work; it cannot turn an unknown checker decision into `continue`.
+
+The profile refuses session/environment/effect bindings before activation; these require
 adapters that await their actual terminal work and cleanup. A queue
 acknowledgment cannot complete work. See
 [the runtime guide](../../crates/automation-host/README.md).

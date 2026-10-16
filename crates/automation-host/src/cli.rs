@@ -9,7 +9,7 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
-pub const USAGE: &str = "usage: automation-host ACTION --state DIR --key-file FILE --coordinator-state DIR --coordinator-key-file FILE [--input FILE] [--json]\nActions: init, policy, put, inspect, admit, tick, advance, run, result, check, control, sign, transport, invoke, serve, recover, source-init, source-binding, evaluator-init, evaluator-binding, evaluate.\nWorker actions need --worker-state and --worker-key-file. Checking needs --checker-key-file. Source watches also need --sources, --source-state, and --source-key-file. Source/evaluator initialization and binding commands use their own state/key. Continuation evaluation also needs --evaluation-state and --checker-key-file.";
+pub const USAGE: &str = "usage: automation-host ACTION --state DIR --key-file FILE --coordinator-state DIR --coordinator-key-file FILE [--input FILE] [--json]\nActions: init, policy, put, inspect, admit, tick, advance, run, result, check, control, sign, transport, invoke, serve, recover, source-init, source-binding, evaluator-init, evaluator-binding, evaluate, reconcile.\nWorker actions need --worker-state and --worker-key-file. Checking needs --checker-key-file. Source watches also need --sources, --source-state, and --source-key-file. Source/evaluator initialization and binding commands use their own state/key. Continuation evaluation also needs --evaluation-state and --checker-key-file.";
 fn key(path: &Path) -> Result<secp256k1::SecretKey> {
     let meta = std::fs::metadata(path).map_err(|e| e.to_string())?;
     if !meta.is_file() || meta.len() > 256 {
@@ -216,6 +216,18 @@ pub fn run(args: Vec<String>) -> Result<Value> {
                 .map(|(d, b)| Ok((d, contracts::parse_strict(&b).map_err(|e| e.to_string())?)))
                 .collect::<Result<BTreeMap<_, _>>>()?;
             Ok(json!({"event":event,"artifacts":artifacts}))
+        }
+        "reconcile" => {
+            let worker = if args.iter().any(|a| a == "--worker-state") {
+                Some(coordination_host::worker::Worker::open(
+                    PathBuf::from(option("--worker-state")?),
+                    key(Path::new(&option("--worker-key-file")?))?,
+                    now,
+                )?)
+            } else {
+                None
+            };
+            host.reconcile(reference, worker.as_ref(), now)
         }
         "evaluate" => host.evaluate(reference, now),
         "check" => host.check(

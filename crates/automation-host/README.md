@@ -88,8 +88,20 @@ satisfy the rule. Exact saved replies survive restart without a second call.
 Exhausted budgets or occurrence limits stop scheduling without claiming the
 objective succeeded.
 
-Broader occurrence cleanup recovery remains in #11735. This native profile
-supports fixed data execution and read-only Git observations. It refuses
+`reconcile` stops scheduling, fences the exact pending task, and recovers saved
+worker/source/checker replies. Supply the original worker state/key to recover
+a lost worker reply. It never dispatches another operation. Local owner cleanup
+can cancel and release known unstarted work after grants or leases expire;
+pre-dispatch refusal outcomes reference the coordinator's original RUN refusal.
+A dispatched operation without an authenticated result keeps its hold. An empty
+replacement store proves nothing. Known worker failures or failed independent
+checks pause the plan. Cancellation and expiry remain terminal even when a
+late result arrives. Resuming paused or blocked work requires an explicit owner
+command, refreshed authority, available allowance, and reconciled prior work.
+Counters and consumed allowance never reset.
+
+This native profile supports fixed data execution and read-only Git
+observations. It refuses
 session/environment/effect bindings before activation; those adapters must
 await their own terminal work and cleanup. The released Coder commands remain
 unchanged.

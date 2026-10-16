@@ -30,6 +30,12 @@ impl Coordinator {
             return Err("not_admitted: exact registered operation required".into());
         }
         let task = body["task"].as_str().ok_or("task ID")?.to_string();
+        if scope
+            .requests
+            .contains_key(&format!("automation:fenced-task:{task}"))
+        {
+            return Err("cancelled: task identity was fenced by its owner".into());
+        }
         let fp = contracts::digest_value(&body).map_err(|e| e.to_string())?;
         let key = format!("{actor}:proposal:{task}");
         if let Some(previous) = scope.requests.get(&key) {

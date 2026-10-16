@@ -471,6 +471,7 @@ impl Automation {
                     .ok_or("source age")?
         {
             self.transition(state, record, "blocked", vec![reference], effective_now)?;
+            self.cancel_children(state, record, effective_now)?;
             state.plans.insert(id, record.clone());
             self.save(state)?;
             return Err(
@@ -515,6 +516,7 @@ impl Automation {
             if now >= record.body["expires_at"].as_u64().ok_or("expiry")? {
                 self.consume_expired_source(&mut state, &mut record, now)?;
                 self.transition(&mut state, &mut record, "expired", vec![], now)?;
+                self.propagate_terminal(&mut state, &mut record, now)?;
                 let result = record.state.clone();
                 state.plans.insert(id, record);
                 self.save(&state)?;

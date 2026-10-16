@@ -176,6 +176,7 @@ impl Automation {
                 }
             }
         }
+        self.propagate_terminal(&mut state, &mut record, now)?;
         let result = record.state.clone();
         state.plans.insert(id, record);
         self.save(&state)?;

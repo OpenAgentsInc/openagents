@@ -1292,3 +1292,301 @@ fn lost_evaluation_reply_recovers_exact_signed_result_after_restart_without_anot
             .unwrap()
     );
 }
+#[test]
+fn cleanup_fences_unstarted_identities_releases_only_known_work_and_keeps_terminal_status() {
+    for prepared in [false, true] {
+        let (t, auto, plan) = setup(json!({"kind":"once","at":110}));
+        let reference = admitted(&auto, &plan);
+        auto.tick(&reference, 110).unwrap();
+        let request = if prepared {
+            auto.advance(&reference, 110).unwrap()
+        } else {
+            None
+        };
+        let before = auto.inspect(&reference).unwrap();
+        let occurrence = before["occurrences"]
+            .as_object()
+            .unwrap()
+            .values()
+            .next()
+            .unwrap();
+        let proposal = auto
+            .occurrence_proposal(
+                &auto.state().unwrap().plans[plan["automation"].as_str().unwrap()],
+                occurrence,
+            )
+            .unwrap();
+        let cancel = control(&auto, &reference, "cancel", 111);
+        let cancel_event = event(1, 5, cancel, 111);
+        let accepted = auto.control(&cancel_event, 111).unwrap();
+        assert_eq!(auto.control(&cancel_event, 112).unwrap(), accepted);
+        assert!(
+            auto.coordinator
+                .propose(
+                    &event(5, 1, proposal, 112),
+                    &auto.input_files(&occurrence["input"]).unwrap(),
+                    112
+                )
+                .unwrap_err()
+                .contains("fenced")
+        );
+        if let Some(request) = request {
+            let worker =
+                coordination_host::worker::Worker::open(t.path().join("queued"), secret(2), 112)
+                    .unwrap();
+            assert!(
+                worker
+                    .run_gated(&auto.coordinator, &request, 112, &auto)
+                    .is_err()
+            );
+        }
+        let after = auto.reconcile(&reference, None, 2100).unwrap();
+        assert_eq!(after["status"], "cancelled");
+        assert!(after["active"].is_null());
+        let inspected = auto.inspect(&reference).unwrap();
+        assert_eq!(inspected["accounting"]["spent"]["calls"], 3);
+        let outcome_ref = &inspected["outcomes"]
+            .as_object()
+            .unwrap()
+            .values()
+            .next()
+            .unwrap()["reference"];
+        let outcome = auto.store.json(outcome_ref).unwrap();
+        assert!(outcome["result"].is_null());
+        let refusal = auto.store.json(&outcome["settled"]).unwrap();
+        assert_eq!(refusal["record"]["controller"], key(1));
+        assert_eq!(refusal["record"]["type"], "resolved");
+        assert_eq!(refusal["record"]["data"]["dispatched"], false);
+        assert_eq!(
+            auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+            if prepared { 1 } else { 0 }
+        );
+    }
+}
+#[test]
+fn lost_worker_result_remains_held_until_original_receiver_reply_is_recovered_after_expiry() {
+    let (t, auto, plan) = setup(json!({"kind":"once","at":110}));
+    let reference = admitted(&auto, &plan);
+    auto.tick(&reference, 110).unwrap();
+    let request = auto.advance(&reference, 110).unwrap().unwrap();
+    let worker =
+        coordination_host::worker::Worker::open(t.path().join("lost-worker"), secret(2), 110)
+            .unwrap();
+    let (original, files) = worker
+        .run_gated(&auto.coordinator, &request, 110, &auto)
+        .unwrap();
+    let first = auto.reconcile(&reference, None, 2100).unwrap();
+    assert_eq!(first["status"], "expired");
+    assert!(first["active"].is_object());
+    assert_eq!(
+        auto.inspect(&reference).unwrap()["accounting"]["spent"],
+        json!({})
+    );
+    let empty = coordination_host::worker::Worker::open(
+        t.path().join("different-empty-worker"),
+        secret(2),
+        2100,
+    )
+    .unwrap();
+    assert!(auto.reconcile(&reference, Some(&empty), 2101).unwrap()["active"].is_object());
+    let recovered = auto.reconcile(&reference, Some(&worker), 2102).unwrap();
+    assert_eq!(recovered["status"], "expired");
+    assert!(recovered["active"].is_null());
+    let result_ref = auto
+        .record_result(&reference, &original, &files, 2103)
+        .unwrap();
+    assert_eq!(
+        auto.store.json(&result_ref).unwrap()["outcome"],
+        "completed"
+    );
+    let repeat = auto.reconcile(&reference, Some(&worker), 2104).unwrap();
+    assert_eq!(repeat["status"], "expired");
+    assert_eq!(
+        auto.inspect(&reference).unwrap()["accounting"]["spent"]["calls"],
+        3
+    );
+    assert_eq!(
+        auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+        2
+    );
+}
+#[test]
+fn blocked_source_occurrence_requires_cleanup_and_explicit_resume_without_reusing_its_slot() {
+    let (t, auto, plan, reference, repo) = watched();
+    auto.tick(&reference, 110).unwrap();
+    let at = occurrence_time(&auto, &reference);
+    let request = auto.advance(&reference, at).unwrap().unwrap();
+    let old = git(&repo, &["rev-parse", "refs/heads/docs"], None);
+    let tree = git(&repo, &["rev-parse", "refs/heads/docs^{tree}"], None);
+    let next = git(
+        &repo,
+        &["commit-tree", &tree, "-p", &old],
+        Some(b"changed before intake\n"),
+    );
+    git(&repo, &["update-ref", "refs/heads/docs", &next], None);
+    let worker =
+        coordination_host::worker::Worker::open(t.path().join("blocked-worker"), secret(2), at + 1)
+            .unwrap();
+    assert!(
+        worker
+            .run_gated(&auto.coordinator, &request, at + 1, &auto)
+            .is_err()
+    );
+    assert_eq!(
+        auto.inspect(&reference).unwrap()["state"]["status"],
+        "blocked"
+    );
+    let resume = control(&auto, &reference, "resume", at + 2);
+    assert!(auto.control(&event(1, 5, resume, at + 2), at + 2).is_err());
+    auto.reconcile(&reference, None, at + 3).unwrap();
+    let resume = control(&auto, &reference, "resume", at + 4);
+    auto.control(&event(1, 5, resume, at + 4), at + 4).unwrap();
+    auto.tick(&reference, 170).unwrap();
+    let inspected = auto.inspect(&reference).unwrap();
+    assert_eq!(inspected["state"]["occurrences"], 2);
+    assert_eq!(
+        auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+        4
+    );
+}
+#[test]
+fn cancelled_source_recovers_only_saved_reply_and_never_reads_to_fill_a_missing_reply() {
+    for ran in [false, true] {
+        let (_t, auto, plan, reference, _repo) = watched();
+        let request = {
+            let _guard = auto.store.lock().unwrap();
+            let mut state = auto.state().unwrap();
+            let id = plan["automation"].as_str().unwrap().to_string();
+            let mut record = state.plans[&id].clone();
+            let request = auto
+                .prepare_poll(&mut state, &mut record, "observe", Some(0), None, 110)
+                .unwrap();
+            state.plans.insert(id, record);
+            auto.save(&state).unwrap();
+            request
+        };
+        if ran {
+            auto.source
+                .as_ref()
+                .unwrap()
+                .run(&auto.coordinator, &request, 110, &auto)
+                .unwrap();
+        }
+        let cancel = control(&auto, &reference, "cancel", 150);
+        auto.control(&event(1, 5, cancel, 150), 150).unwrap();
+        if ran {
+            auto.source
+                .as_ref()
+                .unwrap()
+                .run(
+                    &auto.coordinator,
+                    &request,
+                    1900,
+                    &crate::recovery::SavedOnly,
+                )
+                .unwrap();
+        }
+        auto.reconcile(&reference, None, 1900).unwrap();
+        let inspected = auto.inspect(&reference).unwrap();
+        assert_eq!(inspected["state"]["status"], "cancelled");
+        assert_eq!(inspected["state"]["occurrences"], 0);
+        assert_eq!(inspected["pending"].is_null(), ran);
+        assert_eq!(
+            auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+            u64::from(ran)
+        );
+        if ran {
+            assert_eq!(inspected["accounting"]["spent"]["calls"], 1);
+        } else {
+            assert_eq!(inspected["accounting"]["spent"], json!({}));
+        }
+    }
+}
+#[test]
+fn cancelled_checker_recovers_original_decision_without_reopening_scheduling() {
+    let (t, auto, plan) = setup_goal(
+        json!({"kind":"continuation","minimum_interval_seconds":20}),
+        Some(1),
+    );
+    let reference = admitted(&auto, &plan);
+    auto.tick(&reference, 100).unwrap();
+    checked_occurrence(&t, &auto, &reference, 100);
+    let (request, files) = {
+        let _guard = auto.store.lock().unwrap();
+        let mut state = auto.state().unwrap();
+        let id = plan["automation"].as_str().unwrap().to_string();
+        let mut record = state.plans[&id].clone();
+        let request = auto
+            .prepare_evaluation(&mut state, &mut record, 105)
+            .unwrap();
+        let files = auto.evaluation_files(&state, &record).unwrap();
+        state.plans.insert(id, record);
+        auto.save(&state).unwrap();
+        (request, files)
+    };
+    auto.evaluator
+        .as_ref()
+        .unwrap()
+        .run(&auto.coordinator, &request, &files, 105, &auto)
+        .unwrap();
+    let cancel = control(&auto, &reference, "cancel", 106);
+    auto.control(&event(1, 5, cancel, 106), 106).unwrap();
+    auto.reconcile(&reference, None, 1900).unwrap();
+    let inspected = auto.inspect(&reference).unwrap();
+    assert_eq!(inspected["state"]["status"], "cancelled");
+    assert!(inspected["state"]["active"].is_null());
+    assert!(inspected["pending"].is_null());
+    let evaluation = &inspected["evaluations"]
+        .as_object()
+        .unwrap()
+        .values()
+        .last()
+        .unwrap()["body"];
+    assert_eq!(evaluation["decision"], "complete");
+    assert_eq!(
+        auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+        4
+    );
+    auto.tick(&reference, 2200).unwrap();
+    assert_eq!(
+        auto.inspect(&reference).unwrap()["state"]["status"],
+        "cancelled"
+    );
+}
+#[test]
+fn trusted_clock_expiry_fences_a_queued_continuation_before_input_disclosure() {
+    let (t, auto, plan) = setup_goal(
+        json!({"kind":"continuation","minimum_interval_seconds":20}),
+        Some(2),
+    );
+    let reference = admitted(&auto, &plan);
+    auto.tick(&reference, 100).unwrap();
+    let request = auto.advance(&reference, 100).unwrap().unwrap();
+    auto.tick(&reference, 900).unwrap();
+    assert_eq!(
+        auto.inspect(&reference).unwrap()["state"]["status"],
+        "expired"
+    );
+    let claims = auto.coordinator.scope(&plan["coordinator"]).unwrap()["claims"].clone();
+    assert!(
+        claims
+            .as_object()
+            .unwrap()
+            .values()
+            .all(|l| l["phase"] == "released")
+    );
+    let worker =
+        coordination_host::worker::Worker::open(t.path().join("expired-queued"), secret(2), 900)
+            .unwrap();
+    assert!(
+        worker
+            .run_gated(&auto.coordinator, &request, 900, &auto)
+            .is_err()
+    );
+    auto.reconcile(&reference, None, 901).unwrap();
+    assert!(auto.inspect(&reference).unwrap()["state"]["active"].is_null());
+    assert_eq!(
+        auto.coordinator.scope(&plan["coordinator"]).unwrap()["calls"],
+        1
+    );
+}

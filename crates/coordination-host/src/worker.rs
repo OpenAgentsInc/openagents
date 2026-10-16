@@ -94,6 +94,56 @@ impl Worker {
         drop(_lock);
         Ok(worker)
     }
+    /// Read an exact saved reply, including after the execution deadline. Never dispatch.
+    pub fn retained_result(
+        &self,
+        event: &Event,
+        now: u64,
+    ) -> Result<Option<(Event, BTreeMap<String, Vec<u8>>)>> {
+        let opened = nostr::execution::open_request(
+            event,
+            self.signer.pubkey(),
+            &self.secret,
+            event.created_at,
+            nostr::execution::Window::DEFAULT,
+        )
+        .map_err(|e| format!("{e:?}"))?;
+        let nostr::execution::Body::Execute(execute) = &opened.body else {
+            return Err("execute required".into());
+        };
+        let _guard = self.store.lock()?;
+        let state: WorkerState = self.store.load(&self.signer)?;
+        if state.v != "openagents.coordination-worker.v1"
+            || state.service.worker != self.signer.pubkey()
+        {
+            return Err("worker identity differs".into());
+        }
+        let key = state
+            .service
+            .key(&opened.principal, &execute.request, execute.attempt);
+        let Some(reply) = state.events.get(&key) else {
+            return Ok(None);
+        };
+        let claim = state.service.claims.get(&key).ok_or("retained claim")?;
+        if claim.fingerprint != execute.fingerprint
+            || claim.execute_event != event.id
+            || now > claim.retain_until
+        {
+            return Err("conflict: retained request differs or expired".into());
+        }
+        let files = state.outputs[&key]
+            .as_array()
+            .ok_or("output refs")?
+            .iter()
+            .map(|r| {
+                Ok((
+                    r["digest"].as_str().ok_or("digest")?.to_string(),
+                    self.store.get(r)?,
+                ))
+            })
+            .collect::<Result<_>>()?;
+        Ok(Some((reply.clone(), files)))
+    }
     pub fn run(
         &self,
         authority: &Coordinator,

@@ -47,7 +47,7 @@ impl Automation {
         let status = record.state["status"].as_str().ok_or("status")?;
         let next = match body["action"].as_str() {
             Some("pause") if status == "active" => "paused",
-            Some("resume") if status == "paused" => {
+            Some("resume") if matches!(status, "paused" | "blocked") => {
                 if record.pending.is_some() {
                     return Err("unknown: reconcile earlier work before resuming".into());
                 }
@@ -74,7 +74,10 @@ impl Automation {
                             .values()
                             .find(|l| l["reference"] == item["claim"])
                             .ok_or("current child claim")?;
-                        if lease["unknown"] == true
+                        if matches!(
+                            lease["phase"].as_str(),
+                            Some("released" | "cancelled" | "cancel_requested")
+                        ) || lease["unknown"] == true
                             || lease["dispatched"] == true && lease["result"].is_null()
                         {
                             return Err("unknown: earlier worker requires reconciliation".into());
@@ -82,13 +85,41 @@ impl Automation {
                     }
                 }
 
+                if status == "blocked" && record.active.is_some() {
+                    return Err("unknown: reconcile the blocked occurrence before resuming".into());
+                }
+                if record.occurrences.len() as u64
+                    >= record.body["max_occurrences"]
+                        .as_u64()
+                        .ok_or("occurrence cap")?
+                {
+                    return Err("not_admitted: occurrence limit reached".into());
+                }
+                if record.active.is_none() {
+                    if record.accounting.unresolved() {
+                        return Err("unknown: prior allowance remains held".into());
+                    }
+                    if record.body["trigger"]["kind"] == "continuation"
+                        && !record.occurrences.is_empty()
+                        && record.evaluations.values().last().is_none_or(|e| {
+                            e["accepted"] != true || e["body"]["decision"] != "continue"
+                        })
+                    {
+                        return Err("not_admitted: independent continue decision required".into());
+                    }
+                    let mut probe = record.accounting.clone();
+                    probe.reserve(
+                        "resume-check",
+                        crate::plans::units(&record.body["per_occurrence"])?,
+                    )?;
+                }
                 "active"
             }
-            Some("cancel") if !matches!(status, "complete" | "cancelled") => "cancelled",
+            Some("cancel") if matches!(status, "active" | "paused" | "blocked") => "cancelled",
             _ => return Err("conflict: automation control does not apply to current state".into()),
         };
         // Consume elapsed paused slots before resuming; they never become a backlog.
-        if status == "paused" {
+        if status == "paused" && record.body["trigger"]["kind"] != "continuation" {
             self.consume_paused(&mut state, &mut record, now)?;
         }
         let input = self.retain(&mut state, event, &body)?;
@@ -97,9 +128,19 @@ impl Automation {
         record
             .controls
             .insert(command, json!({"fingerprint":fp,"result":result}));
-        state.plans.insert(id, record);
+        state.plans.insert(id.clone(), record.clone());
         self.remember_invocation(&mut state, event, &result);
         self.save(&state)?;
+        if next == "cancelled" {
+            if let Err(error) = self.cancel_children(&mut state, &mut record, now) {
+                if let Some(active) = &record.active {
+                    record.occurrences.get_mut(active).ok_or("occurrence")?["cleanup_error"] =
+                        json!(error);
+                }
+            }
+            state.plans.insert(id, record);
+            self.save(&state)?;
+        }
         Ok(result)
     }
 }

@@ -17,3 +17,5 @@ mod source_plans;
 #[cfg(test)]
 mod tests;
 pub mod transport;
+
+mod recovery;

@@ -117,6 +117,16 @@ impl Automation {
     }
     /// Execute only the already pinned independent checker; no target work runs here.
     pub fn evaluate(&self, reference: &Value, now: u64) -> Result<Value> {
+        let result = self.evaluate_inner(reference, now, false);
+        if let Err(error) = &result {
+            self.block_unknown(reference, now, error)?;
+        }
+        result
+    }
+    pub(crate) fn evaluate_known(&self, reference: &Value, now: u64) -> Result<Value> {
+        self.evaluate_inner(reference, now, true)
+    }
+    fn evaluate_inner(&self, reference: &Value, now: u64, known_only: bool) -> Result<Value> {
         let started = std::time::Instant::now();
         let (request, files) = {
             let _guard = self.store.lock()?;
@@ -132,7 +142,7 @@ impl Automation {
                     .map(|e| e["reference"].clone())
                     .ok_or("no occurrence awaiting a check".into());
             };
-            if record.state["status"] != "active"
+            if (!known_only && record.state["status"] != "active")
                 || record.occurrences[active]["phase"] != "evaluate"
             {
                 return Err(
@@ -146,6 +156,9 @@ impl Automation {
                 serde_json::from_value(pending["event"].clone())
                     .map_err(|_| "evaluation request")?
             } else {
+                if known_only {
+                    return Err("unknown: no saved checker invocation".into());
+                }
                 let event = self.prepare_evaluation(&mut state, &mut record, now)?;
                 self.transition(&mut state, &mut record, "active", vec![], now)?;
                 state.plans.insert(id, record.clone());
@@ -154,7 +167,7 @@ impl Automation {
             };
             (request, self.evaluation_files(&state, &record)?)
         };
-        let (response, files) = self
+        let reply = self
             .evaluator
             .as_ref()
             .ok_or("goal checker not mounted")?
@@ -163,8 +176,13 @@ impl Automation {
                 &request,
                 &files,
                 now.saturating_add(started.elapsed().as_secs()),
-                self,
-            )?;
+                if known_only {
+                    &crate::recovery::SavedOnly
+                } else {
+                    self
+                },
+            );
+        let (response, files) = reply?;
         let _guard = self.store.lock()?;
         let mut state = self.state()?;
         let id = Self::plan_key(&state, reference)?;
@@ -306,7 +324,10 @@ impl Automation {
         } else {
             "active"
         };
-        if matches!(decision, "continue" | "complete") && fresh && policy_valid {
+        if matches!(decision, "continue" | "complete")
+            && policy_valid
+            && (fresh || matches!(current.as_str(), "cancelled" | "expired" | "exhausted"))
+        {
             record.active = None;
             record.occurrences.get_mut(&active).ok_or("occurrence")?["phase"] = json!("settled");
         }
@@ -418,13 +439,21 @@ impl Automation {
         let mut state = self.state()?;
         let id = Self::plan_key(&state, reference)?;
         let mut record = state.plans[&id].clone();
-        if record.state["status"] != "active" || record.active.is_some() || record.pending.is_some()
-        {
+        if matches!(
+            record.state["status"].as_str(),
+            Some("complete" | "cancelled" | "exhausted" | "expired")
+        ) {
             return Ok(record.state);
         }
         if now >= record.body["expires_at"].as_u64().ok_or("expiry")? {
             self.transition(&mut state, &mut record, "expired", vec![], now)?;
         } else {
+            if record.state["status"] != "active"
+                || record.active.is_some()
+                || record.pending.is_some()
+            {
+                return Ok(record.state);
+            }
             let prior = record.evaluations.values().last();
             if record.occurrences.len() > 0
                 && prior
@@ -492,6 +521,7 @@ impl Automation {
                 }
             }
         }
+        self.propagate_terminal(&mut state, &mut record, now)?;
         let result = record.state.clone();
         state.plans.insert(id, record);
         self.save(&state)?;

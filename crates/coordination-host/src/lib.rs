@@ -23,3 +23,5 @@ mod sources;
 mod staging;
 #[cfg(test)]
 mod tests;
+
+mod automation_cleanup;
