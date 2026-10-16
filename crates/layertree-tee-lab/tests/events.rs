@@ -370,3 +370,59 @@ proptest! {
         prop_assert_eq!(replay.roots, roots);
     }
 }
+
+/// The logs `tests/regtest.rs` wrote on a real bitcoind (#11781): they
+/// replay, every height is a block height, the enclave went down, and
+/// every sat that entered the tree was paid out (an exit, then the unroll).
+#[test]
+fn regtest_fixtures_replay_cleanly() {
+    for (name, levels) in [("regtest.jsonl", 1), ("regtest-two-level.jsonl", 2)] {
+        let text = std::fs::read_to_string(fixtures().join(name))
+            .unwrap_or_else(|_| panic!("missing fixture {name}"));
+        let replay = read(&text).unwrap_or_else(|e| panic!("fixture {name}: {e:?}"));
+        assert!(replay.events.iter().all(|e| e.network == Network::Regtest));
+        assert!(replay.enclave_down);
+        let entered: u64 = replay.roots[0].sum
+            + replay
+                .events
+                .iter()
+                .filter_map(|e| match &e.body {
+                    Body::Transition {
+                        op: layertree_tee_lab::events::OpKind::Join,
+                        old_root,
+                        new_root,
+                        ..
+                    } => Some(new_root.sum - old_root.sum),
+                    _ => None,
+                })
+                .sum::<u64>();
+        assert_eq!(replay.paid, entered, "{name}: every sat paid");
+        let confirmed: Vec<u32> = replay
+            .events
+            .iter()
+            .filter_map(|e| match &e.body {
+                Body::UnrollConfirmed { level, .. } => Some(*level),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(confirmed.iter().max().map(|l| l + 1), Some(levels));
+        // The unroll's first transaction confirmed Δ blocks after the last
+        // tree output.
+        let down = replay
+            .events
+            .iter()
+            .find(|e| matches!(e.body, Body::EnclaveDown {}))
+            .and_then(|e| e.height)
+            .unwrap();
+        let first = replay
+            .events
+            .iter()
+            .find(|e| matches!(e.body, Body::UnrollConfirmed { level: 0, .. }))
+            .and_then(|e| e.height)
+            .unwrap();
+        let Body::TreeOpen { unroll_delay, .. } = &replay.events[0].body else {
+            panic!("{name}: first line opens the tree");
+        };
+        assert_eq!(first - down, u32::from(*unroll_delay));
+    }
+}

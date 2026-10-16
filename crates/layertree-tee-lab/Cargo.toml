@@ -20,6 +20,9 @@ serde_json = { version = "=1.0.151", optional = true }
 
 [features]
 events = ["dep:serde", "dep:serde_json"]
+# The ignored bitcoind harness in tests/regtest.rs (#11781); run it with
+# scripts/layertree-regtest.sh. Adds no dependencies.
+regtest = ["events"]
 
 [dev-dependencies]
 # The tests use the events module.

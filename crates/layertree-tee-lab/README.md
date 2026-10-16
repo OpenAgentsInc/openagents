@@ -62,8 +62,38 @@ cargo +nightly fuzz run record_decode -- -max_total_time=1800
 A crash becomes a regression test in `tests/codec.rs` (or att-platforms'
 tests for the report parsers).
 
-No `bitcoind` was available when this was written. The regtest harness is
-the next step of P0 (see the spec, section 11).
+## Regtest: the same transitions on a real node
+
+`scripts/layertree-regtest.sh` (#11781) starts Bitcoin Core 30 on regtest
+in Docker (pinned image digest; TRUC, pay-to-anchor and ephemeral-dust
+relay), runs the ignored harness in `tests/regtest.rs` (feature `regtest`,
+no extra dependencies; plain JSON-RPC over HTTP), and removes the container
+at the end. It uses the host's cargo, or builds in a pinned Rust image when
+the machine has only Docker. It exits non-zero on any failure.
+
+```sh
+scripts/layertree-regtest.sh            # logs go to a fresh scratch dir
+LAYERTREE_REGTEST_ROOT=/some/scratch LAYERTREE_WRITE_EVENTS=1 scripts/layertree-regtest.sh
+```
+
+For a flat tree (radix 128) and a two-level one (radix 4) it:
+
+1. builds the creation transaction, has every member check the genesis
+   unroll, then broadcasts it;
+2. runs join, update, claim, exit and a refresh heartbeat through
+   `Enclave::authorize`, each with a fee input and change, mined in its own
+   block; after each, the tree output on chain equals `TreeState::txout`,
+   the old one is spent, the exit payout is exact, every member re-checks
+   the new unroll, and a light client follows the spend;
+3. drops the enclave, submits the unroll with a CPFP child on its anchor
+   one block early (refused: `non-BIP68-final`), then one block later, and
+   checks it is mined exactly Δ blocks after the tree output; deeper levels
+   follow, one CPFP package per transaction;
+4. checks every leaf's exit key holds exactly its amount, and that the
+   `layertree.events.v1` log replays. `fixtures/events/regtest.jsonl` and
+   `regtest-two-level.jsonl` are logs from such runs.
+
+`cargo test` without `--features regtest` needs no Docker.
 
 ## Run log: `layertree.events.v1`
 
