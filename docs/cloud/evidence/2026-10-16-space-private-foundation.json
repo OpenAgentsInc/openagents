@@ -1,0 +1,183 @@
+{
+  "schema": "openagents.space.private-foundation-evidence.v1",
+  "recorded_at": "2026-10-16T22:31:10.095878+00:00",
+  "issue": 11814,
+  "issue_complete": false,
+  "phase": "private foundation; native service qualification remains pending",
+  "deployment_source": "ac8f1b4ab1a1e67d5ff619d857020edabfc45f76",
+  "native_source": "de87b436c35dac056564bdd5b2a113c9046e189b",
+  "native_cloud_build": "6bee196d-13c5-4d91-b18a-f27e6662e9f8",
+  "broker": {
+    "source_commit": "8a5da089c3d60bd73554aa09fe00b75a6009bbb1",
+    "cloud_build": "97a4e3f1-02eb-4613-8d09-7572c505e51c",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/space-key-broker@sha256:4fddc6ad74009cb607ffdc2405fca32e8cd1e27bf3dc56764c809bb28d064ba0",
+    "service": "oa-space-service-keys",
+    "revision": "oa-space-service-keys-00001-mqx",
+    "url": "https://oa-space-service-keys-ezxz4mgdsq-uc.a.run.app",
+    "ingress": "internal",
+    "service_account": "oa-space-service-keys@openagentsgemini.iam.gserviceaccount.com",
+    "max_instances": 1,
+    "concurrency": 8,
+    "secret_versions": {
+      "key-policy": 1,
+      "key-token": 1
+    },
+    "probe_binary_sha256": "b1f2c870f48d92861465cac8c23cca6cd8b7135684907611d32c8d0fc1f3d189",
+    "live_checks": [
+      "private TLS",
+      "bearer refusal",
+      "real KMS wrapping and repeated key release",
+      "zero plaintext cache TTL",
+      "fresh key IDs and wrapping",
+      "damaged ciphertext refusal",
+      "cross-tenant refusal for two allowed organizations"
+    ],
+    "external_valid_bearer_http_status": 404,
+    "unit_tests_passed": 8
+  },
+  "database": {
+    "name": "oa-space-service",
+    "state": "RUNNABLE",
+    "version": "POSTGRES_18",
+    "tier": "db-custom-1-3840",
+    "public_ip_enabled": false,
+    "storage_gib": "20",
+    "storage_limit_gib": "40",
+    "backups": {
+      "backupRetentionSettings": {
+        "retainedBackups": 7,
+        "retentionUnit": "COUNT"
+      },
+      "backupTier": "STANDARD",
+      "enabled": true,
+      "kind": "sql#backupConfiguration",
+      "pointInTimeRecoveryEnabled": true,
+      "replicationLogArchivingEnabled": true,
+      "startTime": "04:00",
+      "transactionLogRetentionDays": 7,
+      "transactionalLogStorageState": "CLOUD_STORAGE"
+    },
+    "restore_proven": false
+  },
+  "nodes": [
+    {
+      "role": "control",
+      "name": "oa-space-service-control",
+      "zone": "us-central1-a",
+      "machine_type": "e2-standard-4",
+      "cpu_platform": "Intel Broadwell",
+      "public_address": false,
+      "google_identity": true,
+      "k3s": "v1.37.1+k3s1",
+      "k3s_sha256": "92b94582eb7b34a8cf532e6006842b9ed215a6783cf56a3dd6271fd35243b2c0",
+      "node_setup_sha256": "9527dc87c0798850cb6b8134d658869bd968312fdbf7450be04768c402135460",
+      "kubernetes_status": "Ready",
+      "real_kvm_create_vm_passed": false
+    },
+    {
+      "role": "worker",
+      "name": "oa-space-service-worker",
+      "zone": "us-central1-b",
+      "machine_type": "n2-standard-8",
+      "cpu_platform": "Intel Cascade Lake",
+      "public_address": false,
+      "google_identity": false,
+      "k3s": "v1.37.1+k3s1",
+      "k3s_sha256": "92b94582eb7b34a8cf532e6006842b9ed215a6783cf56a3dd6271fd35243b2c0",
+      "node_setup_sha256": "9527dc87c0798850cb6b8134d658869bd968312fdbf7450be04768c402135460",
+      "kubernetes_status": "Ready",
+      "real_kvm_create_vm_passed": true
+    }
+  ],
+  "buckets": [
+    {
+      "name": "openagentsgemini-oa-space-service-templates",
+      "ip_filter": {
+        "mode": "Enabled",
+        "vpcNetworkSources": [
+          {
+            "network": "projects/openagentsgemini/global/networks/oa-space-service",
+            "allowedIpCidrRanges": [
+              "10.219.14.0/24"
+            ]
+          }
+        ],
+        "allowCrossOrgVpcs": false,
+        "allowAllServiceAgentAccess": false
+      },
+      "uniform_access": true,
+      "public_access_prevention": "enforced",
+      "soft_delete_retention_seconds": "604800",
+      "synthetic_protocol_probe": {
+        "prefix": "qualification/11814/fd47a713-251f-4d5d-aa0d-42f94fd78e59/",
+        "passed": [
+          "single put/head/get",
+          "multipart complete",
+          "full and ranged get",
+          "server-side copy",
+          "multipart abort",
+          "prefix listing",
+          "active object cleanup"
+        ],
+        "payload_bytes": 7340032,
+        "payload_sha256": "ebeb5f5d8b80b2a9180c96ce8b54d23e3c8e7af5a5a10d4162162e9e7861fb33",
+        "active_objects_after_cleanup": 0,
+        "client": "stdlib V4 protocol probe; native client qualification remains pending"
+      }
+    },
+    {
+      "name": "openagentsgemini-oa-space-service-snapshots",
+      "ip_filter": {
+        "mode": "Enabled",
+        "vpcNetworkSources": [
+          {
+            "network": "projects/openagentsgemini/global/networks/oa-space-service",
+            "allowedIpCidrRanges": [
+              "10.219.14.0/24"
+            ]
+          }
+        ],
+        "allowCrossOrgVpcs": false,
+        "allowAllServiceAgentAccess": false
+      },
+      "uniform_access": true,
+      "public_access_prevention": "enforced",
+      "soft_delete_retention_seconds": "604800",
+      "synthetic_protocol_probe": {
+        "prefix": "qualification/11814/4754cb98-0134-43a6-9f1e-e3150d26d203/",
+        "passed": [
+          "single put/head/get",
+          "multipart complete",
+          "full and ranged get",
+          "server-side copy",
+          "multipart abort",
+          "prefix listing",
+          "active object cleanup"
+        ],
+        "payload_bytes": 7340032,
+        "payload_sha256": "ebeb5f5d8b80b2a9180c96ce8b54d23e3c8e7af5a5a10d4162162e9e7861fb33",
+        "active_objects_after_cleanup": 0,
+        "client": "stdlib V4 protocol probe; native client qualification remains pending"
+      }
+    }
+  ],
+  "external_valid_hmac_http_status": 403,
+  "cleanup": {
+    "private_probe_vm_and_boot_disk_deleted": true,
+    "unused_zone_a_worker_disk_deleted": true,
+    "local_and_probe_bearer_and_hmac_copies_removed": true,
+    "active_synthetic_objects": 0,
+    "soft_deleted_synthetic_objects_expire_after_days": 7,
+    "maintained_resources_remain_for_service_qualification": true
+  },
+  "remaining": [
+    "native Cloud Run create/exec/stop/wake/delete",
+    "native object-store client qualification",
+    "database backup and restore",
+    "private checkpoint recovery after worker replacement",
+    "bounded capacity and concurrent wake checks",
+    "drain, upgrade, compatibility refusal, rollback and placement disable checks",
+    "guest metadata and private service denial",
+    "metrics, alerts, retention and orphan inventory"
+  ]
+}
