@@ -1,56 +1,49 @@
-# Zeron
+# Coder Desktop
 
-Control your coding agents (Claude Code, Codex, Cursor, Devin, Grok, Hermes, Pi, Antigravity) locally by default, with optional multi-device sync.
+Coder Desktop (the app is called **Coder**) is OpenAgents' desktop app for
+coding agents: Claude Code, Codex, Cursor, Devin, Grok, Hermes, Pi and
+Antigravity, run locally from one workspace with chats, files, diffs, Git,
+pull requests, terminals and browser previews.
 
-*English | [简体中文](README.zh-CN.md) | [한국어](README.ko.md) | [日本語](README.ja.md) | [Español](README.es.md)*
+Based on Zeron by Wing, MIT: Coder Desktop is a fork of
+[Zeron](https://github.com/zeronsh/zeron). We keep Zeron as the `upstream`
+remote and merge it often; [FORK.md](FORK.md) lists what we changed and how
+to merge.
 
-![Zeron desktop app](docs/media/readme/app-screenshot.jpg)
+Coder Desktop works locally without an account. It doesn't use Zeron's hosted
+sign-in, sync or update feed. OpenAgents sign-in and Computers come next
+([openagents#11824](https://github.com/OpenAgentsInc/openagents/issues/11824)).
+Downloads and docs: [openagents.com/download](https://openagents.com/download)
+and [openagents.com/docs](https://openagents.com/docs).
 
-## Desktop app
+## Build and run (macOS)
 
-Download the latest release for your platform from [GitHub Releases](https://github.com/zeronsh/zeron/releases/latest):
+You need a recent stable Rust (1.98.1 worked on 2026-10-15; the GPUI fork uses
+`std::hint::cold_path`, which older toolchains reject).
 
-- **macOS** — `zeron-<version>-macos-arm64.dmg`
-- **Windows** — `zeron-<version>-windows-x86_64-setup.exe`
-- **Linux** — `zeron-<version>-linux-<arch>.tar.gz`, then run its `install.sh`
-
-No account or network connection is needed; sessions stay on your device. The app updates itself.
-
-## Headless (CLI)
-
-For servers and other machines without a display, such as a VPS that keeps agents running after you close your laptop. Linux only:
-
-```bash
-curl -fsSL https://zeron.sh/install.sh | sh
-zeron status
+```sh
+git clone https://github.com/OpenAgentsInc/coder-desktop.git
+cd coder-desktop
+git remote add upstream https://github.com/zeronsh/zeron.git
+RUSTUP_TOOLCHAIN=1.98.1 scripts/run-macos-dev.sh
 ```
 
-The installer starts the engine as a background service that survives reboots.
+The script builds `cargo build -p zeron` (the binary crate keeps its upstream
+name) and opens `target/macos-dev/Coder Dev.app`, bundle ID
+`com.openagents.coder.desktop.dev`, with its data in `target/macos-dev/data`
+and the engine on port 49777. Set `ZERON_DEV_BUILD_ONLY=1` to build without opening it.
+`scripts/package-macos.sh` builds `Coder.app` and a `.dmg`.
 
-```bash
-zeron status      # local/synced mode and engine status
-zeron update      # update to the latest release
-zeron daemon start|stop|restart|status
-```
+Only macOS has been checked so far; see the platform matrix in
+[FORK.md](FORK.md).
 
-## Multi-device sync (optional)
+## How it works
 
-Sign in to start an agent on one device and follow or drive it from another:
+[ARCHITECTURE.md](ARCHITECTURE.md) describes the engine, UI and protocol, as
+inherited from Zeron.
 
-```bash
-zeron daemon stop
-zeron login        # or: zeron logout to return to local-only
-zeron daemon start
-```
+## License
 
-Devices signed in to the same account can read and write each other's workspace files, so only sign in devices you trust. Existing local sessions are never uploaded.
-
-## Sponsors
-
-Thank you to [The Context Company](https://www.thecontextcompany.com/) for sponsoring Zeron. You can help fund Zeron's development too by [becoming a sponsor on GitHub](https://github.com/sponsors/zeronsh).
-
----
-
-Developing or curious how it works? [Ask DeepWiki](https://deepwiki.com/zeronsh/zeron) or check out [ARCHITECTURE.md](ARCHITECTURE.md).
-
-Licensed under the [MIT License](LICENSE).
+Licensed under the [MIT License](LICENSE). Zeron's copyright notice stays in
+[LICENSE](LICENSE), and third-party notices are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
