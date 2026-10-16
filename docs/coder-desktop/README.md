@@ -61,8 +61,13 @@ git remote add upstream https://github.com/zeronsh/zeron.git
 Build and open an isolated development bundle on macOS:
 
 ```sh
-scripts/run-macos-dev.sh
+RUSTUP_TOOLCHAIN=1.98.1 scripts/run-macos-dev.sh
 ```
+
+The fork pins the `stable` channel. Its GPUI uses `std::hint::cold_path`,
+which Rust 1.94 rejects as unstable, so build with a recent stable (1.98.1
+worked on 2026-10-15) or run `rustup update stable`. The first debug build
+compiles about 900 crates.
 
 The script comes from upstream. It builds `cargo build -p zeron` (debug) and
 wraps it in `target/macos-dev/Zeron Dev.app`, with its own bundle ID
