@@ -107,6 +107,10 @@ def available():
 
 def restart_late_window(state, now, kill_at):
     """Retain an interrupted measurement and begin a full new week."""
+    # A later miss stays in the history but cannot erase a full clean week
+    # already observed. Keep supervising until the original kill and unroll.
+    if 'qualified_soak' in state:
+        return False
     previous = state.get('interrupted_soaks', [])
     handled = {row['txid'] for window in previous for row in window['late_heartbeats']}
     late = [row for row in state.get('late_heartbeats', []) if row['txid'] not in handled]
@@ -188,8 +192,15 @@ while time.time() <= state['deadline_unix']:
                 else:
                     state['phase'] = 'soak' if 'soak_began_at_unix' in state else 'soak_setup'
         elif phase in {'soak_setup', 'soak'}:
-            if phase == 'soak' and time.time() >= state['soak_ends_at_unix']:
-                state.setdefault('elapsed_week_observed_at_unix', time.time())
+            if (phase == 'soak' and time.time() >= state['soak_ends_at_unix']
+                    and height - state['last_confirmation_height'] < config['unroll_delay'] // 2):
+                observed = time.time()
+                state.setdefault('elapsed_week_observed_at_unix', observed)
+                state.setdefault('qualified_soak', {
+                    'began_at_unix': state['soak_began_at_unix'],
+                    'ended_at_unix': state['soak_ends_at_unix'],
+                    'observed_at_unix': observed, 'observed_height': height,
+                })
             # Broadcast early enough to allow confirmation delays inside the
             # six-block target. The twelve-block exit delay stays unchanged.
             if height >= state['last_confirmation_height'] + config['unroll_delay'] // 3 - 1:

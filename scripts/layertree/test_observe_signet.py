@@ -43,6 +43,17 @@ class Measurement(unittest.TestCase):
         self.assertEqual(state['deadline_unix'], WEEK + 2 * 86400)
         self.assertEqual(state['phase'], 'soak')
 
+    def test_a_later_miss_does_not_erase_an_already_completed_clean_week(self):
+        completed = {'began_at_unix': 100, 'ended_at_unix': 100 + WEEK,
+                     'observed_at_unix': 101 + WEEK, 'observed_height': 2000}
+        state = {'soak_began_at_unix': 100, 'soak_ends_at_unix': 100 + WEEK,
+                 'last_confirmation_height': 2007, 'qualified_soak': completed,
+                 'late_heartbeats': [{'txid': 'later-refresh', 'height': 2007, 'gap_blocks': 7}]}
+        self.assertFalse(restart(state, WEEK + 1000, 2 * WEEK))
+        self.assertEqual(state['qualified_soak'], completed)
+        self.assertEqual(state['soak_began_at_unix'], 100)
+        self.assertEqual(len(state['late_heartbeats']), 1)
+
 
 if __name__ == '__main__':
     unittest.main()
