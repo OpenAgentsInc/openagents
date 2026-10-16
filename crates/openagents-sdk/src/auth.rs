@@ -396,6 +396,22 @@ impl Client {
         })
     }
 
+    /// Revoke a saved app session without restoring account authority first.
+    /// This also works when account discovery is unavailable or local expiry has passed.
+    /// Always clear local credentials and views, even when revocation fails.
+    pub async fn sign_out_record(&self, record: &CredentialRecord) -> Result<(), Error> {
+        if record.deployment != self.deployment {
+            return Err(Error::WrongDeployment);
+        }
+        if !openagents_login::is_sign_in_token(&record.credential) {
+            return Err(Error::InvalidCredential);
+        }
+        self.sign_out(&Session {
+            record: record.clone(),
+        })
+        .await
+    }
+
     /// Revoke this app session. Sign-in keys are only forgotten by the caller, as in the CLI.
     /// Clear the caller's local storage and views even if this request fails offline.
     pub async fn sign_out(&self, session: &Session) -> Result<(), Error> {

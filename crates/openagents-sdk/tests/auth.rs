@@ -287,6 +287,12 @@ async fn caller_storage_restores_only_the_same_live_account_and_deployment() {
         other.restore(&record).await,
         Err(Error::WrongDeployment)
     ));
+    assert!(matches!(
+        other.sign_out_record(&record).await,
+        Err(Error::WrongDeployment)
+    ));
+    // Imported sign-in keys remain caller-owned and are forgotten locally.
+    client.sign_out_record(&record).await.unwrap();
     let mut changed = serde_json::to_value(&record).unwrap();
     changed["account"]["id"] = json!("acct_other");
     assert!(matches!(
@@ -517,7 +523,11 @@ async fn sdk_device_login_restore_workspaces_and_sign_out_use_the_public_handler
     assert_eq!(messages.len(), 405);
     assert_eq!(messages[1].role, openagents_sdk::MessageRole::Thinking);
     assert_eq!(messages[404].text, "Saved 404");
-    client.sign_out(&session).await.unwrap();
+    // A saved credential can be revoked even without a restorable account session.
+    let mut saved = serde_json::to_value(session.record()).unwrap();
+    saved["expires_at"] = json!(0);
+    let saved = serde_json::from_value(saved).unwrap();
+    client.sign_out_record(&saved).await.unwrap();
     assert!(matches!(
         client.restore(&record).await,
         Err(Error::Unauthorized)

@@ -47,7 +47,9 @@ require login again. App sessions have a known expiry; imported sign-in keys or
 sessions may have no locally known expiry and are checked by the service.
 There is no refresh-token API. On logout, always clear local credentials and
 private views, including when the remote sign-out request fails. Sign-in keys
-are forgotten locally rather than revoked by `sign_out`.
+are forgotten locally rather than revoked by `sign_out`. Use `sign_out_record`
+to revoke a saved app session when account discovery cannot complete. This
+does not restore the session or authorize history reads.
 
 Login polling shares the existing CLI protocol, respects the server's interval,
 and stops on cancellation, denial, expiry, or an uncertain response. A lost
