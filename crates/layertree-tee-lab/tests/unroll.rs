@@ -159,3 +159,28 @@ fn every_state_gets_its_own_unroll() {
         s.tx.input[0].previous_output
     );
 }
+
+/// TRUC (BIP-431) caps a version-3 transaction at 10,000 vB. A full level
+/// of `DEFAULT_RADIX` outputs plus the anchor must fit, both for the root
+/// (script-path input) and for an intermediate (key-path input). Measured
+/// on regtest (#11785): 5,604 vB and 5,585 vB.
+#[test]
+fn a_full_unroll_level_fits_truc() {
+    use layertree_tee_lab::unroll::DEFAULT_RADIX;
+    // 128 leaves: one root with 128 payouts. 200 leaves: a root with two
+    // groups, then a key-path transaction with 128 payouts.
+    for (n, wide_index) in [(128u32, 0usize), (200, 1)] {
+        let w = World::new(n, DEFAULT_RADIX, None);
+        let pkg = w.last_unroll.as_ref().unwrap();
+        let wide = &pkg.txs[wide_index];
+        assert_eq!(wide.output.len(), DEFAULT_RADIX + 1, "{n} leaves");
+        for tx in &pkg.txs {
+            assert!(
+                tx.vsize() <= 10_000,
+                "{n} leaves: {} vB exceeds TRUC",
+                tx.vsize()
+            );
+        }
+        assert!(wide.vsize() > 5_000, "the level is really full");
+    }
+}

@@ -426,3 +426,20 @@ fn regtest_fixtures_replay_cleanly() {
         assert_eq!(first - down, u32::from(*unroll_delay));
     }
 }
+
+/// `measured` lines (#11785) replay as no-ops, and only known units pass.
+#[test]
+fn measured_lines_need_a_known_unit() {
+    let text = std::fs::read_to_string(fixtures().join("happy.jsonl")).unwrap();
+    let n = text.lines().filter(|l| !l.trim().is_empty()).count();
+    let line = |unit: &str| {
+        format!(
+            "{text}{{\"seq\":{n},\"height\":101,\"network\":\"lab\",\"kind\":\"measured\",\"what\":\"refresh_vsize\",\"value\":255,\"unit\":\"{unit}\",\"level\":null}}\n"
+        )
+    };
+    assert!(read(&line("vB")).is_ok());
+    assert_eq!(
+        read(&line("furlongs")).unwrap_err(),
+        EventError::Field("unit")
+    );
+}

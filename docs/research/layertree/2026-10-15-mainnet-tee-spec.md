@@ -46,7 +46,8 @@ Background: [analysis.md](analysis.md) covers the design and
   vendors, light clients that detect a bad spend in the next block, and an
   owner-held kill switch.
 - **On-chain cost is lower than the covenant version.** A normal exit is a
-  key-path spend of about 200 vB, against 1,020 vB for a FULL-tier exit at
+  key-path spend of 298 vB measured on regtest (with a fee input and
+  change), against 1,020 vB for a FULL-tier exit at
   65,536 members, because the rules run off-chain. The single-UTXO
   throughput limit is the same.
 - **Verification.** The predicate replaces the scripts, so it is what has
@@ -241,7 +242,8 @@ Properties:
   the same way.
 - **Heartbeat.** While the enclave is alive it sends a `Refresh` transition
   (no tree change, a new `K`) about every Δ/2 blocks, so an idle tree does
-  not unroll. Each refresh is one key-path spend of about 200 vB.
+  not unroll. Each refresh is one key-path spend: 255 vB measured on
+  regtest with a fee input and change (table below).
 - **Checked by members before they rely on it.** A member's client verifies
   the whole package with public data only, using `verify_package` in
   [`unroll.rs`](../../../crates/layertree-tee-lab/src/unroll.rs). It checks
@@ -251,10 +253,33 @@ Properties:
   that the final outputs are exactly the leaves. It then extracts its own
   branch (one transaction at up to 128 members, two at up to 16,384, three
   at up to about 2.1 million).
-- **Size.** 128 P2TR outputs come to about 5,600 vB, inside TRUC's
-  10,000 vB limit. Each leaf costs its member about 43 vB of output plus a
-  share of the anchor CPFP. This is a mass exit, though, not a solo one:
-  the tree dissolves.
+- **Size.** 128 P2TR outputs come to 5,604 vB at the root and 5,585 vB
+  below it (measured), inside TRUC's 10,000 vB limit. Each leaf costs its
+  member about 43.7 vB of output plus a share of the 153 vB anchor CPFP.
+  This is a mass exit, though, not a solo one: the tree dissolves.
+- **Timing.** The root is mined exactly Δ blocks after the last tree
+  output. TRUC gives an unconfirmed parent one child, which the CPFP uses,
+  so each further level waits a block: Δ + (levels − 1) blocks until every
+  leaf is paid.
+
+**Measured on regtest** (Bitcoin Core 30.2, 2026-10-15, #11785; Δ = 144,
+radix 128; every transaction broadcast with `submitpackage` and mined;
+details in the [lab README](../../../crates/layertree-tee-lab/README.md)):
+
+| Leaves | Levels | Transactions per level | Largest per level (vB) | Blocks to the root, then to all paid |
+| --- | --- | --- | --- | --- |
+| 128 | 1 | 1 | 5,604 | 144, then 0 |
+| 16,384 | 2 | 1, 128 | 5,604; 5,585 | 144, then 1 |
+| 16,385 | 3 | 1, 2, 128 | 186; 5,585; 5,585 | 144, then 2 |
+
+| Heartbeat budget (255 vB each, every Δ/2) | 1 sat/vB | 10 sat/vB | 50 sat/vB |
+| --- | --- | --- | --- |
+| Δ = 144: 14 a week | 3,570 sat | 35,700 sat | 178,500 sat |
+| Δ = 288: 7 a week | 1,785 sat | 17,850 sat | 89,250 sat |
+| Δ = 1,008: 2 a week | 510 sat | 5,100 sat | 25,500 sat |
+
+A CPFP that carries a full 5,604 vB level costs 5,757 sat at 1 sat/vB,
+57,570 at 10 and 287,850 at 50.
 - **Two-phase signing.** In production, the enclave returns the unsigned
   transition and the new unroll first, and the owner signs only after its
   client has checked the unroll. The sandbox does it in one call.
@@ -280,7 +305,7 @@ enclave plus a CSV exit path is better than a leaf. The client should
 | --- | --- | --- | --- |
 | Conservation: the tree's sum equals its output amount | consensus | the enclave, then checked by every light client after each spend | the enclave (prevention), anyone (detection) |
 | Nobody moves my leaf without my signature | consensus | the enclave | the TEE vendor, our code, and the guardian if there is one |
-| I can exit alone, any time, while the system is up | consensus, about 1,020 vB | the enclave must sign (forced-inclusion rule); about 200 vB | the enclave's liveness |
+| I can exit alone, any time, while the system is up | consensus, about 1,020 vB | the enclave must sign (forced-inclusion rule); 298 vB measured | the enclave's liveness |
 | I get my money back if the operator or enclave disappears | consensus | the pre-signed unroll after Δ blocks | **trustless** once I hold a verified unroll for the current state |
 | A broken enclave cannot steal | yes | **no**: the key path signs anything | bounded by caps, vendor split and the guardian |
 | My leaf and proof are valid against the on-chain root | Merkle-sum proof | the same proof, and the root is committed in the output key | **trustless** |
@@ -636,9 +661,9 @@ per-GiB surcharge. The base VM prices are approximate. Our own figure for a
 
 | Phase | What | Money | Monthly cost | Gate |
 | --- | --- | --- | --- | --- |
-| **P0 regtest** | `crates/layertree-tee-lab` (done: predicate, enclave model, unroll, light client, fake attestation, upstream vector check); next, a regtest harness that broadcasts transitions and unrolls on bitcoind in Docker, reusing `lnd-sdk`'s regtest fixtures | none | about $0 (local) | none; agent work |
+| **P0 regtest** | `crates/layertree-tee-lab` (done: predicate, enclave model, unroll, light client, fake attestation, upstream vector check, and `scripts/layertree-regtest.sh`: transitions, light-client alarms and timed unrolls on bitcoind in Docker, with measured sizes and fees, section 3.2) | none | about $0 (local) | none; agent work |
 | **P1 signet** | the enclave as a real service on one `n2d-standard-2` SEV-SNP VM (then one `c3-standard-4` TDX VM); real reports verified (#11745); release log (#11747); records on a relay; a public signet tree with test members; a deliberate enclave kill and a timed unroll | signet coins only | about $65 (SEV-SNP alone, about $0.09/h) to about $230 (both legs; TDX about $0.22/h) | owner OK to run the VMs |
-| **P2 small mainnet** | MuSig2 of SEV-SNP, TDX and the owner's guardian; one tree, OpenAgents and staff as members first, then opt-in payees | **hard cap**: for example 0.01 BTC per tree and 100,000 sat per leaf; at most 50 members | about $230 for the VMs, plus on-chain fees: creation and heartbeats about 200 vB each, twice a week, about 4,000 sat a week at 10 sat/vB | **owner go/no-go**; #11761 custody and money-transmission review; owner holds `G` and the kill switch |
+| **P2 small mainnet** | MuSig2 of SEV-SNP, TDX and the owner's guardian; one tree, OpenAgents and staff as members first, then opt-in payees | **hard cap**: for example 0.01 BTC per tree and 100,000 sat per leaf; at most 50 members | about $230 for the VMs, plus on-chain fees: heartbeats 255 vB each (measured), twice a week at Δ = 1,008, about 5,100 sat a week at 10 sat/vB | **owner go/no-go**; #11761 custody and money-transmission review; owner holds `G` and the kill switch |
 | **P3 more** | FROST 2-of-3 across two clouds and two vendors; larger caps; payout credit leaves in production; LND channel funding from leaves | caps raised step by step | plus about $100 to $300 per extra Confidential VM | owner decision per cap step; external review of the enclave code |
 
 **Tracking.** P0 and P1, with Verse visualizations of the tree, are the

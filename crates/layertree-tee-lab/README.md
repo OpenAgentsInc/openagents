@@ -103,6 +103,40 @@ withheld unroll (`UnrollNotHeld`) and a mined theft by a broken enclave
 `-blockfilterindex=1`. `tests/follow.rs` runs the same follower against an
 in-memory chain with real BIP-158 filters.
 
+### Measured on regtest (#11785)
+
+Bitcoin Core 30.2, 2026-10-15, Δ = 144, radix 128, 1,000 sat leaves, every
+unroll transaction and CPFP child broadcast with `submitpackage` (package
+feerates 1, 10 and 50 sat/vB in turn) and mined
+(`unroll_timing_sizes_and_heartbeat_fees_measured`; the numbers also go
+into the run log as `measured` lines).
+
+| Leaves at unroll | Levels | Transactions per level | Largest transaction per level (vB) | Blocks from the last tree output to the root's block | Then blocks until every leaf is paid |
+| --- | --- | --- | --- | --- | --- |
+| 128 | 1 | 1 | 5,604 (128 payouts + anchor) | 144 (= Δ) | 0 |
+| 16,384 | 2 | 1, 128 | 5,604 (128 groups); 5,585 (128 payouts) | 144 | 1 |
+| 16,385 | 3 | 1, 2, 128 | 186 (2 groups); 5,585; 5,585 | 144 | 2 |
+
+- The root is refused one block early (`non-BIP68-final`), accepted
+  the block after, and mined exactly Δ blocks after the tree output.
+  TRUC lets an unconfirmed parent have one child, which the CPFP takes,
+  so each further level waits one block: Δ + (levels − 1) blocks in all.
+- A full level is 5,604 vB at the root (script-path input) and 5,585 vB
+  below it (key-path input), about 43.7 vB per leaf, well inside TRUC's
+  10,000 vB; `tests/unroll.rs` fails if it ever is not.
+- The CPFP child (anchor plus one key-path coin, one output) is 153 vB.
+  Carrying a full level costs 5,757 sat at 1 sat/vB, 57,570 sat at 10 and
+  287,850 sat at 50; the 186 vB root of a three-level unroll costs 339,
+  3,390 and 16,950 sat.
+- A `Refresh` heartbeat is 255 vB and a key-path exit 298 vB, both with
+  one fee input and a change output (the bare tree spend is less).
+
+| Δ (blocks) | Heartbeats a week (every Δ/2) | 1 sat/vB | 10 sat/vB | 50 sat/vB |
+| --- | --- | --- | --- | --- |
+| 144 | 14 | 3,570 sat | 35,700 sat | 178,500 sat |
+| 288 | 7 | 1,785 sat | 17,850 sat | 89,250 sat |
+| 1,008 | 2 | 510 sat | 5,100 sat | 25,500 sat |
+
 `cargo test` without `--features regtest` needs no Docker.
 
 ## Run log: `layertree.events.v1`
@@ -138,6 +172,7 @@ One example per kind (keys and hashes shortened):
 {"seq":7,"height":103,"network":"regtest","kind":"enclave_down"}
 {"seq":8,"height":247,"network":"regtest","kind":"unroll_broadcast","level":0,"txid":"c0de…","cpfp_fee":1000}
 {"seq":9,"height":248,"network":"regtest","kind":"unroll_confirmed","level":0,"txid":"c0de…"}
+{"seq":10,"height":248,"network":"regtest","kind":"measured","what":"unroll_tx_vsize_max","value":5604,"unit":"vB","level":0}
 ```
 
 `light_client.result` is `ok` or a `LightError` (`OutputMismatch`,

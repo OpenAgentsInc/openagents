@@ -59,8 +59,9 @@ const WALLET: &str = "miner";
 /// Each coin: covers the creation, a transition fee, a join's new value, or a CPFP.
 const FEE_COIN: u64 = 1_000_000;
 const TRANSITION_FEE: u64 = 2_000;
-/// CPFP feerate for an unroll package (parent pays nothing), sat/vB.
-const CPFP_RATE: u64 = 3;
+/// CPFP feerates for unroll packages (the parent pays nothing), sat/vB;
+/// unroll transactions take them in turn.
+const CPFP_RATES: [u64; 3] = [1, 10, 50];
 
 // ---------------------------------------------------------------- the node
 
@@ -224,13 +225,56 @@ impl Chain {
 
     /// `n` fresh coins under fresh test keys, confirmed.
     fn fund_coins(&mut self, n: usize) {
-        for _ in 0..n {
-            self.next_coin_key += 1;
-            let k = sk(5_000 + self.next_coin_key);
-            let (op, out) = self.pay(&key_spk(&self.secp, &k), FEE_COIN);
-            self.coins.push((op, out, k));
+        // One sendmany per hundred coins: no long unconfirmed chains.
+        let mut left = n;
+        while left > 0 {
+            let m = left.min(100);
+            left -= m;
+            let mut amounts = serde_json::Map::new();
+            let mut fresh = Vec::new();
+            for _ in 0..m {
+                self.next_coin_key += 1;
+                let k = sk(5_000 + self.next_coin_key);
+                let spk = key_spk(&self.secp, &k);
+                let addr = Address::from_script(&spk, bitcoin::Network::Regtest).unwrap();
+                amounts.insert(addr.to_string(), btc(FEE_COIN));
+                fresh.push((spk, k));
+            }
+            let txid = self.rpc.wallet("sendmany", json!(["", amounts]));
+            let hex = self.rpc.wallet("gettransaction", json!([txid]))["hex"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+            let tx: Transaction = deserialize_hex(&hex).unwrap();
+            for (spk, k) in fresh {
+                let vout = tx
+                    .output
+                    .iter()
+                    .position(|o| o.script_pubkey == spk)
+                    .unwrap();
+                let op = OutPoint {
+                    txid: tx.compute_txid(),
+                    vout: vout as u32,
+                };
+                self.coins.push((op, tx.output[vout].clone(), k));
+            }
         }
         self.mine(1);
+    }
+
+    /// One confirmed coin of `amount` under a fresh key.
+    fn big_coin(&mut self, amount: u64) -> (OutPoint, TxOut, SecretKey) {
+        self.next_coin_key += 1;
+        let k = sk(5_000 + self.next_coin_key);
+        let (op, out) = self.pay(&key_spk(&self.secp, &k), amount);
+        self.mine(1);
+        (op, out, k)
+    }
+
+    /// The node's vsize and base fee for a transaction in its mempool.
+    fn mempool_cost(&self, txid: &Txid) -> (u64, u64) {
+        let e = self.rpc.call("getmempoolentry", json!([txid.to_string()]));
+        (e["vsize"].as_u64().unwrap(), sats(&e["fees"]["base"]))
     }
 
     fn coin(&mut self) -> (OutPoint, TxOut, SecretKey) {
@@ -257,11 +301,11 @@ impl Chain {
     }
 
     /// `submitpackage`; `Err` carries the node's whole answer.
-    fn submit_package(&self, txs: &[&Transaction]) -> Result<(), String> {
+    fn submit_package(&self, txs: &[&Transaction]) -> Result<Value, String> {
         let hexes: Vec<String> = txs.iter().map(|t| serialize_hex(*t)).collect();
         match self.rpc.raw("/", "submitpackage", json!([hexes])) {
             Err(e) => Err(e),
-            Ok(v) if v["package_msg"] == "success" => Ok(()),
+            Ok(v) if v["package_msg"] == "success" => Ok(v),
             Ok(v) => Err(v.to_string()),
         }
     }
@@ -297,16 +341,14 @@ fn txin(op: OutPoint, sequence: Sequence) -> TxIn {
 }
 
 /// A TRUC child spending `parent`'s zero-value anchor and one of our
-/// coins, paying for both at `CPFP_RATE`. Returns it and its fee.
-fn cpfp(chain: &mut Chain, parent: &Transaction) -> (Transaction, u64) {
+/// coins, paying for both at `rate` sat/vB. Returns it and its fee.
+fn cpfp(chain: &mut Chain, parent: &Transaction, rate: u64) -> (Transaction, u64) {
     let anchor = parent
         .output
         .iter()
         .position(|o| o.script_pubkey == p2a_script())
         .expect("every unroll transaction has an anchor");
     let (op, coin, key) = chain.coin();
-    // Child is ~160 vB: one key-path input, the anchor, one output.
-    let fee = CPFP_RATE * (parent.vsize() as u64 + 160);
     let mut tx = Transaction {
         version: Version(3),
         lock_time: LockTime::ZERO,
@@ -321,11 +363,15 @@ fn cpfp(chain: &mut Chain, parent: &Transaction) -> (Transaction, u64) {
             txin(op, Sequence::ENABLE_RBF_NO_LOCKTIME),
         ],
         output: vec![TxOut {
-            value: Amount::from_sat(coin.value.to_sat() - fee),
+            value: coin.value,
             script_pubkey: coin.script_pubkey.clone(),
         }],
     };
-    let prevouts = [parent.output[anchor].clone(), coin];
+    let prevouts = [parent.output[anchor].clone(), coin.clone()];
+    // A signature is always 64 bytes, so the size is known after one pass.
+    sign_key_input(&chain.secp, &mut tx, &prevouts, 1, &key);
+    let fee = rate * (parent.vsize() + tx.vsize()) as u64;
+    tx.output[0].value = Amount::from_sat(coin.value.to_sat() - fee);
     sign_key_input(&chain.secp, &mut tx, &prevouts, 1, &key);
     (tx, fee)
 }
@@ -419,6 +465,8 @@ struct Run {
     withhold_unroll: bool,
     last_record: Option<Record>,
     last_unroll_pkg: Option<UnrollPackage>,
+    /// The node's (vsize, fee) for the last transition (#11785).
+    last_cost: (u64, u64),
 }
 
 struct Built {
@@ -436,8 +484,13 @@ fn leaf(
     amount: u64,
     operator: [u8; 32],
 ) -> Leaf {
-    let owner = sk(100 + i);
-    let exit = sk(200 + i);
+    // Members below 100 keep the lab's key scheme; above, keys that never
+    // collide with another member's.
+    let (owner, exit) = if i < 100 {
+        (sk(100 + i), sk(200 + i))
+    } else {
+        (sk(1_000_000 + 2 * i), sk(1_000_001 + 2 * i))
+    };
     let (o, e) = (xonly(secp, &owner), xonly(secp, &exit));
     keys.insert(o, owner);
     keys.insert(e, exit);
@@ -458,10 +511,18 @@ impl Run {
     }
 
     /// Every member checks the current unroll with public data only.
+    /// Large trees check a sample: each call already checks that every
+    /// leaf is paid; the sample varies only whose branch is extracted.
     fn check_unroll(&self) {
         let p = self.params();
         let st = self.enclave.state().unwrap();
-        for l in st.tree.leaves().values() {
+        let all: Vec<&Leaf> = st.tree.leaves().values().collect();
+        let sample: Vec<&Leaf> = if all.len() <= 64 {
+            all
+        } else {
+            vec![all[0], all[1], all[all.len() / 2], all[all.len() - 1]]
+        };
+        for l in sample {
             verify_package(
                 &self.chain.secp,
                 &p,
@@ -491,8 +552,20 @@ impl Run {
     /// the creation transaction is built and the genesis unroll checked
     /// by every member before it is broadcast.
     fn open(n: u32, radix: usize) -> Run {
+        Run::open_with(n, radix, DEPTH, 16, &|i| 10_000 * (u64::from(i) + 1))
+    }
+
+    /// A tree of `n` members at positions 0..n holding `amount(i)`, in a
+    /// tree of depth `depth`, with `coins` fee coins funded.
+    fn open_with(
+        n: u32,
+        radix: usize,
+        depth: u32,
+        coins: usize,
+        amount: &dyn Fn(u32) -> u64,
+    ) -> Run {
         let mut chain = Chain::connect();
-        chain.fund_coins(16);
+        chain.fund_coins(coins);
         let secp = chain.secp.clone();
         let vendor = FakeVendor::new(&secp);
         let op_sk = sk(1);
@@ -500,11 +573,17 @@ impl Run {
         let mut keys = BTreeMap::new();
         keys.insert(operator, op_sk);
 
-        let (cin, cprev, ckey) = chain.coin();
+        let mut tree = Tree::new(depth).unwrap();
+        for i in 0..n {
+            tree.insert(u64::from(i), leaf(&mut keys, &secp, i, amount(i), operator))
+                .unwrap();
+        }
+        let root = tree.root().unwrap();
+        let (cin, cprev, ckey) = chain.big_coin(root.sum + 100_000);
         let cfg = Config {
             operator_key: operator,
             tree_id: tree_id(&cin.txid.to_byte_array(), cin.vout),
-            depth: DEPTH,
+            depth,
             dust_min: DUST_MIN,
             unroll_delay: DELAY,
             migration_m: None,
@@ -512,15 +591,6 @@ impl Run {
         };
         let (mut enclave, report) = Enclave::launch(cfg, MEASUREMENT, &vendor, Platform::SevSnp);
         let p = enclave.params().clone();
-        let mut tree = Tree::new(DEPTH).unwrap();
-        for i in 0..n {
-            tree.insert(
-                i as u64,
-                leaf(&mut keys, &secp, i, 10_000 * (i as u64 + 1), operator),
-            )
-            .unwrap();
-        }
-        let root = tree.root().unwrap();
         let k0 = enclave.next_unroll_key();
         let out = TreeOutput {
             root_hash: root.hash,
@@ -571,6 +641,7 @@ impl Run {
             withhold_unroll: false,
             last_record: None,
             last_unroll_pkg: None,
+            last_cost: (0, 0),
         };
         run.check_unroll();
         run.chain.send(&create);
@@ -668,6 +739,7 @@ impl Run {
         let mut tx = signed.tx.clone();
         sign_key_input(&self.chain.secp, &mut tx, &b.prevouts, 1, &b.fee_key);
         let txid = self.chain.send(&tx);
+        self.last_cost = self.chain.mempool_cost(&txid);
         let h = self.chain.mine(1);
         assert!(
             self.chain.tip_txids().contains(&txid.to_string()),
@@ -805,9 +877,9 @@ impl Run {
 
     /// The enclave is gone. The current unroll is refused until Δ blocks
     /// after the tree output, then confirms level by level, each package
-    /// carried by a CPFP on its anchor; every leaf is paid exactly.
-    /// Returns the number of levels.
-    fn unroll_with_enclave_gone(self, name: &str) -> u32 {
+    /// carried by a CPFP on its anchor at 1, 10 or 50 sat/vB in turn;
+    /// every leaf is paid exactly. Measures sizes and timing on the node.
+    fn unroll_with_enclave_gone(self, name: &str) -> UnrollStats {
         let st = self.enclave.state().unwrap().clone();
         let pkg = self.unroll.clone();
         let p = self.params();
@@ -837,7 +909,7 @@ impl Run {
         // output's block, so BIP-68 refuses the package.
         let delta = u32::from(p.unroll_delay);
         chain.mine_to(c + delta - 2);
-        let (child, _) = cpfp(&mut chain, root);
+        let (child, _) = cpfp(&mut chain, root, 1);
         let early = chain.submit_package(&[root, &child]);
         let why = early.expect_err("the unroll must wait Δ blocks");
         assert!(why.contains("non-BIP68-final"), "{why}");
@@ -845,6 +917,13 @@ impl Run {
         // Now the next block is Δ after the tree output's: accepted, and
         // mined in exactly that block.
         chain.mine(1);
+        let accepted_at = chain.height();
+        let mut stats = UnrollStats {
+            levels,
+            blocks_to_accept: accepted_at + 1 - c,
+            ..UnrollStats::default()
+        };
+        let mut turn = 0usize;
         for l in 0..levels {
             let txs: Vec<&Transaction> = pkg
                 .txs
@@ -852,11 +931,42 @@ impl Run {
                 .filter(|t| level[&t.compute_txid()] == l)
                 .collect();
             let tip = chain.height();
+            let mut lv = LevelStats {
+                txs: txs.len() as u32,
+                ..LevelStats::default()
+            };
             for tx in &txs {
-                let (child, fee) = cpfp(&mut chain, tx);
-                chain
+                let rate = CPFP_RATES[turn % CPFP_RATES.len()];
+                turn += 1;
+                let (child, fee) = cpfp(&mut chain, tx, rate);
+                let answer = chain
                     .submit_package(&[tx, &child])
                     .unwrap_or_else(|e| panic!("level {l}: {e}"));
+                // The node's own sizes and the package feerate it applied.
+                let results = answer["tx-results"].as_object().unwrap();
+                let by_txid = |t: &Transaction| {
+                    results
+                        .values()
+                        .find(|r| r["txid"] == t.compute_txid().to_string())
+                        .unwrap_or_else(|| panic!("{answer}"))
+                        .clone()
+                };
+                let (pr, cr) = (by_txid(tx), by_txid(&child));
+                let (pv, cv) = (pr["vsize"].as_u64().unwrap(), cr["vsize"].as_u64().unwrap());
+                assert_eq!(pv, tx.vsize() as u64);
+                assert_eq!(cv, child.vsize() as u64);
+                assert!(pv <= 10_000, "TRUC parent limit");
+                assert!(cv <= 1_000, "TRUC child limit");
+                let eff = (cr["fees"]["effective-feerate"].as_f64().unwrap() * 1e5).round() as u64;
+                assert!(eff >= rate, "package feerate {eff} sat/vB below {rate}");
+                lv.max_vsize = lv.max_vsize.max(pv);
+                lv.min_vsize = if lv.min_vsize == 0 {
+                    pv
+                } else {
+                    lv.min_vsize.min(pv)
+                };
+                lv.max_outputs = lv.max_outputs.max(tx.output.len() as u32);
+                stats.child_vsize = stats.child_vsize.max(cv);
                 log.push(
                     Some(tip),
                     Body::UnrollBroadcast {
@@ -870,44 +980,92 @@ impl Run {
             if l == 0 {
                 assert_eq!(h, c + delta, "the unroll confirms exactly Δ blocks later");
             }
-            let mined = chain.tip_txids();
+            let mined: std::collections::HashSet<String> = chain.tip_txids().into_iter().collect();
             for tx in &txs {
                 let txid = tx.compute_txid().to_string();
                 assert!(mined.contains(&txid), "level {l} tx {txid} mined");
                 log.push(Some(h), Body::UnrollConfirmed { level: l, txid });
             }
+            for (what, value, unit) in [
+                ("unroll_level_txs", u64::from(lv.txs), "txs"),
+                ("unroll_tx_vsize_max", lv.max_vsize, "vB"),
+                ("unroll_tx_vsize_min", lv.min_vsize, "vB"),
+            ] {
+                log.push(
+                    Some(h),
+                    Body::Measured {
+                        what: what.into(),
+                        value,
+                        unit: unit.into(),
+                        level: Some(l),
+                    },
+                );
+            }
+            stats.per_level.push(lv);
         }
+        let paid_at = chain.height();
+        stats.blocks_to_paid = paid_at - (accepted_at + 1);
 
         // Every leaf paid its exact amount to its exit key, nothing else.
-        let h = chain.height();
+        let mut payouts: std::collections::HashMap<(ScriptBuf, u64), Vec<OutPoint>> =
+            std::collections::HashMap::new();
+        for t in &pkg.txs {
+            for (vout, o) in t.output.iter().enumerate() {
+                payouts
+                    .entry((o.script_pubkey.clone(), o.value.to_sat()))
+                    .or_default()
+                    .push(OutPoint {
+                        txid: t.compute_txid(),
+                        vout: vout as u32,
+                    });
+            }
+        }
+        let n = st.tree.leaves().len();
         let mut total = 0;
-        for l in st.tree.leaves().values() {
+        for (k, l) in st.tree.leaves().values().enumerate() {
             let spk = p2tr_raw(&l.exit_key);
-            let (tx, vout) = pkg
-                .txs
-                .iter()
-                .find_map(|t| {
-                    t.output
-                        .iter()
-                        .position(|o| o.script_pubkey == spk && o.value.to_sat() == l.amount)
-                        .map(|v| (t, v))
-                })
+            let op = payouts
+                .get_mut(&(spk.clone(), l.amount))
+                .and_then(Vec::pop)
                 .expect("a payout per leaf");
-            let got = chain.utxo(&OutPoint {
-                txid: tx.compute_txid(),
-                vout: vout as u32,
-            });
-            assert_eq!(
-                got,
-                Some(TxOut {
-                    value: Amount::from_sat(l.amount),
-                    script_pubkey: spk,
-                })
-            );
+            // Every mined transaction was checked above; on big trees the
+            // UTXO set is sampled.
+            if n <= 256 || k % 97 == 0 || k + 1 == n {
+                assert_eq!(
+                    chain.utxo(&op),
+                    Some(TxOut {
+                        value: Amount::from_sat(l.amount),
+                        script_pubkey: spk,
+                    })
+                );
+            }
             total += l.amount;
-            log.push(Some(h), Body::payout(&l.exit_key, l.amount));
+            log.push(Some(paid_at), Body::payout(&l.exit_key, l.amount));
         }
         assert_eq!(total, st.amount(), "the whole tree paid out");
+        for (what, value, unit) in [
+            (
+                "unroll_blocks_to_accept",
+                u64::from(stats.blocks_to_accept),
+                "blocks",
+            ),
+            (
+                "unroll_blocks_to_paid",
+                u64::from(stats.blocks_to_paid),
+                "blocks",
+            ),
+            ("cpfp_child_vsize", stats.child_vsize, "vB"),
+        ] {
+            log.push(
+                Some(paid_at),
+                Body::Measured {
+                    what: what.into(),
+                    value,
+                    unit: unit.into(),
+                    level: None,
+                },
+            );
+        }
 
         // The run log replays under the #11780 reader.
         let text = log.to_jsonl();
@@ -916,14 +1074,48 @@ impl Run {
         if let Some(dir) = std::env::var_os("LAYERTREE_REGTEST_ROOT") {
             std::fs::write(PathBuf::from(dir).join(format!("{name}.jsonl")), &text).unwrap();
         }
-        if std::env::var_os("LAYERTREE_WRITE_EVENTS").is_some() {
+        let fixture = ["regtest", "regtest-two-level"].contains(&name);
+        if fixture && std::env::var_os("LAYERTREE_WRITE_EVENTS").is_some() {
             let f = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("fixtures/events")
                 .join(format!("{name}.jsonl"));
             std::fs::write(f, &text).unwrap();
         }
-        levels
+        stats
     }
+
+    /// Log a measured number for the last transition.
+    fn measure(&mut self, what: &str, value: u64, unit: &str) {
+        self.log.push(
+            Some(self.confirmed_at),
+            Body::Measured {
+                what: what.into(),
+                value,
+                unit: unit.into(),
+                level: None,
+            },
+        );
+    }
+}
+
+#[derive(Debug, Default)]
+struct LevelStats {
+    txs: u32,
+    max_outputs: u32,
+    max_vsize: u64,
+    min_vsize: u64,
+}
+
+#[derive(Debug, Default)]
+struct UnrollStats {
+    levels: u32,
+    /// Blocks from the last tree output's block to the block that mines
+    /// the unroll's root (Δ when on time).
+    blocks_to_accept: u32,
+    /// Further blocks until every leaf is paid (one per extra level).
+    blocks_to_paid: u32,
+    per_level: Vec<LevelStats>,
+    child_vsize: u64,
 }
 
 #[test]
@@ -931,7 +1123,7 @@ impl Run {
 fn transitions_confirm_and_a_flat_unroll_pays_everyone_after_delta() {
     let mut run = Run::open(6, 128);
     run.transitions();
-    assert_eq!(run.unroll_with_enclave_gone("regtest"), 1);
+    assert_eq!(run.unroll_with_enclave_gone("regtest").levels, 1);
 }
 
 #[test]
@@ -940,7 +1132,7 @@ fn a_two_level_unroll_pays_everyone_after_delta() {
     // radix 4, 9 leaves after the transitions below: 3 groups, then leaves.
     let mut run = Run::open(8, 4);
     run.transitions();
-    assert_eq!(run.unroll_with_enclave_gone("regtest-two-level"), 2);
+    assert_eq!(run.unroll_with_enclave_gone("regtest-two-level").levels, 2);
 }
 
 // ------------------------------------------------------- light clients (#11782)
@@ -1187,4 +1379,84 @@ fn light_clients_follow_twenty_transitions_and_raise_every_alarm() {
         assert!(text.contains(&format!("\"result\":\"{alarm}\"")), "{alarm}");
     }
     std::fs::write(base.join("regtest-light.jsonl"), &text).unwrap();
+}
+
+// ------------------------------------------------------------ measurements (#11785)
+
+/// Blocks in a week.
+const WEEK: u64 = 1_008;
+
+#[test]
+#[ignore = "needs bitcoind on regtest; scripts/layertree-regtest.sh"]
+fn unroll_timing_sizes_and_heartbeat_fees_measured() {
+    // After the exit below: 128 leaves (one level of 128 outputs), 16,384
+    // (two full levels) and 16,385 (three levels: 2, then 128 + 1, then 128).
+    let cases = [
+        ("measure-1-level", 129u32, 8u32, 1u32),
+        ("measure-2-levels", 16_385, 15, 2),
+        ("measure-3-levels", 16_386, 15, 3),
+    ];
+    let mut report = String::from(
+        "| leaves | levels | txs per level | max unroll tx vsize per level (vB) | CPFP child (vB) | Δ to root mined (blocks) | then to all paid (blocks) |\n| --- | --- | --- | --- | --- | --- | --- |\n",
+    );
+    let mut refresh = (0, 0);
+    let mut exit = (0, 0);
+    for (name, n, depth, want_levels) in cases {
+        let coins = 16 + (n as usize).div_ceil(128) + 4;
+        let mut run = Run::open_with(n, 128, depth, coins, &|_| 1_000);
+        run.step(Op::Refresh);
+        refresh = run.last_cost;
+        run.measure("refresh_vsize", refresh.0, "vB");
+        run.measure("refresh_fee", refresh.1, "sat");
+        run.step(Op::Exit {
+            pos: 1,
+            evict: false,
+        });
+        exit = run.last_cost;
+        run.measure("exit_vsize", exit.0, "vB");
+        run.measure("exit_fee", exit.1, "sat");
+        let leaves = run.enclave.state().unwrap().tree.leaves().len();
+        let stats = run.unroll_with_enclave_gone(name);
+        assert_eq!(stats.levels, want_levels, "{name}");
+        assert_eq!(stats.blocks_to_accept, u32::from(DELAY));
+        assert_eq!(stats.blocks_to_paid, want_levels - 1);
+        report.push_str(&format!(
+            "| {leaves} | {} | {} | {} | {} | {} | {} |\n",
+            stats.levels,
+            stats
+                .per_level
+                .iter()
+                .map(|l| l.txs.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            stats
+                .per_level
+                .iter()
+                .map(|l| format!("{} ({} outputs)", l.max_vsize, l.max_outputs))
+                .collect::<Vec<_>>()
+                .join(", "),
+            stats.child_vsize,
+            stats.blocks_to_accept,
+            stats.blocks_to_paid,
+        ));
+    }
+    report.push_str(&format!(
+        "\nrefresh (heartbeat): {} vB; key-path exit: {} vB\n\n",
+        refresh.0, exit.0
+    ));
+    report.push_str("| Δ (blocks) | heartbeats a week (every Δ/2) | 1 sat/vB | 10 sat/vB | 50 sat/vB |\n| --- | --- | --- | --- | --- |\n");
+    for delta in [144u64, 288, 1_008] {
+        let beats = WEEK.div_ceil(delta / 2);
+        let cost = |rate: u64| beats * refresh.0 * rate;
+        report.push_str(&format!(
+            "| {delta} | {beats} | {} sat | {} sat | {} sat |\n",
+            cost(1),
+            cost(10),
+            cost(50)
+        ));
+    }
+    println!("{report}");
+    if let Some(dir) = std::env::var_os("LAYERTREE_REGTEST_ROOT") {
+        std::fs::write(PathBuf::from(dir).join("measurements.md"), &report).unwrap();
+    }
 }

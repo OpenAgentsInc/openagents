@@ -224,6 +224,15 @@ pub enum Body {
         member: u64,
         result: String,
     },
+    /// A number measured on a real node (#11785), such as a transaction's
+    /// vsize or the blocks an unroll took. `unit` is `vB`, `sat`, `sat/vB`,
+    /// `blocks` or `txs`; `level` is the unroll level when it has one.
+    Measured {
+        what: String,
+        value: u64,
+        unit: String,
+        level: Option<u32>,
+    },
 }
 
 /// One line.
@@ -655,6 +664,11 @@ pub fn read(text: &str) -> Result<Replay, EventError> {
                     ));
                 }
                 paid += amount;
+            }
+            (Body::Measured { unit, .. }, Some(_)) => {
+                if !["vB", "sat", "sat/vB", "blocks", "txs"].contains(&unit.as_str()) {
+                    return Err(EventError::Field("unit"));
+                }
             }
             (
                 Body::Rejected { .. }
