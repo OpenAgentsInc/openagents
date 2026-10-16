@@ -39,6 +39,13 @@ the paths:
 Mapping Claude Code, Codex, and the ACP delegates to this host is still to
 come. Their steering rows stay in their own adapter crates.
 
+Adapter and feature operations pin complete CAP definitions, including input
+and output schemas, the engine and protocol identities, and the binding's
+actual effects. Each adapter has distinct operation IDs. Opening schemas pin
+the source kind; command schemas restrict the action. Unsupported features pin
+nothing. These definitions do not advertise a CJ endpoint, enforce an omitted
+bound, or promise transport retries; those need their own runtime admission.
+
 The production binding reads the allocator's actual saved attachment. It
 checks the requesting controller, executor key, lease, materialization, and
 admitted engine identity. Opening and turn start keep the ENV and COORD fences

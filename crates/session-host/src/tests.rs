@@ -1381,3 +1381,78 @@ fn close_requires_actual_turn_quiescence_and_does_not_free_unknown_work() {
     );
     assert_eq!(restarted.status(&session).unwrap()["phase"], "unknown");
 }
+
+#[test]
+fn adapter_operations_are_real_cap_definitions_with_specific_input_schemas() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let (session, adapter) = fx.open(&host, "loop-mid-turn");
+    let description = host.store().json(&adapter).unwrap();
+    let read_cap = |reference: &Value| {
+        assert_eq!(reference["artifact"]["schema"], "openagents.cap.v1");
+        let bytes = host.store().get(&reference["artifact"]).unwrap();
+        let body = nostr::contracts::parse_strict(&bytes).unwrap();
+        let parsed = nostr::cap::parse_definition(&body).unwrap();
+        assert_eq!(parsed.id, reference["id"].as_str().unwrap());
+        assert_eq!(body["meta"]["engine"], description["engine"]);
+        assert_eq!(body["meta"]["protocol"], description["protocol"]);
+        body
+    };
+    read_cap(&description["adapter"]);
+    let mut operations = BTreeSet::new();
+    for feature in description["features"].as_array().unwrap() {
+        if feature["support"] == "unsupported" {
+            assert!(feature["operation"].is_null());
+            continue;
+        }
+        let body = read_cap(&feature["operation"]);
+        for name in ["input", "output"] {
+            let bytes = host.store().get(&body[name]).unwrap();
+            nostr::contracts::prepare_closure(&BTreeMap::from([(digest_bytes(&bytes), bytes)]))
+                .unwrap();
+        }
+        assert!(operations.insert(feature["operation"]["id"].as_str().unwrap().to_string()));
+        assert_eq!(feature["semantics"], body["input"]);
+        assert_eq!(body["support"]["idempotency"], "none");
+        assert_eq!(body["effects"]["process"], false);
+        assert_eq!(body["effects"]["spend"], false);
+    }
+    let feature = |name: &str| {
+        description["features"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["feature"] == name)
+            .unwrap()
+            .clone()
+    };
+    let validate = |name: &str, input: &Value| {
+        let card = read_cap(&feature(name)["operation"]);
+        let bytes = host.store().get(&card["input"]).unwrap();
+        let digest = digest_bytes(&bytes);
+        let closure =
+            nostr::contracts::prepare_closure(&BTreeMap::from([(digest.clone(), bytes)])).unwrap();
+        nostr::contracts::validate_instance(&closure, &digest, input)
+    };
+    let intent = fx.intent(&host, &session, json!({"prompt":"one"}), fx.now + 600);
+    let submit = fx.command(&host, &session, "submit", json!({"intent":intent}));
+    assert!(validate("submit", &submit).is_ok());
+    assert!(validate("queue", &submit).is_err());
+    let enqueue = fx.command(&host, &session, "enqueue", json!({"intent":intent}));
+    assert!(validate("queue", &enqueue).is_ok());
+    assert!(validate("submit", &enqueue).is_err());
+    let create = fx.open_body(&host, &adapter, json!({"kind":"new","artifact":null}));
+    assert!(validate("create", &create).is_ok());
+    assert!(validate("resume", &create).is_err());
+    assert!(validate("history", &json!({"session":session})).is_ok());
+    assert!(validate("history", &json!({"session":session,"arbitrary":true})).is_err());
+    let boundary = host.admit_adapter("loop-boundary", fx.now).unwrap();
+    let boundary = host.store().json(&boundary).unwrap();
+    let boundary_submit = boundary["features"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["feature"] == "submit")
+        .unwrap();
+    assert_ne!(feature("submit")["operation"], boundary_submit["operation"]);
+}

@@ -789,3 +789,11 @@ original unknown command reply before calling native close. Only an
 acknowledged native close marks the session closed. An uncertain close keeps
 the lineage reserved and is never repeated, including under a different command
 ID or after restart. Closing a read-only import has no native engine effect.
+
+Adapter and feature operation references identify full `openagents.cap.v1`
+definitions. Their input and output SchemaRefs validate with the shared
+contracts implementation. Feature inputs restrict their source kind or command
+action, and operation IDs distinguish adapters. Definitions pin engine and
+protocol identities and state the actual host/engine effects. Unsupported
+features have no operation pins. Definitions alone neither expose CJ dispatch
+nor claim enforcement of unstated bounds or transport idempotency.

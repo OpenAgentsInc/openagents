@@ -426,8 +426,7 @@ impl SessionHost {
             .map(|e| e.profile())
             .ok_or_else(|| refuse("unavailable", "no such engine adapter"))?;
         let host = self.pubkey().to_string();
-        let definition = json!({"id":format!("{host}:session/{}",profile.name),
-            "artifact":self.store.put(&profile.engine,"application/octet-stream",None)?});
+        let definition = crate::interface::definition(&self.store, &host, &profile, None)?;
         let mut features = Vec::new();
         for (name, support) in &profile.features {
             if *support == Support::Unsupported {
@@ -437,14 +436,10 @@ impl SessionHost {
                 );
                 continue;
             }
-            let semantics = self.store.put(
-                &serde_json::to_vec(
-                    &json!({"feature":name,"support":support.as_str(),"adapter":profile.name}),
-                )
-                .map_err(|e| e.to_string())?,
-                SCHEMA_MEDIA_TYPE,
-                None,
-            )?;
+            let operation = crate::interface::definition(&self.store, &host, &profile, Some(name))?;
+            let capability = contracts::parse_strict(&self.store.get(&operation["artifact"])?)
+                .map_err(contract)?;
+            let semantics = capability["input"].clone();
             let evidence = if *name == "steer" {
                 let s = profile.steering;
                 self.store
@@ -470,7 +465,7 @@ impl SessionHost {
                 _ => Vec::new(),
             };
             features.push(json!({"feature":name,"support":support.as_str(),
-                "operation":{"id":format!("{host}:session/{name}"),"artifact":semantics},
+                "operation":operation,
                 "semantics":semantics,"evidence":evidence,"limitations":limitations}));
         }
         let protocol = self.store.put(&profile.protocol, SCHEMA_MEDIA_TYPE, None)?;

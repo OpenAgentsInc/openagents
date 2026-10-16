@@ -42,6 +42,8 @@ pub struct Profile {
     pub engine: Vec<u8>,
     /// Native protocol schema bytes.
     pub protocol: Vec<u8>,
+    /// Effects of the actual host and engine binding, without adding authority.
+    pub effects: Value,
     /// One support level per NIP-SESS feature.
     pub features: BTreeMap<&'static str, Support>,
     pub steering: Steering,
@@ -169,6 +171,9 @@ impl LoopEngine {
             name: "loop-mid-turn",
             engine: b"loop-engine 1 mid-turn".to_vec(),
             protocol: br#"{"type":"object"}"#.to_vec(),
+            effects: json!({"reads":["session-input","native-history"],
+                "writes":["session-state","native-session"],"network":[],
+                "process":false,"delegates":false,"spend":false}),
             features: features(&[
                 ("create", Native),
                 ("resume", Native),
@@ -198,6 +203,9 @@ impl LoopEngine {
             name: "loop-boundary",
             engine: b"loop-engine 1 boundary".to_vec(),
             protocol: br#"{"type":"object"}"#.to_vec(),
+            effects: json!({"reads":["session-input","native-history"],
+                "writes":["session-state","native-session"],"network":[],
+                "process":false,"delegates":false,"spend":false}),
             features: features(&[
                 ("create", Native),
                 ("close", Native),
