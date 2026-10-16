@@ -169,6 +169,14 @@ impl Bucket {
         }
     }
 
+    fn copy_request(client: &Client, url: Url, bearer: &str) -> reqwest::RequestBuilder {
+        // Google rejects a POST without an explicit payload with 411.
+        client
+            .post(url)
+            .bearer_auth(bearer)
+            .json(&serde_json::json!({}))
+    }
+
     /// Copy an immutable staged object before publishing its database reference.
     pub async fn copy(&self, source: &str, target: &str) -> Result<(), StorageError> {
         match &self.0 {
@@ -186,9 +194,7 @@ impl Bucket {
                     .push(name)
                     .push("o")
                     .push(target);
-                client
-                    .post(url)
-                    .bearer_auth(self.bearer().await?)
+                Self::copy_request(client, url, &self.bearer().await?)
                     .send()
                     .await
                     .map_err(|_| StorageError)?
@@ -241,6 +247,45 @@ mod tests {
         assert!(url.as_str().ends_with("/o/account%2Fa%3Fb%23c"));
         assert!(url.query().is_none());
     }
+    #[tokio::test]
+    async fn google_copy_has_an_explicit_json_body() {
+        use axum::{
+            Router,
+            body::Bytes,
+            http::{HeaderMap, StatusCode},
+            routing::post,
+        };
+        async fn copy(headers: HeaderMap, body: Bytes) -> StatusCode {
+            if headers.get("content-length").and_then(|v| v.to_str().ok()) != Some("2")
+                || body != b"{}"[..]
+            {
+                return StatusCode::LENGTH_REQUIRED;
+            }
+            assert_eq!(headers["content-type"], "application/json");
+            StatusCode::OK
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url: Url = format!("http://{}/copyTo", listener.local_addr().unwrap())
+            .parse()
+            .unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, Router::new().route("/copyTo", post(copy)))
+                .await
+                .unwrap();
+        });
+        let client = Client::new();
+        assert_eq!(client.post(url.clone()).send().await.unwrap().status(), 411);
+        assert_eq!(
+            Bucket::copy_request(&client, url, "fixture")
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            200
+        );
+        server.abort();
+    }
+
     #[tokio::test]
     async fn fake_bucket_round_trip_and_probe() {
         let bucket = Bucket::memory();
