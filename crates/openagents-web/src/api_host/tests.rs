@@ -49,9 +49,7 @@ async fn gateway() -> String {
 async fn site(root: &std::path::Path, api: bool) -> Router {
     let mut config = Config::development(root.join("tasks"));
     config.public_hosts.push("openagents.com".to_owned());
-    config.inference = Some(Arc::new(
-        upstream::Upstream::new(&gateway().await).unwrap(),
-    ));
+    config.inference = Some(Arc::new(upstream::Upstream::new(&gateway().await).unwrap()));
     if api {
         config.api_host = Some(API.to_owned());
     }
@@ -95,7 +93,15 @@ fn the_successor_is_the_same_path_on_the_api_host() {
         successor(API, "/api/v1/models/gpt").as_deref(),
         Some("https://api.openagents.com/v1/models/gpt")
     );
-    for path in ["/", "/docs/api", "/api/traces", "/v1", "/api/v1", "/apiv1/x", "/v10/x"] {
+    for path in [
+        "/",
+        "/docs/api",
+        "/api/traces",
+        "/v1",
+        "/api/v1",
+        "/apiv1/x",
+        "/v10/x",
+    ] {
         assert_eq!(successor(API, path), None, "{path}");
     }
 }
@@ -179,7 +185,14 @@ async fn the_api_host_answers_the_sites_own_v1_routes_the_same() {
 async fn the_api_host_answers_nothing_but_v1() {
     let root = tempfile::tempdir().unwrap();
     let site = site(root.path(), true).await;
-    for uri in ["/", "/chat", "/docs/api", "/api/v1/models", "/login", "/app"] {
+    for uri in [
+        "/",
+        "/chat",
+        "/docs/api",
+        "/api/v1/models",
+        "/login",
+        "/app",
+    ] {
         let (status, headers, body) = call(&site, "GET", API, uri, &[]).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
         assert_eq!(headers[header::CONTENT_TYPE], "application/json", "{uri}");
