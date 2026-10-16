@@ -1,0 +1,26 @@
+version = 1
+revision = "initial-review"
+enabled = false
+mainnet_approved = false
+hot_cap_sats = 0
+cold_address = ""
+inbound_floor_sats = 100000
+outbound_floor_sats = 100000
+swap_sats = 0
+daily_budget_sats = 0
+cooldown_secs = 86400
+reserve_sats = 100000
+maximum_swap_fee_sats = 0
+maximum_miner_fee_sats = 0
+maximum_routing_fee_sats = 0
+maximum_prepay_sats = 0
+confirmation_target = 6
+providers = ["zeus", "megalith"]
+
+[channels]
+target_count = 2
+minimum_size_sats = 1000000
+base_fee_msat = 1000
+fee_ppm = 1000
+time_lock_delta = 40
+idle_close_secs = 2592000

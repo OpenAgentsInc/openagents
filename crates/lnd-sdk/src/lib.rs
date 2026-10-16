@@ -21,3 +21,5 @@ pub mod liquidity;
 pub mod payout;
 #[cfg(test)]
 mod tests;
+
+pub mod automation;

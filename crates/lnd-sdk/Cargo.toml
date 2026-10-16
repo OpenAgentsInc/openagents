@@ -7,6 +7,8 @@ publish.workspace = true
 description = "Typed, pinned LND client for server-side Lightning"
 
 [dependencies]
+bitcoin = "0.32"
+toml = "0.9"
 async-trait = "0.1"
 lightning-invoice = { version = "0.34.1", features = ["std"] }
 hex = "0.4"
@@ -38,7 +40,6 @@ default = []
 supervisor = ["dep:supervise"]
 
 [dev-dependencies]
-bitcoin = "0.32"
 proptest = "1"
 tempfile = "3"
 tonic-build = "=0.12.3"

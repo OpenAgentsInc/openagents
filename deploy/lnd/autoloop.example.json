@@ -1,0 +1,13 @@
+{
+  "lnd": {
+    "endpoint": "https://127.0.0.1:10009",
+    "certificate_sha256": "SET_FROM_NODE_CERTIFICATE",
+    "macaroon": "/run/openagents-lnd-autoloop/readonly.macaroon"
+  },
+  "loop": null,
+  "node": "03bb4d4950167daf3f9693c6cdb70cbe160ebbd19afacc1ea509116b2d716c4acd",
+  "network": "mainnet",
+  "policy": "/etc/openagents-lnd/channel-policy.toml",
+  "journal": "/var/lib/openagents-lnd-autoloop/journal.json",
+  "output": "/var/lib/openagents-lnd-autoloop/latest.json"
+}

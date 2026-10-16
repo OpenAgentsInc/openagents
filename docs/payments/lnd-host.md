@@ -301,3 +301,52 @@ After those checks and approval, `[lnd_receive] all_resources = true` with
 `backend` to `mdk` so old invoices still settle. Pro retains its separate MDK
 compatibility hold. Keep the LDK receiver warm for a month; retiring it is an
 owner action. No live payout or receipt switch was made for #11757.
+
+## Liquidity automation (#11758)
+
+`lnd-autoloop` reads the versioned [channel policy](../../deploy/lnd/channel-policy.toml)
+every five minutes. Its checked-in policy disables spending. The current node
+only reports balances, capacity, channel sizing, the proposed fee schedule, and
+idle-close candidates. A channel becomes idle only after a full observation
+period with unchanged sent and received totals; pending HTLCs prevent a close
+recommendation. Open, fee update, and cooperative close remain operator actions.
+Both ZEUS and Megalith LSPS1 clients are available through `lnd-liquidity`;
+select the second provider in a separate reviewed budget when the first cannot
+serve a request. Never repeat an uncertain purchase with the other provider.
+
+Before enabling Loop, the owner must approve decision 4: the hot cap, a cold
+Bitcoin address on the correct network, daily capital and fee budget, swap size,
+and fee limits. Keep the confirmed channel reserve and payout outbound floor.
+Run a pinned Loop **v0.34.x** daemon against this node, with its RPC accessible
+only locally. Give this service its Loop-specific macaroon and certificate pin
+in `autoloop.json`'s `loop` object (the same fields as `lnd`). Do not give it the
+LND operator macaroon. Disable Loop's independent autolooper so only this policy
+initiates scheduled swaps. Keep Loop's database through upgrades and rollback.
+Verify Loop's backing LND configuration during deployment: its GetInfo RPC
+reports the network but does not report the LND identity. A changed node or Loop
+certificate requires explicit review of the saved journal binding.
+
+With approval, low inbound or excess hot value requests Loop Out to the cold
+address; low payout capacity requests wallet-funded Loop In. Insufficient
+outbound or confirmed reserves produces an alert. Each action quotes fees first,
+saves its full policy and unique label before dispatch, and sends once. On every
+run, it lists daemon swaps, saves actual server, on-chain, and routing costs,
+and matches each intent by label, amount, direction, and swap ID. Missing,
+ambiguous, or unfinished swaps block new work. The daily budget reserves capital
+and configured fees even for failed or uncertain attempts; policy edits and
+restarts do not clear it. Cooldowns prevent immediate reversal.
+
+Loop can exceed its initial miner-fee setting after revealing the preimage to
+recover an in-flight swap. The daily reservation is an admission budget, not an
+absolute limit on the daemon's later recovery fees. Review actual fees and cold
+wallet receipts against `latest.json` and `journal.json` every day. Investigate
+any unmanaged swap or unexplained Bitcoin transaction; retain Loop records and
+both transaction IDs with the report. Never delete a pending intent to retry it.
+See the [pinned upstream RPC contract](../../crates/lnd-sdk/proto/loop/v0.34.0-beta/looprpc/client.proto).
+
+Install `openagents-lnd-autoloop.service` and its timer with the checked binary
+and existing read-only credential. An unset policy returns exit 1 and uses the
+existing alert hook. After approval, test a small Loop Out and Loop In, restart
+between submission and observation, reconcile each swap and its fees, and then
+observe 30 days without manual rebalancing. No funded Loop swap or observation
+period was performed during implementation.

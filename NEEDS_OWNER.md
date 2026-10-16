@@ -2436,3 +2436,13 @@ plugin and hosted x402 receives on LND. Keep the LDK receiver warm a month
 before retirement. Pro's MDK compatibility check remains separate. No
 production payout or receive setting was switched during implementation.
 Follow [the rollout procedure](docs/payments/lnd-host.md#payout-rollout-11757).
+
+## Approve and observe automated LND liquidity (#11758)
+
+Choose decision 4's hot cap, cold Bitcoin address, swap size, daily capital and
+fee budget, and channel policy. Spending remains disabled and the GCP timer
+only alerts. After approval, configure the pinned local Loop daemon and scoped
+credential, run and reconcile small Loop In/Out tests, and observe 30 days
+without manual rebalancing. Record actual fees, including recovery fees that
+can exceed Loop's initial miner-fee setting. Follow
+[the automation runbook](docs/payments/lnd-host.md#liquidity-automation-11758).

@@ -1,0 +1,19 @@
+[Unit]
+Description=OpenAgents liquidity review
+After=openagents-lnd.service
+OnFailure=openagents-lnd-alert.service
+[Service]
+Type=oneshot
+User=oa-lnd-health
+Group=oa-lnd-health
+StateDirectory=openagents-lnd-autoloop
+StateDirectoryMode=0700
+RuntimeDirectory=openagents-lnd-autoloop
+RuntimeDirectoryMode=0700
+ExecStartPre=+/usr/bin/install -o oa-lnd-health -g oa-lnd-health -m 0400 /var/lib/openagents-lnd/monitor.macaroon /run/openagents-lnd-autoloop/readonly.macaroon
+ExecStart=/opt/openagents-lnd/lnd-autoloop /etc/openagents-lnd/autoloop.json
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/openagents-lnd-autoloop /run/openagents-lnd-autoloop
