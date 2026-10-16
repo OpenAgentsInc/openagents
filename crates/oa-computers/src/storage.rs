@@ -7,6 +7,9 @@ use computer_driver::{Outcome, StorageObservation};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+mod deleted;
+pub use deleted::{DeletedStorageJob, DeletedStorageObserver};
+
 fn evidence(resource: &str, outcome: &Outcome<StorageObservation>) -> Value {
     match outcome {
         Outcome::Done { value } if value.computer == resource && value.validate().is_ok() => {

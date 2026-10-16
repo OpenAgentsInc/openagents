@@ -55,8 +55,15 @@ where
                         }
                     }
                 };
+                let store = Store::new(db);
+                let observer = storage::DeletedStorageObserver {
+                    store: store.clone(),
+                    driver: driver.clone(),
+                    holder: format!("{}:storage", settings.holder),
+                };
+                tokio::task::spawn_local(observer.run());
                 let r = Rc::new(reconcile::Reconciler {
-                    store: Store::new(db),
+                    store,
                     driver,
                     settings,
                     turns,

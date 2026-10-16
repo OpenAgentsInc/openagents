@@ -7,7 +7,7 @@ use coder_working_computer::{
     store::StoreError,
 };
 use computer_driver::{
-    Artifact, ArtifactKind, Driver, Outcome, Shape, StorageByteKind, StorageCleanup,
+    Artifact, ArtifactKind, CreateRequest, Driver, Outcome, Shape, StorageByteKind, StorageCleanup,
     StorageCoverage, StorageInventory, StorageKind, StorageObject, StorageObjectState,
     StorageObservation, StorageSource, fake::FakeDriver,
 };
@@ -15,7 +15,8 @@ use oa_computers::{
     Db, Store,
     reconcile::{Reconciler, Settings, now_ms},
     registry::{Catalog, CreateIntent, Drivers, Placement, Registry, Target},
-    store::{Entry, PgLease},
+    storage::{DeletedStorageJob, DeletedStorageObserver},
+    store::{Desired, Entry, PgLease},
     turns::Secrets,
 };
 use serde_json::Value;
@@ -29,6 +30,7 @@ struct Rig {
     dsn: String,
     store: Store,
     registry: Registry<FakeDriver>,
+    fake: FakeDriver,
     _root: tempfile::TempDir,
 }
 
@@ -67,7 +69,7 @@ impl Rig {
         .unwrap();
         let registry = Registry::new(
             Catalog::new("storage-fixture", "storage-test-policy", [target]).unwrap(),
-            [("storage-fixture".into(), fake)].into(),
+            [("storage-fixture".into(), fake.clone())].into(),
         )
         .unwrap();
         Some(Self {
@@ -75,6 +77,7 @@ impl Rig {
             dsn,
             store,
             registry,
+            fake,
             _root: root,
         })
     }
@@ -502,4 +505,321 @@ async fn reconciler_records_unknown_storage_without_inventing_zero_or_cleanup() 
             assert!(!events[0]["resource"].is_null());
         })
         .await;
+}
+
+async fn deleted_entry(rig: &Rig, owner: &str) -> (Entry, String) {
+    let (lease, original) = rig.boot(owner).await;
+    let resource = original.record.resource().unwrap().to_owned();
+    rig.store
+        .set_desired(owner, &original.id, Desired::Deleted)
+        .await
+        .unwrap();
+    let e = rig.store.get(owner, &original.id).await.unwrap().unwrap();
+    let mut provider = OnDriver::new(rig.registry.resolve(&e).unwrap(), None);
+    provider.poll = Duration::from_millis(1);
+    provider.deadline = Duration::from_secs(5);
+    let result = driver::delete(&provider, &lease, now_ms()).await.unwrap();
+    assert_eq!(result.computer().phase, Phase::Deleted);
+    assert_eq!(result.computer().resource(), None);
+    rig.store
+        .release(&e.id, HOLDER, Duration::ZERO, 0, None, true)
+        .await
+        .unwrap();
+    (
+        rig.store.get(owner, &e.id).await.unwrap().unwrap(),
+        resource,
+    )
+}
+
+async fn lifecycle_row(rig: &Rig, id: &str) -> Value {
+    rig.db
+        .client()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT to_jsonb(c) FROM computers.computers c WHERE id=$1",
+            &[&id],
+        )
+        .await
+        .unwrap()
+        .get(0)
+}
+
+async fn due(rig: &Rig, job: &DeletedStorageJob) {
+    rig.db.client().await.unwrap().execute(
+        "UPDATE computers.deleted_storage_jobs SET next_attempt_at=now()-interval '1 second',lease_until=now()-interval '1 second' WHERE id=$1", &[&job.id],
+    ).await.unwrap();
+}
+
+fn empty_storage(resource: &str) -> Outcome<StorageObservation> {
+    Outcome::done(StorageObservation {
+        computer: resource.into(),
+        objects: vec![],
+        inventories: vec![StorageInventory {
+            kind: StorageKind::Snapshot,
+            coverage: StorageCoverage::Partial,
+            source: StorageSource::GceImage,
+        }],
+        cleanup: StorageCleanup::Unknown,
+    })
+}
+
+#[tokio::test]
+async fn deleted_storage_scan_wraps_and_finds_done_and_prior_live_allocations() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let Some(rig) = Rig::new().await else { return };
+            let (alice_lease, alice) = rig.boot("deleted-storage-alice").await;
+            // The cursor has already passed this row before its deletion appears.
+            assert_eq!(rig.store.seed_deleted_storage(1).await.unwrap(), 0);
+            let old = alice.record.resource().unwrap().to_owned();
+            let mut replacement = alice.record.clone();
+            let at_ms = now_ms();
+            replacement.creates.last_mut().unwrap().deletion = Some(Fact::Done {
+                evidence: "deleted-old".into(),
+                at_ms,
+            });
+            let mut create = replacement.creates.last().unwrap().clone();
+            create.operation.push_str("-replacement");
+            let replacement_resource = rig
+                .registry
+                .resolve(&alice)
+                .unwrap()
+                .create(&CreateRequest {
+                    operation: create.operation.clone(),
+                    size: Some(alice.size.clone()),
+                    image: None,
+                    ttl_seconds: None,
+                    labels: Default::default(),
+                })
+                .await
+                .value()
+                .unwrap();
+            create.resource = Some(replacement_resource.clone());
+            create.fact = Fact::Done {
+                evidence: replacement_resource.clone(),
+                at_ms,
+            };
+            create.deletion = None;
+            replacement.creates.push(create);
+            let mut boot = replacement.boots.last().unwrap().clone();
+            boot.number += 1;
+            boot.resource = replacement_resource;
+            boot.origin = BootOrigin::Created;
+            boot.started_ms = at_ms;
+            replacement.boots.push(boot);
+            replacement.revision += 1;
+            replacement.updated_ms = at_ms;
+            alice_lease
+                .commit(&alice.record, &replacement)
+                .await
+                .unwrap();
+            let (bob, bob_resource) = deleted_entry(&rig, "deleted-storage-bob").await;
+            let alice_before = lifecycle_row(&rig, &alice.id).await;
+            let bob_before = lifecycle_row(&rig, &bob.id).await;
+            let mut inserted = 0;
+            for _ in 0..8 {
+                inserted += rig.store.seed_deleted_storage(1).await.unwrap();
+            }
+            assert_eq!(inserted, 2);
+            let rows = rig.db.client().await.unwrap().query(
+            "SELECT computer,resource FROM computers.deleted_storage_jobs ORDER BY computer", &[],
+        ).await.unwrap();
+            assert_eq!(rows.len(), 2);
+            assert!(
+                rows.iter()
+                    .any(|r| r.get::<_, String>(0) == alice.id && r.get::<_, String>(1) == old)
+            );
+            assert!(
+                rows.iter()
+                    .any(|r| r.get::<_, String>(0) == bob.id
+                        && r.get::<_, String>(1) == bob_resource)
+            );
+            assert_eq!(lifecycle_row(&rig, &alice.id).await, alice_before);
+            assert_eq!(lifecycle_row(&rig, &bob.id).await, bob_before);
+            // The whole computer can finish after the historical job was seeded.
+            rig.store
+                .set_desired(&alice.owner, &alice.id, Desired::Deleted)
+                .await
+                .unwrap();
+            let active = rig
+                .store
+                .get(&alice.owner, &alice.id)
+                .await
+                .unwrap()
+                .unwrap();
+            let mut provider = OnDriver::new(rig.registry.resolve(&active).unwrap(), None);
+            provider.poll = Duration::from_millis(1);
+            provider.deadline = Duration::from_secs(5);
+            let later = driver::delete(&provider, &alice_lease, now_ms())
+                .await
+                .unwrap();
+            assert_eq!(later.computer().phase, Phase::Deleted);
+            rig.store
+                .release(&alice.id, HOLDER, Duration::ZERO, 0, None, true)
+                .await
+                .unwrap();
+            let alice_before = lifecycle_row(&rig, &alice.id).await;
+            let observer = DeletedStorageObserver {
+                store: rig.store.clone(),
+                driver: rig.registry.clone(),
+                holder: "separate-observer".into(),
+            };
+            let calls = rig.fake.calls();
+            while let Some(job) = rig
+                .store
+                .claim_deleted_storage("separate-observer", LEASE)
+                .await
+                .unwrap()
+            {
+                observer.visit(&job).await;
+            }
+            assert_eq!(rig.fake.calls(), calls);
+            assert_eq!(lifecycle_row(&rig, &alice.id).await, alice_before);
+            assert_eq!(lifecycle_row(&rig, &bob.id).await, bob_before);
+            let alice_events = rig.events("deleted-storage-alice").await;
+            let bob_events = rig.events("deleted-storage-bob").await;
+            assert_eq!(alice_events.len(), 1);
+            assert_eq!(bob_events.len(), 1);
+            assert_eq!(alice_events[0]["resource"], old);
+            assert_eq!(
+                alice_events[0]["operation"],
+                alice.record.creates[0].operation
+            );
+            assert_eq!(
+                alice_events[0]["evidence"]["provider_operation"],
+                alice
+                    .binding
+                    .as_ref()
+                    .unwrap()
+                    .operation(&alice.record.creates[0].operation)
+            );
+            assert_eq!(bob_events[0]["resource"], bob_resource);
+            assert!(alice_events[0]["boot"].is_null());
+            assert_eq!(alice_events[0]["revision"], later.computer().revision);
+            assert_eq!(alice_events[0]["phase"], "deleted");
+            assert_eq!(alice_events[0]["desired"], "deleted");
+            assert_eq!(
+                alice_events[0]["evidence"]["lifecycle_ms"],
+                later.computer().updated_ms
+            );
+            assert_eq!(alice_events[0]["evidence"]["status"], "unknown");
+            assert!(alice_events[0]["evidence"]["storage_observation"].is_null());
+            assert!(rig.events("another-account").await.is_empty());
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn deleted_storage_retries_survive_reconnect_without_reopening_or_releasing_capacity() {
+    tokio::task::LocalSet::new().run_until(async {
+        let Some(rig) = Rig::new().await else { return };
+        let (entry,resource)=deleted_entry(&rig,"deleted-storage-retry").await;
+        let before=lifecycle_row(&rig,&entry.id).await;
+        let allowance=rig.store.usage(&entry.owner,0,200).await.unwrap()["allocation_allowance"].clone();
+        assert_eq!(rig.store.seed_deleted_storage(100).await.unwrap(),1);
+        let reopened=Store::new(Db::connect(&rig.dsn).await.unwrap());
+        let first=reopened.claim_deleted_storage("reader",LEASE).await.unwrap().unwrap();
+        let outcome=empty_storage(&resource);
+        // A provider clock cannot move the compound event into the future.
+        let provider_at=now_ms()+86_400_000;
+        reopened.observe_deleted_storage(&first,&outcome,provider_at,Duration::from_secs(60)).await.unwrap();
+        let recorded=rig.events(&entry.owner).await;
+        assert_eq!(recorded[0]["evidence"]["provider_observed_ms"],provider_at);
+        assert!(recorded[0]["observed_ms"].as_u64().unwrap()<provider_at);
+        assert!(reopened.claim_deleted_storage("reader",LEASE).await.unwrap().is_none());
+        due(&rig,&first).await;
+        let replay=reopened.claim_deleted_storage("reader",LEASE).await.unwrap().unwrap();
+        assert!(replay.generation>first.generation);
+        reopened.observe_deleted_storage(&replay,&outcome,now_ms()+1,Duration::from_secs(60)).await.unwrap();
+        assert_eq!(rig.events(&entry.owner).await.len(),1);
+        for outcome in [
+            Outcome::unknown("synthetic-secret /private/path"),
+            Outcome::failed("synthetic-secret /private/path"),
+            empty_storage("foreign-resource"),
+        ] {
+            due(&rig,&replay).await;
+            let job=reopened.claim_deleted_storage("reader",LEASE).await.unwrap().unwrap();
+            reopened.observe_deleted_storage(&job,&outcome,now_ms(),Duration::from_secs(60)).await.unwrap();
+        }
+        let events=rig.events(&entry.owner).await;
+        assert_eq!(events.len(),3);
+        assert!(!serde_json::to_string(&events).unwrap().contains("synthetic-secret"));
+        assert!(!serde_json::to_string(&events).unwrap().contains("foreign-resource"));
+        assert!(events.iter().all(|event|event["resource"]==resource && event["boot"].is_null() && event["evidence"]["customer_charge"].is_null()));
+        assert_eq!(lifecycle_row(&rig,&entry.id).await,before);
+        assert_eq!(reopened.usage(&entry.owner,0,200).await.unwrap()["allocation_allowance"],allowance);
+        assert!(rig.store.claim("lifecycle-worker",LEASE).await.unwrap().is_none());
+        let state=rig.db.client().await.unwrap().query_one(
+            "SELECT lease_holder,next_attempt_at>clock_timestamp(),attempts FROM computers.deleted_storage_jobs WHERE id=$1", &[&first.id],
+        ).await.unwrap();
+        assert!(state.get::<_,Option<String>>(0).is_none());
+        assert!(state.get::<_,bool>(1));
+        assert_eq!(state.get::<_,i32>(2),3);
+    }).await;
+}
+
+#[tokio::test]
+async fn deleted_storage_fences_same_holder_reuse_and_forged_assignment() {
+    tokio::task::LocalSet::new().run_until(async {
+        let Some(rig) = Rig::new().await else { return };
+        let (entry,resource)=deleted_entry(&rig,"deleted-storage-fenced").await;
+        rig.store.seed_deleted_storage(100).await.unwrap();
+        let old=rig.store.claim_deleted_storage("same-holder",LEASE).await.unwrap().unwrap();
+        assert!(rig.store.claim_deleted_storage("second-worker",LEASE).await.unwrap().is_none());
+        due(&rig,&old).await;
+        let current=rig.store.claim_deleted_storage("same-holder",LEASE).await.unwrap().unwrap();
+        let outcome=empty_storage(&resource);
+        assert!(rig.store.load_deleted_storage(&old).await.is_err());
+        assert!(rig.store.observe_deleted_storage(&old,&outcome,now_ms(),Duration::from_secs(1)).await.is_err());
+        assert!(rig.store.retry_deleted_storage(&old,Duration::from_secs(1)).await.is_err());
+        for forged in [
+            DeletedStorageJob { resource:"foreign-resource".into(), ..current.clone() },
+            DeletedStorageJob { computer:"another-computer".into(), ..current.clone() },
+            DeletedStorageJob { binding_fingerprint:"f".repeat(64), ..current.clone() },
+        ] {
+            assert!(rig.store.load_deleted_storage(&forged).await.is_err());
+            assert!(rig.store.observe_deleted_storage(&forged,&outcome,now_ms(),Duration::from_secs(1)).await.is_err());
+        }
+        assert!(rig.db.client().await.unwrap().execute(
+            "UPDATE computers.deleted_storage_jobs SET context=jsonb_set(context,'{owner}','\"foreign-account\"') WHERE id=$1", &[&current.id],
+        ).await.is_err());
+        assert!(rig.events(&entry.owner).await.is_empty());
+        rig.store.observe_deleted_storage(&current,&outcome,now_ms(),Duration::from_secs(1)).await.unwrap();
+        assert_eq!(rig.events(&entry.owner).await.len(),1);
+    }).await;
+}
+
+#[tokio::test]
+async fn deleted_storage_expiry_is_checked_after_waiting_for_the_usage_lock() {
+    tokio::task::LocalSet::new().run_until(async {
+        let Some(rig) = Rig::new().await else { return };
+        let (entry,resource)=deleted_entry(&rig,"deleted-storage-expired").await;
+        rig.store.seed_deleted_storage(100).await.unwrap();
+        let job=rig.store.claim_deleted_storage("waiting-reader",LEASE).await.unwrap().unwrap();
+        let (mut blocker,connection)=tokio_postgres::connect(&rig.dsn,tokio_postgres::NoTls).await.unwrap();
+        tokio::spawn(async move { let _=connection.await; });
+        let tx=blocker.transaction().await.unwrap();
+        tx.query_one("SELECT pg_advisory_xact_lock(11815)",&[]).await.unwrap();
+        let store=rig.store.clone();
+        let pending=job.clone();
+        let writer=tokio::task::spawn_local(async move {
+            store.observe_deleted_storage(&pending,&empty_storage(&resource),now_ms(),Duration::from_secs(1)).await
+        });
+        tokio::time::timeout(Duration::from_secs(3),async {
+            loop {
+                let waiting:bool=rig.db.client().await.unwrap().query_one(
+                    "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND position('pg_advisory_xact_lock(11815)' in query)>0 AND pid<>pg_backend_pid())",&[],
+                ).await.unwrap().get(0);
+                if waiting { break }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        }).await.unwrap();
+        due(&rig,&job).await;
+        tx.commit().await.unwrap();
+        assert!(writer.await.unwrap().is_err());
+        assert!(rig.events(&entry.owner).await.is_empty());
+        let next=rig.store.claim_deleted_storage("waiting-reader",LEASE).await.unwrap().unwrap();
+        assert!(next.generation>job.generation);
+    }).await;
 }
