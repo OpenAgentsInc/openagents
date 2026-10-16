@@ -617,6 +617,9 @@ fn captures_and_transcripts_keep_scope_clock_and_corrections() {
     let second = c.store().json(&second).unwrap();
     assert_eq!(second["revision"], 1);
     assert_eq!(second["previous"], first);
+    c.expire_media(fx.now + 3600).unwrap();
+    assert!(c.store().get(&text).is_err());
+    assert!(c.store().json(&first).is_ok());
     assert!(
         c.transcribe(
             &fx.session,
@@ -1315,3 +1318,23 @@ mod document;
 #[cfg(unix)]
 #[path = "tests/resident.rs"]
 mod resident;
+
+#[test]
+fn media_expiry_removes_bytes_after_restart_and_keeps_observation_evidence() {
+    let mut fx = Fx::new();
+    let c = fx.controller();
+    fx.active(&c);
+    let result = fx.capture(&c, "screen", "observation");
+    let observation = c.store().json(&result["value"]).unwrap();
+    let content = observation["content"].clone();
+    assert!(c.store().get(&content).is_ok());
+    drop(c);
+    let c = fx.controller();
+    c.expire_media(fx.now + 3599).unwrap();
+    assert!(c.store().get(&content).is_ok());
+    c.expire_media(fx.now + 3600).unwrap();
+    assert!(c.store().get(&content).is_err());
+    assert_eq!(c.store().json(&result["value"]).unwrap(), observation);
+    c.expire_media(fx.now + 4000).unwrap();
+    assert!(c.store().get(&content).is_err());
+}

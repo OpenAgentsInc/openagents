@@ -115,6 +115,8 @@ struct State {
     input_rules: input::Book,
     #[serde(default)]
     known: BTreeMap<String, BTreeSet<String>>,
+    #[serde(default)]
+    media_retention: BTreeMap<String, (Value, u64)>,
 }
 
 /// A signed request, its exact artifacts, and further signed declarations
@@ -417,6 +419,7 @@ impl Controller {
         let received = std::time::Instant::now();
         let _lock = self.store.lock()?;
         let mut state = self.state()?;
+        self.expire_media_in(&mut state, now)?;
         for (digest, bytes) in &bundle.artifacts {
             if digest_bytes(bytes) != *digest {
                 return Err(refuse("identity_mismatch", "attached artifact digest"));
@@ -1407,8 +1410,14 @@ impl Controller {
             .ok_or("cannot_enforce: capture has no native anchor")?;
         let content = if retained {
             Some(
-                self.store
-                    .put(&captured.bytes, "application/octet-stream", None)?,
+                self.retain_media(
+                    state,
+                    &captured.bytes,
+                    "application/octet-stream",
+                    track["retention"]["until"]
+                        .as_u64()
+                        .ok_or("retention expiry")?,
+                )?,
             )
         } else {
             None
@@ -1678,7 +1687,17 @@ impl Controller {
                 {
                     return Err(refuse("incompatible", "segment outside its observation"));
                 }
-                self.bytes(&segment["text"])?;
+                let bytes = self.bytes(&segment["text"])?;
+                self.retain_media(
+                    &mut state,
+                    &bytes,
+                    segment["text"]["media_type"]
+                        .as_str()
+                        .ok_or("text media type")?,
+                    track["retention"]["until"]
+                        .as_u64()
+                        .ok_or("retention expiry")?,
+                )?;
             }
             let chain = session
                 .transcripts

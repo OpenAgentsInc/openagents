@@ -73,7 +73,12 @@ The resident requires an explicit document or synthetic profile.
   track's retention allows it. Transcripts need an admitted transform, the
   observation's clock domain, current recording and transcription consent,
   bounded retention, and segments inside its interval. Corrections
-  are new revisions that point to their predecessor.
+  are new revisions that point to their predecessor. Capture and transcript
+  text expiry is saved before the bytes are retained. The resident removes
+  expired media while idle and before reads or new operations; signed records
+  keep their references and report absent content. Library hosts call
+  `Controller::expire_media` from their own timer. Equal media bytes remain until
+  the latest admitted expiry.
 - **Device input.** An owner submits an inert `live-input` proposal. The host
   checks the installed CAP, input and observation schemas, binding, supported
   preconditions, and owner-controlled task

@@ -23,6 +23,7 @@ impl Controller {
     pub fn inspect(&self, event: &Event, now: u64) -> Result<Reply> {
         let _guard = self.store.lock()?;
         let mut state = self.state()?;
+        self.expire_media_in(&mut state, now)?;
         let (signer, body, input) = self.authenticate(&mut state, event, now)?;
         let method = body["v"].as_str().unwrap_or_default();
         let fields: &[&str] = match method {

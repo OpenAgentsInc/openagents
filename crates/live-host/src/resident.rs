@@ -121,6 +121,7 @@ pub struct Server<'a> {
     path: PathBuf,
     identity: (u64, u64),
     _owner: File,
+    last_expiry_check: Option<u64>,
 }
 impl<'a> Server<'a> {
     pub fn bind(host: &'a Controller, path: PathBuf) -> Result<Self> {
@@ -152,6 +153,7 @@ impl<'a> Server<'a> {
             path,
             identity: (meta.dev(), meta.ino()),
             _owner: owner,
+            last_expiry_check: None,
         })
     }
 
@@ -159,6 +161,10 @@ impl<'a> Server<'a> {
     pub fn step(&mut self, now: u64) -> Result<()> {
         let started = Instant::now();
         let host = self.host;
+        if self.last_expiry_check != Some(now) {
+            host.expire_media(now)?;
+            self.last_expiry_check = Some(now);
+        }
         for _ in 0..MAX_CLIENTS {
             match self.listener.accept() {
                 Ok((stream, _)) if self.clients.len() < MAX_CLIENTS => {
