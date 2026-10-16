@@ -191,7 +191,7 @@ marketplace and the wallet):
 | P2 | OpenAgents sign-in in the phone and desktop clients (device code, or the website's session through the SDK), and `coder-sync` checking our accounts | both |
 | P3 | Coder Desktop (or `zeron headless`) hosts its sessions through `coder-sync`. The phone sees and drives them live | fork + deploy |
 | P4 | TestFlight build (no push notifications in the first release) | both |
-| P5 | Your OpenAgents chats in the phone (shared with desktop #11824) | both |
+| P5 | Complete: account chats, paging, files, archives, and shared projects (#11851); [verification](coder-account-history-evidence.json) | both |
 | P6 | **Cloud computers:** start the headless Coder engine on a computer from the Computers API, so the phone can run sessions with no desktop on | both |
 | Later | Push through our `push-gateway`; device room over NIP-HOST; Nostr device proofs; Android, once upstream's Android app exists | both |
 

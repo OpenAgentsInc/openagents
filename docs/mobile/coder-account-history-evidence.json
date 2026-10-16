@@ -1,0 +1,26 @@
+{
+  "issue": 11851,
+  "date": "2026-10-16",
+  "fork_repository": "https://github.com/OpenAgentsInc/coder-desktop",
+  "fork_commit": "c9460930",
+  "sdk_revision": "5a3d1c14f58888c08d0e7a0ede0322fe7585b20b",
+  "simulator": "8010197D-517D-43DA-9559-46742EFABC65",
+  "checks": {
+    "account_tests": 24,
+    "mobile_tests": "48 passed, one preexisting ignored; additional UTF-8 part test passed",
+    "native_local": "205-chat paging; 405-message paging; full text; file bytes; archives; shared-project directory; sign-out",
+    "native_public": "Dedicated account: full 205-message public API history on phone, sign-out; all three disposable chats removed",
+    "builds": [
+      "desktop mobile profile",
+      "fixture simulator core and UIKit",
+      "normal simulator core and UIKit"
+    ],
+    "identity_scan": "passed; normal bindings omit fixture credential delivery",
+    "formatting": "changed Rust files"
+  },
+  "owner_account_used": false,
+  "limitations": [
+    "Saved account chats are read-only. Live following and synchronized four-app recording are tracked by #11869.",
+    "No TestFlight upload or frozen CLI rebuild."
+  ]
+}
