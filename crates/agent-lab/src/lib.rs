@@ -373,16 +373,38 @@ impl Run {
         if !valid_id(&self.id)
             || self.revision == 0
             || self.candidates.is_empty()
-            || self.candidates.len() > 2
+            || self.candidates.len()
+                != if self.experiment.compare.is_some() {
+                    2
+                } else {
+                    1
+                }
             || self.trials.len() != self.experiment.trial_count()
         {
             return Err(invalid("This experiment record is incomplete."));
         }
+        if !valid_id(&self.version.document)
+            || self.version.version == 0
+            || self
+                .candidates
+                .iter()
+                .any(|d| !valid_id(&d.id) || d.revision == 0 || d.spec.validate().is_err())
+        {
+            return Err(invalid("Check the saved agent and experiment versions."));
+        }
+        let cases = self.experiment.suite.cases.len();
+        let repeats = self.experiment.repetitions as usize;
         for (i, t) in self.trials.iter().enumerate() {
             if t.index != i
                 || t.candidate >= self.candidates.len()
                 || t.case >= self.experiment.suite.cases.len()
-                || !valid_id(&t.assignment)
+                || t.assignment != trial_id(&self.id, i)
+                || t.candidate != i / (cases * repeats)
+                || t.case != i % cases
+                || t.repetition as usize != (i / cases) % repeats
+                || t.result.as_ref().is_some_and(|s| s.len() > 4096)
+                || t.review_note.as_ref().is_some_and(|s| s.len() > 2048)
+                || t.started_ms.zip(t.finished_ms).is_some_and(|(a, b)| a > b)
                 || t.cost_usd.is_some_and(|x| !x.is_finite() || x < 0.0)
             {
                 return Err(invalid("This test record is incomplete."));

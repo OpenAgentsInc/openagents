@@ -16,7 +16,7 @@ use openagents_sdk::{CancellationToken, Client, Deployment, Session};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::BTreeMap;
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 struct Frame {
     owner: String,
     request: String,
@@ -34,7 +34,8 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/labs/agent", get(page).post(submit))
         .route("/labs/agent/tasks/{id}", get(task))
-        .layer(DefaultBodyLimit::max(2 * 1024 * 1024))
+        .route("/static/agent-lab.js", get(script))
+        .layer(DefaultBodyLimit::max(8 * 1024 * 1024))
 }
 async fn access(app: &App, headers: &HeaderMap) -> Result<(Client, Session), Response> {
     let cloud = app
@@ -182,7 +183,9 @@ async fn render(app: &App, headers: &HeaderMap, f: Frame) -> Response {
         Ok(v) => v,
         Err(_) => return Redirect::to("/login").into_response(),
     };
-    let state = match serde_json::to_string(&f) {
+    let mut wire = f.clone();
+    catalog_only(&mut wire.workbench);
+    let state = match serde_json::to_string(&wire) {
         Ok(v) => v,
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
@@ -211,7 +214,7 @@ async fn render(app: &App, headers: &HeaderMap, f: Frame) -> Response {
     };
     // The adapter forwards native field and activation events. All actions stay in Rust.
     let html = format!(
-        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent Lab · OpenAgents</title><style>{}body{{max-width:780px;margin:24px auto;padding:16px;font:16px system-ui}}button,input,textarea{{font:inherit}}textarea{{min-height:100px}}.rn-stack{{gap:12px}}</style></head><body><a href="/">OpenAgents</a><form method="post"><input type="hidden" name="_frame" value="{}"><input type="hidden" name="_csrf" value="{}"><input type="hidden" name="_action" id="action">{}</form><script>document.addEventListener('click',function(e){{let b=e.target.closest('[data-rn-action="activate"]');if(!b||b.disabled)return;let n=b.closest('[data-rn-node]');if(!n)return;document.getElementById('action').value=n.dataset.rnNode;b.form.requestSubmit();}});</script></body></html>"#,
+        r#"<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent Lab · OpenAgents</title><style>{}body{{max-width:780px;margin:24px auto;padding:16px;font:16px system-ui}}button,input,textarea{{font:inherit}}textarea{{min-height:100px}}.rn-stack{{gap:12px}}</style></head><body><a href="/">OpenAgents</a><form method="post"><input type="hidden" name="_frame" value="{}"><input type="hidden" name="_csrf" value="{}"><input type="hidden" name="_action" id="action">{}</form><script src="/static/agent-lab.js" defer></script></body></html>"#,
         rust_native_web::CSS,
         escape(&state),
         escape(&ticket),
@@ -221,6 +224,7 @@ async fn render(app: &App, headers: &HeaderMap, f: Frame) -> Response {
         [
             ("cache-control", "no-store, private"),
             ("referrer-policy", "same-origin"),
+            ("content-security-policy","default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"),
         ],
         Html(html),
     )
@@ -297,6 +301,35 @@ async fn apply(
     fields: &BTreeMap<String, String>,
     key: &str,
 ) -> Result<(), String> {
+    // Only the opened report and current draft travel in a browser form. Fetch full
+    // versions and definitions when chosen rather than resending their histories.
+    let api = client.labs(session).map_err(|e| e.to_string())?;
+    let cancel = CancellationToken::new();
+    if let Some(id) = key.strip_prefix("run:") {
+        let r = api.run(id, &cancel).await.map_err(|e| e.to_string())?;
+        f.workbench.runs.retain(|old| old.id != id);
+        f.workbench.runs.push(r);
+    }
+    if key.starts_with("version:") {
+        if let Some(id) = &f.workbench.document {
+            let d = api.document(id, &cancel).await.map_err(|e| e.to_string())?;
+            f.workbench.documents.retain(|old| &old.id != id);
+            f.workbench.documents.push(d);
+        }
+    }
+    if let Some(id) = key
+        .strip_prefix("agent:")
+        .or_else(|| key.strip_prefix("compare:"))
+    {
+        let a = client
+            .agents(session)
+            .map_err(|e| e.to_string())?
+            .get(id, None, &cancel)
+            .await
+            .map_err(|e| e.to_string())?;
+        f.workbench.agents.retain(|old| old.id != id);
+        f.workbench.agents.push(a);
+    }
     let s = &mut f.workbench;
     let view = s.view().validate().map_err(|_| "Reload Agent Lab.")?;
     let event = rust_native::Activation {
@@ -544,4 +577,53 @@ async fn task(
             .replace('>', "&gt;")
     };
     ([("cache-control","no-store, private")],Html(format!("<!doctype html><meta name=viewport content=width=device-width,initial-scale=1><title>Agent Lab task</title><a href=/labs/agent>Agent Lab</a><h1>{}</h1><h2>Task</h2><pre style='white-space:pre-wrap'>{}</pre><h2>Result</h2><pre style='white-space:pre-wrap'>{}</pre><p>Open this task in the mobile app to read its conversation.</p>",escape(&a.definition.spec.name),escape(&a.spec.task),escape(a.result.as_deref().unwrap_or("The result is not available yet."))))).into_response()
+}
+
+async fn script() -> Response {
+    ([( "content-type","text/javascript; charset=utf-8"),("cache-control","public, max-age=300")],"document.addEventListener('click',function(e){let b=e.target.closest('[data-rn-action=\"activate\"]');if(!b||b.disabled)return;let n=b.closest('[data-rn-node]');if(!n)return;document.getElementById('action').value=n.dataset.rnNode;b.form.requestSubmit();});").into_response()
+}
+
+fn catalog_only(s: &mut Workbench) {
+    for d in &mut s.documents {
+        let last = d.versions.last().map(|v| v.number);
+        for v in &mut d.versions {
+            let title = v
+                .content
+                .pointer("/experiment/title")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("Experiment")
+                .to_owned();
+            v.content = if Some(v.number) == last {
+                json!({"experiment":{"title":title}})
+            } else {
+                serde_json::Value::Null
+            };
+        }
+    }
+    for a in &mut s.agents {
+        a.spec.instructions.clear();
+        a.spec.description.clear();
+    }
+    for r in &mut s.runs {
+        if Some(&r.id) != s.selected_run.as_ref() {
+            let complete = r.complete();
+            r.trials.truncate(1);
+            if let Some(t) = r.trials.first_mut() {
+                t.outcome = if complete {
+                    Outcome::Passed
+                } else {
+                    Outcome::Pending
+                };
+                t.result = None;
+                t.evidence = None;
+            }
+            let title = r.experiment.title.clone();
+            r.experiment = starter();
+            r.experiment.title = title;
+            for a in &mut r.candidates {
+                a.spec.instructions.clear();
+                a.spec.description.clear();
+            }
+        }
+    }
 }
