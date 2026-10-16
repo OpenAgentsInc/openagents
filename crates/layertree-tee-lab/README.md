@@ -580,3 +580,39 @@ that transport explicitly. This option carries only public record/package
 bytes, and their hashes and payout checks still determine acceptance.
 It accepts no URL credentials, public IPs, or hostnames. RPC credentials
 continue to require HTTPS or loopback.
+
+### Staged attacks on a dedicated test tree
+
+`layertree-stage` requires the separate `stage-attacks` feature. It uses
+the lab's deliberately broken **software** signer, with no hardware
+attestation claim. It never loads the public tree's enclave key or runs
+inside the released signer image. It creates its own tree from a fresh
+funding key, runs three new follower processes, withholds a record,
+serves bytes that mismatch the on-chain record hash, then moves 5,000 sat
+from the tree to the test key's change output. It requires all three
+followers' alarms and webhook acknowledgments, and theft detection within
+one block. It retains transaction bytes, event logs, and alarm evidence.
+The funding output must pay the new test key and contain 80,000–1,000,000
+signet sat. It rejects mainnet.
+
+```sh
+cargo build --locked --manifest-path crates/layertree-tee-lab/Cargo.toml --features stage-attacks --bins
+# Verify the complete flow on an isolated node and webhook receiver:
+LAYERTREE_STAGE_REGTEST_ROOT="$(openagents scratch)/staged-attacks-check" scripts/layertree/staged-regtest.sh
+# Prepare a fresh signet funding key; only addresses are printed:
+layertree-stage init NEW_STAGING_DIRECTORY
+# After the dedicated funding output confirms:
+layertree-stage run NEW_STAGING_DIRECTORY FUNDING_TXID:VOUT FOLLOWER_BINARY \
+  --until UNIX_SECONDS --network signet
+```
+
+Set `LAYERTREE_RPC_URL`, the test node's `LAYERTREE_RPC_USER` and
+`LAYERTREE_RPC_PASSWORD`, and `LAYERTREE_STAGE_ALARM_WEBHOOK` outside the
+command line. The staging tool also accepts `LAYERTREE_RPC_COOKIE` for its
+own RPC requests. Its deadline must be within eight hours. If a run fails,
+keep its evidence and checked escape packages; a stopped run does not
+produce a passing result. The private funding key remains in that staging
+directory, separate from public artifacts. To build the native Linux
+staging tool, set `LAYERTREE_STAGE_ATTACKS=1` with `build-follower.sh`.
+The software attack demonstrates chain detection; the real service's
+hardware qualification remains in the other P1 evidence.

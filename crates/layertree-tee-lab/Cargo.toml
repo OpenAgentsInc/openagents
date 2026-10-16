@@ -37,6 +37,7 @@ tokio-tungstenite = { version = "=0.30.0", optional = true }
 
 [features]
 # The local WebSocket relay acceptance fixture; never needed by the follower binary.
+stage-attacks = ["follow-live"]
 follow-relay-tests = ["follow-live", "dep:futures-util", "dep:tokio-tungstenite"]
 events = ["dep:serde", "dep:serde_json"]
 follow-live = ["events", "dep:base64", "dep:reqwest", "dep:nostr", "dep:nostr-transport", "dep:tokio", "dep:rustls", "dep:webpki-roots"]
@@ -68,3 +69,8 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 name = "layertree-follow"
 path = "src/bin/layertree-follow.rs"
 required-features = ["follow-live"]
+
+[[bin]]
+name = "layertree-stage"
+path = "src/bin/layertree-stage.rs"
+required-features = ["stage-attacks"]

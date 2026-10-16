@@ -15,6 +15,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--directory', type=Path, required=True)
     parser.add_argument('--until', type=int, required=True)
+    parser.add_argument('--network', choices=['signet', 'regtest'], default='signet')
     args = parser.parse_args()
     if not time.time() < args.until <= time.time() + 9 * 86400:
         parser.error('Choose an end time within the next nine days.')
@@ -51,10 +52,10 @@ def main():
                 row = json.loads(body)
                 identity = row['id']
                 if (row['schema'] != 'layertree.follower.observation.v1' or
-                        row['kind'] != 'light_client' or row['network'] != 'signet' or
+                        row['kind'] != 'light_client' or row['network'] != args.network or
                         row['result'] == 'ok' or self.headers.get('Idempotency-Key') != identity or
                         len(bytes.fromhex(identity)) != 32):
-                    raise ValueError('Invalid signet alarm.')
+                    raise ValueError('Invalid test alarm.')
                 if identity in saved and saved[identity] != row:
                     self.send_error(409)
                     return
@@ -90,7 +91,7 @@ def main():
     with HTTPServer(('127.0.0.1', port), Receiver) as server:
         server.timeout = 1
         ready = {'schema': 'layertree.alarm.receiver.v1', 'pid': os.getpid(),
-                 'url': f'http://127.0.0.1:{server.server_port}/alarms', 'until': args.until,
+                 'url': f'http://127.0.0.1:{server.server_port}/alarms', 'until': args.until, 'network': args.network,
                  'script_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
         ready_path.write_text(json.dumps(ready, indent=2) + '\n')
         while time.time() < args.until:

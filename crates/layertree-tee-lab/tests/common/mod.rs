@@ -89,11 +89,24 @@ impl World {
     /// A tree with `n` members at positions 0..n, member i holding
     /// 10_000 * (i + 1) sat.
     pub fn new(n: u32, radix: usize, migration_m: Option<[u8; 32]>) -> World {
+        Self::with_funding(n, radix, migration_m, fake_outpoint(999), |_, _, _, _| {
+            fake_outpoint(1)
+        })
+    }
+
+    /// Test-only funding hook: construct the real creation transaction before
+    /// opening the tree, so its escape signatures bind the actual outpoint.
+    pub fn with_funding(
+        n: u32,
+        radix: usize,
+        migration_m: Option<[u8; 32]>,
+        creation_input: OutPoint,
+        create: impl FnOnce(&Secp256k1<All>, &TreeParams, &Tree, XOnlyPublicKey) -> OutPoint,
+    ) -> World {
         let secp = Secp256k1::new();
         let vendor = FakeVendor::new(&secp);
         let op_sk = sk(1);
         let operator = xonly(&secp, &op_sk);
-        let creation_input = fake_outpoint(999);
         let cfg = Config {
             operator_key: operator,
             tree_id: tree_id(&creation_input.txid.to_byte_array(), creation_input.vout),
@@ -126,8 +139,9 @@ impl World {
             let l = w.member_leaf(i, 10_000 * (i as u64 + 1));
             tree.insert(i as u64, l).unwrap();
         }
-        let _k0 = w.enclave.next_unroll_key();
-        let pkg = w.enclave.open(tree, fake_outpoint(1)).unwrap();
+        let k0 = w.enclave.next_unroll_key();
+        let outpoint = create(&w.secp, &w.params(), &tree, k0);
+        let pkg = w.enclave.open(tree, outpoint).unwrap();
         w.genesis_unroll = pkg.clone();
         w.last_unroll = Some(pkg);
         w
