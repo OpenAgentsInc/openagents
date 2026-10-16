@@ -65,7 +65,7 @@ impl Coordinator {
             .find(|p| p.reference == parent.body["proposal"])
             .ok_or("parent task")?;
         if self.operation(&parent_proposal.body["target"])?["binding_contract"]["operation"]
-            != "openagents.coord-native-container.v1"
+            != "coord-container"
             || template["parent"] != parent_proposal.body["task"]
             || template["coordinator"] != scope.reference
             || template["frame"] != body["task_frame"]

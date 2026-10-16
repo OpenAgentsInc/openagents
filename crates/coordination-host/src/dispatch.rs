@@ -42,7 +42,7 @@ impl Coordinator {
             .find(|p| p.reference == lease.body["proposal"])
             .ok_or("proposal")?;
         let operation = self.operation(&proposal.body["target"])?;
-        if operation["binding_contract"]["operation"] == "openagents.coord-native-container.v1" {
+        if operation["binding_contract"]["operation"] == "coord-container" {
             return Err("container claims reserve children; they do not dispatch code".into());
         }
         let limits = Limits::parse(&proposal.body["bounds"], &scope.policy)?;

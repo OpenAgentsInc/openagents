@@ -76,7 +76,8 @@ impl Coordinator {
             None,
         )?;
         let id = format!("{}:coord/data", self.authority());
-        let body = json!({"v":1,"requires":[],"id":id,"profile":"native","summary":"Return the exact admitted JSON input as data.","input":schema,"output":schema,"effects":{"reads":["artifact"],"writes":[],"network":[],"process":false,"delegates":false,"spend":false},"minimum":{},"support":{"bounds":{},"cancellation":"before_dispatch","idempotency":"idempotent","evidence":[]},"binding_contract":{"operation":"openagents.coord-native-data.v1","interface":"openagents.coord-native-data.v1"}});
+        let body = json!({"v":1,"requires":[],"id":id,"profile":"native","summary":"Return the exact admitted JSON input as data.","input":schema,"output":schema,"effects":{"reads":["artifact"],"writes":[],"network":[],"process":false,"delegates":false,"spend":false},"minimum":{},"support":{"bounds":{},"cancellation":"before_dispatch","idempotency":"pure","evidence":[]},"binding_contract":{"operation":"coord-data","interface":"openagents.coord-native-data.v1"}});
+        nostr::cap::parse_definition(&body).map_err(|e| e.to_string())?;
         let bytes = contracts::jcs(&body).map_err(|e| e.to_string())?;
         let artifact = self
             .store
@@ -94,12 +95,9 @@ impl Coordinator {
         {
             return Err("unsupported native operation definition".into());
         }
+        nostr::cap::parse_definition(&body).map_err(|e| e.to_string())?;
         match body["binding_contract"]["operation"].as_str() {
-            Some(
-                "openagents.coord-native-data.v1"
-                | "openagents.coord-native-container.v1"
-                | "openagents.coord-native-git-change.v1",
-            ) => {}
+            Some("coord-data" | "coord-container" | "coord-git-change") => {}
             _ => return Err("unsupported native operation binding".into()),
         }
         contracts::parse_schema_ref(&body["input"]).map_err(|e| e.to_string())?;
@@ -112,12 +110,10 @@ impl Coordinator {
             );
         }
         let expected = match body["binding_contract"]["operation"].as_str() {
-            Some("openagents.coord-native-data.v1") => self.data_operation()?,
-            Some("openagents.coord-native-container.v1") => {
-                self.container_operation(body["effects"].clone())?
-            }
-            Some("openagents.coord-native-git-change.v1") => self.git_operation(
-                body["binding_contract"]["resource"]
+            Some("coord-data") => self.data_operation()?,
+            Some("coord-container") => self.container_operation(body["effects"].clone())?,
+            Some("coord-git-change") => self.git_operation(
+                body["effects"]["writes"][0]
                     .as_str()
                     .ok_or("registered resource")?,
             )?,
@@ -197,7 +193,8 @@ impl Coordinator {
                 .to_string()
         };
         let id = format!("{}:coord/{suffix}", self.authority());
-        let body = json!({"v":1,"requires":[],"id":id,"profile":"native","summary":"Prepare admitted data for a separately authorized operation.","input":schema,"output":schema,"effects":effects,"minimum":{},"support":{"bounds":{},"cancellation":"before_dispatch","idempotency":"idempotent","evidence":[]},"binding_contract":{"operation":format!("openagents.coord-native-{name}.v1"),"interface":format!("openagents.coord-native-{name}.v1"),"resource":resource}});
+        let body = json!({"v":1,"requires":[],"id":id,"profile":"native","summary":"Prepare admitted data for a separately authorized operation.","input":schema,"output":schema,"effects":effects,"minimum":{},"support":{"bounds":{},"cancellation":"before_dispatch","idempotency":"request_attempt","evidence":[]},"binding_contract":{"operation":format!("coord-{name}"),"interface":format!("openagents.coord-native-{name}.v1")}});
+        nostr::cap::parse_definition(&body).map_err(|e| e.to_string())?;
         let artifact = self.store.put(
             &contracts::jcs(&body).map_err(|e| e.to_string())?,
             "application/json",

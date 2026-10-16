@@ -108,7 +108,7 @@ impl Coordinator {
             now,
         )?;
         let operation = self.operation(&proposal.body["target"])?;
-        if operation["binding_contract"]["operation"] != "openagents.coord-native-git-change.v1" {
+        if operation["binding_contract"]["operation"] != "coord-git-change" {
             return Err("unsupported_feature: data results have no source integration".into());
         }
         let output = self.store.json(&report["output"])?;
@@ -116,7 +116,7 @@ impl Coordinator {
             .as_str()
             .ok_or("output resource")?
             .to_string();
-        if operation["binding_contract"]["resource"] != resource_id
+        if operation["effects"]["writes"][0] != resource_id
             || !grant.all && !grant.resources.contains(&resource_id)
         {
             return Err("not_admitted: integration resource outside exact operation grant".into());

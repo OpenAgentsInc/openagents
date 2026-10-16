@@ -196,6 +196,20 @@ fn controller_cj_scope_pins_and_restart_exact_response() {
     let (t, h, s, target, frame) = setup(2);
     let p = proposal(&h, &s, &target, &frame, 1, None);
     let transport = h.scope(&s).unwrap()["transport"].clone();
+    let capability =
+        nostr::contracts::parse_strict(&h.store.get(&transport["target"]["artifact"]).unwrap())
+            .unwrap();
+    nostr::cap::parse_definition(&capability).unwrap();
+    let validate = |field: &str, body: &Value| {
+        let schema = &capability[field];
+        let bytes = h.store.get(schema).unwrap();
+        let digest = schema["digest"].as_str().unwrap();
+        let closure =
+            nostr::contracts::prepare_closure(&BTreeMap::from([(digest.to_string(), bytes)]))
+                .unwrap();
+        nostr::contracts::validate_instance(&closure, digest, body).unwrap();
+    };
+    validate("input", &p);
     let request = transport::invoke(
         &secret(1),
         &key(1),
@@ -233,6 +247,7 @@ fn controller_cj_scope_pins_and_restart_exact_response() {
     let result: Value =
         serde_json::from_slice(&files[output["output"]["digest"].as_str().unwrap()]).unwrap();
     assert_eq!(result["status"], "accepted");
+    validate("output", &result);
     drop(h);
     let h = Coordinator::open(t.path().join("coord"), secret(1)).unwrap();
     assert_eq!(h.serve(&request, &BTreeMap::new(), 300).unwrap().0, reply);
@@ -807,4 +822,84 @@ fn lost_integration_response_reconciles_after_expiry_without_another_write() {
     assert_eq!(h.scope(&s).unwrap()["calls"], 3);
     assert_eq!(git(&repo, &["rev-parse", "refs/heads/docs"], None), head);
     control(&h, &s, &pr, &c, "release", 300).unwrap();
+}
+#[test]
+fn native_cards_pass_the_shared_cap_parser_and_bind_exact_resources() {
+    let (_t, h, s, target, other, _frame, _a, _b, _repo) = source_setup();
+    let mut ceiling = effects();
+    ceiling["delegates"] = json!(true);
+    let controller = h.scope(&s).unwrap()["transport"]["target"].clone();
+    for definition in [
+        target.clone(),
+        other,
+        h.data_operation().unwrap(),
+        h.container_operation(ceiling).unwrap(),
+        controller,
+    ] {
+        let body =
+            nostr::contracts::parse_strict(&h.store.get(&definition["artifact"]).unwrap()).unwrap();
+        nostr::cap::parse_definition(&body).unwrap();
+        assert_eq!(body["binding_contract"].as_object().unwrap().len(), 2);
+    }
+    let mut forged =
+        nostr::contracts::parse_strict(&h.store.get(&target["artifact"]).unwrap()).unwrap();
+    forged["effects"]["writes"] = json!(["b"]);
+    let artifact = h
+        .store
+        .put(
+            &nostr::contracts::jcs(&forged).unwrap(),
+            "application/json",
+            Some("openagents.cap.v1"),
+        )
+        .unwrap();
+    let changed = json!({"id":target["id"],"artifact":artifact});
+    assert!(h.operation(&changed).is_err());
+}
+#[test]
+fn controller_byte_allowance_refuses_before_any_task_admission() {
+    let (_t, h, s, target, frame) = setup(2);
+    let proposal = proposal(&h, &s, &target, &frame, 1, None);
+    let transport = h.scope(&s).unwrap()["transport"].clone();
+    let request = transport::invoke(
+        &secret(1),
+        &key(1),
+        &transport,
+        proposal,
+        workspace_host::artifact::token(),
+        101,
+    )
+    .unwrap();
+    let opened = nostr::execution::open_request(
+        &request,
+        &key(1),
+        &secret(1),
+        101,
+        nostr::execution::Window::DEFAULT,
+    )
+    .unwrap();
+    let nostr::execution::Body::Execute(execute) = opened.body else {
+        panic!()
+    };
+    let mut payload = execute.payload;
+    payload["bounds"]["output_bytes"] = json!(1);
+    let small = h
+        .seal(
+            &key(1),
+            nostr::execution::REQUEST_KIND,
+            request.tags,
+            &payload,
+            101,
+        )
+        .unwrap();
+    assert!(
+        h.serve(&small, &BTreeMap::new(), 101)
+            .unwrap_err()
+            .contains("bounds")
+    );
+    assert!(
+        h.scope(&s).unwrap()["proposals"]
+            .as_object()
+            .unwrap()
+            .is_empty()
+    );
 }

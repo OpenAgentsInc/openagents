@@ -46,8 +46,12 @@ a repository, principal, or source from ambient configuration.
    through the existing `ApprovalVerifier`; the command-line adapter supplies
    none and therefore cannot bypass such a requirement.
 
-The controller's advertised capability is a real CAP definition with pinned
-input/output schemas, lock, context, and requirements. `inspect` provides its
+Every emitted capability passes the shared CAP parser. Native operation IDs
+are stable slugs, and interface versions stay explicit. Resource selection is
+bound by the registered definition, its exact effects, and its input schema.
+The controller has separate input and result schemas, a pinned lock, context,
+and requirements; its output allowance must cover at least 64 KiB plus any
+returned claim resources. Retries and recovery keep that same byte ceiling. `inspect` provides its
 transport bundle for independent owner admission. `invoke` produces a signed
 CJ request; `serve` consumes it and returns the original encrypted response
 with its exact artifact bytes. Domain conflicts are typed coordination results

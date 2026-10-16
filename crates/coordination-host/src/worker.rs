@@ -143,7 +143,7 @@ impl Worker {
         .map_err(|e| format!("{e:?}"))?;
         if !matches!(
             target["binding_contract"]["operation"].as_str(),
-            Some("openagents.coord-native-data.v1" | "openagents.coord-native-git-change.v1")
+            Some("coord-data" | "coord-git-change")
         ) {
             return Err("unsupported native worker target".into());
         }

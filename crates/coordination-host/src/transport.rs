@@ -9,13 +9,23 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 impl Coordinator {
     pub(crate) fn controller_binding(&self, scope: &str, policy: &Value) -> Result<Value> {
-        let schema = self.store.put(
-            nostr::coordination::SCHEMA_BYTES,
+        let schemas: Value =
+            serde_json::from_slice(nostr::coordination::SCHEMA_BYTES).map_err(|e| e.to_string())?;
+        let input_schema = json!({"$defs":schemas["$defs"],"oneOf":[{"$ref":"#/$defs/task-proposal"},{"$ref":"#/$defs/claim-request"},{"$ref":"#/$defs/coordination-control"},{"$ref":"#/$defs/finding"}]});
+        let output_schema = json!({"$defs":schemas["$defs"],"$ref":"#/$defs/coordination-result"});
+        let input = self.store.put(
+            &contracts::jcs(&input_schema).map_err(|e| e.to_string())?,
+            "application/schema+json",
+            None,
+        )?;
+        let output = self.store.put(
+            &contracts::jcs(&output_schema).map_err(|e| e.to_string())?,
             "application/schema+json",
             None,
         )?;
         let id = format!("{}:coord/{scope}", self.authority());
-        let definition = json!({"v":1,"requires":[],"id":id,"profile":"native","summary":"Admit and coordinate tasks within this owner-selected scope.","input":schema,"output":schema,"effects":{"reads":["coordination"],"writes":["coordination"],"network":[],"process":false,"delegates":false,"spend":false},"minimum":{},"support":{"bounds":{},"cancellation":"before_dispatch","idempotency":"idempotent","evidence":[]},"binding_contract":{"operation":"openagents.coordination-controller.v1","interface":"openagents.coordination-controller.v1"}});
+        let definition = json!({"v":1,"requires":[],"id":id,"profile":"native","summary":"Admit and coordinate tasks within this owner-selected scope.","input":input,"output":output,"effects":{"reads":["coordination"],"writes":["coordination"],"network":[],"process":false,"delegates":false,"spend":false},"minimum":{"output_bytes":65536},"support":{"bounds":{"output_bytes":"enforced"},"cancellation":"before_dispatch","idempotency":"request_attempt","evidence":[]},"binding_contract":{"operation":"coord-controller","interface":"openagents.coordination-controller.v1"}});
+        nostr::cap::parse_definition(&definition).map_err(|e| e.to_string())?;
         let artifact = self.store.put(
             &contracts::jcs(&definition).map_err(|e| e.to_string())?,
             "application/json",
@@ -78,6 +88,10 @@ impl Coordinator {
             .values()
             .find(|s| s.transport["target"] == execute.payload["target"])
             .ok_or("not_admitted: unregistered controller operation")?;
+        let definition =
+            contracts::parse_strict(&self.store.get(&scope.transport["target"]["artifact"])?)
+                .map_err(|e| e.to_string())?;
+        nostr::cap::parse_definition(&definition).map_err(|e| e.to_string())?;
         if execute.input_artifact.is_some()
             || execute.payload["lock"] != scope.transport["lock"]
             || execute.payload["context"] != scope.transport["context"]
@@ -89,11 +103,32 @@ impl Coordinator {
             || execute
                 .bounds
                 .output_bytes
-                .is_none_or(|v| v == 0 || v > 1_048_576)
+                .is_none_or(|v| v < 65_536 || v > 1_048_576)
         {
             return Err("cannot_enforce: controller pins or bounds differ".into());
         }
         let body = &execute.input;
+        let resources = if body["v"] == "openagents.claim-request.v1" {
+            body["resources"].clone()
+        } else if body["v"] == "openagents.coordination-control.v1" && body["action"] != "status" {
+            scope
+                .claims
+                .values()
+                .find(|l| l.reference == body["claim"])
+                .map(|l| l.body["resources"].clone())
+                .unwrap_or(Value::Null)
+        } else {
+            Value::Null
+        };
+        let required = 65_536u64.saturating_add(if resources.is_null() {
+            0
+        } else {
+            contracts::jcs(&resources).map_err(|e| e.to_string())?.len() as u64
+        });
+        if execute.bounds.output_bytes.is_none_or(|n| n < required) {
+            return Err("cannot_enforce: output allowance cannot hold the native response".into());
+        }
+
         let belongs = match body["v"].as_str() {
             Some("openagents.task-proposal.v1" | "openagents.coordination-control.v1") => {
                 body["coordinator"] == scope.reference
@@ -301,13 +336,22 @@ impl Coordinator {
         artifacts.push(reference.clone());
         for field in ["value", "record"] {
             if contracts::parse_artifact(&value[field]).is_ok()
+                && value[field] != value["request"]
                 && !artifacts.contains(&value[field])
             {
                 artifacts.push(value[field].clone());
             }
         }
-        let output = Some(reference);
-        let outcome = "completed";
+        let total = artifacts
+            .iter()
+            .map(|r| r["size"].as_u64().unwrap_or(u64::MAX))
+            .try_fold(0u64, u64::checked_add);
+        let exceeded = total.is_none_or(|n| n > execute.bounds.output_bytes.unwrap_or(0));
+        if exceeded {
+            artifacts.truncate(1);
+        }
+        let output = (!exceeded).then_some(reference);
+        let outcome = if exceeded { "failed" } else { "completed" };
         let result = state
             .service
             .observe(
@@ -321,8 +365,8 @@ impl Coordinator {
                     spend: Some(0),
                     verification: Some("not_run"),
                     integration: Some("not_requested"),
-                    code: None,
-                    message: None,
+                    code: exceeded.then(|| "limit_exceeded".to_string()),
+                    message: exceeded.then(|| "The response exceeded its byte limit.".to_string()),
                 },
             )
             .map_err(|e| format!("{e:?}"))?;
@@ -507,10 +551,19 @@ impl Coordinator {
         artifacts.push(reference.clone());
         for field in ["value", "record"] {
             if contracts::parse_artifact(&value[field]).is_ok()
+                && value[field] != value["request"]
                 && !artifacts.contains(&value[field])
             {
                 artifacts.push(value[field].clone());
             }
+        }
+        let total = artifacts
+            .iter()
+            .map(|r| r["size"].as_u64().unwrap_or(u64::MAX))
+            .try_fold(0u64, u64::checked_add);
+        let exceeded = total.is_none_or(|n| n > execute.bounds.output_bytes.unwrap_or(0));
+        if exceeded {
+            artifacts.truncate(1);
         }
         let root = self.store.get(&artifacts[0])?;
         state
@@ -522,16 +575,16 @@ impl Coordinator {
             .observe(
                 &key,
                 execution::Report {
-                    outcome: "completed",
+                    outcome: if exceeded { "failed" } else { "completed" },
                     dispatched,
-                    output: Some(reference),
+                    output: (!exceeded).then_some(reference),
                     artifacts: state.reply_artifacts[&key].clone(),
                     receipts: vec![],
                     spend: Some(0),
                     verification: Some("not_run"),
                     integration: Some("not_requested"),
-                    code: None,
-                    message: None,
+                    code: exceeded.then(|| "limit_exceeded".to_string()),
+                    message: exceeded.then(|| "The response exceeded its byte limit.".to_string()),
                 },
             )
             .map_err(|e| format!("{e:?}"))?;

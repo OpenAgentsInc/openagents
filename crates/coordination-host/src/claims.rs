@@ -123,7 +123,7 @@ impl Coordinator {
         let effects =
             contracts::parse_effects(&proposal.body["effects"]).map_err(|e| e.to_string())?;
         let container = self.operation(&proposal.body["target"])?["binding_contract"]["operation"]
-            == "openagents.coord-native-container.v1";
+            == "coord-container";
         if container && body["resources"] != json!([]) {
             return Err("container claims hold allowance rather than source locks".into());
         }
