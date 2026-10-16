@@ -134,6 +134,12 @@ fn capture_window(
         .unwrap();
 }
 fn main() -> anyhow::Result<()> {
+    let public_mode = std::env::args().any(|arg| arg == "--public-history");
+    let public_ids: Vec<String> = if public_mode {
+        serde_json::from_str(&std::env::var("SDK_FIXTURE_CHAT_IDS")?)?
+    } else {
+        Vec::new()
+    };
     let reader_mode = std::env::args().any(|arg| arg == "--reader");
     let history_mode = reader_mode || std::env::args().any(|arg| arg == "--history");
     let output = PathBuf::from(
@@ -168,8 +174,26 @@ fn main() -> anyhow::Result<()> {
         output.join("browser-url"),
         format!("{origin}/device?code=BCDF-GHJK"),
     )?;
-    let client = Client::new(Deployment::new(&format!("{origin}/v1"), &origin)?)?;
+    let client = Client::new(if public_mode {
+        Deployment::new(
+            &std::env::var("SDK_FIXTURE_API")?,
+            &std::env::var("SDK_FIXTURE_WEBSITE")?,
+        )?
+    } else {
+        Deployment::new(&format!("{origin}/v1"), &origin)?
+    })?;
     let store = Arc::new(Store::default());
+    if public_mode {
+        let token = std::env::var("OPENAGENTS_TOKEN")?;
+        // Only this explicit test mode accepts the dedicated account's sign-in key.
+        anyhow::ensure!(token.starts_with("oa_sk_"), "use a dedicated sign-in key");
+        let session = runtime.block_on(client.authenticate(&token))?;
+        store.save(&session.record())?;
+        anyhow::ensure!(
+            public_ids.len() == 3,
+            "pass the three disposable fixture IDs"
+        );
+    }
     let controller = Controller::new(client, store.clone(), output.join("profile/signed-out"));
     let result = Arc::new(AtomicBool::new(false));
     let passed = result.clone();
@@ -247,7 +271,11 @@ fn main() -> anyhow::Result<()> {
                 .unwrap();
             let shell_window = window;
             let window: gpui::AnyWindowHandle = window.into();
-            account.update(cx, |a, cx| a.sign_in(cx));
+            if public_mode {
+                runtime.spawn(controller.restore());
+            } else {
+                account.update(cx, |a, cx| a.sign_in(cx));
+            }
             cx.spawn(async move |cx| {
                 let start = Instant::now();
                 let mut waiting = false;
@@ -263,7 +291,9 @@ fn main() -> anyhow::Result<()> {
                             Some("waiting")
                         }
                         Phase::SignedIn { account } if !signed_in => {
-                            assert_eq!(account.label, "Fixture account");
+                            if !public_mode {
+                                assert_eq!(account.label, "Fixture account");
+                            }
                             signed_in = true;
                             Some("signed-in")
                         }
@@ -290,6 +320,66 @@ fn main() -> anyhow::Result<()> {
                             })
                             .unwrap();
                         if name == "signed-in" {
+                            if public_mode {
+                                let panel = shell_window
+                                    .update(cx, |shell, _, _| shell.fixture_saved_history().0)
+                                    .unwrap()
+                                    .unwrap();
+                                let model = panel.update(cx, |panel, _| panel.model.clone());
+                                let deadline = Instant::now() + Duration::from_secs(30);
+                                while !public_ids.iter().all(|id| model.existing(id).is_some()) {
+                                    assert!(
+                                        Instant::now() < deadline,
+                                        "deployed sidebar fixtures did not load"
+                                    );
+                                    cx.background_executor()
+                                        .timer(Duration::from_millis(100))
+                                        .await;
+                                }
+                                capture_window(window, cx, &output, "public-sidebar");
+                                for (n, id) in public_ids.iter().enumerate() {
+                                    let target = model.existing(id).unwrap();
+                                    shell_window
+                                        .update(cx, |shell, _, cx| {
+                                            shell.open_saved_chat(target, cx)
+                                        })
+                                        .unwrap();
+                                    let viewer = shell_window
+                                        .update(cx, |shell, _, _| shell.fixture_saved_reader())
+                                        .unwrap()
+                                        .unwrap();
+                                    let reader =
+                                        viewer.update(cx, |viewer, _| viewer.model.clone());
+                                    let deadline = Instant::now() + Duration::from_secs(30);
+                                    while reader.snapshot().state
+                                        == coder_account::history::LoadState::Loading
+                                    {
+                                        assert!(Instant::now() < deadline);
+                                        cx.background_executor()
+                                            .timer(Duration::from_millis(100))
+                                            .await;
+                                    }
+                                    assert_eq!(reader.snapshot().messages.len(), 200);
+                                    runtime.spawn(reader.more()).await.unwrap();
+                                    let snapshot = reader.snapshot();
+                                    assert_eq!(snapshot.messages.len(), 205);
+                                    assert_eq!(snapshot.messages.last().unwrap().id, "msg_204");
+                                    assert!(!snapshot.has_more);
+                                    assert_eq!(
+                                        snapshot.messages[1].tool.as_ref().unwrap().output,
+                                        "Saved fixture output"
+                                    );
+                                    assert_eq!(snapshot.messages[2].role.as_str(), "thinking");
+                                    capture_window(
+                                        window,
+                                        cx,
+                                        &output,
+                                        &format!("public-reader-{n}"),
+                                    );
+                                }
+                                account.update(cx, |a, cx| a.sign_out(cx));
+                                continue;
+                            }
                             if history_mode {
                                 let panel = shell_window
                                     .update(cx, |shell, _, _| shell.fixture_saved_history().0)
@@ -517,7 +607,7 @@ fn main() -> anyhow::Result<()> {
                         } else if name == "signed-out" {
                             assert!(store.0.lock().unwrap().is_none());
                             assert!(!server.active.load(Ordering::SeqCst));
-                            if reader_mode {
+                            if reader_mode || public_mode {
                                 let viewer = shell_window
                                     .update(cx, |shell, _, _| shell.fixture_saved_reader())
                                     .unwrap()
@@ -527,7 +617,7 @@ fn main() -> anyhow::Result<()> {
                                     assert!(viewer.model.snapshot().download.is_none());
                                 });
                             }
-                            if history_mode {
+                            if history_mode || public_mode {
                                 let (panel, route) = shell_window
                                     .update(cx, |shell, _, _| shell.fixture_saved_history())
                                     .unwrap();
@@ -555,6 +645,6 @@ fn main() -> anyhow::Result<()> {
         result.load(Ordering::SeqCst),
         "native account journey did not finish"
     );
-    println!("Native account approval and sign-out passed.");
+    println!("Native account journey and sign-out passed (public history: {public_mode}).");
     Ok(())
 }
