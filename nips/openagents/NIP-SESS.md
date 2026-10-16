@@ -848,3 +848,42 @@ changes the effective record only after a matching acknowledgment. Lost or
 different acknowledgments stay unknown and block further input or configuration
 changes without replay, including after restart. New turn intents name only
 the current requested or effective configuration, not obsolete opening settings.
+
+The native `replace_runtime` command has payload `{adapter, lease,
+materialization, requested, source, workspace}`. It uses the complete adapter
+CAP under a fresh ENV-bound CJ execution; it is not a fifteenth feature-matrix
+entry. The new adapter must support the selected `new` or `resume` source.
+Replacement requires known quiescence, an empty queue, no pending interaction,
+and acknowledged closure of the old native binding. An unknown opening,
+configuration, close, active turn, or managed child refuses replacement.
+Resume additionally requires the owner's exact latest host-signed history and
+compatible native resume support. The portable session ID and lineage stay
+fixed; the native binding, ENV pins, and configuration may change.
+
+Before closing the old native binding, the host saves the replacement command,
+complete RUN intent, and unknown reply. After closure is acknowledged, it
+increments the scope generation and saves that pending generation before
+opening the replacement. Only the matching new native acknowledgment makes it
+ready. A lost closure or opening reply remains unknown and cannot repeat or
+make the session ID or lineage available. Exact retries of this replacement
+may read its original outcome in the generation it established; other controls
+from the preceding generation are stale. Another replacement makes those
+earlier cached controls stale too.
+
+An acknowledged replacement produces `openagents.session-runtime-binding.v1`
+with `scope`, `previous` (prior binding or initial admission ArtifactRef),
+`request`, `attachment`, `lease`, `materialization`, `adapter`, `requested`,
+`effective` (ArtifactRefs), and `admitted_at`. The session state and portable
+history name it in `meta.runtime`. This record supplies current runtime pins
+for later turns and continuations; the immutable initial admission remains in
+history. The control receipt uses transition `replace_runtime` and the new
+scope. Its revision advances by one after acknowledged replacement.
+
+Native names are scoped to the engine instance that admitted them. Another
+host instance cannot treat a reused name as authority for earlier input,
+cleanup, observation, or resume reads. An unverified old binding stays unknown,
+including when it was idle. Pending interactions become unknown on lost
+observation and cancelled on known terminal completion; their current signed
+records carry that state. An explicit acknowledged replacement may clear the
+current generation's protocol fault while retaining earlier fault evidence in
+native history and turn results.

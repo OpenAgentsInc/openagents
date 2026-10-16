@@ -178,6 +178,8 @@ struct Session {
     owner: String,
     adapter: String,
     native: Option<String>,
+    #[serde(default)]
+    native_instance: Option<String>,
     /// An opening whose native acknowledgment has not been committed.
     #[serde(default)]
     opening: bool,
@@ -191,6 +193,14 @@ struct Session {
     close_run: Vec<Value>,
     #[serde(default)]
     configuration_run: Vec<Value>,
+    #[serde(default)]
+    runtime_binding: Option<Value>,
+    #[serde(default)]
+    replacement: Option<Value>,
+    #[serde(default)]
+    replacement_run: Vec<Value>,
+    #[serde(default)]
+    replacing: bool,
     connection: String,
     ordinal: u64,
     generation: u64,
@@ -262,6 +272,7 @@ pub struct SessionHost {
     bindings: Box<dyn Bindings>,
     reader: RefCell<Option<ReadScope>>,
     pub(crate) runtime_clocks: RefCell<BTreeMap<String, (std::time::Instant, u64)>>,
+    instance: String,
 }
 
 struct ReadScope {
@@ -366,16 +377,7 @@ impl SessionHost {
             return Err("stale: original native turn cannot accept input".into());
         }
         let target = self.cj_target(state, &execute.payload["target"])?;
-        if !session.native.as_deref().is_some_and(|native| {
-            self.engines
-                .borrow()
-                .get(&state.adapters[&session.adapter].engine)
-                .is_some_and(|e| e.owns(native))
-        }) {
-            return Err(
-                "unknown: the original native session is no longer owned by this engine".into(),
-            );
-        }
+        self.native_session(session, &state.adapters[&session.adapter].engine)?;
         if target.adapter != state.adapters[&session.adapter].reference {
             return Err(
                 "identity_mismatch: native adapter differs from the original execution".into(),
@@ -388,12 +390,7 @@ impl SessionHost {
         if binding.fingerprint != execute.fingerprint || binding.grant != active.attachment {
             return Err("identity_mismatch: original native binding differs".into());
         }
-        let admission = self.store.json(&session.admission)?;
-        Ok((
-            binding,
-            self.store.json(&admission["request"])?,
-            target.engine,
-        ))
+        Ok((binding, self.runtime_request(session)?, target.engine))
     }
 
     /// Deliver a signed question answer or steering control to the exact
@@ -597,6 +594,7 @@ impl SessionHost {
             bindings,
             reader: RefCell::new(None),
             runtime_clocks: RefCell::new(BTreeMap::new()),
+            instance: token(),
         };
         host.state()?;
         Ok(host)
@@ -618,8 +616,20 @@ impl SessionHost {
             .sessions
             .get(body["scope"]["session"].as_str().ok_or("session")?)
             .ok_or("not_admitted: unknown session")?;
+        if body["action"] == "replace_runtime" && signer != session.owner {
+            return Err("not_admitted: only the session owner may replace its runtime".into());
+        }
+        let own_replacement = body["action"] == "replace_runtime"
+            && body["scope"]["generation"]
+                .as_u64()
+                .and_then(|g| g.checked_add(1))
+                == Some(session.generation)
+            && session
+                .replacement
+                .as_ref()
+                .is_some_and(|r| self.store.json(r).is_ok_and(|b| b == *body));
         if body["scope"]["authority"] != self.pubkey()
-            || body["scope"]["generation"] != session.generation
+            || body["scope"]["generation"] != session.generation && !own_replacement
         {
             return Err(refuse("stale", "scope generation"));
         }
@@ -1007,6 +1017,33 @@ impl SessionHost {
         })
     }
 
+    fn runtime_request(&self, session: &Session) -> Result<Value> {
+        if let Some(binding) = &session.runtime_binding {
+            return self.store.json(binding);
+        }
+        let admission = self.store.json(&session.admission)?;
+        self.store.json(&admission["request"])
+    }
+
+    fn native_session<'a>(&self, session: &'a Session, engine: &str) -> Result<&'a str> {
+        let native = session
+            .native
+            .as_deref()
+            .ok_or("unknown: native session is unavailable")?;
+        if session.native_instance.as_deref() != Some(self.instance.as_str())
+            || !self
+                .engines
+                .borrow()
+                .get(engine)
+                .is_some_and(|e| e.owns(native))
+        {
+            return Err(
+                "unknown: the original native binding belongs to another engine instance".into(),
+            );
+        }
+        Ok(native)
+    }
+
     fn effective(
         &self,
         state: &mut State,
@@ -1140,15 +1177,19 @@ impl SessionHost {
         let description = self.store.json(&adapter.reference)?;
         let portable = self
             .store
-            .put_json(&json!({"session":session.id,"turns":session.results,"protocol_fault":session.protocol_fault}))?;
+            .put_json(&json!({"session":session.id,"turns":session.results,"protocol_fault":session.protocol_fault,
+                "meta":{"runtime":session.runtime_binding,"replacement_pending":session.replacing}}))?;
         let resume = match (&session.native, self.support(state, session, "resume")?) {
-            (Some(native), Support::Native) => self
-                .engines
-                .borrow_mut()
-                .get_mut(&adapter.engine)
-                .and_then(|e| e.resume_state(native))
-                .map(|bytes| self.store.put(&bytes, "application/json", None))
-                .transpose()?,
+            (Some(native), Support::Native)
+                if self.native_session(session, &adapter.engine).is_ok() =>
+            {
+                self.engines
+                    .borrow_mut()
+                    .get_mut(&adapter.engine)
+                    .and_then(|e| e.resume_state(native))
+                    .map(|bytes| self.store.put(&bytes, "application/json", None))
+                    .transpose()?
+            }
             _ => None,
         };
         let mut losses = vec![json!({"source":portable,"category":"derived",
@@ -1186,7 +1227,8 @@ impl SessionHost {
             "scope":session.scope(self.pubkey()),"revision":session.revision,"effective":session.effective,
             "phase":session.phase,"active_turn":session.active.as_ref().map(|t| t.id.clone()),
             "turn_revision":session.active.as_ref().and(session.turn_revision),"queue":queue,
-            "interactions":interactions,"history":history,"children":session.children,"archived":session.archived});
+            "interactions":interactions,"history":history,"children":session.children,"archived":session.archived,
+            "meta":{"runtime":session.runtime_binding,"replacement_pending":session.replacing}});
         let reference = self.sign(state, &body, &session.owner.clone(), now)?;
         session.state = Some(reference.clone());
         Ok(reference)
@@ -1443,12 +1485,12 @@ impl SessionHost {
         now: u64,
     ) -> Result<()> {
         let adapter = &state.adapters[&session.adapter];
+        self.native_session(session, &adapter.engine)?;
         let Some(fence) = fence else {
             return self.require_engine_execution(&adapter.engine, None);
         };
         let active = session.active.as_ref().ok_or("stale: no active turn")?;
-        let admission = self.store.json(&session.admission)?;
-        let opening = self.store.json(&admission["request"])?;
+        let opening = self.runtime_request(session)?;
         let engine = self.store.json(&adapter.reference)?["engine"].clone();
         let binding = active
             .binding
@@ -1691,12 +1733,17 @@ impl SessionHost {
             owner: owner.clone(),
             adapter: digest_of(&adapter.reference).into(),
             native: None,
+            native_instance: None,
             opening: import.is_none(),
             opening_run: run,
             protocol_fault: None,
             closing_native: false,
             close_run: Vec::new(),
             configuration_run: Vec::new(),
+            runtime_binding: None,
+            replacement: None,
+            replacement_run: Vec::new(),
+            replacing: false,
             connection: token(),
             ordinal: 0,
             generation: 0,
@@ -1799,6 +1846,7 @@ impl SessionHost {
                 return Ok(pending);
             }
             session.native = Some(native.clone());
+            session.native_instance = Some(self.instance.clone());
             session.opening = false;
             session.phase = "ready".into();
             session.quiescent = true;
@@ -1918,7 +1966,7 @@ impl SessionHost {
         if session.protocol_fault.is_some()
             && !matches!(
                 action.as_str(),
-                "interrupt" | "close" | "archive" | "cancel_queued"
+                "interrupt" | "close" | "archive" | "cancel_queued" | "replace_runtime"
             )
         {
             return Err(refuse(
@@ -1932,7 +1980,7 @@ impl SessionHost {
         if session.read_only
             && matches!(
                 action.as_str(),
-                "submit" | "enqueue" | "steer" | "interrupt" | "configure"
+                "submit" | "enqueue" | "steer" | "interrupt" | "configure" | "replace_runtime"
             )
         {
             return Err(refuse("not_admitted", "imported history is read-only"));
@@ -2059,7 +2107,7 @@ impl SessionHost {
                     .ok_or("engine")?
                     .profile()
                     .steering;
-                let native = session.native.clone().ok_or("native session")?;
+                let native = self.native_session(session, &adapter.engine)?.to_string();
                 let receipt = match correction["mode"].as_str() {
                     Some("native") => {
                         if support != Support::Native || steering.native != "mid_turn" {
@@ -2121,7 +2169,7 @@ impl SessionHost {
                     .get(&session.adapter)
                     .ok_or("adapter")?
                     .clone();
-                let native = session.native.clone().ok_or("native session")?;
+                let native = self.native_session(session, &adapter.engine)?.to_string();
                 self.pending_control(state, session, signer, body, input, now)?;
                 self.engines
                     .borrow_mut()
@@ -2162,8 +2210,7 @@ impl SessionHost {
                 }
                 self.require_engine_execution(&adapter.engine, fence)?;
                 if fence.is_some() {
-                    let admission = self.store.json(&session.admission)?;
-                    let opening = self.store.json(&admission["request"])?;
+                    let opening = self.runtime_request(session)?;
                     let engine = self.store.json(&adapter.reference)?["engine"].clone();
                     let runtime = self.runtime_use(
                         self.need_binding(binding)?,
@@ -2175,7 +2222,7 @@ impl SessionHost {
                     self.check_binding(&runtime, now, fence)?;
                 }
                 let configuration = self.configuration_values(&requested)?;
-                let native = session.native.clone().ok_or("native session")?;
+                let native = self.native_session(session, &adapter.engine)?.to_string();
                 let run_id = token();
                 let mut run = Vec::new();
                 records.push(self.run_record(
@@ -2214,8 +2261,7 @@ impl SessionHost {
                     Ok(())
                 };
                 let acknowledgment = if let Some(fence) = fence {
-                    let admission = self.store.json(&session.admission)?;
-                    let opening = self.store.json(&admission["request"])?;
+                    let opening = self.runtime_request(session)?;
                     let engine = self.store.json(&adapter.reference)?["engine"].clone();
                     let runtime = self.runtime_use(
                         self.need_binding(binding)?,
@@ -2249,6 +2295,10 @@ impl SessionHost {
                 session.requested = Some(payload["requested"].clone());
             }
             "archive" => session.archived = payload["archived"] == true,
+            "replace_runtime" => {
+                records =
+                    self.replace_runtime(state, session, signer, body, input, binding, fence, now)?;
+            }
             "close" => {
                 self.require(state, session, "close")?;
                 records = self.close_native(state, session, signer, body, input, now)?;
@@ -2267,6 +2317,252 @@ impl SessionHost {
             None,
             now,
         )
+    }
+
+    fn replace_runtime(
+        &self,
+        state: &mut State,
+        session: &mut Session,
+        signer: &str,
+        command: &Value,
+        input: &Value,
+        binding: Option<&Binding>,
+        fence: Option<&env_host::runtime::RuntimeFence<'_>>,
+        now: u64,
+    ) -> Result<Vec<Value>> {
+        let started = std::time::Instant::now();
+        if signer != session.owner || !state.policy.owners.contains(signer) {
+            return Err("not_admitted: runtime replacement requires the current owner".into());
+        }
+        if session.read_only
+            || session.active.is_some()
+            || !session.quiescent
+            || !matches!(session.phase.as_str(), "ready" | "faulted")
+            || session.opening
+            || session.closing_native
+            || session.replacing
+            || session.queue.iter().any(|q| q.state == "queued")
+            || session.interactions.iter().any(|i| i.state == "pending")
+        {
+            return Err("conflict: runtime replacement requires an idle quiescent session".into());
+        }
+        for reference in &session.children {
+            let child = self.store.json(reference)?;
+            if child["relationship"] == "managed"
+                && !state.sessions.values().any(|s| {
+                    s.admission == child["child"]
+                        && s.active.is_none()
+                        && s.quiescent
+                        && matches!(s.phase.as_str(), "ready" | "closed")
+                })
+            {
+                return Err("unknown: managed child work is not quiescent".into());
+            }
+        }
+        let payload = &command["payload"];
+        let adapter = state
+            .adapters
+            .get(digest_of(&payload["adapter"]))
+            .cloned()
+            .ok_or("not_admitted: replacement adapter is not admitted")?;
+        let old_adapter = state
+            .adapters
+            .get(&session.adapter)
+            .cloned()
+            .ok_or("adapter")?;
+        let old_native = self
+            .native_session(session, &old_adapter.engine)?
+            .to_string();
+        if state.bound.get(&old_native) != Some(&session.id) {
+            return Err("conflict: old native binding belongs to another session".into());
+        }
+        self.require(state, session, "close")?;
+        if !self
+            .engines
+            .borrow()
+            .get(&old_adapter.engine)
+            .is_some_and(|e| e.owns(&old_native))
+        {
+            return Err("unknown: this engine no longer owns the old native binding".into());
+        }
+        let description = self.store.json(&adapter.reference)?;
+        let kind = payload["source"]["kind"]
+            .as_str()
+            .ok_or("replacement source")?;
+        let feature = if kind == "new" { "create" } else { "resume" };
+        if description["features"]
+            .as_array()
+            .and_then(|f| f.iter().find(|f| f["feature"] == feature))
+            .is_none_or(|f| f["support"] == "unsupported")
+        {
+            return Err("unsupported_feature: replacement source is unsupported".into());
+        }
+        let requested = self.check_configuration(&adapter, &payload["requested"])?;
+        let configuration = self.configuration_values(&requested)?;
+        self.body(&payload["lease"], "openagents.environment-lease.v1")?;
+        self.body(
+            &payload["materialization"],
+            "openagents.environment-materialization.v1",
+        )?;
+        if !payload["workspace"].is_null() {
+            self.bytes(&payload["workspace"])?;
+        }
+        let mut resume = None;
+        if kind == "resume" {
+            let reference = &payload["source"]["artifact"];
+            let history = self.body(reference, "openagents.session-history.v1")?;
+            if session.history.as_ref() != Some(reference)
+                || history["lineage"] != session.lineage
+                || history["source"]["admission"] != session.admission
+                || history["adapter"] != adapter.definition
+                || history["resume"].is_null()
+                || !state
+                    .signers
+                    .get(digest_of(reference))
+                    .is_some_and(|signers| signers.contains(self.pubkey()))
+            {
+                return Err(
+                    "not_admitted: replacement resume needs the owner's latest compatible history"
+                        .into(),
+                );
+            }
+            resume = Some(self.bytes(&history["resume"])?);
+        }
+        let binding = self.need_binding(binding)?;
+        let runtime = self.runtime_use(
+            binding,
+            signer,
+            &payload["lease"],
+            &payload["materialization"],
+            &description["engine"],
+        );
+        let grant = self.check_binding(&runtime, now, fence)?;
+        self.require_engine_execution(&adapter.engine, fence)?;
+        let next = session
+            .generation
+            .checked_add(1)
+            .filter(|g| *g <= 9_007_199_254_740_991)
+            .ok_or("limit_exceeded: runtime generation")?;
+        let run_id = token();
+        let mut run = Vec::new();
+        let mut records = Vec::new();
+        records.push(self.run_record(
+            &mut run,
+            &run_id,
+            "created",
+            json!({"request":digest_of(input)}),
+            now,
+        )?);
+        records.push(self.run_record(
+            &mut run,
+            &run_id,
+            "admitted",
+            json!({"request":digest_of(input)}),
+            now,
+        )?);
+        records.push(self.run_record(&mut run,&run_id,"dispatched",
+            json!({"request":digest_of(input),"binding":old_native,"operation":"replace_runtime","generation":next}),now)?);
+        session.replacement_run = run;
+        session.replacement = Some(input.clone());
+        session.replacing = true;
+        session.quiescent = false;
+        self.pending_control(state, session, signer, command, input, now)?;
+        let closed = self
+            .engines
+            .borrow_mut()
+            .get_mut(&old_adapter.engine)
+            .ok_or("engine")?
+            .close(&old_native);
+        records.extend(self.capture(state, session, now)?);
+        if closed.is_err() {
+            session.phase = "unknown".into();
+            self.write_state(state, session, now)?;
+            state.sessions.insert(session.id.clone(), session.clone());
+            self.save(state)?;
+            return Err(
+                "unknown: old native closure was not acknowledged; replacement was not opened"
+                    .into(),
+            );
+        }
+        let previous = session
+            .runtime_binding
+            .clone()
+            .unwrap_or_else(|| session.admission.clone());
+        state.bound.remove(&old_native);
+        session.generation = next;
+        session.native = None;
+        session.native_instance = None;
+        session.adapter = digest_of(&adapter.reference).into();
+        session.connection = token();
+        session.ordinal = 0;
+        session.phase = "unknown".into();
+        self.write_state(state, session, now)?;
+        state.sessions.insert(session.id.clone(), session.clone());
+        self.save(state)?;
+        let current = now.saturating_add(started.elapsed().as_secs());
+        let mut opened = None;
+        let admission = self.runtime_effect(&runtime, current, fence, &adapter.engine, &mut || {
+            let current = now.saturating_add(started.elapsed().as_secs());
+            if command["expires_at"].as_u64().is_none_or(|v| v <= current) {
+                return Err("stale: replacement expired before native opening".into());
+            }
+            opened = Some(
+                self.engines
+                    .borrow_mut()
+                    .get_mut(&adapter.engine)
+                    .ok_or("engine")?
+                    .open_configured(resume.as_deref(), &configuration)?,
+            );
+            Ok(())
+        });
+        records.extend(self.capture(state, session, now)?);
+        if admission.is_err()
+            || opened
+                .as_ref()
+                .is_none_or(|(_, actual)| *actual != configuration)
+        {
+            self.write_state(state, session, now)?;
+            state.sessions.insert(session.id.clone(), session.clone());
+            self.save(state)?;
+            return Err("unknown: replacement opening was not acknowledged".into());
+        }
+        let native = opened.ok_or("native acknowledgment")?.0;
+        if state.bound.get(&native).is_some_and(|other| {
+            other != &session.id
+                && state
+                    .sessions
+                    .get(other)
+                    .is_some_and(|s| s.phase != "closed")
+        }) {
+            self.write_state(state, session, now)?;
+            state.sessions.insert(session.id.clone(), session.clone());
+            self.save(state)?;
+            return Err("unknown: replacement native binding is already held".into());
+        }
+        state.bound.insert(native.clone(), session.id.clone());
+        session.native = Some(native);
+        session.native_instance = Some(self.instance.clone());
+        session.effective = self.effective(state, &payload["requested"], signer, now)?;
+        session.requested = Some(payload["requested"].clone());
+        records.push(self.run_record(
+            &mut session.replacement_run,
+            &run_id,
+            "resolved",
+            json!({"outcome":"completed","dispatched":true}),
+            now,
+        )?);
+        let record = json!({"v":"openagents.session-runtime-binding.v1","requires":[],
+            "scope":session.scope(self.pubkey()),"previous":previous,"request":input,"attachment":grant,
+            "lease":payload["lease"],"materialization":payload["materialization"],"adapter":payload["adapter"],
+            "requested":payload["requested"],"effective":session.effective,"admitted_at":now});
+        let reference = self.sign(state, &record, signer, now)?;
+        records.push(reference.clone());
+        session.runtime_binding = Some(reference);
+        session.protocol_fault = None;
+        session.quiescent = true;
+        session.replacing = false;
+        session.phase = "ready".into();
+        Ok(records)
     }
 
     fn close_native(
@@ -2306,6 +2602,7 @@ impl SessionHost {
             .ok_or("adapter")?
             .clone();
         let mut run = Vec::new();
+        self.native_session(session, &adapter.engine)?;
         let run_id = token();
         let mut records = vec![
             self.run_record(
@@ -2443,8 +2740,7 @@ impl SessionHost {
                     .map(|q| q.requester.clone())
             })
             .ok_or("not_admitted: original turn requester required")?;
-        let admission = self.store.json(&session.admission)?;
-        let opening = self.store.json(&admission["request"])?;
+        let opening = self.runtime_request(session)?;
         let adapter = state
             .adapters
             .get(&session.adapter)
@@ -2498,7 +2794,7 @@ impl SessionHost {
             .get(&session.adapter)
             .ok_or("adapter")?
             .clone();
-        let native = session.native.clone().ok_or("native session")?;
+        let native = self.native_session(session, &adapter.engine)?.to_string();
         session.active = Some(Turn {
             id: turn.clone(),
             intent: intent_ref.clone(),
@@ -2635,6 +2931,17 @@ impl SessionHost {
 
     fn observe_session(&self, state: &mut State, session: &mut Session, now: u64) -> Result<Value> {
         let Some(mut turn) = session.active.clone() else {
+            if session.native.is_some()
+                && !session.read_only
+                && session.phase != "closed"
+                && self
+                    .native_session(session, &state.adapters[&session.adapter].engine)
+                    .is_err()
+            {
+                session.phase = "unknown".into();
+                session.quiescent = false;
+                self.write_state(state, session, now)?;
+            }
             return Ok(json!({"phase":session.phase,"state":session.state}));
         };
         let adapter = state
@@ -2642,14 +2949,23 @@ impl SessionHost {
             .get(&session.adapter)
             .ok_or("adapter")?
             .clone();
-        let observation = match (
-            &session.native,
-            self.engines.borrow_mut().get_mut(&adapter.engine),
-        ) {
-            (Some(native), Some(engine)) => engine.step(native),
-            _ => Observation::Lost,
+        let owned = self.native_session(session, &adapter.engine).is_ok();
+        let observation = if owned {
+            match (
+                &session.native,
+                self.engines.borrow_mut().get_mut(&adapter.engine),
+            ) {
+                (Some(native), Some(engine)) => engine.step(native),
+                _ => Observation::Lost,
+            }
+        } else {
+            Observation::Lost
         };
-        let captured = self.capture(state, session, now)?;
+        let captured = if owned {
+            self.capture(state, session, now)?
+        } else {
+            Vec::new()
+        };
         let mut result = Value::Null;
         let fault = match &observation {
             Observation::ProtocolFault { request } => {
@@ -2762,13 +3078,7 @@ impl SessionHost {
                     "outputs":[output_ref],"receipt":resolved,"verification":"not_run","integration":"not_requested",
                     "quiescence":quiescence});
                 session.quiescent = true;
-                for interaction in session
-                    .interactions
-                    .iter_mut()
-                    .filter(|i| i.turn == turn.id && i.state == "pending")
-                {
-                    interaction.state = "cancelled".into();
-                }
+                self.end_interactions(state, session, &turn.id, "cancelled", now)?;
                 session.phase = if session.phase == "closing" {
                     "closing"
                 } else if session.protocol_fault.is_some() {
@@ -2781,6 +3091,7 @@ impl SessionHost {
                 session.turn_revision = None;
             }
             Observation::Lost => {
+                self.end_interactions(state, session, &turn.id, "unknown", now)?;
                 let unknown = self.run_record(
                     &mut turn.run,
                     &turn.id,
@@ -2817,6 +3128,27 @@ impl SessionHost {
         session.revision += 1;
         self.write_state(state, session, now)?;
         Ok(json!({"phase":session.phase,"state":session.state,"result":result_ref}))
+    }
+
+    fn end_interactions(
+        &self,
+        state: &mut State,
+        session: &mut Session,
+        turn: &str,
+        status: &str,
+        now: u64,
+    ) -> Result<()> {
+        for interaction in session
+            .interactions
+            .iter_mut()
+            .filter(|i| i.turn == turn && i.state == "pending")
+        {
+            let mut current = self.store.json(&interaction.current)?;
+            current["state"] = json!(status);
+            interaction.current = self.sign(state, &current, &session.owner, now)?;
+            interaction.state = status.into();
+        }
+        Ok(())
     }
 
     /// Promote the queue head after quiescence, under a fresh binding.
@@ -3019,7 +3351,7 @@ impl SessionHost {
         }
         self.save(&snapshot)?;
         self.check_continuation(state, session, continuation, now)?;
-        let native = session.native.clone().ok_or("native session")?;
+        let native = self.native_session(session, &adapter.engine)?.to_string();
         let delivered = self
             .engines
             .borrow_mut()
@@ -3175,7 +3507,8 @@ impl SessionHost {
             "queue":session.queue.iter().map(|q| json!({"intent":q.id,"state":q.state,"turn":q.turn})).collect::<Vec<_>>(),
             "interactions":session.interactions.iter().map(|i| json!({"interaction":i.reference,"state":i.state})).collect::<Vec<_>>(),
             "results":session.results,"steers":session.steers,"children":session.children,"read_only":session.read_only,
-            "admission":session.admission,"effective":session.effective,"requested":session.requested,"protocol_fault":session.protocol_fault}),
+            "admission":session.admission,"effective":session.effective,"requested":session.requested,"protocol_fault":session.protocol_fault,
+            "runtime":session.runtime_binding,"replacement_pending":session.replacing}),
         )
     }
 }
@@ -3200,6 +3533,7 @@ impl SessionHost {
                 .iter()
                 .chain(&session.close_run)
                 .chain(&session.configuration_run)
+                .chain(&session.replacement_run)
                 .chain(session.active.iter().flat_map(|t| t.run.iter()))
                 .any(|r| r["record"]["run"] == run)
             {
@@ -3236,21 +3570,26 @@ impl SessionHost {
         active.interrupted = true;
         active.stop_cause = Some(cause.into());
         let turn_id = active.id.clone();
-        let native = session.native.clone().ok_or("native session")?;
         let adapter = state
             .adapters
             .get(&session.adapter)
             .ok_or("adapter")?
             .clone();
+        let native = self
+            .native_session(session, &adapter.engine)
+            .map(str::to_string)
+            .ok();
         self.save(state)?;
         // This cleanup may stop only the original active turn. Its durable
         // intent prevents a lost acknowledgment from repeating the command.
-        let _ = self
-            .engines
-            .borrow_mut()
-            .get_mut(&adapter.engine)
-            .ok_or("engine")?
-            .interrupt(&native, &turn_id);
+        if let Some(native) = native {
+            let _ = self
+                .engines
+                .borrow_mut()
+                .get_mut(&adapter.engine)
+                .ok_or("engine")?
+                .interrupt(&native, &turn_id);
+        }
         let mut session = state.sessions.remove(&id).ok_or("session")?;
         let observed = self.observe_session(state, &mut session, now);
         state.sessions.insert(id, session);
@@ -3388,7 +3727,12 @@ impl SessionHost {
                             .sessions
                             .get(body["scope"]["session"].as_str().ok_or("session")?)
                             .ok_or("not_admitted: unknown session")?;
-                        if state.adapters[&session.adapter].reference != target.adapter
+                        let adapter = if body["action"] == "replace_runtime" {
+                            &body["payload"]["adapter"]
+                        } else {
+                            &state.adapters[&session.adapter].reference
+                        };
+                        if *adapter != target.adapter
                             || matches!(body["action"].as_str(), Some("steer" | "interrupt"))
                         {
                             return Err("not_admitted: session operation or adapter differs".into());

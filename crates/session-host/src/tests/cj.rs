@@ -494,7 +494,7 @@ impl Real {
             "expires_at":self.fx.now+300}),
         );
         json!({"v":"openagents.session-command.v1","requires":[],"command":self.fx.next(),
-            "scope":{"authority":pk(HOST),"session":session,"generation":0},
+            "scope":{"authority":pk(HOST),"session":session,"generation":host.status(session).unwrap()["generation"]},
             "expected_revision":host.status(session).unwrap()["revision"],"authorization":authorization,
             "issued_at":self.fx.now,"expires_at":self.fx.now+300,"action":"submit","payload":{"intent":intent}})
     }
@@ -1088,4 +1088,63 @@ fn cj_configuration_applies_native_settings_under_its_own_charge() {
         serde_json::from_slice(&result.1[turn["outputs"][0]["digest"].as_str().unwrap()]).unwrap();
     assert_eq!(output["effort"], "high");
     assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 3);
+}
+
+#[test]
+fn cj_replacement_uses_a_fresh_claim_and_later_turns_use_the_new_generation() {
+    let mut r = Real::new();
+    let host = r.host(LoopEngine::mid_turn());
+    let opening = r.opened(&host);
+    let session = opening["session"].as_str().unwrap();
+    let mut command = r.submit_command(&host, &opening, 1);
+    command["action"] = json!("replace_runtime");
+    command["payload"] = json!({"adapter":r.adapter,"requested":opening["requested"],
+        "lease":r.lease,"materialization":r.materialization,
+        "source":{"kind":"new","artifact":null},"workspace":null});
+    assert_eq!(
+        host.submit(&r.fx.bundle(OWNER, &command), None, r.fx.now)
+            .unwrap()["status"],
+        "refused"
+    );
+    assert_eq!(host.status(session).unwrap()["generation"], 0);
+    let (event, binding) = r.job(&command);
+    let result = host
+        .serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+        .unwrap();
+    assert_eq!(result.0.kind, execution::RESULT_KIND);
+    assert_eq!(
+        host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+            .unwrap(),
+        result
+    );
+    let recorded = r
+        .coordinator
+        .record_result(&result.0, &result.1, r.fx.now)
+        .unwrap();
+    assert_eq!(recorded["outcome"], "completed");
+    assert_eq!(host.status(session).unwrap()["generation"], 1);
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+    r.release_attachment(&binding.grant);
+    let command = r.submit_command(&host, &opening, 1);
+    assert_eq!(command["scope"]["generation"], 1);
+    let (event, binding) = r.job(&command);
+    host.serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+        .unwrap();
+    let result = host.poll(&event, r.fx.now).unwrap();
+    r.coordinator
+        .record_result(&result.0, &result.1, r.fx.now)
+        .unwrap();
+    assert_eq!(host.started("loop-mid-turn"), 1);
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 3);
+    let history = host
+        .store()
+        .json(&host.status(session).unwrap()["history"])
+        .unwrap();
+    let opens = history["native"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| host.store().json(r).unwrap()["method"] == "session/open")
+        .count();
+    assert_eq!(opens, 2);
 }

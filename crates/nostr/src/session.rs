@@ -148,6 +148,12 @@ fn semantic(name: &str, body: &Value) -> Result<()> {
             if keys != wanted {
                 return Err(error(RefusalCode::Malformed, "command payload"));
             }
+            if action == "replace_runtime"
+                && ((body["payload"]["source"]["kind"] == "new")
+                    != body["payload"]["source"]["artifact"].is_null())
+            {
+                return Err(error(RefusalCode::Malformed, "replacement source"));
+            }
         }
         "turn-intent" => {
             for bound in body["bounds"].as_array().into_iter().flatten() {
@@ -162,6 +168,11 @@ fn semantic(name: &str, body: &Value) -> Result<()> {
                     && (body["reason"].is_null() || !body["receipt"].is_null())
             {
                 return Err(error(RefusalCode::Malformed, "control result"));
+            }
+        }
+        "session-runtime-binding" => {
+            if number(&body["scope"], "generation")? == 0 {
+                return Err(error(RefusalCode::Malformed, "replacement generation"));
             }
         }
         "session-control-receipt" => {
@@ -372,5 +383,37 @@ mod tests {
             "media_type":"application/json","schema":"openagents.session-steer-correction.v1"},
             "mode":"native","acknowledgment":"input_written","consumed":true,"evidence":[]});
         assert!(validate(&receipt).is_err());
+    }
+    #[test]
+    fn runtime_replacement_checks_sources_and_new_generation_evidence() {
+        let reference = |schema: &str| {
+            let mut r = artifact(schema.as_bytes(), "application/json");
+            r["schema"] = json!(schema);
+            r
+        };
+        let payload = json!({"adapter":reference("openagents.session-adapter.v1"),
+            "lease":reference("openagents.environment-lease.v1"),
+            "materialization":reference("openagents.environment-materialization.v1"),
+            "requested":reference("openagents.session-configuration.v1"),
+            "source":{"kind":"new","artifact":null},"workspace":null});
+        let scope = json!({"authority":"11".repeat(32),"session":"22".repeat(32),"generation":0});
+        let mut command = json!({"v":"openagents.session-command.v1","requires":[],"command":"33".repeat(32),
+            "scope":scope,"expected_revision":0,"authorization":artifact(b"auth","application/json"),
+            "issued_at":10,"expires_at":20,"action":"replace_runtime","payload":payload});
+        validate(&command).unwrap();
+        command["payload"]["source"]["kind"] = json!("resume");
+        assert!(validate(&command).is_err());
+        command["payload"]["source"]["artifact"] = reference("openagents.session-history.v1");
+        validate(&command).unwrap();
+        command["payload"]["source"]["kind"] = json!("fork");
+        assert!(validate(&command).is_err());
+        let mut record = json!({"v":"openagents.session-runtime-binding.v1","requires":[],"scope":scope,
+            "previous":reference("openagents.session-admission.v1"),"request":reference("openagents.session-command.v1"),
+            "attachment":reference("openagents.environment-attachment.v1"),"lease":payload["lease"],
+            "materialization":payload["materialization"],"adapter":payload["adapter"],"requested":payload["requested"],
+            "effective":payload["requested"],"admitted_at":10});
+        assert!(validate(&record).is_err());
+        record["scope"]["generation"] = json!(1);
+        validate(&record).unwrap();
     }
 }

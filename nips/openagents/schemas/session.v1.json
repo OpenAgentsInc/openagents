@@ -67,6 +67,9 @@
     },
     {
       "$ref": "#/$defs/session-steer-receipt"
+    },
+    {
+      "$ref": "#/$defs/session-runtime-binding"
     }
   ],
   "$defs": {
@@ -1145,7 +1148,8 @@
             "interrupt",
             "configure",
             "archive",
-            "close"
+            "close",
+            "replace_runtime"
           ]
         },
         "payload": {
@@ -1176,6 +1180,9 @@
             },
             {
               "$ref": "#/$defs/payload_close"
+            },
+            {
+              "$ref": "#/$defs/payload_replace_runtime"
             }
           ]
         },
@@ -1389,7 +1396,8 @@
             "interrupt",
             "configure",
             "archive",
-            "close"
+            "close",
+            "replace_runtime"
           ]
         },
         "admitted_at": {
@@ -2613,6 +2621,244 @@
         },
         "meta": {
           "type": "object"
+        }
+      }
+    },
+    "payload_replace_runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adapter",
+        "lease",
+        "materialization",
+        "requested",
+        "source",
+        "workspace"
+      ],
+      "properties": {
+        "adapter": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-adapter.v1"
+                }
+              }
+            }
+          ]
+        },
+        "lease": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-lease.v1"
+                }
+              }
+            }
+          ]
+        },
+        "materialization": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-materialization.v1"
+                }
+              }
+            }
+          ]
+        },
+        "requested": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-configuration.v1"
+                }
+              }
+            }
+          ]
+        },
+        "source": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/source"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "new",
+                    "resume"
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        "workspace": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "session-runtime-binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "scope",
+        "previous",
+        "request",
+        "attachment",
+        "lease",
+        "materialization",
+        "adapter",
+        "requested",
+        "effective",
+        "admitted_at"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.session-runtime-binding.v1"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        },
+        "previous": {
+          "$ref": "#/$defs/artifact"
+        },
+        "request": {
+          "$ref": "#/$defs/artifact"
+        },
+        "attachment": {
+          "$ref": "#/$defs/artifact"
+        },
+        "lease": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-lease.v1"
+                }
+              }
+            }
+          ]
+        },
+        "materialization": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.environment-materialization.v1"
+                }
+              }
+            }
+          ]
+        },
+        "adapter": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-adapter.v1"
+                }
+              }
+            }
+          ]
+        },
+        "requested": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-configuration.v1"
+                }
+              }
+            }
+          ]
+        },
+        "effective": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.session-configuration.v1"
+                }
+              }
+            }
+          ]
+        },
+        "admitted_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
         }
       }
     }

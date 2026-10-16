@@ -51,6 +51,29 @@ record, blocks new input and configuration changes, and cannot repeat on retry
 or restart. New intents must name the current requested or effective
 configuration; the opening's old settings cannot authorize a later turn.
 
+The native `replace_runtime` command uses the full adapter CAP and a fresh
+charged ENV binding. It requires an idle session, known quiescence, no queued
+or pending input, and quiescent managed children. The old native session must
+close before the replacement opens. The portable session ID and lineage stay
+fixed. A new generation is saved before opening; old controls then become
+stale. A matching acknowledgment records the new runtime pins in
+`openagents.session-runtime-binding.v1`, which later turns and continuations
+use. Its reference appears in state and history under `meta.runtime`.
+
+A replacement saves its complete intent and unknown reply before closing the
+old session. An uncertain close or opening cannot repeat, release its lineage,
+or allow another replacement. Its original retry can read the outcome in the
+generation it established. Resume requires the owner's latest compatible
+host-signed history. An explicit acknowledged replacement can clear a current
+protocol fault; earlier faults stay in native history and turn results.
+
+Native bindings also identify the engine instance that created them. Reusing a
+native name in another host instance cannot receive earlier input, cleanup,
+observation, or resume reads. Losing that instance leaves the old session
+unknown, including an idle session. Pending interactions become unknown when
+observation is lost, and cancelled on known terminal completion; their current
+signed records reflect those changes.
+
 Adapter and feature operations pin complete CAP definitions, including input
 and output schemas, the engine and protocol identities, and the binding's
 actual effects. Each adapter has distinct operation IDs. Opening schemas pin

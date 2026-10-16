@@ -437,6 +437,303 @@ fn correction(fx: &mut Fx, mode: &str, text: &str) -> Value {
     )
 }
 
+fn replacement(fx: &mut Fx, host: &SessionHost, session: &str, engine: &str) -> Value {
+    let adapter = host.admit_adapter(engine, fx.now).unwrap();
+    let requested = fx.configuration(host, &adapter, "low");
+    let original = host
+        .store()
+        .json(&host.status(session).unwrap()["admission"])
+        .unwrap();
+    let opening = host.store().json(&original["request"]).unwrap();
+    fx.command(
+        host,
+        session,
+        "replace_runtime",
+        json!({"adapter":adapter,"requested":requested,
+        "lease":opening["lease"],"materialization":opening["materialization"],
+        "source":{"kind":"new","artifact":null},"workspace":null}),
+    )
+}
+
+#[test]
+fn replacement_closes_the_old_native_binding_and_fences_its_generation() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let (session, _) = fx.open(&host, "loop-mid-turn");
+    let original = host.status(&session).unwrap();
+    let old = fx.command(&host, &session, "archive", json!({"archived":false}));
+    assert_eq!(fx.send(&host, OWNER, &old, None)["status"], "accepted");
+    let command = replacement(&mut fx, &host, &session, "loop-boundary");
+    let binding = fx.binding();
+    let result = fx.send(&host, OWNER, &command, Some(&binding));
+    assert_eq!(result["status"], "accepted", "{result}");
+    assert_eq!(
+        fx.send(&host, OWNER, &command, Some(&binding))["status"],
+        "duplicate"
+    );
+    let status = host.status(&session).unwrap();
+    assert_eq!(status["lineage"], original["lineage"]);
+    assert_eq!(status["generation"], 1);
+    let runtime = host.store().json(&status["runtime"]).unwrap();
+    assert_eq!(runtime["scope"]["generation"], 1);
+    assert_eq!(runtime["previous"], original["admission"]);
+    let state = host.store().json(&status["state"]).unwrap();
+    assert_eq!(state["meta"]["runtime"], status["runtime"]);
+    assert_eq!(fx.send(&host, OWNER, &old, None)["reason"], "stale");
+    let intent = fx.intent(
+        &host,
+        &session,
+        json!({"prompt":"new native","steps":1}),
+        fx.now + 600,
+    );
+    let submit = fx.command(&host, &session, "submit", json!({"intent":intent}));
+    let binding = fx.binding();
+    assert_eq!(
+        fx.send(&host, OWNER, &submit, Some(&binding))["status"],
+        "accepted"
+    );
+    fx.finish(&host, &session);
+    assert_eq!(host.started("loop-boundary"), 1);
+    let second = replacement(&mut fx, &host, &session, "loop-mid-turn");
+    let binding = fx.binding();
+    assert_eq!(
+        fx.send(&host, OWNER, &second, Some(&binding))["status"],
+        "accepted"
+    );
+    assert_eq!(host.status(&session).unwrap()["generation"], 2);
+    assert_eq!(
+        fx.send(&host, OWNER, &command, Some(&binding))["reason"],
+        "stale"
+    );
+}
+
+#[test]
+fn unknown_replacement_close_or_open_never_repeats_and_blocks_other_commands() {
+    for lost_close in [false, true] {
+        let mut fx = Fx::new();
+        let mut old = LoopEngine::mid_turn();
+        old.fail_close = lost_close;
+        let mut new = LoopEngine::boundary();
+        new.fail_open = !lost_close;
+        let host = fx.host_with(old, new);
+        let (session, _) = fx.open(&host, "loop-mid-turn");
+        let command = replacement(&mut fx, &host, &session, "loop-boundary");
+        let binding = fx.binding();
+        let result = fx.send(&host, OWNER, &command, Some(&binding));
+        assert_eq!(result["status"], "unknown");
+        let status = host.status(&session).unwrap();
+        assert_eq!(status["phase"], "unknown");
+        assert_eq!(status["generation"], if lost_close { 0 } else { 1 });
+        assert_eq!(status["replacement_pending"], true);
+        assert_eq!(fx.send(&host, OWNER, &command, Some(&binding)), result);
+        let second = fx.command(
+            &host,
+            &session,
+            "replace_runtime",
+            command["payload"].clone(),
+        );
+        assert_eq!(
+            fx.send(&host, OWNER, &second, Some(&binding))["status"],
+            "conflict"
+        );
+        drop(host);
+        let host = fx.host();
+        assert_eq!(fx.send(&host, OWNER, &command, Some(&binding)), result);
+        assert_eq!(
+            fx.send(&host, OWNER, &second, Some(&binding))["status"],
+            "conflict"
+        );
+        assert_eq!(host.status(&session).unwrap()["phase"], "unknown");
+    }
+}
+
+#[test]
+fn replacement_refuses_active_work_and_an_unknown_runtime_after_restart() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let (session, _) = fx.open(&host, "loop-mid-turn");
+    let intent = fx.intent(
+        &host,
+        &session,
+        json!({"prompt":"work","steps":3}),
+        fx.now + 600,
+    );
+    let submit = fx.command(&host, &session, "submit", json!({"intent":intent}));
+    let binding = fx.binding();
+    fx.send(&host, OWNER, &submit, Some(&binding));
+    let command = replacement(&mut fx, &host, &session, "loop-boundary");
+    assert_eq!(
+        fx.send(&host, OWNER, &command, Some(&binding))["status"],
+        "conflict"
+    );
+    drop(host);
+    let host = fx.host();
+    host.observe(&session, fx.now).unwrap();
+    let command = replacement(&mut fx, &host, &session, "loop-boundary");
+    assert_eq!(
+        fx.send(&host, OWNER, &command, Some(&binding))["status"],
+        "conflict"
+    );
+    assert_eq!(host.status(&session).unwrap()["generation"], 0);
+}
+
+#[test]
+fn replacement_can_resume_only_the_owners_latest_compatible_native_history() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let (session, _) = fx.open(&host, "loop-mid-turn");
+    let history = host.status(&session).unwrap()["history"].clone();
+    let mut command = replacement(&mut fx, &host, &session, "loop-mid-turn");
+    command["payload"]["source"] = json!({"kind":"resume","artifact":history});
+    let binding = fx.binding();
+    let result = fx.send(&host, OWNER, &command, Some(&binding));
+    assert_eq!(result["status"], "accepted", "{result}");
+    assert_eq!(host.status(&session).unwrap()["generation"], 1);
+    assert_eq!(
+        fx.send(&host, OWNER, &command, Some(&binding))["status"],
+        "duplicate"
+    );
+    let mut stale = replacement(&mut fx, &host, &session, "loop-mid-turn");
+    stale["payload"]["source"] = command["payload"]["source"].clone();
+    assert_eq!(
+        fx.send(&host, OWNER, &stale, Some(&binding))["reason"],
+        "not_admitted"
+    );
+    assert_eq!(host.status(&session).unwrap()["generation"], 1);
+}
+
+#[test]
+fn runtime_replacement_waits_for_managed_child_work_to_finish() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let (parent, _) = fx.open(&host, "loop-mid-turn");
+    let intent = fx.intent(
+        &host,
+        &parent,
+        json!({"prompt":"parent","steps":1}),
+        fx.now + 600,
+    );
+    let command = fx.command(&host, &parent, "submit", json!({"intent":intent}));
+    let binding = fx.binding();
+    fx.send(&host, OWNER, &command, Some(&binding));
+    let parent_result = fx.finish(&host, &parent);
+    let (child, _) = fx.open(&host, "loop-mid-turn");
+    let intent = fx.intent(
+        &host,
+        &child,
+        json!({"prompt":"child","steps":2}),
+        fx.now + 600,
+    );
+    let command = fx.command(&host, &child, "submit", json!({"intent":intent}));
+    let binding = fx.binding();
+    fx.send(&host, OWNER, &command, Some(&binding));
+    let authorization = put_json(&mut fx.artifacts, &json!({"child":child}));
+    host.link_child(
+        &parent,
+        parent_result["turn"].as_str().unwrap(),
+        Some(&child),
+        None,
+        Some(authorization),
+        fx.now,
+    )
+    .unwrap();
+    let command = replacement(&mut fx, &host, &parent, "loop-boundary");
+    let binding = fx.binding();
+    assert_ne!(
+        fx.send(&host, OWNER, &command, Some(&binding))["status"],
+        "accepted"
+    );
+    assert_eq!(host.status(&parent).unwrap()["generation"], 0);
+    fx.finish(&host, &child);
+    let command = replacement(&mut fx, &host, &parent, "loop-boundary");
+    assert_eq!(
+        fx.send(&host, OWNER, &command, Some(&binding))["status"],
+        "accepted"
+    );
+}
+
+#[test]
+fn reused_native_names_in_another_host_instance_never_receive_old_controls() {
+    let mut fx = Fx::new();
+    let host = fx.host();
+    let (session, _) = fx.open(&host, "loop-mid-turn");
+    let intent = fx.intent(
+        &host,
+        &session,
+        json!({"prompt":"old task","steps":3,"ask":"old question"}),
+        fx.now + 600,
+    );
+    let submit = fx.command(&host, &session, "submit", json!({"intent":intent}));
+    let binding = fx.binding();
+    fx.send(&host, OWNER, &submit, Some(&binding));
+    host.observe(&session, fx.now).unwrap();
+    let status = host.status(&session).unwrap();
+    let turn = status["active_turn"].as_str().unwrap().to_string();
+    let interaction = status["interactions"][0]["interaction"].clone();
+    let history = host.store().json(&status["history"]).unwrap();
+    let count = history["native"].as_array().unwrap().len();
+    let native = history["native"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find_map(|r| {
+            let body = host.store().json(r).unwrap();
+            (body["method"] == "session/open")
+                .then(|| body["native_id"].as_str().unwrap().to_string())
+        })
+        .unwrap();
+    drop(host);
+    let host = fx.host();
+    host.with_engine("loop-mid-turn", |engine| {
+        let reused = engine.open(None).unwrap();
+        assert_eq!(reused, native);
+        engine
+            .start(
+                &reused,
+                &turn,
+                br#"{"prompt":"other task","steps":3,"ask":"new question"}"#,
+            )
+            .unwrap();
+        assert!(matches!(
+            engine.step(&reused),
+            crate::engine::Observation::Question { .. }
+        ));
+    });
+    assert_eq!(
+        answer(
+            &mut fx,
+            &host,
+            &session,
+            &interaction,
+            OWNER,
+            json!({"text":"old reply"})
+        )["status"],
+        "refused"
+    );
+    let interrupt = fx.command(
+        &host,
+        &session,
+        "interrupt",
+        json!({"turn":turn,"expected_turn_revision":0,"reason":"old task"}),
+    );
+    assert_eq!(fx.send(&host, OWNER, &interrupt, None)["status"], "refused");
+    host.observe(&session, fx.now).unwrap();
+    assert_eq!(host.status(&session).unwrap()["phase"], "unknown");
+    let history = host
+        .store()
+        .json(&host.export(&session, fx.now).unwrap())
+        .unwrap();
+    assert!(history["resume"].is_null());
+    assert_eq!(history["native"].as_array().unwrap().len(), count);
+    let captures = host.with_engine("loop-mid-turn", |e| e.captures()).unwrap();
+    assert!(captures.iter().any(|c| c.method == "question/request"));
+    assert!(
+        !captures
+            .iter()
+            .any(|c| matches!(c.method.as_str(), "question/answer" | "turn/interrupt"))
+    );
+}
+
 #[test]
 fn native_settings_apply_and_old_intents_cannot_use_a_changed_configuration() {
     let mut fx = Fx::new();
@@ -1769,7 +2066,7 @@ fn queued_input_requires_the_requesters_bytes_not_another_owners_cached_hash() {
         restarted
             .promote(&session, Some(&binding), fx.now)
             .unwrap_err(),
-        "unavailable: native session"
+        "unknown: the original native binding belongs to another engine instance"
     );
     assert_eq!(restarted.started("loop-mid-turn"), 0);
     assert_eq!(
