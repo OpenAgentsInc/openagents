@@ -134,7 +134,7 @@ def main():
     if args.public_history:
         env["TEST_RUNNER_CODER_PUBLIC_HISTORY_CONFIG"] = json.dumps({"key_url": f"http://127.0.0.1:{server.server_port}/fixture-key", "chat": chat_ids[0]})
     if args.public_chat:
-        env["TEST_RUNNER_CODER_PUBLIC_CHAT_CONFIG"] = json.dumps({"key_url": f"http://127.0.0.1:{server.server_port}/fixture-key", "chat": chat_ids[0], "prompt": os.environ["SDK_CHAT_PROMPT"], "messages": os.environ["SDK_CHAT_MESSAGES"]})
+        env["TEST_RUNNER_CODER_PUBLIC_CHAT_CONFIG"] = json.dumps({"key_url": f"http://127.0.0.1:{server.server_port}/fixture-key", "chat": chat_ids[0], "prompt": os.environ["SDK_CHAT_PROMPT"], "messages": os.environ["SDK_CHAT_MESSAGES"], "stop_prompt": os.environ["SDK_STOP_PROMPT"]})
     test = "testSharedProjectsWithoutComputer" if args.projects else "testPublicCloudChat" if args.public_chat else "testPublicSavedAccountHistory" if args.public_history else "testRichAccountHistory" if args.rich else "testLiveAccountHistory" if args.live else "testSavedAccountHistory"
     try:
         with (args.scratch / "history-uitest.log").open("w") as log:

@@ -8,6 +8,7 @@ import argparse
 import base64
 import json
 import os
+import random
 from pathlib import Path
 import subprocess
 import time
@@ -24,7 +25,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 class Browser:
-    def __init__(self, website, token, chat):
+    def __init__(self, website, token, chat=None):
         port = os.environ["OPENAGENTS_CHROME_PORT"]
         request = urllib.request.Request(f"http://127.0.0.1:{port}/json/new?about:blank", method="PUT")
         with urllib.request.urlopen(request, timeout=10) as response:
@@ -34,7 +35,7 @@ class Browser:
         self.call("Network.enable", {})
         assert self.call("Network.setCookie", {"name": "oa_cloud_session", "value": token, "url": website + "/", "secure": True, "httpOnly": True})["success"]
         self.call("Emulation.setDeviceMetricsOverride", {"width": 1120, "height": 900, "deviceScaleFactor": 1, "mobile": False})
-        self.call("Page.navigate", {"url": website + "/chat/" + chat})
+        self.call("Page.navigate", {"url": website + ("/chat/" + chat if chat else "/")})
         self.wait("document.querySelector('#chat-form') !== null")
         self.evaluate("window.__sdkChatProbe = 'one-page'; true")
 
@@ -59,12 +60,13 @@ class Browser:
             time.sleep(0.2)
 
     def reply(self, text):
-        self.evaluate("""(() => {
+        return self.evaluate("""(() => {
             const form = document.querySelector('#chat-form');
+            const id = document.querySelector('input[name=request_id][form=chat-form]').value;
             const input = form.querySelector('textarea');
             input.value = %s;
             input.dispatchEvent(new Event('input', {bubbles: true}));
-            form.requestSubmit(); return true;
+            form.requestSubmit(); return id;
         })()""" % json.dumps(text))
 
     def sees(self, index, word):
@@ -111,6 +113,7 @@ def main():
     assert status == 200 and account["account"]["id"] == expected_account, "Credential does not name the declared test account"
     status, spec = call("GET", "/v1/openapi.json")
     assert status == 200 and "/v1/threads/{id}/events" in spec["paths"] and "/v1/threads/{id}/stop" in spec["paths"], "Deploy the cloud-turn contract first"
+    print("Verified declared test account and deployed chat API", flush=True)
 
     def wait_turn(chat, request_id, outcome="answered"):
         request = urllib.request.Request(args.api + f"/v1/threads/{chat}/events?request_id={request_id}", headers={"Authorization": "Bearer " + token})
@@ -129,7 +132,8 @@ def main():
         raise AssertionError("Cloud turn ended without confirmation")
 
     chat = str(uuid.uuid4())
-    code = "orchid" + uuid.uuid4().hex[:8]
+    code = random.choice(["violet", "amber", "silver", "coral"]) + " " + random.choice(["orchid", "daisy", "lily", "rose"])
+    stop_text = "Explain all the OpenAgents SDK groups in detail, with a long Rust example for each group."
     browser = None
     checks = []
     def native(command, directory, env, before, web_prompt):
@@ -143,46 +147,48 @@ def main():
                     assert time.monotonic() < deadline, "Native send timed out"
                     time.sleep(0.2)
                 browser.sees(before + 1, code)
+                print(directory.name + " reply appeared on the web without reload", flush=True)
                 browser.capture(args.scratch / (directory.name + "-to-web.png"))
-                browser.reply(web_prompt)
+                web_request = browser.reply(web_prompt)
                 browser.sees(before + 3, code)
-                status, current = call("GET", f"/v1/threads/{chat}")
-                assert status == 200
-                wait_turn(chat, current["thread"]["request_id"])
+                wait_turn(chat, web_request)
                 browser.capture(args.scratch / ("web-to-" + directory.name + ".png"))
                 assert process.wait(timeout=130) == 0, "Native check failed; see driver log"
                 seen = directory / ("captures/web-seen" if directory.name == "desktop" else "web-seen")
                 assert seen.exists(), "Native view did not receive the web's reply"
+                print("Web reply appeared on " + directory.name, flush=True)
                 checks.append(directory.name + " send and live web update in both directions")
             finally:
                 if process.poll() is None:
                     process.terminate()
                     process.wait(timeout=10)
     try:
-        text = f"The test passphrase is {code}. For this chat, answer later requests for it with that passphrase only. Repeat it now."
-        status, made = call("POST", "/v1/threads", {"request_id": chat, "text": text})
-        assert status == 201 and made["id"] == chat
+        text = f"For a reading test, remember the fictional flower name {code}. When I ask for the flower name, answer with that exact name only. Say the name now."
+        browser = Browser(args.website, token)
+        chat = browser.evaluate("document.querySelector('input[name=request_id][form=chat-form]').value")
+        assert str(uuid.UUID(chat)) == chat
+        browser.reply(text)
+        browser.wait("location.pathname === %s && document.querySelector('#chat-form') !== null" % json.dumps("/chat/" + chat))
+        browser.evaluate("window.__sdkChatProbe = 'one-page'; true")
         wait_turn(chat, chat)
-        browser = Browser(args.website, token, chat)
+        browser.sees(1, code)
+        print("Website started the disposable test chat", flush=True)
         env = dict(os.environ, SDK_FIXTURE_CHAT_IDS=json.dumps([chat]), SDK_FIXTURE_API=args.api + "/v1", SDK_FIXTURE_WEBSITE=args.website,
-                   SDK_CHAT_EXPECTED=code, SDK_CHAT_PROMPT="Repeat the test passphrase for the desktop.", SDK_WEB_PROMPT="Repeat the test passphrase from the web to the desktop.")
+                   SDK_CHAT_EXPECTED=code, SDK_CHAT_PROMPT="Repeat the fictional flower name for the desktop.", SDK_WEB_PROMPT="Repeat the fictional flower name from the web to the desktop.")
         native(["python3", str(ROOT / "apps/openagents/scripts/check-account-fixture.py"), "--public-chat", str(args.desktop_binary), str(args.scratch / "desktop")],
                args.scratch / "desktop", env, 2, env["SDK_WEB_PROMPT"])
-        env.update(SDK_CHAT_PROMPT="Repeat the test passphrase for the phone.", SDK_CHAT_MESSAGES="6")
+        env.update(SDK_CHAT_PROMPT="Repeat the fictional flower name for the phone.", SDK_CHAT_MESSAGES="6", SDK_STOP_PROMPT=stop_text)
         native(["python3", str(ROOT / "apps/openagents/scripts/ios/check-history.py"), "--public-chat", "--target-dir", str(args.ios_target_dir), "--scratch", str(args.scratch / "ios")],
-               args.scratch / "ios", env, 6, "Repeat the test passphrase from the web to the phone.")
-        request_id = str(uuid.uuid4())
-        stop_text = "For a stop test, count from one to ten thousand without skipping any number."
-        status, _ = call("POST", f"/v1/threads/{chat}/messages", {"request_id": request_id, "text": stop_text})
-        assert status == 202
-        status, stopped = call("POST", f"/v1/threads/{chat}/stop", {"request_id": request_id})
-        assert status == 200 and stopped["stopped"] and stopped["finished"]
+               args.scratch / "ios", env, 6, "Repeat the fictional flower name from the web to the phone.")
+        status, current = call("GET", f"/v1/threads/{chat}")
+        assert status == 200 and current["thread"]["outcome"] == "stopped", "The phone's Stop action was not confirmed"
+        request_id = current["thread"]["request_id"]
         status, _ = call("POST", f"/v1/threads/{chat}/messages", {"request_id": request_id, "text": stop_text})
         assert status == 202
         wait_turn(chat, request_id, "stopped")
         status, page = call("GET", f"/v1/history/{chat}/messages")
         assert status == 200 and sum(message["role"] == "user" and message["text"] == stop_text for message in page["data"]) == 1
-        checks.append("duplicate send has one user message; stop confirmed")
+        checks.append("phone Stop confirmed; duplicate send has one user message")
         (args.scratch / "result.json").write_text(json.dumps({"checks": checks, "chat": chat, "account": "declared dedicated test account", "web_reloaded": False}, indent=2) + "\n")
         print("PASS dedicated cloud chat: desktop, iOS, live web updates, retry identity and confirmed stop")
     finally:

@@ -21,17 +21,73 @@
       "ignored": 15,
       "unrelated_skipped": 3,
       "unrelated_failure": "copy_guard::site_sources_have_no_machine_talk: custom_agents_openapi.rs:77 uses retained (separately landed code)."
-    }
+    },
+    "merged_runtime_integration": "passed: existing runtime, retry, reconnect, stop, account isolation, typed failure",
+    "merged_app_schema_tests": 5,
+    "merged_sdk_chat_tests": 2,
+    "merged_composer_tests": 2,
+    "production_swift_build": "passed; production bindings restored after fixture run"
   },
   "unrelated_skips": [
     "cad_web::world_physics::tests::http_requires_a_checked_account_and_does_not_open_another_accounts_objects: existing private config fixture",
     "work_runs::computers::tests::withdrawing_a_live_repository_grant_refuses_before_new_effects: existing private config fixture",
     "tests::the_api_docs_list_every_guide_and_serve_markdown: existing Beta assertion"
   ],
-  "live_check": "Pending immutable main deployment, then scripts/smoke/sdk-chat.py with the declared dedicated test account; it removes its disposable cloud chat.",
+  "live_check": {
+    "command": "openagents browser run -- python3 scripts/smoke/sdk-chat.py --dedicated-account ...",
+    "result": "passed",
+    "started": "normal website form",
+    "checks": [
+      "desktop send and live web update in both directions",
+      "ios send and live web update in both directions",
+      "phone Stop confirmed; duplicate send has one user message"
+    ],
+    "web_reloaded": false,
+    "ios": "iPhone 17 Pro Max, iOS 26.5; real ComposerBar send and Stop; local sign-out passed",
+    "cleanup": "Disposable chat deleted; earlier failed test runs also deleted their chats. No computers or tasks started."
+  },
   "boundaries": [
     "Existing remote execution/background work keeps its website controls; unsupported pending work is never reported stopped.",
     "Only display cards cross the new event/history boundary; native card links derive from the authorized chat deployment.",
     "No frozen Coder binaries, owner chats, TestFlight release, local engine execution, or payment operations."
-  ]
+  ],
+  "deployment": {
+    "commit": "362d0f4f01b0753b8ebfd678b5c617cf34e657f7",
+    "image": "sha256:0e68d984cb9b9c2d6f257ff1c4213db4c84dc6f9d08336a7c04f00427b0ea749",
+    "build": "1cdd7181-28db-4a13-8a67-32e465f75c92",
+    "revision": "coder-web-0e68d984cb-20261016232749",
+    "traffic_percent": 100,
+    "staging": "16 passed",
+    "candidate": "15 passed, models waiting for traffic as expected",
+    "production": "16 passed, including released Coder 1.0.0 install/version",
+    "public_reference": "157 combined operations validated"
+  },
+  "captures": {
+    "archive": "docs/sdk/evidence/chat-replies-2026-10-16.tar.gz",
+    "sha256": "268766e433c98c4ef49e560b1c403796838254fccd85e65bfe5945d0ae9e793d",
+    "files": [
+      {
+        "path": "desktop-live.png",
+        "sha256": "64e2a56fc508695db2e758b5792555961111b3584085748a734d1ebf564c8196"
+      },
+      {
+        "path": "web-from-desktop.png",
+        "sha256": "dc8fc611c37fc9fc10f42e7ab5ebc5f7ce54faba1ad4b8901b21c790356a66b7"
+      },
+      {
+        "path": "web-from-ios.png",
+        "sha256": "4ec7c43f2951c16a430c0767a2d37054398bfc8d3c5b9b6d17f592a8f24f673a"
+      },
+      {
+        "path": "ios-transcript.png",
+        "sha256": "41cbda3e1214c45edd3770916b47f1ea3a9609205d6eb7512b88854ba301e7b4"
+      },
+      {
+        "path": "result.json",
+        "sha256": "04cee4fa96c3074b033672d88d1f606b5925592a2e079491209717b97e0a8873"
+      }
+    ],
+    "reviewed": true,
+    "ios_position": "The phone stays at the older messages after the test scrolls up; incoming web messages still load. The test then sends and stops from the same composer."
+  }
 }

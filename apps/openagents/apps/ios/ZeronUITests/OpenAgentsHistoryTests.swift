@@ -2,7 +2,14 @@ import XCTest
 
 /// Native list, paging, full text and file controls against an isolated account.
 final class OpenAgentsHistoryTests: XCTestCase {
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
     private func expandSavedChats(_ app: XCUIApplication) {
+        let sessions = app.tabBars.buttons["Sessions"]
+        XCTAssertTrue(sessions.waitForExistence(timeout: 10))
+        sessions.tap()
         let header = app.cells["section-oa-saved-history"]
         XCTAssertTrue(header.waitForExistence(timeout: 20))
         if header.value as? String == "Collapsed" { header.tap() }
@@ -122,6 +129,7 @@ final class OpenAgentsHistoryTests: XCTestCase {
         guard let raw = env["CODER_PUBLIC_CHAT_CONFIG"], let bytes = raw.data(using: .utf8),
               let config = try JSONSerialization.jsonObject(with: bytes) as? [String: String],
               let keyURL = config["key_url"], let chat = config["chat"], let prompt = config["prompt"],
+              let stopPrompt = config["stop_prompt"],
               let before = config["messages"].flatMap(Int.init) else { throw XCTSkip("Dedicated-account check only") }
         let app = XCUIApplication()
         app.launchArguments = ["-account-fixture", "-account-test-credential-url", keyURL, "-edge", "https://coder-sync-157437760789.us-central1.run.app"]
@@ -133,7 +141,7 @@ final class OpenAgentsHistoryTests: XCTestCase {
         XCTAssertTrue(input.waitForExistence(timeout: 20)); input.tap(); input.typeText(prompt)
         app.buttons["composer-send"].tap()
         XCTAssertTrue(app.scrollViews["transcript"].waitForValue("\(before + 2) messages loaded", timeout: 90))
-        let finished = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "Send"), object: app.buttons["composer-send"])
+        let finished = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "Send message"), object: app.buttons["composer-send"])
         XCTAssertEqual(XCTWaiter.wait(for: [finished], timeout: 90), .completed)
         app.swipeDown()
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "public-cloud-reply"; shot.lifetime = .keepAlways; add(shot)
@@ -146,6 +154,16 @@ final class OpenAgentsHistoryTests: XCTestCase {
         signal("reply-ready")
         XCTAssertTrue(app.scrollViews["transcript"].waitForValue("\(before + 4) messages loaded", timeout: 90))
         let webShot = XCTAttachment(screenshot: app.screenshot()); webShot.name = "public-cloud-from-web"; webShot.lifetime = .keepAlways; add(webShot)
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "Send message"), object: app.buttons["composer-send"])
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 90), .completed)
+        input.tap(); input.typeText(stopPrompt)
+        app.buttons["composer-send"].tap()
+        let accepted = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == nil OR value == %@ OR value == %@", "", "Message"), object: input)
+        XCTAssertEqual(XCTWaiter.wait(for: [accepted], timeout: 15), .completed)
+        XCTAssertEqual(app.buttons["composer-send"].label, "Stop response")
+        app.buttons["composer-send"].tap()
+        let stopped = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "Send message"), object: app.buttons["composer-send"])
+        XCTAssertEqual(XCTWaiter.wait(for: [stopped], timeout: 30), .completed)
         signal("web-seen")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         app.tabBars.buttons["Settings"].tap()
