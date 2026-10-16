@@ -395,3 +395,12 @@ Plans need finite `wall_ms`, `storage_bytes`, and `concurrency`
 bounds. A transport reconnection advances the session's media epoch past the
 plan's value and invalidates every floor. Production media transports, NIP-53
 discovery, and physical device bindings remain separate adapters.
+
+The native Git-document adapter supports real UTF-8 capture and separately
+approved replacement of one operator-registered document. Its text observation
+pins `meta.native.position`, the source-owned Git version and history position.
+The input is `{"replace":"new text"}`. The source checks that exact position and
+the original deadline inside its conditional ref transaction. It grants no
+filesystem path selection, working-tree editing, or physical device control.
+Checked capture adapters receive the authenticated caller and bounds and return
+an anchor from the same native read; unchecked capture is not a fallback.

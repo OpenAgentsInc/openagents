@@ -249,6 +249,9 @@ impl Controller {
         }
         let input_bytes = self.bytes(&proposal["input"])?;
         let mut guard = InputGuard {
+            owner: session.owner.clone(),
+            session: session.id.clone(),
+            plan: session.plan.clone(),
             generation,
             focus,
             deadline: original

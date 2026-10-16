@@ -98,16 +98,40 @@ impl Broker for LocalBroker {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Captured {
     pub bytes: Vec<u8>,
+    /// Native anchor captured atomically with these bytes.
+    pub anchor: Option<(u64, u64)>,
+    pub native: serde_json::Value,
     /// `(width, height, coordinate space)` for images.
     pub geometry: Option<(u64, u64, String)>,
     /// `(clock, start_ms, end_ms)` for audio and video.
     pub interval: Option<(String, u64, u64)>,
 }
 
+pub struct CaptureContext<'a> {
+    pub owner: &'a str,
+    pub session: &'a str,
+    pub plan: &'a serde_json::Value,
+    pub generation: u64,
+    pub focus: u64,
+    pub max_bytes: usize,
+    pub deadline: std::time::Instant,
+}
+
 pub trait Source {
     /// Capture from the host-resolved resource. Platform permission is the
     /// adapter's own check; a plan cannot supply it.
     fn capture(&mut self, scope: &str, id: &str, media: &str) -> Result<Captured>;
+    /// Enforce caller, resource, bounds, and permission before capture. Legacy
+    /// capture methods never receive an automatic fallback.
+    fn capture_checked(
+        &mut self,
+        _scope: &str,
+        _id: &str,
+        _media: &str,
+        _context: &CaptureContext<'_>,
+    ) -> Result<Captured> {
+        Err("unsupported_feature: checked capture is unavailable".into())
+    }
 }
 
 /// Deterministic synthetic screen and microphone.
@@ -119,6 +143,23 @@ pub struct SyntheticSource {
 }
 
 impl Source for SyntheticSource {
+    fn capture_checked(
+        &mut self,
+        scope: &str,
+        id: &str,
+        media: &str,
+        context: &CaptureContext<'_>,
+    ) -> Result<Captured> {
+        if std::time::Instant::now() >= context.deadline {
+            return Err("stale: capture deadline".into());
+        }
+        let mut captured = self.capture(scope, id, media)?;
+        if captured.bytes.len() > context.max_bytes {
+            return Err("limit_exceeded: capture bytes".into());
+        }
+        captured.anchor = Some((context.generation, context.focus));
+        Ok(captured)
+    }
     fn capture(&mut self, scope: &str, id: &str, media: &str) -> Result<Captured> {
         if self.denied {
             return Err("not_admitted: platform capture permission denied".into());
@@ -129,6 +170,8 @@ impl Source for SyntheticSource {
         Ok(match media {
             "image" | "video" => Captured {
                 bytes,
+                anchor: None,
+                native: serde_json::Value::Null,
                 geometry: Some((1280, 800, format!("{scope}:{id}"))),
                 interval: (media == "video").then(|| {
                     (
@@ -143,6 +186,8 @@ impl Source for SyntheticSource {
                 self.clock_ms += 2000;
                 Captured {
                     bytes,
+                    anchor: None,
+                    native: serde_json::Value::Null,
                     geometry: None,
                     interval: Some(("host-monotonic".into(), start, start + 2000)),
                 }
@@ -164,6 +209,9 @@ pub enum Applied {
 /// Conditions checked by the native adapter immediately before sending input.
 /// Reading `Device::state` earlier cannot replace this boundary check.
 pub struct InputGuard {
+    pub owner: String,
+    pub session: String,
+    pub plan: serde_json::Value,
     pub generation: u64,
     pub focus: u64,
     pub deadline: std::time::Instant,

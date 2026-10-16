@@ -647,9 +647,13 @@ fn appoint_input(fx: &Fx, c: &Controller) {
 fn input_proposal(fx: &mut Fx, c: &Controller, observation: &Value, input: &[u8]) -> Value {
     let mut a = std::mem::take(&mut fx.artifacts);
     let plan = c.store().json(&fx.plan).unwrap();
+    let operation = c.device_operation().unwrap();
+    let definition: Value =
+        serde_json::from_slice(&c.store().get(&operation["artifact"]).unwrap()).unwrap();
+    let binding = c.store().get(&definition["meta"]["binding"]).unwrap();
     let body = json!({"v":"openagents.live-input.v1","requires":[],"request":fx.next(),"plan":fx.plan,
         "frame":plan["frame"],"observation":observation,"operation":c.device_operation().unwrap(),
-        "binding":put(&mut a,b"pointer binding",None),"input":put(&mut a,input,None),"preconditions":[]});
+        "binding":put(&mut a,&binding,None),"input":put(&mut a,input,None),"preconditions":[]});
     let reference = put_json(&mut a, &body);
     fx.artifacts = a;
     reference
@@ -1304,3 +1308,6 @@ fn interrupted_device_write_recovers_unknown_without_reentering_the_device() {
     );
     assert!(fresh.borrow().applied.is_empty());
 }
+
+#[path = "tests/document.rs"]
+mod document;

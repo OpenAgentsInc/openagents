@@ -104,6 +104,27 @@ broker, capture source, and device behind the same roles.
   be renewed by saving state, a later request, or restart; a new controller
   requires a new observation before device input.
 
-All fixtures use synthetic devices, throwaway keys, and local state; no media
-leaves the process and no money moves. Production media transports, platform
-capture permission, and physical device bindings are not part of this crate.
+## Git document adapter
+
+`document::Document::register(root, branch, path, owner)` registers one real
+UTF-8 Git document for an explicit owner. Mount clones as the `Source` and
+`Device`. Use a capture track with `media: "text"`, `source.scope: "resource"`,
+and `source.id: document.source_id()`. A plan cannot choose a filesystem path.
+The binding and actual CAP come from the registered document. Input is the
+closed object `{"replace":"new text"}`, limited to 65,536 bytes.
+
+A capture records the actual bytes and Git history position in
+`observation.meta.native.position`. An approved input uses that same position
+with the workspace owner's conditional Git transaction. An independent writer
+or ref history change refuses the input. The transaction rechecks its absolute
+deadline while the source holds the ref lock. A lost commit acknowledgment
+stays unknown. It never changes the working tree or index, and a checked-out
+branch is refused by the source.
+
+Checked capture receives the authenticated owner, session, plan, byte ceiling,
+and deadline. Its native anchor comes from the same read as its bytes. The
+legacy unchecked capture method is never a fallback.
+
+Tests use throwaway keys, isolated Git repositories, local state, and synthetic
+media; no money moves. Production audio/video transports, platform capture
+permission, and physical device bindings are separate supported-profile work.

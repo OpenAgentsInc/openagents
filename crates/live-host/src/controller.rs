@@ -1363,20 +1363,46 @@ impl Controller {
         if retained {
             self.retention_consent(state, session, &track, &["record"], now)?;
         }
-        let captured = self.adapters.borrow_mut().source.capture(
+        let expiry = live::number(&session.body, "expires_at").map_err(contract)?;
+        if expiry <= now {
+            return Err("stale: capture plan expired".into());
+        }
+        let ceiling = |limits: &Value| {
+            limits
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|b| b["bound"] == "storage_bytes")
+                .and_then(|b| b["ceiling"].as_u64())
+        };
+        let max_bytes = ceiling(&session.body["bounds"])
+            .ok_or("cannot_enforce: capture byte ceiling")?
+            .min(ceiling(&body["limits"]).unwrap_or(u64::MAX))
+            .min(1_048_576) as usize;
+        let (generation, focus) = self.adapters.borrow().device.state();
+        let context = crate::media::CaptureContext {
+            owner: &session.owner,
+            session: &session.id,
+            plan: &session.plan,
+            generation,
+            focus,
+            max_bytes,
+            deadline: captured_start
+                .checked_add(std::time::Duration::from_secs(expiry - now))
+                .ok_or("limit_exceeded: capture deadline")?,
+        };
+        let captured = self.adapters.borrow_mut().source.capture_checked(
             track["source"]["scope"].as_str().unwrap_or_default(),
             track["source"]["id"].as_str().unwrap_or_default(),
             track["media"].as_str().unwrap_or_default(),
+            &context,
         )?;
-        if let Some(limit) = body["limits"]
-            .as_array()
-            .and_then(|l| l.iter().find(|b| b["bound"] == "storage_bytes"))
-            .and_then(|b| b["ceiling"].as_u64())
-            && captured.bytes.len() as u64 > limit
-        {
-            return Err(refuse("limit_exceeded", "capture exceeds its byte ceiling"));
+        if captured.bytes.len() > max_bytes || std::time::Instant::now() >= context.deadline {
+            return Err("limit_exceeded: capture exceeds its bounds".into());
         }
-        let (generation, focus) = self.adapters.borrow().device.state();
+        let (generation, focus) = captured
+            .anchor
+            .ok_or("cannot_enforce: capture has no native anchor")?;
         let content = if retained {
             Some(
                 self.store
@@ -1405,7 +1431,7 @@ impl Controller {
         let observation = json!({"v":"openagents.live-observation.v1","requires":[],"plan":session.plan,"track":track_id,
             "capture":capture,"source":track["source"],"captured_at":now,"host_generation":generation,"content":content,
             "evidence":null,"format":self.store.put_json(&json!({"media":track["media"]}))?,"geometry":geometry,
-            "interval":interval,"freshness":freshness,"meta":{"media_epoch":session.epoch}});
+            "interval":interval,"freshness":freshness,"meta":{"media_epoch":session.epoch,"native":captured.native}});
         let observation = self.sign(state, &observation, &session.owner.clone(), now)?;
         self.capture_clocks
             .borrow_mut()
