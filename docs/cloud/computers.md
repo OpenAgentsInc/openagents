@@ -169,3 +169,8 @@ order).
 The [SPACE integration roadmap](space-integration-roadmap.md) defines the
 remaining work and acceptance checks for a supported SPACE backend alongside
 Boat.
+
+The [public Computers delivery contract](../sdk/computers.md) and
+[SDK issue directory](../sdk/delivery-plan.md#issue-directory) describe the
+account-authenticated API/client work. The service-token/account-header protocol
+above remains internal; a public caller does not supply its own owner identity.

@@ -5,6 +5,9 @@
 [#11728](https://github.com/OpenAgentsInc/openagents/issues/11728).
 Documentation issue:
 [#11777](https://github.com/OpenAgentsInc/openagents/issues/11777).
+SDK delivery umbrella:
+[#11800](https://github.com/OpenAgentsInc/openagents/issues/11800); see the
+[SDK issue directory](../sdk/delivery-plan.md#issue-directory).
 
 The goal is a supported SPACE backend behind the existing Computers API:
 a person starts work in a chat, gets a computer with the right development
@@ -15,7 +18,9 @@ accounting stay in our services. SPACE supplies the isolated microVMs.
 This document describes remaining work. It does not report a production
 deployment or change the default backend. Boat continues serving existing
 computers. Proposed fields and endpoints below are design examples, not
-implemented API contracts.
+implemented API contracts. Public clients express needs and placement intent;
+exact driver/deployment selection stays internal. The first public Boat SDK
+flow ships independently of production SPACE support.
 
 ## Starting point and measured limits
 
@@ -152,9 +157,11 @@ configured. A resource ID is meaningful only within that binding.
 
 ### Create and capability behavior
 
-- Add an optional backend preference or requirement to the internal create
-  request. An explicit request for SPACE must either create on SPACE or
-  return a clear refusal. It must not silently create a Boat computer.
+- Accept requirements and placement intent at the public boundary, such as
+  memory-preserving suspension and `fast-sandbox`. Translate them to an admitted
+  internal backend/deployment. Exact driver selection is an operator/internal
+  option. An explicit fast-sandbox request either succeeds on a compatible
+  sandbox backend or refuses; it must not silently create a whole GCE VM.
 - Keep requests that omit the new field compatible. Start with Boat as their
   default. Enable SPACE defaults only for accounts admitted to a later rollout.
 - Validate account access, backend availability, declared capabilities, size,
@@ -167,7 +174,7 @@ configured. A resource ID is meaningful only within that binding.
 - Persist the chosen backend, deployment, resolved artifact, and policy with
   the computer. Reject attempts to change that binding through create retry.
 
-A proposed additive create request could look like this:
+A proposed additive public create request could look like this:
 
 ```json
 {
@@ -175,14 +182,17 @@ A proposed additive create request could look like this:
   "environment": "environment-example",
   "version": "version-example",
   "size": "small",
-  "driver": "space",
+  "placement": "fast-sandbox",
+  "needs": {"memory_suspend": true},
   "egress_profile": "repository-development",
   "idempotency_key": "create-example"
 }
 ```
 
-These field names need validation against the existing request types before
-implementation. They do not add a new required field to old requests.
+These field names need validation against the existing request types and
+[public Computers contract](../sdk/computers.md) before implementation. They
+do not add a new required field to old requests. Retain `driver` and deployment
+on internal records and authorized diagnostics, not as public create requirements.
 
 ### Persistence and recovery
 
@@ -306,7 +316,10 @@ destinations and operations. Qualify the Google provider; SPACE's AWS reference
 integration is not evidence that this works on GCloud.
 
 - Bind a reference to the account, computer, turn/grant, allowed host, allowed
-  credential placement, and expiry. A guest cannot request arbitrary references.
+  credential placement, and expiry. Public callers use authorized scoped handles;
+  arbitrary Google Secret Manager names are not trusted authority. Check account,
+  source connection, and current grant before secret resolution and at use.
+  A guest cannot request arbitrary references.
 - Keep real keys out of command arguments, provider session records, reusable
   templates, logs, error bodies, and measurement artifacts.
 - Validate actual Claude/model and GitHub clients against the proxy, including
@@ -480,10 +493,12 @@ GitHub workflows or GitHub-billed automation.
 
 ## Delivery order and completion criteria
 
-Create implementation issues from the workstreams below, claim each before
-development, and link actual blockers. Keep the project boards current. The
-documentation issue tracks this roadmap only; it does not close the remaining
-production work.
+Implementation is tracked by the [SDK delivery plan](../sdk/delivery-plan.md).
+Claim each issue before development and keep native blockers and project boards
+current. The documentation issue tracks this roadmap only; it does not close the
+remaining production work. The public Boat/client milestone is independent;
+Solver/Environment migrations and deferred publication/provider/language/payment
+work do not become universal SPACE prerequisites.
 
 | Milestone | Scope and dependency | Done when |
 | --- | --- | --- |
@@ -494,6 +509,23 @@ production work.
 | E. Restricted deployed chat | Initial section 6 deployment plus A–D and bounded usage from section 7 | The dedicated test account completes the end-to-end scenario below with Boat still available |
 | F. Production qualification | Remaining sections 6–8 | Recovery, durability, capacity, accounting, rollout controls, and supported-client checks pass with recorded limits |
 | G. Broader access | F plus the intended entitlement/billing contract | Account rollout expands under monitored limits with a tested rollback and support procedure |
+
+### Implementation issue mapping
+
+| Workstream | Issue |
+| --- | --- |
+| Supported driver-path snapshot boots | [#11810](https://github.com/OpenAgentsInc/openagents/issues/11810) |
+| Persistent backend registry and placement | [#11809](https://github.com/OpenAgentsInc/openagents/issues/11809) |
+| Verified backend-specific environment artifacts | [#11811](https://github.com/OpenAgentsInc/openagents/issues/11811) |
+| Memory lifecycle, cancellation, and recovery | [#11812](https://github.com/OpenAgentsInc/openagents/issues/11812) |
+| Authorized credential references and egress | [#11813](https://github.com/OpenAgentsInc/openagents/issues/11813) |
+| Private maintained GCloud deployment | [#11814](https://github.com/OpenAgentsInc/openagents/issues/11814) |
+| Durable usage, quotas, and uncertainty | [#11815](https://github.com/OpenAgentsInc/openagents/issues/11815) |
+| Public SDK/web qualification and rollout | [#11816](https://github.com/OpenAgentsInc/openagents/issues/11816) |
+
+The [public API/client issues](../sdk/delivery-plan.md#first-public-boat-delivery)
+ship the Boat flow first. The SPACE qualification issue depends on that working
+flow and the SPACE foundations; individual completed issues close independently.
 
 ### First delivery: one real chat on SPACE
 
@@ -559,3 +591,5 @@ chosen behavior with its evidence:
 - [Factory plan and driver-neutral environment design](../research/factory/README.md).
 - [Coder 1.0 binary freeze](../coder/1.0-freeze.md).
 - [Verification scope](../verification.md).
+- [SDK delivery and issue directory](../sdk/delivery-plan.md).
+- [Public Computers contract](../sdk/computers.md).

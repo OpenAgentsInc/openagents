@@ -8,7 +8,9 @@ Production continues to use Boat.
 
 The [integration roadmap](space-integration-roadmap.md) details the remaining
 API, environment, lifecycle, credential, GCloud, accounting, and rollout work
-needed for first-class production support.
+needed for first-class production support. The
+[SDK delivery plan](../sdk/delivery-plan.md) links the implementation issues and
+keeps the first public Boat client independent of SPACE production qualification.
 
 ## Measured result
 
