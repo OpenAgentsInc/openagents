@@ -22,7 +22,10 @@ def main():
     opener = urllib.request.build_opener(NoRedirect())
 
     def call(method, path, data=None, token=None):
-        headers = {"Content-Type": "application/json", "Cookie": "oa_cloud_session=invalid"}
+        headers = {"Content-Type": "application/json"}
+        # Staging shares its website host; only the separate API host ignores cookies.
+        if args.api.rstrip("/") != args.website.rstrip("/"):
+            headers["Cookie"] = "oa_cloud_session=invalid"
         if token:
             headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(
@@ -49,7 +52,7 @@ def main():
     for path in ("/v1/session", "/v1/sessions/github", "/v1/sessions/device/decide"):
         assert path not in spec["paths"], "Internal auth operation was advertised"
     status, error = call("GET", "/v1/account")
-    assert status == 401 and isinstance(error["error"], dict), "Cookie authenticated API request"
+    assert status == 401 and isinstance(error["error"], dict), "Unauthenticated account read was allowed"
     status, grant = call("POST", "/v1/device/code", {"app": "SDK contract check", "computer": "disposable-check"})
     assert status == 200 and grant["expires_in"] == 600
     assert grant["verification_uri"] == args.website.rstrip("/") + "/device"
@@ -66,7 +69,9 @@ def main():
         status, account = call("GET", "/v1/account", token=token)
         assert status == 200 and account["account"]["id"] and isinstance(account["workspaces"], list)
         print("PASS dedicated test-account bearer and workspace discovery")
-    print("PASS public auth schema, cookie isolation, pending, slowdown, and invalid credentials")
+    print("PASS public auth schema, unauthenticated refusal, pending, slowdown, and invalid credentials")
+    if args.api.rstrip("/") != args.website.rstrip("/"):
+        print("PASS API-host cookie isolation")
     print("Cleanup: unapproved device grant expires in 600 seconds; no account, session, or chat created")
 
 
