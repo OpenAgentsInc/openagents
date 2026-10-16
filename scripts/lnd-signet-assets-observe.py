@@ -137,7 +137,9 @@ while state['phase'] not in {'rfq_done', 'needs_review', 'time_limit'}:
             assert info['identity_pubkey'] == identities[node]
             assert info['chains'] == [{'chain': 'bitcoin', 'network': 'signet'}]
         if state['phase'] == 'wait_initial_funding':
-            if int(cli('a', 'lncli', 'walletbalance')['confirmed_balance']) >= 5000:
+            # A bounded CPFP may spend part of the original 5,000-sat input.
+            # Its confirmed change still funds this same mint, without another deposit.
+            if int(cli('a', 'lncli', 'walletbalance')['confirmed_balance']) >= 3000:
                 state['phase'] = 'mint'
         elif state['phase'] == 'mint':
             once('mint', lambda: cli('a', 'tapcli', 'assets', 'mint', '--type=normal',

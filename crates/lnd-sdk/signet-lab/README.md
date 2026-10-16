@@ -97,7 +97,10 @@ waits for the existing scratch recoveries to supply channel liquidity.
 
 Pinned tapd 0.8 fixes an asset channel's BTC value at 100,000 sats. The total
 research funding cap is therefore 150,000 recycled signet sats: 5,000
-initially, then 120,000 to A and 20,000 to B only when available. No faucet
+initially, then 120,000 to A and 20,000 to B only when available. A low-fee
+initial deposit can use a separately recorded CPFP with a 1,500-sat budget;
+the controller then waits for at least 3,000 sats of confirmed change from
+that same deposit. It never creates a replacement deposit. No faucet
 requests are made. The signet funding helper exists only with the SDK's
 `supervisor` feature and rejects every other network. The controller waits
 for confirmed reserves, the original private channel, and graph readiness
