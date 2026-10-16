@@ -451,7 +451,7 @@ fn footer() -> Markup {
                     img src="/favicon.svg" alt="" width="24" height="24";
                     span { "OpenAgents" }
                 }
-                p.muted { "Open source. Plugin authors paid in Bitcoin." }
+                p.muted { "Open source." }
             }
             nav.footer-columns aria-label="Footer" {
                 div { h3 { "Product" } a href="/download" { "Download" } a href="/pricing" { "Pricing" } a href="/efficiency" { "Efficiency" } }
