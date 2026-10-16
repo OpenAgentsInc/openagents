@@ -10,7 +10,7 @@
     11909
   ],
   "date": "2026-10-16",
-  "status": "Production API and host/mobile qualification passed; TestFlight packaging",
+  "status": "Production API deployed; host and phone checks passed; TestFlight build 1004 available",
   "checks": {
     "sdk_tests_passed": 38,
     "web_definition_and_http_sdk_tests_passed": 3,
@@ -117,5 +117,22 @@
       "signed_in": true
     },
     "ui_tests_passed": 1
+  },
+  "testflight": {
+    "id": "7f10500f-a74b-4d98-bb4d-18765d90a3e9",
+    "build": "1004",
+    "uploaded": "2026-10-16T15:13:44-07:00",
+    "state": "VALID",
+    "version": "1.0.0",
+    "internal": "IN_BETA_TESTING",
+    "groups": [
+      "Team (Expo)",
+      "Internal Testers"
+    ],
+    "what_to_test_set": true,
+    "source_commit": "6fa20f089c6dd1a48f2bb355968393dde39c7e96",
+    "release_simulator_tests_passed": 3,
+    "archive_verified": true,
+    "upload_succeeded": true
   }
 }
