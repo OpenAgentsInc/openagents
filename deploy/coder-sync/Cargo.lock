@@ -329,30 +329,48 @@ version = "0.2.113"
 source = "git+https://github.com/OpenAgentsInc/coder-desktop?rev=9c58d1af0eb2e8cc750b65b5bafc435392010f15#9c58d1af0eb2e8cc750b65b5bafc435392010f15"
 
 [[package]]
+name = "coder-sync-conformance"
+version = "1.0.0"
+dependencies = [
+ "axum",
+ "coder-sync-service",
+ "futures",
+ "image",
+ "loro",
+ "reqwest",
+ "serde_json",
+ "stateright",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite 0.24.0",
+ "tower",
+ "uuid",
+ "zeron-client",
+ "zeron-doc",
+ "zeron-proto",
+ "zeron-rpc",
+ "zeron-sync",
+]
+
+[[package]]
 name = "coder-sync-service"
 version = "1.0.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
  "bytes",
- "futures",
- "image",
  "reqwest",
  "serde",
  "serde_json",
  "sha2 0.10.9",
- "stateright",
- "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tokio-postgres",
- "tokio-tungstenite 0.24.0",
- "tower",
  "tracing",
  "tracing-subscriber",
  "uuid",
- "zeron-client",
  "zeron-doc",
+ "zeron-proto",
  "zeron-rpc",
  "zeron-sync",
 ]

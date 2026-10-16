@@ -3,6 +3,7 @@ pub mod chat;
 pub mod config;
 pub mod db;
 pub mod device;
+pub mod notifications;
 pub mod registry;
 pub mod rooms;
 pub mod storage;

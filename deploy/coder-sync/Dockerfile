@@ -9,7 +9,7 @@ COPY --from=cargo-cache /usr/local/cargo/registry/ /usr/local/cargo/registry/
 COPY --from=cargo-cache /usr/local/cargo/git/ /usr/local/cargo/git/
 COPY --from=cargo-cache /app/deploy/coder-sync/target/ /app/deploy/coder-sync/target/
 COPY crates/coder-sync/ /app/crates/coder-sync/
-COPY deploy/coder-sync/Cargo.toml deploy/coder-sync/Cargo.lock deploy/coder-sync/lib.rs /app/deploy/coder-sync/
+COPY deploy/coder-sync/ /app/deploy/coder-sync/
 # The image compiles only the opt-in server, using its checked-in lockfile.
 RUN cargo build --release --locked --features server
 

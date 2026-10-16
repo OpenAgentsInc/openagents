@@ -1,6 +1,18 @@
 # Server-only image packaging. Source stays in crates/coder-sync/src/server.
 # This workspace never includes the frozen Coder client library.
 [workspace]
+members = ["conformance"]
+default-members = ["."]
+
+[workspace.metadata.conformance]
+fork-revision = "9c58d1af0eb2e8cc750b65b5bafc435392010f15"
+
+[workspace.dependencies]
+zeron-sync = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "9c58d1af0eb2e8cc750b65b5bafc435392010f15" }
+zeron-client = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "9c58d1af0eb2e8cc750b65b5bafc435392010f15" }
+zeron-proto = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "9c58d1af0eb2e8cc750b65b5bafc435392010f15" }
+zeron-doc = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "9c58d1af0eb2e8cc750b65b5bafc435392010f15" }
+zeron-rpc = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "9c58d1af0eb2e8cc750b65b5bafc435392010f15" }
 
 [package]
 name = "coder-sync-service"
@@ -8,6 +20,7 @@ version = "1.0.0"
 edition = "2024"
 rust-version = "1.98.1"
 publish = false
+autotests = false
 
 [lib]
 name = "coder_sync"
@@ -21,10 +34,11 @@ path = "../../crates/coder-sync/src/main.rs"
 server = []
 
 [dependencies]
+zeron-proto.workspace = true
 sha2 = "0.10"
-zeron-rpc = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "9c58d1af0eb2e8cc750b65b5bafc435392010f15" }
-zeron-doc = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "9c58d1af0eb2e8cc750b65b5bafc435392010f15" }
-zeron-sync = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "9c58d1af0eb2e8cc750b65b5bafc435392010f15" }
+zeron-rpc.workspace = true
+zeron-doc.workspace = true
+zeron-sync.workspace = true
 base64 = "0.22"
 axum = { version = "0.8", features = ["ws"] }
 bytes = { version = "1" }
@@ -37,33 +51,3 @@ tokio-postgres = { version = "0.7.18" }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1", features = ["v4"] }
-
-[[test]]
-name = "service"
-path = "tests/service.rs"
-
-[[test]]
-name = "chat"
-path = "tests/chat.rs"
-
-[[test]]
-name = "chat_model"
-path = "tests/chat_model.rs"
-
-[[test]]
-name = "registry_core"
-path = "tests/registry_core.rs"
-
-[[test]]
-name = "registry"
-path = "tests/registry.rs"
-
-[dev-dependencies]
-zeron-client = { git = "https://github.com/OpenAgentsInc/coder-desktop", rev = "9c58d1af0eb2e8cc750b65b5bafc435392010f15" }
-image = { version = "0.25", default-features = false, features = ["png"] }
-tower = { version = "0.5", features = ["util"] }
-stateright = "0.31"
-futures = "0.3"
-tokio-tungstenite = "0.24"
-
-tempfile = "3"

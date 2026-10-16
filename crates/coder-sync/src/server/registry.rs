@@ -406,7 +406,8 @@ pub async fn push_target(
         .filter(|e| matches!(*e, "sandbox" | "production"))
         .ok_or(bad("bad_request"))?
         .to_owned();
-    let prefs=json!({"done":body["prefs"]["done"]!=false,"input":body["prefs"]["input"]!=false,"failed":body["prefs"]["failed"]!=false}).to_string();
+    let prefs = serde_json::to_string(&super::notifications::parse_prefs(&body["prefs"]))
+        .map_err(|_| Failure(StatusCode::SERVICE_UNAVAILABLE, "unavailable"))?;
     let s = state.clone();
     let account = who.account.clone();
     run(&state,&who.account,async move{let mut db=s.database.connect().await?;let tx=db.transaction().await?;lock(&tx,&account).await?;tx.execute("INSERT INTO registry_push_targets(account,device,token,environment,prefs) VALUES($1,$2,$3,$4,$5::text::jsonb) ON CONFLICT(account,device) DO UPDATE SET token=EXCLUDED.token,environment=EXCLUDED.environment,prefs=EXCLUDED.prefs,updated_at=now()",&[&account,&device,&token,&environment,&prefs]).await?;tx.commit().await?;Ok(Json(json!({"ok":true})))}).await

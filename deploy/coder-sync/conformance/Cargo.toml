@@ -1,0 +1,62 @@
+[package]
+name = "coder-sync-conformance"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.98.1"
+publish = false
+
+[dependencies]
+coder-sync = { package = "coder-sync-service", path = "..", features = ["server"] }
+zeron-sync.workspace = true
+zeron-client.workspace = true
+zeron-proto.workspace = true
+zeron-doc.workspace = true
+zeron-rpc.workspace = true
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+uuid = { version = "1", features = ["v4"] }
+loro = "1.13"
+image = { version = "0.25", default-features = false, features = ["png"] }
+tower = { version = "0.5", features = ["util"] }
+stateright = "0.31"
+futures = "0.3"
+tokio-tungstenite = "0.24"
+tempfile = "3"
+
+[[test]]
+name = "service"
+path = "../tests/service.rs"
+
+[[test]]
+name = "chat"
+path = "../tests/chat.rs"
+
+[[test]]
+name = "chat_model"
+path = "../tests/chat_model.rs"
+
+[[test]]
+name = "registry_core"
+path = "../tests/registry_core.rs"
+
+[[test]]
+name = "registry"
+path = "../tests/registry.rs"
+
+[[test]]
+name = "device"
+path = "../tests/device.rs"
+
+[[test]]
+name = "blob"
+path = "../tests/blob.rs"
+
+[[test]]
+name = "update_log"
+path = "../tests/update_log.rs"
+
+[[test]]
+name = "push_rules"
+path = "../tests/push_rules.rs"

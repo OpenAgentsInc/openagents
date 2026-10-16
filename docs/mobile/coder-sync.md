@@ -17,7 +17,7 @@ Use Rust 1.98.1 and a Cargo target directory outside the worktree:
 ```sh
 export RUSTUP_TOOLCHAIN=1.98.1
 export CARGO_TARGET_DIR="$HOME/work/openagents-target-agent1"
-cargo fmt --manifest-path deploy/coder-sync/Cargo.toml --check
+cargo fmt --manifest-path deploy/coder-sync/Cargo.toml --all --check
 scripts/coder-sync/test.sh
 cargo build --locked --manifest-path deploy/coder-sync/Cargo.toml --features server
 ```
@@ -147,8 +147,8 @@ claims the chat. PostgreSQL locks that ownership row for every operation;
 row insertion, batch deduplication, and head advancement commit together.
 Batch records survive compaction, so a delayed retry cannot append twice.
 
-The wire codec and client come from `zeron-sync` at fork commit
-`9c58d1af0eb2e8cc750b65b5bafc435392010f15`. The server treats payloads as
+The wire codec and client come from `zeron-sync` at the fork revision recorded
+in `deploy/coder-sync/Cargo.toml`. The server treats payloads as
 opaque. As in the edge, clients decide when to post checkpoints (more than
 200 rows or 512 KiB); the server validates the covered sequence and frontier,
 stores an immutable bucket object, then atomically publishes its metadata
@@ -217,8 +217,7 @@ reference delivery behavior without acknowledgments.
 The default suite ports both edge device codec cases and all nine host-liveness
 cases. It also covers opaque routing, host replacement, disconnects, grants,
 sidecars, account isolation, wakeup retries, overflow, and transaction rollback.
-Build `zeron` from fork commit
-`9c58d1af0eb2e8cc750b65b5bafc435392010f15` to run the engine integration:
+Build `zeron` from that same pinned fork revision to run the engine integration:
 
 ```sh
 ZERON_TEST_HEADLESS_BIN=/path/to/pinned/zeron \
@@ -260,3 +259,44 @@ and verifies that a second pinned client downloads and renders identical pixels.
 It writes `11846-rendered.png` under `openagents scratch`. The legacy
 `/attachments/{…}` PUT acknowledges and discards retired mirror uploads,
 matching the pinned edge; it does not create a second attachment store.
+
+## Protocol conformance checkpoint
+
+The `coder-sync-conformance` crate depends on the real `zeron-sync`,
+`zeron-client`, `zeron-proto`, `zeron-doc`, and `zeron-rpc` crates. One workspace
+revision pins all five. Run the complete suite, including the isolated engine
+and image fixture:
+
+```sh
+scripts/coder-sync/conformance.sh
+```
+
+For an upstream merge candidate, use a clean OpenAgents worktree:
+
+```sh
+scripts/coder-sync/conformance.sh --fork-repo /path/to/fork --pin FULL_COMMIT
+```
+
+The script resolves the full local commit, updates the shared pin and lockfile,
+exports its source without editing the fork checkout, and builds the headless
+engine in the fork's persistent external target directory. It then runs every
+case against temporary Postgres and a fake bucket, checks formatting, and
+builds the server executable. Local Git configuration lets Cargo resolve an
+unpublished candidate without changing global settings. A failed run restores
+the pin files if nothing else changed them. Phase logs stay under
+`openagents scratch` in `coder-sync-conformance`.
+
+Commit the pin and lockfile after the candidate passes and is published to our
+fork. `FORK.md` requires this checkpoint whenever an upstream merge changes
+`edge/`, `crates/sync`, `crates/proto`, or `crates/rpc`. Counterexamples become
+plain regression tests before retrying. Disk checks stop the script below
+8 GiB free. `CODER_SYNC_FORK_TARGET_DIR` selects the fork build cache; the
+server keeps `CARGO_TARGET_DIR`.
+
+The remaining edge update-log cases check small updates, large updates,
+interleaving, slice offsets, old-row migration, repeated migration, and real
+Loro fold/replay. Postgres needs no SQLite chunk layout; large logical updates
+use modern checkpoints, and normal row uploads retain their 1 MiB limit.
+Pure registry notification rules cover completed turns, questions, errors,
+stale activity, first sync, titles, and preferences. They send no notifications
+and create no APNs transport; #11853 must use the OpenAgents push gateway.
