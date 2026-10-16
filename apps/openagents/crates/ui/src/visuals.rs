@@ -56,6 +56,8 @@ pub struct VisualFrame {
     link_ui: Option<LinkUi>,
     local: Rc<RefCell<Local>>,
     started: Instant,
+    /// A Video Lab card drawn natively in place of its script.
+    lab: Option<gpui::Entity<crate::lab_card::LabCard>>,
     _tasks: Vec<Task<()>>,
 }
 
@@ -228,9 +230,41 @@ impl VisualFrame {
                         }
                     }
                     let assets = zeron_visual::Assets::new(files);
-                    let _ = this.update(cx, |this, cx| match script {
-                        Some(script) => this.start(&script, assets, cx),
-                        None => {
+                    let lab = script.as_deref().and_then(crate::lab_card::card_in_script);
+                    let picture = match &lab {
+                        Some(_) => {
+                            let bytes = assets
+                                .names()
+                                .find(|name| name.starts_with("picture."))
+                                .and_then(|name| assets.get(name));
+                            match bytes {
+                                Some(bytes) => {
+                                    let bytes = bytes.to_vec();
+                                    cx.background_executor()
+                                        .spawn(async move { crate::lab_card::decode(bytes) })
+                                        .await
+                                }
+                                None => None,
+                            }
+                        }
+                        None => None,
+                    };
+                    let _ = this.update(cx, |this, cx| match (lab, script) {
+                        (Some(card), _) => {
+                            let id = this.id.clone();
+                            let link_ui = this.link_ui.clone();
+                            let entity = cx.new(|cx| {
+                                let mut card = crate::lab_card::LabCard::new(id, card, picture, cx);
+                                card.set_link_ui(link_ui);
+                                card
+                            });
+                            this.lab = Some(entity);
+                            this.load = Load::Ready;
+                            cx.emit(VisualLayoutChanged);
+                            cx.notify();
+                        }
+                        (None, Some(script)) => this.start(&script, assets, cx),
+                        (None, None) => {
                             this.load = Load::Failed("Visual unavailable".into());
                             cx.notify();
                         }
@@ -251,11 +285,16 @@ impl VisualFrame {
             link_ui: None,
             local: Rc::default(),
             started: Instant::now(),
+            lab: None,
             _tasks: tasks,
         }
     }
 
-    pub fn set_link_ui(&mut self, link_ui: Option<LinkUi>) {
+    pub fn set_link_ui(&mut self, link_ui: Option<LinkUi>, cx: &mut Context<Self>) {
+        if let Some(lab) = &self.lab {
+            let ui = link_ui.clone();
+            lab.update(cx, |lab, _| lab.set_link_ui(ui));
+        }
         self.link_ui = link_ui;
     }
 
@@ -503,6 +542,14 @@ fn text_px(size: zeron_visual::TextSize, window: &Window) -> (Pixels, Pixels) {
 impl Render for VisualFrame {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::of(cx).clone();
+        if let Some(lab) = self.lab.clone() {
+            return div()
+                .id(self.element_id("frame"))
+                .w_full()
+                .role(gpui::Role::Group)
+                .aria_label(self.title.clone())
+                .child(lab);
+        }
         let body = match (&self.load, self.tree.clone()) {
             (Load::Failed(message), _) => status_line(message.clone(), theme.text_muted),
             (Load::Ready, Some(tree)) => {

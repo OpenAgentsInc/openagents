@@ -566,8 +566,15 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {{\n\
             links.join(", ")
         ));
     }
+    // Coder Desktop reads this line and draws the card natively (live render
+    // state, inline video); other clients run the script below it.
+    let mut marker = serde_json::Value::Object(card.clone());
+    if let Some(object) = marker.as_object_mut() {
+        object.remove("versions");
+    }
     format!(
-        "return function()\n  return ui.column {{ gap = 8,\n    {}\n  }}\nend\n",
+        "-- coder:video_lab {}\nreturn function()\n  return ui.column {{ gap = 8,\n    {}\n  }}\nend\n",
+        serde_json::to_string(&marker).unwrap_or_default(),
         lines.join(",\n    ")
     )
 }
@@ -645,6 +652,15 @@ mod tests {
             "job": {"state": "running", "estimate": 166.0}, "player": "http://x/player"});
         let s = card_script(rendering.as_object().unwrap(), "d", None, 1.0);
         assert!(s.contains("Rendering the preview (about 3 min)"), "{s}");
+        let marker = s
+            .lines()
+            .next()
+            .unwrap()
+            .strip_prefix("-- coder:video_lab ")
+            .unwrap();
+        let card: Value = serde_json::from_str(marker).unwrap();
+        assert_eq!(card["card"], "video_lab");
+        assert!(card.get("versions").is_none());
     }
 
     fn tiny_png() -> Vec<u8> {

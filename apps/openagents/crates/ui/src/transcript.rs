@@ -6712,7 +6712,7 @@ impl Transcript {
                 frame
             }
         };
-        frame.update(cx, |frame, _| frame.set_link_ui(link_ui));
+        frame.update(cx, |frame, cx| frame.set_link_ui(link_ui, cx));
         div().w_full().child(frame).into_any_element()
     }
 

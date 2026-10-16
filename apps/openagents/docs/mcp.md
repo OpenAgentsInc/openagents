@@ -366,5 +366,20 @@ document, version and summary, and the picture the Lab made: a frame, a frame
 strip, a side-by-side compare, or the poster. It also shows the render state and
 whether the film stays on this Mac. Its links play the render or the compared
 versions, and open the Lab player and timeline (versions, compare, notes,
-editing). The links open in a Coder Browser tab. Plan:
+editing). The links open in a Coder Browser tab.
+
+The card's script starts with a marker line, `-- coder:video_lab {card JSON}`.
+The desktop reads it and draws the card natively (`crates/ui/src/lab_card.rs`)
+instead of running the script:
+
+- While the Lab is still rendering, the card asks the Lab for the card again
+  every two seconds and swaps in the video when it lands.
+- It plays the video inline. On macOS, AVFoundation decodes the video, sound
+  included, and each frame is drawn by GPUI's `surface`, so the video scrolls
+  and clips with the transcript. It has play and pause, time, and a seek bar,
+  and plays either side of a compare.
+
+Only the Lab on this computer (`http://127.0.0.1` or `localhost`) is fetched
+or played. Clients that don't know the marker (the iPhone app, older builds)
+run the script below it. Plan:
 [OpenAgents Labs](https://github.com/OpenAgentsInc/openagents/blob/main/docs/labs/README.md).
