@@ -1,6 +1,6 @@
 # Prepare Coder for TestFlight
 
-The candidate is **OpenAgents Coder 1.0.0 (1001)**, bundle
+The candidate is **OpenAgents Coder 1.0.0 (1002)**, bundle
 `com.openagents.coder`. This uses the existing App Store Connect record.
 Before signing, the owner checks that this version and build are available.
 If they are already used, change every app/extension version in
@@ -14,7 +14,7 @@ From a clean fork checkout on current `origin/main`:
 scratch=$(openagents scratch)
 python3 scripts/ios/archive.py \
   --target-dir "$HOME/work/coder-desktop-target-agent1" \
-  --output "$scratch/Coder-1.0.0-1001.xcarchive"
+  --output "$scratch/Coder-1.0.0-1002.xcarchive"
 ```
 
 The default is unsigned. The script builds the normal iPhone Rust core in
@@ -42,7 +42,7 @@ distribution validation and upload.
 | --- | --- |
 | Name | OpenAgents Coder |
 | Bundle ID | com.openagents.coder |
-| Version/build candidate | 1.0.0 / 1001 |
+| Version/build candidate | 1.0.0 / 1002 |
 | Subtitle | Your coding sessions, anywhere |
 | Category | Developer Tools |
 | Privacy policy | https://github.com/OpenAgentsInc/coder-desktop/blob/main/apps/ios/release/privacy.md |
@@ -100,3 +100,23 @@ non-exempt encryption, not that it uses no cryptography. See Apple's
 
 Record the processed build number and device result in workspace
 `NEEDS_OWNER.md`. If the device check finds a defect, file a new issue.
+
+## Release simulator launch check
+
+Run the optimized app's first-launch, demo, scene-restoration, and send/reply
+checks before archiving. This scheme excludes the Debug unit-test host:
+
+```sh
+ZERON_SKIP_CORE=1 CARGO_TARGET_DIR="$HOME/work/coder-desktop-target-agent1" \
+  xcodebuild -project apps/ios/Zeron.xcodeproj -scheme ZeronReleaseSmoke \
+  -destination 'platform=iOS Simulator,id=8010197D-517D-43DA-9559-46742EFABC65' \
+  ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES \
+  -parallel-testing-enabled NO \
+  -only-testing:ZeronUITests/LaunchLifecycleTests \
+  -only-testing:ZeronUITests/SessionFlowTests/testSendEchoesAndStreamsReply test
+```
+
+Build the Release simulator Rust core before using `ZERON_SKIP_CORE=1`:
+`CONFIGURATION=Release scripts/ios/build-core.sh iphonesimulator`.
+The native `CoderIdentityTests` also seeds a saved legacy delegate and checks
+that connection uses the current UIKit delegate.

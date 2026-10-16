@@ -318,3 +318,15 @@ a dedicated account without starting an engine or opening the owner's data.
   archive check rejects a missing or non-exempt app declaration.
 - Marketing version stays 1.0.0. App, extension, and test targets advance to
   build 1001 because build 1000 is already processed in App Store Connect.
+
+## Restored scene migration (#11889)
+
+- The UIKit app returns a new, explicitly typed `SceneDelegate` configuration
+  when connecting a window, rather than inheriting a saved SwiftUI delegate.
+  Account and chat data are unchanged.
+- `SceneDelegate` has the stable Objective-C name
+  `OpenAgentsCoderSceneDelegate`; the manifest uses the `Coder` configuration.
+- `ZeronReleaseSmoke` tests the optimized simulator app, including first
+  launch, demo interaction, background restoration, and relaunch. The native
+  identity test decodes a session with a legacy delegate and checks its replacement.
+- Build 1.0.0 (1002) replaces the crashing TestFlight build 1001.

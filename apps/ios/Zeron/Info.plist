@@ -43,9 +43,9 @@
 			<array>
 				<dict>
 					<key>UISceneConfigurationName</key>
-					<string>Default</string>
+					<string>Coder</string>
 					<key>UISceneDelegateClassName</key>
-					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+					<string>OpenAgentsCoderSceneDelegate</string>
 				</dict>
 			</array>
 		</dict>

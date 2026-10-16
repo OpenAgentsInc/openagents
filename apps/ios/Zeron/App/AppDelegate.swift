@@ -25,6 +25,15 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         configurationForConnecting connectingSceneSession: UISceneSession,
         options: UIScene.ConnectionOptions
     ) -> UISceneConfiguration {
-        UISceneConfiguration(name: "Default", sessionRole: connectingSceneSession.role)
+        Self.windowConfiguration(for: connectingSceneSession)
+    }
+
+    static func windowConfiguration(for session: UISceneSession) -> UISceneConfiguration {
+        // Do not inherit the previous SwiftUI app's archived delegate.
+        let configuration = UISceneConfiguration(name: "Coder", sessionRole: session.role)
+        configuration.sceneClass = UIWindowScene.self
+        configuration.delegateClass = SceneDelegate.self
+        configuration.storyboard = nil
+        return configuration
     }
 }

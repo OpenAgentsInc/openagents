@@ -1,5 +1,6 @@
 import UIKit
 
+@objc(OpenAgentsCoderSceneDelegate)
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
     private let app = AppModel()
