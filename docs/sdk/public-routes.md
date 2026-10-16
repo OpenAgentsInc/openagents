@@ -182,6 +182,12 @@ mutation. Reads do not start a chat, execute a command, or make a payment.
 Files/uploads (#11866), thread execution/sync (#11867), and connected sources
 (#11868) keep separate contracts.
 
+The [project contract evidence](projects-evidence.json) records source,
+schemas, isolated authorization and failure checks, deployed images, and
+cleanup. `python3 scripts/api/check_projects_public.py` checks the deployed
+reference and signed-out routing without creating a project; set both
+origins to staging to check that environment.
+
 ## Composition and manual checks
 
 The gateway keeps its existing schema generator. The web front normalizes its
