@@ -153,6 +153,38 @@ impl<D: Drivers + 'static> Reconciler<D> {
 
     /// One visit to one claimed computer.
     pub async fn visit(self: &Rc<Self>, e: Entry) {
+        let now = now_ms();
+        let mut e = e;
+        if e.desired == Desired::Stopped && e.record.phase == Phase::Stopped {
+            match self
+                .store
+                .expire_stopped(
+                    &e.owner,
+                    &e.id,
+                    e.intent_generation,
+                    now,
+                    self.settings.keep_stopped,
+                )
+                .await
+            {
+                Ok(true) => e.desired = Desired::Deleted,
+                Ok(false) => {}
+                Err(error) => {
+                    let _ = self
+                        .store
+                        .release(
+                            &e.id,
+                            &self.settings.holder,
+                            self.backoff(e.attempts),
+                            e.attempts.saturating_add(1),
+                            Some(&error.to_string()),
+                            false,
+                        )
+                        .await;
+                    return;
+                }
+            }
+        }
         let p = match self.provider(&e) {
             Ok(provider) => provider,
             Err(error) => {
@@ -192,26 +224,6 @@ impl<D: Drivers + 'static> Reconciler<D> {
                 }
             })
         };
-        let now = now_ms();
-        // Kept long enough: a stopped computer nobody asked for goes.
-        let mut e = e;
-        if e.desired == Desired::Stopped
-            && e.record.phase == Phase::Stopped
-            && now.saturating_sub(e.record.updated_ms)
-                >= self.settings.keep_stopped.as_millis() as u64
-            && self
-                .store
-                .settle_desired(
-                    &e.id,
-                    e.intent_generation,
-                    Desired::Stopped,
-                    Desired::Deleted,
-                )
-                .await
-                .is_ok_and(|changed| changed)
-        {
-            e.desired = Desired::Deleted;
-        }
         let woke = e.desired == Desired::Running && wakes_from(&e.record.phase);
         // Recover public commands before the legacy lifecycle tick can expire a
         // turn after a service restart. Recovery observes the same identity.

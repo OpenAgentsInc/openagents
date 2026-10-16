@@ -329,7 +329,27 @@ async fn create(
             // Legacy chat ensures wake on each turn. Replaying a keyed create
             // must not undo a stop that happened after the original request.
             if e.desired == Desired::Stopped && body.idempotency_key.is_none() {
-                let _ = api.store.set_desired(&owner, &e.id, Desired::Running).await;
+                match api
+                    .store
+                    .set_desired(&e.owner, &e.id, Desired::Running)
+                    .await
+                {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        return err(StatusCode::NOT_FOUND, "not_found", "No such computer.");
+                    }
+                    Err(error) if error.0 == crate::usage::QUOTA_ERROR => {
+                        return err(
+                            StatusCode::TOO_MANY_REQUESTS,
+                            "quota_exhausted",
+                            crate::usage::QUOTA_ERROR,
+                        );
+                    }
+                    Err(error) => {
+                        eprintln!("oa-computers: legacy wake: {error}");
+                        return err(StatusCode::SERVICE_UNAVAILABLE, "unavailable", "Try again.");
+                    }
+                }
             }
             (StatusCode::OK, Json(view(&e))).into_response()
         }
@@ -341,7 +361,7 @@ async fn create(
         Err(CreateError::Limit) => err(
             StatusCode::TOO_MANY_REQUESTS,
             "quota_exhausted",
-            "Delete an unused computer before creating another.",
+            crate::usage::QUOTA_ERROR,
         ),
         Err(CreateError::Busy) => err(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -469,6 +489,11 @@ async fn want(api: &Api, headers: &HeaderMap, id: &str, d: Desired) -> Response 
             "not_found",
             "No such computer, or it was deleted.",
         ),
+        Err(e) if e.0 == crate::usage::QUOTA_ERROR => err(
+            StatusCode::TOO_MANY_REQUESTS,
+            "quota_exhausted",
+            crate::usage::QUOTA_ERROR,
+        ),
         Err(e) => {
             eprintln!("oa-computers: set desired: {e}");
             err(StatusCode::SERVICE_UNAVAILABLE, "unavailable", "Try again.")
@@ -539,12 +564,43 @@ async fn by_request(
     }
 }
 
+#[derive(Deserialize)]
+struct UsageQuery {
+    #[serde(default)]
+    after: i64,
+    limit: Option<i64>,
+}
+
+async fn usage(
+    State(api): State<Arc<Api>>,
+    headers: HeaderMap,
+    Query(query): Query<UsageQuery>,
+) -> Response {
+    let owner = match account(&headers) {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    match api
+        .store
+        .usage(&owner, query.after, query.limit.unwrap_or(100))
+        .await
+    {
+        Ok(value) => Json(value).into_response(),
+        Err(_) => err(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "unavailable",
+            "Usage couldn't be read. Try again.",
+        ),
+    }
+}
+
 pub fn router(api: Arc<Api>) -> Router {
     Router::new()
         // Google's front end keeps /healthz for itself on run.app hosts.
         .route("/health", get(healthz))
         .route("/healthz", get(healthz))
         .route("/v1/capabilities", get(capabilities))
+        .route("/v1/usage", get(usage))
         .route("/v1/computers", get(list).post(create))
         .route("/v1/computers/by-request/{key}", get(by_request))
         .route("/v1/computers/{id}", get(get_one).delete(delete))

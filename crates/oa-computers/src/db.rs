@@ -13,6 +13,7 @@ const MIGRATIONS: &[(i32, &str)] = &[
     (4, include_str!("../migrations/0004_commands.sql")),
     (5, include_str!("../migrations/0005_deployments.sql")),
     (6, include_str!("../migrations/0006_lifecycle_intents.sql")),
+    (7, include_str!("../migrations/0007_usage.sql")),
 ];
 
 #[derive(Debug)]
@@ -45,6 +46,9 @@ async fn open(config: &Config) -> Result<Client, DbError> {
     tokio::spawn(async move {
         let _ = connection.await;
     });
+    client
+        .batch_execute("SET openagents.usage_writer = 'v1'")
+        .await?;
     Ok(client)
 }
 

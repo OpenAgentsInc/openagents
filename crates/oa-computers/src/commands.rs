@@ -197,6 +197,16 @@ impl Store {
         // An existing request remains readable after a deployment disappears
         // or stops admitting commands. Only a new command needs admission.
         admission?;
+        crate::usage::lock(&tx).await.map_err(|_| "unavailable")?;
+        crate::usage::check_turn(&tx, owner, request.timeout_seconds as i32)
+            .await
+            .map_err(|e| {
+                if e.0 == crate::usage::QUOTA_ERROR {
+                    "quota_exhausted"
+                } else {
+                    "unavailable"
+                }
+            })?;
         if tx.query_opt("SELECT id FROM computers.computers WHERE id=$1 AND owner=$2 AND desired<>'deleted' FOR UPDATE", &[&computer,&owner]).await.map_err(|_| "unavailable")?.is_none() { return Err("not_found"); }
         let count:i64 = tx.query_one("SELECT count(*) FROM computers.turns WHERE computer=$1 AND state IN ('queued','running','command_queued','command_running')", &[&computer]).await.map_err(|_| "unavailable")?.get(0);
         if count >= 16 {
@@ -211,7 +221,16 @@ impl Store {
         tx.execute("INSERT INTO computers.turns(id,computer,owner,state,command,cwd,timeout_seconds) VALUES($1,$2,$3,'command_queued',$4,$5,$6)", &[&id,&computer,&owner,&request.command,&request.cwd,&(request.timeout_seconds as i32)]).await.map_err(|_| "unavailable")?;
         let options = json!({"env":request.env,"credential_ref":request.credential_ref,"request_key":request.idempotency_key});
         tx.execute("INSERT INTO computers.commands(turn,owner,computer,request_key,digest,options,status) VALUES($1,$2,$3,$4,$5,$6,'queued')", &[&id,&owner,&computer,&request.idempotency_key,&digest,&options]).await.map_err(|_| "unavailable")?;
-        tx.execute("UPDATE computers.computers SET desired='running',intent_generation=intent_generation+1,next_attempt_at=now(),attempts=0 WHERE id=$1", &[&computer]).await.map_err(|_| "unavailable")?;
+        tx.execute("UPDATE computers.computers SET desired='running',intent_generation=intent_generation+1,usage_intent_generation=intent_generation+1,next_attempt_at=now(),attempts=0 WHERE id=$1", &[&computer]).await.map_err(|_| "unavailable")?;
+        crate::usage::record_intent(&tx, owner, computer)
+            .await
+            .map_err(|e| {
+                if e.0 == crate::usage::QUOTA_ERROR {
+                    "quota_exhausted"
+                } else {
+                    "unavailable"
+                }
+            })?;
         tx.commit().await.map_err(|_| "unavailable")?;
         Ok((id, true))
     }
