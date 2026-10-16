@@ -323,7 +323,8 @@ async fn lifecycle_waits_for_the_operation_and_never_echoes_its_error() {
         .operation_states
         .extend(["queued", "running", "succeeded"]);
     assert!(d.suspend(&id).await.is_done());
-    assert_eq!(m.records.lock().unwrap().operation_reads, 3);
+    // Create completes one operation before suspend's three observations.
+    assert_eq!(m.records.lock().unwrap().operation_reads, 4);
     for state in ["failed", "canceled", "expired", "future_state"] {
         m.records.lock().unwrap().operation_states.push_back(state);
         let result = d.resume(&id).await;

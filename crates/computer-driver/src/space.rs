@@ -471,22 +471,43 @@ impl Driver for SpaceDriver {
         if let Some(resources) = resources {
             body["resources"] = resources;
         }
-        match self
-            .json(
-                Method::POST,
-                "/v1/sandboxes",
-                Some(body),
-                Some(&r.operation),
-            )
-            .await
-        {
-            Ok(v) => match field(&v, "sandbox_id") {
-                Ok(id) if valid_id(id, "sbx_") => Outcome::done(id.into()),
-                _ => Outcome::unknown(
-                    "SPACE did not return a computer ID. Repeat the same create operation to recover it.",
-                ),
-            },
-            Err(e) => e.outcome(),
+        let create = async {
+            let response = self
+                .response(
+                    Method::POST,
+                    "/v1/sandboxes",
+                    Some(body),
+                    Some(&r.operation),
+                )
+                .await?;
+            let accepted = response.status() == reqwest::StatusCode::ACCEPTED;
+            let value: Value = serde_json::from_slice(&Self::bytes(response, MAX_RESPONSE).await?)
+                .map_err(|_| Error::unknown("the response was not valid JSON"))?;
+            let id = field(&value, "sandbox_id")?;
+            if !valid_id(id, "sbx_") {
+                return Err(Error::unknown(
+                    "the create response has an invalid computer ID",
+                ));
+            }
+            // An accepted create can precede the sandbox row. Do not expose
+            // it to observation until its operation completes: an early 404
+            // would otherwise look like a deleted computer.
+            if let Some(operation) = value.get("operation_id") {
+                let operation = operation
+                    .as_str()
+                    .ok_or_else(|| Error::unknown("invalid create operation ID"))?;
+                self.wait_operation(operation).await?;
+            } else if accepted {
+                return Err(Error::unknown("the accepted create has no operation ID"));
+            }
+            Ok::<String, Error>(id.to_owned())
+        };
+        match tokio::time::timeout(Duration::from_secs(600), create).await {
+            Ok(Ok(id)) => Outcome::done(id),
+            Ok(Err(error)) => error.outcome(),
+            Err(_) => Outcome::unknown(
+                "The SPACE create exceeded its deadline. Repeat the same create operation to check it.",
+            ),
         }
     }
 
@@ -659,6 +680,175 @@ impl Driver for SpaceDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn create_server(
+        responses: Vec<(&'static str, u16, Value)>,
+    ) -> (SpaceDriver, std::thread::JoinHandle<()>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let driver =
+            SpaceDriver::new(&address, &address, Secret::new("test"), "seed:latest").unwrap();
+        let server = std::thread::spawn(move || {
+            for (path, status, body) in responses {
+                let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                let mut stream = loop {
+                    match listener.accept() {
+                        Ok((stream, _)) => break stream,
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                            assert!(std::time::Instant::now() < deadline, "missing request");
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(error) => panic!("accept failed: {error}"),
+                    }
+                };
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut request = Vec::new();
+                let mut buffer = [0; 2048];
+                loop {
+                    let count = stream.read(&mut buffer).unwrap();
+                    assert!(count > 0 && request.len() + count <= 65536);
+                    request.extend_from_slice(&buffer[..count]);
+                    if let Some(end) = request.windows(4).position(|v| v == b"\r\n\r\n") {
+                        let headers = std::str::from_utf8(&request[..end]).unwrap();
+                        let length = headers
+                            .lines()
+                            .find_map(|line| {
+                                let (name, value) = line.split_once(':')?;
+                                name.eq_ignore_ascii_case("content-length")
+                                    .then(|| value.trim().parse::<usize>().unwrap())
+                            })
+                            .unwrap_or(0);
+                        if request.len() >= end + 4 + length {
+                            assert_eq!(
+                                headers.lines().next().unwrap().split_whitespace().nth(1),
+                                Some(path)
+                            );
+                            if path == "/v1/sandboxes" {
+                                assert!(headers.lines().any(|line| {
+                                    line.split_once(':').is_some_and(|(name, value)| {
+                                        name.eq_ignore_ascii_case("idempotency-key")
+                                            && value.trim() == "stable-create"
+                                    })
+                                }));
+                            }
+                            break;
+                        }
+                    }
+                }
+                let body = body.to_string();
+                write!(stream, "HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+            }
+        });
+        (driver, server)
+    }
+
+    fn create_request() -> CreateRequest {
+        CreateRequest {
+            operation: "stable-create".into(),
+            size: Some("small".into()),
+            image: None,
+            ttl_seconds: None,
+            labels: Default::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn accepted_create_waits_for_its_operation_before_observation() {
+        let (driver, server) = create_server(vec![
+            (
+                "/v1/sandboxes",
+                202,
+                json!({"sandbox_id":"sbx_test", "operation_id":"op_test"}),
+            ),
+            ("/v1/operations/op_test", 200, json!({"state":"queued"})),
+            ("/v1/operations/op_test", 200, json!({"state":"running"})),
+            ("/v1/operations/op_test", 200, json!({"state":"succeeded"})),
+            ("/v1/sandboxes/sbx_test", 200, json!({"state":"running"})),
+        ]);
+        assert_eq!(
+            driver.create(&create_request()).await.value().as_deref(),
+            Some("sbx_test")
+        );
+        assert_eq!(
+            driver.observe("sbx_test").await.value().unwrap().state,
+            State::Running
+        );
+        server.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn accepted_create_lookup_failure_remains_unknown_and_retry_keeps_identity() {
+        let (driver, server) = create_server(vec![
+            (
+                "/v1/sandboxes",
+                202,
+                json!({"sandbox_id":"sbx_test", "operation_id":"op_test"}),
+            ),
+            (
+                "/v1/operations/op_test",
+                403,
+                json!({"error":"private provider detail"}),
+            ),
+            (
+                "/v1/sandboxes",
+                202,
+                json!({"sandbox_id":"sbx_test", "operation_id":"op_test"}),
+            ),
+            ("/v1/operations/op_test", 200, json!({"state":"succeeded"})),
+        ]);
+        assert!(matches!(
+            driver.create(&create_request()).await,
+            Outcome::Unknown { .. }
+        ));
+        assert_eq!(
+            driver.create(&create_request()).await.value().as_deref(),
+            Some("sbx_test")
+        );
+        server.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn unconfirmed_create_never_claims_completion() {
+        for (status, value, operation) in [
+            (202, json!({"sandbox_id":"sbx_test"}), None),
+            (
+                202,
+                json!({"sandbox_id":"sbx_test", "operation_id":"op_test"}),
+                Some(json!({"state":"failed"})),
+            ),
+            (
+                200,
+                json!({"sandbox_id":"sbx_test", "operation_id":"op_test"}),
+                Some(json!({"state":"future_state"})),
+            ),
+        ] {
+            let mut responses = vec![("/v1/sandboxes", status, value)];
+            if let Some(operation) = operation {
+                responses.push(("/v1/operations/op_test", 200, operation));
+            }
+            let (driver, server) = create_server(responses);
+            assert!(matches!(
+                driver.create(&create_request()).await,
+                Outcome::Unknown { .. }
+            ));
+            server.join().unwrap();
+        }
+        let (driver, server) = create_server(vec![(
+            "/v1/sandboxes",
+            201,
+            json!({"sandbox_id":"sbx_sync"}),
+        )]);
+        assert_eq!(
+            driver.create(&create_request()).await.value().as_deref(),
+            Some("sbx_sync")
+        );
+        server.join().unwrap();
+    }
+
     #[test]
     fn credentials_stay_on_explicit_origins() {
         for bad in [
