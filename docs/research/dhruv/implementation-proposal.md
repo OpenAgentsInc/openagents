@@ -77,6 +77,10 @@ The [conformance matrix](conformance-matrix.md) lists, role by role, the
 crate and exact Rust test behind each implemented contract below, the
 interrupted, disconnected, revoked and competing cases they cover, and what
 remains fixture-only.
+The funded labor run follows one ledger payout through SOV income, X402
+settlement, durable credit, and metered use. A lost credit reply recovers
+after both accounting hosts restart without another wallet send. Its v2
+economic statement preserves unmeasured fees as null.
 
 Review, 2026-10-15: the [OpenAgents NIP directory](../../../nips/openagents/README.md)
 contains 33 specifications plus shared contracts and JSON schemas. Together

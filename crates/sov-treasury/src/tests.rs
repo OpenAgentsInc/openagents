@@ -617,7 +617,10 @@ fn the_economic_statement_joins_every_step_by_its_original_identity() {
     assert_eq!(unit("purchase"), "msat");
     assert_eq!(unit("credit"), "usd_micros");
     assert_eq!(unit("usage"), "usd_micros");
-    assert_eq!(statement["coverage"], "complete");
+    assert_eq!(statement["coverage"], "partial");
+    assert_eq!(statement["v"], "openagents.sovereign-economic-statement.v2");
+    assert!(statement["costs"]["platform_fee_msat"].is_null());
+    assert!(statement["costs"]["payout_fee_msat"].is_null());
     assert_eq!(statement["costs"]["purchase_fee_msat"], 10);
 }
 
@@ -735,4 +738,37 @@ fn public_pylon_reports_are_not_income() {
     fx.admit();
     let report = format!("pylon-receipt:{}", "ab".repeat(32));
     assert_eq!(fx.income(&report, 10_000)["reason"], "not_admitted");
+}
+
+struct StatementView(Value);
+impl Earnings for StatementView {
+    fn sent_payout(&self, _party: &str, _id: &str) -> crate::Result<Option<(u64, String)>> {
+        Ok(None)
+    }
+    fn statement(&mut self, _party: &str) -> crate::Result<Value> {
+        Ok(self.0.clone())
+    }
+}
+#[test]
+fn economic_coverage_requires_explicit_complete_source_pages() {
+    for source in [
+        json!({"earnings":[],"payouts":[],"next_earning":1,"next_payout":null}),
+        json!({"earnings":[],"payouts":[]}),
+        json!({}),
+    ] {
+        let mut fx = Fx::new(true);
+        fx.admit();
+        fx.t.with_owners(|owners| owners.earnings = Box::new(StatementView(source)));
+        let statement = fx.t.economic_statement(&pk(AGENT), fx.now).unwrap()["body"].clone();
+        assert_eq!(statement["coverage"], "partial");
+        assert!(statement["costs"]["platform_fee_msat"].is_null());
+    }
+    let mut fx = Fx::new(true);
+    fx.admit();
+    let empty = fx.t.economic_statement(&pk(AGENT), fx.now).unwrap()["body"].clone();
+    assert_eq!(empty["coverage"], "complete");
+    assert_eq!(
+        empty["costs"],
+        json!({"platform_fee_msat":0,"payout_fee_msat":0,"purchase_fee_msat":0})
+    );
 }

@@ -263,7 +263,9 @@ declared distribution per adopted contribution, is derived by a reader from
 
 ## Specification reference
 
-All contracts in this set are v1 drafts. They define protocol behavior;
+These contracts are drafts; individual records declare their versions.
+The SOV economic statement uses v2 to preserve unknown fees as null while
+readers retain v1 support. The contracts define protocol behavior;
 conformance requires validation and enforcement for each advertised role.
 The [Dhruv conformance matrix](../../docs/research/dhruv/conformance-matrix.md)
 lists the implemented roles with the exact Rust test behind each, checked by

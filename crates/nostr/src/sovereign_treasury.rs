@@ -32,7 +32,13 @@ pub fn validate(body: &Value) -> Result<()> {
         .ok_or_else(|| error(RefusalCode::Malformed, "sovereign version"))?;
     let name = kind
         .strip_prefix("openagents.")
-        .and_then(|s| s.strip_suffix(".v1"))
+        .and_then(|s| {
+            if s == "sovereign-economic-statement.v2" {
+                Some("sovereign-economic-statement-v2")
+            } else {
+                s.strip_suffix(".v1")
+            }
+        })
         .filter(|name| doc["$defs"][*name]["properties"]["v"]["const"] == kind)
         .ok_or_else(|| error(RefusalCode::UnsupportedVersion, "sovereign schema"))?;
     if body["requires"] != serde_json::json!([]) {
@@ -79,6 +85,21 @@ fn semantic(name: &str, body: &Value) -> Result<()> {
             }
             if (body["income"]["mode"] == "none") != (body["income"]["max_msat"] == 0) {
                 return Err(error(RefusalCode::Malformed, "income replenishment bound"));
+            }
+        }
+        "sovereign-economic-statement-v2" => {
+            if body["coverage"] == "complete"
+                && (body["costs"]
+                    .as_object()
+                    .is_some_and(|costs| costs.values().any(Value::is_null))
+                    || body["unknown"]
+                        .as_array()
+                        .is_some_and(|unknown| !unknown.is_empty()))
+            {
+                return Err(error(
+                    RefusalCode::Malformed,
+                    "complete statement has unknown fees or links",
+                ));
             }
         }
         "sovereign-purchase-receipt" => {
@@ -195,5 +216,35 @@ mod tests {
         validate(&policy).unwrap();
         policy["per_operation_msat"] = json!(1000);
         assert!(validate(&policy).is_err());
+    }
+}
+
+#[cfg(test)]
+mod economic_statement_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn statement_v2_preserves_unknown_costs_and_reads_legacy_v1() {
+        let mut record = json!({"v":"openagents.sovereign-economic-statement.v2","requires":[],
+            "policy":{"digest":contracts::digest_bytes(b"policy"),"size":6,"media_type":"application/json","schema":"openagents.sovereign-treasury-policy.v1"},
+            "observed_at":1800000000,"coverage":"partial","links":[],
+            "costs":{"platform_fee_msat":null,"payout_fee_msat":null,"purchase_fee_msat":10},"unknown":[]});
+        validate(&record).unwrap();
+        record["coverage"] = json!("complete");
+        assert!(validate(&record).is_err());
+        record["coverage"] = json!("partial");
+        for invalid in [json!(-1), json!(1.5), json!("0")] {
+            record["costs"]["purchase_fee_msat"] = invalid;
+            assert!(validate(&record).is_err());
+        }
+        record["v"] = json!("openagents.sovereign-economic-statement.v1");
+        record["costs"]["purchase_fee_msat"] = json!(10);
+        assert!(validate(&record).is_err());
+        record["costs"]["platform_fee_msat"] = json!(0);
+        record["costs"]["payout_fee_msat"] = json!(0);
+        validate(&record).unwrap();
+        record["v"] = json!("openagents.sovereign-economic-statement.v2");
+        record["coverage"] = json!("complete");
+        validate(&record).unwrap();
     }
 }

@@ -145,6 +145,18 @@ pub fn network(policy: &Value) -> Option<&'static str> {
     }
 }
 
+fn add_fee(total: &mut Value, fee: Option<u64>) -> Result<()> {
+    *total = match (total.as_u64(), fee) {
+        (Some(a), Some(b)) => json!(
+            a.checked_add(b)
+                .filter(|v| i128::from(*v) <= nostr::contracts::SAFE_INTEGER)
+                .ok_or_else(|| refuse("limit_exceeded", "statement fee total"))?
+        ),
+        _ => Value::Null,
+    };
+    Ok(())
+}
+
 impl Treasury {
     pub fn initialize(root: PathBuf, secret: SecretKey, config: Config) -> Result<()> {
         let store = Artifacts::new(root)?;
@@ -869,8 +881,17 @@ impl Treasury {
         let ledger = self.owners.borrow_mut().earnings.statement(beneficiary)?;
         let mut links = Vec::new();
         let mut unknown = Vec::new();
-        let mut costs = json!({"platform_fee_msat":0,"payout_fee_msat":0,"purchase_fee_msat":0});
+        let earnings_complete = ledger.get("earnings").is_some_and(Value::is_array)
+            && ledger.get("next_earning").is_some_and(Value::is_null);
+        let payouts_complete = ledger.get("payouts").is_some_and(Value::is_array)
+            && ledger.get("next_payout").is_some_and(Value::is_null);
+        let mut costs = json!({"platform_fee_msat":if earnings_complete {Some(0)} else {None},
+            "payout_fee_msat":if payouts_complete {Some(0)} else {None},"purchase_fee_msat":0});
         for earning in ledger["earnings"].as_array().into_iter().flatten() {
+            add_fee(
+                &mut costs["platform_fee_msat"],
+                earning["platform_fee_msat"].as_u64(),
+            )?;
             let amount: i64 = earning["obligations"]
                 .as_array()
                 .into_iter()
@@ -885,10 +906,7 @@ impl Treasury {
             if matches!(state, "planned" | "sending" | "unknown") {
                 unknown.push(link.clone());
             }
-            costs["payout_fee_msat"] = json!(
-                costs["payout_fee_msat"].as_u64().unwrap_or(0)
-                    + payout["fee_msat"].as_u64().unwrap_or(0)
-            );
+            add_fee(&mut costs["payout_fee_msat"], payout["fee_msat"].as_u64())?;
             links.push(link);
         }
         for income in account.income.values() {
@@ -901,9 +919,10 @@ impl Treasury {
             } else {
                 self.json(&purchase.receipt)?
             };
-            let fee = receipt["fee_msat"].as_u64().unwrap_or(0);
-            costs["purchase_fee_msat"] =
-                json!(costs["purchase_fee_msat"].as_u64().unwrap_or(0) + fee);
+            add_fee(
+                &mut costs["purchase_fee_msat"],
+                receipt["fee_msat"].as_u64(),
+            )?;
             let link = json!({"kind":"purchase","id":format!("{id}:{}",purchase.payment_hash.clone().unwrap_or_default()),
                 "amount":purchase.hold_msat,"unit":"msat","state":purchase.status});
             if matches!(purchase.status.as_str(), "unknown" | "held") {
@@ -918,8 +937,14 @@ impl Treasury {
         for usage in self.owners.borrow_mut().topup.usage(account_id) {
             links.push(json!({"kind":"usage","id":usage["request"],"amount":usage["usd_micros"],"unit":"usd_micros","state":"metered"}));
         }
-        let body = json!({"v":"openagents.sovereign-economic-statement.v1","requires":[],"policy":policy_ref,
-            "observed_at":now,"coverage":if unknown.is_empty() {"complete"} else {"partial"},"links":links,
+        let complete = unknown.is_empty()
+            && costs
+                .as_object()
+                .is_some_and(|c| c.values().all(|v| !v.is_null()))
+            && earnings_complete
+            && payouts_complete;
+        let body = json!({"v":"openagents.sovereign-economic-statement.v2","requires":[],"policy":policy_ref,
+            "observed_at":now,"coverage":if complete {"complete"} else {"partial"},"links":links,
             "costs":costs,"unknown":unknown});
         let reference = self.sign(&mut state, &body, agent, now)?;
         self.save(&state)?;

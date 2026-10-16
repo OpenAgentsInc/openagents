@@ -26,7 +26,7 @@ These compose several owners in one process. Each is a separate test in
 | --- | --- | --- | --- |
 | Sealed attested job | ATT release + approval + rebuild, raw SEV-SNP, HPKE carriage, gift wrap, streamed output, PYLON sealed receipt | `crates/dhruv-conformance/tests/attested_job.rs::an_approved_attested_release_answers_a_sealed_request_with_a_public_receipt` | I (replay after restart refused), $ (receipt over ciphertext, fake regtest payment) |
 | Sealed job failures | ATT approval, key book, streamed output | `crates/dhruv-conformance/tests/attested_job.rs::disconnection_revocation_and_competing_endpoints_refuse` | D (lost chunk), R (revoked approval), C (older and rival endpoint keys) |
-| Funded labor order | LAB roles, rework, PYLON receipt, pay-ledger funding, cost statement | `crates/dhruv-conformance/tests/funded_labor.rs::an_interrupted_rework_order_is_accepted_funded_once_and_costed_honestly` | I (crash before send, exact retry), $ (unknown collection, fee, null unmetered costs) |
+| Funded labor and credit | LAB roles, rework, PYLON receipt, pay-ledger funding and payout, SOV income, X402 purchase, durable credit and metered use | `crates/dhruv-conformance/tests/funded_labor.rs::an_interrupted_rework_order_is_accepted_funded_once_and_costed_honestly` | I (crash before send, lost credit reply, treasury and credit restart, exact retry), $ (one wallet send, one income credit, distinct units, unknown fees stay null) |
 | Labor without a buyer | LAB resolver, finals, pay-ledger | `crates/dhruv-conformance/tests/funded_labor.rs::a_disconnected_buyer_and_competing_finals_never_pay_by_default` | D (buyer unavailable), C (competing finals stop funding) |
 
 ## Trajectories — ATIF
@@ -96,6 +96,8 @@ These compose several owners in one process. Each is a separate test in
 | Credit fulfillment | `sov-treasury` | `crates/sov-treasury/src/tests.rs::a_lost_callback_credits_once_across_retries_and_restored_hosts` | I, D | Fixture |
 | Account recovery | `sov-treasury` | `crates/sov-treasury/src/tests.rs::recovery_needs_account_control_and_revocation_stops_credit` | R | Fixture |
 | Economic statement | `sov-treasury` | `crates/sov-treasury/src/tests.rs::the_economic_statement_joins_every_step_by_its_original_identity` | $ | Fixture |
+| Incomplete earnings view | `sov-treasury` | `crates/sov-treasury/src/tests.rs::economic_coverage_requires_explicit_complete_source_pages` | $ (missing pages or fees cannot claim complete coverage) | Fixture |
+| Economic statement reader | `nostr` | `crates/nostr/src/sovereign_treasury.rs::statement_v2_preserves_unknown_costs_and_reads_legacy_v1` | $ (v2 null fees, explicit measured zero, legacy v1 reading) | Fixture |
 
 ## Funded labor — MKT and LAB
 

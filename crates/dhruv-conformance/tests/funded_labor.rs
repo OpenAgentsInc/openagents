@@ -2,6 +2,8 @@
 //! joined to the central ledger (`pay-ledger`), with an interrupted send,
 //! an unavailable buyer, cancellation after acceptance, competing finals,
 //! and a cost statement that keeps unknown costs unknown. Fake funds only.
+#[path = "support/treasury.rs"]
+mod treasury;
 use labor_roles::book::{Collection, Final};
 use labor_roles::host::Host;
 use labor_roles::records::*;
@@ -364,6 +366,20 @@ fn an_interrupted_rework_order_is_accepted_funded_once_and_costed_honestly() {
     assert_eq!(funded["collected_msat"], PRICE);
     assert_eq!(funded["platform_fee_msat"], 500);
     assert!(funded["worker_compute_msat"].is_null() && funded["all_in_cost_msat"].is_null());
+    let economic = treasury::qualify(
+        ledger_dir.path(),
+        ledger,
+        secret(PROVIDER),
+        first.shares,
+        NOW + 1700,
+    );
+    assert!(
+        economic["links"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|link| link["kind"] == "obligation" && link["id"] == first.resource)
+    );
 }
 
 #[test]

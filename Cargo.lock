@@ -5491,13 +5491,17 @@ dependencies = [
  "att-release",
  "att-seal",
  "base64 0.22.1",
+ "hex",
  "labor-roles",
  "nostr",
  "oa-att",
+ "openagents-x402",
  "p384",
  "pay-ledger",
  "secp256k1 0.31.1",
  "serde_json",
+ "sha2 0.10.9",
+ "sov-treasury",
  "tempfile",
 ]
 

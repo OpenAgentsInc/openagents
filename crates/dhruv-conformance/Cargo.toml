@@ -9,13 +9,17 @@ description = "Cross-contract conformance fixtures for the Dhruv protocol roadma
 [dependencies]
 
 [dev-dependencies]
-nostr = { path = "../nostr" }
+nostr = { path = "../nostr", features = ["test-invoice"] }
 oa-att = { path = "../oa-att" }
 att-platforms = { path = "../att-platforms" }
 att-seal = { path = "../att-seal" }
 att-release = { path = "../att-release" }
 labor-roles = { path = "../labor-roles" }
 pay-ledger = { path = "../pay-ledger" }
+sov-treasury = { path = "../sov-treasury" }
+openagents-x402 = { path = "../x402" }
+sha2 = "0.10"
+hex = "0.4"
 p384 = { version = "0.13", features = ["ecdsa", "pkcs8", "pem"] }
 secp256k1 = "0.31.1"
 base64 = "0.22"

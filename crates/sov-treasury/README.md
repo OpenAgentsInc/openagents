@@ -73,9 +73,14 @@ signed private `3188` requests (`Treasury::submit`). Wiring this into
   LAB obligation, payout attempt, confirmed income, X402 purchase (purchase ID
   and payment hash), account credit, and metered use. Units stay distinct
   (`msat`, `usd_micros`), costs are itemized, and unknown links are listed
-  rather than netted away. Neither statement is another ledger. Public Pylon
+  rather than netted away. Economic statements use v2: unmeasured fees stay
+  null, and missing source pages, unknown fees, or unresolved links make
+  coverage partial. Readers still accept legacy v1 statements. Neither statement is another ledger. Public Pylon
   reports never count as income.
 
 The fixture runs the full loop with fake money: real BOLT11 test invoices, the
 real X402 router and replay store, and an in-memory `pay-ledger`. Qualifying
 it with real money is an owner step.
+The cross-contract test in `dhruv-conformance` starts with a funded LAB order,
+uses its actual ledger payout as treasury income, and recovers a lost credit
+reply across treasury and credit-service restarts without another wallet send.

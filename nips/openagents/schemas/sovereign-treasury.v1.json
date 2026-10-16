@@ -25,6 +25,9 @@
     },
     {
       "$ref": "#/$defs/sovereign-economic-statement"
+    },
+    {
+      "$ref": "#/$defs/sovereign-economic-statement-v2"
     }
   ],
   "$defs": {
@@ -1026,6 +1029,111 @@
             },
             "purchase_fee_msat": {
               "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          }
+        },
+        "unknown": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/chain_link"
+          }
+        },
+        "meta": {
+          "type": "object"
+        }
+      }
+    },
+    "sovereign-economic-statement-v2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "v",
+        "requires",
+        "policy",
+        "observed_at",
+        "coverage",
+        "links",
+        "costs",
+        "unknown"
+      ],
+      "properties": {
+        "v": {
+          "const": "openagents.sovereign-economic-statement.v2"
+        },
+        "requires": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "policy": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "required": [
+                "schema"
+              ],
+              "properties": {
+                "schema": {
+                  "const": "openagents.sovereign-treasury-policy.v1"
+                }
+              }
+            }
+          ]
+        },
+        "observed_at": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "coverage": {
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "links": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/$defs/chain_link"
+          }
+        },
+        "costs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "platform_fee_msat",
+            "payout_fee_msat",
+            "purchase_fee_msat"
+          ],
+          "properties": {
+            "platform_fee_msat": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "payout_fee_msat": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "purchase_fee_msat": {
+              "type": [
+                "integer",
+                "null"
+              ],
               "minimum": 0,
               "maximum": 9007199254740991
             }
