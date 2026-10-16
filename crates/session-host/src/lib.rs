@@ -11,6 +11,8 @@ pub mod host;
 mod interface;
 #[cfg(unix)]
 pub mod resident;
+#[cfg(unix)]
+pub mod ssh;
 pub mod transport;
 
 pub type Result<T> = std::result::Result<T, String>;

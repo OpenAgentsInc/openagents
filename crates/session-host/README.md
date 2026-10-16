@@ -15,7 +15,17 @@ session-host serve --state DIR --key-file KEY --socket DIR/session.sock \
   --env-state ENV --env-key ENV_KEY --env-root RESOURCES \
   --coordinator-state COORD --coordinator-key-file COORD_KEY
 session-host request --socket DIR/session.sock --input REQUEST.json
+session-host request --ssh USER@HOST --remote-binary /path/to/session-host \
+  --socket /private/state/session.sock --input REQUEST.json
 ```
+
+The SSH client runs the remote `request` command against an existing resident.
+SSH authenticates and encrypts the connection; the original signed protocol
+requests still determine session rights. Request bytes travel on standard
+input, and `--input -` also accepts local standard input. The client checks
+reply identity, bounds frames and waits, and never automatically resends an
+uncertain request. It does not forward the SSH agent or require the host key.
+Relay and unauthenticated TCP transports are unsupported.
 
 POLICY names the independently authorized `owners` and `controllers`. BUNDLE
 carries one signed private `3188` event and the exact artifacts it references.

@@ -166,5 +166,80 @@ fn cli_resident_owns_engines_and_accepts_clients_without_the_host_key() {
     ]);
     assert!(!ok);
     assert_eq!(response["outcome"]["code"], "malformed");
+    let mut stdin_client = Command::new(env!("CARGO_BIN_EXE_session-host"))
+        .args([
+            "request",
+            "--socket",
+            socket.to_str().unwrap(),
+            "--input",
+            "-",
+        ])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write;
+        stdin_client
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(&serde_json::to_vec(&request).unwrap())
+            .unwrap();
+    }
+    let result = stdin_client.wait_with_output().unwrap();
+    assert!(!result.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&result.stdout).unwrap(),
+        response
+    );
+    // Exercise the real remote CLI request path through a local SSH stand-in.
+    let ssh = temp.path().join("ssh");
+    std::fs::write(
+        &ssh,
+        "#!/bin/sh\nfor remote_command; do :; done\nexec sh -c \"$remote_command\"\n",
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&ssh, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let path = format!(
+        "{}:{}",
+        temp.path().display(),
+        std::env::var("PATH").unwrap()
+    );
+    let mut remote = Command::new(env!("CARGO_BIN_EXE_session-host"))
+        .env("PATH", path)
+        .args([
+            "request",
+            "--ssh",
+            "test-worker",
+            "--remote-binary",
+            env!("CARGO_BIN_EXE_session-host"),
+            "--socket",
+            socket.to_str().unwrap(),
+            "--input",
+            "-",
+        ])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write;
+        remote
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(&serde_json::to_vec(&request).unwrap())
+            .unwrap();
+    }
+    let result = remote.wait_with_output().unwrap();
+    assert!(!result.status.success());
+    assert_eq!(
+        serde_json::from_slice::<Value>(&result.stdout).unwrap(),
+        response
+    );
     assert!(child.0.try_wait().unwrap().is_none());
 }

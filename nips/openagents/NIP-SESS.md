@@ -778,6 +778,12 @@ Resume, fork, native close, configuration changes, questions, and tool approvals
 remain unsupported for this profile. Claude Code and ACP mappings are not
 implemented. See [the runtime guide](../../crates/session-host/README.md#adapters).
 
+The Unix resident protocol also has an SSH client. A fixed remote
+`session-host request` command receives the original request on standard input.
+SSH carriage grants no session authority; signed requests and current admission
+still govern every operation. Unknown connection outcomes never trigger
+automatic retransmission.
+
 The native host checks current membership and scope generation before returning
 a cached open, command, or interaction response. Possessing an earlier signed
 body or its artifact hash grants no access. Host-key administration can replace

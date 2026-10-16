@@ -22,7 +22,8 @@ pub const USAGE: &str = "usage: session-host ACTION --state DIR --key-file KEY [
   status     --session ID
   export     --session ID
   serve      --socket PATH [the same ENV and COORD options as submit]
-  request    --socket PATH --input REQUEST.json (no host key required)";
+  request    --socket PATH --input REQUEST.json|- [--ssh DEST --remote-binary PATH]
+             signed client request; no host key required";
 
 struct NoBindings;
 impl Bindings for NoBindings {
@@ -66,14 +67,33 @@ pub fn run(args: Vec<String>) -> Result<Value> {
     let need = |name: &str| option(name).ok_or_else(|| format!("malformed: missing {name}"));
     #[cfg(unix)]
     if args[0] == "request" {
-        let bytes = workspace_host::artifact::read(
-            Path::new(&need("--input")?),
-            crate::resident::MAX_FRAME,
-        )?;
+        let input = need("--input")?;
+        let bytes = if input == "-" {
+            use std::io::Read;
+            let mut bytes = Vec::new();
+            std::io::stdin()
+                .take(crate::resident::MAX_FRAME as u64 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|e| e.to_string())?;
+            if bytes.len() >= crate::resident::MAX_FRAME {
+                return Err("limit_exceeded: transport request".into());
+            }
+            bytes
+        } else {
+            workspace_host::artifact::read(Path::new(&input), crate::resident::MAX_FRAME)?
+        };
         let value = nostr::contracts::parse_strict_bounded(&bytes, crate::resident::MAX_FRAME)
             .map_err(|e| e.to_string())?;
         let request: crate::resident::Request =
             serde_json::from_value(value).map_err(|_| "malformed: transport request")?;
+        if let Some(destination) = option("--ssh") {
+            let endpoint = crate::ssh::Endpoint {
+                destination,
+                binary: option("--remote-binary").unwrap_or_else(|| "session-host".into()),
+                socket: need("--socket")?,
+            };
+            return serde_json::to_value(endpoint.request(&request)?).map_err(|e| e.to_string());
+        }
         return serde_json::to_value(crate::resident::request(
             Path::new(&need("--socket")?),
             &request,
