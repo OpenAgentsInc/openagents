@@ -1960,6 +1960,7 @@ struct OpeningEngine {
     configuration_delay: std::time::Duration,
     identity: Option<Vec<u8>>,
     capture_coverage: Option<crate::engine::CaptureCoverage>,
+    io_budgets: Option<Rc<RefCell<Vec<crate::engine::IoBudget>>>>,
 }
 impl OpeningEngine {
     fn check_pending(&self) {
@@ -1989,6 +1990,15 @@ impl OpeningEngine {
     }
 }
 impl Engine for OpeningEngine {
+    fn owns(&self, native: &str) -> bool {
+        self.engine.owns(native)
+    }
+    fn io_budget(&mut self, budget: crate::engine::IoBudget) -> crate::Result<()> {
+        if let Some(budgets) = &self.io_budgets {
+            budgets.borrow_mut().push(budget);
+        }
+        self.engine.io_budget(budget)
+    }
     fn profile(&self) -> crate::engine::Profile {
         let mut profile = self.engine.profile();
         if let Some(identity) = &self.identity {
@@ -2085,6 +2095,7 @@ fn native_history_records_redaction_and_incomplete_bytes_without_claiming_comple
                 configuration_delay: std::time::Duration::ZERO,
                 identity: None,
                 capture_coverage: Some(coverage),
+                io_budgets: None,
             })],
             Box::new(fx.bindings.clone()),
         )
@@ -2146,6 +2157,7 @@ fn opening_intent_survives_lost_acknowledgment_and_process_death() {
                 configuration_delay: std::time::Duration::ZERO,
                 identity: None,
                 capture_coverage: None,
+                io_budgets: None,
             })],
             Box::new(fx.bindings.clone()),
         )

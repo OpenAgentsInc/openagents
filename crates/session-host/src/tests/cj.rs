@@ -1765,6 +1765,7 @@ fn an_older_adapter_pin_cannot_open_a_different_installed_engine() {
             configuration_delay: std::time::Duration::ZERO,
             identity: Some(b"a different native implementation".to_vec()),
             capture_coverage: None,
+            io_budgets: None,
         })],
         Box::new(r.allocator()),
     )
@@ -2040,6 +2041,71 @@ fn resident_clients_read_and_answer_one_original_charged_turn() {
 }
 
 #[test]
+fn native_io_keeps_the_original_deadline_and_uses_a_distinct_cleanup_budget() {
+    use crate::engine::IoPurpose;
+    let mut r = Real::new();
+    let budgets = Rc::new(RefCell::new(Vec::new()));
+    let host = SessionHost::open(
+        r.fx.root.clone(),
+        secret(HOST),
+        vec![Box::new(OpeningEngine {
+            engine: LoopEngine::mid_turn(),
+            root: r.fx.root.clone(),
+            calls: Rc::new(std::cell::Cell::new(0)),
+            crash: false,
+            configuration_delay: std::time::Duration::ZERO,
+            identity: None,
+            capture_coverage: None,
+            io_budgets: Some(budgets.clone()),
+        })],
+        Box::new(r.allocator()),
+    )
+    .unwrap();
+    let opening = r.opened(&host);
+    assert_eq!(budgets.borrow().last().unwrap().purpose(), IoPurpose::Input);
+    budgets.borrow_mut().clear();
+    let command = r.submit_command(&host, &opening, 20);
+    let (event, binding) = r.job_for(&command, 30);
+    let started = host
+        .serve(&event, &r.fx.artifacts, &binding, r.fx.now)
+        .unwrap();
+    assert_eq!(started.0.kind, execution::FEEDBACK_KIND);
+    let deadline = host
+        .runtime_clocks
+        .borrow()
+        .values()
+        .map(|(start, millis)| *start + std::time::Duration::from_millis(*millis))
+        .min()
+        .unwrap();
+    let delivered = budgets.borrow()[0];
+    assert_eq!(delivered.purpose(), IoPurpose::Input);
+    assert!(delivered.deadline() <= deadline);
+    host.poll(&event, r.fx.now).unwrap();
+    let observed = *budgets.borrow().last().unwrap();
+    assert_eq!(observed.purpose(), IoPurpose::Observation);
+    assert!(observed.deadline() <= delivered.deadline());
+    for clock in host.runtime_clocks.borrow_mut().values_mut() {
+        clock.0 = std::time::Instant::now() - std::time::Duration::from_secs(301);
+    }
+    let before = std::time::Instant::now();
+    host.advance(r.fx.now).unwrap();
+    let after = std::time::Instant::now();
+    let cleanup = *budgets.borrow().last().unwrap();
+    assert_eq!(cleanup.purpose(), IoPurpose::Cleanup);
+    assert!(cleanup.deadline() >= before + std::time::Duration::from_secs(5));
+    assert!(cleanup.deadline() <= after + std::time::Duration::from_secs(5));
+    let result = host.poll(&event, r.fx.now).unwrap();
+    assert_eq!(
+        r.coordinator
+            .record_result(&result.0, &result.1, r.fx.now)
+            .unwrap()["outcome"],
+        "cancelled"
+    );
+    assert_eq!(host.started("loop-mid-turn"), 1);
+    assert_eq!(r.coordinator.scope(&r.scope).unwrap()["calls"], 2);
+}
+
+#[test]
 fn one_wall_time_allowance_covers_intake_and_native_configuration() {
     struct Delayed(Allocator);
     impl Bindings for Delayed {
@@ -2073,6 +2139,7 @@ fn one_wall_time_allowance_covers_intake_and_native_configuration() {
             configuration_delay: std::time::Duration::from_millis(650),
             identity: None,
             capture_coverage: None,
+            io_budgets: None,
         })],
         Box::new(Delayed(r.allocator())),
     )

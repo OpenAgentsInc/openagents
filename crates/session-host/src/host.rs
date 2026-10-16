@@ -404,6 +404,47 @@ impl SessionHost {
         Ok(())
     }
 
+    fn engine_io_budget(
+        &self,
+        engine: &str,
+        fence: Option<std::time::Instant>,
+        purpose: crate::engine::IoPurpose,
+    ) -> Result<()> {
+        use crate::engine::{IoBudget, IoPurpose};
+        let now = std::time::Instant::now();
+        let deadline = if purpose == IoPurpose::Cleanup {
+            now + std::time::Duration::from_secs(5)
+        } else {
+            let original = self
+                .active_budget
+                .borrow()
+                .as_ref()
+                .map(|(start, millis)| {
+                    start
+                        .checked_add(std::time::Duration::from_millis(*millis))
+                        .ok_or("limit_exceeded: runtime I/O deadline")
+                })
+                .transpose()?;
+            match (original, fence) {
+                (Some(a), Some(b)) => a.min(b),
+                (Some(a), None) => a,
+                (None, Some(b)) => b,
+                (None, None) if self.bindings.local_fixture() => {
+                    now + std::time::Duration::from_secs(5)
+                }
+                _ => return Err("not_admitted: native I/O has no current admission".into()),
+            }
+        };
+        if deadline <= now {
+            return Err("stale: native I/O allowance expired".into());
+        }
+        self.engines
+            .borrow_mut()
+            .get_mut(engine)
+            .ok_or("engine")?
+            .io_budget(IoBudget { deadline, purpose })
+    }
+
     fn cj_runtime_facts(
         &self,
         state: &State,
@@ -654,21 +695,37 @@ impl SessionHost {
                     execute_event: &event.id,
                     target: &execute.payload["target"],
                 };
-                self.bindings
-                    .with_continuation(&request, now, &mut |_, current| {
-                        if progress.is_some() {
-                            return Err("unknown: observation callback cannot repeat".into());
-                        }
-                        progress = Some(self.cj_progress(
-                            state,
-                            input,
-                            &event.pubkey,
-                            key,
-                            true,
-                            current,
-                        )?);
-                        Ok(Value::Null)
-                    })
+                let mapping = state
+                    .turn_commands
+                    .get(digest_of(input))
+                    .ok_or("original turn")?;
+                let session = state
+                    .sessions
+                    .get(mapping["session"].as_str().ok_or("session")?)
+                    .ok_or("session")?;
+                let engine_name = state.adapters[&session.adapter].engine.clone();
+                self.with_runtime_budget(key, || {
+                    self.bindings
+                        .with_continuation(&request, now, &mut |fence, current| {
+                            if progress.is_some() {
+                                return Err("unknown: observation callback cannot repeat".into());
+                            }
+                            self.engine_io_budget(
+                                &engine_name,
+                                Some(fence.io_deadline()?),
+                                crate::engine::IoPurpose::Observation,
+                            )?;
+                            progress = Some(self.cj_progress(
+                                state,
+                                input,
+                                &event.pubkey,
+                                key,
+                                true,
+                                current,
+                            )?);
+                            Ok(Value::Null)
+                        })
+                })
             }
             Err(error) => Err(error),
         };
@@ -1691,7 +1748,8 @@ impl SessionHost {
             return Err("conflict: native turn already ended; managed children remain".into());
         }
         let Some(fence) = fence else {
-            return self.require_engine_execution(&adapter.engine, None);
+            self.require_engine_execution(&adapter.engine, None)?;
+            return self.engine_io_budget(&adapter.engine, None, crate::engine::IoPurpose::Input);
         };
         let opening = self.runtime_request(session)?;
         let engine = self.store.json(&adapter.reference)?["engine"].clone();
@@ -1706,7 +1764,13 @@ impl SessionHost {
             &opening["materialization"],
             &engine,
         );
-        fence.with_current(&request, now, &mut || Ok(()))
+        fence.with_current(&request, now, &mut || {
+            self.engine_io_budget(
+                &adapter.engine,
+                Some(fence.io_deadline()?),
+                crate::engine::IoPurpose::Input,
+            )
+        })
     }
 
     fn pending_control(
@@ -1756,6 +1820,11 @@ impl SessionHost {
         self.check_runtime_budget()?;
         let mut checked = || {
             self.check_runtime_budget()?;
+            self.engine_io_budget(
+                engine,
+                fence.map(|f| f.io_deadline()).transpose()?,
+                crate::engine::IoPurpose::Input,
+            )?;
             effect()
         };
         if let Some(fence) = fence {
@@ -2475,6 +2544,11 @@ impl SessionHost {
                 let mut applied = None;
                 let mut effect = || {
                     self.check_runtime_budget()?;
+                    self.engine_io_budget(
+                        &adapter.engine,
+                        fence.map(|f| f.io_deadline()).transpose()?,
+                        crate::engine::IoPurpose::Input,
+                    )?;
                     applied = Some(
                         self.engines
                             .borrow_mut()
@@ -2805,6 +2879,11 @@ impl SessionHost {
         session.replacing = true;
         session.quiescent = false;
         self.pending_control(state, session, signer, command, input, now)?;
+        self.engine_io_budget(
+            &old_adapter.engine,
+            fence.map(|f| f.io_deadline()).transpose()?,
+            crate::engine::IoPurpose::Input,
+        )?;
         let closed = self
             .engines
             .borrow_mut()
@@ -2995,6 +3074,7 @@ impl SessionHost {
         state.sessions.insert(session.id.clone(), session.clone());
         self.save(state)?;
         // An unknown native close is never sent again, even with a new command.
+        self.engine_io_budget(&adapter.engine, None, crate::engine::IoPurpose::Cleanup)?;
         self.engines
             .borrow_mut()
             .get_mut(&adapter.engine)
@@ -3364,6 +3444,13 @@ impl SessionHost {
             return Err(
                 "not_admitted: active production work requires its original runtime poll".into(),
             );
+        }
+        if self.bindings.local_fixture() && session.active.is_some() {
+            self.engine_io_budget(
+                &state.adapters[&session.adapter].engine,
+                None,
+                crate::engine::IoPurpose::Observation,
+            )?;
         }
         let outcome = self.observe_session(&mut state, &mut session, now);
         state.sessions.insert(session_id.into(), session.clone());
@@ -4289,6 +4376,9 @@ impl SessionHost {
         self.save(state)?;
         // This cleanup may stop only the original active turn. Its durable
         // intent prevents a lost acknowledgment from repeating the command.
+        if native.is_some() {
+            self.engine_io_budget(&adapter.engine, None, crate::engine::IoPurpose::Cleanup)?;
+        }
         if let Some(native) = native.filter(|_| signal && !native_ended) {
             let _ = self
                 .engines

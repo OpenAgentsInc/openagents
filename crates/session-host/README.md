@@ -164,6 +164,11 @@ continues observing an earlier stop without repeating its signal. Revoked
 readers receive no private reply while local cleanup continues. Restart leaves
 lost engine work unknown. Admission, configuration, and disclosure share the
 original monotonic wall-time allowance; starting another phase does not reset it.
+I/O adapters receive the earlier of that original clock and the current ENV
+admission's absolute deadline. Input, observation, and cleanup carry distinct
+purposes. Adapters must honor that ceiling at each write and wait. Cleanup gets
+a separate five-second I/O allowance to observe or stop existing work; it cannot
+start work or approve an effect.
 
 This receiver currently drives the synchronous loop adapters through the
 library. It requires one job, zero spend, 1–300 seconds of wall time, and

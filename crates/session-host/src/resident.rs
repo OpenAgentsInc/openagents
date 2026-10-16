@@ -214,6 +214,7 @@ impl<'a> Server<'a> {
 
     /// Advance the watchdog and bounded connection I/O once.
     pub fn step(&mut self, now: u64) -> Result<()> {
+        let started = Instant::now();
         let host = self.host;
         host.advance(now)?;
         for _ in 0..MAX_CLIENTS {
@@ -237,7 +238,7 @@ impl<'a> Server<'a> {
             if client.started.elapsed() >= TIMEOUT {
                 return false;
             }
-            match client.advance(host, now) {
+            match client.advance(host, now.saturating_add(started.elapsed().as_secs())) {
                 Ok(keep) => keep,
                 Err(_) => false,
             }
@@ -262,6 +263,7 @@ impl Drop for Server<'_> {
 }
 impl Client {
     fn advance(&mut self, host: &SessionHost, now: u64) -> Result<bool> {
+        let started = Instant::now();
         if let Some(output) = &self.output {
             let end = output.len().min(self.offset + 1_048_576);
             match self.stream.write(&output[self.offset..end]) {
@@ -299,7 +301,8 @@ impl Client {
                             .map_err(|e| e.to_string())?;
                             let request: Request = serde_json::from_value(value)
                                 .map_err(|_| "malformed: transport request")?;
-                            let response = request.dispatch(host, now);
+                            let response = request
+                                .dispatch(host, now.saturating_add(started.elapsed().as_secs()));
                             let mut bytes =
                                 serde_json::to_vec(&response).map_err(|e| e.to_string())?;
                             if bytes.len() >= MAX_FRAME {

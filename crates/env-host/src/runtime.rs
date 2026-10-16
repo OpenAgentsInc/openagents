@@ -54,6 +54,10 @@ pub struct ContinuationFence<'a> {
     pub(crate) runtime: RuntimeFence<'a>,
 }
 impl ContinuationFence<'_> {
+    /// The original admission's absolute I/O ceiling, without a new allowance.
+    pub fn io_deadline(&self) -> Result<std::time::Instant> {
+        self.runtime.io_deadline()
+    }
     pub fn with_current(
         &self,
         request: &RuntimeUse<'_>,
@@ -74,6 +78,15 @@ pub struct RuntimeFence<'a> {
     pub(crate) started: std::time::Instant,
 }
 impl RuntimeFence<'_> {
+    /// Bound native I/O by this admission's remaining lifetime. Callers also
+    /// keep any earlier whole-operation wall-time ceiling.
+    pub fn io_deadline(&self) -> Result<std::time::Instant> {
+        self.started
+            .checked_add(std::time::Duration::from_secs(
+                self.deadline.saturating_sub(self.admitted_at),
+            ))
+            .ok_or("limit_exceeded: native I/O deadline".into())
+    }
     /// Validate exact session-side pins without reacquiring either outer lock.
     pub fn with_current(
         &self,

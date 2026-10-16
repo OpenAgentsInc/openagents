@@ -301,6 +301,7 @@ impl crate::host::SessionHost {
         binding: &crate::host::Binding,
         now: u64,
     ) -> crate::Result<Reply> {
+        let received = std::time::Instant::now();
         let opened = execution::open_environment_request(
             event,
             self.pubkey(),
@@ -433,15 +434,14 @@ impl crate::host::SessionHost {
             .intend(&claim.key)
             .map_err(|e| format!("{e:?}"))?;
         let wall_ms = execute.bounds.wall_ms.ok_or("wall bound")?;
-        book.until.insert(
-            key.clone(),
-            execute.deadline.min(now.saturating_add(wall_ms / 1000)),
-        );
+        let until = execute.deadline.min(now.saturating_add(wall_ms / 1000));
+        let millis = wall_ms.min(until.saturating_sub(now).saturating_mul(1000));
+        book.until.insert(key.clone(), until);
         book.requests.insert(key.clone(), event.clone());
         self.save(&state)?;
         self.runtime_clocks
             .borrow_mut()
-            .insert(key.clone(), (std::time::Instant::now(), wall_ms));
+            .insert(key.clone(), (received, millis));
         self.dispatch_cj(
             state, event, &opened, execute, artifacts, binding, &target, &key, now,
         )?;

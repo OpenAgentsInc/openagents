@@ -157,8 +157,36 @@ impl TurnInput {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IoPurpose {
+    Input,
+    Observation,
+    Cleanup,
+}
+
+/// A local I/O ceiling supplied inside the host's current admission. Cleanup
+/// can observe or stop existing work; it cannot start work or approve effects.
+#[derive(Clone, Copy, Debug)]
+pub struct IoBudget {
+    pub(crate) deadline: std::time::Instant,
+    pub(crate) purpose: IoPurpose,
+}
+impl IoBudget {
+    pub fn deadline(self) -> std::time::Instant {
+        self.deadline
+    }
+    pub fn purpose(self) -> IoPurpose {
+        self.purpose
+    }
+}
+
 pub trait Engine {
     fn profile(&self) -> Profile;
+    /// I/O engines honor this absolute ceiling at each write and wait. Pure
+    /// in-process engines need no transport timer. A budget grants no operation.
+    fn io_budget(&mut self, _budget: IoBudget) -> Result<()> {
+        Ok(())
+    }
     fn approval_actions(&self) -> Vec<ActionProfile> {
         Vec::new()
     }
