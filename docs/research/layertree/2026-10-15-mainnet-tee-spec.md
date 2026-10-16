@@ -641,6 +641,10 @@ per-GiB surcharge. The base VM prices are approximate. Our own figure for a
 | **P2 small mainnet** | MuSig2 of SEV-SNP, TDX and the owner's guardian; one tree, OpenAgents and staff as members first, then opt-in payees | **hard cap**: for example 0.01 BTC per tree and 100,000 sat per leaf; at most 50 members | about $230 for the VMs, plus on-chain fees: creation and heartbeats about 200 vB each, twice a week, about 4,000 sat a week at 10 sat/vB | **owner go/no-go**; #11761 custody and money-transmission review; owner holds `G` and the kill switch |
 | **P3 more** | FROST 2-of-3 across two clouds and two vendors; larger caps; payout credit leaves in production; LND channel funding from leaves | caps raised step by step | plus about $100 to $300 per extra Confidential VM | owner decision per cap step; external review of the enclave code |
 
+**Tracking.** P0 and P1, with Verse visualizations of the tree, are the
+epic [#11779](https://github.com/OpenAgentsInc/openagents/issues/11779)
+and its child issues (#11780 to #11799).
+
 **Owner decisions needed:**
 
 1. **Custody.** Does running the enclave (and, in P2, holding `G`) make
