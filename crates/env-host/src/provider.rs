@@ -62,6 +62,15 @@ pub trait Provider {
     /// Provider binding path. The allocator qualifies it with its own key to
     /// form the resource descriptor's provider DefinitionRef `id`.
     fn binding(&self) -> String;
+    /// Refuse unsupported request ceilings before reserving or provisioning.
+    fn admit_request(&self, _request: &serde_json::Value, _now: u64) -> Result<()> {
+        Ok(())
+    }
+    /// Verify that the exact resource generation is still available before
+    /// disclosing an attached worker's input. Observation grants no execution.
+    fn check_current(&mut self, _resource: &Realized) -> Result<()> {
+        Err("cannot_enforce: current resource observation is not configured".into())
+    }
     /// Create one resource under `key`. Repeating a key must not create a
     /// second resource; the allocator still never calls this twice per lease.
     fn create(&mut self, account: &str, key: &str) -> Create;

@@ -166,7 +166,37 @@ The request must supply or already own every referenced artifact. A cached
 hash from another owner grants no access. Attachments also require the exact
 frame of the live COORD claim.
 
-Cloud-VM placement remains in #11736. All fixtures
+`gce::GceEnvironments` implements sponsored, finite VM placement over the
+public `oa-boat` Compute owner. Its operator configuration pins the project,
+zone, machine, exact image ID, private subnet, disk size, lifetime (30–3,600
+seconds), funding ledger/workspace, and fixed operating hold. The workspace
+must already exist and contain funds. The provider creates no credit. Every
+allocation reserves that real ledger allowance before its one downstream
+insert; all children and hosts using that funding authority share its holds.
+The caller's service fee is zero. Unknown provider costs retain the operating
+hold after cleanup; this is not a hard GCP price guarantee.
+
+Use `--gce-config CONFIG` instead of `--provider-root`. Credentials default to
+the VM metadata service; `--gce-credentials gcloud` explicitly selects the
+operator's gcloud login. `gce-profile` returns the supported image descriptor,
+`gce-observe --instance NAME` observes an explicitly allowed external VM, and
+`gce-funding` reads the provider's funding statement. These inspection commands
+need the configuration, without an allocator key or state argument.
+
+Lost-create lookup uses the original request UUID and exact VM incarnation.
+The instance's actual boot disk image ID and deletion policy must match before
+materialization. The original absolute deletion time bounds resource lifetime.
+Cleanup retains `placement.json`, then waits for that exact incarnation's
+successful automatic deletion operation; it never deletes a reusable name.
+Missing VM or operation history remains unknown. Adoption only detaches.
+This image profile exposes no guest command, file transfer, or arbitrary
+bootstrap. Those roles require a separately supported adapter.
+
+Worker intake rechecks the provider's actual current resource generation
+before input disclosure. A changed local marker, stopped SSH process, replaced
+VM, or expired native VM lifetime cannot reuse a saved materialization.
+
+All fixtures
 use throwaway keys, local directories, and fake allowance units; nothing here
 moves money.
 

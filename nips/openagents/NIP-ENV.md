@@ -11,7 +11,8 @@ A placement is not permission. A VM, container, worktree, remote host, or
 provider session does not acquire authority from its name or apparent
 availability. [`env-host`](../../crates/env-host/README.md) implements the
 allocator, materializer, participant, and worker-gate roles for local
-directories and maps the `coder-ssh` launcher; see the
+directories, pinned Linux SSH processes, and finite sponsored GCE image
+placement; see the
 [Rust allocator profile](#rust-allocator-profile). It is not a portable fleet
 allocator, and Coder does not yet use these operations.
 
@@ -690,3 +691,48 @@ another launcher's runtime record. This is a separate process-owner profile;
 it does not implement host enrollment or claim that a process is a trusted
 NIP-HOST identity. A provider that cannot determine cost retains unknown
 accounting after a confirmed process stop.
+
+### Native sponsored GCE placement
+
+The native GCE provider allocates an operator-selected machine and boot image
+for a finite run time. The operator mounts a protected `tenancy::money` ledger
+and a funded workspace. Before provisioning, the provider reserves its fixed
+operating allowance under the original create identity. Caller-supplied ENV
+reservation JSON never creates funds. The caller pays no service fee in this
+profile; the provider's operating liability remains separate and unknown until
+billing evidence resolves it. Hard provider-price ceilings are unsupported.
+
+The provider saves one downstream request UUID before `instances.insert`.
+Recovery reads that UUID's original operation and exact instance incarnation;
+it never inserts again. Materialization compares the actual boot disk's
+`sourceImageId`, the instance generation, and its finite deletion policy against
+the operator's pins before readiness. It supports only its native image
+descriptor, not arbitrary file placement or engine bootstrap.
+
+Creation sets an absolute `terminationTime` and `instanceTerminationAction: DELETE` on the
+original VM. Cleanup waits for that original automatic deletion and a successful
+completed operation whose `targetId` names the exact VM incarnation. It never
+sends an unconditional delete by a reusable VM name. Missing instances, empty
+operation lists, and expired operation history remain unknown without that
+proof. Funded holds remain through unknown creation, deletion, and costs.
+Adoption is observational and permits only detach.
+
+The provider uses the current public `oa-boat` Compute owner. The relevant
+provider contracts are [instance insertion](https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/insert),
+[finite VM run time](https://docs.cloud.google.com/compute/docs/instances/limit-vm-runtime),
+and [zonal operations](https://docs.cloud.google.com/compute/docs/reference/rest/v1/zoneOperations/list).
+
+The supported cloud image profile retains its actual allocation operation,
+image descriptor, and funding-hold references as `placement.json` before
+cleanup. It exposes no guest command or customer file-output interface. A host
+that needs guest execution or file retention must mount a separately supported
+adapter before advertising those roles. External adoption additionally requires
+an operator allowlist; it never grants destruction rights.
+
+The sponsored native profile accepts only a zero caller-spend ceiling and
+lease concurrency ceilings. It refuses unsupported resource bounds before
+provisioning. The fixed VM lifetime must fit the original environment window;
+renewing an ENV lease cannot renew the VM's original deletion time. Before
+worker input disclosure, the allocator rechecks the provider's actual current
+resource generation and then its current COORD authority. Saved materialization
+records alone cannot authorize a replacement or expired resource.

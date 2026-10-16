@@ -927,6 +927,7 @@ impl Allocator {
             self.validate_bootstrap_plan(state, &definition, body)?;
         }
         self.check_request_closure(state, signer, body, &definition)?;
+        self.provider.borrow().admit_request(body, now)?;
         if body["effects"]["spend"] == true {
             return Err(refuse(
                 "unsupported_feature",
@@ -2032,6 +2033,7 @@ impl Allocator {
     /// The dispatcher check: only a currently active exact attachment within
     /// its lease and grant expiry permits a dispatch.
     pub fn check_dispatch(&self, attachment: &str, fingerprint: &str, now: u64) -> Result<()> {
+        let started = std::time::Instant::now();
         let state = self.state()?;
         let lease = state
             .leases
@@ -2047,6 +2049,16 @@ impl Allocator {
         }
         if lease.effective_expiry() <= now || current.expires_at <= now {
             return Err(refuse("stale", "lease or grant has expired"));
+        }
+        self.provider.borrow_mut().check_current(
+            lease
+                .realized
+                .as_ref()
+                .ok_or("unavailable: original environment resource is not observed")?,
+        )?;
+        let now = now.saturating_add(started.elapsed().as_secs());
+        if lease.effective_expiry() <= now || current.expires_at <= now {
+            return Err(refuse("stale", "lease expired during resource observation"));
         }
         let declaration = self.body(
             &current.request["execute"],

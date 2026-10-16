@@ -30,3 +30,5 @@ pub mod claims;
 
 #[cfg(target_os = "linux")]
 pub mod ssh_native;
+
+pub mod gce;

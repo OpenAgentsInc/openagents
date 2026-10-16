@@ -136,6 +136,9 @@ impl Provider for LocalDirectories {
     fn binding(&self) -> String {
         "environment/local-directory".into()
     }
+    fn check_current(&mut self, resource: &Realized) -> Result<()> {
+        self.exact(resource).map(|_| ())
+    }
     fn create(&mut self, account: &str, key: &str) -> Create {
         let name = Self::name(account, key);
         match self.marker(&name) {

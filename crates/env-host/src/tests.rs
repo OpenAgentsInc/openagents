@@ -54,6 +54,9 @@ impl Provider for Faulty {
     fn binding(&self) -> String {
         self.inner.binding()
     }
+    fn check_current(&mut self, resource: &Realized) -> crate::Result<()> {
+        self.inner.check_current(resource)
+    }
     fn create(&mut self, account: &str, key: &str) -> Create {
         self.faults.borrow_mut().creates += 1;
         let created = self.inner.create(account, key);
@@ -1409,7 +1412,14 @@ fn native_environment_job_with_parent(
 }
 #[test]
 fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() {
-    for mode in ["run", "revoke", "drain", "expired-claim", "different-frame"] {
+    for mode in [
+        "run",
+        "revoke",
+        "drain",
+        "expired-claim",
+        "different-frame",
+        "resource-replaced",
+    ] {
         let mut fx = Fixture::new();
         let (coordinator, scope, claim, event, payload) = native_environment_job(&mut fx);
         let mounted = coordination_host::book::Coordinator::open(
@@ -1478,6 +1488,28 @@ fn actual_coordinator_claim_and_environment_attachment_gate_the_native_worker() 
         )
         .unwrap();
         assert!(worker.run(&coordinator, &job.event, fx.now).is_err());
+        if mode == "resource-replaced" {
+            let materialization = allocator
+                .store()
+                .json(
+                    &allocator
+                        .store()
+                        .json(&allocator.status(&lease_id).unwrap()["state"])
+                        .unwrap()["materialization"],
+                )
+                .unwrap();
+            let descriptor = allocator
+                .store()
+                .json(&materialization["resource"])
+                .unwrap();
+            let path = fx
+                .resources
+                .join(descriptor["resource"].as_str().unwrap())
+                .join(".openagents-env.json");
+            let mut marker: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            marker["generation"] = json!(workspace_host::artifact::token());
+            std::fs::write(path, nostr::contracts::jcs(&marker).unwrap()).unwrap();
+        }
         if mode == "drain" {
             assert_eq!(
                 attachment_control(&fx, &allocator, &grant, "drain", 94, OWNER)["status"],

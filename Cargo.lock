@@ -5937,11 +5937,14 @@ dependencies = [
  "coordination-host",
  "libc",
  "nostr",
+ "oa-boat",
  "secp256k1 0.31.1",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+ "tenancy",
+ "tokio",
  "workspace-host",
 ]
 

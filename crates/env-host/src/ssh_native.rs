@@ -733,6 +733,13 @@ impl Provider for NativeSsh {
     fn binding(&self) -> String {
         format!("{BINDING}/{}", &self.config.configuration_digest[7..])
     }
+    fn check_current(&mut self, resource: &Realized) -> Result<()> {
+        let observed = self.call(json!({"operation":"adopt","resource":resource}))?;
+        if Self::resource(&observed)? != *resource {
+            return Err("identity_mismatch: current SSH resource differs".into());
+        }
+        Ok(())
+    }
     fn create(&mut self, account: &str, key: &str) -> Create {
         if account != self.config.destination {
             return Create::Refused("not_admitted: SSH account differs".into());

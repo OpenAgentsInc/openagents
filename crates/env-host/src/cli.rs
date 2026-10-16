@@ -26,6 +26,11 @@ pub const USAGE: &str = "usage: env-host ACTION --state DIR --key-file KEY [opti
   ssh-remote   --config PRIVATE_CONFIG   remote Linux provider helper
   ssh-child    --config PRIVATE_CONFIG --request ID   internal detached child
   Use --ssh-config CLIENT_CONFIG instead of --provider-root for native SSH.
+  gce-profile  --gce-config CONFIG       show the pinned cloud image component
+  gce-observe  --gce-config CONFIG --instance NAME   observe an allowed VM
+  gce-funding  --gce-config CONFIG       show provider funding and holds
+  Use --gce-config CONFIG instead of --provider-root for sponsored GCE.
+  --gce-credentials metadata|gcloud selects its operator credentials.
   transport    --provider-root DIR       show the exact controller endpoint
   invoke       --input REQUEST          sign with the caller key; no state needed
   serve|recover --provider-root DIR --input BUNDLE";
@@ -97,6 +102,26 @@ pub fn run(args: Vec<String>) -> Result<Value> {
             .map_err(|_| "malformed: SSH client configuration")?;
         return crate::ssh_native::NativeSsh::new(config)?.observe();
     }
+    let cloud = || -> Result<crate::gce::GceEnvironments<oa_boat::gce::Rest>> {
+        let config: crate::gce::Config =
+            serde_json::from_value(json_file(&option("--gce-config")?)?)
+                .map_err(|_| "malformed: cloud provider configuration")?;
+        let source = match option("--gce-credentials").as_deref() {
+            Ok("gcloud") => oa_boat::gce::TokenSource::Gcloud,
+            Ok("metadata") | Err(_) => oa_boat::gce::TokenSource::Metadata,
+            Ok(_) => return Err("unsupported_feature: cloud credential source".into()),
+        };
+        let compute = oa_boat::gce::Rest::new(config.project.clone(), source);
+        crate::gce::GceEnvironments::open(config, compute)
+    };
+    if matches!(action, "gce-profile" | "gce-observe" | "gce-funding") {
+        let provider = cloud()?;
+        return match action {
+            "gce-profile" => Ok(provider.profile()),
+            "gce-observe" => provider.observe_existing(&option("--instance")?),
+            _ => provider.funding_statement(),
+        };
+    }
     let secret = read_secret(Path::new(&option("--key-file")?))?;
     if action == "invoke" {
         let input = json_file(&option("--input")?)?;
@@ -128,6 +153,8 @@ pub fn run(args: Vec<String>) -> Result<Value> {
         {
             return Err("unsupported_feature: native SSH process provider requires Linux".into());
         }
+    } else if args.iter().any(|a| a == "--gce-config") {
+        Box::new(cloud()?)
     } else {
         Box::new(LocalDirectories::new(PathBuf::from(option(
             "--provider-root",

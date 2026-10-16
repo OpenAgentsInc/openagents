@@ -1,3 +1,14 @@
+## Qualify the native ENV providers on disposable accounts (#11736)
+
+Install the standalone `env-host` SSH helper and a pinned host executable on a
+disposable Linux account, then check real SSH disconnect/recovery and teardown.
+For sponsored GCE, use a dedicated test project, an approved pinned image and
+private subnet, and an operator-funded money workspace. Confirm the provider's
+original automatic-deletion receipt and compare its retained unknown operating
+hold with the actual bill before settling it. Rust fixtures cover the complete
+local lifecycle, process generations, and fake-funded Compute recovery; they
+make no production SSH or GCE calls. Frozen Coder programs stay unchanged.
+
 ## Review the Blue Rush V2 branding before publishing (#11838)
 
 Review `http://127.0.0.1:4390/studios/blue-rush-v2` and its `/interview`
