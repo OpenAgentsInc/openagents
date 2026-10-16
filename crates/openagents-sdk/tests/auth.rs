@@ -274,6 +274,8 @@ async fn caller_storage_restores_only_the_same_live_account_and_deployment() {
     let status = Arc::new(AtomicUsize::new(200));
     let (client, _) = mocked(Case::Signed, status.clone()).await;
     let session = client.authenticate(&key()).await.unwrap();
+    assert_eq!(session.bearer_token(), key());
+    assert!(!format!("{session:?}").contains(&key()));
     let memory = Memory::default();
     assert!(memory.load(client.deployment()).unwrap().is_none());
     memory.save(&session.record()).unwrap();

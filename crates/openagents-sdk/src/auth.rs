@@ -91,6 +91,11 @@ impl Session {
     pub fn record(&self) -> CredentialRecord {
         self.record.clone()
     }
+    /// Bearer for an explicitly configured OpenAgents service, such as Coder sync.
+    /// Keep it out of logs and ordinary application files.
+    pub fn bearer_token(&self) -> &str {
+        &self.record.credential
+    }
     pub(crate) fn token(&self) -> &str {
         &self.record.credential
     }
