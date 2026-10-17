@@ -2,6 +2,8 @@
 """Prepare the isolated Computers candidate's numeric secret versions."""
 import argparse
 import hashlib
+from pathlib import Path
+import tempfile
 import json
 import re
 import secrets
@@ -93,18 +95,35 @@ def deploy(commit,digest,template,vcpu,memory):
         if previous['metadata'].get('labels',{}).get('openagents-issue')!='11814': raise RuntimeError('The candidate service belongs to another deployment.')
         old=previous['metadata']['labels'].get('openagents-commit')
         if old: subprocess.run(['git','merge-base','--is-ancestor',old,current_commit],check=True)
-    env='OA_COMPUTERS_DATABASE_URL='+PREFIX+'-computers-proxy-dsn:1,OA_COMPUTERS_TOKEN='+PREFIX+'-computers-token:1,SPACE_API_TOKEN='+PREFIX+'-computers-space-token:1,/var/run/space-registry/registry.json='+PREFIX+'-computers-'+registry_key+':1'
-    result=cloud('run','deploy',name,'--region='+REGION,'--service-account='+identity,
-        '--execution-environment=gen2','--ingress=internal','--allow-unauthenticated',
-        '--min-instances=1','--max-instances=1','--concurrency=16','--timeout=300',
-        '--no-cpu-throttling','--network='+PREFIX,'--subnet='+PREFIX+'-run','--vpc-egress=all-traffic',
-        '--labels='+LABELS+',openagents-commit='+current_commit+',openagents-image-source='+commit,
-        '--container=computers-1','--image='+image+'@'+digest,'--cpu=1','--memory=512Mi','--port=8080','--depends-on=db-proxy',
-        '--set-secrets='+env,'--set-env-vars=OA_COMPUTERS_REGISTRY_FILE=/var/run/space-registry/registry.json,OA_COMPUTERS_KEEP_STOPPED_DAYS=1',
-        '--container=db-proxy','--image=gcr.io/cloud-sql-connectors/cloud-sql-proxy@sha256:86e4f3cc266020e7ee07740df78d7511e2c340c274b56f84d80b7251913af9ad',
-        '--cpu=1','--memory=128Mi',
-        '--args=--private-ip,--structured-logs,--health-check,--http-address=0.0.0.0,--http-port=9090,--address=127.0.0.1,--port=5432,--max-connections=32,'+PROJECT+':'+REGION+':'+PREFIX,
-        '--startup-probe=httpGet.path=/startup,httpGet.port=9090,periodSeconds=2,timeoutSeconds=1,failureThreshold=30')
+    labels=dict(pair.split('=',1) for pair in LABELS.split(','))
+    labels.update({'openagents-commit':current_commit,'openagents-image-source':commit})
+    env=[{'name':'OA_COMPUTERS_REGISTRY_FILE','value':'/var/run/space-registry/registry.json'},
+         {'name':'OA_COMPUTERS_KEEP_STOPPED_DAYS','value':'1'}]
+    for variable,key in (('OA_COMPUTERS_DATABASE_URL','proxy-dsn'),('OA_COMPUTERS_TOKEN','token'),('SPACE_API_TOKEN','space-token')):
+        env.append({'name':variable,'valueFrom':{'secretKeyRef':{'name':PREFIX+'-computers-'+key,'key':'1'}}})
+    spec={'apiVersion':'serving.knative.dev/v1','kind':'Service','metadata':{'name':name,'labels':labels,'annotations':{'run.googleapis.com/ingress':'internal'}},
+      'spec':{'template':{'metadata':{'labels':labels,'annotations':{
+        'run.googleapis.com/execution-environment':'gen2','run.googleapis.com/cpu-throttling':'false',
+        'autoscaling.knative.dev/minScale':'1','autoscaling.knative.dev/maxScale':'1',
+        'run.googleapis.com/vpc-access-egress':'all-traffic',
+        'run.googleapis.com/network-interfaces':json.dumps([{'network':PREFIX,'subnetwork':PREFIX+'-run'}]),
+        'run.googleapis.com/container-dependencies':json.dumps({'computers':['db-proxy']})}},
+       'spec':{'serviceAccountName':identity,'containerConcurrency':16,'timeoutSeconds':300,'containers':[
+        {'name':'computers','image':image+'@'+digest,'ports':[{'containerPort':8080,'name':'http1'}],
+         'resources':{'limits':{'cpu':'1','memory':'512Mi'}},'env':env,
+         'volumeMounts':[{'name':'registry','mountPath':'/var/run/space-registry'}],
+         'startupProbe':{'tcpSocket':{'port':8080},'periodSeconds':2,'timeoutSeconds':1,'failureThreshold':30}},
+        {'name':'db-proxy','image':'gcr.io/cloud-sql-connectors/cloud-sql-proxy@sha256:86e4f3cc266020e7ee07740df78d7511e2c340c274b56f84d80b7251913af9ad',
+         'resources':{'limits':{'cpu':'1','memory':'128Mi'}},
+         'args':['--private-ip','--structured-logs','--health-check','--http-address=0.0.0.0','--http-port=9090','--address=127.0.0.1','--port=5432','--max-connections=32',PROJECT+':'+REGION+':'+PREFIX],
+         'startupProbe':{'httpGet':{'path':'/startup','port':9090},'periodSeconds':2,'timeoutSeconds':1,'failureThreshold':30}}],
+        'volumes':[{'name':'registry','secret':{'secretName':PREFIX+'-computers-'+registry_key,'items':[{'key':'1','path':'registry.json'}]}}]}},
+       'traffic':[{'latestRevision':True,'percent':100}]}}
+    scratch=Path(subprocess.check_output(['openagents','scratch'],text=True).strip())
+    with tempfile.TemporaryDirectory(prefix='space-computers-',dir=scratch) as directory:
+        config_path=Path(directory)/'service.json';config_path.write_text(json.dumps(spec));config_path.chmod(0o600)
+        result=cloud('run','services','replace',str(config_path),'--region='+REGION)
+    cloud('run','services','add-iam-policy-binding',name,'--region='+REGION,'--member=allUsers','--role=roles/run.invoker')
     print(json.dumps({'service':name,'url':result['status']['url'],'image':digest,'image_source':commit,'deployment_source':current_commit,'template':template,'qualification_only':True}))
 
 
