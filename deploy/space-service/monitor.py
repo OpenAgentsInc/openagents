@@ -12,6 +12,10 @@ from database_check import credential
 
 PROJECT='openagentsgemini'
 PREFIX='custom.googleapis.com/openagents/space/'
+SERVICES={'space-api','space-admin-api','space-cluster-controller','space-credmgr-authority',
+    'space-data-plane','space-internal-api','space-credential-manager','space-node-api',
+    'space-node-ctl','space-node-manager','space-runtime-manager','space-sandbox-manager',
+    'space-template-manager','space-volume-manager'}
 
 
 def kube(*args):
@@ -28,8 +32,9 @@ def collect():
         measurements['nodes_ready']=sum(any(c['type']=='Ready' and c['status']=='True' for c in n['status']['conditions']) for n in nodes if n['metadata']['name'] in expected)
         pods=kube('-n','space','get','pods','-l','openagents-native-service=true','-o','json')['items']
         pods=[p for p in pods if p['status']['phase']!='Succeeded' and not p['metadata'].get('deletionTimestamp')]
-        ready=sum(any(c['type']=='Ready' and c['status']=='True' for c in p['status'].get('conditions',[])) for p in pods)
-        measurements['services_ready_ratio']=ready/len(pods) if pods else 0
+        ready={name for p in pods if any(c['type']=='Ready' and c['status']=='True' for c in p['status'].get('conditions',[]))
+            for name in SERVICES if p['metadata']['name'].startswith(name+'-')}
+        measurements['services_ready_ratio']=len(ready)/len(SERVICES)
         summary=kube('get','--raw','/api/v1/nodes/oa-space-service-worker/proxy/stats/summary')
         disk=summary['node']['runtime']['imageFs']
         if disk['capacityBytes']!=322122547200: raise RuntimeError('The measured worker filesystem differs from its data disk.')
