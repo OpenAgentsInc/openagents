@@ -1,0 +1,69 @@
+{
+  "schema": "openagents.computers.delete_retry_verification.v1",
+  "issue": 11812,
+  "tested_commit": "0ef037a3bedefb838ac60d546b3e54ee751b1fba",
+  "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "binary_sha256": "9ba425e52584d0ce4fd459b4e9c88a2b0da4615f4f43e5283925fa0639b8717d",
+  "commands": [
+    "cargo test --locked -p computer-driver --features space",
+    "cargo test --locked -p computer-conformance --features space --test space",
+    "cargo test --locked -p coder-working-computer --test on_driver",
+    "cargo test --locked -p oa-computers --features space",
+    "cargo build --locked -p oa-computers --features space --bin oa-computers"
+  ],
+  "checks": [
+    {
+      "suite": "driver",
+      "passed": 23,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "suite": "conformance",
+      "passed": 13,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "suite": "lifecycle",
+      "passed": 8,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "suite": "computers",
+      "passed": 60,
+      "failed": 0,
+      "ignored": 0
+    }
+  ],
+  "total_passed": 104,
+  "default_test_stack": true,
+  "database": "Disposable loopback PostgreSQL; no customer or owner account",
+  "live": {
+    "report": "delete-retry-live.json",
+    "sha256": "3403130eb389b4120aa9da214a576192d7e3a0f0f5b8139c2f52b4c31502e940",
+    "memory_mib": 4096,
+    "buffer_bytes": 1073741824,
+    "api_restarts": 1,
+    "revisit_seconds": 1,
+    "lease_seconds": 6,
+    "stopped_observation_seconds": 15,
+    "retry_safe_conflicts": 9,
+    "successful_delete_operation": "op_01a14783-bfcc-727b-bb3a-9964001229c9",
+    "private_storage_absent_after_delete": true
+  },
+  "logs": {
+    "path": "delete-retry-logs.tar.gz",
+    "sha256": "345d1bb65f0a63d8b8954fd6658d28cca729e0ddb979e4e43542ba8c2804fb21",
+    "normalization": "Checkout paths replaced with <checkout>; timestamps omitted from archive metadata"
+  },
+  "raw_selected_archive_sha256": "e0d94e0ec2ac5f007e2d46131ace6e4fe27adb28021affe85994d38e4e5377ff",
+  "raw_live_report_sha256": "a88d8644e84d6bc3fd0d46d7a966097fda8fcaa3c6657267a6289fdcfeeb9460",
+  "scope": [
+    "Only the exact pinned terminal snapshot-upload delete conflict permits a separately saved retry.",
+    "Lost replies, missing operation lookups, and other terminal failures remain unknown.",
+    "Private storage observation is acceptance tooling, not a production host probe.",
+    "Initial medium and large two-cycle proof remains separate; this run targets short-lease restart and delete."
+  ]
+}
