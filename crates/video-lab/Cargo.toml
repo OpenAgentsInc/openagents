@@ -10,8 +10,10 @@ description = "Video Lab's kind for the Labs platform: cut, shot and scene docum
 # speech, text layout) arrive as Measurements. `runner` is the Labs
 # worker's ffmpeg jobs that make them, and the only module that reads files.
 [dependencies]
+ab_glyph = "0.2.32"
 base64 = "0.22"
 lab-kit = { path = "../lab-kit" }
+png = "0.18.1"
 sha2 = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }

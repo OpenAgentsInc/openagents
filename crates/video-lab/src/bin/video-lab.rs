@@ -15,10 +15,13 @@
 //!
 //! A refusal is `{"refused": message, "code"}`; a malformed request is `{"error"}`.
 //!
-//! `video-lab render-job|frames-job|measure-job --ffmpeg PATH --ffprobe PATH
-//! [--quality preview|review]` is a Labs worker's handler for that job
-//! (`video_lab::runner`): the job on stdin, the handler output on stdout, and
-//! exit status 1 with the reason on stderr when it can't run.
+//! `video-lab NAME-job --ffmpeg PATH --ffprobe PATH [--quality preview|review]
+//! [--fonts DIR] [--whisper PATH --model PATH [--words PATH]] [--python PATH
+//! --music PATH]` is a Labs worker's handler for job NAME (`render`, `frames`,
+//! `measure`, `transcribe`, `import` or `score`; `video_lab::runner`): the job
+//! on stdin, the handler output on stdout, and exit status 1 with the reason
+//! on stderr when it can't run. `--fonts` is the film fonts folder with
+//! `Geist-Regular.ttf` for captions; `--words` replaces `lab_words.json`.
 
 use std::io::Read as _;
 
@@ -137,11 +140,36 @@ fn job(name: &str, args: &[String]) -> std::process::ExitCode {
             return std::process::ExitCode::from(2);
         }
     };
-    let tools = video_lab::runner::Tools {
-        ffmpeg,
-        ffprobe,
-        quality,
-    };
+    let mut tools = video_lab::runner::Tools::new(ffmpeg, ffprobe);
+    tools.quality = quality;
+    if let Some(dir) = flag("--fonts") {
+        match video_lab::text::Fonts::with_film_fonts(&dir) {
+            Ok(fonts) => tools.fonts = fonts,
+            Err(why) => {
+                eprintln!("{why}");
+                return std::process::ExitCode::from(2);
+            }
+        }
+    }
+    if let (Some(cli), Some(model)) = (flag("--whisper"), flag("--model")) {
+        let words = match flag("--words") {
+            Some(path) => match std::fs::read_to_string(&path)
+                .map_err(|e| e.to_string())
+                .and_then(|t| video_lab::runner::Words::from_json(&t))
+            {
+                Ok(words) => words,
+                Err(why) => {
+                    eprintln!("{why}");
+                    return std::process::ExitCode::from(2);
+                }
+            },
+            None => video_lab::runner::Words::default(),
+        };
+        tools.whisper = Some(video_lab::runner::Whisper { cli, model, words });
+    }
+    if let (Some(python), Some(script)) = (flag("--python"), flag("--music")) {
+        tools.score = Some(video_lab::runner::Score { python, script });
+    }
     let mut input = Vec::new();
     let dir = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
     let result = std::io::stdin()

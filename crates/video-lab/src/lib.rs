@@ -11,7 +11,9 @@
 //!   refused), times the chat passes, and voiceover caption pacing;
 //! - [`timeline`]: the magnetic timeline's intents;
 //! - [`private`]: which files stay on their computer (`lab_private.json`);
-//! - [`runner`]: the Labs worker's `render`, `frames` and `measure` jobs.
+//! - [`runner`]: the Labs worker's jobs: `render`, `frames`, `measure`,
+//!   `transcribe`, `import` and `score`;
+//! - [`text`]: title cards and captions, drawn as `cut.py` draws them.
 //!
 //! Refusals keep the Lab's exact words. `scripts/film/lab.py` and `cut.py`
 //! call this crate through the `video-lab` program (`src/bin/video-lab.rs`).
@@ -24,6 +26,7 @@ pub mod patch;
 pub mod private;
 pub mod runner;
 pub mod schema;
+pub mod text;
 pub mod timeline;
 
 use lab_kit::{
@@ -40,8 +43,7 @@ pub const TOOLS: &str = include_str!("../tools.json");
 
 pub struct VideoKind;
 
-/// The job types: `runner` runs the first three; transcription (whisper),
-/// the score (`music.py`) and import still run in `scripts/film`.
+/// The job types, all run by [`runner`].
 pub const JOB_TYPES: [&str; 6] = [
     "render",
     "frames",
@@ -58,6 +60,7 @@ fn requirements(job: &str) -> Requirements {
         memory_bytes: 2 * 1024 * 1024 * 1024,
         tools: match job {
             "transcribe" => vec!["whisper-cli".into(), "ffmpeg".into()],
+            "score" => vec!["python3".into(), "ffmpeg".into()],
             _ => vec!["ffmpeg".into()],
         },
         max_seconds: if job == "render" { 3600 } else { 600 },
@@ -194,6 +197,7 @@ impl LabKind for VideoKind {
                         vec!["verse".into(), "ffmpeg".into()]
                     }
                     "transcribe" => vec!["whisper-cli".into(), "ffmpeg".into()],
+                    "score" => vec!["python3".into(), "ffmpeg".into()],
                     _ => vec!["ffmpeg".into()],
                 },
                 max_seconds: if job_type == "render" { 3600 } else { 600 },

@@ -9,18 +9,20 @@
 //! checked against the version's checksum. A path a document names is never
 //! opened as written.
 //!
-//! What these runners leave to the Python renderer for now (`cut.py`): title
-//! text and captions are drawn by `cut.py` with the film fonts, so here a
-//! title is its background (black, or its `under` clip) and captions are not
-//! burned in; a held frame doesn't push in; speech isn't levelled against the
-//! music; and beats and transcripts aren't measured (`<clip>.beats.json`,
-//! whisper). Shots and scenes render in Blender and Verse, which these
-//! runners don't run.
+//! A job finds a file in the worker's `local_assets` (private files on an
+//! enrolled host) or its `files` (the space's stored files it downloaded for
+//! this run), both by checksum. Titles and captions are drawn here
+//! ([`crate::text`]), a held frame pushes in, and speech and voiceovers are
+//! levelled and the music ducked under them, as `cut.py` does. `measure`
+//! reads a clip's `<clip>.beats.json` and `<clip>.speech.json` when the
+//! version lists them. Shots and scenes render in Blender and Verse, which
+//! these runners don't run.
 
 use std::collections::BTreeMap;
 use std::fs::File;
+use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use base64::Engine as _;
 use lab_kit::{ArtifactRole, Version};
@@ -28,7 +30,11 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::measure::{Measured, Source, Span};
+use crate::measure::{Beat, CaptionLayout, Measured, Source, Span, Speech, Title, TitleLine};
+use crate::text::{self, Fonts, Grain};
+
+mod sources;
+pub use sources::{Score, Whisper, Words, fix_words, pauses, score_args};
 
 /// A job may return at most this many bytes in one file.
 pub const MAX_OUTPUT: u64 = 12 * 1024 * 1024;
@@ -45,12 +51,32 @@ pub enum Quality {
     Review,
 }
 
-/// The programs a job runs, named by absolute path.
-#[derive(Clone, Debug)]
+/// The programs a job runs, named by absolute path, and the fonts it draws
+/// titles and captions with.
+#[derive(Clone)]
 pub struct Tools {
     pub ffmpeg: PathBuf,
     pub ffprobe: PathBuf,
     pub quality: Quality,
+    pub fonts: Fonts,
+    /// For `transcribe`, and for `import`'s words.
+    pub whisper: Option<Whisper>,
+    /// For `score`.
+    pub score: Option<Score>,
+}
+
+impl Tools {
+    /// ffmpeg and ffprobe at preview quality, with Paper Mono for every font.
+    pub fn new(ffmpeg: PathBuf, ffprobe: PathBuf) -> Self {
+        Self {
+            ffmpeg,
+            ffprobe,
+            quality: Quality::Preview,
+            fonts: Fonts::default(),
+            whisper: None,
+            score: None,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -58,6 +84,9 @@ struct Input {
     work: Work,
     #[serde(default)]
     local_assets: BTreeMap<String, PathBuf>,
+    /// The space's stored files the worker downloaded for this run.
+    #[serde(default)]
+    files: BTreeMap<String, PathBuf>,
 }
 
 #[derive(Deserialize)]
@@ -65,7 +94,8 @@ struct Work {
     version: Version,
 }
 
-/// Runs job `name` (`render`, `frames` or `measure`) on the worker's input,
+/// Runs job `name` (`render`, `frames`, `measure`, `transcribe`, `import` or
+/// `score`) on the worker's input,
 /// writing its intermediate files under `dir`.
 ///
 /// # Errors
@@ -75,14 +105,15 @@ pub fn handle(name: &str, input: &[u8], tools: &Tools, dir: &Path) -> Result<Val
     let input: Input =
         serde_json::from_slice(input).map_err(|_| "Read the Video job.".to_owned())?;
     let version = &input.work.version;
-    if version.schema != "cut.v1" {
+    let reads_clips = matches!(name, "transcribe" | "import");
+    if version.schema != "cut.v1" && !reads_clips {
         return Err("This computer renders cuts. Shots and scenes render in the studio.".into());
     }
     let job = Job {
         tools,
         dir,
         cut: &version.content,
-        files: files(version, &input.local_assets)?,
+        files: files(version, &input.local_assets, &input.files)?,
     };
     let outputs = match name {
         "render" => vec![job.render()?],
@@ -97,7 +128,19 @@ pub fn handle(name: &str, input: &[u8], tools: &Tools, dir: &Path) -> Result<Val
                 &serde_json::to_vec(&measured).map_err(|e| e.to_string())?,
             )]
         }
-        _ => return Err("This computer runs Video render, frames and measure jobs.".into()),
+        "transcribe" => {
+            let mut said = job.transcribe()?;
+            said["schema"] = json!(version.schema);
+            said["content_sha256"] = json!(lab_kit::digest(&version.content));
+            vec![output(
+                ArtifactRole::Export,
+                "application/json",
+                &serde_json::to_vec(&said).map_err(|e| e.to_string())?,
+            )]
+        }
+        "import" => job.import()?,
+        "score" => vec![job.score()?],
+        _ => return Err("This computer runs Video Lab's jobs: render, frames, measure, transcribe, import and score.".into()),
     };
     Ok(json!({ "outputs": outputs }))
 }
@@ -107,10 +150,14 @@ pub fn handle(name: &str, input: &[u8], tools: &Tools, dir: &Path) -> Result<Val
 fn files(
     version: &Version,
     local: &BTreeMap<String, PathBuf>,
+    stored: &BTreeMap<String, PathBuf>,
 ) -> Result<BTreeMap<String, PathBuf>, String> {
     let mut found = BTreeMap::new();
     for asset in &version.assets {
-        let Some(path) = local.get(&asset.sha256) else {
+        let Some(path) = local
+            .get(&asset.sha256)
+            .or_else(|| stored.get(&asset.sha256))
+        else {
             continue;
         };
         if sha256_file(path).as_deref() != Some(asset.sha256.as_str()) {
@@ -254,80 +301,314 @@ impl Job<'_> {
 
     /// One shot's picture for its slot and tail, as `seg-{i}.mp4`.
     fn segment(&self, i: usize, shot: &Value, tail: f64, w: u32, h: u32) -> Result<String, String> {
-        let fps = self.fps();
-        let name = shot["name"].as_str().unwrap_or_default();
-        let length = num(shot, "dur", 0.0) + tail;
         let out = self.path(&format!("seg-{i}.mp4"));
-        let encode = |crf: &str| -> Vec<String> {
-            [
-                "-an", "-c:v", "libx264", "-crf", crf, "-preset", "veryfast", "-pix_fmt", "yuv420p",
-            ]
-            .map(String::from)
-            .to_vec()
-        };
-        let mut args: Vec<String> = Vec::new();
-        let filter;
         if shot.get("title").is_some() {
-            match shot["title"]["under"]["src"].as_str() {
-                Some(src) => {
-                    let file = self.file(src)?;
-                    args.extend([
-                        "-stream_loop".into(),
-                        "-1".into(),
-                        "-i".into(),
-                        file.to_string_lossy().into_owned(),
-                    ]);
-                    filter = format!("{},fps={fps},setsar=1", fit_filter(shot, w, h));
-                }
-                None => {
-                    args.extend([
-                        "-f".into(),
-                        "lavfi".into(),
-                        "-i".into(),
-                        format!("color=c=black:s={w}x{h}:r={fps}"),
-                    ]);
-                    filter = "setsar=1".into();
-                }
-            }
-            args.extend(["-t".into(), format!("{length:.3}"), "-vf".into(), filter]);
-        } else {
-            let src = shot["src"].as_str().unwrap_or_default();
-            let file = self.file(src)?.to_string_lossy().into_owned();
-            let speed = num(shot, "speed", 1.0);
-            let mut vf = String::new();
-            if (speed - 1.0).abs() > 1e-9 {
-                vf += &format!("setpts=PTS/{speed},");
-            }
-            vf += &format!("{},fps={fps},setsar=1", fit_filter(shot, w, h));
-            args.extend(["-ss".into(), format!("{}", num(shot, "in", 0.0))]);
-            if let Some(play) = shot["play"].as_f64().filter(|p| *p < length - 1e-6) {
-                // Plays `play` seconds, then holds the last frame for the rest of the slot.
-                args.extend(["-t".into(), format!("{:.3}", play.max(1.0 / fps))]);
-                vf += &format!(",tpad=stop_mode=clone:stop_duration={length:.3}");
-            }
-            args.extend(["-i".into(), file]);
-            if let Some(over) = shot["over"]["src"].as_str() {
-                let at = num(&shot["over"], "at", 0.0);
-                args.extend(["-i".into(), self.file(over)?.to_string_lossy().into_owned()]);
-                args.extend([
-                    "-filter_complex".into(),
-                    format!(
-                        "[0:v]{vf}[base];[1:v]scale={w}:{h}:flags=lanczos,fps={fps},format=yuva444p,setpts=PTS-STARTPTS+{at}/TB[top];[base][top]overlay=eof_action=pass:format=auto,format=yuv420p"
-                    ),
-                ]);
-            } else {
-                args.extend(["-vf".into(), vf]);
-            }
-            args.extend(["-t".into(), format!("{length:.3}")]);
+            self.title(shot, tail, w, h, &out)?;
+            return Ok(out);
         }
-        args.extend(encode("16"));
-        args.push(out.clone());
-        self.ffmpeg(&args, &format!("cut the shot {name}"))?;
+        let length = num(shot, "dur", 0.0) + tail;
+        match shot["play"].as_f64().filter(|p| *p < length - 1e-6) {
+            Some(play) if num(shot, "push", 0.0) > 0.0 => self.held(i, shot, play, length, w, h)?,
+            _ => self.clip(shot, tail, w, h, &out)?,
+        }
         Ok(out)
     }
 
-    /// The whole cut: shots cut and crossfaded, the music under them, the
-    /// voiceovers and the shots' own sound mixed in, as H.264 and AAC.
+    fn encode_args(&self) -> Vec<String> {
+        [
+            "-an", "-c:v", "libx264", "-crf", "16", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+        ]
+        .map(String::from)
+        .to_vec()
+    }
+
+    /// A clip's picture for its slot: `play` seconds then its last frame held.
+    fn clip(&self, shot: &Value, tail: f64, w: u32, h: u32, out: &str) -> Result<(), String> {
+        let fps = self.fps();
+        let name = shot["name"].as_str().unwrap_or_default();
+        let length = num(shot, "dur", 0.0) + tail;
+        let src = shot["src"].as_str().unwrap_or_default();
+        let file = self.file(src)?.to_string_lossy().into_owned();
+        let speed = num(shot, "speed", 1.0);
+        let mut vf = String::new();
+        if (speed - 1.0).abs() > 1e-9 {
+            vf += &format!("setpts=PTS/{speed},");
+        }
+        vf += &format!("{},fps={fps},setsar=1", fit_filter(shot, w, h));
+        let mut args: Vec<String> = vec!["-ss".into(), format!("{}", num(shot, "in", 0.0))];
+        if let Some(play) = shot["play"].as_f64().filter(|p| *p < length - 1e-6) {
+            // Plays `play` seconds, then holds the last frame for the rest of the slot.
+            args.extend(["-t".into(), format!("{:.3}", play.max(1.0 / fps))]);
+            vf += &format!(",tpad=stop_mode=clone:stop_duration={length:.3}");
+        }
+        args.extend(["-i".into(), file]);
+        if let Some(over) = shot["over"]["src"].as_str() {
+            let at = num(&shot["over"], "at", 0.0);
+            args.extend(["-i".into(), self.file(over)?.to_string_lossy().into_owned()]);
+            args.extend([
+                "-filter_complex".into(),
+                format!(
+                    "[0:v]{vf}[base];[1:v]scale={w}:{h}:flags=lanczos,fps={fps},format=yuva444p,setpts=PTS-STARTPTS+{at}/TB[top];[base][top]overlay=eof_action=pass:format=auto,format=yuv420p"
+                ),
+            ]);
+        } else {
+            args.extend(["-vf".into(), vf]);
+        }
+        args.extend(["-t".into(), format!("{length:.3}")]);
+        args.extend(self.encode_args());
+        args.push(out.to_owned());
+        self.ffmpeg(&args, &format!("cut the shot {name}"))?;
+        Ok(())
+    }
+
+    /// An encoder that takes `w` x `h` RGB frames on stdin and writes `out`.
+    fn encoder(&self, w: u32, h: u32, out: &str) -> Result<std::process::Child, String> {
+        Command::new(&self.tools.ffmpeg)
+            .args(["-nostdin", "-hide_banner", "-v", "error", "-y"])
+            .args([
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                "-s",
+                &format!("{w}x{h}"),
+            ])
+            .args(["-r", &format!("{}", self.fps()), "-i", "-"])
+            .args(self.encode_args())
+            .arg(out)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|_| "Install ffmpeg on this computer.".to_owned())
+    }
+
+    fn finish(child: std::process::Child, what: &str) -> Result<(), String> {
+        let mut child = child;
+        drop(child.stdin.take());
+        match child.wait() {
+            Ok(s) if s.success() => Ok(()),
+            _ => Err(format!("ffmpeg couldn't {what}.")),
+        }
+    }
+
+    /// A title card (`cut.py`'s `render_title`): the lines over the backdrop
+    /// with grain, or with `"under": {"src", "in", "dim"}` over that clip.
+    fn title(&self, shot: &Value, tail: f64, w: u32, h: u32, out: &str) -> Result<(), String> {
+        let fps = self.fps();
+        let name = shot["name"].as_str().unwrap_or_default();
+        let dur = num(shot, "dur", 0.0);
+        let frames = ((dur + tail) * fps).round() as usize;
+        let title = &shot["title"];
+        let under = title["under"].is_object().then(|| &title["under"]);
+        let mut spec = title.clone();
+        if spec.get("grain").is_none() {
+            spec["grain"] = json!(under.is_none());
+        }
+        let fonts = &self.tools.fonts;
+        let lines = text::title_layout(&spec, w, h, fonts);
+        let mut grain = spec["grain"]
+            .as_bool()
+            .unwrap_or(true)
+            .then(|| Grain::new(name.len() as u64));
+        let mut base = text::backdrop(w, h);
+        let mut decoder = match under {
+            Some(u) => {
+                let file = self.file(u["src"].as_str().unwrap_or_default())?;
+                Some(
+                    Command::new(&self.tools.ffmpeg)
+                        .args([
+                            "-nostdin",
+                            "-v",
+                            "error",
+                            "-ss",
+                            &format!("{}", num(u, "in", 0.0)),
+                        ])
+                        .arg("-i")
+                        .arg(file)
+                        .args(["-vf", &format!("{},fps={fps}", fit_filter(shot, w, h))])
+                        .args(["-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::null())
+                        .spawn()
+                        .map_err(|_| "Install ffmpeg on this computer.".to_owned())?,
+                )
+            }
+            None => None,
+        };
+        let dim = under.map_or(0.0, |u| num(u, "dim", 0.0)) as f32;
+        let mut enc = self.encoder(w, h, out)?;
+        let mut sink = enc.stdin.take().ok_or("ffmpeg didn't start.")?;
+        let mut raw = vec![0u8; (w * h * 3) as usize];
+        let mut wrote = Ok(());
+        for k in 0..frames {
+            if let Some(stdout) = decoder.as_mut().and_then(|d| d.stdout.as_mut())
+                && stdout.read_exact(&mut raw).is_ok()
+            {
+                base = raw.iter().map(|&c| f32::from(c) * (1.0 - dim)).collect();
+            }
+            let frame = text::draw_title(
+                &spec,
+                &lines,
+                w,
+                h,
+                k as f64 / fps,
+                dur,
+                &base,
+                grain.as_mut(),
+                fonts,
+            );
+            if let Err(e) = sink.write_all(&frame) {
+                wrote = Err(e);
+                break;
+            }
+        }
+        drop(sink);
+        if let Some(mut d) = decoder {
+            let _ = d.kill();
+            let _ = d.wait();
+        }
+        Self::finish(enc, &format!("draw the title {name}"))?;
+        wrote.map_err(|_| format!("ffmpeg couldn't draw the title {name}."))
+    }
+
+    /// `play` seconds of the clip, then its last frame held with an eased
+    /// push-in of `push` (a fraction of the frame), `cut.py`'s `render_held`.
+    fn held(
+        &self,
+        i: usize,
+        shot: &Value,
+        play: f64,
+        length: f64,
+        w: u32,
+        h: u32,
+    ) -> Result<(), String> {
+        let fps = self.fps();
+        let name = shot["name"].as_str().unwrap_or_default();
+        let size = (w * h * 3) as usize;
+        let mut parts = Vec::new();
+        let still: Vec<u8> = if play > 0.0 {
+            let played = self.path(&format!("seg-{i}-play.mp4"));
+            let mut part = shot.clone();
+            part["play"] = Value::Null;
+            part["dur"] = json!(play);
+            self.clip(&part, 0.0, w, h, &played)?;
+            let raw = self.raw(&["-sseof".into(), "-0.25".into(), "-i".into(), played.clone()])?;
+            parts.push(played);
+            raw
+        } else {
+            let file = self.file(shot["src"].as_str().unwrap_or_default())?;
+            self.raw(&[
+                "-ss".into(),
+                format!("{}", num(shot, "in", 0.0)),
+                "-i".into(),
+                file.to_string_lossy().into_owned(),
+                "-frames:v".into(),
+                "1".into(),
+                "-vf".into(),
+                fit_filter(shot, w, h),
+            ])?
+        };
+        if still.len() < size {
+            return Err(format!("ffmpeg couldn't take the last frame of {name}."));
+        }
+        let still = &still[still.len() - size..];
+        let n = ((length - play) * fps).round() as usize;
+        let push = num(shot, "push", 0.0);
+        let hold = self.path(&format!("seg-{i}-hold.mp4"));
+        let mut enc = self.encoder(w, h, &hold)?;
+        let mut sink = enc.stdin.take().ok_or("ffmpeg didn't start.")?;
+        let mut wrote = Ok(());
+        for k in 0..n {
+            let u = (k + 1) as f64 / n.max(1) as f64;
+            let z = 1.0 + push * u * u * (3.0 - 2.0 * u);
+            if let Err(e) = sink.write_all(&zoom(still, w, h, z)) {
+                wrote = Err(e);
+                break;
+            }
+        }
+        drop(sink);
+        Self::finish(enc, &format!("hold the last frame of {name}"))?;
+        wrote.map_err(|_| format!("ffmpeg couldn't hold the last frame of {name}."))?;
+        parts.push(hold);
+        let listing = self.dir.join(format!("seg-{i}-parts.txt"));
+        let list: String = parts.iter().map(|p| format!("file '{p}'\n")).collect();
+        std::fs::write(&listing, list).map_err(|e| e.to_string())?;
+        self.ffmpeg(
+            &[
+                "-f".into(),
+                "concat".into(),
+                "-safe".into(),
+                "0".into(),
+                "-i".into(),
+                listing.to_string_lossy().into_owned(),
+                "-c".into(),
+                "copy".into(),
+                self.path(&format!("seg-{i}.mp4")),
+            ],
+            &format!("join the shot {name}"),
+        )?;
+        Ok(())
+    }
+
+    /// The frames ffmpeg decodes with `args`, as RGB bytes one after another.
+    fn raw(&self, args: &[String]) -> Result<Vec<u8>, String> {
+        let out = Command::new(&self.tools.ffmpeg)
+            .args(["-nostdin", "-v", "error"])
+            .args(args)
+            .args(["-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+            .stderr(Stdio::null())
+            .output()
+            .map_err(|_| "Install ffmpeg on this computer.".to_owned())?;
+        Ok(out.stdout)
+    }
+
+    /// The mean loudness of a file's sound (or a stretch of it), in dB.
+    fn mean_db(&self, file: &Path, start: Option<f64>, dur: Option<f64>) -> Option<f64> {
+        let mut args: Vec<String> = Vec::new();
+        if let Some(s) = start {
+            args.extend(["-ss".into(), format!("{s}")]);
+        }
+        if let Some(d) = dur {
+            args.extend(["-t".into(), format!("{d}")]);
+        }
+        args.extend([
+            "-i".into(),
+            file.to_string_lossy().into_owned(),
+            "-map".into(),
+            "0:a:0".into(),
+            "-af".into(),
+            "volumedetect".into(),
+            "-f".into(),
+            "null".into(),
+            "-".into(),
+        ]);
+        let log = self.ffmpeg(&args, "measure the sound").ok()?;
+        log.split("mean_volume: ")
+            .nth(1)?
+            .split_whitespace()
+            .next()?
+            .parse()
+            .ok()
+    }
+
+    /// How much to lift speech so it sits a little above the music around it
+    /// (`cut.py`'s `level_db`), applied after a gentle compressor.
+    fn level_db(&self, file: &Path, start: f64, dur: f64, music: Option<&Path>) -> f64 {
+        let Some(music) = music else { return 0.0 };
+        let (Some(speech), Some(bed)) = (
+            self.mean_db(file, Some(start), Some(dur)),
+            self.mean_db(music, None, None),
+        ) else {
+            return 0.0;
+        };
+        let bed = bed + 20.0 * num(self.cut, "music_gain", 1.0).max(1e-6).log10();
+        // The compressor takes about 3 dB off speech; aim 3 dB over the music.
+        (bed + 3.0 - speech + 3.0).clamp(-6.0, 24.0)
+    }
+
+    /// The whole cut: shots cut and crossfaded, captions over them, the music
+    /// ducked under the voiceovers and the shots' own sound, as H.264 and AAC.
     fn render(&self) -> Result<Value, String> {
         let shots = self.shots();
         if shots.is_empty() {
@@ -361,6 +642,50 @@ impl Job<'_> {
             }
             label = next;
         }
+        let mut n = shots.len();
+        let mut caps: Vec<Value> = self.cut["captions"].as_array().cloned().unwrap_or_default();
+        caps.sort_by(|a, b| num(a, "at", 0.0).total_cmp(&num(b, "at", 0.0)));
+        if !caps.is_empty() {
+            let st = text::caption_style(self.cut, h);
+            for (j, c) in caps.iter().enumerate() {
+                let cap = text::caption_layout(
+                    c["text"].as_str().unwrap_or_default(),
+                    st,
+                    w,
+                    h,
+                    &self.tools.fonts,
+                );
+                let [x, y, bw, bh] = cap.bounds;
+                let png = self.dir.join(format!("caption-{j:03}.png"));
+                text::write_png(
+                    &png,
+                    &text::caption_rgba(&cap, &self.tools.fonts),
+                    bw.max(1) as u32,
+                    bh.max(1) as u32,
+                )?;
+                let (at, dur) = (num(c, "at", 0.0), num(c, "dur", 0.0));
+                inputs.extend([
+                    "-loop".into(),
+                    "1".into(),
+                    "-framerate".into(),
+                    format!("{fps}"),
+                    "-t".into(),
+                    format!("{dur:.3}"),
+                    "-i".into(),
+                    png.to_string_lossy().into_owned(),
+                ]);
+                let f = (dur / 4.0).min(0.15);
+                chain.push(format!(
+                    "[{n}:v]format=rgba,fade=t=in:st=0:d={f}:alpha=1,fade=t=out:st={:.3}:d={f}:alpha=1,setpts=PTS-STARTPTS+{at}/TB[c{j}]",
+                    dur - f
+                ));
+                chain.push(format!(
+                    "{label}[c{j}]overlay=x={x}:y={y}:eof_action=pass[k{j}]"
+                ));
+                label = format!("[k{j}]");
+                n += 1;
+            }
+        }
         let mut post = format!("{label}trim=end={total},setpts=PTS-STARTPTS");
         let (fade_in, fade_out) = (
             num(self.cut, "fade_in", 0.0),
@@ -374,12 +699,12 @@ impl Job<'_> {
         }
         chain.push(post + "[v]");
 
-        let mut n = shots.len();
-        let music = self.cut["music"].as_str();
-        match music {
-            Some(src) => {
-                inputs.extend(["-i".into(), self.file(src)?.to_string_lossy().into_owned()])
-            }
+        let music = match self.cut["music"].as_str() {
+            Some(src) => Some(self.file(src)?.to_path_buf()),
+            None => None,
+        };
+        match &music {
+            Some(file) => inputs.extend(["-i".into(), file.to_string_lossy().into_owned()]),
             None => {
                 inputs.extend(["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"].map(String::from))
             }
@@ -389,41 +714,64 @@ impl Job<'_> {
         } else {
             String::new()
         };
-        let mut audio = vec![format!(
-            "[{n}:a]{timing}aresample=48000,aformat=channel_layouts=stereo,atrim=end={total},asetpts=PTS-STARTPTS,volume={}{}[m]",
-            num(self.cut, "music_gain", 1.0),
-            if fade_out > 0.0 {
-                format!(",afade=t=out:st={}:d={fade_out}", total - fade_out)
-            } else {
-                String::new()
-            }
-        )];
-        n += 1;
-        let mut beds = Vec::new();
         let mut voices: Vec<Value> = self.cut["voices"].as_array().cloned().unwrap_or_default();
         if self.cut["voice"].is_object() {
             voices.insert(0, self.cut["voice"].clone());
         }
-        for (j, voice) in voices.iter().enumerate() {
+        // (file, at, length) for each voiceover, and (shot, start, length) for
+        // each shot that keeps its own sound: the music ducks under both.
+        let mut voiced = Vec::new();
+        for voice in &voices {
             let file = self.file(voice["src"].as_str().unwrap_or_default())?;
+            voiced.push((voice, file, self.probe(file)?.dur));
+        }
+        let spoken: Vec<(&Value, f64)> = shots
+            .iter()
+            .zip(&slots)
+            .filter(|(shot, _)| shot["sound"].is_object())
+            .map(|(shot, (start, _))| (shot, *start))
+            .collect();
+        let mut ducks: Vec<(f64, f64)> = spoken
+            .iter()
+            .map(|(shot, start)| (*start, num(shot, "dur", 0.0)))
+            .collect();
+        ducks.extend(voiced.iter().map(|(v, _, len)| (num(v, "at", 0.0), *len)));
+        let mut m = format!(
+            "[{n}:a]{timing}aresample=48000,aformat=channel_layouts=stereo,atrim=end={total},asetpts=PTS-STARTPTS,volume={}",
+            num(self.cut, "music_gain", 1.0)
+        );
+        if !ducks.is_empty() {
+            m += &format!(
+                ",volume='{}':eval=frame",
+                duck_expr(&ducks, num(self.cut, "music_duck", 0.2), 0.35)
+            );
+        }
+        if fade_out > 0.0 {
+            m += &format!(",afade=t=out:st={}:d={fade_out}", total - fade_out);
+        }
+        let mut audio = vec![m + "[m]"];
+        n += 1;
+        let compress = "acompressor=threshold=-26dB:ratio=3:attack=5:release=150";
+        let mut beds = Vec::new();
+        for (j, (voice, file, len)) in voiced.iter().enumerate() {
             inputs.extend(["-i".into(), file.to_string_lossy().into_owned()]);
             let ms = (num(voice, "at", 0.0) * 1000.0).round() as u64;
+            // Lifted like a person talking on screen, so the two sit at one level.
+            let lift = self.level_db(file, 0.0, *len, music.as_deref());
             audio.push(format!(
-                "[{n}:a:0]aresample=48000,aformat=channel_layouts=stereo,volume={},adelay={ms}|{ms}[vo{j}]",
+                "[{n}:a:0]aresample=48000,aformat=channel_layouts=stereo,{compress},volume={lift:.1}dB,volume={},adelay={ms}|{ms}[vo{j}]",
                 num(voice, "gain", 1.0)
             ));
             beds.push(format!("[vo{j}]"));
             n += 1;
         }
-        for (j, (shot, (start, _))) in shots.iter().zip(&slots).enumerate() {
-            if !shot["sound"].is_object() {
-                continue;
-            }
+        for (j, (shot, start)) in spoken.iter().enumerate() {
             let dur = num(shot, "dur", 0.0);
+            let at = num(shot, "in", 0.0);
             let file = self.file(shot["src"].as_str().unwrap_or_default())?;
             inputs.extend([
                 "-ss".into(),
-                format!("{}", num(shot, "in", 0.0)),
+                format!("{at}"),
                 "-t".into(),
                 format!("{dur:.3}"),
                 "-i".into(),
@@ -431,22 +779,26 @@ impl Job<'_> {
             ]);
             let ms = (start * 1000.0).round() as u64;
             let f = (dur / 4.0).min(0.05);
+            let lift = self.level_db(file, at, dur, music.as_deref());
             audio.push(format!(
-                "[{n}:a:0]aresample=48000,aformat=channel_layouts=stereo,atrim=end={dur:.3},asetpts=PTS-STARTPTS,afade=t=in:d={f},afade=t=out:st={:.3}:d={f},volume={},adelay={ms}|{ms}[sp{j}]",
+                "[{n}:a:0]aresample=48000,aformat=channel_layouts=stereo,atrim=end={dur:.3},asetpts=PTS-STARTPTS,afade=t=in:d={f},afade=t=out:st={:.3}:d={f},{compress},volume={lift:.1}dB,volume={},adelay={ms}|{ms}[sp{j}]",
                 dur - f,
                 num(&shot["sound"], "gain", 1.0)
             ));
             beds.push(format!("[sp{j}]"));
             n += 1;
         }
-        audio.push(if beds.is_empty() {
-            "[m]anull[a]".into()
-        } else {
+        let loudnorm = "loudnorm=I=-14:TP=-1.0:LRA=11";
+        audio.push(if !beds.is_empty() {
             format!(
-                "[m]{}amix=inputs={}:normalize=0:duration=first[a]",
+                "[m]{}amix=inputs={}:normalize=0:duration=first,{loudnorm}[a]",
                 beds.concat(),
                 1 + beds.len()
             )
+        } else if music.is_none() {
+            "[m]anull[a]".into()
+        } else {
+            format!("[m]{loudnorm}[a]")
         });
         let out = self.path("render.mp4");
         let crf = if self.tools.quality == Quality::Preview {
@@ -590,38 +942,86 @@ impl Job<'_> {
     }
 
     /// The facts `check` needs about the cut's files: each clip's size, rate,
-    /// length, sound and still stretches; the voiceovers' and music's lengths;
-    /// and which overlays exist.
+    /// length, sound, still stretches, beats and speech; title and caption
+    /// layouts in the render's fonts; the voiceovers' and music's lengths;
+    /// and which overlays exist (`cut.py`'s `measure`).
     fn measure(&self) -> Result<Measured, String> {
         let (w, h) = self.size();
+        let fonts = &self.tools.fonts;
         let mut m = Measured {
             size: Some([w, h]),
             ..Measured::default()
         };
         for shot in self.shots() {
-            if let Some(src) = shot["src"].as_str()
-                && !m.sources.contains_key(src)
-            {
-                let source = match self.files.get(src) {
-                    Some(file) => {
-                        let mut s = self.probe(file)?;
-                        s.stills = self.stills(file)?;
-                        s
+            if shot.get("title").is_some() {
+                let mut spec = shot["title"].clone();
+                let mut title = Title::default();
+                if let Some(under) = spec["under"]["src"].as_str()
+                    && !self.files.contains_key(under)
+                {
+                    title.under_missing = Some(under.to_owned());
+                    if let Some(o) = spec.as_object_mut() {
+                        o.remove("under");
                     }
-                    None => Source::default(),
-                };
-                m.sources.insert(
-                    src.to_owned(),
-                    Source {
-                        path: src.to_owned(),
-                        name: file_name(src).to_owned(),
-                        ..source
-                    },
-                );
+                }
+                title.lines = text::title_layout(&spec, w, h, fonts)
+                    .into_iter()
+                    .map(|l| TitleLine {
+                        text: l.text,
+                        px: l.px,
+                        bounds: l.bounds,
+                    })
+                    .collect();
+                m.titles
+                    .insert(shot["name"].as_str().unwrap_or_default().to_owned(), title);
+                continue;
             }
             if let Some(over) = shot["over"]["src"].as_str() {
                 m.files
                     .insert(over.to_owned(), self.files.contains_key(over));
+            }
+            let Some(src) = shot["src"].as_str() else {
+                continue;
+            };
+            let mut source = m.sources.remove(src).unwrap_or_else(|| Source {
+                path: src.to_owned(),
+                name: file_name(src).to_owned(),
+                ..Source::default()
+            });
+            if let Some(file) = self.files.get(src) {
+                if !source.exists {
+                    let probed = self.probe(file)?;
+                    source = Source {
+                        path: source.path,
+                        name: source.name,
+                        beats: self.sidecar::<Vec<Beat>>(src, "beats").unwrap_or_default(),
+                        ..probed
+                    };
+                }
+                if shot["sound"].is_object() {
+                    if source.speech.is_none() {
+                        source.speech = self.sidecar::<Speech>(src, "speech");
+                    }
+                } else if source.stills.is_empty() {
+                    source.stills = self.stills(file)?;
+                }
+            }
+            m.sources.insert(src.to_owned(), source);
+        }
+        let caps = self.cut["captions"].as_array().cloned().unwrap_or_default();
+        if !caps.is_empty() {
+            let st = text::caption_style(self.cut, h);
+            m.caption_px = Some(st.px);
+            for c in &caps {
+                let t = c["text"].as_str().unwrap_or_default();
+                let cap = text::caption_layout(t, st, w, h, fonts);
+                m.captions.insert(
+                    t.to_owned(),
+                    CaptionLayout {
+                        lines: cap.lines.len() as u32,
+                        bounds: cap.bounds.map(|v| v as f64),
+                    },
+                );
             }
         }
         let mut voices: Vec<Value> = self.cut["voices"].as_array().cloned().unwrap_or_default();
@@ -640,6 +1040,16 @@ impl Job<'_> {
             });
         }
         Ok(m)
+    }
+
+    /// A clip's `<clip>.{what}.json` beside it, when the version lists it.
+    fn sidecar<T: serde::de::DeserializeOwned>(&self, src: &str, what: &str) -> Option<T> {
+        let stem = match src.rsplit_once('.') {
+            Some((stem, ext)) if !ext.contains('/') => stem,
+            _ => src,
+        };
+        let file = self.files.get(&format!("{stem}.{what}.json"))?;
+        serde_json::from_slice(&std::fs::read(file).ok()?).ok()
     }
 
     /// Size as shown (a rotation flag applied), rate, length and sound.
@@ -742,6 +1152,56 @@ impl Job<'_> {
     }
 }
 
+/// An ffmpeg volume expression: 1 outside the slots, `level` inside them,
+/// easing down over `ramp` seconds before each and back up after it.
+fn duck_expr(slots: &[(f64, f64)], level: f64, ramp: f64) -> String {
+    let terms: Vec<String> = slots
+        .iter()
+        .map(|(a, dur)| {
+            let b = a + dur;
+            format!(
+                "clip(min((t-{:.3})/{ramp},({:.3}-t)/{ramp}),0,1)",
+                a - ramp,
+                b + ramp
+            )
+        })
+        .collect();
+    if terms.is_empty() {
+        "1".into()
+    } else {
+        format!("1-{:.3}*min(1,{})", 1.0 - level, terms.join("+"))
+    }
+}
+
+/// `still` (RGB, `w` x `h`) scaled by `z` about its center, bilinear.
+fn zoom(still: &[u8], w: u32, h: u32, z: f64) -> Vec<u8> {
+    if (z - 1.0).abs() < 1e-9 {
+        return still.to_vec();
+    }
+    let (wf, hf) = (f64::from(w), f64::from(h));
+    let (cx, cy) = (wf / 2.0, hf / 2.0);
+    let at = |x: i64, y: i64, k: usize| -> f64 {
+        let x = x.clamp(0, i64::from(w) - 1) as usize;
+        let y = y.clamp(0, i64::from(h) - 1) as usize;
+        f64::from(still[(y * w as usize + x) * 3 + k])
+    };
+    let mut out = Vec::with_capacity(still.len());
+    for y in 0..h {
+        let sy = (f64::from(y) + 0.5) / z + cy - cy / z - 0.5;
+        let (y0, fy) = (sy.floor() as i64, sy - sy.floor());
+        for x in 0..w {
+            let sx = (f64::from(x) + 0.5) / z + cx - cx / z - 0.5;
+            let (x0, fx) = (sx.floor() as i64, sx - sx.floor());
+            for k in 0..3 {
+                let top = at(x0, y0, k) * (1.0 - fx) + at(x0 + 1, y0, k) * fx;
+                let bottom = at(x0, y0 + 1, k) * (1.0 - fx) + at(x0 + 1, y0 + 1, k) * fx;
+                out.push((top * (1.0 - fy) + bottom * fy).round() as u8);
+            }
+        }
+    }
+    out
+}
+
 fn read_bounded(path: &Path) -> Result<Vec<u8>, String> {
     let size = std::fs::metadata(path).map_err(|e| e.to_string())?.len();
     if size > MAX_OUTPUT {
@@ -770,11 +1230,7 @@ mod tests {
 
     /// The tools, or `None` (the test is skipped) on a computer without ffmpeg.
     fn tools() -> Option<Tools> {
-        Some(Tools {
-            ffmpeg: find("ffmpeg")?,
-            ffprobe: find("ffprobe")?,
-            quality: Quality::Preview,
-        })
+        Some(Tools::new(find("ffmpeg")?, find("ffprobe")?))
     }
 
     struct Fixture {
@@ -973,6 +1429,263 @@ mod tests {
         assert!(err.ends_with("isn't the file this version uses."), "{err}");
         let _ = path;
         assert!(handle("transcribe", &input(&f, cut("x")), &tools, &work).is_err());
+        assert!(handle("lift", &input(&f, cut("x")), &tools, &work).is_err());
         assert!(handle("render", b"{}", &tools, &work).is_err());
+    }
+
+    /// The mean of channel 0 over a box of a decoded frame.
+    fn mean(raw: &[u8], w: u32, x0: u32, y0: u32, x1: u32, y1: u32) -> f64 {
+        let mut sum = 0.0;
+        for y in y0..y1 {
+            for x in x0..x1 {
+                sum += f64::from(raw[((y * w + x) * 3) as usize]);
+            }
+        }
+        sum / f64::from((x1 - x0) * (y1 - y0))
+    }
+
+    #[test]
+    fn titles_captions_and_push_ins_are_drawn() {
+        let Some(tools) = tools() else { return };
+        let f = fixture(&tools, "text");
+        let work = f.dir.join("work");
+        let film = json!({
+            "fps": 30, "size": [320, 180], "out": "~/out.mp4",
+            "captions": [{"text": "Every edit is a version", "at": 1.6, "dur": 0.8}],
+            "shots": [
+                {"name": "card", "title": {"lines": [{"text": "OPENAGENTS", "size": 0.12, "weight": "bold"}]}, "dur": 1.5},
+                {"name": "hold", "src": "~/clips/still.mp4", "in": 0, "dur": 1.0, "play": 0.3, "push": 0.2},
+                {"name": "end", "src": "~/clips/still.mp4", "in": 0, "dur": 0.5}
+            ]
+        });
+        let job = Job {
+            tools: &tools,
+            dir: &work,
+            cut: &film,
+            files: files(
+                &serde_json::from_slice::<Input>(&input(&f, film.clone()))
+                    .unwrap()
+                    .work
+                    .version,
+                &f.local,
+                &BTreeMap::new(),
+            )
+            .unwrap(),
+        };
+        // The card: dark at the start, its line in bright letters once it has risen.
+        let seg = job.segment(0, &film["shots"][0], 0.0, 320, 180).unwrap();
+        let first = job
+            .raw(&["-i".into(), seg.clone(), "-frames:v".into(), "1".into()])
+            .unwrap();
+        let late = job
+            .raw(&[
+                "-ss".into(),
+                "1.4".into(),
+                "-i".into(),
+                seg,
+                "-frames:v".into(),
+                "1".into(),
+            ])
+            .unwrap();
+        let bright = |raw: &[u8]| raw.iter().filter(|&&c| c > 150).count();
+        assert_eq!(bright(&first[..320 * 180 * 3]), 0);
+        assert!(bright(&late[..320 * 180 * 3]) > 300, "{}", bright(&late));
+        // The hold plays 0.3 s and fills its slot.
+        let seg = job.segment(1, &film["shots"][1], 0.0, 320, 180).unwrap();
+        let probed = job.probe(Path::new(&seg)).unwrap();
+        assert!((probed.dur - 1.0).abs() < 0.1, "{}", probed.dur);
+
+        // The whole cut, with the caption's dark band over the grey clip.
+        let out = handle("render", &input(&f, film.clone()), &tools, &work).unwrap();
+        let file = work.join("captioned.mp4");
+        std::fs::write(&file, decode(&out["outputs"][0])).unwrap();
+        let probed = job.probe(&file).unwrap();
+        assert!((probed.dur - 3.0).abs() < 0.15, "{}", probed.dur);
+        let frame_at = |t: &str| {
+            job.raw(&[
+                "-ss".into(),
+                t.into(),
+                "-i".into(),
+                file.to_string_lossy().into_owned(),
+                "-frames:v".into(),
+                "1".into(),
+            ])
+            .unwrap()
+        };
+        let cap = text::caption_layout(
+            "Every edit is a version",
+            text::caption_style(&film, 180),
+            320,
+            180,
+            &tools.fonts,
+        );
+        let [x, y, bw, bh] = cap.bounds.map(|v| v as u32);
+        // The band's left margin, where no letter is drawn.
+        let band = (x + 2, y + 2, x + 6, y + bh - 2);
+        let under = mean(&frame_at("2.0"), 320, band.0, band.1, band.2, band.3);
+        let clear = mean(&frame_at("2.8"), 320, band.0, band.1, band.2, band.3);
+        assert!(under + 40.0 < clear, "{under} {clear} {bw}");
+
+        // measure lays the title and caption out for check.
+        let out = handle("measure", &input(&f, film.clone()), &tools, &work).unwrap();
+        let measured: Value = serde_json::from_slice(&decode(&out["outputs"][0])).unwrap();
+        assert_eq!(measured["titles"]["card"]["lines"][0]["px"], 21);
+        assert_eq!(measured["captions"]["Every edit is a version"]["lines"], 1);
+        assert_eq!(measured["caption_px"], 8);
+    }
+
+    #[test]
+    fn import_makes_a_poster_a_strip_and_the_pauses() {
+        let Some(tools) = tools() else { return };
+        let f = fixture(&tools, "import");
+        let work = f.dir.join("work");
+        let out = handle(
+            "import",
+            &input(&f, cut("~/clips/moving.mp4")),
+            &tools,
+            &work,
+        )
+        .unwrap();
+        let outputs = out["outputs"].as_array().unwrap();
+        let listed: Value = serde_json::from_slice(&decode(&outputs[0])).unwrap();
+        let sources = listed["sources"].as_array().unwrap();
+        // moving.mp4 and still.mp4; music.m4a isn't video.
+        assert_eq!(sources.len(), 2);
+        let moving = sources.iter().find(|s| s["name"] == "moving.mp4").unwrap();
+        assert_eq!(
+            (moving["w"].as_u64(), moving["audio"].as_bool()),
+            (Some(320), Some(true))
+        );
+        assert!(moving["speech"]["how"].is_null());
+        let strip = &outputs[moving["strip"].as_u64().unwrap() as usize];
+        assert_eq!(strip["role"], "strip");
+        assert_eq!(
+            outputs[moving["poster"].as_u64().unwrap() as usize]["role"],
+            "poster"
+        );
+        let file = work.join("got-strip.jpg");
+        std::fs::write(&file, decode(strip)).unwrap();
+        let job = Job {
+            tools: &tools,
+            dir: &work,
+            cut: &Value::Null,
+            files: BTreeMap::new(),
+        };
+        assert_eq!(job.probe(&file).unwrap().w, 384 * 6 + 30);
+        // transcribe needs whisper.cpp named.
+        let err = handle(
+            "transcribe",
+            &input(&f, cut("~/clips/moving.mp4")),
+            &tools,
+            &work,
+        )
+        .unwrap_err();
+        assert!(err.contains("--whisper"), "{err}");
+    }
+
+    #[test]
+    fn transcribe_hears_speech_and_fixes_the_names() {
+        let Some(mut tools) = tools() else { return };
+        let model = std::env::var_os("WHISPER_MODEL")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("HOME").map(|h| PathBuf::from(h).join("work/ggml-small.en.bin"))
+            })
+            .filter(|p| p.is_file());
+        let (Some(cli), Some(model), Some(say)) = (find("whisper-cli"), model, find("say")) else {
+            return;
+        };
+        tools.whisper = Some(Whisper {
+            cli,
+            model,
+            words: Words::default(),
+        });
+        let mut f = fixture(&tools, "transcribe");
+        let work = f.dir.join("work");
+        let speech = f.dir.join("speech.aiff");
+        assert!(
+            Command::new(say)
+                .arg("-o")
+                .arg(&speech)
+                .arg("Open agents builds Coder.")
+                .status()
+                .unwrap()
+                .success()
+        );
+        let sha = sha256_file(&speech).unwrap();
+        f.assets = vec![AssetEntry {
+            location: "~/clips/speech.aiff".into(),
+            sha256: sha.clone(),
+            class: AssetClass::Public,
+        }];
+        f.local = BTreeMap::from([(sha, speech)]);
+        let out = handle(
+            "transcribe",
+            &input(&f, cut("~/clips/moving.mp4")),
+            &tools,
+            &work,
+        )
+        .unwrap();
+        let said: Value = serde_json::from_slice(&decode(&out["outputs"][0])).unwrap();
+        let clip = &said["clips"]["~/clips/speech.aiff"];
+        assert_eq!(clip["how"], "whisper.cpp");
+        let words: Vec<&str> = clip["words"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|w| w["w"].as_str().unwrap())
+            .collect();
+        assert!(!words.is_empty());
+        assert!(
+            !words.iter().any(|w| w.eq_ignore_ascii_case("agents")),
+            "{words:?}"
+        );
+    }
+
+    #[test]
+    fn score_makes_the_music_bed_to_the_cuts_length() {
+        let Some(mut tools) = tools() else { return };
+        let python = PathBuf::from("/usr/bin/python3");
+        let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/film/music.py");
+        let has_numpy = Command::new(&python)
+            .args(["-c", "import numpy"])
+            .status()
+            .is_ok_and(|s| s.success());
+        if !has_numpy || !script.is_file() {
+            return;
+        }
+        tools.score = Some(Score { python, script });
+        let f = fixture(&tools, "score");
+        let work = f.dir.join("work");
+        // music.py writes a launch film's arrangement, so the cut is film-length.
+        let film = json!({
+            "fps": 30, "size": [320, 180], "out": "~/out.mp4",
+            "shots": [
+                {"name": "open", "src": "~/clips/moving.mp4", "dur": 12.0},
+                {"name": "middle", "src": "~/clips/moving.mp4", "dur": 8.0},
+                {"name": "end", "src": "~/clips/moving.mp4", "dur": 10.0}
+            ],
+            "score": {"cuts_at": ["middle"], "end_at": "end"}
+        });
+        let out = handle("score", &input(&f, film), &tools, &work).unwrap();
+        let score = &out["outputs"][0];
+        assert_eq!(score["media_type"], "audio/flac");
+        let file = work.join("got-score.flac");
+        std::fs::write(&file, decode(score)).unwrap();
+        let job = Job {
+            tools: &tools,
+            dir: &work,
+            cut: &Value::Null,
+            files: BTreeMap::new(),
+        };
+        assert!((job.probe(&file).unwrap().dur - 30.0).abs() < 0.1);
+        let err = handle(
+            "score",
+            &input(&f, cut("~/clips/moving.mp4")),
+            &tools,
+            &work,
+        )
+        .unwrap_err();
+        assert_eq!(err, "This cut has no score.");
     }
 }
