@@ -85,6 +85,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 1: harness and chats (critical path)
 
+**Done 2026-10-17 CDT** by Claude Code in `~/work/openagents-11823` (removed after completion): #11823 is closed. `openagents computer cloud ...` and Coder's `cloud_computer` tool use `openagents_sdk::computers`; `--on boat` and `--on gce` keep their paths ([cloud computers](../coder/runtime/cloud-computers.md)). Its dedicated-account run is in After-close checks.
+
 **Done 2026-10-17 04:27 CDT** by Codex in `~/work/openagents-labs-finish`: #11896 is closed after its six children closed. #11823 stays with its owner; #11871 is released and blocked on #11948.
 
 **#11896 closed:** its six children are closed, their checked source is on `main`, and cross-device runs are queued below.
@@ -535,6 +537,7 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 | #11863 | Asset channel and RFQ both ways on signet. The 2026-10-17 run stalled: node B's 20,000-sat funding send (`ed91ae57…`) was created but never broadcast, so the observer waits in `wait_channel_funds` until its 2026-10-19 12:14 UTC limit. A new run needs the owner's approval for funding (no new funds by hand). Confirm each funding send on chain before the next, then open the private channel, run RFQ both ways, close, return BTC, and stop both nodes. See [the report](../payments/2026-10-16-lnd-signet.md#synthetic-taproot-assets-11863). | to do (needs an approved re-run) |
 | #11770 | Read the Wavelength observer after height 327067 (`~/wavelength-spike/observer-state.json` on `oa-lnd-builder`): the stopped-daemon refresh of the 20,000-sat VTXO in the 327055–327067 window, then record it in [the analysis](../payments/2026-10-15-wavelength-analysis.md#10-signet-spike-11770). | waiting on blocks (~2026-10-19) |
 | #11959 | Owner: rebuild the dev app from `main` (`scripts/run-macos-dev.sh` from `~/work/openagents-app/apps/openagents`, as in [OPENAGENTS.md](../../apps/openagents/OPENAGENTS.md)) and look at a chat: the composer footer shows a small "Runs on This Mac" control whose menu lists where the chat can move (with a reason only while it can't), nothing is drawn under the input, and the sidebar's bottom-left is one account row whose menu holds Agent Lab and Sign out. | Offscreen captures passed (`examples/chrome-fixture.rs`, before/after on the issue); owner look: to do |
+| #11823 | Build `openagents` and Coder from `main`. Signed in as the dedicated test account (`OPENAGENTS_TEST_RUN=1`, never the owner's account), run `openagents computer cloud capabilities`, `create --wait 300`, `exec ID -- echo ok`, a retry of `create` and `exec` with only `--key` (same computer and command, no second one), `write`/`read` of a small file, `output`, `cancel` of a `sleep 600`, `stop`, `wake`, and `delete`; then the same through Coder's `cloud_computer` tool with approvals. Confirm `openagents mcp serve` refuses `cloud create`/`exec`/`delete`, and delete every computer and `~/.openagents/computers/cloud-requests/` file the run made. | Source checks passed: `openagents-cli` cloud fake-API tests 8, `coder-new` `cloud_computer_tool` 3, MCP admission, and the bundled command tree. Dedicated-account run: to do |
 
 ## Shared rules
 
