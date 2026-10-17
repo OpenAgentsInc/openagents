@@ -72,6 +72,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 if route == "new" { router.presentNewSession(prompt: nil) }
                 if route == "more" { router.showSettings() }
                 if route == "search" { router.showSearch() }
+                if route == "wallet" { router.showWallet() }
                 if route == "cloud" || route == "welcome" { router.showChat() }
             }
         }

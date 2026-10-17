@@ -60,6 +60,8 @@
 	</array>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Face ID keeps your wallet's recovery words private.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Take photos to attach to messages.</string>
 	<key>UILaunchScreen</key>

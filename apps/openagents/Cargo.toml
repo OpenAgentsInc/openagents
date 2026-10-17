@@ -204,3 +204,12 @@ inherits = "release"
 lto = "thin"
 codegen-units = 1
 strip = "debuginfo"
+
+# breez/boltz-client, a git dependency of breez-sdk-spark (the phone wallet,
+# `crates/spark-wallet`), is no longer published; build its pinned revision
+# from the repository's vendored copy, as the root workspace does. See
+# ../../vendor/boltz-client/VENDORED.md.
+[patch."https://github.com/breez/boltz-client"]
+boltz-client = { path = "../../vendor/boltz-client/crates/lib" }
+macros = { path = "../../vendor/boltz-client/crates/macros" }
+platform-utils = { path = "../../vendor/boltz-client/crates/platform-utils" }

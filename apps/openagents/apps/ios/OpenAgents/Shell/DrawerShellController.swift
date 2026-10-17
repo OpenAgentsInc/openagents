@@ -334,6 +334,17 @@ final class DrawerShellController: UIViewController, AppRouter, UINavigationCont
         closeDrawer()
     }
 
+    func showWallet() {
+        if presentedViewController != nil { dismiss(animated: true) }
+        sidebar.currentChatId = nil
+        if content.viewControllers.first is WalletViewController {
+            content.popToRootViewController(animated: false)
+        } else {
+            setPage(WalletViewController(app: app, wallet: WalletModel.shared.wallet))
+        }
+        closeDrawer()
+    }
+
     /// The sessions list lives in the drawer.
     func showSessions() {
         if presentedViewController != nil { dismiss(animated: true) }

@@ -133,6 +133,10 @@ final class AppModel {
     var isDemo: Bool { client?.isDemo() ?? false }
 
     init() {
+        // The wallet's seed is read first, before anything else in the app
+        // touches the Keychain; Rust never makes a seed in place of one it
+        // couldn't read (wallet::seed).
+        WalletModel.shared.open()
         // Online/offline + interface changes cut sync backoff short.
         path.pathUpdateHandler = { [weak self] p in
             DispatchQueue.main.async { self?.client?.setNetworkOnline(online: p.status == .satisfied) }
@@ -458,6 +462,8 @@ final class AppModel {
         client?.onBackground()
     }
     func willEnterForeground() {
+        // Retries a read that failed while the phone was locked.
+        WalletModel.shared.open()
         savedHistory?.setForeground(active: true)
         if !isDemo { account?.revalidate() }
         endDeliveryBackgroundTask()

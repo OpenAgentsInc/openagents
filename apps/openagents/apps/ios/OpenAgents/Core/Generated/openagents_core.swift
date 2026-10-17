@@ -5155,6 +5155,282 @@ public func FfiConverterTypeCoreSharing_lower(_ value: CoreSharing) -> UInt64 {
 
 
 
+/**
+ * The Wallet screen for the app shell.
+ */
+public protocol CoreWalletProtocol: AnyObject, Sendable {
+    
+    /**
+     * A button tap; the JSON effect for the shell (`none`, `copy` with
+     * `text`, or `backup`).
+     */
+    func activate(instance: String, revision: UInt64, key: String) throws  -> String
+    
+    func changeField(instance: String, revision: UInt64, key: String, value: String) throws 
+    
+    /**
+     * Read the seed and start the wallet; a repeat retries what failed.
+     */
+    func `open`() 
+    
+    /**
+     * The recovery words, for the backup sheet. Call it only after the
+     * person passed Face ID or the passcode, and keep the words no longer
+     * than the sheet shows them.
+     */
+    func recoveryWords() throws  -> [String]
+    
+    func refresh() 
+    
+    /**
+     * The screen as Rust Native view JSON.
+     */
+    func snapshot() throws  -> String
+    
+    /**
+     * How long copied recovery words stay on the pasteboard, in seconds.
+     */
+    func wordsPasteboardSeconds()  -> UInt64
+    
+    /**
+     * The person said they wrote the words down.
+     */
+    func wordsSaved() 
+    
+}
+/**
+ * The Wallet screen for the app shell.
+ */
+open class CoreWallet: CoreWalletProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_corewallet(self.handle, $0) }
+    }
+    /**
+     * The person's wallet. `home` is the wallet's folder (the earlier app
+     * used `Application Support/openagents-v1/spark`); `store` holds the
+     * seed. Nothing is read until [`CoreWallet::open`].
+     */
+public convenience init(home: String, store: KeyStore, listener: WalletListener) {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_corewallet_new(
+        FfiConverterString.lower(home),
+        FfiConverterTypeKeyStore_lower(store),
+        FfiConverterTypeWalletListener_lower(listener),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_corewallet(handle, $0) }
+    }
+
+    
+    /**
+     * An offline wallet for simulator captures: a fixed balance and
+     * history, a seed held only in memory, and no network. It never touches
+     * the Keychain and holds no money.
+     */
+public static func fixture(home: String, listener: WalletListener) -> CoreWallet  {
+    return try!  FfiConverterTypeCoreWallet_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_corewallet_fixture(
+        FfiConverterString.lower(home),
+        FfiConverterTypeWalletListener_lower(listener),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+    /**
+     * A button tap; the JSON effect for the shell (`none`, `copy` with
+     * `text`, or `backup`).
+     */
+open func activate(instance: String, revision: UInt64, key: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corewallet_activate(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(key),uniffiCallStatus
+    )
+})
+}
+    
+open func changeField(instance: String, revision: UInt64, key: String, value: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corewallet_change_field(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(value),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Read the seed and start the wallet; a repeat retries what failed.
+     */
+open func `open`()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corewallet_open(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The recovery words, for the backup sheet. Call it only after the
+     * person passed Face ID or the passcode, and keep the words no longer
+     * than the sheet shows them.
+     */
+open func recoveryWords()throws  -> [String]  {
+    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corewallet_recovery_words(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func refresh()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corewallet_refresh(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The screen as Rust Native view JSON.
+     */
+open func snapshot()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corewallet_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * How long copied recovery words stay on the pasteboard, in seconds.
+     */
+open func wordsPasteboardSeconds() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corewallet_words_pasteboard_seconds(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The person said they wrote the words down.
+     */
+open func wordsSaved()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corewallet_words_saved(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreWallet: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreWallet
+
+    public static func lift(_ handle: UInt64) throws -> CoreWallet {
+        return CoreWallet(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreWallet) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreWallet {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreWallet, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreWallet_lift(_ handle: UInt64) throws -> CoreWallet {
+    return try FfiConverterTypeCoreWallet.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreWallet_lower(_ value: CoreWallet) -> UInt64 {
+    return FfiConverterTypeCoreWallet.lower(value)
+}
+
+
+
+
+
+
 public protocol CustomAgentsListener: AnyObject, Sendable {
     
     func onCustomAgentsChanged(snapshot: CustomAgentsSnapshot) 
@@ -5346,6 +5622,262 @@ public func FfiConverterTypeCustomAgentsListener_lift(_ handle: UInt64) throws -
 #endif
 public func FfiConverterTypeCustomAgentsListener_lower(_ value: CustomAgentsListener) -> UInt64 {
     return FfiConverterTypeCustomAgentsListener.lower(value)
+}
+
+
+
+
+
+
+/**
+ * The platform key store that holds the seed. The iOS app implements it
+ * over the Keychain item above. It deliberately has no way to delete or
+ * overwrite the item.
+ */
+public protocol KeyStore: AnyObject, Sendable {
+    
+    /**
+     * Read the seed item.
+     */
+    func readSeed()  -> KeyRead
+    
+    /**
+     * Add the seed item. It must fail with [`KeyAdd::AlreadyExists`], and
+     * change nothing, when an item is already stored.
+     */
+    func addSeed(entropy: Data)  -> KeyAdd
+    
+}
+/**
+ * The platform key store that holds the seed. The iOS app implements it
+ * over the Keychain item above. It deliberately has no way to delete or
+ * overwrite the item.
+ */
+open class KeyStoreImpl: KeyStore, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_keystore(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_keystore(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Read the seed item.
+     */
+open func readSeed() -> KeyRead  {
+    return try!  FfiConverterTypeKeyRead_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_keystore_read_seed(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Add the seed item. It must fail with [`KeyAdd::AlreadyExists`], and
+     * change nothing, when an item is already stored.
+     */
+open func addSeed(entropy: Data) -> KeyAdd  {
+    return try!  FfiConverterTypeKeyAdd_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_keystore_add_seed(
+            self.uniffiCloneHandle(),
+        FfiConverterData.lower(entropy),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceKeyStore {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceKeyStore = UniffiVTableCallbackInterfaceKeyStore(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeKeyStore.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface KeyStore: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeKeyStore.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface KeyStore: handle missing in uniffiClone")
+            }
+        },
+        readSeed: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> KeyRead in
+                guard let uniffiObj = try? FfiConverterTypeKeyStore.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.readSeed(
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeKeyRead_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        addSeed: { (
+            uniffiHandle: UInt64,
+            entropy: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> KeyAdd in
+                guard let uniffiObj = try? FfiConverterTypeKeyStore.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.addSeed(
+                     entropy: try FfiConverterData.lift(entropy)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeKeyAdd_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceKeyStore> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceKeyStore>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitKeyStore() {
+    uniffi_openagents_mobile_fn_init_callback_vtable_keystore(UniffiCallbackInterfaceKeyStore.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeKeyStore: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<KeyStore>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = KeyStore
+
+    public static func lift(_ handle: UInt64) throws -> KeyStore {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return KeyStoreImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: KeyStore) -> UInt64 {
+         if let rustImpl = value as? KeyStoreImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> KeyStore {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: KeyStore, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeKeyStore_lift(_ handle: UInt64) throws -> KeyStore {
+    return try FfiConverterTypeKeyStore.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeKeyStore_lower(_ value: KeyStore) -> UInt64 {
+    return FfiConverterTypeKeyStore.lower(value)
 }
 
 
@@ -8884,6 +9416,207 @@ public func FfiConverterTypeVoiceSessionListener_lift(_ handle: UInt64) throws -
 #endif
 public func FfiConverterTypeVoiceSessionListener_lower(_ value: VoiceSessionListener) -> UInt64 {
     return FfiConverterTypeVoiceSessionListener.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Called whenever the Wallet screen changes; the shell takes a new snapshot.
+ */
+public protocol WalletListener: AnyObject, Sendable {
+    
+    func onWalletChanged() 
+    
+}
+/**
+ * Called whenever the Wallet screen changes; the shell takes a new snapshot.
+ */
+open class WalletListenerImpl: WalletListener, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_walletlistener(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_walletlistener(handle, $0) }
+    }
+
+    
+
+    
+open func onWalletChanged()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_walletlistener_on_wallet_changed(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceWalletListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceWalletListener = UniffiVTableCallbackInterfaceWalletListener(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeWalletListener.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface WalletListener: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeWalletListener.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface WalletListener: handle missing in uniffiClone")
+            }
+        },
+        onWalletChanged: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeWalletListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onWalletChanged(
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceWalletListener> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceWalletListener>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitWalletListener() {
+    uniffi_openagents_mobile_fn_init_callback_vtable_walletlistener(UniffiCallbackInterfaceWalletListener.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWalletListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<WalletListener>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = WalletListener
+
+    public static func lift(_ handle: UInt64) throws -> WalletListener {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return WalletListenerImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: WalletListener) -> UInt64 {
+         if let rustImpl = value as? WalletListenerImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WalletListener {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: WalletListener, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWalletListener_lift(_ handle: UInt64) throws -> WalletListener {
+    return try FfiConverterTypeWalletListener.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWalletListener_lower(_ value: WalletListener) -> UInt64 {
+    return FfiConverterTypeWalletListener.lower(value)
 }
 
 
@@ -17961,6 +18694,180 @@ public func FfiConverterTypeFadeEdge_lower(_ value: FadeEdge) -> RustBuffer {
 
 
 /**
+ * What one add to the key store did.
+ */
+
+public enum KeyAdd: Equatable, Hashable {
+    
+    case added
+    /**
+     * An item was already there; it was left as it was.
+     */
+    case alreadyExists
+    case failed(status: Int32
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension KeyAdd: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeKeyAdd: FfiConverterRustBuffer {
+    typealias SwiftType = KeyAdd
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> KeyAdd {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .added
+        
+        case 2: return .alreadyExists
+        
+        case 3: return .failed(status: try FfiConverterInt32.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: KeyAdd, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .added:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .alreadyExists:
+            writeInt(&buf, Int32(2))
+        
+        
+        case let .failed(status):
+            writeInt(&buf, Int32(3))
+            FfiConverterInt32.write(status, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeKeyAdd_lift(_ buf: RustBuffer) throws -> KeyAdd {
+    return try FfiConverterTypeKeyAdd.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeKeyAdd_lower(_ value: KeyAdd) -> RustBuffer {
+    return FfiConverterTypeKeyAdd.lower(value)
+}
+
+
+
+/**
+ * What one read of the key store found.
+ */
+
+public enum KeyRead: Equatable, Hashable {
+    
+    /**
+     * The item exists; these are its bytes.
+     */
+    case found(bytes: Data
+    )
+    /**
+     * The key store answered that no such item exists.
+     */
+    case notFound
+    /**
+     * The read failed for another reason, such as a locked device. `status`
+     * is the platform's code (an `OSStatus` on iOS), for the log only.
+     */
+    case failed(status: Int32
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension KeyRead: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeKeyRead: FfiConverterRustBuffer {
+    typealias SwiftType = KeyRead
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> KeyRead {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .found(bytes: try FfiConverterData.read(from: &buf)
+        )
+        
+        case 2: return .notFound
+        
+        case 3: return .failed(status: try FfiConverterInt32.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: KeyRead, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .found(bytes):
+            writeInt(&buf, Int32(1))
+            FfiConverterData.write(bytes, into: &buf)
+            
+        
+        case .notFound:
+            writeInt(&buf, Int32(2))
+        
+        
+        case let .failed(status):
+            writeInt(&buf, Int32(3))
+            FfiConverterInt32.write(status, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeKeyRead_lift(_ buf: RustBuffer) throws -> KeyRead {
+    return try FfiConverterTypeKeyRead.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeKeyRead_lower(_ value: KeyRead) -> RustBuffer {
+    return FfiConverterTypeKeyRead.lower(value)
+}
+
+
+
+/**
  * One of a card's files.
  */
 
@@ -20554,6 +21461,105 @@ public func FfiConverterTypeVoiceSpeaker_lift(_ buf: RustBuffer) throws -> Voice
 #endif
 public func FfiConverterTypeVoiceSpeaker_lower(_ value: VoiceSpeaker) -> RustBuffer {
     return FfiConverterTypeVoiceSpeaker.lower(value)
+}
+
+
+
+/**
+ * The stored wallet's recovery words, for the identity (#11995).
+ */
+
+public enum WalletWords: Equatable, Hashable {
+    
+    /**
+     * The stored seed's words, in order: 12 or 24 BIP-39 English words.
+     */
+    case words(words: [String]
+    )
+    /**
+     * No wallet is stored on this phone.
+     */
+    case noWallet
+    /**
+     * The key store couldn't be read now (for example, the phone is
+     * locked). Try again; don't make new words in its place.
+     */
+    case unavailable
+    /**
+     * A value is stored but isn't a seed. Leave it alone.
+     */
+    case unreadable
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension WalletWords: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWalletWords: FfiConverterRustBuffer {
+    typealias SwiftType = WalletWords
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WalletWords {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .words(words: try FfiConverterSequenceString.read(from: &buf)
+        )
+        
+        case 2: return .noWallet
+        
+        case 3: return .unavailable
+        
+        case 4: return .unreadable
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: WalletWords, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .words(words):
+            writeInt(&buf, Int32(1))
+            FfiConverterSequenceString.write(words, into: &buf)
+            
+        
+        case .noWallet:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .unavailable:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .unreadable:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWalletWords_lift(_ buf: RustBuffer) throws -> WalletWords {
+    return try FfiConverterTypeWalletWords.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWalletWords_lower(_ value: WalletWords) -> RustBuffer {
+    return FfiConverterTypeWalletWords.lower(value)
 }
 
 
@@ -23286,6 +24292,23 @@ public func layoutFixtureMarkdown() -> String  {
 })
 }
 /**
+ * The recovery words of the wallet stored on this phone, if there is one.
+ *
+ * This is how the identity (#11995) uses the same words as the wallet, so
+ * one backup covers the person's npub and their bitcoin. It only reads:
+ * it never makes, changes, or deletes a seed. Ask for it only when the words
+ * are needed (to derive the identity key, or after the person chose to see
+ * them), and keep the result no longer than that.
+ */
+public func walletSeedWords(store: KeyStore) -> WalletWords  {
+    return try!  FfiConverterTypeWalletWords_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_func_wallet_seed_words(
+        FfiConverterTypeKeyStore_lower(store),uniffiCallStatus
+    )
+})
+}
+/**
  * Apply `effect` to an RGBA image; `light` is the appearance it's drawn in
  * (effects print on white paper in light mode, black in dark).
  */
@@ -23421,6 +24444,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_func_layout_fixture_markdown() != 54123) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_func_wallet_seed_words() != 50913) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_func_wallpaper_render() != 433) {
@@ -24092,6 +25118,39 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_visualsession_title() != 54604) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_corewallet_activate() != 57416) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corewallet_change_field() != 160) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corewallet_open() != 43411) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corewallet_recovery_words() != 35342) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corewallet_refresh() != 31726) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corewallet_snapshot() != 29537) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corewallet_words_pasteboard_seconds() != 44069) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corewallet_words_saved() != 5688) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_walletlistener_on_wallet_changed() != 60450) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_keystore_read_seed() != 11529) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_keystore_add_seed() != 40221) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_constructor_captionfader_new() != 1206) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -24122,12 +25181,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_constructor_orbrenderer_new() != 33643) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_constructor_corewallet_fixture() != 43539) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_corewallet_new() != 43285) {
+        return InitializationResult.apiChecksumMismatch
+    }
 
     uniffiCallbackInitAccountListener()
     uniffiCallbackInitAgentLabListener()
     uniffiCallbackInitClientListener()
     uniffiCallbackInitCloudChatListener()
     uniffiCallbackInitCustomAgentsListener()
+    uniffiCallbackInitKeyStore()
     uniffiCallbackInitLayoutListener()
     uniffiCallbackInitPlatformMeasurer()
     uniffiCallbackInitSavedHistoryListener()
@@ -24136,6 +25202,7 @@ private let initializationResult: InitializationResult = {
     uniffiCallbackInitVisualListener()
     uniffiCallbackInitVoiceMediaListener()
     uniffiCallbackInitVoiceSessionListener()
+    uniffiCallbackInitWalletListener()
     return InitializationResult.ok
 }()
 
