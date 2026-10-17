@@ -35,7 +35,7 @@ This document governs how the remaining work is split. Read it with the [big-ban
 | LayerTree primary TDX tree, 24-hour soak, scheduled deletion | `oa-layertree-signet-tdx`, mirrors `oa-layertree-mirror-0/1/2` | 10 | The clean window can first qualify at **2026-10-17 13:34:53 UTC (08:35 CDT)**. The observer then deletes the VM itself. |
 | #11794 followers | `oa-lnd-builder`, `~/layertree-followers-11794-d9e41513b5/` | 10 | Stop time `1792877280` (Unix). |
 | Production web | `coder-web-7e9a650072-20261017015537` at 100% | 0 | Has Foreman, Our cloud server, and the earlier Labs API. |
-| Staging web | `openagents-web-1-staging-e29e4c9bf6-022727` at 100% | 0 | Image `sha256:8cf73886…dbd1a` from `e29e4c9bf6`: CAD on the platform and the #11934 agents door. Staging smoke passed 99/0/2. |
+| Staging web | `openagents-web-1-staging-646d5fb6bd-032744` at 100% | 0 | Image `sha256:51e2d77b…202a7` from `646d5fb6bd`: CAD, the agents door, and cloud inference. Standard staging smoke passed 99/0/2. |
 | Production Computers and Boat | Computers `c50225e11b`, Boat `76d096ef26` | 6 | From #11815's last deploy. |
 
 ### Decisions already made (don't reopen)
@@ -71,7 +71,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 - **Owns:** every web deploy (staging and production shifts), every release candidate cut, the final 1.0.0 publish, the project boards, and `NEEDS_OWNER.md` hygiene. Other lanes ask lane 0 to deploy. They never shift traffic themselves.
 - **Tonight:**
   1. Run `scripts/dev/project-status-sync.sh 22` and `19`. Fix the stale assignees: #11934, #11840, #11762, #11862, #11863, #11770, #11794, and #11799 show AtlantisPleb with no live claim. Leave #11813, #11814, and #11936 alone (lane 6 is live).
-  2. Take the next production deploy from current `main`. It carries #11875's CAD platform, the #11934 agents door, and `4a796e8ff8` for #11852. Lane 4 runs the CAD live checks on staging first. Then promote, run the production smoke, and hand lanes 4, 8, and 9 their live checks.
+  2. Take the next production deploy from current `main`. It carries #11875's CAD platform, the #11934 agents door, and `4a796e8ff8` for #11852. Lane 0 runs the CAD staging check from After-close checks, promotes the tested image, runs the production smoke, and works through the remaining live checks.
   3. Remove the patch files from `docs/audits/` once lane 4 has applied #11877's patch. A `.patch` file isn't a document.
 - **Saturday evening:** cut `1.0.0-rc.23` from `main` once lanes 1, 4, 7, and 9 have landed. Run the gate the brief describes, and cut later candidates as fixes land.
 - **Monday:** follow the brief's re-cut steps. Reinstall every copy of the withdrawn 1.0.0.
@@ -399,7 +399,7 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 | --- | --- | --- |
 | #11934 | Deploy the agents door. Run `ask_foreman_cli.py` and `openagents agents ask Foreman …` with test account `acct_500d3e1d125b7782`. Land the web door's switch to `place` (in the issue's patch). | to do |
 | #11936 | Redeploy the SPACE candidate with explicit zero-length framing and verify suspend and wake through Cloud Run. | to do |
-| #11875 | The dedicated-account CAD run on staging and then production: fan bracket, picked face, 5 mm thicker, project versions, STEP download, cleanup. | to do |
+| #11875 | The dedicated-account CAD run on staging and then production: fan bracket, picked face, 5 mm thicker, project versions, STEP download, cleanup. | Closed. Standard staging smoke passed 99/0/2 on `646d5fb6bd`. CAD staging passed 18 checks, isolated browser face selection, and cleanup after #11937; evidence in `docs/sdk/labs-cad-staging-handoff.json`. Production pending. |
 | #11876 | Run the Git-pinned `examples/sdk-labs` CAD flow against production with the dedicated account, including ranged GLB, notes, events, and deletion. | External build and iOS account-client check passed; evidence: `docs/sdk/labs-client-evidence.json`. Live run: to do. |
 | #11877 | A CAD chat's card through `/v1/history`, re-rendered in a second browser session. | to do |
 | #11878 | Live echo on server, enrolled, and cloud placements. Cloud computer deleted afterward. | to do |

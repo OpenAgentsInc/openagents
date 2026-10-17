@@ -45,7 +45,8 @@ def main():
     def call(method, path, data=None, token=primary, extra=None, web=False):
         headers = {'Accept': 'application/json', 'X-OpenAgents-Test': '1'}
         if token and (not web or not browser_session):
-            headers['Authorization'] = 'Bearer ' + token
+            credential = browser_session if token == primary and browser_session else token
+            headers['Authorization'] = 'Bearer ' + credential
         if data is not None:
             headers['Content-Type'] = 'application/json'
         headers.update(extra or {})

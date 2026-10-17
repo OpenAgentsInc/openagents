@@ -35,10 +35,53 @@
     "staging_revision": "openagents-web-1-staging-646d5fb6bd-032744",
     "staging_percent": 100,
     "kept_existing_gateway_and_storage": true,
-    "standard_staging_smoke_pending": true,
-    "cad_live_qualification_performed": false,
+    "cad_live_qualification_performed": true,
     "production_promotion_performed": false,
     "production_shift_performed": false,
-    "next_step": "Lane 4 dedicated-account CAD staging qualification, then lane 0 production promotion and smoke."
+    "next_step": "Promote the tested image, run the production smoke, then work through After-close checks.",
+    "standard_staging_smoke": {
+      "passed": 99,
+      "failed": 0,
+      "skipped": 2,
+      "seconds": 78,
+      "certificate_bundle": "/etc/ssl/cert.pem"
+    },
+    "cad_staging_evidence": {
+      "schema": "openagents.labs-cad-evidence.v1",
+      "checked_at": "2026-10-17T03:37:23.241084+00:00",
+      "source_commit": "646d5fb6bd87a0e6c9feb0c5974dad9a59154be8",
+      "api": "https://staging.openagents.com",
+      "test_accounts": [
+        "acct_dc7a799879686fc5",
+        "acct_881a71bc40f3ea4c"
+      ],
+      "checks": [
+        "dedicated browser session",
+        "dedicated project",
+        "checked fan bracket",
+        "isolated browser picked the top face",
+        "picked face five millimeters thicker",
+        "stale face pull refused",
+        "current Pro plan checked",
+        "both versions in the project",
+        "3D card with poster and project link",
+        "existing CAD page and versions",
+        "STEP job admitted",
+        "STEP retry shares its job",
+        "STEP job completed",
+        "STEP artifact recorded",
+        "STEP range download",
+        "second account cannot read the project design",
+        "second account cannot change the project design",
+        "reading a card starts no work"
+      ],
+      "version_sha256": [
+        "544aa90fdf1e89c7fe42d25b1680a58868acb2ff4c87254786b4a1f66aca4e02",
+        "fedd0f9e5672eeb273b16d709d6bfac163e93fb68d5f3697eeaa658bae2c0ece"
+      ],
+      "cleanup_verified": true,
+      "browser_capture_sha256": "58c841b54c977fd882fb78b64797d781082d9f802a52cc9b51f124216a15b16f"
+    },
+    "cad_smoke_authentication_followup": 11937
   }
 }
