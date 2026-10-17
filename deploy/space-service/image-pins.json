@@ -15,5 +15,13 @@
     "image": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/edge@sha256:e43938f09ba25e260a0829fa536871b9f35745278ce4a35abde5895a522a5c2e",
     "source": "d03aacb66fb8d8ca867bed8644be9a91ff2143c4",
     "build": "7a7cd7b2-1e91-4ea4-b52a-3f719f7d9bf0"
+  },
+  "native_overrides": {
+    "api": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/api-runtime@sha256:45d859ed494fc2e79e9e6aa6a5cde67d480bdfd0c713943711dffff8224dfcc0"
+  },
+  "api_patch": {
+    "source": "2fc47130109973f3433b85ceb6c0f86e593a2cf8",
+    "build": "91d9ba7a-d06e-4adc-80fa-6e4ddbbc340d",
+    "patch": "seed-kernel.patch"
   }
 }

@@ -37,7 +37,7 @@ def transform(documents):
                 component = image.removeprefix(IMAGE_ROOT).split(":", 1)[0]
                 if component not in PINS["native"]:
                     raise ValueError("An unqualified native component was selected.")
-                container["image"] = IMAGE_ROOT + component + "@sha256:" + PINS["native"][component]
+                container["image"] = PINS.get("native_overrides", {}).get(component, IMAGE_ROOT + component + "@sha256:" + PINS["native"][component])
             if document["kind"] == "Job" and metadata["name"] == "space-db-migrate":
                 container["image"] = PINS["migrator"]["image"]
             entries = container.get("env", [])
