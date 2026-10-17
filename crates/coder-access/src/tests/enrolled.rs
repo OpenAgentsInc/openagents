@@ -92,6 +92,12 @@ fn scoped_grants_survive_restart_and_cannot_reach_broad_operations() {
         Operation::ListThreads {},
         Operation::ListDevices {},
         Operation::ListAgents {},
+        Operation::AppRpc {
+            app: crate::app_rpc::Request {
+                method: crate::app_rpc::Method::ListHarnesses,
+                params: serde_json::json!({}),
+            },
+        },
         Operation::InviteChats {},
     ] {
         assert_eq!(
