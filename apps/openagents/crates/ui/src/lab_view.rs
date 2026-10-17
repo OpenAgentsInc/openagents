@@ -16,6 +16,10 @@
 //! so a running job's state and new notes show without waiting for the
 //! chat's history. A note added here is anchored at the video's playing
 //! time.
+//!
+//! The row lists its document's versions, and picking one shows that
+//! version's card. A Model3d card turns its model by dragging, drawn through
+//! `visual-gpu` ([`crate::lab_model`]), once the model arrives (#11948).
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -28,7 +32,7 @@ use gpui::{
 };
 use lab_kit::Card;
 use lab_ui::Intent;
-use openagents_account::lab_cards::{Media, Pictures, pictures};
+use openagents_account::lab_cards::{Media, Pictures, VersionItem, pictures};
 use rust_native::{Activation, Axis, Element, Node, TextRole};
 
 use crate::image_media::MediaImage;
@@ -40,6 +44,17 @@ pub type Fetch = Rc<dyn Fn(String, &mut App) -> Task<Option<Media>>>;
 pub type Current = Rc<dyn Fn() -> bool>;
 /// Adds a note at a playing time; the error is the sentence to show.
 pub type AddNote = Rc<dyn Fn(Option<f64>, String, &mut App) -> Task<Result<(), String>>>;
+/// Lists the document's versions, newest first.
+pub type Versions = Rc<dyn Fn(&mut App) -> Task<Option<Vec<VersionItem>>>>;
+/// Shows one version's card in the row; false when it couldn't be read.
+pub type ShowVersion = Rc<dyn Fn(u64, &mut App) -> Task<bool>>;
+
+/// The version list under the card.
+enum VersionList {
+    Loading,
+    Shown(Vec<VersionItem>),
+    Failed,
+}
 
 /// The note being written.
 struct NoteDraft {
@@ -58,6 +73,7 @@ enum Load {
     Loading,
     Image(MediaImage),
     Video(String),
+    Model(gpui::Entity<crate::lab_model::LabModel>),
     Missing,
 }
 
@@ -80,6 +96,11 @@ pub struct LabView {
     /// Stops the row's event follower.
     stop: Option<tokio_util::sync::CancellationToken>,
     editor: Option<openagents_account::video_editor::Source>,
+    versions: Option<(Versions, ShowVersion)>,
+    list: Option<VersionList>,
+    /// The version being opened from the list, and why the last one failed.
+    opening: Option<u64>,
+    version_error: Option<String>,
 }
 
 impl EventEmitter<LabLayoutChanged> for LabView {}
@@ -115,6 +136,10 @@ impl LabView {
             draft: None,
             stop: None,
             editor: None,
+            versions: None,
+            list: None,
+            opening: None,
+            version_error: None,
         };
         this.load(cx);
         this
@@ -123,6 +148,69 @@ impl LabView {
     /// Lets the row add notes.
     pub fn set_add_note(&mut self, add_note: AddNote) {
         self.add_note = Some(add_note);
+    }
+
+    /// Lets the row list its document's versions and show one.
+    pub fn set_versions(&mut self, versions: Versions, show: ShowVersion) {
+        self.versions = Some((versions, show));
+    }
+
+    /// Opens or closes the version list, reading it each time it opens.
+    fn toggle_versions(&mut self, cx: &mut Context<Self>) {
+        if self.list.take().is_some() || self.released {
+            self.version_error = None;
+            cx.emit(LabLayoutChanged);
+            cx.notify();
+            return;
+        }
+        let Some((versions, _)) = self.versions.clone() else {
+            return;
+        };
+        self.list = Some(VersionList::Loading);
+        let job = versions(cx);
+        cx.spawn(async move |this, cx| {
+            let list = job.await;
+            let _ = this.update(cx, |this, cx| {
+                if this.list.is_some() {
+                    this.list = Some(match list {
+                        Some(list) if !list.is_empty() => VersionList::Shown(list),
+                        _ => VersionList::Failed,
+                    });
+                    cx.emit(LabLayoutChanged);
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+        cx.emit(LabLayoutChanged);
+        cx.notify();
+    }
+
+    /// Shows version `number`'s card; the row's model sends it back
+    /// through [`Self::set_card`].
+    fn open_version(&mut self, number: u64, cx: &mut Context<Self>) {
+        let Some((_, show)) = self.versions.clone() else {
+            return;
+        };
+        if number == self.card.version || self.opening.is_some() || self.released {
+            return;
+        }
+        self.opening = Some(number);
+        self.version_error = None;
+        let job = show(number, cx);
+        cx.spawn(async move |this, cx| {
+            let shown = job.await;
+            let _ = this.update(cx, |this, cx| {
+                this.opening = None;
+                if !shown {
+                    this.version_error = Some("Couldn't open that version. Try again.".into());
+                }
+                cx.emit(LabLayoutChanged);
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
     }
 
     /// The follower to stop when the row goes away.
@@ -147,11 +235,8 @@ impl LabView {
             if let Some(player) = self.player.take() {
                 player.pause();
             }
-            let images = self.files.drain().filter_map(|(_, load)| match load {
-                Load::Image(image) => Some(image),
-                _ => None,
-            });
-            crate::image_media::release_media(images.collect::<Vec<_>>(), cx);
+            let images = drain_files(&mut self.files, cx);
+            crate::image_media::release_media(images, cx);
             self.pictures = pictures;
             self.load(cx);
         }
@@ -253,6 +338,7 @@ impl LabView {
             .cloned()
             .chain(pair)
             .chain(p.plays.iter().cloned())
+            .chain(p.model.iter().cloned())
             .chain(p.strip.iter().cloned())
         {
             if !all.contains(&id) {
@@ -277,6 +363,23 @@ impl LabView {
                         .await
                         .map_or(Load::Missing, Load::Image),
                     Some(Media::Video(url)) => Load::Video(url),
+                    Some(Media::Model(bytes)) => {
+                        let parsed = cx
+                            .background_executor()
+                            .spawn(async move { crate::lab_model::parse(bytes) })
+                            .await;
+                        match parsed {
+                            Some(parsed) => this
+                                .update(cx, |this, cx| {
+                                    let model_id = SharedString::from(format!("{}:{id}", this.id));
+                                    Load::Model(cx.new(|cx| {
+                                        crate::lab_model::LabModel::new(model_id, parsed, cx)
+                                    }))
+                                })
+                                .unwrap_or(Load::Missing),
+                            None => Load::Missing,
+                        }
+                    }
                     Some(Media::Other) | None => Load::Missing,
                 };
                 let _ = this.update(cx, |this, cx| {
@@ -306,11 +409,8 @@ impl LabView {
         if let Some(player) = self.player.take() {
             player.pause();
         }
-        let images = self.files.drain().filter_map(|(_, load)| match load {
-            Load::Image(image) => Some(image),
-            _ => None,
-        });
-        crate::image_media::release_media(images.collect::<Vec<_>>(), cx);
+        let images = drain_files(&mut self.files, cx);
+        crate::image_media::release_media(images, cx);
     }
 
     /// The card this row draws.
@@ -327,7 +427,7 @@ impl LabView {
     pub fn loaded(&self) -> usize {
         self.files
             .values()
-            .filter(|l| matches!(l, Load::Image(_) | Load::Video(_)))
+            .filter(|l| matches!(l, Load::Image(_) | Load::Video(_) | Load::Model(_)))
             .count()
     }
 
@@ -488,8 +588,10 @@ impl LabView {
         }
         let has_main = self.pictures.main.is_some() || self.video().is_some();
         let mut column = div().flex().flex_col().gap(px(6.));
-        if has_main {
-            column = column.child(screen);
+        match self.model() {
+            Some(model) => column = column.child(model),
+            None if has_main => column = column.child(screen),
+            None => {}
         }
         if cfg!(target_os = "macos") && self.video().is_some() {
             #[cfg(target_os = "macos")]
@@ -597,6 +699,19 @@ impl LabView {
     }
 }
 
+/// Empties `files`: the images to release, and every model dropped.
+fn drain_files(files: &mut HashMap<String, Load>, cx: &mut App) -> Vec<MediaImage> {
+    let mut images = Vec::new();
+    for (_, load) in files.drain() {
+        match load {
+            Load::Image(image) => images.push(image),
+            Load::Model(model) => model.update(cx, |model, cx| model.release(cx)),
+            _ => {}
+        }
+    }
+    images
+}
+
 impl Render for LabView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.released && !(self.current)() {
@@ -637,14 +752,18 @@ impl Render for LabView {
 }
 
 impl LabView {
-    /// The note control under the card: a button, or the note being written.
+    /// The controls under the card: adding a note (or the note being
+    /// written), and the version list.
     fn notes(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
-        self.add_note.as_ref()?;
+        if self.add_note.is_none() && self.versions.is_none() {
+            return None;
+        }
         let theme = Theme::of(cx).clone();
         let small = crate::typography::ui_rems(12.0);
-        let button = |id: &str, label: String| {
+        let id = self.id.clone();
+        let button = move |key: &str, label: String| {
             div()
-                .id(SharedString::from(format!("{}:{id}", self.id)))
+                .id(SharedString::from(format!("{id}:{key}")))
                 .px(px(10.))
                 .py(px(4.))
                 .rounded_md()
@@ -654,35 +773,38 @@ impl LabView {
                 .cursor_pointer()
                 .child(label)
         };
-        let Some(draft) = self.draft.as_mut() else {
+        let mut column = div().pt(px(8.)).flex().flex_col().gap(px(6.));
+        let mut buttons = div().flex().flex_row().gap(px(6.));
+        if self.add_note.is_some() && self.draft.is_none() {
             let label = match self.playing_at() {
                 Some(at) => format!("Add a note at {}", lab_ui::clock(at)),
                 None => "Add a note".to_owned(),
             };
-            return Some(
-                div()
-                    .pt(px(8.))
-                    .flex()
-                    .child(
-                        button("note", label)
-                            .on_click(cx.listener(|this, _, _, cx| this.start_note(cx))),
-                    )
-                    .into_any_element(),
+            buttons = buttons.child(
+                button("note", label).on_click(cx.listener(|this, _, _, cx| this.start_note(cx))),
             );
-        };
-        if draft.focus {
-            draft.focus = false;
-            window.focus(&draft.input.focus_handle(cx), cx);
         }
-        let input = draft.input.clone();
-        let error = draft.error.clone();
-        let saving = draft.saving;
-        Some(
-            div()
-                .pt(px(8.))
-                .flex()
-                .flex_col()
-                .gap(px(4.))
+        if self.versions.is_some() {
+            let label = if self.list.is_some() {
+                "Hide versions"
+            } else {
+                "Versions"
+            };
+            buttons = buttons.child(
+                button("versions", label.into())
+                    .on_click(cx.listener(|this, _, _, cx| this.toggle_versions(cx))),
+            );
+        }
+        column = column.child(buttons);
+        if let Some(draft) = self.draft.as_mut() {
+            if draft.focus {
+                draft.focus = false;
+                window.focus(&draft.input.focus_handle(cx), cx);
+            }
+            let input = draft.input.clone();
+            let error = draft.error.clone();
+            let saving = draft.saving;
+            column = column
                 .child(
                     div()
                         .flex()
@@ -715,9 +837,78 @@ impl LabView {
                             .text_color(theme.text_muted)
                             .child(error),
                     )
-                })
-                .into_any_element(),
-        )
+                });
+        }
+        let note_line = |text: String| {
+            div()
+                .text_size(small)
+                .text_color(theme.text_muted)
+                .child(text)
+        };
+        match &self.list {
+            None => {}
+            Some(VersionList::Loading) => {
+                column = column.child(note_line("Loading versions…".into()))
+            }
+            Some(VersionList::Failed) => {
+                column = column.child(note_line(
+                    openagents_account::lab_cards::VERSIONS_UNAVAILABLE.into(),
+                ))
+            }
+            Some(VersionList::Shown(list)) => {
+                let mut rows = div().flex().flex_col().gap(px(2.));
+                for item in list.clone() {
+                    let number = item.number;
+                    let shown = number == self.card.version;
+                    let opening = self.opening == Some(number);
+                    let label = if shown {
+                        format!("{} (showing)", item.label())
+                    } else if opening {
+                        format!("{} (opening…)", item.label())
+                    } else {
+                        item.label()
+                    };
+                    rows =
+                        rows.child(
+                            div()
+                                .id(SharedString::from(format!("{}:v{number}", self.id)))
+                                .px(px(8.))
+                                .py(px(3.))
+                                .rounded_md()
+                                .text_size(small)
+                                .text_color(if shown { theme.text } else { theme.text_muted })
+                                .when(shown, |d| d.bg(theme.surface))
+                                .when(!shown, |d| {
+                                    d.cursor_pointer().on_click(cx.listener(
+                                        move |this, _, _, cx| this.open_version(number, cx),
+                                    ))
+                                })
+                                .child(label),
+                        );
+                }
+                column = column.child(rows);
+            }
+        }
+        if let Some(error) = self.version_error.clone() {
+            column = column.child(note_line(error));
+        }
+        Some(column.into_any_element())
+    }
+
+    /// The version numbers the open list shows (for tests and fixtures).
+    pub fn listed_versions(&self) -> Option<Vec<u64>> {
+        match &self.list {
+            Some(VersionList::Shown(list)) => Some(list.iter().map(|v| v.number).collect()),
+            _ => None,
+        }
+    }
+
+    /// The model turning in place of the poster, once it arrived.
+    pub fn model(&self) -> Option<gpui::Entity<crate::lab_model::LabModel>> {
+        match self.files.get(self.pictures.model.as_ref()?)? {
+            Load::Model(model) => Some(model.clone()),
+            _ => None,
+        }
     }
 }
 
@@ -873,5 +1064,156 @@ mod tests {
         cx.run_until_parked();
         assert_eq!(&*added.borrow(), &[(None, "Warmer".to_owned())]);
         view.read_with(cx, |v, _| assert!(v.draft.is_none()));
+    }
+
+    #[gpui::test]
+    fn the_version_list_reads_the_versions_and_opens_one(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| cx.set_global(Theme::default()));
+        let card = fixtures()
+            .into_iter()
+            .find(|(n, _)| n == "image")
+            .unwrap()
+            .1;
+        let opened: Rc<std::cell::RefCell<Vec<u64>>> = Rc::default();
+        let works = Rc::new(Cell::new(true));
+        let lists = Rc::new(Cell::new(true));
+        let (view, cx) = cx.add_window_view(|_, cx| {
+            let mut view = LabView::new(
+                SharedString::from("lab-versions"),
+                card.clone(),
+                "me",
+                None,
+                fetch(),
+                Rc::new(|| true),
+                cx,
+            );
+            let lists = lists.clone();
+            let versions: Versions = Rc::new(move |_| {
+                Task::ready(lists.get().then(|| {
+                    (1..=3)
+                        .rev()
+                        .map(|number| VersionItem {
+                            number,
+                            summary: format!("Take {number}"),
+                            created_unix_ms: number,
+                        })
+                        .collect()
+                }))
+            });
+            let (opened, works) = (opened.clone(), works.clone());
+            let show: ShowVersion = Rc::new(move |number, _| {
+                opened.borrow_mut().push(number);
+                Task::ready(works.get())
+            });
+            view.set_versions(versions, show);
+            view
+        });
+        let draw = |cx: &mut gpui::VisualTestContext| {
+            cx.update(|window, cx| {
+                window.refresh();
+                window.draw(cx).clear();
+            })
+        };
+        view.update(cx, |v, cx| v.toggle_versions(cx));
+        cx.run_until_parked();
+        draw(cx);
+        view.read_with(cx, |v, _| {
+            assert_eq!(v.listed_versions(), Some(vec![3, 2, 1]));
+        });
+        // The shown version isn't opened again; another one is.
+        view.update(cx, |v, cx| v.open_version(card.version, cx));
+        view.update(cx, |v, cx| v.open_version(2, cx));
+        cx.run_until_parked();
+        assert_eq!(&*opened.borrow(), &[2]);
+        view.read_with(cx, |v, _| assert!(v.version_error.is_none()));
+        // The model sends the version's card back.
+        let mut second = card.clone();
+        second.version = 2;
+        view.update(cx, |v, cx| v.set_card(second.clone(), cx));
+        draw(cx);
+        view.read_with(cx, |v, _| assert_eq!(v.card().version, 2));
+        // One that can't be read says so and keeps the card.
+        works.set(false);
+        view.update(cx, |v, cx| v.open_version(1, cx));
+        cx.run_until_parked();
+        view.read_with(cx, |v, _| {
+            assert_eq!(v.card().version, 2);
+            let error = v.version_error.clone().unwrap();
+            assert!(oa_copy::violations(&error, &[]).is_empty(), "{error}");
+        });
+        // Closing and reopening reads the list again; a failed read says so.
+        lists.set(false);
+        view.update(cx, |v, cx| v.toggle_versions(cx));
+        view.update(cx, |v, cx| v.toggle_versions(cx));
+        cx.run_until_parked();
+        draw(cx);
+        view.read_with(cx, |v, _| {
+            assert!(matches!(v.list, Some(VersionList::Failed)));
+            assert!(
+                oa_copy::violations(openagents_account::lab_cards::VERSIONS_UNAVAILABLE, &[])
+                    .is_empty()
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn a_model3d_card_turns_its_model_and_signing_out_drops_it(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| cx.set_global(Theme::default()));
+        let card = fixtures()
+            .into_iter()
+            .find(|(n, _)| n == "model3d")
+            .unwrap()
+            .1;
+        let model_id = card.primary.clone().unwrap();
+        let fetch: Fetch = Rc::new(move |id: String, _: &mut App| {
+            Task::ready(Some(if id == model_id {
+                Media::Model(crate::lab_model::tests::triangle_glb())
+            } else {
+                Media::Image(PNG.to_vec())
+            }))
+        });
+        let signed_in = Rc::new(Cell::new(true));
+        let current: Current = {
+            let signed_in = signed_in.clone();
+            Rc::new(move || signed_in.get())
+        };
+        let (view, cx) = cx.add_window_view(|_, cx| {
+            LabView::new(
+                SharedString::from("lab-model3d"),
+                card.clone(),
+                "me",
+                card.page.clone(),
+                fetch,
+                current,
+                cx,
+            )
+        });
+        cx.run_until_parked();
+        let draw = |cx: &mut gpui::VisualTestContext| {
+            cx.update(|window, cx| {
+                window.refresh();
+                window.draw(cx).clear();
+            })
+        };
+        draw(cx);
+        cx.run_until_parked();
+        draw(cx);
+        let model = view.read_with(cx, |v, _| v.model()).expect("the model");
+        let before = model.read_with(cx, |m, _| m.orbit());
+        model.update(cx, |m, cx| {
+            m.press(gpui::point(px(0.), px(0.)), cx);
+            m.drag_to(gpui::point(px(-100.), px(30.)), cx);
+            m.release_drag(cx);
+        });
+        let after = model.read_with(cx, |m, _| m.orbit());
+        assert!((after.yaw - (before.yaw + 1.0)).abs() < 1e-5);
+        assert!((after.pitch - (before.pitch + 0.3).min(1.5)).abs() < 1e-5);
+        signed_in.set(false);
+        draw(cx);
+        view.read_with(cx, |v, _| {
+            assert!(!v.showing());
+            assert!(v.model().is_none());
+        });
+        assert!(!model.read_with(cx, |m, _| m.drawn()));
     }
 }

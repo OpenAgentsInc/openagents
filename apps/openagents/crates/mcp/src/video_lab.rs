@@ -239,6 +239,10 @@ fn absolute(result: &mut Value, base: &str) {
     let Some(card) = result.get_mut("card").and_then(Value::as_object_mut) else {
         return;
     };
+    // A platform card names its files by artifact id.
+    if card.get("schema").and_then(Value::as_str) == Some(TYPED_SCHEMA) {
+        return;
+    }
     card.entry("lab").or_insert_with(|| json!(base));
     for key in ["video", "poster", "image"] {
         if let Some(path) = card.get(key).and_then(Value::as_str)
@@ -281,9 +285,59 @@ pub struct CardVisual {
     pub picture: Option<(String, PathBuf)>,
 }
 
+/// The schema of a platform Lab card (`lab_kit::card::SCHEMA`).
+const TYPED_SCHEMA: &str = "lab.card.v1";
+/// The marker line the desktop and phone read a platform card from
+/// (`openagents_account::lab_cards::LIVE_MARKER`).
+const TYPED_MARKER: &str = "-- coder:lab_card ";
+
+/// A platform Lab card (`lab.card.v1`, #11948) as a visual: the marker line
+/// carries the card and its document's space, so the desktop and phone draw
+/// `lab-ui`'s card through the signed-in account; the script under it shows
+/// the title and summary to clients that don't know the marker. `space` is
+/// the one the tool result names, else the account's own (`me`).
+pub fn typed_card_visual(card: &Value, space: Option<&str>) -> Option<CardVisual> {
+    let object = card.as_object()?;
+    if object.get("schema").and_then(Value::as_str) != Some(TYPED_SCHEMA) {
+        return None;
+    }
+    let text = |key: &str| object.get(key).and_then(Value::as_str).unwrap_or_default();
+    if text("document").is_empty() || object.get("version").and_then(Value::as_u64).is_none() {
+        return None;
+    }
+    let space = space.filter(|s| !s.is_empty()).unwrap_or("me");
+    let title = if text("title").is_empty() {
+        text("document")
+    } else {
+        text("title")
+    }
+    .to_owned();
+    let summary = text("summary");
+    let mut lines = vec![format!(
+        "ui.text {{ {}, size = \"lg\", weight = 600 }}",
+        lua(&title)
+    )];
+    if !summary.is_empty() {
+        lines.push(format!("ui.text {{ {}, color = \"muted\" }}", lua(summary)));
+    }
+    let script = format!(
+        "{TYPED_MARKER}{}\nreturn function()\n  return ui.column {{ gap = 4,\n    {}\n  }}\nend\n",
+        json!({"space": space, "card": card}),
+        lines.join(",\n    ")
+    );
+    Some(CardVisual {
+        title,
+        script,
+        picture: None,
+    })
+}
+
 /// Build the card's visual. The picture is downloaded from the Lab into a
 /// temporary file; a card without one still shows its text and links.
-pub async fn card_visual(card: &Value) -> Option<CardVisual> {
+pub async fn card_visual(card: &Value, space: Option<&str>) -> Option<CardVisual> {
+    if let Some(visual) = typed_card_visual(card, space) {
+        return Some(visual);
+    }
     let card = card.as_object()?;
     if card.get("card").and_then(Value::as_str) != Some("video_lab") {
         return None;
@@ -680,6 +734,44 @@ mod tests {
         let card: Value = serde_json::from_str(marker).unwrap();
         assert_eq!(card["card"], "video_lab");
         assert!(card.get("versions").is_none());
+    }
+
+    #[test]
+    fn a_platform_card_becomes_a_typed_marker_with_its_space() {
+        let card = json!({"schema": "lab.card.v1", "kind": "video", "document": "film",
+            "version": 2, "title": "Film \"cut\"", "summary": "Second take", "view": "video",
+            "primary": "art_v2"});
+        let mut result = json!({"card": card.clone()});
+        absolute(&mut result, "http://127.0.0.1:8792");
+        assert_eq!(result["card"], card, "artifact ids stay as they are");
+        let visual = typed_card_visual(&card, Some("project:team")).unwrap();
+        assert_eq!(visual.title, "Film \"cut\"");
+        assert!(visual.picture.is_none());
+        let marker = visual
+            .script
+            .lines()
+            .next()
+            .unwrap()
+            .strip_prefix(TYPED_MARKER)
+            .unwrap();
+        let marker: Value = serde_json::from_str(marker).unwrap();
+        assert_eq!(marker["space"], "project:team");
+        assert_eq!(marker["card"], card);
+        openagents_visual::check(&visual.script, 1)
+            .unwrap_or_else(|e| panic!("{e}\n{}", visual.script));
+        let personal = typed_card_visual(
+            &json!({"schema": "lab.card.v1", "kind": "cad",
+            "document": "bracket", "version": 1, "title": "", "view": "model3d"}),
+            None,
+        )
+        .unwrap();
+        assert!(
+            personal.script.contains("\"space\":\"me\""),
+            "{}",
+            personal.script
+        );
+        assert!(typed_card_visual(&json!({"card": "video_lab"}), None).is_none());
+        assert!(typed_card_visual(&json!({"schema": "lab.card.v1", "version": 1}), None).is_none());
     }
 
     fn tiny_png() -> Vec<u8> {

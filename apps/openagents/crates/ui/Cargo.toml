@@ -153,6 +153,7 @@ x11rb = { version = "0.14.0", features = ["image"] }
 
 [dev-dependencies]
 axum = "0.8"
+oa-copy = { path = "../../../../crates/oa-copy" }
 gpui = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
 mimalloc.workspace = true

@@ -259,9 +259,29 @@ impl Transcript {
                 })
             })
         };
+        let versions: crate::lab_view::Versions = {
+            let (model, path) = (model.clone(), path.to_owned());
+            Rc::new(move |cx: &mut gpui::App| {
+                let (model, path) = (model.clone(), path.clone());
+                let job = Tokio::spawn(cx, async move { model.lab_versions(&path).await });
+                cx.spawn(async move |_| job.await.ok().flatten())
+            })
+        };
+        let show: crate::lab_view::ShowVersion = {
+            let (model, path) = (model.clone(), path.to_owned());
+            Rc::new(move |number, cx: &mut gpui::App| {
+                let (model, path) = (model.clone(), path.clone());
+                let job = Tokio::spawn(
+                    cx,
+                    async move { model.lab_show_version(&path, number).await },
+                );
+                cx.spawn(async move |_| job.await.unwrap_or(false))
+            })
+        };
         view.update(cx, |view, _| {
             view.set_follower(stop.clone());
             view.set_add_note(add_note);
+            view.set_versions(versions, show);
         });
         let mut updates = model.watch();
         let (model, path, weak) = (model.clone(), path.to_owned(), view.downgrade());

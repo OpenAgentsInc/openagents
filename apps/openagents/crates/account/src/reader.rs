@@ -797,7 +797,6 @@ impl Reader {
             return;
         };
         let doc = saved.document_ref().clone();
-        let version = saved.card.version;
         let work = async {
             let mut cursor = 0;
             loop {
@@ -809,10 +808,15 @@ impl Reader {
                     break;
                 }
             }
-            self.lab_update(path, &labs, &doc, version, &cancel).await;
+            // The version the row shows, which a version list may change.
+            let shown = || {
+                self.lab_card(path)
+                    .map_or(saved.card.version, |s| s.card.version)
+            };
+            self.lab_update(path, &labs, &doc, shown(), &cancel).await;
             let mut events = labs.events(&doc, cursor).ok()?;
             while events.next(&cancel).await.is_ok() {
-                self.lab_update(path, &labs, &doc, version, &cancel).await;
+                self.lab_update(path, &labs, &doc, shown(), &cancel).await;
             }
             Some(())
         };
@@ -840,26 +844,8 @@ impl Reader {
         }
         let (labs, saved, cancel) = self.lab_client(path).ok_or(NoteError::Unavailable)?;
         let doc = saved.document_ref().clone();
-        let locator = match seconds {
-            Some(seconds) if seconds.is_finite() && seconds >= 0.0 => {
-                lab_kit::Locator::Time { seconds }
-            }
-            _ => lab_kit::Locator::None,
-        };
-        let request = labs
-            .bind(lab_kit::api::AddNote {
-                space: doc.space().to_owned(),
-                version: saved.card.version,
-                locator,
-                text: text.to_owned(),
-            })
-            .map_err(|_| NoteError::Unavailable)?;
-        labs.add_note(&doc, &request, &cancel)
-            .await
-            .map_err(|e| match e.refusal() {
-                Some(refusal) => NoteError::Refused(refusal.message.clone()),
-                None => NoteError::Unavailable,
-            })?;
+        crate::lab_cards::post_note(&labs, &doc, saved.card.version, seconds, text, &cancel)
+            .await?;
         self.lab_update(path, &labs, &doc, saved.card.version, &cancel)
             .await;
         Ok(())
@@ -923,14 +909,7 @@ impl Reader {
     /// One of a shown Lab card's files: image bytes, or a signed link for a
     /// video. Only files the card names are read, through the chat's account.
     pub async fn lab_media(&self, path: &str, artifact: &str) -> Option<crate::lab_cards::Media> {
-        use crate::lab_cards::{MAX_IMAGE_BYTES, Media};
         let saved = self.lab_card(path)?;
-        if !crate::lab_cards::artifacts(&saved.card)
-            .iter()
-            .any(|id| id == artifact)
-        {
-            return None;
-        }
         let (target, cancel) = {
             let s = self.state.lock().unwrap();
             (
@@ -940,24 +919,27 @@ impl Reader {
         };
         let labs = target.lease.client().labs(target.lease.session()).ok()?;
         let space = saved.document_ref().space();
-        let handle = labs.artifact(space, artifact, &cancel).await.ok()?;
-        let meta = handle.metadata();
-        if meta.media_type.starts_with("video/") {
-            return Some(
-                handle
-                    .signed_url()
-                    .map_or(Media::Other, |u| Media::Video(u.into())),
-            );
-        }
-        if !meta.media_type.starts_with("image/") || meta.size > MAX_IMAGE_BYTES {
-            return Some(Media::Other);
-        }
-        let mut download = labs.download(&handle, None, &cancel).await.ok()?;
-        let mut bytes = Vec::new();
-        while let Some(chunk) = download.next_chunk(&cancel).await.ok()? {
-            bytes.extend(chunk);
-        }
-        target.is_current().then_some(Media::Image(bytes))
+        let media =
+            crate::lab_cards::read_media(&labs, space, &saved.card, artifact, &cancel).await;
+        target.is_current().then_some(media).flatten()
+    }
+
+    /// A shown card's document's versions, newest first (#11948).
+    pub async fn lab_versions(&self, path: &str) -> Option<Vec<crate::lab_cards::VersionItem>> {
+        let (labs, saved, cancel) = self.lab_client(path)?;
+        crate::lab_cards::read_versions(&labs, saved.document_ref(), &cancel).await
+    }
+
+    /// Shows `number` of a shown card's document in its row; following then
+    /// keeps that version current. False when it couldn't be read.
+    pub async fn lab_show_version(&self, path: &str, number: u64) -> bool {
+        let Some((labs, saved, cancel)) = self.lab_client(path) else {
+            return false;
+        };
+        let doc = saved.document_ref().clone();
+        self.lab_update(path, &labs, &doc, number, &cancel).await;
+        self.lab_card(path)
+            .is_some_and(|s| s.card.version == number)
     }
 
     /// Only one saved attachment is kept in memory. Selecting another cancels and releases it.

@@ -1249,7 +1249,9 @@ impl Tools {
         let Some(card) = result.get("card").cloned() else {
             return Ok(result);
         };
-        let Some(visual) = crate::video_lab::card_visual(&card).await else {
+        // A platform card's document lives in the space the result names.
+        let space = result.get("space").and_then(Value::as_str);
+        let Some(visual) = crate::video_lab::card_visual(&card, space).await else {
             return Ok(result);
         };
         let mut paths = std::collections::BTreeMap::new();

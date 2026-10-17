@@ -58,6 +58,8 @@ pub struct VisualFrame {
     started: Instant,
     /// A Video Lab card drawn natively in place of its script.
     lab: Option<gpui::Entity<crate::lab_card::LabCard>>,
+    /// A platform Lab card's row (#11948), drawn in place of its script.
+    lab_row: Option<gpui::AnyView>,
     _tasks: Vec<Task<()>>,
 }
 
@@ -249,6 +251,25 @@ impl VisualFrame {
                         }
                         None => None,
                     };
+                    let live = script
+                        .as_deref()
+                        .and_then(openagents_account::lab_cards::live_card_in_script);
+                    if let Some(live) = live {
+                        let shown = this.update(cx, |this, cx| {
+                            let row = crate::lab_live::row(this.id.clone(), live, cx);
+                            let shown = row.is_some();
+                            if let Some(row) = row {
+                                this.lab_row = Some(row.into());
+                                this.load = Load::Ready;
+                                cx.emit(VisualLayoutChanged);
+                                cx.notify();
+                            }
+                            shown
+                        });
+                        if shown.unwrap_or(false) {
+                            return;
+                        }
+                    }
                     let _ = this.update(cx, |this, cx| match (lab, script) {
                         (Some(card), _) => {
                             let id = this.id.clone();
@@ -286,6 +307,7 @@ impl VisualFrame {
             local: Rc::default(),
             started: Instant::now(),
             lab: None,
+            lab_row: None,
             _tasks: tasks,
         }
     }
@@ -542,6 +564,14 @@ fn text_px(size: openagents_visual::TextSize, window: &Window) -> (Pixels, Pixel
 impl Render for VisualFrame {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::of(cx).clone();
+        if let Some(row) = self.lab_row.clone() {
+            return div()
+                .id(self.element_id("frame"))
+                .w_full()
+                .role(gpui::Role::Group)
+                .aria_label(self.title.clone())
+                .child(row);
+        }
         if let Some(lab) = self.lab.clone() {
             return div()
                 .id(self.element_id("frame"))

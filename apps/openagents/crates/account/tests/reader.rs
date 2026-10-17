@@ -59,8 +59,15 @@ struct Server {
     lab_status: Mutex<Option<String>>,
     lab_event: tokio::sync::Notify,
 }
-async fn lab_version_card(State(s): State<Arc<Server>>) -> Response {
+async fn lab_version_card(
+    State(s): State<Arc<Server>>,
+    Path((_, n)): Path<(String, u64)>,
+) -> Response {
+    if n == 0 || n > 3 {
+        return StatusCode::NOT_FOUND.into_response();
+    }
     let mut card = lab_card();
+    card["version"] = json!(n);
     card["notes"] = json!(
         s.notes
             .lock()
@@ -187,6 +194,18 @@ async fn setup() -> (Arc<Controller>, Arc<Reader>, Arc<Server>, tempfile::TempDi
             axum::routing::post(lab_note),
         )
         .route("/v1/labs/documents/{id}/events", get(lab_events))
+        .route(
+            "/v1/labs/documents/{id}/versions",
+            get(|| async {
+                let version = |n: u64| {
+                    let content = json!({"n": n});
+                    json!({"document":"beach","number":n,"parent":null,"author":"acct_a",
+                        "summary":format!("Take {n}"),"created_unix_ms":n,"schema":"photo.v1",
+                        "content_sha256":lab_kit::digest(&content),"content":content})
+                };
+                Json(json!({"data":[version(1),version(2),version(3)],"next":null}))
+            }),
+        )
         .route(
             "/v1/labs/artifacts/{id}/content",
             get(|| async { PICTURE.to_vec() }),
@@ -732,4 +751,29 @@ async fn a_shown_lab_card_takes_notes_at_a_time_and_follows_its_events() {
         .unwrap();
     c.sign_out().await;
     assert!(r.lab_cards().is_empty());
+}
+
+#[tokio::test]
+async fn a_saved_lab_card_lists_its_versions_and_shows_one() {
+    let (c, r, _server, _root) = setup().await;
+    r.open(target(&c, 1)).unwrap();
+    r.more().await;
+    let path = r.lab_cards().first().expect("a Lab card").0.clone();
+    let versions = r.lab_versions(&path).await.unwrap();
+    assert_eq!(
+        versions.iter().map(|v| v.number).collect::<Vec<_>>(),
+        vec![3, 2, 1]
+    );
+    assert!(r.lab_versions("lab-card:00").await.is_none());
+    let updates = r.watch();
+    assert!(r.lab_show_version(&path, 2).await);
+    assert!(updates.has_changed().unwrap());
+    assert_eq!(r.lab_card(&path).unwrap().card.version, 2);
+    // A note then goes on the shown version.
+    r.lab_add_note(&path, None, "On two").await.unwrap();
+    assert_eq!(r.lab_card(&path).unwrap().card.version, 2);
+    assert!(!r.lab_show_version(&path, 7).await);
+    assert_eq!(r.lab_card(&path).unwrap().card.version, 2);
+    c.sign_out().await;
+    assert!(!r.lab_show_version(&path, 3).await);
 }
