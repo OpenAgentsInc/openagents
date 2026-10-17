@@ -448,24 +448,34 @@
       "line": 141
     },
     {
-      "path": "/v1/computers/{name}/sync",
+      "path": "/v1/computers/{name}/credential-references",
       "source": "crates/openagents-web/src/phone_api.rs",
       "line": 145
     },
     {
+      "path": "/v1/computers/{name}/credential-references/{reference}",
+      "source": "crates/openagents-web/src/phone_api.rs",
+      "line": 150
+    },
+    {
+      "path": "/v1/computers/{name}/sync",
+      "source": "crates/openagents-web/src/phone_api.rs",
+      "line": 155
+    },
+    {
       "path": "/v1/computers/{name}/activity",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 146
+      "line": 156
     },
     {
       "path": "/v1/agents",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 147
+      "line": 157
     },
     {
       "path": "/v1/agents/actions",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 148
+      "line": 158
     },
     {
       "path": "/v1/projects/{id}",

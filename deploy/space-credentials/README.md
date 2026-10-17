@@ -115,6 +115,9 @@ The manager removes caller-supplied variables with this prefix and copies its
 token into the isolated gateway directory, mode `0600`, owned by the gateway
 UID. It refuses a gateway that shares the sandbox UID.
 
+The qualified runtime must provide a real `/workspace` directory owned by its
+unprivileged guest user. Command paths stay beneath that directory.
+
 The lifecycle deployment must set a complete `network_profile` and
 `credential_proxy: true`. The client requests the exact returned profile
 selector and `needs.credential_proxy: true`. The saved binding freezes the full

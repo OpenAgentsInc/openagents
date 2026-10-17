@@ -134,6 +134,28 @@ async fn messages(State(f): State<Arc<Fixture>>, headers: HeaderMap, body: Bytes
     });
     Sse::new(tokio_stream::wrappers::ReceiverStream::new(receive)).into_response()
 }
+// Keep a controlled response open long enough to measure grant revocation.
+async fn revocation_stream(State(f): State<Arc<Fixture>>, headers: HeaderMap) -> Response {
+    if !f.authorized(&headers, false).await {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    let (send, receive) = tokio::sync::mpsc::channel(1);
+    tokio::spawn(async move {
+        for _ in 0..200 {
+            if send
+                .send(Ok::<_, Infallible>(
+                    Event::default().event("ping").data("{}"),
+                ))
+                .await
+                .is_err()
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    });
+    Sse::new(tokio_stream::wrappers::ReceiverStream::new(receive)).into_response()
+}
 async fn redirect(State(f): State<Arc<Fixture>>, headers: HeaderMap) -> Response {
     if !f.authorized(&headers, false).await {
         return StatusCode::UNAUTHORIZED.into_response();
@@ -254,6 +276,7 @@ async fn run() -> Result<(), ()> {
         .route("/healthz", get(|| async { "ok" }))
         .route("/v1/messages", post(messages))
         .route("/v1/messages/redirect", post(redirect))
+        .route("/v1/messages/stream", post(revocation_stream))
         .route("/repo.git/info/refs", get(git))
         .route("/api/v3/user", get(github_user))
         .route("/repo.git/git-upload-pack", post(git))
