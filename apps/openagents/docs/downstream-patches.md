@@ -84,3 +84,8 @@ feature keeps forms independent of the app's separate syntax-engine version.
   Home uses the Coder Noir and Coder Light palettes, compact current-work rows,
   and a separate dashboard management screen. UIKit mounts shared actions in
   the navigation bar and keeps Sessions visible while scrolling.
+
+- [OpenAgents #11924](https://github.com/OpenAgentsInc/openagents/issues/11924):
+  custom-agent forms use the selected computer's cached and live model choices.
+  Rust rejects late replies after switching computers or accounts and preserves
+  saved model selections. The bundled Claude list includes Opus 5.5.

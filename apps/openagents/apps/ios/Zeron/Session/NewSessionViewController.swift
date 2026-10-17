@@ -425,6 +425,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
         guard let agents = app.customAgents else { return }
         do {
             if let id { try agents.editForm(id: id) } else { try agents.createForm() }
+            if let client = app.client { try agents.loadModels(core: client, deviceId: deviceId) }
             present(UINavigationController(rootViewController: AgentFormController(app: app, agents: agents)), animated: true)
         } catch { showAgentError(error.localizedDescription) }
     }

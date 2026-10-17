@@ -1,0 +1,82 @@
+{
+  "schema": "openagents.labs-api-evidence.v1",
+  "checked_at": "2026-10-17T00:36:43.484042+00:00",
+  "api": "https://api.openagents.com",
+  "source_commit": "5b7a69a2fc56db648c07b6c307f4325ad42d80e3",
+  "test_accounts": [
+    "acct_83d16a35955ef908",
+    "acct_c76f469572ad3446"
+  ],
+  "checks": [
+    "second-account kind gate",
+    "signed-out refusal",
+    "gated Echo kind",
+    "create document",
+    "checked edit",
+    "stale base refusal",
+    "kind refusal",
+    "version and card reads",
+    "job admission",
+    "job retry identity",
+    "bounded source upload",
+    "short signed file link",
+    "signed file range",
+    "authenticated file range",
+    "add note",
+    "read notes",
+    "ordered event polling",
+    "event stream",
+    "second-account reads refused",
+    "second-account changes refused",
+    "read did not start work"
+  ],
+  "cleanup": {
+    "verified": true,
+    "document_read": 404,
+    "artifact_read": 404
+  },
+  "scope": "Gated Echo fixture API; CAD and other kind integrations have separate issues.",
+  "deployment": {
+    "revision": "coder-web-b15f48ed30-20261017003233",
+    "image": "sha256:b15f48ed304ef73fa613475c6a42689f8de8f20088de585282e875b5d3912523",
+    "configuration_commit": "01c533b4624a40ad4b21c114e92b4b692ba9f95e"
+  },
+  "staging": {
+    "api": "https://staging.openagents.com",
+    "source_commit": "4b4bbc4075e33ba6c52172ea3e59e0247092404b",
+    "checked_at": "2026-10-17T00:23:16.685373+00:00",
+    "checks_passed": 21,
+    "cleanup_verified": true,
+    "site_smoke": {
+      "passed": 99,
+      "failed": 0,
+      "skipped": 2,
+      "released_coder": "1.0.0"
+    }
+  },
+  "local_checks": {
+    "api_tests_passed": 6,
+    "kit_tests_passed": 12,
+    "store_tests_passed": 6,
+    "postgres_and_gcs_conformance": true,
+    "format": "passed",
+    "generated_contract_and_route_inventory": "passed",
+    "existing_api_schemas": "unchanged",
+    "web_suite": {
+      "passed": 815,
+      "failed": 10,
+      "ignored": 16,
+      "labs_and_api_compatibility_tests": "passed",
+      "unrelated_failure_groups": [
+        "Eight private-cloud fixture failures: configuration unavailable or changed",
+        "Existing OpenAPI copy guard text in three other API families",
+        "Existing system-one documentation beta wording check"
+      ]
+    }
+  },
+  "production_contract": {
+    "operations_matched": 21,
+    "all_generated_lab_schemas_match": true,
+    "document": "https://api.openagents.com/v1/openapi.json"
+  }
+}

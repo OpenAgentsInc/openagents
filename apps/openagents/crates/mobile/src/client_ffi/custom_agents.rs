@@ -15,6 +15,7 @@ use rust_native::{Activation, Axis, Element, FieldChange, Node, TextRole, View};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeMap,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -83,7 +84,12 @@ struct Form {
     #[serde(default)]
     conflict: bool,
 }
+type ModelCatalogs = BTreeMap<String, Vec<zeron_client::catalog::ModelInfo>>;
+
 struct State {
+    catalogs: ModelCatalogs,
+    model_device: String,
+    catalog_ticket: u64,
     generation: u64,
     account_generation: u64,
     rows: Vec<AgentDefinition>,
@@ -99,6 +105,9 @@ struct State {
 impl Default for State {
     fn default() -> Self {
         Self {
+            catalogs: Default::default(),
+            model_device: String::new(),
+            catalog_ticket: 0,
             generation: 1,
             account_generation: 0,
             rows: vec![],
@@ -114,6 +123,24 @@ impl Default for State {
     }
 }
 impl State {
+    fn apply_models(
+        &mut self,
+        account: u64,
+        ticket: u64,
+        device: &str,
+        catalogs: ModelCatalogs,
+    ) -> bool {
+        if self.account_generation != account
+            || self.catalog_ticket != ticket
+            || self.model_device != device
+            || self.catalogs == catalogs
+        {
+            return false;
+        }
+        self.catalogs = catalogs;
+        self.bump();
+        true
+    }
     fn bump(&mut self) {
         self.generation += 1;
         if let Some(f) = &mut self.form {
@@ -171,6 +198,7 @@ fn choice(
 fn form_view(
     form: &Form,
     saving: bool,
+    catalogs: &ModelCatalogs,
 ) -> Result<rust_native::ValidatedView<Intent>, rust_native::ViewError> {
     let editable = !saving && form.pending.is_none();
     let field = |key: &str, label: &str, value: &str, max, multiline, intent| {
@@ -240,11 +268,46 @@ fn form_view(
             editable,
             Intent::Model(None),
         ));
-        for (i, model) in zeron_client::catalog::fallback_models(&form.spec.runtime)
-            .into_iter()
-            .take(24)
-            .enumerate()
-        {
+        let mut models = catalogs
+            .get(&form.spec.runtime)
+            .cloned()
+            .unwrap_or_else(|| zeron_client::catalog::fallback_models(&form.spec.runtime));
+        models.retain(|m| {
+            !m.id.eq_ignore_ascii_case("default")
+                && !m.id.is_empty()
+                && m.id.len() <= 256
+                && !m.id.chars().any(char::is_control)
+        });
+        for model in &mut models {
+            model.label = model
+                .label
+                .chars()
+                .filter(|c| !c.is_control())
+                .take(160)
+                .collect();
+            if model.label.trim().is_empty() {
+                model.label = model.id.clone();
+            }
+        }
+        if let Some(selected) = &form.spec.model {
+            if !models.iter().take(128).any(|m| &m.id == selected) {
+                models.insert(
+                    0,
+                    zeron_client::catalog::ModelInfo {
+                        id: selected.clone(),
+                        label: zeron_client::catalog::fallback_models(&form.spec.runtime)
+                            .into_iter()
+                            .find(|model| &model.id == selected)
+                            .map(|model| model.label)
+                            .unwrap_or_else(|| selected.clone()),
+                        description: None,
+                        reasoning_levels: vec![],
+                        options: vec![],
+                    },
+                );
+            }
+        }
+        for (i, model) in models.into_iter().take(128).enumerate() {
             children.push(choice(
                 format!("model-{i}"),
                 model.label,
@@ -586,7 +649,7 @@ impl CoreAgents {
                 state
                     .form
                     .as_ref()
-                    .and_then(|f| form_view(f, state.saving).ok())
+                    .and_then(|f| form_view(f, state.saving, &state.catalogs).ok())
                     .and_then(|v| v.to_json().ok())
                     .and_then(|b| String::from_utf8(b).ok())
             } else {
@@ -647,6 +710,54 @@ impl CoreAgents {
             drop(s);
             this.publish();
         });
+    }
+    /// Use this computer's cached choices immediately, then refresh from its runtimes.
+    pub fn load_models(
+        self: &Arc<Self>,
+        core: Arc<CoreClient>,
+        device_id: String,
+    ) -> CoreResult<()> {
+        let lease = self.lease()?;
+        let client = core.client().clone();
+        let mut state = self.state.lock().unwrap();
+        state.catalog_ticket += 1;
+        let ticket = state.catalog_ticket;
+        state.model_device = device_id.clone();
+        state.catalogs = ["claude-code", "codex"]
+            .into_iter()
+            .map(|h| (h.into(), client.cached_models(&device_id, h)))
+            .collect();
+        state.bump();
+        drop(state);
+        self.publish();
+        if device_id.is_empty() {
+            return Ok(());
+        }
+        for harness in ["claude-code", "codex"] {
+            let weak = Arc::downgrade(self);
+            let client = client.clone();
+            let lease = lease.clone();
+            let device = device_id.clone();
+            zeron_client::runtime::shared().spawn(async move {
+                let models = tokio::select! {
+                    _ = lease.cancel.cancelled() => return,
+                    models = client.list_models(&device, harness) => models,
+                };
+                let Some(this) = weak.upgrade() else { return };
+                if !lease.is_current() {
+                    return;
+                }
+                let mut state = this.state.lock().unwrap();
+                let mut catalogs = state.catalogs.clone();
+                catalogs.insert(harness.into(), models);
+                let changed = state.apply_models(lease.generation, ticket, &device, catalogs);
+                drop(state);
+                if changed {
+                    this.publish();
+                }
+            });
+        }
+        Ok(())
     }
     pub fn create_form(&self) -> CoreResult<()> {
         self.begin(None)
@@ -712,7 +823,7 @@ impl CoreAgents {
             },
             value: value.clone(),
         };
-        let intent = form_view(f, s.saving)
+        let intent = form_view(f, s.saving, &s.catalogs)
             .map_err(|_| failed("Open the form again."))?
             .change_field(&event)
             .map_err(|_| failed("The field changed. Try again."))?
@@ -742,7 +853,7 @@ impl CoreAgents {
             .form
             .as_ref()
             .ok_or_else(|| failed("Open the form again."))?;
-        let intent = form_view(f, s.saving)
+        let intent = form_view(f, s.saving, &s.catalogs)
             .map_err(|_| failed("Open the form again."))?
             .activate(&Activation {
                 instance,
@@ -979,6 +1090,94 @@ mod tests {
             conflict: false,
         }
     }
+    fn model(id: &str) -> zeron_client::catalog::ModelInfo {
+        zeron_client::catalog::ModelInfo {
+            id: id.into(),
+            label: id.into(),
+            description: None,
+            reasoning_levels: vec![],
+            options: vec![],
+        }
+    }
+    #[test]
+    fn forms_use_the_computers_models_and_keep_a_saved_choice() {
+        let mut f = form();
+        f.spec.runtime = "claude-code".into();
+        let fallback = String::from_utf8(
+            form_view(&f, false, &ModelCatalogs::new())
+                .unwrap()
+                .to_json()
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(fallback.contains("Opus 5.5"));
+        f.spec.model = Some("saved-model".into());
+        let catalogs = [("claude-code".into(), vec![model("new-live-model")])].into();
+        let view = form_view(&f, false, &catalogs).unwrap();
+        let json = String::from_utf8(view.to_json().unwrap()).unwrap();
+        assert!(json.contains("new-live-model"));
+        assert!(json.contains("saved-model"));
+        assert!(
+            !json.contains("Opus 5.5"),
+            "The live list replaces the bundled choices"
+        );
+        assert!(
+            matches!(view.activate(&Activation { instance: f.instance.clone(), revision: f.revision, node: "model-0".into() }).unwrap(), Intent::Model(Some(id)) if id=="saved-model")
+        );
+        assert!(
+            matches!(view.activate(&Activation { instance: f.instance.clone(), revision: f.revision, node: "model-1".into() }).unwrap(), Intent::Model(Some(id)) if id=="new-live-model")
+        );
+    }
+    #[test]
+    fn late_model_replies_cannot_cross_computers_accounts_or_newer_requests() {
+        let mut state = State {
+            account_generation: 4,
+            catalog_ticket: 2,
+            model_device: "second-computer".into(),
+            form: Some(form()),
+            ..Default::default()
+        };
+        let catalogs = || [("codex".into(), vec![model("live-model")])].into();
+        assert!(!state.apply_models(4, 1, "first-computer", catalogs()));
+        assert!(!state.apply_models(3, 2, "second-computer", catalogs()));
+        assert!(!state.apply_models(4, 1, "second-computer", catalogs()));
+        let before = state.form.as_ref().unwrap().clone();
+        assert!(state.apply_models(4, 2, "second-computer", catalogs()));
+        let after = state.form.as_ref().unwrap();
+        assert_eq!(after.spec, before.spec);
+        assert_eq!(after.instance, before.instance);
+        assert!(after.revision > before.revision);
+        let view = form_view(after, false, &state.catalogs).unwrap();
+        assert!(
+            view.activate(&Activation {
+                instance: before.instance,
+                revision: before.revision,
+                node: "model-0".into()
+            })
+            .is_err()
+        );
+        state = State {
+            account_generation: 5,
+            ..Default::default()
+        };
+        assert!(state.catalogs.is_empty());
+        assert!(!state.apply_models(4, 2, "second-computer", catalogs()));
+    }
+    #[test]
+    fn long_catalogs_keep_the_selected_model_and_invalid_labels_cannot_break_the_form() {
+        let mut f = form();
+        f.spec.model = Some("model-149".into());
+        let mut models: Vec<_> = (0..150).map(|i| model(&format!("model-{i}"))).collect();
+        models[0].label = "Huge title\0".repeat(10000);
+        let catalogs = [("codex".into(), models)].into();
+        let view = form_view(&f, false, &catalogs).unwrap();
+        let json = String::from_utf8(view.to_json().unwrap()).unwrap();
+        assert!(!json.contains("\\u0000"));
+        assert!(
+            matches!(view.activate(&Activation { instance: f.instance, revision: f.revision, node: "model-0".into() }).unwrap(), Intent::Model(Some(id)) if id=="model-149")
+        );
+    }
+
     #[test]
     fn form_labels_use_plain_copy() {
         fn check(value: &serde_json::Value) {
@@ -1001,7 +1200,10 @@ mod tests {
         }
         check(
             &serde_json::from_slice::<serde_json::Value>(
-                &form_view(&form(), false).unwrap().to_json().unwrap(),
+                &form_view(&form(), false, &ModelCatalogs::new())
+                    .unwrap()
+                    .to_json()
+                    .unwrap(),
             )
             .unwrap(),
         );
@@ -1009,7 +1211,7 @@ mod tests {
     #[test]
     fn form_rejects_stale_callbacks_and_disables_edits_during_uncertain_save() {
         let f = form();
-        let view = form_view(&f, false).unwrap();
+        let view = form_view(&f, false, &ModelCatalogs::new()).unwrap();
         let event = FieldChange {
             activation: Activation {
                 instance: f.instance.clone(),
@@ -1025,7 +1227,12 @@ mod tests {
         let mut foreign = event.clone();
         foreign.activation.instance = "old account form".into();
         assert!(view.change_field(&foreign).is_err());
-        assert!(form_view(&f, true).unwrap().change_field(&event).is_err());
+        assert!(
+            form_view(&f, true, &ModelCatalogs::new())
+                .unwrap()
+                .change_field(&event)
+                .is_err()
+        );
         let mut oversized = event;
         oversized.value = "é".repeat(41);
         assert!(view.change_field(&oversized).is_err());
@@ -1041,7 +1248,7 @@ mod tests {
             spec: f.spec.clone(),
             deleted: false,
         });
-        let view = form_view(&f, false).unwrap();
+        let view = form_view(&f, false, &ModelCatalogs::new()).unwrap();
         assert!(
             view.activate(&Activation {
                 instance: f.instance.clone(),

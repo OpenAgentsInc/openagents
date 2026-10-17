@@ -130,7 +130,7 @@ def main():
             # account database through the connector's socket, its own
             # `actor` schema; Mac jobs through it when the flag is 1.
             secret(DATABASE_SECRET, "OPENAGENTS_WEB_ACTORS_DATABASE_URL"),
-            secret(DATABASE_SECRET, "OPENAGENTS_WEB_LABS_DATABASE_URL"),
+            secret("openagents-labs-staging-pg-url", "OPENAGENTS_WEB_LABS_DATABASE_URL"),
             plain("OPENAGENTS_WEB_LABS_BUCKET", CHAT_BUCKET),
             plain("OPENAGENTS_WEB_LABS_SIGNING_ACCOUNT", RUNTIME),
             plain("OPENAGENTS_WEB_MAC_JOBS_ACTORS", MAC_JOBS_ACTORS),

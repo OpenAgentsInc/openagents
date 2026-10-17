@@ -380,6 +380,13 @@ pub fn fallback_models(harness: &str) -> Vec<ModelInfo> {
                 vec![context_window("200k")],
             ),
             model(
+                "claude-opus-5-5",
+                "Opus 5.5",
+                "Powerful model for long-running work",
+                FULL_LADDER,
+                vec![context_window("200k"), toggle("fastMode", "Fast Mode")],
+            ),
+            model(
                 "claude-opus-5",
                 "Opus 5",
                 "Powerful model for complex work",
@@ -564,6 +571,9 @@ pub fn model_label(harness: &str, model_id: &str) -> String {
         .unwrap_or_else(|| model_id.to_owned())
 }
 
+// Keep each read-modify-write together when runtime replies arrive concurrently.
+static CATALOG_WRITES: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Last-known live catalogs on disk (`{data_dir}/catalogs/{device}.json`):
 /// pickers open instantly with the device's real list, and an unreachable
 /// device still shows what it offered last time before the static fallback.
@@ -628,6 +638,7 @@ impl DiskCatalog {
     }
 
     pub(crate) fn put_harnesses(&self, device_id: &str, list: &[HarnessInfo]) {
+        let _write = CATALOG_WRITES.lock().unwrap_or_else(|e| e.into_inner());
         let mut catalog = self.load(device_id);
         catalog.harnesses = Some(list.to_vec());
         self.store(device_id, &catalog);
@@ -656,6 +667,7 @@ impl DiskCatalog {
     }
 
     pub(crate) fn put_models(&self, device_id: &str, harness: &str, list: &[ModelInfo]) {
+        let _write = CATALOG_WRITES.lock().unwrap_or_else(|e| e.into_inner());
         learn_labels(harness, list);
         let mut catalog = self.load(device_id);
         catalog.models.insert(harness.to_owned(), list.to_vec());
@@ -666,6 +678,59 @@ impl DiskCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn simultaneous_runtime_replies_keep_each_cached_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = DiskCatalog::new(dir.path());
+        let barrier = std::sync::Barrier::new(8);
+        std::thread::scope(|scope| {
+            for index in 0..8 {
+                let cache = &cache;
+                let barrier = &barrier;
+                scope.spawn(move || {
+                    barrier.wait();
+                    cache.put_models(
+                        "computer",
+                        &format!("runtime-{index}"),
+                        &fallback_models("claude-code"),
+                    );
+                });
+            }
+        });
+        for index in 0..8 {
+            assert!(
+                cache
+                    .models("computer", &format!("runtime-{index}"))
+                    .unwrap()
+                    .iter()
+                    .any(|model| model.id == "claude-opus-5-5")
+            );
+        }
+    }
+
+    #[test]
+    fn default_claude_choices_include_opus_5_5_and_keep_older_ids() {
+        let models = fallback_models("claude-code");
+        let opus = models
+            .iter()
+            .position(|m| m.id == "claude-opus-5-5")
+            .unwrap();
+        assert!(opus < models.iter().position(|m| m.id == "claude-opus-5").unwrap());
+        assert_eq!(model_label("claude-code", "claude-opus-5-5"), "Opus 5.5");
+        let live = normalize_models(
+            "claude-code",
+            vec![ModelInfo {
+                id: "opus".into(),
+                label: "Opus".into(),
+                description: None,
+                reasoning_levels: vec![],
+                options: vec![],
+            }],
+        );
+        assert_eq!(live[0].id, "opus");
+        assert_eq!(live[0].label, "Opus 5.5");
+    }
 
     #[test]
     fn labels_resolve_curated_and_unknown_models() {

@@ -144,6 +144,7 @@ impl Workbench {
             text("heading", "Agent Lab"),
             button("refresh", "Refresh", enabled),
             button("new", "New experiment", enabled),
+            button("template:foreman", "Start from Foreman", enabled),
         ];
         if let Some(notice) = &self.notice {
             n.push(text("notice", notice))
@@ -708,8 +709,12 @@ impl Workbench {
         match key {
             "retry" => command = Some(Command::Retry),
             "refresh" => command = Some(Command::Refresh),
-            "new" => {
-                self.draft = starter();
+            "new" | "template:foreman" => {
+                self.draft = if key == "new" {
+                    starter()
+                } else {
+                    crate::templates::foreman()
+                };
                 self.document = None;
                 self.base = 0;
                 self.dirty = true;
