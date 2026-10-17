@@ -1,0 +1,60 @@
+{
+  "schema": "openagents.labs.workers.checks.v1",
+  "issue": 11878,
+  "checked_at": "2026-10-17T03:44:57.668428+00:00",
+  "source_commit": "5f2a8ad394de624da54df3988c2df32e9d44aa91",
+  "core_source_commit": "4e04e3ced6",
+  "runtime_changes_since_core_checks": false,
+  "fixture_change": "The Agent Lab web fixture now uses the account owner storage key. The corrected test passed on the rebased source.",
+  "checks": {
+    "11878-core": {
+      "passed": 72,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "5280ced38e74ac33aeead27233e59e7d879b973f5afd59ac50789e91a94561d5"
+    },
+    "11878-sdk-cad-video": {
+      "passed": 140,
+      "failed": 0,
+      "ignored": 1,
+      "log_sha256": "c1a640585ac4ef61cf2535ad5b170b2575cbb7369bbc1402e284d031daae2b28"
+    },
+    "11878-gateway": {
+      "passed": 461,
+      "failed": 0,
+      "ignored": 8,
+      "log_sha256": "3249249c9d0700bd62367f661033e5e0849431d3c66d7ba6ac6316b945726803"
+    },
+    "11878-final-web-agent-lab": {
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "cd29784aa30ee8fcb66aa50d2c278b77461842df96b3adbf353525af574a8afc"
+    },
+    "11878-final-web-framing": {
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "0a5023e486133065005fb20b3e1dc439a8110db0261b9237090de7572f87d73f"
+    },
+    "11878-final-web-cad": {
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "abc98d5c56841d2713bcc60b244e564caf2d0fc2708064ea38be7eb02e051960"
+    }
+  },
+  "native_check": {
+    "command": "cargo test -p openagents-engine doc_host::agent_lab::tests::legacy_lab_references_are_denied_before_reading -- --exact",
+    "toolchain": "1.98.1",
+    "passed": 1
+  },
+  "format": "changed Rust files checked with rustfmt --edition 2024 --check",
+  "archive": {
+    "path": "docs/sdk/evidence/labs-workers-checks-2026-10-17.tar.gz",
+    "sha256": "f73eee5539f0a61b7f41687410293faca3e84adca03becee929e3eb96619e0b4"
+  },
+  "after_close": "Deploy account-service and web routes, run dedicated-account server/enrolled/cloud Echo checks, verify private-input handling, retire keys, and observe cloud deletion. Listed in the master delegation After-close checks table.",
+  "owner_step": "Mac installation instructions are in NEEDS_OWNER.md.",
+  "live_resources_created": false
+}
