@@ -120,8 +120,8 @@ def builder():
          f"--description={MARKER}", "--enable-logging"],
     )
     instance = named_resource(
-        ["compute", "instances", "describe", f"{PREFIX}-builder", "--zone=us-central1-c"],
-        ["compute", "instances", "create", f"{PREFIX}-builder", "--zone=us-central1-c",
+        ["compute", "instances", "describe", f"{PREFIX}-builder", "--zone=us-central1-f"],
+        ["compute", "instances", "create", f"{PREFIX}-builder", "--zone=us-central1-f",
          "--machine-type=n2-standard-8", f"--subnet={PREFIX}-nodes", "--private-network-ip=10.219.14.12",
          "--no-address", "--no-service-account", "--no-scopes", "--enable-nested-virtualization",
          "--min-cpu-platform=Intel Cascade Lake", "--maintenance-policy=TERMINATE",
