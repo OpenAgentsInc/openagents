@@ -130,8 +130,7 @@ final class DesignLabTourTests: XCTestCase {
 
     func testShell() {
         let app = launch(["-demo", "-fast"])
-        _ = app.buttons["home-sessions"].waitForExistence(timeout: 15)
-        shot(app, "home", "home")
+        _ = app.buttons["drawer-menu"].waitForExistence(timeout: 15)
 
         if app.openDrawer() {
             _ = app.cells["section-pinned"].waitForExistence(timeout: 5)

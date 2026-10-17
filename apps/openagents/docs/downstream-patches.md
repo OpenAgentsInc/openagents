@@ -93,10 +93,11 @@ feature keeps forms independent of the app's separate syntax-engine version.
 
 - [OpenAgents #11912](https://github.com/OpenAgentsInc/openagents/issues/11912):
   customizable Home dashboards. `openagents-account::dashboard` owns layout edits,
-  summary reads, import/export, account saves, and the layout directory. UIKit
-  `HomeViewController` and GPUI `home` mount the same Rust Native cards. Hooks
-  add the Home destination, account lifecycle callbacks, mobile FFI, and one
-  read-only session-report accessor; no separate chat path or engine starts.
+  summary reads, import/export, account saves, and the layout directory. GPUI
+  `home` mounts its Rust Native cards. Hooks add the Home destination, account
+  lifecycle callbacks, and one read-only session-report accessor; no separate
+  chat path or engine starts. The phone's Home screen and its mobile FFI were
+  removed in #12009; the phone opens on a chat.
 
 - [OpenAgents #11922](https://github.com/OpenAgentsInc/openagents/issues/11922):
   iPhone logins use a stable Keychain profile across app-container changes.

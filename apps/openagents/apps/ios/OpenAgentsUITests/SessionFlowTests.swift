@@ -153,12 +153,12 @@ final class SessionFlowTests: XCTestCase {
         jump.tap()
     }
 
-    /// Drawer search → back to Home / Settings: the New session capsule
+    /// Drawer search → back to Settings: the New session capsule
     /// comes back usable once the drawer closes.
     func testSearchTabRoundTrip() {
         let app = launch()
         XCTAssertTrue(app.staticTexts["Sessions"].waitForExistence(timeout: 10))
-        for page in ["sidebar-home", "sidebar-settings"] {
+        for page in ["sidebar-settings"] {
             XCTAssertTrue(app.openDrawer())
             app.buttons[page].tap()
             sleep(1)
@@ -457,9 +457,9 @@ final class SessionFlowTests: XCTestCase {
         // Sending uses it up: the next page starts empty.
         app.buttons["composer-send"].tap()
         XCTAssertTrue(app.scrollViews["transcript"].waitForExistence(timeout: 10))
-        // The session stays as the page; Home brings the capsule back.
+        // The session stays as the page; Settings brings the capsule back.
         XCTAssertTrue(app.openDrawer())
-        app.buttons["sidebar-home"].tap()
+        app.buttons["sidebar-settings"].tap()
         XCTAssertTrue(accessory.waitForExistence(timeout: 5))
         accessory.tap()
         XCTAssertTrue(input.waitForExistence(timeout: 5))
@@ -623,7 +623,7 @@ final class SessionFlowTests: XCTestCase {
         app.buttons["Queue message"].tap()
         XCTAssertTrue(app.buttons["More queue actions"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.openDrawer())
-        app.buttons["sidebar-home"].tap()
+        app.buttons["sidebar-settings"].tap()
         let accessory = app.buttons["new-session"]
         XCTAssertTrue(accessory.waitForExistence(timeout: 5))
         XCTAssertGreaterThan(accessory.frame.minY, app.windows.firstMatch.frame.height * 0.6, "capsule sits at the bottom of the page")

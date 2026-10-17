@@ -30,7 +30,6 @@ coder-access = { path = "../../../../crates/coder-access", default-features = fa
 push-gateway = { path = "../../../../crates/push-gateway", default-features = false, features = ["client"] }
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 computer-driver = { path = "../../../../crates/computer-driver" }
-openagents-dashboard = { path = "../../../../crates/openagents-dashboard", features = ["views"] }
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
 lab-kit = { path = "../../../../crates/lab-kit" }
 lab-ui = { path = "../../../../crates/lab-ui" }

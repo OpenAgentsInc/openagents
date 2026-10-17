@@ -88,13 +88,10 @@ final class MarketingShotsTests: XCTestCase {
         shot(app, "demo-04-cloud-chat")
     }
 
-    /// Home, then the session list in the drawer.
-    func testHomeAndSessions() {
+    /// The session list in the drawer.
+    func testSessions() {
         let app = launch([])
         XCTAssertTrue(app.buttons["drawer-menu"].waitForExistence(timeout: 15))
-        // Let Home's widgets fill in before the shot.
-        _ = app.buttons["home-sessions"].waitForExistence(timeout: 5)
-        shot(app, "demo-05-home")
         XCTAssertTrue(app.openDrawer())
         XCTAssertTrue(app.cells["section-pinned"].waitForExistence(timeout: 5))
         shot(app, "demo-06-sessions")

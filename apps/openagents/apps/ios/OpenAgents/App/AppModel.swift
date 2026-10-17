@@ -45,9 +45,6 @@ final class AppModel {
     private(set) var customAgents: CoreAgents?
     private lazy var agentsBridge = AgentsBridge(app: self)
     private(set) var savedHistory: CoreSavedHistory?
-    private(set) var home: CoreHome?
-    private lazy var homeBridge = HomeBridge(app: self)
-    var pendingHomeLink: String?
     private(set) var savedSnapshot: SavedHistorySnapshot?
     private lazy var savedBridge = SavedHistoryBridge(app: self)
     private(set) var client: CoreClient?
@@ -234,8 +231,6 @@ final class AppModel {
                     customAgents = account.customAgents(listener: agentsBridge)
                     agentLab = account.agentLab(listener: labBridge)
                     savedHistory = try account.savedHistory(listener: savedBridge)
-                    home = try account.home(listener: homeBridge)
-                    if let client { home?.updateClient(client: client) }
                     handleSavedHistory()
                     AccountProfile(name: name, email: nil, orgName: nil).save()
                     #if DEBUG
@@ -403,8 +398,6 @@ final class AppModel {
         endDeliveryBackgroundTask()
         lastDeliveryActivity = .distantPast
         savedHistory?.shutdown()
-        home?.shutdown()
-        home = nil
         savedHistory = nil
         savedSnapshot = nil
         client?.shutdown()
@@ -449,7 +442,6 @@ final class AppModel {
     }
 
     func didEnterBackground() {
-        home?.setVisible(visible: false, foreground: false)
         savedHistory?.setForeground(active: false)
         // Give the already-durable room outbox and host wake time to reach
         // the edge when the user leaves immediately after tapping Send.
@@ -511,16 +503,7 @@ final class AppModel {
         return Token { [weak self] in self?.observers[id] = nil }
     }
 
-    func homeDidChange() { observers.values.forEach { $0() } }
-
-    func openHomeLink(_ link: String) {
-        guard let home else { pendingHomeLink = link; return }
-        pendingHomeLink = nil
-        Task { @MainActor in
-            do { try await home.openLayoutLink(link: link); homeDidChange() }
-            catch { Toast.show("Couldn't open this layout. Try again from Home.", in: nil) }
-        }
-    }
+    fileprivate func notifyChanged() { observers.values.forEach { $0() } }
 
     func observeSession(_ chatId: String, _ handler: @escaping () -> Void) -> AnyObject {
         let id = UUID()
@@ -566,7 +549,6 @@ final class AppModel {
         #endif
         guard let client else { return }
         let ws = client.workspace()
-        home?.updateClient(client: client)
         workspaceRevision = ws.revision
         var all: [String: SessionRow] = [:]
         func vm(_ r: SessionRow) -> SessionRowVM {
@@ -1026,11 +1008,11 @@ private final class AgentsBridge: CustomAgentsListener {
 private final class LabBridge: AgentLabListener {
     weak var app: AppModel?
     init(app: AppModel) { self.app = app }
-    func onAgentLabChanged() { DispatchQueue.main.async { [weak self] in self?.app?.homeDidChange() } }
+    func onAgentLabChanged() { DispatchQueue.main.async { [weak self] in self?.app?.notifyChanged() } }
 }
 
 private final class ProjectSharingBridge: SharingListener {
     weak var app: AppModel?
     init(app: AppModel) { self.app = app }
-    func onSharingChanged() { DispatchQueue.main.async { [weak self] in self?.app?.homeDidChange() } }
+    func onSharingChanged() { DispatchQueue.main.async { [weak self] in self?.app?.notifyChanged() } }
 }

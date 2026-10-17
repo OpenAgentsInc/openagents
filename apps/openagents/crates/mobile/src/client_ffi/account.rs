@@ -188,17 +188,6 @@ impl CoreAccount {
         )
     }
 
-    pub fn home(&self, listener: Arc<dyn super::HomeListener>) -> CoreResult<Arc<super::CoreHome>> {
-        let lease = self.controller.lease().ok_or_else(auth_error)?;
-        let path = self
-            .cache
-            .lock()
-            .unwrap()
-            .clone()
-            .unwrap_or_else(|| self.profile(&lease.session().account().id, "home"))
-            .join("dashboard.json");
-        Ok(super::CoreHome::new(Some(lease), path, listener))
-    }
     /// Read the same account history as the desktop without starting an engine.
     pub fn saved_history(
         &self,
