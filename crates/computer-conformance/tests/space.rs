@@ -381,7 +381,7 @@ async fn lifecycle_retries_reuse_the_original_operation_after_lost_lookup() {
     ));
     assert_eq!(
         driver.observe(&id).await.value().unwrap().state,
-        State::Stopped
+        computer_driver::State::Stopped
     );
     assert_eq!(
         driver
@@ -401,7 +401,7 @@ async fn lifecycle_retries_reuse_the_original_operation_after_lost_lookup() {
     );
     assert_eq!(
         driver.observe(&id).await.value().unwrap().state,
-        State::Running,
+        computer_driver::State::Running,
         "an older operation retry must never apply its effect again"
     );
     assert_eq!(mock.records.lock().unwrap().lifecycle.len(), 2);
