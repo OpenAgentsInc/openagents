@@ -50,7 +50,9 @@ and removes its active objects and unfinished uploads. Native checkpoint
 recovery still requires the worker-replacement qualification. Native downloads
 use one complete response because [Cloud Storage returns whole-object checksums
 for ranged responses](https://docs.cloud.google.com/storage/docs/xml-api/get-object-download).
-This keeps SDK checksum validation enabled.
+This keeps SDK checksum validation enabled. Each worker runs at most two uploads,
+two downloads, and one compression pass at once. Snapshot streaming and deferred
+writes each have a 64 MiB budget within the transfer service's 1 GiB memory limit.
 
 
 ## Native service qualification

@@ -48,6 +48,10 @@ def transform(documents):
                     "SPACE_OBJECT_STORE_DOWNLOAD_BUFFER_BUDGET_BYTES": "268435456",
                 }.items():
                     environment(container, name, {"value": value})
+                if container.get("name") == "volume-manager":
+                    container["command"] += ["--push-concurrency=2", "--pull-concurrency=2",
+                        "--codec-concurrency=1", "--stream-writeback-budget-bytes=67108864"]
+                    environment(container, "SPACE_VOLUME_STREAM_PUSH_BUFFER_BUDGET_BYTES", {"value": "67108864"})
             if document["kind"] == "Job" and metadata["name"] == "space-db-migrate":
                 container["image"] = PINS["migrator"]["image"]
             entries = container.get("env", [])
