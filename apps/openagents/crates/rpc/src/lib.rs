@@ -20,6 +20,8 @@ use serde::{Deserialize, Serialize};
 
 mod client;
 pub mod device_room;
+/// Moving running chats to a cloud computer (#11933).
+pub mod moves;
 mod server;
 
 pub use client::{RpcClient, RpcSubscription, connect_ws};

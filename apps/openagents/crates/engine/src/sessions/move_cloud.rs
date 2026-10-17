@@ -29,6 +29,8 @@
 //! A chat whose harness login isn't available for cloud computers stays on
 //! this computer, and the record says why in plain words.
 
+pub mod plan;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -291,6 +293,10 @@ pub struct MoveRecord {
     pub restored: bool,
     pub resume: KeyedCommand,
     pub outcome: Option<Outcome>,
+    /// The command that saves the cloud computer's work for Bring back
+    /// (#11933).
+    #[serde(default)]
+    pub back: KeyedCommand,
 }
 
 /// One command's identity, saved in stages: the request (its key), then the
@@ -308,7 +314,7 @@ impl MoveRecord {
     pub fn git_ref(&self) -> String {
         format!("refs/openagents/move/{}", self.chat)
     }
-    fn remote_dir(&self) -> String {
+    pub(crate) fn remote_dir(&self) -> String {
         format!(".openagents/move/{}", self.chat)
     }
 }
@@ -390,7 +396,7 @@ impl MoveStore {
     fn record_path(&self, chat: &str) -> PathBuf {
         self.dir.join(format!("{chat}.json"))
     }
-    fn blobs(&self, chat: &str) -> PathBuf {
+    pub(crate) fn blobs(&self, chat: &str) -> PathBuf {
         self.dir.join(chat)
     }
 
@@ -414,6 +420,26 @@ impl MoveStore {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e.into()),
         }
+    }
+
+    /// Set a finished record and its saved files aside, so the chat can
+    /// move again later. A chat with no record is left alone.
+    pub fn retire(&self, chat: &str, now_unix: u64) -> Result<(), MoveError> {
+        if !chat_home::valid_id(chat) {
+            return Err(MoveError::InvalidChat);
+        }
+        let record = self.record_path(chat);
+        if record.is_file() {
+            std::fs::rename(
+                &record,
+                self.dir.join(format!("{chat}.{now_unix}.done.json")),
+            )?;
+        }
+        let blobs = self.blobs(chat);
+        if blobs.is_dir() {
+            std::fs::rename(&blobs, self.dir.join(format!("{chat}.{now_unix}.done")))?;
+        }
+        Ok(())
     }
 
     pub fn save(&self, record: &MoveRecord) -> Result<(), MoveError> {
@@ -453,6 +479,7 @@ impl MoveStore {
             restored: false,
             resume: KeyedCommand::default(),
             outcome: None,
+            back: KeyedCommand::default(),
         };
         if harness.is_none() {
             record.outcome = Some(stays(unsupported_harness()));
@@ -505,11 +532,15 @@ pub fn piece_ranges(size: u64) -> Vec<(u64, u64)> {
 }
 
 /// Quote a value for POSIX `sh`.
-fn q(value: &str) -> String {
+pub(crate) fn q(value: &str) -> String {
     format!("'{}'", value.replace('\'', r"'\''"))
 }
 
-async fn git(dir: &Path, args: &[&str], env: &[(&str, String)]) -> Result<String, MoveError> {
+pub(crate) async fn git(
+    dir: &Path,
+    args: &[&str],
+    env: &[(&str, String)],
+) -> Result<String, MoveError> {
     let mut cmd = tokio::process::Command::new("git");
     cmd.arg("-C")
         .arg(dir)
@@ -830,7 +861,7 @@ impl Mover<'_> {
 
     /// Send a saved command once (a retry reuses its key), wait for it, and
     /// read its output.
-    async fn run_command(
+    pub(crate) async fn run_command(
         &self,
         request: &CommandRequest,
         timeout: Duration,
@@ -859,7 +890,7 @@ impl Mover<'_> {
     /// Build, or reload, a command's saved identity. Every stage is saved
     /// before anything is sent, so a retry sends the same key and body.
     #[allow(clippy::too_many_arguments)]
-    async fn prepare_command(
+    pub(crate) async fn prepare_command(
         &self,
         record: &mut MoveRecord,
         pick: fn(&mut MoveRecord) -> &mut KeyedCommand,
@@ -1286,4 +1317,4 @@ pub fn resumed_command(
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

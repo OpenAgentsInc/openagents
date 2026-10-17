@@ -16,30 +16,32 @@ use serde_json::{Value, json};
 use std::process::Command as Std;
 use std::sync::{Arc, Mutex};
 
-const ID: &str = "cmp_0123456789abcdef0123";
-const CHAT: &str = "0b5c6c3e-4a0e-4c39-9a51-5a2d8f6e1c01";
-const SESSION: &str = "5f1d2c3b-0000-4000-8000-00000000abcd";
+pub(crate) const ID: &str = "cmp_0123456789abcdef0123";
+pub(crate) const CHAT: &str = "0b5c6c3e-4a0e-4c39-9a51-5a2d8f6e1c01";
+pub(crate) const SESSION: &str = "5f1d2c3b-0000-4000-8000-00000000abcd";
 const CLAUDE_SOURCE: &str = "00000000-0000-0000-0000-0000000000c1";
 const CODEX_SOURCE: &str = "00000000-0000-0000-0000-0000000000c2";
 
 #[derive(Default)]
-struct Book {
+pub(crate) struct Book {
     /// Every request after sign-in, as `label path`.
-    seen: Vec<String>,
-    created: Vec<String>,
-    puts: Vec<String>,
-    commands: BTreeMap<String, Value>,
-    outputs: BTreeMap<String, (Vec<u8>, Vec<u8>)>,
-    runs: usize,
-    credentials: BTreeMap<String, Value>,
+    pub(crate) seen: Vec<String>,
+    pub(crate) created: Vec<String>,
+    pub(crate) puts: Vec<String>,
+    pub(crate) commands: BTreeMap<String, Value>,
+    pub(crate) outputs: BTreeMap<String, (Vec<u8>, Vec<u8>)>,
+    pub(crate) runs: usize,
+    pub(crate) credentials: BTreeMap<String, Value>,
     /// Labels whose next request is applied but answered with a 503.
-    lose: Vec<&'static str>,
+    pub(crate) lose: Vec<&'static str>,
+    pub(crate) stopped: usize,
+    pub(crate) deleted: usize,
 }
 
-struct Fake {
-    home: PathBuf,
-    shims: PathBuf,
-    book: Mutex<Book>,
+pub(crate) struct Fake {
+    pub(crate) home: PathBuf,
+    pub(crate) shims: PathBuf,
+    pub(crate) book: Mutex<Book>,
 }
 
 fn computer() -> Value {
@@ -105,6 +107,9 @@ async fn serve(State(fake): State<Arc<Fake>>, request: Request<Body>) -> Respons
         ("GET", ["computers", _, "commands", _]) => "command_get",
         ("GET", ["computers", _, "commands", _, "output"]) => "output",
         ("POST", ["computers", _, "credential-references"]) => "credential",
+        ("POST", ["computers", _, "stop"]) => "stop",
+        ("DELETE", ["computers", _]) => "delete",
+        ("POST", ["computers", _, "commands", _, "cancel"]) => "cancel",
         _ => panic!("unexpected request {method} {path}"),
     };
     fake.book
@@ -128,6 +133,27 @@ async fn serve(State(fake): State<Arc<Fake>>, request: Request<Body>) -> Respons
             .into_response(),
         ),
         "get" => (200, axum::Json(computer()).into_response()),
+        "stop" => {
+            fake.book.lock().unwrap().stopped += 1;
+            let mut stopped = computer();
+            stopped["state"] = json!("stopped");
+            stopped["desired"] = json!("stopped");
+            (200, axum::Json(stopped).into_response())
+        }
+        "delete" => {
+            fake.book.lock().unwrap().deleted += 1;
+            (204, Body::empty().into_response())
+        }
+        "cancel" => {
+            let book = fake.book.lock().unwrap();
+            let value = book
+                .commands
+                .values()
+                .find(|v| v["id"] == segments[3])
+                .cloned()
+                .unwrap();
+            (202, axum::Json(value).into_response())
+        }
         "put" => {
             let rel = &q["path"];
             assert!(body.len() <= PIECE_BYTES, "piece over 4 MiB");
@@ -262,15 +288,15 @@ async fn serve(State(fake): State<Arc<Fake>>, request: Request<Body>) -> Respons
     reply
 }
 
-struct World {
-    _tmp: tempfile::TempDir,
-    project: PathBuf,
-    roots: LocalRoots,
-    store: MoveStore,
-    fake: Arc<Fake>,
-    client: Client,
-    session: Session,
-    task: tokio::task::JoinHandle<()>,
+pub(crate) struct World {
+    pub(crate) _tmp: tempfile::TempDir,
+    pub(crate) project: PathBuf,
+    pub(crate) roots: LocalRoots,
+    pub(crate) store: MoveStore,
+    pub(crate) fake: Arc<Fake>,
+    pub(crate) client: Client,
+    pub(crate) session: Session,
+    pub(crate) task: tokio::task::JoinHandle<()>,
 }
 impl Drop for World {
     fn drop(&mut self) {
@@ -278,7 +304,7 @@ impl Drop for World {
     }
 }
 
-fn sh(dir: &Path, script: &str) -> String {
+pub(crate) fn sh(dir: &Path, script: &str) -> String {
     let out = Std::new("sh")
         .arg("-c")
         .arg(script)
@@ -307,9 +333,10 @@ fn noise(len: usize) -> Vec<u8> {
         .collect()
 }
 
-const GIT: &str = "git -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false";
+pub(crate) const GIT: &str =
+    "git -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false";
 
-async fn world(big: usize) -> World {
+pub(crate) async fn world(big: usize) -> World {
     let tmp = tempfile::tempdir().unwrap();
     let base = tmp.path().canonicalize().unwrap();
     let project = base.join("work/proj");
@@ -389,7 +416,7 @@ async fn world(big: usize) -> World {
     }
 }
 
-fn chat(w: &World, harness: HarnessId) -> ChatToMove {
+pub(crate) fn chat(w: &World, harness: HarnessId) -> ChatToMove {
     ChatToMove {
         chat: CHAT.into(),
         harness,
@@ -405,7 +432,7 @@ fn chat(w: &World, harness: HarnessId) -> ChatToMove {
     }
 }
 
-fn logins() -> CloudLogins {
+pub(crate) fn logins() -> CloudLogins {
     CloudLogins {
         claude_code: Some(LoginSource {
             source: CLAUDE_SOURCE.into(),
