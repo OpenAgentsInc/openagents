@@ -6,7 +6,8 @@
 //!   needed) so the app attaches over IPC instead.
 //! - [`init`] adds the menu-bar item on macOS: how many agents are running
 //!   here, **Open**, **Move to background** (only while the engine runs in
-//!   the app), and **Stop all and quit**.
+//!   the app), **Move all to a cloud computer** (#11933), and **Stop all and
+//!   quit**.
 //!
 //! The service logic lives in `openagents-background`. The hooks into
 //! upstream files are listed in `docs/downstream-patches.md`.
@@ -210,11 +211,27 @@ fn stop_all_and_quit(state: &Entity<AppState>, cx: &mut App) {
     .detach();
 }
 
+/// Open the app on the Move sheet for every agent running here.
+fn move_all_to_cloud(cx: &mut App) {
+    crate::activate_main_window(cx);
+    let shell = cx
+        .windows()
+        .into_iter()
+        .find_map(|window| window.downcast::<crate::shell::Shell>());
+    if let Some(shell) = shell {
+        let _ = shell.update(cx, |shell, window, cx| {
+            window.activate_window();
+            shell.open_move_sheet(Vec::new(), cx);
+        });
+    }
+}
+
 /// The menu-bar item's actions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MenuAction {
     Open,
     MoveToBackground,
+    MoveAllToCloud,
     StopAllAndQuit,
 }
 
@@ -248,6 +265,7 @@ pub(crate) fn init(state: Entity<AppState>, data_dir: PathBuf, cx: &mut App) {
                 let _ = cx.update(|cx| match action {
                     MenuAction::Open => crate::activate_main_window(cx),
                     MenuAction::MoveToBackground => move_to_background(&state, data_dir, cx),
+                    MenuAction::MoveAllToCloud => move_all_to_cloud(cx),
                     MenuAction::StopAllAndQuit => stop_all_and_quit(&state, cx),
                 });
             }
@@ -299,6 +317,9 @@ mod status_item {
     }
     extern "C" fn move_to_background(_this: &Object, _sel: Sel, _sender: *mut Object) {
         send(MenuAction::MoveToBackground);
+    }
+    extern "C" fn move_all_to_cloud(_this: &Object, _sel: Sel, _sender: *mut Object) {
+        send(MenuAction::MoveAllToCloud);
     }
     extern "C" fn stop_all(_this: &Object, _sel: Sel, _sender: *mut Object) {
         send(MenuAction::StopAllAndQuit);
@@ -357,6 +378,10 @@ mod status_item {
                         move_to_background as extern "C" fn(&Object, Sel, *mut Object),
                     );
                     decl.add_method(
+                        sel!(moveAllToCloud:),
+                        move_all_to_cloud as extern "C" fn(&Object, Sel, *mut Object),
+                    );
+                    decl.add_method(
                         sel!(stopAllAndQuit:),
                         stop_all as extern "C" fn(&Object, Sel, *mut Object),
                     );
@@ -375,13 +400,16 @@ mod status_item {
             let open_item = menu_item("Open", Some(sel!(openApp:)), target);
             let move_item = menu_item("Move to background", Some(sel!(moveToBackground:)), target);
             let _: () = msg_send![move_item, setHidden: YES];
-            // "Move all to a cloud computer" waits for #11933 (move plans).
-            // let cloud_item = menu_item("Move all to a cloud computer", Some(sel!(moveAllToCloud:)), target);
+            let cloud_item = menu_item(
+                "Move all to a cloud computer",
+                Some(sel!(moveAllToCloud:)),
+                target,
+            );
             let stop_item = menu_item("Stop all and quit", Some(sel!(stopAllAndQuit:)), target);
             let separator: *mut Object = msg_send![class!(NSMenuItem), separatorItem];
             let separator2: *mut Object = msg_send![class!(NSMenuItem), separatorItem];
             for item in [
-                header, separator, open_item, move_item, separator2, stop_item,
+                header, separator, open_item, move_item, cloud_item, separator2, stop_item,
             ] {
                 let _: () = msg_send![menu, addItem: item];
             }

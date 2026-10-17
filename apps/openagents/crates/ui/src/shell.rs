@@ -75,6 +75,7 @@ mod command_palette;
 mod file_mutations;
 mod files_panel;
 mod harness_updates;
+mod move_sheet;
 mod navigation_focus;
 #[cfg(test)]
 mod navigation_tests;
@@ -211,6 +212,8 @@ const CHAT_MENU_ROW_ARCHIVE: u8 = 2;
 const CHAT_MENU_ROW_COPY: u8 = 3;
 const CHAT_MENU_ROW_DELETE: u8 = 4;
 const CHAT_MENU_ROW_TAB: u8 = 5;
+/// After the tab rows, which count up from `CHAT_MENU_ROW_TAB`.
+const CHAT_MENU_ROW_MOVE: u8 = 16;
 
 #[derive(Clone, Copy)]
 enum TabCloseAction {
@@ -2126,6 +2129,8 @@ pub struct Shell {
     rename_space_dialog: Option<RenameSpaceDialog>,
     sidebar_section_migration: Option<(String, crate::state::EngineHandle)>,
     section_dialog: Option<sidebar_sections::SectionDialog>,
+    /// Moving running chats to a cloud computer (#11933).
+    moves: move_sheet::Moves,
     section_menu: Option<(String, Point<Pixels>)>,
     section_header_hover: Option<String>,
     section_menu_focus: FocusHandle,
@@ -2663,6 +2668,7 @@ impl Shell {
             rename_space_dialog: None,
             sidebar_section_migration: None,
             section_dialog: None,
+            moves: Default::default(),
             section_menu: None,
             section_header_hover: None,
             section_menu_focus: cx.focus_handle(),
@@ -6319,6 +6325,7 @@ impl Shell {
         self.command_palette.is_some()
             || self.voice.read(cx).stage_open
             || self.section_dialog.is_some()
+            || self.move_sheet_open()
             || self.section_menu.is_some()
             || self.add_space.is_some()
             || self.composer.read(cx).pickers().read(cx).is_open()
@@ -10889,9 +10896,30 @@ impl Shell {
                             )
                             .child(SharedString::from("Archive"));
                     let copy = self.render_chat_copy_trigger(&chat_id, copy_open, &theme, cx);
-                    menu.child(self.chat_menu_hover_row(CHAT_MENU_ROW_PIN, pin, cx))
+                    let menu = menu
+                        .child(self.chat_menu_hover_row(CHAT_MENU_ROW_PIN, pin, cx))
                         .child(self.chat_menu_hover_row(CHAT_MENU_ROW_ARCHIVE, archive, cx))
-                        .child(self.chat_menu_hover_row(CHAT_MENU_ROW_COPY, copy, cx))
+                        .child(self.chat_menu_hover_row(CHAT_MENU_ROW_COPY, copy, cx));
+                    let state = self.state.read(cx);
+                    let movable = state.chats.iter().any(|chat| {
+                        chat.id == chat_id
+                            && Some(&chat.device_id) == state.local_device_id.as_ref()
+                            && chat.links.continued_by.is_none()
+                    });
+                    if movable {
+                        let move_id = chat_id.clone();
+                        let row = popover::menu_row(&theme, false, format!("chat-menu-move-{chat_id}"))
+                            .id("chat-menu-move")
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.close_chat_menu(cx);
+                                this.open_move_sheet(vec![move_id.clone()], cx);
+                            }))
+                            .child(icon(icons::CLOUD).size(px(16.0)).text_color(theme.text_muted))
+                            .child(SharedString::from("Move to a cloud computer…"));
+                        menu.child(self.chat_menu_hover_row(CHAT_MENU_ROW_MOVE, row, cx))
+                    } else {
+                        menu
+                    }
                 };
                 let delete = popover::menu_row(&theme, false, format!("chat-menu-delete-{chat_id}"))
                     .id("chat-menu-delete")
@@ -10962,6 +10990,7 @@ impl Shell {
 
         overlays.extend(self.render_space_overlays(viewport, window, cx));
         overlays.extend(self.render_section_overlays(viewport, window, cx));
+        overlays.extend(self.render_move_overlays(viewport, cx));
         if let Some(overlay) = self.render_command_palette(viewport, window, cx) {
             overlays.push(overlay);
         }

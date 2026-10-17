@@ -257,7 +257,27 @@ links remain readable. Upstream fixes now require manual ports.
   - `apps/openagents/src/main.rs`: the hidden `background` subcommand.
   - `crates/account/src/desktop.rs`: `has_saved_sign_in`.
   - `crates/brand/src/lib.rs`: the service label and unit prefixes.
-  Move all to a cloud computer is commented out until #11933.
+  #11933 added Move all to a cloud computer to the menu-bar item.
+
+- [OpenAgents #11933](https://github.com/OpenAgentsInc/openagents/issues/11933):
+  move plans, Move all, Bring back, and agent tools. Our modules are
+  `crates/engine/src/sessions/move_cloud/plan.rs` (the durable plan, its
+  states, and Bring back), `crates/engine/src/rpc/moves.rs` (the `PlanMove`
+  family of methods, background runs, and the hooks into the engine's chats),
+  `crates/rpc/src/moves.rs` (the shared method names and views), and
+  `crates/ui/src/shell/move_sheet.rs` (the Move sheet, its progress, and
+  approval of agent requests). Cloud logins are read by reference from
+  `<data>/moves/logins.json`. Hooks:
+  - `crates/engine/src/rpc.rs`: the `moves` module and its dispatch.
+  - `crates/engine/src/doc_host/transfer.rs`: `move_seed`, `move_lease`,
+    `part_revision`.
+  - `crates/rpc/src/lib.rs`: `pub mod moves`.
+  - `crates/mcp/src/tools.rs`: `plan_move`, `start_move`, `move_status`,
+    `bring_back`.
+  - `crates/ui/src/shell.rs`: the `move_sheet` module and `moves` field, its
+    overlay and keyboard ownership, and the chat menu's Move to a cloud
+    computer row.
+  - `crates/ui/src/background.rs`: Move all to a cloud computer.
 
 - [OpenAgents #11946](https://github.com/OpenAgentsInc/openagents/issues/11946):
   the engine update handoff. An installed engine service restarts into a newer
