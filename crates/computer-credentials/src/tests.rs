@@ -593,6 +593,11 @@ fn only_explicit_markers_select_credentials_in_model_and_git_headers() {
     assert_eq!(gateway::selectors(&headers).unwrap()["authorization"], id);
     headers.insert(
         "authorization",
+        format!("token oa-ref:{id}").parse().unwrap(),
+    );
+    assert_eq!(gateway::selectors(&headers).unwrap()["authorization"], id);
+    headers.insert(
+        "authorization",
         "Bearer oa-ref:projects/other/secrets/key/versions/1"
             .parse()
             .unwrap(),

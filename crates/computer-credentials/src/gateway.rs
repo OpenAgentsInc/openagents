@@ -579,7 +579,7 @@ pub fn selectors(headers: &http::HeaderMap) -> Result<BTreeMap<String, Uuid>, Fa
             let Some((scheme, content)) = value.split_once(' ') else {
                 continue;
             };
-            if scheme.eq_ignore_ascii_case("bearer") {
+            if scheme.eq_ignore_ascii_case("bearer") || scheme.eq_ignore_ascii_case("token") {
                 content
             } else if scheme.eq_ignore_ascii_case("basic") {
                 *decoded = base64::engine::general_purpose::STANDARD

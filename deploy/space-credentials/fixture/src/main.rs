@@ -1,6 +1,6 @@
 //! Controlled model and private Git endpoints for synthetic qualification only.
 use axum::{
-    Router,
+    Json, Router,
     body::{Body, Bytes},
     extract::{DefaultBodyLimit, State},
     http::{HeaderMap, Method, StatusCode, Uri, header},
@@ -47,6 +47,31 @@ impl Fixture {
         };
         value.as_bytes().ct_eq(expected.as_bytes()).unwrap_u8() == 1
     }
+    async fn bearer(&self, headers: &HeaderMap) -> bool {
+        let values = headers.get_all(header::AUTHORIZATION);
+        if values.iter().count() != 1 {
+            return false;
+        }
+        let Some(value) = values
+            .iter()
+            .next()
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.strip_prefix("Bearer "))
+        else {
+            return false;
+        };
+        let Ok(secret) = self.provider.access(&self.version).await else {
+            return false;
+        };
+        value.as_bytes().ct_eq(secret.bytes()).unwrap_u8() == 1
+    }
+}
+async fn github_user(State(f): State<Arc<Fixture>>, headers: HeaderMap) -> Response {
+    if !f.bearer(&headers).await {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    println!("github_client_request_ok");
+    Json(json!({"login":"credential-fixture","id":11813,"type":"User"})).into_response()
 }
 async fn messages(State(f): State<Arc<Fixture>>, headers: HeaderMap, body: Bytes) -> Response {
     if !f.authorized(&headers, false).await {
@@ -230,6 +255,7 @@ async fn run() -> Result<(), ()> {
         .route("/v1/messages", post(messages))
         .route("/v1/messages/redirect", post(redirect))
         .route("/repo.git/info/refs", get(git))
+        .route("/api/v3/user", get(github_user))
         .route("/repo.git/git-upload-pack", post(git))
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024))
         .with_state(fixture);

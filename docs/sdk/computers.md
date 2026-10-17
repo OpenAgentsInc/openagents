@@ -668,7 +668,7 @@ unconfigured services refuse them as unsupported. Callers select registered
 source UUIDs and rules, never cloud secret paths or authentication header values.
 
 The Rust SDK provides `credential_request`, `prepare_credential`,
-`command_with_credential`, `credential`, and `revoke_credential`. Prepare every
+`command_with_credential`, `get_credential`, and `revoke_credential`. Prepare every
 reference before dispatch. Save the final command plan with its stable key and
 pass its `oa-ref:UUID` marker as the supported client's API key or Git HTTPS
 password. The host proxy replaces only a matching, currently authorized marker.

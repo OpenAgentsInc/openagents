@@ -23,6 +23,14 @@ struct Configuration {
     backend: String,
     backend_token: String,
     port: u16,
+    workflow: Option<Workflow>,
+}
+#[derive(Deserialize)]
+struct Workflow {
+    source: String,
+    egress_profile: String,
+    command: String,
+    evidence: PathBuf,
 }
 struct Native {
     http: reqwest::Client,
@@ -171,4 +179,147 @@ async fn serve_the_live_credential_canary_frontend() {
     }
     server.abort();
     account_server.abort();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "Requires the isolated SPACE canary, broker, clients, and dedicated staging accounts."]
+async fn the_live_sdk_uses_model_git_and_github_credential_references() {
+    use openagents_sdk::computers::{CommandOptions, CommandOutcome, CreateOptions, WaitFor};
+    use openagents_sdk::{CancellationToken, Client, Deployment};
+    let path = PathBuf::from(
+        std::env::var_os("OA_CREDENTIAL_QUALIFY_CONFIG")
+            .expect("Set the private canary configuration file."),
+    );
+    assert_eq!(
+        std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    let q: Configuration = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let workflow = q
+        .workflow
+        .as_ref()
+        .expect("Configure the qualified client workflow.");
+    let origin = format!("http://127.0.0.1:{}", q.port);
+    let client = Client::new(Deployment::new(&format!("{origin}/v1"), &origin).unwrap()).unwrap();
+    let primary = client.authenticate(&q.accounts[0].token).await.unwrap();
+    let secondary = client.authenticate(&q.accounts[1].token).await.unwrap();
+    assert_eq!(primary.account().id, q.accounts[0].id);
+    assert_ne!(primary.account().id, secondary.account().id);
+    let computers = client
+        .computers(&primary)
+        .unwrap()
+        .with_operation_timeout(Duration::from_secs(30))
+        .unwrap();
+    let foreign = client.computers(&secondary).unwrap();
+    let cancel = CancellationToken::new();
+    let request = computers
+        .create_request(CreateOptions {
+            size: Some("small".into()),
+            placement: Some("fast-sandbox".into()),
+            egress_profile: Some(workflow.egress_profile.clone()),
+            needs: Some(openagents_sdk::generated::computers::AppComputerNeeds {
+                profiles: Some(vec!["core".into(), "suspend".into()]),
+                credential_proxy: Some(true),
+                command_sessions: Some(true),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .unwrap();
+    let save = |name: &str, value: Value| {
+        let path = q.directory.join(name);
+        std::fs::write(&path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    };
+    save(
+        "create-request.json",
+        serde_json::to_value(&request).unwrap(),
+    );
+    let created = computers.create(&request, &cancel).await.unwrap();
+    let reference = created.reference().clone();
+    save("computer.json", serde_json::to_value(&reference).unwrap());
+    let mut report = json!({"schema":"openagents.computers.credential-client-qualification.v1",
+        "computer":reference.id(),"account":primary.account().id,"checks":[],"cleanup":false});
+    let result: Result<(), openagents_sdk::computers::Error> = async {
+        let ensure = |condition: bool| if condition { Ok(()) } else { Err(openagents_sdk::computers::Error::InvalidResponse) };
+        computers.wait(&reference,WaitFor::Awake,Duration::from_secs(180),&cancel).await?;
+        let refused = foreign.get(&foreign.reference(reference.id())?,&cancel).await.err()
+            .ok_or(openagents_sdk::computers::Error::InvalidResponse)?;
+        ensure(matches!(refused.status(),Some(403|404)))?;
+        report["checks"].as_array_mut().unwrap().push(json!("foreign account computer read refused"));
+        for phase in ["initial","after-wake"] {
+            let command = computers.command_request(&reference,CommandOptions {
+                command:workflow.command.clone(),timeout_seconds:Some(120),..Default::default()
+            })?;
+            let mut command = command;
+            let mut credentials = Vec::new();
+            for (rule,env) in [("messages","OA_PARAM_MODEL_REF"),("git","OA_PARAM_GIT_REF"),("github-api","OA_PARAM_GH_REF")] {
+                let request = computers.credential_request(&command,&workflow.source,rule,300)?;
+                save(&format!("{phase}-{rule}-request.json"),serde_json::to_value(&request).unwrap());
+                let prepared = computers.prepare_credential(&request,&cancel).await?;
+                let retry = computers.prepare_credential(&request,&cancel).await?;
+                ensure(prepared.reference()==retry.reference())?;
+                ensure(prepared.data().expires_unix==retry.data().expires_unix)?;
+                command = computers.command_with_credential(&command,&prepared,env)?;
+                credentials.push(prepared);
+            }
+            save(&format!("{phase}-command-request.json"),serde_json::to_value(&command).unwrap());
+            let execution = computers.execute(&command,&cancel).await?;
+            let retry = computers.execute(&command,&cancel).await?;
+            ensure(execution.reference()==retry.reference())?;
+            save(&format!("{phase}-command.json"),serde_json::to_value(execution.reference()).unwrap());
+            let mut reader = computers.output(execution.reference())?;
+            let mut stdout=Vec::new();let mut stderr=Vec::new();let mut outcome=None;
+            let deadline=Instant::now()+Duration::from_secs(180);
+            while let Some(page)=reader.next_page(&computers,&cancel).await? {
+                ensure(Instant::now()<deadline)?;
+                ensure(!page.stdout_gap && !page.stderr_gap)?;
+                stdout.extend_from_slice(&page.stdout);stderr.extend_from_slice(&page.stderr);
+                outcome=page.command.outcome();
+            }
+            save(&format!("{phase}-output.json"),json!({"stdout":String::from_utf8_lossy(&stdout),"stderr":String::from_utf8_lossy(&stderr)}));
+            ensure(outcome==Some(CommandOutcome::Succeeded))?;
+            let output=String::from_utf8_lossy(&stdout);
+            ensure(output.contains("SDK_PROXY_OK") && output.contains("credential-fixture") && output.contains("GIT_CLONE_OK"))?;
+            for credential in credentials {
+                let state=computers.get_credential(credential.reference(),&cancel).await?;
+                ensure(state.data().state=="revoked")?;
+            }
+            report["checks"].as_array_mut().unwrap().push(json!({"phase":phase,"command":execution.reference().id(),"model_git_github_clients":true,"stable_retry":true,"completion_revoked":true}));
+            if phase=="initial" {
+                computers.stop(&reference,&cancel).await?;
+                computers.wait(&reference,WaitFor::Stopped,Duration::from_secs(180),&cancel).await?;
+                computers.wake(&reference,&cancel).await?;
+                computers.wait(&reference,WaitFor::Awake,Duration::from_secs(180),&cancel).await?;
+            }
+        }
+        Ok(())
+    }.await;
+    let deleted = computers.delete(&reference, &cancel).await.is_ok()
+        && computers
+            .wait(
+                &reference,
+                WaitFor::Deleted,
+                Duration::from_secs(180),
+                &cancel,
+            )
+            .await
+            .is_ok();
+    report["failure"] = result
+        .as_ref()
+        .err()
+        .map(|e| json!({"status":e.status(),"code":e.code()}))
+        .unwrap_or(Value::Null);
+    report["cleanup"] = json!(deleted);
+    report["passed"] = json!(result.is_ok());
+    std::fs::write(
+        &workflow.evidence,
+        serde_json::to_vec_pretty(&report).unwrap(),
+    )
+    .unwrap();
+    assert!(deleted, "The canary computer still needs cleanup.");
+    assert!(
+        result.is_ok(),
+        "The live SDK credential workflow failed; inspect its scrubbed record."
+    );
 }
