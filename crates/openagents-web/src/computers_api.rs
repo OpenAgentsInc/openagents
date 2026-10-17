@@ -28,6 +28,58 @@ pub(crate) struct Identity {
     pub permitted: bool,
     pub admin: bool,
     pub environment_attempt: Option<String>,
+    /// Which free cloud allowance the account gets (#11994).
+    pub free_cloud: FreeCloud,
+}
+
+/// Which free cloud allowance an account gets (#11994), from the account
+/// service's `account.free_cloud`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FreeCloud {
+    /// The full allowance: any sign-in besides a key, or a key account that
+    /// paid. Also what an account service that doesn't say means.
+    Full,
+    /// The smaller allowance of a key-only account on an attested phone.
+    Attested,
+    /// None: a key-only account with nothing else.
+    Off,
+}
+
+impl FreeCloud {
+    pub(crate) fn of(value: Option<&str>) -> Self {
+        match value {
+            Some("attested") => Self::Attested,
+            Some("none") => Self::Off,
+            _ => Self::Full,
+        }
+    }
+
+    /// The `X-OpenAgents-Allowance` value the Computers service takes, or
+    /// `None` when there is no free allowance.
+    pub(crate) fn header(self) -> Option<&'static str> {
+        match self {
+            Self::Full => Some("free"),
+            Self::Attested => Some("free-attested"),
+            Self::Off => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod free_cloud_tests {
+    use super::FreeCloud;
+
+    #[test]
+    fn the_account_services_word_picks_the_allowance() {
+        assert_eq!(FreeCloud::of(Some("full")), FreeCloud::Full);
+        assert_eq!(FreeCloud::of(None), FreeCloud::Full, "an older service");
+        assert_eq!(
+            FreeCloud::of(Some("attested")).header(),
+            Some("free-attested")
+        );
+        assert_eq!(FreeCloud::of(Some("none")).header(), None);
+        assert_eq!(FreeCloud::Full.header(), Some("free"));
+    }
 }
 
 /// No cross-request auth cache: revocation is checked before every operation.
@@ -62,12 +114,13 @@ pub(crate) async fn identity(app: &App, headers: &HeaderMap) -> Result<Identity,
         .and_then(|v| v.strip_prefix("Bearer "))
         .unwrap_or_default();
     match service.computer_account(token).await {
-        Ok((account, admin)) => Ok(Identity {
+        Ok((account, admin, free_cloud)) => Ok(Identity {
             owner: crate::chat_store::account_owner(&account),
             permitted: admin || app.config.agent_accounts.contains(&account),
             account,
             admin,
             environment_attempt: None,
+            free_cloud,
         }),
         Err(SessionError::Unauthenticated | SessionError::InvalidRequest) => Err(refused(
             StatusCode::UNAUTHORIZED,

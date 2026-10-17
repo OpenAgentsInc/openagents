@@ -11591,6 +11591,7 @@ dependencies = [
  "tenancy",
  "tokio",
  "url",
+ "x509-parser",
 ]
 
 [[package]]

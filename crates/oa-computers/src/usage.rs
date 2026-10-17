@@ -29,8 +29,35 @@ pub const FREE_BOOT_MS: u64 = 2 * 3_600_000;
 /// boot's maximum, so it allows at most 8 two-hour boots until usage settles.
 pub const FREE_BOOT_CPU_MS: i64 = 120_000_000;
 
+/// The default attested free allowance (#11994): $1 of cloud time, a third
+/// of the full one, for an account made with only a Nostr key on an
+/// attested phone install: `$1 / $0.18 x 2 vCPU x 3,600,000 ms`, rounded
+/// down to 40,000,000 CPU ms. The full allowance follows a connected
+/// account or a payment.
+pub const FREE_ATTESTED_BOOT_CPU_MS: i64 = 40_000_000;
+
 /// The default free computer count: Our cloud's one computer.
 pub const FREE_COMPUTER_COUNT: i64 = 1;
+
+/// Which free allowance an enrolled account gets (#11994).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FreeTier {
+    /// The full allowance.
+    Full,
+    /// The smaller allowance of a key-only account on an attested install.
+    Attested,
+}
+
+impl FreeTier {
+    /// The tier's stored name.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::Attested => "attested",
+        }
+    }
+}
 
 /// The allowance an enrolled free account gets when it has no policy of its
 /// own. Set from service configuration at start; never from a request.
@@ -38,12 +65,16 @@ pub const FREE_COMPUTER_COUNT: i64 = 1;
 pub struct FreeAllowance {
     pub computer_count: i64,
     pub boot_cpu_ms: i64,
+    /// The attested tier's allowance (#11994), never more than
+    /// `boot_cpu_ms`.
+    pub attested_boot_cpu_ms: i64,
 }
 
 impl FreeAllowance {
     /// `OA_COMPUTERS_FREE_ALLOWANCE=1` turns on the default allowance;
     /// `OA_COMPUTERS_FREE_BOOT_CPU_MS` and `OA_COMPUTERS_FREE_COMPUTER_COUNT`
-    /// override its amounts. Off unless configured.
+    /// override its amounts, and `OA_COMPUTERS_FREE_ATTESTED_BOOT_CPU_MS` the
+    /// attested tier's. Off unless configured.
     pub fn from_env() -> Result<Option<Self>, String> {
         let on = std::env::var("OA_COMPUTERS_FREE_ALLOWANCE").unwrap_or_default();
         if !matches!(on.trim(), "1" | "true") {
@@ -61,6 +92,10 @@ impl FreeAllowance {
         Ok(Some(Self {
             computer_count: number("OA_COMPUTERS_FREE_COMPUTER_COUNT", FREE_COMPUTER_COUNT)?,
             boot_cpu_ms: number("OA_COMPUTERS_FREE_BOOT_CPU_MS", FREE_BOOT_CPU_MS)?,
+            attested_boot_cpu_ms: number(
+                "OA_COMPUTERS_FREE_ATTESTED_BOOT_CPU_MS",
+                FREE_ATTESTED_BOOT_CPU_MS,
+            )?,
         }))
     }
 }
@@ -166,20 +201,31 @@ async fn free_limits(
 ) -> Result<Option<Option<FreeAllowance>>, DbError> {
     let row = tx
         .query_opt(
-            "SELECT f.computer_count,f.boot_cpu_ms FROM computers.free_accounts a
+            "SELECT f.computer_count,
+                CASE WHEN a.tier='attested' THEN LEAST(f.attested_boot_cpu_ms,f.boot_cpu_ms)
+                    ELSE f.boot_cpu_ms END,
+                f.attested_boot_cpu_ms
+             FROM computers.free_accounts a
              LEFT JOIN computers.free_allowance f ON true WHERE a.owner=$1",
             &[&owner],
         )
         .await?;
-    Ok(row.map(
-        |row| match (row.get::<_, Option<i64>>(0), row.get::<_, Option<i64>>(1)) {
-            (Some(computer_count), Some(boot_cpu_ms)) => Some(FreeAllowance {
-                computer_count,
-                boot_cpu_ms,
-            }),
+    Ok(row.map(|row| {
+        match (
+            row.get::<_, Option<i64>>(0),
+            row.get::<_, Option<i64>>(1),
+            row.get::<_, Option<i64>>(2),
+        ) {
+            (Some(computer_count), Some(boot_cpu_ms), Some(attested_boot_cpu_ms)) => {
+                Some(FreeAllowance {
+                    computer_count,
+                    boot_cpu_ms,
+                    attested_boot_cpu_ms,
+                })
+            }
             _ => None,
-        },
-    ))
+        }
+    }))
 }
 
 /// Reserve once for this boot before create or resume can reach the provider.
@@ -435,7 +481,9 @@ impl Store {
     /// Record the service's free allowance (#11981), or remove it so enrolled
     /// accounts without their own policy are refused. Called at start.
     pub async fn set_free_allowance(&self, free: Option<FreeAllowance>) -> Result<(), DbError> {
-        if free.is_some_and(|f| f.computer_count < 0 || f.boot_cpu_ms < 0) {
+        if free.is_some_and(|f| {
+            f.computer_count < 0 || f.boot_cpu_ms < 0 || f.attested_boot_cpu_ms < 0
+        }) {
             return Err(DbError("The free allowance is invalid.".into()));
         }
         let mut c = self.db.independent().await?;
@@ -444,10 +492,10 @@ impl Store {
         match free {
             Some(f) => {
                 tx.execute(
-                    "INSERT INTO computers.free_allowance(singleton,computer_count,boot_cpu_ms)
-                     VALUES(true,$1,$2) ON CONFLICT(singleton) DO UPDATE SET
-                     computer_count=$1,boot_cpu_ms=$2,updated_at=now()",
-                    &[&f.computer_count, &f.boot_cpu_ms],
+                    "INSERT INTO computers.free_allowance(singleton,computer_count,boot_cpu_ms,attested_boot_cpu_ms)
+                     VALUES(true,$1,$2,$3) ON CONFLICT(singleton) DO UPDATE SET
+                     computer_count=$1,boot_cpu_ms=$2,attested_boot_cpu_ms=$3,updated_at=now()",
+                    &[&f.computer_count, &f.boot_cpu_ms, &f.attested_boot_cpu_ms],
                 )
                 .await?;
             }
@@ -464,6 +512,13 @@ impl Store {
     /// computer. `false`, and no enrollment, when the allowance is off.
     /// Enrollment only adds limits: an account's own policy still wins.
     pub async fn enroll_free(&self, owner: &str) -> Result<bool, DbError> {
+        self.enroll_free_tier(owner, FreeTier::Full).await
+    }
+
+    /// [`Self::enroll_free`] at a tier (#11994). A tier only moves up:
+    /// `Full` upgrades an attested account, and `Attested` never lowers a
+    /// full one.
+    pub async fn enroll_free_tier(&self, owner: &str, tier: FreeTier) -> Result<bool, DbError> {
         if owner.is_empty() || owner.len() > 256 {
             return Err(DbError("The account is invalid.".into()));
         }
@@ -476,8 +531,9 @@ impl Store {
             .is_some();
         if on {
             tx.execute(
-                "INSERT INTO computers.free_accounts(owner) VALUES($1) ON CONFLICT DO NOTHING",
-                &[&owner],
+                "INSERT INTO computers.free_accounts(owner,tier) VALUES($1,$2)
+                 ON CONFLICT(owner) DO UPDATE SET tier='full' WHERE $2='full'",
+                &[&owner, &tier.name()],
             )
             .await?;
         }
@@ -508,7 +564,9 @@ impl Store {
         let storage = crate::storage::allowance::summary(client.as_ref(), owner).await?;
         // The free allowance, for an enrolled account without its own policy.
         let free = client.query_opt(
-            "SELECT jsonb_build_object('cpu_ms',f.boot_cpu_ms,'computer_count',f.computer_count,
+            "SELECT jsonb_build_object('cpu_ms',CASE WHEN a.tier='attested'
+                    THEN LEAST(f.attested_boot_cpu_ms,f.boot_cpu_ms) ELSE f.boot_cpu_ms END,
+                'tier',a.tier,'computer_count',f.computer_count,
                 'counted_cpu_ms',(SELECT COALESCE(sum(CASE WHEN state='settled' THEN used_cpu_ms ELSE maximum_cpu_ms END),0)
                     FROM computers.usage_reservations WHERE owner=$1),
                 'unknown_allowances',(SELECT count(*) FROM computers.usage_reservations

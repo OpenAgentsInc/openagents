@@ -84,6 +84,11 @@ pub const PRICE_VERSION: &str = "inference-rate-card-v1";
 pub const ALLOWANCE_USED_UP: &str =
     "Today's free allowance is used up. Add credit or use your own key.";
 
+/// What a key-only account reads when every new account's free use
+/// together reached today's cap (#11994).
+pub const KEY_FREE_BUSY: &str =
+    "Free use is full for today. Try again after 00:00 UTC, connect GitHub, or add credit.";
+
 /// Runs admitted by this process, so each run's hold has its own name.
 static RUNS: AtomicU64 = AtomicU64::new(0);
 
@@ -277,6 +282,10 @@ struct Saved {
     /// Every agent's free tier together today: the circuit breaker.
     #[serde(default)]
     agent_free_all: AgentDay,
+    /// Every unproven key account's free allowance together today, micros
+    /// of USD: their breaker (#11994).
+    #[serde(default)]
+    key_free_all: DayMicros,
     /// Each agent account's bought credit, micros of USD.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     agent_credit: BTreeMap<String, AgentCredit>,
@@ -475,6 +484,39 @@ impl Book {
         if let Some(used) = self.saved.allowance.get_mut(account)
             && used.day == day
         {
+            used.micros = used.micros.saturating_sub(reserved).saturating_add(actual);
+            let _ = self.save();
+        }
+    }
+
+    /// Every unproven key account's free allowance used on `day`
+    /// (#11994), micros of USD.
+    #[must_use]
+    pub fn key_free_all(&self, day: u64) -> u64 {
+        Some(self.saved.key_free_all)
+            .filter(|used| used.day == day)
+            .map_or(0, |used| used.micros)
+    }
+
+    /// Holds `worst` of the key accounts' breaker for `day`, if `cap` still
+    /// covers it.
+    pub fn reserve_key_free(&mut self, worst: u64, cap: u64, day: u64) -> bool {
+        let used = self.key_free_all(day);
+        if used.saturating_add(worst) > cap {
+            return false;
+        }
+        self.saved.key_free_all = DayMicros {
+            day,
+            micros: used.saturating_add(worst),
+        };
+        self.save().is_ok()
+    }
+
+    /// Replaces a breaker hold of `reserved` on `day` with what the request
+    /// cost.
+    pub fn settle_key_free(&mut self, reserved: u64, actual: u64, day: u64) {
+        let used = &mut self.saved.key_free_all;
+        if used.day == day {
             used.micros = used.micros.saturating_sub(reserved).saturating_add(actual);
             let _ = self.save();
         }
@@ -874,6 +916,9 @@ pub(crate) enum Kind {
         reserved: u64,
         /// Each model's price, to settle the answering one.
         priced: Vec<(String, money::Priced)>,
+        /// The same worst case is held on the key accounts' breaker
+        /// (#11994).
+        breaker: bool,
     },
     /// Every attempt is on the caller's own key: no fee in P1.
     Mine,
@@ -1259,6 +1304,12 @@ pub(crate) async fn admit(
         });
     let mut allowance_used_up = false;
     if let (Some(allowance), Some(account)) = (allowance, &public.account) {
+        // Key-only accounts that haven't connected an account or paid
+        // share one daily cap on their free use (#11994).
+        let breaker = crate::key_accounts::standing_of(state, account)
+            .await
+            .under_breaker()
+            .then_some(state.key_accounts.config.free_usd_micros_per_day);
         let mut book = book.lock().await;
         // Site admins and the configured uncapped accounts (our test
         // account) have no daily cap: their allowance use is metered and
@@ -1268,6 +1319,13 @@ pub(crate) async fn admit(
             || ((allowance.uncapped_accounts.iter().any(|id| id == account)
                 || crate::accounts::account_is_site_admin(state, account))
                 && book.reserve_allowance(account, worst, u64::MAX, day));
+        if reserved
+            && let Some(cap) = breaker
+            && !book.reserve_key_free(worst, cap, day)
+        {
+            book.settle_allowance(account, worst, 0, day);
+            return Err(ApiError::new(ErrorType::InsufficientBalance, KEY_FREE_BUSY));
+        }
         if reserved {
             book.record_charge(
                 request_id,
@@ -1283,6 +1341,7 @@ pub(crate) async fn admit(
                 day,
                 reserved: worst,
                 priced: priced_models,
+                breaker: breaker.is_some(),
             }));
         }
         allowance_used_up = true;
@@ -1376,12 +1435,15 @@ pub(crate) async fn abandon(state: &ServeState, ticket: Ticket) {
             account,
             day,
             reserved,
+            breaker,
             ..
         } => {
             if let Some(book) = &state.inference_book {
-                book.lock()
-                    .await
-                    .settle_allowance(account, *reserved, 0, *day);
+                let mut book = book.lock().await;
+                book.settle_allowance(account, *reserved, 0, *day);
+                if *breaker {
+                    book.settle_key_free(*reserved, 0, *day);
+                }
             }
         }
         Kind::Paid { holds } => {
@@ -1497,10 +1559,11 @@ async fn settle(state: &ServeState, ticket: Ticket, model: Option<String>, usage
         day,
         reserved,
         priced,
+        breaker,
     } = &ticket.kind
     {
         settle_allowance(
-            state, &ticket, account, *day, *reserved, priced, model, usage,
+            state, &ticket, account, *day, *reserved, priced, *breaker, model, usage,
         )
         .await;
         return;
@@ -1559,6 +1622,7 @@ async fn settle_allowance(
     day: u64,
     reserved: u64,
     priced: &[(String, money::Priced)],
+    breaker: bool,
     model: Option<String>,
     usage: Option<Usage>,
 ) {
@@ -1574,6 +1638,9 @@ async fn settle_allowance(
     };
     let mut book = book.lock().await;
     book.settle_allowance(account, reserved, cost.unwrap_or(reserved), day);
+    if breaker {
+        book.settle_key_free(reserved, cost.unwrap_or(reserved), day);
+    }
     book.record_charge(
         &ticket.request_id,
         Charge {
@@ -2046,5 +2113,29 @@ mod tests {
         let reopened = Book::open(dir.path()).unwrap();
         assert_eq!(reopened.spend("k1", 11).total_micros, 1_500);
         assert_eq!(reopened.free_used("acme", 11), 1);
+    }
+
+    #[test]
+    fn the_key_account_breaker_holds_settles_and_resets() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut book = Book::open(dir.path()).unwrap();
+        assert!(book.reserve_key_free(600, 1_000, 10));
+        assert!(!book.reserve_key_free(600, 1_000, 10), "over the cap");
+        // A request that cost less gives the rest back.
+        book.settle_key_free(600, 100, 10);
+        assert_eq!(book.key_free_all(10), 100);
+        assert!(book.reserve_key_free(900, 1_000, 10));
+        assert!(!book.reserve_key_free(1, 1_000, 10));
+        // A failed request gives all of it back.
+        book.settle_key_free(900, 0, 10);
+        assert_eq!(book.key_free_all(10), 100);
+        let reopened = Book::open(dir.path()).unwrap();
+        assert_eq!(reopened.key_free_all(10), 100);
+        assert_eq!(reopened.key_free_all(11), 0, "a new day starts over");
+        let mut reopened = reopened;
+        assert!(reopened.reserve_key_free(1_000, 1_000, 11));
+        // A late settle for yesterday changes nothing today.
+        reopened.settle_key_free(100, 0, 10);
+        assert_eq!(reopened.key_free_all(11), 1_000);
     }
 }

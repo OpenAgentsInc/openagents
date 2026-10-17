@@ -53,8 +53,9 @@ pub const CHALLENGE_TTL: u64 = 300;
 const KEY_FILE: &str = "nostr-challenge.key";
 /// The longest `Authorization` header or proof accepted.
 const HEADER_MAX: usize = 8 * 1024;
-/// The longest sign-in body accepted.
-pub const BODY_MAX: usize = 4 * 1024;
+/// The longest sign-in body accepted: room for an App Attest
+/// attestation (about 7 KB in base64, #11994).
+pub const BODY_MAX: usize = 16 * 1024;
 
 /// What a challenge is for. A challenge made for one purpose is refused
 /// for any other, so a key-link proof made for one account can't add the
@@ -97,8 +98,35 @@ pub enum Rejected {
 pub struct Proof {
     pub pubkey: String,
     pub event_id: String,
+    /// The challenge text the event carried.
+    pub challenge: String,
     nonce: String,
     expires: u64,
+}
+
+/// What a sign-in by a key with no account must pass before the account
+/// is made (#11994). The gateway's gate asks for App Attest or a proof of
+/// work and holds the daily caps.
+pub trait NewKeyGate {
+    /// Before the account is made, with the verified proof and the
+    /// request's JSON body. An `Err` is the answer the caller gets.
+    ///
+    /// # Errors
+    ///
+    /// The refusal to answer with.
+    fn admit(&mut self, proof: &Proof, fields: &Value) -> Result<(), Answer>;
+    /// Once the account is made.
+    fn made(&mut self, account: &str);
+}
+
+/// The gate that lets every new key in.
+pub struct Open;
+
+impl NewKeyGate for Open {
+    fn admit(&mut self, _: &Proof, _: &Value) -> Result<(), Answer> {
+        Ok(())
+    }
+    fn made(&mut self, _: &str) {}
 }
 
 /// The deployment's Nostr sign-in: its stores, the origins it accepts
@@ -384,13 +412,15 @@ impl NostrAuth {
         if claim.payload_hash != expected {
             return Err(Rejected::Payload);
         }
-        let (nonce, expires) = self.check_challenge(single(&event, "challenge")?, purpose, now)?;
+        let challenge = single(&event, "challenge")?.to_string();
+        let (nonce, expires) = self.check_challenge(&challenge, purpose, now)?;
         if !valid_pubkey(&claim.auth.pubkey) || !lower_hex(&claim.auth.event_id, 64) {
             return Err(Rejected::Malformed);
         }
         Ok(Proof {
             pubkey: claim.auth.pubkey,
             event_id: claim.auth.event_id,
+            challenge,
             nonce,
             expires,
         })
@@ -409,6 +439,20 @@ impl NostrAuth {
         authorization: Option<&str>,
         body: &[u8],
         now: u64,
+    ) -> Answer {
+        self.sign_in_gated(host, tenant, authorization, body, now, &mut Open)
+    }
+
+    /// [`Self::sign_in`], with `gate` deciding whether a key that has no
+    /// account yet may make one (#11994).
+    pub fn sign_in_gated(
+        &self,
+        host: Option<&str>,
+        tenant: &str,
+        authorization: Option<&str>,
+        body: &[u8],
+        now: u64,
+        gate: &mut dyn NewKeyGate,
     ) -> Answer {
         if body.len() > BODY_MAX {
             return refused(413, "invalid_request", "That request is too large.");
@@ -453,10 +497,22 @@ impl NostrAuth {
         let Ok(accounts) = Accounts::open(&self.dir) else {
             return unavailable();
         };
+        match accounts.account_of_principal(&nostr_principal(&proof.pubkey)) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                if let Err(answer) = gate.admit(&proof, &fields) {
+                    return answer;
+                }
+            }
+            Err(_) => return unavailable(),
+        }
         let resolved = match accounts.sign_in_nostr(&proof.pubkey, tenant) {
             Ok(resolved) => resolved,
             Err(_) => return unavailable(),
         };
+        if resolved.created {
+            gate.made(&resolved.account.id);
+        }
         if accounts
             .store()
             .ok()

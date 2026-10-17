@@ -230,6 +230,8 @@ struct Caller {
     token: String,
     /// Not invited: Our cloud runs under the free allowance.
     free: bool,
+    /// The allowance header a free create sends (#11994).
+    allowance: Option<&'static str>,
 }
 
 async fn caller(app: &App, headers: &HeaderMap) -> Result<Caller, Response> {
@@ -241,7 +243,17 @@ async fn caller(app: &App, headers: &HeaderMap) -> Result<Caller, Response> {
             "This key can't use Our cloud.",
         ));
     }
-    let free = !identity.permitted && free_allowance();
+    // A key-only account with nothing else gets no free cloud time
+    // (#11994).
+    let allowance = identity.free_cloud.header();
+    let free = !identity.permitted && free_allowance() && allowance.is_some();
+    if !identity.permitted && free_allowance() && allowance.is_none() {
+        return Err(refused(
+            StatusCode::PAYMENT_REQUIRED,
+            "allowance_used",
+            "Free cloud time starts when you use the iPhone app, connect GitHub, or add credit.",
+        ));
+    }
     if !identity.permitted && !free {
         return Err(refused(
             StatusCode::FORBIDDEN,
@@ -259,6 +271,7 @@ async fn caller(app: &App, headers: &HeaderMap) -> Result<Caller, Response> {
         owner: identity.owner,
         token,
         free,
+        allowance: if free { allowance } else { None },
     })
 }
 
@@ -311,7 +324,7 @@ async fn call(
     path: &str,
     body: Option<Value>,
 ) -> Result<(u16, Value), Response> {
-    call_free(owner, method, path, body, false).await
+    call_free(owner, method, path, body, None).await
 }
 
 async fn call_free(
@@ -319,11 +332,11 @@ async fn call_free(
     method: reqwest::Method,
     path: &str,
     body: Option<Value>,
-    free: bool,
+    allowance: Option<&'static str>,
 ) -> Result<(u16, Value), Response> {
     let client = crate::computers::client().ok_or_else(unavailable)?;
     client
-        .call_with(method, path, owner, body, None, free)
+        .call_with(method, path, owner, body, None, allowance)
         .await
         .map_err(|_| unavailable())
 }
@@ -463,7 +476,7 @@ async fn start(State(app): State<App>, headers: HeaderMap) -> Response {
             reqwest::Method::POST,
             "/v1/computers",
             Some(json!({"idempotency_key": key})),
-            caller.free,
+            caller.allowance,
         )
         .await
         {

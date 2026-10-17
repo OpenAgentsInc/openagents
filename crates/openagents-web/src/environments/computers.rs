@@ -283,6 +283,7 @@ pub(crate) async fn identity(app: &App, headers: &HeaderMap) -> Result<Identity,
         permitted: true,
         admin: false,
         environment_attempt: Some(binding.native),
+        free_cloud: crate::computers_api::FreeCloud::Full,
     })
 }
 async fn session(State(app): State<App>, headers: HeaderMap) -> Response {

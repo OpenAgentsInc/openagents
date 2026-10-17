@@ -92,6 +92,8 @@ async fn a_key_signs_in_to_one_account_whose_session_works() {
     assert_eq!(status, StatusCode::OK, "{view}");
     assert_eq!(view["account"]["id"], first["account"]["id"]);
     assert_eq!(view["workspaces"].as_array().unwrap().len(), 1);
+    // A key-only account that isn't attested gets no free cloud time (#11994).
+    assert_eq!(view["account"]["free_cloud"], "none");
 
     // The same request again is a replay.
     let (status, replay) = exchange(
@@ -177,4 +179,124 @@ async fn an_existing_github_account_adds_a_key_with_its_session() {
     let (status, taken) = link(&d, &issued.once, &other).await;
     assert_eq!(status, StatusCode::CONFLICT, "{taken}");
     assert_eq!(code(&taken), "identity_taken");
+}
+
+/// Sign in with `key`, the body made from the challenge.
+async fn sign_in_over(
+    d: &Deployment,
+    key: &RelaySigner,
+    forwarded: &str,
+    body: impl Fn(&str) -> Value,
+) -> (StatusCode, Value, Option<String>) {
+    let challenge = challenge(d, "/v1/sessions/nostr/challenge", None).await;
+    let url = format!("{}/v1/sessions/nostr", d.address);
+    let body = serde_json::to_vec(&body(&challenge)).unwrap();
+    let header = format!("Nostr {}", proof(key, &url, &challenge, Some(&body)));
+    let response = reqwest::Client::new()
+        .post(&url)
+        .header("authorization", &header)
+        .header("content-type", "application/json")
+        .header("x-forwarded-for", forwarded)
+        .body(body)
+        .send()
+        .await
+        .unwrap();
+    let status = StatusCode::from_u16(response.status().as_u16()).unwrap();
+    let wait = response
+        .headers()
+        .get("retry-after")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    (status, response.json().await.unwrap(), wait)
+}
+
+/// A solution to the sign-in proof of work at `bits`.
+fn solve(challenge: &str, bits: u8) -> String {
+    (0_u64..)
+        .map(|n| n.to_string())
+        .find(|s| gateway::key_accounts::check_pow(challenge, s, bits).is_ok())
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_new_unattested_key_needs_a_proof_of_work_and_fits_the_daily_caps() {
+    let mut accounts = account_config(None);
+    accounts.key_accounts = gateway::key_accounts::KeyAccounts {
+        difficulty_bits: 16,
+        per_ip_per_day: 1,
+        per_day: 2,
+        ..Default::default()
+    };
+    let d = deploy(Some(accounts), true).await;
+    let app = |c: &str| json!({"app": "OpenAgents", "computer": "Desk", "pow": solve(c, 16)});
+
+    // No proof, or a wrong one: refused, and no account is made.
+    let (status, refused, _) = sign_in_over(
+        &d,
+        &signer(10),
+        "10.0.0.1",
+        |_| json!({"app": "OpenAgents"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+    assert_eq!(code(&refused), "proof_required");
+    let (status, refused, _) =
+        sign_in_over(&d, &signer(10), "10.0.0.1", |_| json!({"pow": "nope"})).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+    assert_eq!(code(&refused), "invalid_proof");
+
+    // With one: the account is made.
+    let (status, made, _) = sign_in_over(&d, &signer(10), "10.0.0.1", app).await;
+    assert_eq!(status, StatusCode::OK, "{made}");
+    assert_eq!(made["created"], true);
+    // The same key signs in again with no proof: it has its account.
+    let (status, again, _) = sign_in_over(
+        &d,
+        &signer(10),
+        "10.0.0.1",
+        |_| json!({"app": "OpenAgents"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{again}");
+    assert_eq!(again["created"], false);
+
+    // The address made all it may today.
+    let (status, capped, wait) = sign_in_over(&d, &signer(11), "10.0.0.1", app).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{capped}");
+    assert_eq!(code(&capped), "signup_limit");
+    assert!(wait.is_some_and(|w| w.parse::<u64>().unwrap() <= 86_400));
+    // Another address may, until everyone's cap for the day is reached.
+    let (status, _, _) = sign_in_over(&d, &signer(11), "10.9.0.1", app).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, capped, _) = sign_in_over(&d, &signer(12), "10.8.0.1", app).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{capped}");
+    assert!(
+        capped["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("today")
+    );
+}
+
+#[tokio::test]
+async fn an_attestation_that_does_not_verify_is_refused() {
+    let d = deploy(Some(account_config(None)), true).await;
+    let (status, refused, _) = sign_in_over(
+        &d,
+        &signer(20),
+        "10.0.0.2",
+        |_| json!({"app_attest": {"key_id": "AAAA", "attestation": "o2NmbXQ="}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+    assert_eq!(code(&refused), "invalid_attestation");
+    let (status, refused, _) = sign_in_over(
+        &d,
+        &signer(20),
+        "10.0.0.2",
+        |_| json!({"app_attest": "nope"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+    assert_eq!(code(&refused), "invalid_attestation");
 }
