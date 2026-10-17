@@ -18,7 +18,6 @@ pub mod schedules;
 pub mod sessions;
 pub mod terminal_chats;
 mod transport;
-pub mod visitor;
 
 pub use auth::nostr::{
     EventTemplate, HTTP_AUTH_KIND, KEY_BODY_MAX, KeySignIn, LinkedKey, NostrSigner, POW_BITS,
