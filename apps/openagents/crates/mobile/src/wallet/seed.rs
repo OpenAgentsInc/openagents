@@ -97,6 +97,9 @@ pub enum SeedError {
     Words(String),
     /// The key store refused to save the seed.
     NotSaved,
+    /// The phone has an identity with other words (#11995). Only the
+    /// account's own restore replaces the words.
+    NotYourWords,
 }
 
 impl SeedError {
@@ -108,9 +111,13 @@ impl SeedError {
             Self::Unreadable => UNREADABLE.into(),
             Self::Words(message) => message.clone(),
             Self::NotSaved => "Couldn't save the wallet on this phone. Try again.".into(),
+            Self::NotYourWords => NOT_YOUR_WORDS.into(),
         }
     }
 }
+
+/// What the screen says when restored words differ from the account's.
+pub const NOT_YOUR_WORDS: &str = "These words don't match your account. To use different words, restore your account from them in Settings.";
 
 /// What the screen says when the key store can't be read now.
 pub const UNAVAILABLE: &str = "Your wallet is locked. Unlock your phone, then try again.";
@@ -177,9 +184,29 @@ pub fn create_with(
 
 /// Store the seed for recovery words, but only when none exists.
 pub fn restore(store: &dyn KeyStore, words: &str) -> Result<Seed, SeedError> {
+    restore_with(store, words, None)
+}
+
+/// Store the seed for recovery words, only when none exists and, when the
+/// phone has an identity, only when they are the identity's words: other
+/// words would split the wallet from the account. The account's own
+/// restore (Settings > Restore from 12 words) is the path that changes the
+/// words; a wallet made after it takes them.
+pub fn restore_with(
+    store: &dyn KeyStore,
+    words: &str,
+    identity: Option<&IdentitySource>,
+) -> Result<Seed, SeedError> {
     let entropy = restore_entropy(words).map_err(SeedError::Words)?;
     let entropy = decode_hex(&entropy).ok_or(SeedError::NotSaved)?;
     let seed = Seed::from_entropy(entropy).map_err(SeedError::Words)?;
+    match identity.map(|source| source()) {
+        Some(IdentityEntropy::Found(account)) if account != seed.entropy => {
+            return Err(SeedError::NotYourWords);
+        }
+        Some(IdentityEntropy::Unavailable) => return Err(SeedError::Unavailable),
+        _ => {}
+    }
     match read(store) {
         SeedRead::Present(_) => return Err(SeedError::Exists),
         SeedRead::Unavailable => return Err(SeedError::Unavailable),

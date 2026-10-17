@@ -543,7 +543,7 @@ impl Wallet {
             state.restore_error = None;
             state.restore_words.clone()
         };
-        let restored = seed::restore(self.store.as_ref(), &words);
+        let restored = seed::restore_with(self.store.as_ref(), &words, self.identity.as_ref());
         let worked = restored.is_ok();
         self.settle_setup(restored);
         if worked {
