@@ -237,6 +237,9 @@ async fn wait(
 }
 
 pub(super) async fn cleanup_phone(f: &mut Fixture) -> Result<()> {
+    if std::env::var_os("OA_AGENT_LAB_UI").is_some() {
+        return cleanup_lab(f).await;
+    }
     let client = Client::new(Deployment::production())?;
     let session = client.authenticate(&f.credential).await?;
     ensure!(
@@ -439,4 +442,110 @@ pub(super) fn project_name(f: &Fixture) -> String {
     } else {
         "Mobile fixture".into()
     }
+}
+
+async fn cleanup_lab(f: &mut Fixture) -> Result<()> {
+    use coder_account::openagents::agent_lab::*;
+    let client = Client::new(Deployment::production())?;
+    let session = client.authenticate(&f.credential).await?;
+    ensure!(
+        session.account().id == ACCOUNT,
+        "Dedicated account required"
+    );
+    let labs = client.agent_lab(&session)?;
+    let agents = client.agents(&session)?;
+    let cancel = coder_account::openagents::CancellationToken::new();
+    let mut runs = vec![];
+    let mut after = None;
+    loop {
+        let p = labs.runs(None, after.as_deref(), &cancel).await?;
+        runs.extend(p.data.into_iter().filter(|r| r.experiment.host == f.device));
+        after = p.next;
+        if after.is_none() {
+            break;
+        }
+    }
+    f.checks.insert("phone_lab_saved".into(), !runs.is_empty());
+    f.checks.insert(
+        "phone_lab_passed".into(),
+        runs.iter().any(|r| r.counts(0).passed == 1 && r.complete()),
+    );
+    for mut r in runs {
+        if !r.complete() {
+            let request = labs.bind(RunChange {
+                request_id: coder_account::openagents::agents::request_id()?,
+                expected_revision: r.revision,
+                action: RunAction::Stop,
+            });
+            let _ = labs.change(&r.id, &request, &cancel).await?;
+            for _ in 0..40 {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                r = labs.run(&r.id, &cancel).await?;
+                if r.complete() {
+                    break;
+                }
+            }
+        }
+        ensure!(r.complete(), "The fixture trial did not stop");
+        let request = labs.bind(RunChange {
+            request_id: coder_account::openagents::agents::request_id()?,
+            expected_revision: r.revision,
+            action: RunAction::Archive,
+        });
+        labs.change(&r.id, &request, &cancel).await?;
+        for _ in 0..40 {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            if labs.run(&r.id, &cancel).await?.host_settled {
+                break;
+            }
+        }
+        let request = labs.bind(DeleteDocument {
+            request_id: coder_account::openagents::agents::request_id()?,
+            expected_revision: r.version.version,
+        });
+        labs.delete_document(&r.version.document, &request, &cancel)
+            .await?;
+        for trial in &r.trials {
+            if let Some(chat) = &trial.chat {
+                let ms = chrono::Utc::now().timestamp_millis() + 10000;
+                let ops=["chats","sessions"].map(|kind|json!({"kind":kind,"id":chat,"op":"delete","hlc":format!("{ms:013}-000000-agent-lab-fixture")}));
+                reqwest::Client::new()
+                    .post(format!("{}/registry/{}/push", f.edge, f.account))
+                    .bearer_auth(&f.credential)
+                    .json(&json!({"batch":uuid::Uuid::new_v4().to_string(),"ops":ops}))
+                    .send()
+                    .await?
+                    .error_for_status()?;
+            }
+        }
+    }
+    let baseline: Vec<String> =
+        serde_json::from_slice(&std::fs::read(f.root.join("agent-baseline.json"))?)?;
+    let mut after = None;
+    let mut definitions = vec![];
+    loop {
+        let p = agents.list(after.as_deref(), 100, &cancel).await?;
+        definitions.extend(p.data.into_iter().filter(|a| {
+            !baseline.contains(&a.id)
+                && a.spec
+                    .name
+                    .contains(&format!("phone fixture {}", &f.device[..8]))
+        }));
+        after = p.next;
+        if after.is_none() {
+            break;
+        }
+    }
+    f.checks.insert(
+        "phone_lab_promoted".into(),
+        definitions.iter().any(|d| {
+            d.spec.name.contains("phone fixture") && d.spec.instructions.contains("Reply briefly.")
+        }),
+    );
+    for d in definitions {
+        agents
+            .delete(&d.id, &agents.delete_request(d.revision)?, &cancel)
+            .await?;
+    }
+    Ok(())
 }

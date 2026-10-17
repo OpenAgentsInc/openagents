@@ -1,0 +1,30 @@
+[package]
+name = "lab-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Account-authorized Labs HTTP routes and generated schemas"
+
+[dependencies]
+async-trait = "0.1"
+axum = "0.8"
+base64 = "0.22"
+futures-util = "0.3"
+percent-encoding = "2"
+lab-kit = { path = "../lab-kit", features = ["schema"] }
+lab-store = { path = "../lab-store" }
+schemars = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["time"] }
+
+[dev-dependencies]
+oa-copy = { path = "../oa-copy" }
+http-body-util = "0.1"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tower = { version = "0.5", features = ["util"] }
+
+[lints]
+workspace = true

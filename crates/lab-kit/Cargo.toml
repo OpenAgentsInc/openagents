@@ -8,7 +8,11 @@ description = "The shared Lab contract: documents, versions, changes, jobs, note
 
 # Pure: no IO, so it builds for every app (desktop, iOS, Android, wasm32) and
 # for both the root workspace and apps/openagents.
+[features]
+schema = ["dep:schemars"]
+
 [dependencies]
+schemars = { version = "1", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 sha2 = "0.10"

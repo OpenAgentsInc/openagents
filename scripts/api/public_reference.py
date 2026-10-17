@@ -39,7 +39,9 @@ def source_inventory():
     # Keep dynamic mounts in the owning Rust route tests rather than guessing them.
     found = []
     constant_mounts = []
-    for file in sorted((ROOT / 'crates/openagents-web/src').rglob('*.rs')):
+    sources = list((ROOT / 'crates/openagents-web/src').rglob('*.rs'))
+    sources.append(ROOT / 'crates/lab-api/src/handlers.rs')
+    for file in sorted(sources):
         if 'tests' in file.parts or 'test' in file.stem:
             continue
         source = file.read_text().split('#[cfg(test)]', 1)[0]

@@ -20,6 +20,9 @@ pub mod actors_host;
 mod agent_accounts;
 mod agent_assignments;
 mod agent_assignments_openapi;
+mod agent_lab;
+mod agent_lab_openapi;
+mod agent_lab_page;
 mod agent_ready;
 mod agent_work;
 mod agents_page;
@@ -73,6 +76,7 @@ mod history_openapi;
 mod key_openapi;
 mod lab;
 mod labs;
+pub mod labs_api;
 mod layout;
 mod link_preview;
 pub mod mac_jobs;
@@ -306,6 +310,7 @@ pub use projects::files::uploads::Policy as ProjectUploadPolicy;
 /// How the server runs.
 #[derive(Clone)]
 pub struct Config {
+    pub lab_backend: Option<Arc<dyn lab_store::backend::Backend>>,
     pub project_uploads: ProjectUploadPolicy,
     /// The local task store `/app` reads. It is never created.
     pub store: PathBuf,
@@ -476,6 +481,7 @@ impl Config {
     #[must_use]
     pub fn development(store: PathBuf) -> Self {
         Self {
+            lab_backend: None,
             project_uploads: ProjectUploadPolicy::default(),
             chat_store: Arc::new(chat_store::Store::local(store.with_file_name("web-chats"))),
             chat_build: None,
@@ -600,8 +606,11 @@ pub fn router(config: Config) -> Router {
         .merge(coder_sync::routes())
         .merge(phone_api::routes())
         .merge(history_api::routes())
+        .merge(labs_api::routes(&app))
         .merge(custom_agents::routes())
         .merge(agent_assignments::routes())
+        .merge(agent_lab::routes())
+        .merge(agent_lab_page::routes())
         .merge(dashboard::routes())
         .merge(own_runs::routes())
         .merge(mac_jobs::routes())

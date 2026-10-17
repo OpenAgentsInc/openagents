@@ -1,8 +1,8 @@
 {
   "schema": "openagents.computers.usage-evidence.v1",
-  "date": "2026-10-16",
+  "date": "2026-10-17",
   "issue": "https://github.com/OpenAgentsInc/openagents/issues/11815",
-  "status": "accounting_increment_deployed_gated",
+  "status": "storage_observation_increment_deployed_gated",
   "issue_complete": false,
   "lifecycle": {
     "staging": {
@@ -166,5 +166,260 @@
     "observed private object cleanup and account-deletion handoff",
     "useful-task and shared idle service economics",
     "customer unit, rate, rounding, total spend, and retry-safe priced ledger settlement"
-  ]
+  ],
+  "snapshot_scope": "The original lifecycle, website, Boat, checks, and cycle records describe the earlier accounting increment. The storage_observation_increment and current_deployments records describe the later storage changes and their verification.",
+  "current_deployments": {
+    "observed_utc": "2026-10-17T00:01:53.009318+00:00",
+    "lifecycle": {
+      "staging": {
+        "revision": "oa-computers-staging-registry-c50225e11b-235443",
+        "source": "c50225e11b77e1f3075134b467cc3fe641f4e719",
+        "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-computers@sha256:21d40d30e0a9a35c241a6571cc2a9584194a01505c9916bbf5530855cab9a363",
+        "traffic_percent": 100,
+        "health_http_status": 200
+      },
+      "production": {
+        "revision": "oa-computers-registry-c50225e11b-000038",
+        "source": "c50225e11b77e1f3075134b467cc3fe641f4e719",
+        "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-computers@sha256:21d40d30e0a9a35c241a6571cc2a9584194a01505c9916bbf5530855cab9a363",
+        "traffic_percent": 100,
+        "health_http_status": 200
+      },
+      "writer_protocol": "v2",
+      "migration": 10,
+      "build": "77d6b19c-b129-4023-95e3-d38b8b38ae34"
+    },
+    "boat": {
+      "deployment": {
+        "revision": "oa-boat-storage-76d096ef26-234245",
+        "source": "76d096ef269dcc4e82d99b53d536964a352cc45b",
+        "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-boat@sha256:be81ea0cf6b20a6465c7fcdb1cd76ae35842a49d625c10d5954e2c6ffe000a60",
+        "traffic_percent": 100
+      },
+      "build": "cb9cb711-cc5e-411b-9e2c-5439ad2a3047",
+      "read_only_archive_and_identity_check": {
+        "template": "oa-coder-main-20261015",
+        "provider_image_matches": true,
+        "provider_archive_matches": true,
+        "restored_size_omitted": true,
+        "read_only": true
+      }
+    }
+  },
+  "storage_observation_increment": {
+    "source": "c50225e11b77e1f3075134b467cc3fe641f4e719",
+    "provider_storage_source": "76d096ef269dcc4e82d99b53d536964a352cc45b",
+    "observed_utc": "2026-10-17T00:01:53.009318+00:00",
+    "behavior": [
+      "Save bounded provider storage observations under the current account, deployment, allocation, and unexpired worker lease.",
+      "Keep partial inventories and missing byte measurements unknown; do not infer cleanup from an empty list.",
+      "Exhaust Boat image pages and delete by immutable provider image identity, then observe absence.",
+      "Backfill explicit deleted allocations with separate durable leases and bounded reads after lifecycle work ends.",
+      "Record historical resource and create-operation identity without assigning a current boot or reopening lifecycle work.",
+      "Keep provider and database observation times distinct and deduplicate repeated observations.",
+      "Preserve null customer charges and unresolved allocation allowances."
+    ],
+    "checks": {
+      "toolchain": "1.97.1",
+      "computer_driver_linux": {
+        "passed": 29,
+        "features": "all",
+        "source": "76d096ef269dcc4e82d99b53d536964a352cc45b"
+      },
+      "boat_native": {
+        "passed": 20,
+        "unit": 11,
+        "conformance": 1,
+        "sdk": 8,
+        "source": "76d096ef269dcc4e82d99b53d536964a352cc45b",
+        "limitation": "Linux-only helper fixtures are excluded on macOS."
+      },
+      "core_native_postgresql": {
+        "passed": 51,
+        "filtered": 1,
+        "source": "c50225e11b77e1f3075134b467cc3fe641f4e719",
+        "database": "disposable PostgreSQL 16",
+        "prerequisite": "GNU coreutils in PATH",
+        "new_deleted_storage_regressions": 4
+      },
+      "linux_process_group_cancellation": {
+        "passed": true,
+        "source": "76d096ef269dcc4e82d99b53d536964a352cc45b",
+        "test": "public_commands_retain_output_resume_cancel_and_refuse_foreign_or_invalid_requests"
+      },
+      "linux_limitations": {
+        "source": "76d096ef269dcc4e82d99b53d536964a352cc45b",
+        "build": "b72cc713-f978-46cf-a587-16f127d3fbb9",
+        "status": "stopped_after_required_linux_process_fixture_passed",
+        "process_group_cancellation_passed": true,
+        "file_transfer_fixture_limitations": [
+          "Cloud Build runner cannot run required Landlock helper",
+          "Remainder run omitted helper binary after discovering runner restriction"
+        ],
+        "sdk_and_environment_completed_natively": true,
+        "full_linux_suite_claimed": false
+      },
+      "sdk_native": {
+        "passed": 47,
+        "source": "e5c6d64383b072719adc9da98517a265d83ca2c7"
+      },
+      "environment_computers_native": {
+        "passed": 10,
+        "filtered": 51,
+        "source": "e5c6d64383b072719adc9da98517a265d83ca2c7",
+        "features": [
+          "space"
+        ]
+      },
+      "format": "passed",
+      "diff_check": "passed",
+      "public_field_allowlist_unchanged": true,
+      "generated_computers_sdk_unchanged": true,
+      "new_client_published": false
+    },
+    "staging_cycle": {
+      "account": "acct_dc7a799879686fc5",
+      "started_unix": 1792194518,
+      "phases": [
+        "create accepted",
+        "create replay reused computer",
+        "awake",
+        "stopped",
+        "awake",
+        "command replay and detached output verified",
+        "stopped",
+        "deleted",
+        "released Coder 1.0 client deletion passed",
+        "durable usage and observed VM deletion verified",
+        "authenticated public usage and private-field filtering passed"
+      ],
+      "cleaned_up": true,
+      "request_key": "usage-11815-e8fb3f7fa36c41bda6d4d896975574d2",
+      "computer": "cmp_0a58f13924904ef1144c",
+      "command": "trn_bb90203baea1e04f00c3",
+      "released_client_cleanup_exit": 0,
+      "storage_event_count": 4,
+      "storage_done_count": 4,
+      "usage_event_count": 27,
+      "unresolved_allowances": 8,
+      "finished_unix": 1792194710,
+      "public_usage_event_count": 27
+    },
+    "deleted_allocation_staging_read": {
+      "account": "acct_dc7a799879686fc5",
+      "allocation_allowance": {
+        "held_cpu_ms": 691200000,
+        "settled_cpu_ms": 0,
+        "unknown_allowances": 0,
+        "unresolved_allowances": 8
+      },
+      "checks": {
+        "allocation_allowance_still_unresolved": true,
+        "allocation_allowance_unchanged": true,
+        "computer_already_deleted": true,
+        "deleted_allocation_backfill_observed": true,
+        "helper_stops_before_resource_cycle": true,
+        "historical_resource_without_boot": true,
+        "observer_account_binding": true,
+        "observer_charge_null": true,
+        "observer_current_lifecycle_metadata": true,
+        "observer_events_in_public_projection": true,
+        "original_create_operation": true,
+        "partial_inventory_cleanup_unresolved": true,
+        "pricing_disabled": true,
+        "provider_and_database_observation_times": true,
+        "public_and_internal_event_counts_match": true,
+        "public_projection_field_allowlist": true,
+        "public_projection_private_ids_absent": true,
+        "saved_binding_owner": true,
+        "usage_cursor_advances": true
+      },
+      "computer": "cmp_0a58f13924904ef1144c",
+      "credential_output": false,
+      "finished_unix": 1792195077,
+      "get_count": 7,
+      "internal_event_count": 28,
+      "observer_events": [
+        {
+          "allocation_deleted_ms": 1792194701438,
+          "boot": null,
+          "cleanup": "unknown",
+          "coverage": [
+            "partial"
+          ],
+          "customer_charge": null,
+          "object_count": 0,
+          "observed_ms": 1792194894626,
+          "phase": "deleted",
+          "provider_observed_ms": 1792194894553,
+          "resource_sha256": "644a9fe209f97c66b8cbb4d77318e57d7348007e40b107dab690699d279d73bb",
+          "revision": 17,
+          "sequence": 312
+        }
+      ],
+      "poll_count": 1,
+      "public_event_count": 28,
+      "resource_mutations": 0,
+      "result": "passed",
+      "secondary_observer_event_count": 1,
+      "started_unix": 1792195073,
+      "wait_seconds": 1.654
+    },
+    "provider_numeric_identity_delete": {
+      "name": "oa-usage-id-11815-af7ffb1da36d",
+      "created_ids": [
+        "6543747299732820707"
+      ],
+      "deleted_ids": [
+        "6543747299732820707"
+      ],
+      "cleaned_up": true,
+      "phases": [],
+      "create_status": "PENDING",
+      "numeric_delete_status": 200,
+      "numeric_delete_target_matches": true,
+      "absence_observed_utc": "2026-10-16T23:11:15.116925+00:00",
+      "absence_http_status": {
+        "oa-usage-id-11815-af7ffb1da36d": 404,
+        "6543747299732820707": 404
+      }
+    },
+    "earlier_staging_handoff_failure": {
+      "computer": "cmp_29f0d4ee9fade23bea04",
+      "public_status": 503,
+      "internal_status": 200,
+      "cause_under_investigation": "The account service handed the store to a replacement while the outgoing web revision still received traffic.",
+      "follow_up_issue": "https://github.com/OpenAgentsInc/openagents/issues/11891",
+      "dedicated_computer_confirmed_deleted": true,
+      "later_full_cycle_passed": true
+    },
+    "cleanup": {
+      "dedicated_staging_vms_absent": true,
+      "provider_test_image_absent_by_name_and_id": true,
+      "disposable_postgresql_stopped": true,
+      "isolated_colima_profile_stopped": true
+    },
+    "remaining_limitations": [
+      "Snapshot inventories remain partial and disk inventories unknown; successful reads do not prove all private objects were deleted.",
+      "The deleted-allocation observer does not release allowances, enforce storage quotas, or complete account deletion.",
+      "The complete Linux suite did not pass on the Cloud Build runner because its file helper requires unsupported Landlock behavior.",
+      "Customer pricing and settlement remain disabled."
+    ],
+    "production_usage_read": {
+      "account": "acct_c76f469572ad3446",
+      "auth_session_created": false,
+      "authenticated_account_verified": true,
+      "credential_output": false,
+      "dedicated_account_label_verified": true,
+      "finished_unix": 1792195425,
+      "http_status": 403,
+      "limitation": "usage_read_unavailable",
+      "origin": "https://api.openagents.com",
+      "payments": 0,
+      "profile_http_status": 200,
+      "resource_mutations": 0,
+      "result": "limited",
+      "started_unix": 1792195425
+    }
+  }
 }

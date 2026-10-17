@@ -2,6 +2,7 @@
 //! client never adopts CLI credentials, launches a browser, or loads a host.
 
 pub mod agents;
+pub mod agent_lab;
 mod auth;
 pub mod chats;
 pub mod computers;

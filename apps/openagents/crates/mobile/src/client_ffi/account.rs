@@ -147,6 +147,16 @@ impl CoreAccount {
 }
 #[uniffi::export]
 impl CoreAccount {
+    pub fn agent_lab(
+        &self,
+        listener: Arc<dyn super::AgentLabListener>,
+    ) -> Arc<super::CoreAgentLab> {
+        super::CoreAgentLab::new(
+            self.controller.clone(),
+            self.data_dir.join("agent-lab-requests"),
+            listener,
+        )
+    }
     pub fn custom_agents(
         &self,
         listener: Arc<dyn super::CustomAgentsListener>,

@@ -412,6 +412,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             openagents_web::actors_host::Host::start(dsn.trim(), config.cloud.clone(), mac_jobs)
                 .await;
     }
+    config.lab_backend = openagents_web::labs_api::backend_from_env().await?;
     let actors = config.actors.clone();
     let shutdown = config.shutdown.clone();
     let listener = tokio::net::TcpListener::bind(listen).await?;

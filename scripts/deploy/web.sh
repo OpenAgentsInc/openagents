@@ -356,6 +356,16 @@ if "openagents-production-pg" in instances and "OPENAGENTS_WEB_ACTORS_DATABASE_U
                  "valueFrom": {"secretKeyRef": {"name": "openagents-production-pg-dsn",
                                                 "key": "latest"}}})
     sys.stderr.write("  web env OPENAGENTS_WEB_ACTORS_DATABASE_URL added\n")
+# Labs use their own indexes in the existing database and a private bucket prefix.
+if "openagents-production-pg" in instances:
+    for entry in (
+        {"name": "OPENAGENTS_WEB_LABS_DATABASE_URL", "valueFrom": {"secretKeyRef": {"name": "openagents-production-pg-dsn", "key": "latest"}}},
+        {"name": "OPENAGENTS_WEB_LABS_BUCKET", "value": "openagentsgemini-web-chats-prod"},
+        {"name": "OPENAGENTS_WEB_LABS_SIGNING_ACCOUNT", "value": spec.get("serviceAccountName", "157437760789-compute@developer.gserviceaccount.com")},
+    ):
+        if entry["name"] not in env:
+            envs.append(entry)
+            sys.stderr.write("  web env " + entry["name"] + " added\n")
 mounts = web.setdefault("volumeMounts", [])
 if any(v["name"] == "stack" for v in spec.get("volumes", [])) and \
         not any(m["mountPath"] == "/stack" for m in mounts):

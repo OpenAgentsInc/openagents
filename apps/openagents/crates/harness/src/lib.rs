@@ -178,6 +178,11 @@ pub trait Harness: Send + Sync {
     fn executable_path(&self) -> Option<std::path::PathBuf> {
         None
     }
+    /// Identity of the installed runtime used for a Lab trial.
+    fn binding_fingerprint(&self, _model: Option<&str>) -> Option<String> {
+        self.executable_path()
+            .and_then(|path| crate::sdk::executable_digest(&path).ok())
+    }
     /// Whether every turn shape — user-prompted AND agent-initiated
     /// (background-subagent wakes) — ends with a deterministic `Done` from
     /// the agent's own wire. Native drivers reading the CLI's terminal frame

@@ -38,6 +38,8 @@ final class AppModel {
     }
 
     @MainActor lazy var voice = RemoteVoiceController(app: self)
+    private(set) var agentLab: CoreAgentLab?
+    private lazy var labBridge = LabBridge(app: self)
     private(set) var customAgents: CoreAgents?
     private lazy var agentsBridge = AgentsBridge(app: self)
     private(set) var savedHistory: CoreSavedHistory?
@@ -189,6 +191,7 @@ final class AppModel {
                     let config = CoreConfig(edgeUrl: Self.edgeURL, dataDir: Self.coreDir.path, deviceId: Self.deviceId, deviceName: UIDevice.current.name, platform: "ios", appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0")
                     install(try account.connect(config: config, listener: bridge))
                     customAgents = account.customAgents(listener: agentsBridge)
+                    agentLab = account.agentLab(listener: labBridge)
                     savedHistory = try account.savedHistory(listener: savedBridge)
                     home = try account.home(listener: homeBridge)
                     if let client { home?.updateClient(client: client) }
@@ -892,4 +895,10 @@ private final class AgentsBridge: CustomAgentsListener {
     func onCustomAgentsChanged(snapshot: CustomAgentsSnapshot) {
         DispatchQueue.main.async { [weak self] in self?.app?.handleAgents() }
     }
+}
+
+private final class LabBridge: AgentLabListener {
+    weak var app: AppModel?
+    init(app: AppModel) { self.app = app }
+    func onAgentLabChanged() { DispatchQueue.main.async { [weak self] in self?.app?.homeDidChange() } }
 }

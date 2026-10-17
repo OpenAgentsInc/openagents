@@ -11,6 +11,7 @@ use std::{
     sync::{Arc, Mutex, Weak},
 };
 use tokio::sync::watch;
+pub mod agent_lab;
 pub mod chat_entries;
 pub mod dashboard;
 pub mod desktop;

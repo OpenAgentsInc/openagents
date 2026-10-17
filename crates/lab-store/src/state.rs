@@ -10,6 +10,8 @@ pub(crate) const SCHEMA: &str = "openagents.lab-store.space.v1";
 #[serde(deny_unknown_fields)]
 pub(crate) struct State {
     pub schema: String,
+    #[serde(default)]
+    pub requests: BTreeMap<String, String>,
     pub documents: BTreeMap<String, DocumentRecord>,
     pub artifacts: BTreeMap<String, Artifact>,
     pub jobs: BTreeMap<String, JobRecord>,
@@ -35,6 +37,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             schema: SCHEMA.into(),
+            requests: Default::default(),
             documents: Default::default(),
             artifacts: Default::default(),
             jobs: Default::default(),

@@ -12,6 +12,7 @@ use crate::{JobStatus, Locator, Reference};
 
 pub const SCHEMA: &str = "lab.card.v1";
 
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum View {
@@ -37,9 +38,10 @@ impl View {
     }
 }
 
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Card {
-    #[serde(default = "schema")]
+    #[serde(default = "default_schema")]
     pub schema: String,
     pub kind: String,
     pub document: String,
@@ -78,10 +80,11 @@ pub struct Card {
     pub detail: Value,
 }
 
-fn schema() -> String {
+fn default_schema() -> String {
     SCHEMA.into()
 }
 
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Compare {
@@ -101,6 +104,7 @@ impl Default for Locator {
     }
 }
 
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NoteBrief {
@@ -112,6 +116,7 @@ pub struct NoteBrief {
 /// What a surface shows for a card right now. Every surface (web, desktop,
 /// phone, terminal) derives its controls from this one value, so they agree
 /// on when there is something to play, when to wait, and what to say.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, PartialEq)]
 pub struct CardState {
     pub view: View,

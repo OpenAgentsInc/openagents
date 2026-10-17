@@ -249,6 +249,13 @@ impl Render for AppAccount {
                             .truncate()
                             .child(SharedString::from(account.label)),
                     )
+                    .child(
+                        div()
+                            .id("agent-lab")
+                            .cursor_pointer()
+                            .child("Agent Lab ↗")
+                            .on_click(|_, _, cx| cx.open_url("https://openagents.com/labs/agent")),
+                    )
                     .child(self.button("openagents-sign-out", "Sign out", Self::sign_out, cx));
             }
             Phase::Failed {

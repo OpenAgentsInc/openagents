@@ -11,6 +11,7 @@ use zeron_proto::{AgentEvent, DoneStatus, SandboxLevel};
 pub(super) struct AgentHost {
     auth: Auth,
     registry: Arc<HarnessRegistry>,
+    lab_root: std::path::PathBuf,
 }
 const ASSIGNMENT: &str = "openagentsAssignment";
 const INSTRUCTIONS: &str = "openagentsInstructions";
@@ -37,12 +38,21 @@ fn bounded(text: &str) -> String {
 }
 
 impl DocHost {
-    pub fn start_custom_agents(&self, auth: Auth, registry: Arc<HarnessRegistry>) {
+    pub fn start_custom_agents(
+        &self,
+        auth: Auth,
+        registry: Arc<HarnessRegistry>,
+        lab_root: std::path::PathBuf,
+    ) {
         if auth.account().is_none()
             || self
                 .inner
                 .custom_agents
-                .set(AgentHost { auth, registry })
+                .set(AgentHost {
+                    auth,
+                    registry,
+                    lab_root,
+                })
                 .is_err()
         {
             return;
@@ -63,6 +73,9 @@ impl DocHost {
                     continue;
                 }
                 // Failures leave the original requests queued; an outage never starts another run.
+                let _ = host
+                    .agent_lab_tick(&lease, &binding.lab_root, &binding.registry)
+                    .await;
                 let _ = host.custom_agent_tick(&lease).await;
             }
         });
@@ -123,6 +136,24 @@ impl DocHost {
             &request,
         )?;
         admit_runtime(&host.registry, harness, &a.definition.spec).await?;
+        if let Some((cwd, deadline)) = super::agent_lab::trial_cwd(&host.lab_root, &a)? {
+            let remaining = deadline.saturating_sub(now_ms().max(0) as u64);
+            if remaining == 0 {
+                return Err(error("This experiment reached its time limit."));
+            }
+            request.cwd = cwd;
+            let weak = Arc::downgrade(&self.inner);
+            let chat = chat_id.to_owned();
+            self.spawn_worker(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(remaining)).await;
+                if let Some(inner) = weak.upgrade() {
+                    let host = DocHost { inner };
+                    if let Some(sessions) = host.sessions() {
+                        let _ = sessions.interrupt(&chat).await;
+                    }
+                }
+            });
+        }
         if request.worktree.is_some() {
             return Err(error(
                 "Choose the project's existing folder for this agent.",
@@ -449,7 +480,7 @@ impl DocHost {
         Ok(())
     }
 }
-async fn admit_runtime(
+pub(super) async fn admit_runtime(
     registry: &HarnessRegistry,
     harness: HarnessId,
     spec: &coder_account::openagents::agents::AgentSpec,

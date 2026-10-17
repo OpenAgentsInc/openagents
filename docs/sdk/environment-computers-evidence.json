@@ -1,0 +1,290 @@
+{
+  "schema": "openagents.sdk.environment-computers-evidence.v1",
+  "issue": 11808,
+  "date": "2026-10-16",
+  "status": "deployed_and_qualified_on_boat_with_enrollment_disabled",
+  "implementation_commits": [
+    "ee96ee8c8b570e8717ce51771fb8921070e32285",
+    "b86a5f91772c3a56d1921998144299d0f870f894",
+    "a0789d4997dcf1cb32eb169a228eb99164f90a42"
+  ],
+  "tests": {
+    "computer_driver_with_boat": 13,
+    "openagents_sdk": 40,
+    "coder_environment_operator": 52,
+    "oa_computers_with_temporary_postgresql": 43,
+    "web": 819,
+    "web_ignored": 16,
+    "web_excluded": [
+      "cloud::tests::cad_gate::pro_and_admins_pass_and_a_test_run_can_ask_to_be_free",
+      "pilot::tests::private_configuration_rejects_public_modes_symlinks_and_oversized_files",
+      "tests::the_api_docs_list_every_guide_and_serve_markdown",
+      "copy_guard::site_sources_have_no_machine_talk"
+    ],
+    "baseline_copy_guard_tracking": "https://github.com/OpenAgentsInc/openagents/issues/11888#issuecomment-6225667578",
+    "focused_environment_web": 6,
+    "format_and_diff_checks": "passed"
+  },
+  "qualification": {
+    "account": "acct_b602d6951190fea3",
+    "environment": "envc-3a05bc0df601f841c7fd759a",
+    "staging_backend": "https://oa-computers-staging-ezxz4mgdsq-uc.a.run.app",
+    "public_front": "local test of the same server router",
+    "native_authority": "current staging account and workspace reads; issued-session adapter",
+    "scripted_model": true,
+    "model_calls": 0,
+    "candidate_ready": true,
+    "saved_version": 1,
+    "image": "oaenv-build-1-c9249a7610bc1878646861ea",
+    "candidate_digest": "0c821bb4bcae473704db3aa400ec757b5e868d97ec805b383c5d0fe7b7d1ea9b",
+    "reused_computer": "cmp_d0b8a0fa417c12bd5e04",
+    "legacy_and_public_paths_verified": true
+  },
+  "scope": {
+    "source_repository": "OpenAgentsInc/openagents",
+    "source_commit": "974154268cefb4fc2c11a665f793266edbbd9b8f",
+    "fixture": "deploy/space-host/fixtures/environment",
+    "duration_seconds": 1774.35,
+    "clean_builder_and_two_separate_fresh_verifiers": true,
+    "wrong_save_digest_rejected": true,
+    "foreign_account_saved_pin_rejected": true,
+    "ordinary_sdk_saved_image_reused": true,
+    "private_github_repository_qualified": false,
+    "deployed_browser_qualified": false,
+    "ai_model_evaluated": false,
+    "legacy_private_homes_migrated": false,
+    "space_artifact_adapter_qualified_by_this_run": false
+  },
+  "deployments": {
+    "web": {
+      "source": "a0789d4997dcf1cb32eb169a228eb99164f90a42",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:17be3afa1d6c59c10fbc0bb6c813651c08f1064f62678fa8260d66e0a7e0cbef",
+      "staging_revision": "openagents-web-1-staging-sdk8-a0789d4997",
+      "production_revision": "coder-web-17be3afa1d-20261016234535",
+      "read_only_checks_passed": true
+    },
+    "backend": {
+      "oa-computers": [
+        {
+          "revision": "oa-computers-registry-76d096ef26-235407",
+          "percent": 100,
+          "labels": {
+            "cloud.googleapis.com/location": "us-central1",
+            "openagents-commit": "76d096ef269dcc4e82d99b53d536964a352cc45b",
+            "run.googleapis.com/startupProbeType": "Default",
+            "serving.knative.dev/configuration": "oa-computers",
+            "serving.knative.dev/configurationGeneration": "10",
+            "serving.knative.dev/route": "oa-computers",
+            "serving.knative.dev/service": "oa-computers",
+            "serving.knative.dev/serviceUid": "657cdb18-41be-45be-bfd1-199ff1364aa3"
+          },
+          "images": {
+            "oa-computers-1": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-computers@sha256:b1715231d7dfbc7fb1e919936ceaecdcdf1dde4df2189ecb50c39aa2ab981b2a"
+          },
+          "solver_rollout": {}
+        }
+      ],
+      "oa-computers-staging": [
+        {
+          "revision": "oa-computers-staging-registry-c50225e11b-235443",
+          "percent": 100,
+          "labels": {
+            "cloud.googleapis.com/location": "us-central1",
+            "openagents-commit": "c50225e11b77e1f3075134b467cc3fe641f4e719",
+            "run.googleapis.com/startupProbeType": "Default",
+            "serving.knative.dev/configuration": "oa-computers-staging",
+            "serving.knative.dev/configurationGeneration": "16",
+            "serving.knative.dev/route": "oa-computers-staging",
+            "serving.knative.dev/service": "oa-computers-staging",
+            "serving.knative.dev/serviceUid": "d310c491-ad1c-486f-bb32-65f5dc5660a8"
+          },
+          "images": {
+            "oa-computers-1": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-computers@sha256:21d40d30e0a9a35c241a6571cc2a9584194a01505c9916bbf5530855cab9a363"
+          },
+          "solver_rollout": {}
+        }
+      ]
+    },
+    "backend_implementation_ancestor": "b86a5f91772c3a56d1921998144299d0f870f894",
+    "backend_serving_ancestry_verified": true,
+    "environment_enrollment": {
+      "production": [],
+      "staging": []
+    }
+  },
+  "read_only_deployment_checks": {
+    "staging_smoke_passed": 14,
+    "production_smoke_passed": 14,
+    "public_reference_and_contract": "passed on both origins",
+    "created_jobs": 0,
+    "created_computers": 0
+  },
+  "released_coder": {
+    "origin": "https://staging.openagents.com",
+    "dedicated_account_verified": true,
+    "checks": [
+      {
+        "check": "version",
+        "exit_code": 0,
+        "version": "coder 1.0.0 (3230ded51181aa438656825da8245cea6c8e717c clean)"
+      },
+      {
+        "check": "status",
+        "exit_code": 0,
+        "version": null
+      },
+      {
+        "check": "computers",
+        "exit_code": 0,
+        "version": null
+      }
+    ],
+    "temporary_session_revoked": true,
+    "created_computers": 0,
+    "created_chats": 0
+  },
+  "cross_account_lifecycle_reads": {
+    "boundary": "private lifecycle service; account IDs from dedicated test credentials",
+    "computer": "cmp_3a6bad7c9913e3aabb2f",
+    "owner_read_status": 200,
+    "foreign_reads": [
+      {
+        "path": "/v1/computers/cmp_3a6bad7c9913e3aabb2f",
+        "status": 404
+      },
+      {
+        "path": "/v1/computers/cmp_3a6bad7c9913e3aabb2f/files?path=Cargo.toml",
+        "status": 404
+      }
+    ]
+  },
+  "cleanup": {
+    "native_receipts": [
+      {
+        "computer": "cmp_d0b8a0fa417c12bd5e04",
+        "role": "account cleanup",
+        "deleted": true
+      },
+      {
+        "computer": "cmp_29b67d202138cb0f98f5",
+        "role": "verifier",
+        "deleted": true
+      },
+      {
+        "computer": "cmp_92d3dc1f477bf1865a5b",
+        "role": "setup",
+        "deleted": true
+      },
+      {
+        "computer": "cmp_240702262dc9bd6aa6ee",
+        "role": "builder",
+        "deleted": true
+      },
+      {
+        "image": "oaenv-build-1-c9249a7610bc1878646861ea",
+        "deleted": true
+      },
+      {
+        "computer": "cmp_3b18fab35734e6d89204",
+        "role": "verifier",
+        "deleted": true
+      }
+    ],
+    "provider_verification": {
+      "records": [
+        {
+          "computer": "cmp_240702262dc9bd6aa6ee",
+          "state": "deleted",
+          "provider_resource": null
+        },
+        {
+          "computer": "cmp_29b67d202138cb0f98f5",
+          "state": "deleted",
+          "provider_resource": null
+        },
+        {
+          "computer": "cmp_3a6bad7c9913e3aabb2f",
+          "state": "deleted",
+          "provider_resource": null
+        },
+        {
+          "computer": "cmp_3b18fab35734e6d89204",
+          "state": "deleted",
+          "provider_resource": null
+        },
+        {
+          "computer": "cmp_92d3dc1f477bf1865a5b",
+          "state": "deleted",
+          "provider_resource": null
+        },
+        {
+          "computer": "cmp_d0b8a0fa417c12bd5e04",
+          "state": "deleted",
+          "provider_resource": null
+        }
+      ],
+      "gce_instances": [
+        {
+          "computer": "cmp_240702262dc9bd6aa6ee",
+          "create_generations_checked": 64,
+          "matching_vms": 0
+        },
+        {
+          "computer": "cmp_29b67d202138cb0f98f5",
+          "create_generations_checked": 64,
+          "matching_vms": 0
+        },
+        {
+          "computer": "cmp_3a6bad7c9913e3aabb2f",
+          "create_generations_checked": 64,
+          "matching_vms": 0
+        },
+        {
+          "computer": "cmp_3b18fab35734e6d89204",
+          "create_generations_checked": 64,
+          "matching_vms": 0
+        },
+        {
+          "computer": "cmp_92d3dc1f477bf1865a5b",
+          "create_generations_checked": 64,
+          "matching_vms": 0
+        },
+        {
+          "computer": "cmp_d0b8a0fa417c12bd5e04",
+          "create_generations_checked": 64,
+          "matching_vms": 0
+        }
+      ],
+      "images": [
+        {
+          "name": "oaenv-build-1-c9249a7610bc1878646861ea",
+          "provider_get_status": 404
+        }
+      ],
+      "label_contract": "oa-boat-idem = SHA256(computer + -create- + generation)[0..40]"
+    },
+    "credentials": {
+      "accounts": [
+        {
+          "account": "acct_b602d6951190fea3",
+          "keys_revoked": 1,
+          "sessions_revoked": 2,
+          "credentials_rejected_after_revocation": true
+        },
+        {
+          "account": "acct_3203941ccd2c3eb1",
+          "keys_revoked": 1,
+          "sessions_revoked": 1,
+          "credentials_rejected_after_revocation": true
+        }
+      ]
+    },
+    "owner_account_used": false,
+    "verified_at_utc": "2026-10-17T00:02:08Z"
+  },
+  "qualification_fixes": [
+    "Preserve the existing saved-image repo path alongside the public workspace path.",
+    "Use durable native job keys separately from logical Environment build and verification IDs.",
+    "Supply active session standing in the test adapter only after the real staging account accepts the issued bearer."
+  ]
+}

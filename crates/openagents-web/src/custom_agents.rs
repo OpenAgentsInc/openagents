@@ -68,7 +68,7 @@ impl Refusal {
 }
 #[derive(Clone, Serialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
-enum Mutation {
+pub(super) enum Mutation {
     Create {
         request_id: String,
         spec: AgentSpec,
@@ -225,7 +225,7 @@ pub(super) async fn definition(
 ) -> Result<Result<AgentDefinition, Refusal>, Error> {
     Ok(load(store, owner).await?.0.get(id, revision))
 }
-async fn mutate(
+pub(super) async fn mutate(
     store: &Store,
     owner: &str,
     m: Mutation,
@@ -282,12 +282,16 @@ async fn list(State(app): State<App>, headers: HeaderMap, Query(q): Query<Page>)
         Ok(b) => b,
         Err(e) => return stored(&e),
     };
+    let hidden = match crate::agent_lab::hidden_definitions(&app.config.chat_store, &owner).await {
+        Ok(ids) => ids,
+        Err(e) => return stored(&e),
+    };
     let mut data: Vec<_> = book
         .definitions
         .iter()
         .filter(|(id, _)| q.after.as_ref().is_none_or(|after| *id > after))
         .filter_map(|(_, h)| h.last())
-        .filter(|d| !d.deleted)
+        .filter(|d| !d.deleted && !hidden.contains(&d.id))
         .take(limit + 1)
         .cloned()
         .collect();

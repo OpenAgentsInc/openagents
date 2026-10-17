@@ -236,7 +236,7 @@ pub async fn serve(
         .route("/v1/account", get(account))
         .route("/v1/workspaces/{id}", get(workspace))
         .route("/fixture/counts", get(counts))
-        .with_state(state);
+        .with_state(state.clone());
     let native_server = tokio::spawn(async move {
         axum::serve(native_listener, native)
             .await
@@ -249,7 +249,11 @@ pub async fn serve(
     let result = // With the peer address: pages answer only a loopback peer (X-SEC-02).
     axum::serve(
         listener,
-        openagents_web::router(config).into_make_service_with_connect_info::<SocketAddr>(),
+        openagents_web::router(config)
+            // The loopback fixture also answers the public account read that the
+            // SDK uses to import this browser's synthetic session.
+            .merge(Router::new().route("/v1/account",get(account)).with_state(state))
+            .into_make_service_with_connect_info::<SocketAddr>(),
     )
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;

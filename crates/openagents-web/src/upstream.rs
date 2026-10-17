@@ -186,6 +186,11 @@ pub(crate) const REMOVED: [&str; 8] = [
 #[must_use]
 pub fn owned(path: &str) -> bool {
     path == "/api/stats"
+        || path == "/labs/agent"
+        || path.starts_with("/labs/agent/")
+        || path == "/static/agent-lab.js"
+        || path == "/v1/labs/agent"
+        || path.starts_with("/v1/labs/agent/")
         || path.starts_with("/api/flow/")
         || OWNED_EXACT.contains(&path)
         || crate::agent_ready::owns(path)
@@ -197,6 +202,8 @@ pub fn owned(path: &str) -> bool {
         || path == "/v1/agent-definitions"
         || path.starts_with("/v1/agent-definitions/")
         || path.starts_with("/v1/home/")
+        || path == "/v1/labs"
+        || path.starts_with("/v1/labs/")
         || crate::own_runs::owns(path)
         || crate::mac_jobs::owns(path)
         || crate::work_runs::owns(path)
@@ -374,4 +381,22 @@ fn status(code: StatusCode) -> Response {
     ));
     *response.status_mut() = code;
     response
+}
+
+#[cfg(test)]
+mod agent_lab_routes {
+    #[test]
+    fn lab_pages_and_api_stay_on_this_server() {
+        for path in [
+            "/labs/agent",
+            "/labs/agent/tasks/task",
+            "/static/agent-lab.js",
+            "/v1/labs/agent/documents",
+            "/v1/labs/agent/jobs/id/host",
+        ] {
+            assert!(super::owned(path), "{path}");
+        }
+        assert!(!super::owned("/v1/labs-other"));
+        assert!(!super::owned("/labs/agents"));
+    }
 }
