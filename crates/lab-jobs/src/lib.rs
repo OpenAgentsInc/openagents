@@ -9,3 +9,6 @@ pub mod protocol;
 
 #[cfg(feature = "worker")]
 pub mod worker;
+
+#[cfg(feature = "cloud")]
+pub mod cloud;
