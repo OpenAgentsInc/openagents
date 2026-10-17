@@ -53,6 +53,10 @@ pub enum Method {
     /// the computer's account key. The app answers it only while it shows
     /// a connect code that offers the link, and only to a pairing grant.
     LinkAccount,
+    /// The phone's server accepted the link proof (#12000): params
+    /// `{pubkey}`, the computer's account key; answer `{}`. The computer
+    /// may sign in with that key now.
+    AccountLinked,
 }
 impl Method {
     pub fn as_str(self) -> &'static str {
@@ -67,6 +71,7 @@ impl Method {
             Self::ContinueChat => "ContinueChat",
             Self::PrepareContinuation => "PrepareContinuation",
             Self::LinkAccount => "LinkAccount",
+            Self::AccountLinked => "AccountLinked",
         }
     }
     pub fn right(self) -> Right {
@@ -75,7 +80,8 @@ impl Method {
             | Self::AuthorizeSync
             | Self::ContinueChat
             | Self::PrepareContinuation
-            | Self::LinkAccount => Right::Operate,
+            | Self::LinkAccount
+            | Self::AccountLinked => Right::Operate,
             _ => Right::Observe,
         }
     }
@@ -217,6 +223,8 @@ mod tests {
         assert_eq!(Method::RelayCommand.right(), Right::Operate);
         assert_eq!(Method::LinkAccount.right(), Right::Operate);
         assert!(Method::LinkAccount.reads_only());
+        assert_eq!(Method::AccountLinked.right(), Right::Operate);
+        assert!(Method::AccountLinked.reads_only());
         let mut request = Request {
             method: Method::RelayCommand,
             params: json!({"chatId":"chat"}),

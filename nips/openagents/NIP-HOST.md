@@ -525,8 +525,14 @@ account.
    account says to add the key that signed `proof`.
 7. The account service checks the event's signature, URL, method, time
    window, and challenge, burns the event ID and the challenge, and adds
-   `nostr:<account key>` to the account. The computer then signs in with
-   its account key and receives its own session on that account.
+   `nostr:<account key>` to the account.
+8. When the server accepts the proof, the phone tells the computer over the
+   device channel (app method `AccountLinked`, params `{pubkey}`). The
+   host accepts it only from the grant it signed that proof for, once. The
+   computer then signs in with its account key and receives its own
+   session on that account. A computer that doesn't hear within a minute
+   offers its key for another scan rather than signing in, because an
+   unlinked key that signs in makes its own account.
 
 ### Host rules
 

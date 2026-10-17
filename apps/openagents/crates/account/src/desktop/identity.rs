@@ -249,18 +249,28 @@ impl DesktopIdentity for KeyIdentity {
             *current.lock().unwrap() = Some(identity.clone());
             let mut state = link::offer(&data, identity.clone());
             loop {
-                match &*state.borrow_and_update() {
-                    link::LinkState::Signed(key) if *key == pubkey => break,
+                let signed = match &*state.borrow_and_update() {
+                    link::LinkState::Linked(key) if *key == pubkey => break,
+                    link::LinkState::Signed(key) => *key == pubkey,
                     link::LinkState::Idle => return Err(String::new()),
-                    _ => {}
+                    _ => false,
+                };
+                if !signed {
+                    if state.changed().await.is_err() {
+                        return Err(String::new());
+                    }
+                    continue;
                 }
-                if state.changed().await.is_err() {
-                    return Err(String::new());
+                // The phone sends the signed proof to our server and says
+                // when it landed (#12000). Without that word the key may not
+                // be on the phone's account, and signing in would make it its
+                // own: offer it again for another scan.
+                match tokio::time::timeout(link::CONFIRM, state.changed()).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(_)) => return Err(String::new()),
+                    Err(_) => state = link::offer(&data, identity.clone()),
                 }
             }
-            // The phone sends the signed proof to our server right after
-            // the computer answers; give it a moment to land.
-            tokio::time::sleep(link::SETTLE).await;
             link::finish(&data, &pubkey);
             let view = IdentityView {
                 npub: identity.npub(),
@@ -336,8 +346,9 @@ pub mod link {
     };
     use tokio::sync::watch;
 
-    /// How long after the computer signs a proof before it signs in.
-    pub const SETTLE: Duration = Duration::from_secs(3);
+    /// How long after the computer signs a proof it waits for the phone to
+    /// say the link landed, before it offers the key again.
+    pub const CONFIRM: Duration = Duration::from_secs(60);
     const WAITING: &str = "openagents-account/identity/link-waiting";
 
     #[derive(Clone)]
@@ -348,6 +359,9 @@ pub mod link {
         Offered(Arc<Identity>),
         /// The computer signed the phone's link proof for this key (hex).
         Signed(String),
+        /// The phone said our server added this key (hex) to its account:
+        /// the key may sign in now.
+        Linked(String),
     }
 
     impl std::fmt::Debug for LinkState {
@@ -357,6 +371,7 @@ pub mod link {
                 Self::Idle => f.write_str("Idle"),
                 Self::Offered(identity) => write!(f, "Offered({})", identity.pubkey_hex()),
                 Self::Signed(key) => write!(f, "Signed({key})"),
+                Self::Linked(key) => write!(f, "Linked({key})"),
             }
         }
     }
@@ -405,6 +420,22 @@ pub mod link {
             );
             if offered {
                 sender.send_replace(LinkState::Signed(pubkey.to_owned()));
+            }
+        }
+    }
+
+    /// A paired phone said our server added the key `pubkey` (hex) to its
+    /// account (`AccountLinked`). Called for every data directory offering
+    /// or having signed for that key.
+    pub fn linked(pubkey: &str) {
+        for sender in channels().lock().unwrap().values() {
+            let waiting = match &*sender.borrow() {
+                LinkState::Offered(identity) => identity.pubkey_hex() == pubkey,
+                LinkState::Signed(key) => key == pubkey,
+                _ => false,
+            };
+            if waiting {
+                sender.send_replace(LinkState::Linked(pubkey.to_owned()));
             }
         }
     }
@@ -673,6 +704,10 @@ mod tests {
         assert!(matches!(&*state.borrow(), link::LinkState::Offered(_)));
         link::signed(&key);
         assert!(matches!(&*state.borrow(), link::LinkState::Signed(k) if *k == key));
+        link::linked("someone-else");
+        assert!(matches!(&*state.borrow(), link::LinkState::Signed(_)));
+        link::linked(&key);
+        assert!(matches!(&*state.borrow(), link::LinkState::Linked(k) if *k == key));
         link::finish(dir.path(), &key);
         assert!(!link::waiting(dir.path(), &key));
         assert!(matches!(

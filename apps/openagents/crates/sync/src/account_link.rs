@@ -6,8 +6,10 @@
 //! the new device connection to sign a NIP-98 request with that challenge
 //! ([`request`]), checks the proof, and sends it to `POST /v1/device/keys`
 //! with its own session. That request is the phone's approval: the server
-//! adds the computer's account key to the phone's account, and the computer
-//! then signs in with its key as the same person.
+//! adds the computer's account key to the phone's account. When the server
+//! accepts it, the phone tells the computer ([`confirm`],
+//! [`METHOD_LINKED`]), and the computer then signs in with its key as the
+//! same person.
 //!
 //! The computer half is [`Signer`]. It signs only for the device whose
 //! redemption of a connect code made its current grant, only shortly after
@@ -26,6 +28,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub const HTTP_AUTH_KIND: u16 = 27_235;
 /// The app method the phone calls (`coder_access::app_rpc::Method::LinkAccount`).
 pub const METHOD: &str = "LinkAccount";
+/// The app method that tells the computer the link landed
+/// (`coder_access::app_rpc::Method::AccountLinked`).
+pub const METHOD_LINKED: &str = "AccountLinked";
 /// The key-link addresses our server accepts a proof for.
 pub const LINK_URLS: [&str; 4] = [
     "https://api.openagents.com/v1/device/keys",
@@ -108,6 +113,24 @@ pub async fn request(
     check(&answer, url, challenge, own, now)
 }
 
+/// Tell the computer the server added its account key `key` to this
+/// account, so it signs in now.
+///
+/// # Errors
+/// [`LinkError`] when the computer refuses or can't be reached; the link
+/// itself stands either way.
+pub async fn confirm(channel: &DeviceChannel, key: &str) -> Result<(), LinkError> {
+    channel
+        .call(METHOD_LINKED, json!({ "pubkey": key }))
+        .await
+        .map_err(|error| match error {
+            Failure::Refused(_) => LinkError::NotOffered,
+            _ => LinkError::Unavailable,
+        })?
+        .map(|_| ())
+        .ok_or(LinkError::NotOffered)
+}
+
 /// Check a computer's [`METHOD`] answer; see [`request`].
 ///
 /// # Errors
@@ -149,7 +172,10 @@ pub struct Signer {
     secret: secp256k1::SecretKey,
     urls: Vec<String>,
     ready: AtomicBool,
+    /// Grants a proof was signed for.
     used: Mutex<HashSet<String>>,
+    /// Grants that said the link landed.
+    confirmed: Mutex<HashSet<String>>,
 }
 
 impl std::fmt::Debug for Signer {
@@ -174,7 +200,55 @@ impl Signer {
             urls,
             ready: AtomicBool::new(true),
             used: Mutex::new(HashSet::new()),
+            confirmed: Mutex::new(HashSet::new()),
         }
+    }
+
+    /// A signer for the account key `nsec` (`nsec1…`), or `None` when it
+    /// isn't one.
+    #[must_use]
+    pub fn from_nsec(nsec: &str, extra: &[String]) -> Option<Self> {
+        let bytes = nostr::nip19::decode_nsec(nsec).ok()?;
+        let secret = secp256k1::SecretKey::from_byte_array(bytes).ok()?;
+        Some(Self::new(secret, extra))
+    }
+
+    /// Answer a [`METHOD_LINKED`] call's params `{pubkey}` from `grant`:
+    /// the phone that got a proof signed says the server accepted it.
+    /// Answers the key, for the computer to sign in with.
+    ///
+    /// # Errors
+    /// [`Code::Forbidden`] unless `grant` got a proof from this signer and
+    /// hasn't confirmed yet, and the key is this signer's;
+    /// [`Code::Malformed`] for bad params.
+    pub fn confirm(&self, grant: &str, params: &Value) -> Result<String, Code> {
+        let object = params.as_object().ok_or(Code::Malformed)?;
+        let key = object
+            .get("pubkey")
+            .and_then(Value::as_str)
+            .filter(|_| object.len() == 1)
+            .ok_or(Code::Malformed)?;
+        let mine = self.key();
+        if key != mine || grant.is_empty() {
+            return Err(Code::Forbidden);
+        }
+        let signed = self
+            .used
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(grant);
+        let mut confirmed = self
+            .confirmed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !signed || confirmed.contains(grant) {
+            return Err(Code::Forbidden);
+        }
+        if confirmed.len() >= MAX_USED {
+            confirmed.clear();
+        }
+        confirmed.insert(grant.to_owned());
+        Ok(mine)
     }
 
     /// The account key, 64 lowercase hex characters.
@@ -319,6 +393,39 @@ mod tests {
         );
         signer.set_ready(true);
         assert!(signer.sign("grant-d", fresh(10), &params, NOW).is_ok());
+    }
+
+    #[test]
+    fn only_the_grant_that_got_a_proof_confirms_the_link_once() {
+        let signer = signer();
+        let key = signer.key();
+        let linked = json!({ "pubkey": key });
+        assert_eq!(signer.confirm("g", &linked), Err(Code::Forbidden));
+        signer
+            .sign(
+                "g",
+                fresh(10),
+                &json!({"url": LINK_URLS[0], "challenge": "c"}),
+                NOW,
+            )
+            .unwrap();
+        assert_eq!(
+            signer.confirm("g", &json!({ "pubkey": "ab".repeat(32) })),
+            Err(Code::Forbidden)
+        );
+        assert_eq!(signer.confirm("other", &linked), Err(Code::Forbidden));
+        assert_eq!(signer.confirm("g", &json!({})), Err(Code::Malformed));
+        assert_eq!(signer.confirm("g", &linked), Ok(key));
+        assert_eq!(signer.confirm("g", &linked), Err(Code::Forbidden));
+    }
+
+    #[test]
+    fn a_signer_reads_its_key_from_an_nsec() {
+        let secret = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
+        let nsec = nostr::nip19::encode_nsec(&secret.secret_bytes());
+        let signer = Signer::from_nsec(&nsec, &[]).unwrap();
+        assert_eq!(signer.key(), coder_reach::pubkey(&secret));
+        assert!(Signer::from_nsec("nsec1nope", &[]).is_none());
     }
 
     #[test]
