@@ -348,21 +348,22 @@ impl SpaceDriver {
                 match journal
                     .claim(operation, computer, action)
                     .await
-                    .map_err(|_| Error::unknown("couldn't read the saved lifecycle request"))?
-                {
+                    .map_err(|_| {
+                        Error::unknown("couldn't check the earlier stop or wake request")
+                    })? {
                     LifecycleClaim::Accepted(id) => {
                         self.wait_operation(&id).await?;
                         return Ok(id);
                     }
                     LifecycleClaim::Uncertain => {
                         return Err(Error::unknown(
-                            "the earlier lifecycle reply was lost; no new request was sent",
+                            "the earlier stop or wake request couldn't be confirmed",
                         ));
                     }
                     LifecycleClaim::Rejected => {
                         return Err(Error {
                             status: Some(409),
-                            message: "the earlier lifecycle request was refused",
+                            message: "the earlier stop or wake request was refused",
                         });
                     }
                     LifecycleClaim::Fresh => {}
@@ -384,7 +385,7 @@ impl SpaceDriver {
                     }) {
                         if let Some(journal) = &self.lifecycle_journal {
                             journal.rejected(operation).await.map_err(|_| {
-                                Error::unknown("couldn't save the lifecycle refusal")
+                                Error::unknown("couldn't record the stop or wake refusal")
                             })?;
                         }
                     }
@@ -396,9 +397,10 @@ impl SpaceDriver {
                 return Err(Error::unknown("invalid lifecycle operation ID"));
             }
             if let Some(journal) = &self.lifecycle_journal {
-                journal.accepted(operation, id).await.map_err(|_| {
-                    Error::unknown("couldn't save the accepted lifecycle operation")
-                })?;
+                journal
+                    .accepted(operation, id)
+                    .await
+                    .map_err(|_| Error::unknown("couldn't record the stop or wake request"))?;
             }
             self.wait_operation(id).await?;
             Ok::<String, Error>(id.to_owned())
