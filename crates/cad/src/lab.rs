@@ -93,6 +93,18 @@ impl LabKind for Cad {
                 },
             ],
             job_types: vec!["rebuild".into(), "export".into(), "render".into()],
+            job_requirements: ["rebuild", "export", "render"]
+                .map(|job| {
+                    (
+                        job.into(),
+                        lab_kit::Requirements {
+                            max_seconds: 75,
+                            memory_bytes: 640 * 1024 * 1024,
+                            ..Default::default()
+                        },
+                    )
+                })
+                .into(),
             views: vec![View::Model3d],
             limits: Limits {
                 runs_per_hour: 150,

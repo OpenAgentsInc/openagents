@@ -2,7 +2,10 @@
 //! Every read authorizes its space again and never starts work.
 pub mod contract;
 mod handlers;
+mod server;
+mod workers;
 pub use lab_kit::api::*;
+pub use server::ServerExecution;
 
 use async_trait::async_trait;
 use axum::{
@@ -36,6 +39,35 @@ pub trait Authorizer: Send + Sync {
         space: &str,
         action: Action,
     ) -> Result<Access, ApiError>;
+
+    async fn enroll_worker(
+        &self,
+        _headers: &HeaderMap,
+        _request: &lab_jobs::protocol::Enroll,
+    ) -> Result<lab_jobs::authority::Enrolled, ApiError> {
+        Err(worker_unavailable())
+    }
+
+    /// The account service checks the worker key, issuing session, and current
+    /// space membership. Hosts that do not supply this check refuse workers.
+    async fn worker_access(
+        &self,
+        _headers: &HeaderMap,
+    ) -> Result<lab_jobs::protocol::Access, ApiError> {
+        Err(worker_unavailable())
+    }
+
+    async fn revoke_worker(&self, _headers: &HeaderMap, _worker: &str) -> Result<(), ApiError> {
+        Err(worker_unavailable())
+    }
+}
+
+fn worker_unavailable() -> ApiError {
+    ApiError::new(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "worker_unavailable",
+        "Lab workers aren't available right now. Try again later.",
+    )
 }
 #[derive(Clone, Copy)]
 pub enum Gate {
@@ -130,7 +162,15 @@ pub trait Kind: Send + Sync {
     async fn saved(&self, _store: &Store, _version: &Version) -> lab_store::Result<()> {
         Ok(())
     }
+    /// Only an installed bounded child runner declares server execution.
+    /// The enqueue path checks immutable input policy before calling it.
+    fn server_capabilities(&self) -> Option<lab_jobs::Capabilities> {
+        None
+    }
     async fn run_job(&self, _store: Store, _job: JobState) {}
+    async fn run_server_job(&self, store: Store, job: JobState, _execution: ServerExecution) {
+        self.run_job(store, job).await;
+    }
     fn jobs(&self, version: &Version, want: &Want) -> Vec<JobSpec>;
     fn card(&self, version: &Version, jobs: &[JobState], artifacts: &[Artifact]) -> Card;
     fn tool(&self, _name: &str, _arguments: &Value) -> Result<Tool, ApiError> {
@@ -196,7 +236,7 @@ pub struct Api {
 }
 impl Api {
     pub fn router(self: Arc<Self>) -> Router {
-        handlers::routes().with_state(self)
+        handlers::routes().merge(workers::routes()).with_state(self)
     }
     async fn scoped(
         &self,

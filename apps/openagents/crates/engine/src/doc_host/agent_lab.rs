@@ -474,11 +474,6 @@ fn loopback(origin: &str) -> bool {
 }
 async fn context(root: &Path, e: &Experiment, account: &str) -> Result<String, EngineError> {
     let installed = bindings(root);
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .map_err(|_| error("Couldn't open the selected reference."))?;
     let mut context = String::new();
     for component in &e.draft.components {
         if let Component::ToolContext { binding, sha256 } = component {
@@ -490,34 +485,16 @@ async fn context(root: &Path, e: &Experiment, account: &str) -> Result<String, E
                         && b.validate(account, &e.project)
                         && loopback(&b.origin)
                 })
-                .ok_or_else(|| {
-                    error("Install the selected read-only reference on this computer first.")
-                })?;
-            let mut response = client
-                .post(format!("{}api/tool/{}", b.origin, b.tool.name()))
-                .json(&b.arguments)
-                .send()
-                .await
-                .map_err(|_| error("The selected Lab is not available."))?
-                .error_for_status()
-                .map_err(|_| error("The selected Lab could not open that version."))?;
-            let mut bytes = Vec::new();
-            while let Some(chunk) = response
-                .chunk()
-                .await
-                .map_err(|_| error("Couldn't read that reference."))?
-            {
-                if bytes.len() + chunk.len() > 12000 {
-                    return Err(error("Choose a smaller reference."));
-                }
-                bytes.extend(chunk)
-            }
-            let value: serde_json::Value = serde_json::from_slice(&bytes)
-                .map_err(|_| error("The selected Lab returned an unreadable reference."))?;
-            if value.get("error").is_some() {
-                return Err(error("The selected Lab could not open that version."));
-            }
-            context.push_str(&format!("{} (read-only reference):\n{}\n", b.name, value));
+                .ok_or_else(|| error("Remove the Lab reference before running this experiment."))?;
+            // Legacy read tools cannot supply authoritative source policy. Local flags and
+            // arbitrary response JSON cannot authorize model context; do not call the tool.
+            let source = b
+                .admit_model_context(account, &e.project, None)
+                .map_err(|e| error(&e.message))?;
+            context.push_str(&format!(
+                "{} (read-only reference):\n{}\n",
+                b.name, source.version.content
+            ));
             if context.len() > 16384 {
                 return Err(error("Use fewer reference documents."));
             }
@@ -552,36 +529,31 @@ mod tests {
         assert!(copy_project(src.path(), dst.path()).is_err());
     }
     #[tokio::test]
-    async fn installed_lab_references_are_pinned_scoped_and_bounded() {
-        use axum::{Json, Router, extract::Path as RoutePath, routing::post};
+    async fn legacy_lab_references_are_denied_before_reading() {
+        use axum::{Json, Router, routing::post};
         use openagents::agent_lab::components::{ReadTool, ToolBinding};
         use serde_json::json;
-        async fn read(
-            RoutePath(tool): RoutePath<String>,
-            Json(args): Json<serde_json::Value>,
-        ) -> Json<serde_json::Value> {
-            assert!(matches!(
-                tool.as_str(),
-                "lab_open" | "cad_check" | "robot_inspect"
-            ));
-            if args.get("document").and_then(|v| v.as_str()) == Some("huge") {
-                return Json(json!({"text":"x".repeat(12001)}));
-            }
-            Json(match tool.as_str() {
-                "lab_open" => {
-                    assert_eq!(args["render"], false);
-                    json!({"card":{"version":args["version"]}})
-                }
-                "cad_check" => json!({"passed":true}),
-                _ => json!({"step":{"limit_violations":[]}}),
-            })
-        }
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        let calls = Arc::new(AtomicUsize::new(0));
+        let observed = calls.clone();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let origin = format!("http://{}/", listener.local_addr().unwrap());
         let server = tokio::spawn(async move {
             axum::serve(
                 listener,
-                Router::new().route("/api/tool/{tool}", post(read)),
+                Router::new().route(
+                    "/api/tool/{tool}",
+                    post(move || {
+                        let calls = observed.clone();
+                        async move {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            Json(json!({"policy":{"training_allowed":true},"text":"untrusted"}))
+                        }
+                    }),
+                ),
             )
             .await
             .unwrap()
@@ -625,22 +597,20 @@ mod tests {
             serde_json::to_vec(&installed).unwrap(),
         )
         .unwrap();
-        let text = context(root.path(), &e, "alice").await.unwrap();
-        assert!(text.contains("limit_violations"));
-        assert!(text.contains("passed"));
-        assert!(text.contains("version"));
+        for component in e.draft.components.clone() {
+            e.draft.components = vec![component];
+            assert_eq!(
+                context(root.path(), &e, "alice")
+                    .await
+                    .unwrap_err()
+                    .to_string(),
+                "Remove the Lab reference before running this experiment."
+            );
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
         assert!(context(root.path(), &e, "bob").await.is_err());
-        installed[0].arguments["document"] = json!("huge");
-        e.draft.components = vec![Component::ToolContext {
-            binding: installed[0].id.clone(),
-            sha256: installed[0].digest(),
-        }];
-        std::fs::write(
-            root.path().join("tools.json"),
-            serde_json::to_vec(&installed).unwrap(),
-        )
-        .unwrap();
-        assert!(context(root.path(), &e, "alice").await.is_err());
+        e.draft.components.clear();
+        assert_eq!(context(root.path(), &e, "alice").await.unwrap(), "");
         assert!(!loopback("http://example.com/"));
         assert!(!loopback("http://127.0.0.1:8792/private"));
         server.abort();

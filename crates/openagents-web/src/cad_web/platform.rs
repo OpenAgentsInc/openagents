@@ -404,6 +404,26 @@ pub(super) async fn attach(
     bytes: Vec<u8>,
     now: u64,
 ) -> Result<(), String> {
+    attach_inner(store, None, version, name, bytes, now).await
+}
+pub(super) async fn attach_job(
+    store: &lab_store::Store,
+    lease: &lab_store::Lease,
+    version: &Reference,
+    name: &str,
+    bytes: Vec<u8>,
+    now: u64,
+) -> Result<(), String> {
+    attach_inner(store, Some(lease), version, name, bytes, now).await
+}
+async fn attach_inner(
+    store: &lab_store::Store,
+    lease: Option<&lab_store::Lease>,
+    version: &Reference,
+    name: &str,
+    bytes: Vec<u8>,
+    now: u64,
+) -> Result<(), String> {
     if bytes.len() > MAX_FILE_BYTES {
         return Err("This design file is too large.".into());
     }
@@ -413,27 +433,32 @@ pub(super) async fn attach(
         name if name.starts_with("out/") => ArtifactRole::Export,
         _ => ArtifactRole::Source,
     };
-    let artifact = store
-        .put_artifact(
-            ArtifactInput {
-                version: version.clone(),
-                role,
-                media_type: content_type(name).into(),
-                // A design can contain an attached model. Preserve the stricter
-                // policy for every file derived from it.
-                class: AssetClass::NoTraining,
-                no_training: true,
-            },
-            bytes,
-            MAX_FILE_BYTES as u64,
-            now,
-        )
-        .await
-        .map_err(error)?;
-    store
-        .name_artifact(version, name, &artifact.id)
-        .await
-        .map_err(error)
+    // CAD can contain protected models. Preserve its existing stricter policy.
+    let input = ArtifactInput {
+        version: version.clone(),
+        role,
+        media_type: content_type(name).into(),
+        class: AssetClass::NoTraining,
+        no_training: true,
+    };
+    let artifact = if let Some(lease) = lease {
+        store
+            .put_job_artifact(lease, input, bytes, MAX_FILE_BYTES as u64, now)
+            .await
+    } else {
+        store
+            .put_artifact(input, bytes, MAX_FILE_BYTES as u64, now)
+            .await
+    }
+    .map_err(error)?;
+    if let Some(lease) = lease {
+        store
+            .name_job_artifact(lease, version, name, &artifact.id, now)
+            .await
+    } else {
+        store.name_artifact(version, name, &artifact.id).await
+    }
+    .map_err(error)
 }
 
 pub(super) async fn read_file(

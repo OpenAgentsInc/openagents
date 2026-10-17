@@ -11,6 +11,55 @@ fn schema<T: JsonSchema>() -> Value {
     serde_json::to_value(settings.into_generator().into_root_schema_for::<T>()).expect("Lab schema")
 }
 pub const OPERATIONS: &[(&str, &str, &str, Option<&str>, &str)] = &[
+    (
+        "/v1/labs/workers",
+        "post",
+        "enrollLabWorker",
+        Some("WorkerEnroll"),
+        "WorkerEnrolled",
+    ),
+    (
+        "/v1/labs/workers/{id}",
+        "delete",
+        "revokeLabWorker",
+        None,
+        "WorkerRevoked",
+    ),
+    (
+        "/v1/labs/workers/poll",
+        "post",
+        "pollLabWorker",
+        Some("WorkerPoll"),
+        "WorkerAvailable",
+    ),
+    (
+        "/v1/labs/workers/start",
+        "post",
+        "startLabWorkerJob",
+        Some("WorkerAttempt"),
+        "WorkerWork",
+    ),
+    (
+        "/v1/labs/workers/heartbeat",
+        "post",
+        "heartbeatLabWorkerJob",
+        Some("WorkerAttempt"),
+        "WorkerWork",
+    ),
+    (
+        "/v1/labs/workers/finish",
+        "post",
+        "finishLabWorkerJob",
+        Some("WorkerFinish"),
+        "JobState",
+    ),
+    (
+        "/v1/labs/jobs/{id}/usage",
+        "get",
+        "getLabJobUsage",
+        None,
+        "WorkerUsage",
+    ),
     ("/v1/labs/kinds", "get", "listLabKinds", None, "Kinds"),
     (
         "/v1/labs/kinds/{kind}/tools",
@@ -149,6 +198,18 @@ pub fn document() -> Value {
 }
 pub fn extend(doc: &mut Value) {
     let schemas = [
+        (
+            "WorkerRevoked",
+            json!({"type":"object","properties":{"revoked":{"const":true}},"required":["revoked"],"additionalProperties":false}),
+        ),
+        ("WorkerEnroll", schema::<lab_jobs::protocol::Enroll>()),
+        ("WorkerEnrolled", schema::<lab_jobs::authority::Enrolled>()),
+        ("WorkerPoll", schema::<lab_jobs::protocol::Poll>()),
+        ("WorkerAvailable", schema::<lab_jobs::protocol::Available>()),
+        ("WorkerAttempt", schema::<lab_jobs::protocol::Attempt>()),
+        ("WorkerWork", schema::<lab_jobs::protocol::Work>()),
+        ("WorkerFinish", schema::<lab_jobs::protocol::Finish>()),
+        ("WorkerUsage", schema::<Vec<lab_jobs::authority::Usage>>()),
         ("CreateDocument", schema::<CreateDocument>()),
         ("EditDocument", schema::<EditDocument>()),
         ("CreateJob", schema::<CreateJob>()),
@@ -185,7 +246,7 @@ pub fn extend(doc: &mut Value) {
                 parameters.push(json!({"name":name,"in":"path","required":true,"schema":if name=="n" {json!({"type":"integer","minimum":1})}else{json!({"type":"string","maxLength":256})}}));
             }
         }
-        if body.is_none() {
+        if body.is_none() && operation != "revokeLabWorker" {
             parameters.push(json!({"name":"space","in":"query","schema":{"type":"string","default":"me","description":"me or project:PROJECT_ID. Ownership comes from authentication."}}));
         }
         if method == "get"
@@ -222,7 +283,18 @@ pub fn extend(doc: &mut Value) {
         if operation == "createLabJob" || operation == "callLabTool" {
             parameters.push(json!({"name":"Idempotency-Key","in":"header","required":operation=="createLabJob","schema":{"type":"string","minLength":1,"maxLength":128}}));
         }
-        let status = if method == "post" && operation != "callLabTool" {
+        let worker_only = [
+            "pollLabWorker",
+            "startLabWorkerJob",
+            "heartbeatLabWorkerJob",
+            "finishLabWorkerJob",
+        ]
+        .contains(&operation);
+        let status = if method == "post"
+            && operation != "callLabTool"
+            && !worker_only
+            && operation != "enrollLabWorker"
+        {
             "201"
         } else {
             "200"
@@ -233,6 +305,13 @@ pub fn extend(doc: &mut Value) {
             "application/json"
         };
         let mut op = json!({"operationId":operation,"tags":["Labs"],"security":[{"appBearer":[]}],"parameters":parameters,"description":"Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.","responses":{status:{"description":"Private, no-store result.","content":{media:{"schema":reference(result)}}}}});
+        if worker_only {
+            doc["components"]["securitySchemes"]["labWorkerBearer"] = json!({"type":"http","scheme":"bearer","description":"A revocable job-only labw_ key for one named space. Account sign-in keys are not accepted."});
+            op["security"] = json!([{"labWorkerBearer":[]}]);
+            op["description"] = json!(
+                "Outbound job-worker operation. Checks current sign-in, account, project membership, kind access and lease before each operation. Requests cannot select another space or executable."
+            );
+        }
         for code in [
             "400", "401", "402", "403", "404", "409", "413", "422", "429", "503",
         ] {

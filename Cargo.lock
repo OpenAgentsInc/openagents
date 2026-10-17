@@ -6919,6 +6919,9 @@ dependencies = [
  "inference",
  "jev",
  "jev-hosted",
+ "lab-jobs",
+ "lab-kit",
+ "lab-store",
  "libc",
  "model-access",
  "nostr",
@@ -9157,6 +9160,7 @@ dependencies = [
  "base64 0.22.1",
  "futures-util",
  "http-body-util",
+ "lab-jobs",
  "lab-kit",
  "lab-store",
  "oa-copy",
@@ -9167,6 +9171,28 @@ dependencies = [
  "tempfile",
  "tokio",
  "tower 0.5.3",
+]
+
+[[package]]
+name = "lab-jobs"
+version = "1.0.0"
+dependencies = [
+ "axum 0.8.9",
+ "base64 0.22.1",
+ "fs2",
+ "lab-kit",
+ "lab-store",
+ "libc",
+ "openagents-sdk",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "stateright",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -12209,6 +12235,7 @@ dependencies = [
  "jev",
  "jsonschema",
  "lab-api",
+ "lab-jobs",
  "lab-kit",
  "lab-store",
  "libc",

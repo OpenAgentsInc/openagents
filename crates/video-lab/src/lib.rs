@@ -83,6 +83,7 @@ impl LabKind for VideoKind {
             ]
             .map(String::from)
             .to_vec(),
+            job_requirements: Default::default(),
             views: vec![View::Video, View::Compare, View::Image],
             limits: Limits {
                 max_doc_bytes: 2 * 1024 * 1024,
@@ -174,6 +175,7 @@ impl LabKind for VideoKind {
                 },
                 max_seconds: if job_type == "render" { 3600 } else { 600 },
                 private_local: version.has_private_local(),
+                ..Default::default()
             },
             params,
         };

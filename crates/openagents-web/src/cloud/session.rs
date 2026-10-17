@@ -1156,6 +1156,7 @@ pub(crate) fn standing_value(viewer: &Viewer) -> serde_json::Value {
 
 pub mod device;
 pub(crate) mod github;
+mod lab_workers;
 pub(crate) mod oauth;
 
 #[cfg(test)]

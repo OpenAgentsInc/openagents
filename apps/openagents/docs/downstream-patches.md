@@ -136,3 +136,9 @@ links remain readable. Upstream fixes now require manual ports.
   `LaunchBroker::supervised` carries the host's bounds and output observer.
   Protocol I/O stops on missing output, and cleanup finishes before the host
   receives the process result.
+
+- [OpenAgents #11878](https://github.com/OpenAgentsInc/openagents/issues/11878):
+  Agent Lab refuses legacy Lab tool references before a tool call or model text.
+  The shared workbench hides the add control and keeps saved references removable.
+  Enabling reads requires a typed source-policy contract; local binding flags
+  and arbitrary tool responses cannot authorize evaluation.

@@ -23,6 +23,9 @@ pub struct KindManifest {
     pub doc_arg: String,
     pub tools: Vec<ToolDecl>,
     pub job_types: Vec<String>,
+    /// Minimum resources and maximum run time for each supported job type.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub job_requirements: std::collections::BTreeMap<String, crate::Requirements>,
     pub views: Vec<View>,
     pub limits: Limits,
 }
