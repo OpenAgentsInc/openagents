@@ -237,5 +237,6 @@ mod tests {
         let (name, args) = crate::lab::request(&words("open film --version 2")).unwrap();
         assert_eq!(name, "lab_open");
         assert_eq!(args["document"], "film");
+        assert_eq!(args["version"], "2");
     }
 }

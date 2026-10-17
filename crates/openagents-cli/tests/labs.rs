@@ -19,7 +19,13 @@ fn card(kind: &str, doc: &str) -> Value {
     json!({"schema":"lab.card.v1","kind":kind,"document":doc,"version":2,"title":"Synthetic","summary":"Saved","view":"report","page":format!("/labs/{kind}/{doc}")})
 }
 fn kinds() -> Value {
-    let kind = |kind: &str, prefix: &str, doc_arg: &str, name: &str| json!({"kind":kind,"name":kind,"schemas":["synthetic.v1"],"tool_prefix":prefix,"doc_arg":doc_arg,"tools":[{"name":name,"description":"Save a synthetic document.","parameters":{"type":"object","properties":{doc_arg:{"type":"string"},"document":{"type":"object"}}}}],"job_types":[],"views":["report"],"limits":{"max_doc_bytes":1024,"max_docs_per_space":10,"max_versions_per_doc":10,"max_args_bytes":1024,"runs_per_hour":10}});
+    let kind = |kind: &str, prefix: &str, doc_arg: &str, name: &str| {
+        let mut properties = json!({doc_arg:{"type":"string"}});
+        if kind == "cad" {
+            properties["document"] = json!({"type":"object"});
+        }
+        json!({"kind":kind,"name":kind,"schemas":["synthetic.v1"],"tool_prefix":prefix,"doc_arg":doc_arg,"tools":[{"name":name,"description":"Save a synthetic document.","parameters":{"type":"object","properties":properties}}],"job_types":[],"views":["report"],"limits":{"max_doc_bytes":1024,"max_docs_per_space":10,"max_versions_per_doc":10,"max_args_bytes":1024,"runs_per_hour":10}})
+    };
     json!({"data":[kind("cad","cad_","doc","cad_from_json"),kind("video","lab_","document","lab_new")]})
 }
 fn check(headers: &HeaderMap) {

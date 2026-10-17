@@ -204,6 +204,19 @@ impl Hosted {
                 }
             }
         }
+        // The video and game CLI parsers retain numeric options as strings.
+        // Keep that argument shape while binding the exact requested base.
+        let requested_version = if arguments["version"].is_null() {
+            None
+        } else {
+            Some(
+                arguments["version"]
+                    .as_u64()
+                    .or_else(|| arguments["version"].as_str().and_then(|v| v.parse().ok()))
+                    .filter(|v| *v > 0)
+                    .ok_or("Choose a version number from 1 upward.")?,
+            )
+        };
         let manifest = self.registry.kind_for(name).unwrap();
         let document = arguments[&manifest.doc_arg]
             .as_str()
@@ -226,7 +239,7 @@ impl Hosted {
         // An older-version open is a common read, not a call to a tool that
         // may always return the latest document.
         if name == format!("{}open", manifest.tool_prefix) {
-            if let Some(number) = arguments["version"].as_u64() {
+            if let Some(number) = requested_version {
                 let version = self
                     .api
                     .version(&reference, number, cancel)
@@ -245,10 +258,7 @@ impl Hosted {
             .bind(ToolCall {
                 space: self.space.clone(),
                 chat: None,
-                base: arguments["base"]
-                    .as_u64()
-                    .or(arguments["version"].as_u64())
-                    .or(current),
+                base: arguments["base"].as_u64().or(requested_version).or(current),
                 arguments: arguments.clone(),
             })
             .map_err(|e| e.to_string())?;
@@ -517,8 +527,8 @@ mod tests {
         Json, Router,
         body::Body,
         extract::State,
-        http::HeaderMap,
-        response::Response,
+        http::{HeaderMap, StatusCode},
+        response::{IntoResponse, Response},
         routing::{get, post},
     };
     use labs::{LabKind, echo::Echo};
@@ -576,7 +586,14 @@ mod tests {
             .route("/v1/labs/kinds",get(|headers:HeaderMap|async move {check(&headers);Json(json!({"data":[manifest("video","lab_"),manifest("cad","cad_")]}))}))
             .route("/v1/labs/documents/film",get(||async {Json(json!({"id":"film","kind":"video","schema":"cut.v1","title":"A film","created_unix_ms":1,"latest":1}))}))
             .route("/v1/labs/documents/bracket",get(||async {Json(json!({"id":"bracket","kind":"cad","schema":"part.v1","title":"Bracket","created_unix_ms":1,"latest":1}))}))
-            .route("/v1/labs/kinds/video/tools/lab_set",post(|State(seen):State<Seen>,headers:HeaderMap,Json(body):Json<Value>|async move {check(&headers);seen.0.lock().unwrap().push(body);Json(json!({"result":{"card":card()}}))}))
+            .route("/v1/labs/documents/old",get(||async {Json(json!({"id":"old","kind":"video","schema":"cut.v1","title":"Old film","created_unix_ms":1,"latest":9}))}))
+            .route("/v1/labs/kinds/video/tools/lab_set",post(|State(seen):State<Seen>,headers:HeaderMap,Json(body):Json<Value>|async move {
+                check(&headers);seen.0.lock().unwrap().push(body.clone());
+                if body["arguments"]["document"] == "old" {
+                    return (StatusCode::CONFLICT,Json(json!({"error":{"code":"stale_base","message":"Use the latest version."}}))).into_response();
+                }
+                Json(json!({"result":{"card":card()}})).into_response()
+            }))
             .route("/v1/labs/kinds/cad/tools/cad_set",post(|State(seen):State<Seen>,headers:HeaderMap,Json(body):Json<Value>|async move {check(&headers);seen.0.lock().unwrap().push(body);Json(json!({"result":{"text":"Saved."}}))}))
             .route("/v1/labs/documents/film/events",get(|headers:HeaderMap|async move {
                 check(&headers);assert_eq!(headers["last-event-id"],"7");
@@ -649,6 +666,19 @@ mod tests {
             calls[0],
             json!({"space":"project:team","chat":null,"base":1,"arguments":{"document":"film","text":"Shorter","version":1,"patch":[]}})
         );
+        let stale = hosted
+            .invoke(
+                "video",
+                "lab_set",
+                json!({"document":"old","text":"Shorter","version":"1"}),
+                &cancel,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(stale, "Use the latest version.");
+        let old = seen.0.lock().unwrap().last().unwrap().clone();
+        assert_eq!(old["base"], 1);
+        assert_eq!(old["arguments"]["version"], "1");
         let mut preview = card();
         let graphics = hosted
             .images(&preview, Graphics::Kitty, &cancel)

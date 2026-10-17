@@ -15345,6 +15345,144 @@
       "summary": "Video Lab: see and edit films, shots and scenes on this computer (open, show, frame, edit, versions, render, compare, notes).",
       "children": [
         {
+          "name": "kinds",
+          "leaf": {
+            "path": [
+              "lab",
+              "kinds"
+            ],
+            "usage": [
+              "kinds [--space me|project:ID]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "kinds"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "space",
+                    "value": "me|project:ID",
+                    "choices": [
+                      "me"
+                    ],
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Account Labs and their tool names.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "tool",
+          "leaf": {
+            "path": [
+              "lab",
+              "tool"
+            ],
+            "usage": [
+              "tool KIND NAME [--json OBJECT] [--space me|project:ID]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "tool"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "KIND"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "json",
+                    "value": "OBJECT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "space",
+                    "value": "me|project:ID",
+                    "choices": [
+                      "me"
+                    ],
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Call an account Lab tool.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "watch",
+          "leaf": {
+            "path": [
+              "lab",
+              "watch"
+            ],
+            "usage": [
+              "watch DOCUMENT [--since N] [--count N] [--space me|project:ID]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "watch"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DOCUMENT"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "since",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "count",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "space",
+                    "value": "me|project:ID",
+                    "choices": [
+                      "me"
+                    ],
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Follow changes.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "list",
           "leaf": {
             "path": [
@@ -15547,7 +15685,7 @@
               }
             ],
             "summary": "A JSON Patch (or a file with one), checked before it's saved; a refused edit says why.",
-            "effect": "local_write",
+            "effect": "publishes",
             "runs_on": "connected_computer"
           }
         },
@@ -15623,7 +15761,7 @@
               }
             ],
             "summary": "Render a version.",
-            "effect": "local_write",
+            "effect": "publishes",
             "runs_on": "connected_computer"
           }
         },
@@ -15715,6 +15853,41 @@
         }
       ],
       "options": [
+        {
+          "kind": "option",
+          "name": "space",
+          "value": "me|project:ID",
+          "choices": [
+            "me"
+          ],
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "json",
+          "value": "OBJECT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "since",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "count",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
         {
           "kind": "option",
           "name": "version",
@@ -16043,7 +16216,7 @@
               }
             ],
             "summary": "A picture of a version.",
-            "effect": "local_write",
+            "effect": "publishes",
             "runs_on": "connected_computer"
           }
         },
@@ -16088,7 +16261,7 @@
               }
             ],
             "summary": "Files of a version (urdf: a robot for Robot Lab; feed: its mass properties for Lagrange 2).",
-            "effect": "local_write",
+            "effect": "publishes",
             "runs_on": "connected_computer"
           }
         },
@@ -16168,7 +16341,7 @@
               }
             ],
             "summary": "Put a version in a Verse zone; a newer one replaces it.",
-            "effect": "local_write",
+            "effect": "publishes",
             "runs_on": "connected_computer"
           }
         },
@@ -16255,7 +16428,7 @@
               }
             ],
             "summary": "A 2D drawing: projected views with hidden lines dashed, sections, dimensions and a title block.",
-            "effect": "local_write",
+            "effect": "publishes",
             "runs_on": "connected_computer"
           }
         },
@@ -16290,7 +16463,7 @@
               }
             ],
             "summary": "Any cad_* tool with its JSON arguments (new_part, add_feature, edit_feature, set_part, assemble ...).",
-            "effect": "local_write",
+            "effect": "publishes",
             "runs_on": "connected_computer"
           }
         }
@@ -16621,7 +16794,7 @@
               }
             ],
             "summary": "A JSON Patch (or a file with one) on its game.v1 document, checked with its rules and 24 seeded bot runs before it's saved; a refused edit says why.",
-            "effect": "local_write",
+            "effect": "publishes",
             "runs_on": "connected_computer"
           }
         },
@@ -16753,7 +16926,7 @@
               }
             ],
             "summary": "The notes on it, or save one at a time and place.",
-            "effect": "local_write",
+            "effect": "publishes",
             "runs_on": "connected_computer"
           }
         }
