@@ -30,6 +30,7 @@ pub struct AppAccount {
     menu: popover::Popup<()>,
     /// Where Delete account stands (#12002), while its menu is open.
     deleting: Option<DeleteStep>,
+    id: identity::IdentityState,
 }
 /// The steps of Delete account in the account menu.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -38,7 +39,6 @@ enum DeleteStep {
     PaidCredit,
     Working,
     Notice(String),
-    id: identity::IdentityState,
 }
 impl AppAccount {
     pub fn init(data: PathBuf, cx: &mut App) {

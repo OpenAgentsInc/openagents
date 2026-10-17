@@ -986,7 +986,7 @@ pub fn capture_identity(
     struct Host(Entity<AppAccount>);
     impl Render for Host {
         fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-            let theme = Theme::of(cx);
+            let theme = Theme::of(cx).clone();
             let viewport = window.viewport_size();
             let overlays = self.0.update(cx, |account, cx| {
                 account.render_identity_overlays(viewport, window, cx)
