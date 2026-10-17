@@ -57,6 +57,7 @@ const AWAKE_TIMEOUT: Duration = Duration::from_secs(600);
 const PROBE_TIMEOUT: Duration = Duration::from_secs(120);
 const RESTORE_TIMEOUT: Duration = Duration::from_secs(1800);
 const PUSH_TIMEOUT: Duration = Duration::from_secs(120);
+const CODEX_FULL_ACCESS: &str = "--dangerously-bypass-approvals-and-sandbox";
 
 /// The harnesses whose chats can move today.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1246,11 +1247,15 @@ fi
             (MoveHarness::ClaudeCode, RestoreTarget::Elsewhere { .. }) => {
                 format!(r#"claude -p "$(cat {prompt_file})" --output-format stream-json --verbose"#)
             }
-            (MoveHarness::Codex, RestoreTarget::SamePath) => {
-                format!("codex exec --json resume {id} {}", q(CONTINUE_PROMPT))
-            }
+            // `codex exec` defaults to a read-only sandbox; the local driver
+            // runs Codex with full access, and the cloud computer is the
+            // sandbox (checked against codex-cli 0.163.0).
+            (MoveHarness::Codex, RestoreTarget::SamePath) => format!(
+                "codex exec --json {CODEX_FULL_ACCESS} resume {id} {}",
+                q(CONTINUE_PROMPT)
+            ),
             (MoveHarness::Codex, RestoreTarget::Elsewhere { .. }) => {
-                format!(r#"codex exec --json "$(cat {prompt_file})""#)
+                format!(r#"codex exec --json {CODEX_FULL_ACCESS} "$(cat {prompt_file})""#)
             }
         };
         format!("cd {dir} && {login} exec {run}")

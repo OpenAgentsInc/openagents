@@ -721,7 +721,10 @@ async fn an_occupied_path_continues_codex_from_the_seed_after_a_push() {
     );
     let home = &w.fake.home;
     let args = std::fs::read_to_string(home.join("codex.args")).unwrap();
-    assert!(args.starts_with("exec\n--json\n"), "{args}");
+    assert!(
+        args.starts_with("exec\n--json\n--dangerously-bypass-approvals-and-sandbox\n"),
+        "{args}"
+    );
     assert!(!args.contains("resume\n"), "{args}");
     assert!(
         args.contains("Fix the failing test"),
