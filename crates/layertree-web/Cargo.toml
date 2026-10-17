@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "LayerTree in a browser: a shared Bitcoin coin's Merkle-sum tree as a Verse scene, from a seeded demo run or the real signet run."
+description = "LayerTree in a browser: a shared Bitcoin output's Merkle-sum tree as a Verse scene, from a seeded demo run or the real signet run."
 
 [lib]
 crate-type = ["cdylib", "rlib"]

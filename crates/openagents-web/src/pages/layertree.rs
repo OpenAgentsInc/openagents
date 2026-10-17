@@ -1,5 +1,5 @@
 //! `/layertree`: the LayerTree demo, a Verse scene of a shared Bitcoin
-//! coin's tree with thousands of members (#11987,
+//! output's tree with thousands of members (#11987,
 //! `crates/layertree-web/README.md`).
 //!
 //! The page is a canvas filling the window and the build's own start
@@ -75,11 +75,11 @@ fn build(app: &App) -> Option<&Path> {
 fn body() -> String {
     format!(
         "<h1 class=\"unseen\">{TITLE}</h1>\
-<p class=\"unseen\">Thousands of people share one Bitcoin coin. Watch them join, pay each other \
+<p class=\"unseen\">Thousands of people share one pot of bitcoin. Watch them join, pay each other \
 and leave, then see the signer switched off and everyone paid back on Bitcoin.</p>\
 <div class=\"glade\" id=\"layertree\">\
-<canvas id=\"{LAYERTREE_CANVAS}\" tabindex=\"0\" aria-label=\"The shared coin's tree of members, \
-in 3D\"></canvas>\
+<canvas id=\"{LAYERTREE_CANVAS}\" tabindex=\"0\" aria-label=\"The tree of members who share one pot of \
+bitcoin, in 3D\"></canvas>\
 <p class=\"glade-status\" id=\"layertree-status\" aria-live=\"polite\">Loading\u{2026}</p>\
 <noscript><p class=\"glade-status\">Turn on JavaScript to see the demo.</p></noscript></div>\
 <script type=\"module\" src=\"{LAYERTREE_PATH}/{LAYERTREE_START}\"></script>"

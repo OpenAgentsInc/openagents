@@ -1,7 +1,7 @@
-//! The scene on Verse's engine renderer: the upper tree, the shared coin,
-//! the signer, the light clients, the blocks, the unroll, and each event's
-//! animation as 3D instances; the members, the lower tree, and the words as
-//! the overlay.
+//! The scene on Verse's engine renderer: the tree near its root, the shared
+//! output, the signer, the light clients, the blocks, the unroll, and each
+//! event's animation as 3D instances; the members, the levels nearest them,
+//! and the words as the overlay.
 //!
 //! The renderer draws at most 1,024 instances a frame, so a tree with
 //! thousands of members draws its members and its lowest levels as points
@@ -244,7 +244,7 @@ impl Default for Orbit {
     fn default() -> Self {
         Self {
             yaw: 0.6,
-            pitch: 0.42,
+            pitch: 0.2,
             zoom: 1.0,
         }
     }
@@ -254,7 +254,7 @@ impl Orbit {
     pub fn view(&self, shape: &Shape, aspect: f32) -> View {
         let fit = (shape.radius + 12.0) * if aspect < 1.0 { 3.2 } else { 1.95 };
         let distance = fit * self.zoom;
-        let target = Vec3::new(0.0, shape.top * 0.42, 0.0);
+        let target = Vec3::new(0.0, (shape.root + shape.crown) * 0.45, 0.0);
         let eye = target
             + Vec3::new(
                 self.yaw.sin() * self.pitch.cos(),
@@ -376,7 +376,7 @@ pub fn instances(stage: &Stage) -> Vec<Instance> {
     );
     f.link(
         "signature-link",
-        Vec3::new(0.0, shape.top, 0.0),
+        Vec3::new(0.0, shape.root, 0.0),
         shape.coin(),
     );
     let signer = shape.signer();
@@ -750,12 +750,13 @@ pub fn overlay(
 
     // Labels on the scene.
     let pad = 24.0 * s;
-    if let Some((at, _)) = project(view, shape.coin() + Vec3::Y * 1.6, size) {
+    if let Some((at, _)) = project(view, shape.coin() - Vec3::Y * 1.3, size) {
+        // Below the shared output, so the label never covers the trunk.
         centered(
             &mut ui,
             atlas,
             at[0],
-            at[1] - line_h * 1.6,
+            at[1] + line_h * 0.4,
             words::COIN,
             white,
         );
@@ -764,7 +765,7 @@ pub fn overlay(
             &mut ui,
             atlas,
             at[0],
-            at[1] - line_h * 0.6,
+            at[1] + line_h * 1.4,
             &words::sats(total),
             gold,
         );

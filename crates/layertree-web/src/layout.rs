@@ -1,10 +1,10 @@
-//! Where every slot of the tree stands: a cone with the root at its top and
-//! the members in a wide band at its foot.
+//! Where every slot of the tree stands: a cone that grows up like a tree,
+//! with the root at its base and the members in a wide band at its crown.
 //!
 //! Each slot keeps its place for the whole run, so a join, a payment, or an
 //! exit changes a few balances and never moves the rest of the tree. A level
 //! is a ring, twisted a little from the level above it, and children sit on
-//! either side of their parent's angle, so every link points down and out.
+//! either side of their parent's angle, so every link points up and out.
 
 use glam::Vec3;
 
@@ -15,9 +15,9 @@ pub struct Shape {
     /// The members' ring radius.
     pub radius: f32,
     /// The root's height above the floor.
-    pub top: f32,
+    pub root: f32,
     /// The members' height above the floor.
-    pub foot: f32,
+    pub crown: f32,
 }
 
 impl Shape {
@@ -27,8 +27,8 @@ impl Shape {
         Self {
             depth,
             radius: 6.0 + d * d * 0.15,
-            top: 4.0 + d * 1.5,
-            foot: 1.4,
+            root: 3.6,
+            crown: 6.0 + d * 1.5,
         }
     }
 
@@ -37,23 +37,23 @@ impl Shape {
     pub fn position(&self, height: u32, index: u64) -> Vec3 {
         let level = self.depth.saturating_sub(height);
         if level == 0 {
-            return Vec3::new(0.0, self.top, 0.0);
+            return Vec3::new(0.0, self.root, 0.0);
         }
         let share = level as f32 / self.depth as f32;
         let count = (1u64 << level) as f32;
         let angle = std::f32::consts::TAU * (index as f32 + 0.5) / count + level as f32 * 0.07;
         let mut radius = self.radius * share.powf(1.25);
-        let mut y = self.top - (self.top - self.foot) * share.powf(0.9);
+        let mut y = self.root + (self.crown - self.root) * share.powf(0.9);
         if height == 0 && self.depth >= 8 {
             // Thousands of members: four rings deep, so neighbours separate.
             let band = (index % 4) as f32 - 1.5;
             radius += band * 0.9;
-            y += band * 0.18;
+            y -= band * 0.18;
         }
         Vec3::new(angle.cos() * radius, y, angle.sin() * radius)
     }
 
-    /// The path from a member up to the root, one point per level.
+    /// The path from a member down to the root, one point per level.
     #[must_use]
     pub fn path(&self, pos: u64) -> Vec<Vec3> {
         (0..=self.depth)
@@ -72,16 +72,16 @@ impl Shape {
         path[i].lerp(path[i + 1], span - i as f32)
     }
 
-    /// The shared Bitcoin output, floating over the root.
+    /// The shared Bitcoin output, at the foot of the trunk below the root.
     #[must_use]
     pub fn coin(&self) -> Vec3 {
-        Vec3::new(0.0, self.top + 3.2, 0.0)
+        Vec3::new(0.0, self.root - 2.3, 0.0)
     }
 
     /// The signer, standing beside the tree.
     #[must_use]
     pub fn signer(&self) -> Vec3 {
-        Vec3::new(-self.radius - 7.0, self.top * 0.55, -self.radius * 0.35)
+        Vec3::new(-self.radius - 7.0, self.root + 1.5, -self.radius * 0.35)
     }
 
     /// Where the `i`th of `n` light clients stands, turning slowly with
@@ -103,7 +103,7 @@ impl Shape {
     }
 
     /// Where a member's payout lands on the floor, below and outside its
-    /// slot.
+    /// slot at the crown.
     #[must_use]
     pub fn landing(&self, pos: u64) -> Vec3 {
         let p = self.position(0, pos);
@@ -115,12 +115,12 @@ impl Shape {
     #[must_use]
     pub fn package(&self, level: u32, i: usize, n: usize) -> Vec3 {
         if n <= 1 {
-            return Vec3::new(0.0, self.top - 1.6, 0.0);
+            return Vec3::new(0.0, self.root + 1.6, 0.0);
         }
         let share = (level as f32 + 1.0) / 3.5;
         let angle = std::f32::consts::TAU * (i as f32 + 0.5) / n as f32;
         let r = self.radius * share;
-        let y = self.top - (self.top - self.foot) * share;
+        let y = self.root + (self.crown - self.root) * share;
         Vec3::new(angle.cos() * r, y, angle.sin() * r)
     }
 }
@@ -130,15 +130,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_root_is_on_top_and_children_hang_below_their_parents() {
+    fn the_root_is_at_the_base_and_children_grow_above_their_parents() {
         for depth in [4, 8, 12, 16] {
             let shape = Shape::new(depth);
-            assert_eq!(shape.position(depth, 0), Vec3::new(0.0, shape.top, 0.0));
+            assert_eq!(shape.position(depth, 0), Vec3::new(0.0, shape.root, 0.0));
+            assert!(shape.coin().y < shape.root && shape.coin().y > 0.0);
             for pos in [0u64, 1, (1 << depth) / 3, (1 << depth) - 1] {
                 let path = shape.path(pos);
                 assert_eq!(path.len(), depth as usize + 1);
                 for pair in path.windows(2) {
-                    assert!(pair[0].y < pair[1].y, "depth {depth} pos {pos}");
+                    assert!(pair[0].y > pair[1].y, "depth {depth} pos {pos}");
                 }
                 assert!(path.iter().all(|p| p.is_finite()));
             }
@@ -164,6 +165,6 @@ mod tests {
         let path = shape.path(17);
         assert_eq!(Shape::along(&path, 0.0), path[0]);
         assert_eq!(Shape::along(&path, 1.0), *path.last().unwrap());
-        assert!(Shape::along(&path, 0.5).y > path[0].y);
+        assert!(Shape::along(&path, 0.5).y < path[0].y);
     }
 }

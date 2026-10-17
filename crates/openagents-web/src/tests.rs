@@ -1700,7 +1700,7 @@ async fn the_layertree_page_serves_the_demo_build() {
         pages::LAYERTREE_POLICY
     );
     let text = oa_copy::visible_text(main_of(&html));
-    assert!(text.contains("share one Bitcoin coin"), "{text}");
+    assert!(text.contains("share one pot of bitcoin"), "{text}");
     assert_eq!(oa_copy::violations(&text, &[]), vec![], "{text}");
     assert!(crate::upstream::owned(pages::LAYERTREE_PATH));
     assert!(crate::upstream::owned("/layertree/start.js"));

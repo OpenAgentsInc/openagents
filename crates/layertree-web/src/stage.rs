@@ -39,7 +39,7 @@ pub enum Fx {
     Split { from: u64, to: u64 },
     /// A member leaves; the value flies out to Bitcoin.
     Exit { pos: u64, amount: u64 },
-    /// The signer renews the shared output: a wave down the tree.
+    /// The signer renews the shared output: a wave up the tree from its root.
     Refresh,
     /// The signer signs a transition: a pulse to the shared output.
     Sign,

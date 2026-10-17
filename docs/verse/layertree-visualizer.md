@@ -13,7 +13,7 @@ seeded demo run (thousands of members, a stream of transactions, and one
 switch-off and unroll) or the real signet run with `?run=signet`. Read
 `crates/layertree-web/README.md` for its build and how it draws large trees.
 
-![The LayerTree demo in a browser: 2,600 members around one shared coin](captures/layertree/web-demo.jpg)
+![The LayerTree demo in a browser: 2,600 members sharing one Bitcoin output](captures/layertree/web-demo.jpg)
 
 Run these commands from the repository root:
 

@@ -1,6 +1,6 @@
 //! LayerTree in a browser.
 //!
-//! The page's `<canvas id="layertree-canvas">` shows a shared Bitcoin coin's
+//! The page's `<canvas id="layertree-canvas">` shows a shared Bitcoin output's
 //! Merkle-sum tree as a Verse scene: thousands of members joining, paying
 //! each other, splitting, and leaving; the signer and its checks; light
 //! clients following each block; and, once a run, the signer switched off

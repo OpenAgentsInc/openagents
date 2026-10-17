@@ -37,7 +37,7 @@ pub const TITLE: &str = "LayerTree";
 #[must_use]
 pub fn subtitle(source: Source) -> &'static str {
     match source {
-        Source::Demo => "A simulated run: thousands of people share one Bitcoin coin",
+        Source::Demo => "A simulated run: thousands of people share one pot of bitcoin",
         Source::Signet => "The real test run on Bitcoin's test network",
     }
 }
@@ -46,7 +46,7 @@ pub fn subtitle(source: Source) -> &'static str {
 #[must_use]
 pub fn opened(members: usize, total: u64) -> String {
     format!(
-        "{} people share one Bitcoin coin worth {}. One signer keeps the books.",
+        "{} people share one pot of bitcoin worth {}. One signer keeps the books.",
         number(members as u64),
         sats(total)
     )
@@ -70,7 +70,7 @@ pub fn left(amount: u64) -> String {
     format!("A member leaves and takes {} out to Bitcoin.", sats(amount))
 }
 
-pub const REFRESHED: &str = "The signer renews the shared coin on Bitcoin.";
+pub const REFRESHED: &str = "The signer renews the shared pot on Bitcoin.";
 pub const CHECKED: &str = "The signer proves it runs the published code.";
 pub const CHECK_FAILED: &str = "The signer failed its check.";
 pub const FOLLOWED: &str = "Members' phones check each new block on their own.";
@@ -126,13 +126,13 @@ pub mod ticker {
     pub fn left(amount: u64) -> String {
         format!("Left  {}", sats(amount))
     }
-    pub const REFRESHED: &str = "Coin renewed";
+    pub const REFRESHED: &str = "Pot renewed";
 }
 
 /// The legend: a color or shape, and what it means.
 pub const LEGEND: [&str; 5] = [
     "A member's money",
-    "The shared Bitcoin coin",
+    "The shared pot of bitcoin",
     "The signer",
     "Members' phones following each block",
     "Being paid back",
@@ -161,7 +161,7 @@ pub const SIGNER: &str = "Signer";
 pub const SIGNER_OK: &str = "Running the published code";
 pub const SIGNER_OFF: &str = "Switched off";
 pub const SIGNER_UNCHECKED: &str = "Not checked yet";
-pub const COIN: &str = "Shared Bitcoin coin";
+pub const COIN: &str = "The shared pot of bitcoin";
 pub const FOLLOWERS: &str = "Members' phones";
 pub const BLOCKS: &str = "Bitcoin blocks";
 

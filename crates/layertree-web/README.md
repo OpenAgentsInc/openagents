@@ -2,14 +2,15 @@
 
 The LayerTree demo in a browser (#11987), served at
 [openagents.com/layertree](https://openagents.com/layertree). A shared
-Bitcoin coin's Merkle-sum tree is drawn as a Verse scene on the engine
+Bitcoin output's Merkle-sum tree is drawn as a Verse scene, growing up from
+its root, on the engine
 renderer (WebGPU, or WebGL2 where the browser has no WebGPU adapter):
 
 - Thousands of members join, move their share to a new key, pay each other,
   split their share, and leave with a payout. Each change lights its
   member and climbs the tree to the root.
 - The signer stands beside the tree with its check result. A signed
-  transition sends a pulse to the shared coin; a refresh sends a wave down
+  transition sends a pulse to the shared output; a refresh sends a wave up
   the tree.
 - Light clients circle the tree and check each new block.
 - Once a run, the signer is switched off. After the unroll delay the tree
