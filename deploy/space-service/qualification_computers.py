@@ -55,7 +55,12 @@ def save(name,value):
     path=ROOT/(name+'.json');path.write_text(json.dumps(value,indent=2)+'\n');path.chmod(0o600)
 
 
-def main(action):
+def main(action,run):
+    global ROOT
+    key='space-11814-runtime-small-1'
+    if run!='legacy':
+        ROOT=ROOT/run
+        key='space-11814-'+run
     if os.getuid()!=0: raise RuntimeError('Run qualification through the owned control identity.')
     ROOT.mkdir(mode=0o700,exist_ok=True)
     if action=='probe':
@@ -64,11 +69,11 @@ def main(action):
         path=ROOT/'cwc-seed.json'
         if action=='recover-create':
             pending=json.loads(path.read_text())
-            if pending!={'state':'submission_pending','idempotency_key':'space-11814-runtime-small-1'}: raise RuntimeError('Recovery requires the exact pending outer idempotency key.')
+            if pending!={'state':'submission_pending','idempotency_key':key}: raise RuntimeError('Recovery requires the exact pending outer idempotency key.')
         else:
             if path.exists(): raise RuntimeError('Inspect the saved computer before another create.')
-            save('cwc-seed',{'state':'submission_pending','idempotency_key':'space-11814-runtime-small-1'})
-        value=request('POST','/v1/computers',{'size':'small','idempotency_key':'space-11814-runtime-small-1'})
+            save('cwc-seed',{'state':'submission_pending','idempotency_key':key})
+        value=request('POST','/v1/computers',{'size':'small','idempotency_key':key})
         save('cwc-seed',value);print(json.dumps({key:value.get(key) for key in ('id','state','desired','image','size','last_error')}));return
     computer=json.loads((ROOT/'cwc-seed.json').read_text())
     identifier=computer.get('id')
@@ -101,5 +106,7 @@ def main(action):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--run',choices=['legacy','encrypted-1','capacity-2','capacity-3'],default='legacy')
     parser.add_argument('action',choices=['probe','create','recover-create','status','turn','turn-status','memory','memory-status','network','network-status','stop','wake','delete'])
-    main(parser.parse_args().action)
+    args=parser.parse_args()
+    main(args.action,args.run)

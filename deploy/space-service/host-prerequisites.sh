@@ -72,9 +72,11 @@ ExecStart=/usr/local/lib/space/cgroup-setup.sh
 WantedBy=multi-user.target
 UNIT
 modprobe tun
+modprobe dm_crypt
+modprobe dm_snapshot
 install -d /mnt/hugepages
 mountpoint -q /mnt/hugepages || mount -t hugetlbfs none /mnt/hugepages
-printf 'tun\n' >/etc/modules-load.d/oa-space.conf
+printf 'tun\ndm_crypt\ndm_snapshot\n' >/etc/modules-load.d/oa-space.conf
 systemctl daemon-reload
 systemctl enable --now space-cgroup.service
 printf '%s\n' 'Pinned host identities, permissions, and finite guest cgroup installed.'
