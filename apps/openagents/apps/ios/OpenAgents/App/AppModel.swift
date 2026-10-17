@@ -810,6 +810,63 @@ final class AppModel {
         }
     }
 
+    /// What came of connecting a computer by its code (#12000).
+    struct ComputerConnected {
+        let name: String
+        /// Set when the computer connected but didn't sign in as this
+        /// account; say why.
+        let linkNote: String?
+    }
+
+    /// Connect the computer whose code was scanned or opened, then sign it
+    /// in as this account with the same scan. Pairing and linking run in
+    /// Rust; this only carries the result. Throws the sentence to show.
+    @MainActor func connectComputer(code: String) async throws -> ComputerConnected {
+        guard let client, let account, !isDemo else {
+            throw ComputerConnectError(message: "Connecting a computer needs your account. Try again in a moment.")
+        }
+        let generation = accountGeneration
+        let computer: ConnectedComputer
+        do {
+            computer = try await client.connectComputer(code: code)
+        } catch let error as CoreError {
+            throw ComputerConnectError(message: Self.message(error, fallback: "Couldn't connect your computer. Show a new code on it and scan again."))
+        }
+        observers.values.forEach { $0() }
+        guard generation == accountGeneration else { return ComputerConnected(name: computer.label, linkNote: nil) }
+        do {
+            _ = try await account.linkComputer(client: client, deviceId: computer.deviceId)
+            return ComputerConnected(name: computer.label, linkNote: nil)
+        } catch let error as CoreError {
+            return ComputerConnected(name: computer.label, linkNote: Self.message(error, fallback: "It's connected, but it didn't sign in as you. Try again in a minute."))
+        } catch {
+            return ComputerConnected(name: computer.label, linkNote: "It's connected, but it didn't sign in as you. Try again in a minute.")
+        }
+    }
+
+    /// The browser a scanned website sign-in code is for (#12001).
+    @MainActor func scannedLogin(code: String) async throws -> String {
+        guard let account, !isDemo else { throw ComputerConnectError(message: "Your account is still starting. Try again in a moment.") }
+        do { return try await account.scannedLogin(code: code) } catch let error as CoreError {
+            throw ComputerConnectError(message: Self.message(error, fallback: "Couldn't sign in on the website right now. Try again in a minute."))
+        }
+    }
+
+    /// Sign that browser in as this account, with this phone's key.
+    @MainActor func approveScannedLogin(code: String) async throws -> String {
+        guard let account, !isDemo else { throw ComputerConnectError(message: "Your account is still starting. Try again in a moment.") }
+        do { return try await account.approveScannedLogin(code: code) } catch let error as CoreError {
+            throw ComputerConnectError(message: Self.message(error, fallback: "Couldn't sign in on the website right now. Try again in a minute."))
+        }
+    }
+
+    private static func message(_ error: CoreError, fallback: String) -> String {
+        switch error {
+        case let .HostError(message), let .HostUnavailable(message), let .Unsupported(message), let .Auth(message), let .Network(message), let .InvalidArgument(message): return message
+        default: return fallback
+        }
+    }
+
     /// One line on Our cloud's state, for its row.
     var cloudHostDetail: String {
         if cloudHostBusy { return "Working…" }
@@ -1039,4 +1096,10 @@ private final class ProjectSharingBridge: SharingListener {
     weak var app: AppModel?
     init(app: AppModel) { self.app = app }
     func onSharingChanged() { DispatchQueue.main.async { [weak self] in self?.app?.notifyChanged() } }
+}
+
+/// Why a computer didn't connect, in words for the screen.
+struct ComputerConnectError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
 }

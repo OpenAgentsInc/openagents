@@ -195,6 +195,49 @@ impl CoreAccount {
         ))
     }
 }
+/// Computers paired by code keep their grants in the Keychain (#12000).
+fn pairing_store() -> Arc<dyn openagents_client::PairingStore> {
+    if cfg!(any(target_os = "ios", target_os = "macos")) && !cfg!(test) {
+        Arc::new(openagents_client::KeychainPairings::new(
+            "com.openagents.app.pairings",
+        ))
+    } else {
+        Arc::new(openagents_client::MemoryPairings::default())
+    }
+}
+
+#[uniffi::export]
+impl CoreAccount {
+    /// Have the computer `device_id`, just connected by code, sign in as
+    /// this account (#12000): its account key is added to the account.
+    /// Call it right after `CoreClient::connect_computer`; the computer
+    /// answers only shortly after the scan. Answers the computer's key.
+    pub async fn link_computer(
+        &self,
+        client: Arc<CoreClient>,
+        device_id: String,
+    ) -> CoreResult<String> {
+        let api_base = {
+            let lease = self.controller.lease().ok_or_else(auth_error)?;
+            lease.client().deployment().api_base().to_string()
+        };
+        let client = client.client.clone();
+        // The phone's own identity key (#11995) is never a computer's.
+        let own = self
+            .identity
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|identity| identity.pubkey_hex());
+        super::on_runtime(async move {
+            client
+                .link_computer(&device_id, &api_base, own.as_deref())
+                .await
+        })
+        .await
+    }
+}
+
 #[uniffi::export]
 impl CoreAccount {
     pub fn project_sharing(
@@ -346,6 +389,7 @@ impl CoreAccount {
             credentials,
             Arc::new(ListenerBridge(listener)),
         )?;
+        client.set_pairing_store(pairing_store());
         let core = Arc::new(CoreClient { client });
         let mut clients = self.clients.lock().unwrap();
         if !self.controller.accepts(&lease) {

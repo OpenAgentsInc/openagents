@@ -10,7 +10,12 @@ use std::{sync::Arc, time::Duration};
 pub struct Hosted {
     host: Option<coder_host::Running>,
     runtime: tokio::runtime::Handle,
+    link: AccountLink,
 }
+
+/// The account key that signs a phone's request to link this computer to
+/// its account (#12000), once this computer has one.
+type AccountLink = Arc<std::sync::Mutex<Option<Arc<openagents_sync::account_link::Signer>>>>;
 impl Hosted {
     pub async fn start(
         service: Arc<dyn RpcService>,
@@ -19,13 +24,25 @@ impl Hosted {
         let runtime = tokio::runtime::Handle::current();
         let handler = AppRpc::new(service, runtime.clone())
             .map_err(|_| anyhow::anyhow!("This runtime can't serve the device connection."))?;
+        let link = handler.link.clone();
         let host = coder_host::start(config, Arc::new(coder_host::NoTasks)).await?;
         host.set_app_rpc(Some(Arc::new(handler)));
         host.publish_reach().await;
         Ok(Self {
             host: Some(host),
             runtime,
+            link,
         })
+    }
+
+    /// Sign phones' account-link requests with `signer` (this computer's
+    /// account key), or stop with `None`. The signer answers only a fresh
+    /// connect-code grant, once (NIP-HOST "Account key link by QR").
+    pub fn set_account_signer(&self, signer: Option<Arc<openagents_sync::account_link::Signer>>) {
+        *self
+            .link
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = signer;
     }
     pub async fn configure_sync(
         &self,
@@ -63,6 +80,7 @@ impl Hosted {
         }
         let mut adapter = AppRpc::new(service, self.runtime.clone())
             .map_err(|_| anyhow::anyhow!("Couldn't start the device connection."))?;
+        adapter.link = self.link.clone();
         adapter.sync = Some(SyncIssuer {
             secret,
             account,
@@ -156,6 +174,7 @@ pub struct AppRpc {
     service: Arc<dyn RpcService>,
     runtime: tokio::runtime::Handle,
     sync: Option<SyncIssuer>,
+    link: AccountLink,
 }
 
 struct SyncIssuer {
@@ -176,9 +195,44 @@ impl AppRpc {
             service,
             runtime,
             sync: None,
+            link: AccountLink::default(),
         })
     }
 }
+impl AppRpc {
+    /// A paired phone asks this computer to sign its request to join the
+    /// phone's account (#12000). Only a pairing grant may ask.
+    fn link_account(
+        &self,
+        grant: Option<(&str, u64)>,
+        request: &Request,
+        admission: &coder_access::app_rpc::Admission<'_>,
+    ) -> Result<Answer, Code> {
+        request.validate().map_err(|error| error.code)?;
+        if coder_access::Rights::pairing()
+            .first_missing(admission.rights)
+            .is_some()
+        {
+            return Err(Code::MissingRight);
+        }
+        let signer = self
+            .link
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .ok_or(Code::Unsupported)?;
+        let now = coder_access::unix_time().map_err(|e| e.code)?;
+        let (grant, _) = grant.ok_or(Code::Forbidden)?;
+        let value = signer.sign(grant, admission.expires_at, &request.params, now)?;
+        let answer = Answer {
+            method: request.method,
+            value,
+        };
+        answer.validate().map_err(|error| error.code)?;
+        Ok(answer)
+    }
+}
+
 impl Handler for AppRpc {
     fn call_admitted(
         &self,
@@ -188,6 +242,9 @@ impl Handler for AppRpc {
         request: &Request,
         admission: &coder_access::app_rpc::Admission<'_>,
     ) -> Result<Answer, Code> {
+        if request.method == coder_access::app_rpc::Method::LinkAccount {
+            return self.link_account(grant, request, admission);
+        }
         if request.method != coder_access::app_rpc::Method::AuthorizeSync {
             return self.call(request_id, device, grant, request);
         }
@@ -359,6 +416,28 @@ mod tests {
             nip_times[15], nip_times[28], ws_times[15], ws_times[28]
         );
         ws_task.abort();
+        // The scan that paired also links this computer to the phone's
+        // account (#12000). Without an account key the computer pairs only.
+        use openagents_sync::account_link;
+        let url = account_link::LINK_URLS[0];
+        let link = json!({"url": url, "challenge": "fixture-challenge"});
+        assert_eq!(
+            channel.call("LinkAccount", link.clone()).await.unwrap(),
+            None
+        );
+        let signer = Arc::new(account_link::Signer::new(
+            secp256k1::SecretKey::new(&mut secp256k1::rand::rng()),
+            &[],
+        ));
+        hosted.set_account_signer(Some(signer.clone()));
+        // This fixture grant is an hour long, not a fresh connect-code
+        // grant, so the computer refuses.
+        let now = coder_access::unix_time().unwrap();
+        assert!(
+            account_link::request(&channel, url, "fixture-challenge", None, now)
+                .await
+                .is_err()
+        );
         channel.revoke().await.unwrap();
         hosted
             .host()
