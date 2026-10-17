@@ -5,11 +5,6 @@ use openagents_proto::{Chat, HarnessId, saved_agent};
 
 use crate::icons;
 
-/// The OpenAgents mark's width for a given height (the logo is not square).
-pub(crate) fn mark_width(height: f32) -> f32 {
-    height * 41.9 / 48.0
-}
-
 /// How a chat introduces itself on the desktop.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Identity {
@@ -38,11 +33,6 @@ impl Identity {
                 runtime: None,
             },
         }
-    }
-
-    /// Whether the mark is the OpenAgents logo (drawn at its own width).
-    pub(crate) fn is_agent(&self) -> bool {
-        self.agent.is_some()
     }
 }
 
@@ -73,7 +63,7 @@ mod tests {
         let plain = chat(serde_json::json!({}));
         let id = Identity::of(Some(&plain), Some(HarnessId::ClaudeCode));
         assert_eq!(id.mark.map(|m| m.0), Some(icons::CLAUDE_MARK));
-        assert!(!id.is_agent());
+        assert!(id.agent.is_none());
         assert_eq!(Identity::of(Some(&plain), None).mark, None);
     }
 }

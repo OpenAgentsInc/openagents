@@ -11076,8 +11076,7 @@ impl Shell {
                         .items_center()
                         .child(
                             icon(icons::OPENAGENTS_LOGO)
-                                .w(px(41.9))
-                                .h(px(48.0))
+                                .size(px(48.0))
                                 .text_color(theme.text.opacity(0.09)),
                         )
                         .child(
@@ -11873,8 +11872,7 @@ impl Shell {
             .text_center()
             .child(
                 icon(icons::OPENAGENTS_LOGO)
-                    .w(px(31.4))
-                    .h(px(36.0))
+                    .size(px(36.0))
                     .text_color(theme.text),
             )
             .child(
@@ -12441,8 +12439,7 @@ impl Shell {
                 .text_center()
                 .child(
                     icon(icons::OPENAGENTS_LOGO)
-                        .w(px(31.4))
-                        .h(px(36.0))
+                        .size(px(36.0))
                         .text_color(theme.text),
                 )
                 .child(
@@ -12627,8 +12624,7 @@ impl Shell {
             .flex_col()
             .child(
                 icon(icons::OPENAGENTS_LOGO)
-                    .w(px(24.4))
-                    .h(px(28.0))
+                    .size(px(28.0))
                     .text_color(theme.text),
             )
             .child(

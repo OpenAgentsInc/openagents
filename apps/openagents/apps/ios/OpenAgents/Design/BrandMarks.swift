@@ -23,7 +23,7 @@ enum BrandMark {
         case .pi: return CGSize(width: 800, height: 800)
         case .opencode: return CGSize(width: 24, height: 30)
         case .antigravity: return CGSize(width: 24, height: 24)
-        case .openagents: return CGSize(width: 820, height: 940)
+        case .openagents: return CGSize(width: 386, height: 386)
         }
     }
 
@@ -60,9 +60,9 @@ enum BrandMark {
         case .antigravity:
             return "M21.751 22.607c1.34 1.005 3.35.335 1.508-1.508C17.73 15.74 18.904 1 12.037 1 5.17 1 6.342 15.74.815 21.1c-2.01 2.009.167 2.511 1.507 1.506 5.192-3.517 4.857-9.714 9.715-9.714 4.857 0 4.522 6.197 9.714 9.715z"
         case .openagents:
-            // crates/ui/assets/icons/openagents-logo.svg's squares (their 16-unit
-            // corner radius is below a pixel at row sizes).
-            return "M0 600h100v100h-100ZM0 720h100v100h-100ZM240 840h100v100h-100ZM240 720h100v100h-100ZM120 840h100v100h-100ZM120 600h100v100h-100ZM240 600h100v100h-100ZM0 480h100v100h-100ZM0 360h100v100h-100ZM480 840h100v100h-100ZM480 720h100v100h-100ZM120 360h100v100h-100ZM120 240h100v100h-100ZM240 360h100v100h-100ZM600 720h100v100h-100ZM480 600h100v100h-100ZM360 360h100v100h-100ZM240 240h100v100h-100ZM600 600h100v100h-100ZM720 600h100v100h-100ZM720 480h100v100h-100ZM240 120h100v100h-100ZM600 380h100v100h-100ZM720 240h100v100h-100ZM720 0h100v100h-100ZM480 240h100v100h-100ZM480 0h100v100h-100ZM120 480h100v100h-100ZM240 480h100v100h-100ZM360 840h100v100h-100ZM360 720h100v100h-100ZM360 600h100v100h-100ZM360 480h100v100h-100ZM120 720h100v100h-100Z"
+            // The OpenAgents power mark, crates/ui/assets/icons/openagents-logo.svg
+            // (traced from crates/ui/assets/brand/openagents-power-mark.png).
+            return "M292.64 54.39A181 181 0 1 1 93.36 54.39A21 21 0 0 1 116.48 89.46A139 139 0 1 0 269.52 89.46A21 21 0 0 1 292.64 54.39ZM172 21A21 21 0 0 1 214 21V165.5A21 21 0 0 1 172 165.5Z"
         }
     }
 

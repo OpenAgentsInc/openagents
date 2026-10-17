@@ -30,11 +30,12 @@ pub(crate) fn href(id: &str) -> String {
     format!("/chat/sessions/{id}")
 }
 
-/// The OpenAgents mark a saved agent's session wears in lists (#11966).
+/// The OpenAgents power mark a saved agent's session wears in lists
+/// (#11966, #11990): `apps/openagents/crates/ui/assets/icons/openagents-logo.svg`.
 pub(crate) fn agent_mark() -> Markup {
     html! {
-        svg.oa-agent-mark viewBox="0 0 820 940" width="12" height="14" fill="currentColor" aria-hidden="true" {
-            path d="M0 600h100v100h-100ZM0 720h100v100h-100ZM240 840h100v100h-100ZM240 720h100v100h-100ZM120 840h100v100h-100ZM120 600h100v100h-100ZM240 600h100v100h-100ZM0 480h100v100h-100ZM0 360h100v100h-100ZM480 840h100v100h-100ZM480 720h100v100h-100ZM120 360h100v100h-100ZM120 240h100v100h-100ZM240 360h100v100h-100ZM600 720h100v100h-100ZM480 600h100v100h-100ZM360 360h100v100h-100ZM240 240h100v100h-100ZM600 600h100v100h-100ZM720 600h100v100h-100ZM720 480h100v100h-100ZM240 120h100v100h-100ZM600 380h100v100h-100ZM720 240h100v100h-100ZM720 0h100v100h-100ZM480 240h100v100h-100ZM480 0h100v100h-100ZM120 480h100v100h-100ZM240 480h100v100h-100ZM360 840h100v100h-100ZM360 720h100v100h-100ZM360 600h100v100h-100ZM360 480h100v100h-100ZM120 720h100v100h-100Z" {}
+        svg.oa-agent-mark viewBox="0 0 386 386" width="14" height="14" fill="currentColor" aria-hidden="true" {
+            path d="M292.64 54.39A181 181 0 1 1 93.36 54.39A21 21 0 0 1 116.48 89.46A139 139 0 1 0 269.52 89.46A21 21 0 0 1 292.64 54.39ZM172 21A21 21 0 0 1 214 21V165.5A21 21 0 0 1 172 165.5Z" {}
         }
     }
 }

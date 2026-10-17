@@ -638,12 +638,7 @@ impl Shell {
                         .when_some(identity.mark, |el, (path, tint)| {
                             el.child(
                                 icon(path)
-                                    .h(px(14.0))
-                                    .w(px(if identity.is_agent() {
-                                        crate::openagents_saved_agent::mark_width(14.0)
-                                    } else {
-                                        14.0
-                                    }))
+                                    .size(px(14.0))
                                     .flex_none()
                                     .text_color(tint.unwrap_or(theme.text_muted)),
                             )
