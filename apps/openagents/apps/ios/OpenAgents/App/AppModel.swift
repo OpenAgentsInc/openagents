@@ -229,7 +229,7 @@ final class AppModel {
         // UI tests leave the demo signed out, never on a saved login.
         if ProcessInfo.processInfo.arguments.contains("-signedout") { account?.signOut(); return }
         #endif
-        account?.startIdentity()
+        account?.startIdentity(deviceName: UIDevice.current.name)
     }
 
     private static var accountAPI: String {

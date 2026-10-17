@@ -1065,6 +1065,221 @@ public func FfiConverterTypeAgentLabListener_lower(_ value: AgentLabListener) ->
 
 
 /**
+ * The phone's App Attest (#11994), implemented in Swift over
+ * `DCAppAttestService`: make or reuse this install's key (its id kept in
+ * the Keychain) and attest it over `client_data_hash`. Called on a
+ * background thread; it may wait for the system. Answer `None` when App
+ * Attest isn't supported, as in the simulator, and the core sends a proof
+ * of work instead.
+ */
+public protocol AppAttester: AnyObject, Sendable {
+    
+    func attest(clientDataHash: Data)  -> AppAttestation?
+    
+}
+/**
+ * The phone's App Attest (#11994), implemented in Swift over
+ * `DCAppAttestService`: make or reuse this install's key (its id kept in
+ * the Keychain) and attest it over `client_data_hash`. Called on a
+ * background thread; it may wait for the system. Answer `None` when App
+ * Attest isn't supported, as in the simulator, and the core sends a proof
+ * of work instead.
+ */
+open class AppAttesterImpl: AppAttester, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_appattester(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_appattester(handle, $0) }
+    }
+
+    
+
+    
+open func attest(clientDataHash: Data) -> AppAttestation?  {
+    return try!  FfiConverterOptionTypeAppAttestation.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_appattester_attest(
+            self.uniffiCloneHandle(),
+        FfiConverterData.lower(clientDataHash),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceAppAttester {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceAppAttester = UniffiVTableCallbackInterfaceAppAttester(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeAppAttester.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface AppAttester: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeAppAttester.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface AppAttester: handle missing in uniffiClone")
+            }
+        },
+        attest: { (
+            uniffiHandle: UInt64,
+            clientDataHash: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> AppAttestation? in
+                guard let uniffiObj = try? FfiConverterTypeAppAttester.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.attest(
+                     clientDataHash: try FfiConverterData.lift(clientDataHash)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterOptionTypeAppAttestation.lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceAppAttester> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceAppAttester>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitAppAttester() {
+    uniffi_openagents_mobile_fn_init_callback_vtable_appattester(UniffiCallbackInterfaceAppAttester.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAppAttester: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<AppAttester>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = AppAttester
+
+    public static func lift(_ handle: UInt64) throws -> AppAttester {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return AppAttesterImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: AppAttester) -> UInt64 {
+         if let rustImpl = value as? AppAttesterImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AppAttester {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: AppAttester, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAppAttester_lift(_ handle: UInt64) throws -> AppAttester {
+    return try FfiConverterTypeAppAttester.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAppAttester_lower(_ value: AppAttester) -> UInt64 {
+    return FfiConverterTypeAppAttester.lower(value)
+}
+
+
+
+
+
+
+/**
  * One call's caption. Advance it whenever the caption changes and on every
  * display frame while the last frame was `animating`.
  */
@@ -1631,6 +1846,14 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
     
     func customAgents(listener: CustomAgentsListener)  -> CoreAgents
     
+    /**
+     * Have the computer `device_id`, just connected by code, sign in as
+     * this account (#12000): its account key is added to the account.
+     * Call it right after `CoreClient::connect_computer`; the computer
+     * answers only shortly after the scan. Answers the computer's key.
+     */
+    func linkComputer(client: CoreClient, deviceId: String) async throws  -> String
+    
     func projectSharing(listener: SharingListener) throws  -> CoreSharing
     
     func restore() 
@@ -1644,8 +1867,6 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
      * Read the same account history as the desktop without starting an engine.
      */
     func savedHistory(listener: SavedHistoryListener) throws  -> CoreSavedHistory
-    
-    func signIn(deviceName: String) 
     
     /**
      * Explicit credentials are checked by the same SDK and stored by the same controller.
@@ -1671,7 +1892,7 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
     func chatHomes(client: CoreClient, chat: String) throws  -> CoreChatHomes
     
     /**
-     * The chat answered by OpenAgents, signed in or not.
+     * The chat answered by OpenAgents, as this phone's account.
      */
     func cloudChat(listener: CloudChatListener)  -> CoreCloudChat
     
@@ -1691,30 +1912,80 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
     func stopCloudHost() async throws  -> CloudHostView
     
     /**
-     * The account's identity, or `None` while there is none to show.
-     *
-     * TODO(#11995): return the NIP-06 identity and the words-saved marker.
-     * Settings shows "Your ID", "Back up your account" and "Restore from
-     * 12 words" only once this returns one.
+     * Three word positions (1-based) to ask for after the person wrote the
+     * words down.
+     */
+    func backupCheck() throws  -> [UInt32]
+    
+    /**
+     * The 12 words, in order, for Settings > Back up your account. Call
+     * only after the person passed the app's Face ID or passcode check.
+     */
+    func backupWords() throws  -> [String]
+    
+    /**
+     * Check the backup answers; when every one matches, the words are
+     * recorded as saved and Settings stops asking.
+     */
+    func confirmBackup(answers: [WordCheck]) throws  -> Bool
+    
+    /**
+     * The account's identity, or `None` until it is loaded on launch.
      */
     func identity()  -> IdentityView?
     
     /**
-     * Starts this phone's account on launch, with nothing for the person
-     * to do.
-     *
-     * TODO(#11995): make or load the 12 words, derive the NIP-06 key and
-     * sign in with it silently. Until then this restores a saved login if
-     * there is one, and otherwise leaves the phone signed out, where the
-     * chat answers as a visitor.
+     * Restore from 12 or 24 words, then sign in with their key, which
+     * brings back the account they belong to. Refused when this phone's
+     * own words aren't backed up yet, unless `replace_unsaved`.
      */
-    func startIdentity() 
+    func restoreFromWords(words: String, replaceUnsaved: Bool) throws  -> IdentityView
+    
+    /**
+     * The key alone as `nsec1…`, for other Nostr apps. It can't recover
+     * the wallet; the words recover both. Gate it as `backup_words`.
+     */
+    func revealNsec() throws  -> String
+    
+    /**
+     * Use App Attest for this phone's first sign-in. Set it before
+     * `start_identity`.
+     */
+    func setAppAttester(attester: AppAttester) 
+    
+    /**
+     * Keep the words in iCloud Keychain (`true`), so a new iPhone on the
+     * same Apple account gets them back, or on this phone only (`false`,
+     * the default).
+     */
+    func setIcloudCopy(on: Bool) throws 
+    
+    /**
+     * Starts this phone's account on launch, with nothing for the person
+     * to do: open the 12 words (or reuse the wallet's, or make new ones),
+     * then sign in with the key. A phone that was signed in before keeps
+     * its account; the new key is added to it.
+     */
+    func startIdentity(deviceName: String) 
     
     /**
      * The own-computer card's record for whoever is signed in, or this
      * install while signed out.
      */
     func ownComputerOffer()  -> CoreOwnComputerOffer
+    
+    /**
+     * Approve a scanned website login with this phone's identity key: the
+     * browser that showed the code signs in as this account. Ask first
+     * with [`Self::scanned_login`]. Answers the browser's name.
+     */
+    func approveScannedLogin(code: String) async throws  -> String
+    
+    /**
+     * The browser a scanned website login signs in ("Chrome on macOS"),
+     * to name in the confirm sheet before approving.
+     */
+    func scannedLogin(code: String) async throws  -> String
     
 }
 open class CoreAccount: CoreAccountProtocol, @unchecked Sendable {
@@ -1835,6 +2106,28 @@ open func customAgents(listener: CustomAgentsListener) -> CoreAgents  {
 })
 }
     
+    /**
+     * Have the computer `device_id`, just connected by code, sign in as
+     * this account (#12000): its account key is added to the account.
+     * Call it right after `CoreClient::connect_computer`; the computer
+     * answers only shortly after the scan. Answers the computer's key.
+     */
+open func linkComputer(client: CoreClient, deviceId: String)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreaccount_link_computer(
+                        self.uniffiCloneHandle(),FfiConverterTypeCoreClient_lower(client),FfiConverterString.lower(deviceId)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
 open func projectSharing(listener: SharingListener)throws  -> CoreSharing  {
     return try  FfiConverterTypeCoreSharing_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
         uniffiCallStatus in
@@ -1875,15 +2168,6 @@ open func savedHistory(listener: SavedHistoryListener)throws  -> CoreSavedHistor
         FfiConverterTypeSavedHistoryListener_lower(listener),uniffiCallStatus
     )
 })
-}
-    
-open func signIn(deviceName: String)  {try! rustCall() {
-        uniffiCallStatus in
-    uniffi_openagents_mobile_fn_method_coreaccount_sign_in(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(deviceName),uniffiCallStatus
-    )
-}
 }
     
     /**
@@ -1961,7 +2245,7 @@ open func chatHomes(client: CoreClient, chat: String)throws  -> CoreChatHomes  {
 }
     
     /**
-     * The chat answered by OpenAgents, signed in or not.
+     * The chat answered by OpenAgents, as this phone's account.
      */
 open func cloudChat(listener: CloudChatListener) -> CoreCloudChat  {
     return try!  FfiConverterTypeCoreCloudChat_lift(try! rustCall() {
@@ -2031,11 +2315,47 @@ open func stopCloudHost()async throws  -> CloudHostView  {
 }
     
     /**
-     * The account's identity, or `None` while there is none to show.
-     *
-     * TODO(#11995): return the NIP-06 identity and the words-saved marker.
-     * Settings shows "Your ID", "Back up your account" and "Restore from
-     * 12 words" only once this returns one.
+     * Three word positions (1-based) to ask for after the person wrote the
+     * words down.
+     */
+open func backupCheck()throws  -> [UInt32]  {
+    return try  FfiConverterSequenceUInt32.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_backup_check(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The 12 words, in order, for Settings > Back up your account. Call
+     * only after the person passed the app's Face ID or passcode check.
+     */
+open func backupWords()throws  -> [String]  {
+    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_backup_words(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Check the backup answers; when every one matches, the words are
+     * recorded as saved and Settings stops asking.
+     */
+open func confirmBackup(answers: [WordCheck])throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_confirm_backup(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceTypeWordCheck.lower(answers),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The account's identity, or `None` until it is loaded on launch.
      */
 open func identity() -> IdentityView?  {
     return try!  FfiConverterOptionTypeIdentityView.lift(try! rustCall() {
@@ -2047,18 +2367,72 @@ open func identity() -> IdentityView?  {
 }
     
     /**
-     * Starts this phone's account on launch, with nothing for the person
-     * to do.
-     *
-     * TODO(#11995): make or load the 12 words, derive the NIP-06 key and
-     * sign in with it silently. Until then this restores a saved login if
-     * there is one, and otherwise leaves the phone signed out, where the
-     * chat answers as a visitor.
+     * Restore from 12 or 24 words, then sign in with their key, which
+     * brings back the account they belong to. Refused when this phone's
+     * own words aren't backed up yet, unless `replace_unsaved`.
      */
-open func startIdentity()  {try! rustCall() {
+open func restoreFromWords(words: String, replaceUnsaved: Bool)throws  -> IdentityView  {
+    return try  FfiConverterTypeIdentityView_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_restore_from_words(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(words),
+        FfiConverterBool.lower(replaceUnsaved),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The key alone as `nsec1…`, for other Nostr apps. It can't recover
+     * the wallet; the words recover both. Gate it as `backup_words`.
+     */
+open func revealNsec()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_reveal_nsec(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Use App Attest for this phone's first sign-in. Set it before
+     * `start_identity`.
+     */
+open func setAppAttester(attester: AppAttester)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_set_app_attester(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAppAttester_lower(attester),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Keep the words in iCloud Keychain (`true`), so a new iPhone on the
+     * same Apple account gets them back, or on this phone only (`false`,
+     * the default).
+     */
+open func setIcloudCopy(on: Bool)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_set_icloud_copy(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(on),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Starts this phone's account on launch, with nothing for the person
+     * to do: open the 12 words (or reuse the wallet's, or make new ones),
+     * then sign in with the key. A phone that was signed in before keeps
+     * its account; the new key is added to it.
+     */
+open func startIdentity(deviceName: String)  {try! rustCall() {
         uniffiCallStatus in
     uniffi_openagents_mobile_fn_method_coreaccount_start_identity(
-            self.uniffiCloneHandle(),uniffiCallStatus
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deviceName),uniffiCallStatus
     )
 }
 }
@@ -2074,6 +2448,47 @@ open func ownComputerOffer() -> CoreOwnComputerOffer  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Approve a scanned website login with this phone's identity key: the
+     * browser that showed the code signs in as this account. Ask first
+     * with [`Self::scanned_login`]. Answers the browser's name.
+     */
+open func approveScannedLogin(code: String)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreaccount_approve_scanned_login(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(code)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
+     * The browser a scanned website login signs in ("Chrome on macOS"),
+     * to name in the confirm sheet before approving.
+     */
+open func scannedLogin(code: String)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreaccount_scanned_login(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(code)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
 }
     
 
@@ -2696,6 +3111,14 @@ public protocol CoreClientProtocol: AnyObject, Sendable {
      */
     func closeSession(chatId: String) 
     
+    /**
+     * Connect a computer by the code it shows (scanned QR, opened connect
+     * link, or pasted text), with no prior entry in this account's list
+     * (#12000). Then call `CoreAccount::link_computer` so the computer signs
+     * in as this person.
+     */
+    func connectComputer(code: String) async throws  -> ConnectedComputer
+    
     func connectivity()  -> Connectivity
     
     /**
@@ -3042,6 +3465,28 @@ open func closeSession(chatId: String)  {try! rustCall() {
         FfiConverterString.lower(chatId),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * Connect a computer by the code it shows (scanned QR, opened connect
+     * link, or pasted text), with no prior entry in this account's list
+     * (#12000). Then call `CoreAccount::link_computer` so the computer signs
+     * in as this person.
+     */
+open func connectComputer(code: String)async throws  -> ConnectedComputer  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreclient_connect_computer(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(code)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeConnectedComputer_lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
 }
     
 open func connectivity() -> Connectivity  {
@@ -5270,6 +5715,21 @@ public convenience init(home: String, store: KeyStore, listener: WalletListener)
         try! rustCall { uniffi_openagents_mobile_fn_free_corewallet(handle, $0) }
     }
 
+    
+    /**
+     * An offline wallet for simulator captures: a fixed balance and
+     * history, a seed held only in memory, and no network. It never touches
+     * the Keychain and holds no money.
+     */
+public static func fixture(home: String, listener: WalletListener) -> CoreWallet  {
+    return try!  FfiConverterTypeCoreWallet_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_corewallet_fixture(
+        FfiConverterString.lower(home),
+        FfiConverterTypeWalletListener_lower(listener),uniffiCallStatus
+    )
+})
+}
     
 
     
@@ -9664,6 +10124,64 @@ public func FfiConverterTypeAccountSnapshot_lower(_ value: AccountSnapshot) -> R
 }
 
 
+/**
+ * What the phone's App Attest step made: base64 of the key id and of the
+ * attestation.
+ */
+public struct AppAttestation: Equatable, Hashable {
+    public var keyId: String
+    public var attestation: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(keyId: String, attestation: String) {
+        self.keyId = keyId
+        self.attestation = attestation
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AppAttestation: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAppAttestation: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AppAttestation {
+        return
+            try AppAttestation(
+                keyId: FfiConverterString.read(from: &buf), 
+                attestation: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AppAttestation, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.keyId, into: &buf)
+        FfiConverterString.write(value.attestation, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAppAttestation_lift(_ buf: RustBuffer) throws -> AppAttestation {
+    return try FfiConverterTypeAppAttestation.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAppAttestation_lower(_ value: AppAttestation) -> RustBuffer {
+    return FfiConverterTypeAppAttestation.lower(value)
+}
+
+
 public struct AppshotLabel: Equatable, Hashable {
     public var appName: String
     public var windowTitle: String?
@@ -10327,14 +10845,6 @@ public struct CloudChatSnapshot: Equatable, Hashable {
      */
     public var answering: Bool
     /**
-     * Signed out: messages left before a sign-in is needed.
-     */
-    public var left: UInt32?
-    /**
-     * Signed out and out of messages: ask the person to sign in.
-     */
-    public var signInRequired: Bool
-    /**
      * Text that wasn't sent, to put back in the composer.
      */
     public var unsent: String?
@@ -10354,12 +10864,6 @@ public struct CloudChatSnapshot: Equatable, Hashable {
          * An answer is being written.
          */answering: Bool, 
         /**
-         * Signed out: messages left before a sign-in is needed.
-         */left: UInt32?, 
-        /**
-         * Signed out and out of messages: ask the person to sign in.
-         */signInRequired: Bool, 
-        /**
          * Text that wasn't sent, to put back in the composer.
          */unsent: String?, error: String?, 
         /**
@@ -10368,8 +10872,6 @@ public struct CloudChatSnapshot: Equatable, Hashable {
         self.chat = chat
         self.lines = lines
         self.answering = answering
-        self.left = left
-        self.signInRequired = signInRequired
         self.unsent = unsent
         self.error = error
         self.accountChat = accountChat
@@ -10394,8 +10896,6 @@ public struct FfiConverterTypeCloudChatSnapshot: FfiConverterRustBuffer {
                 chat: FfiConverterOptionString.read(from: &buf), 
                 lines: FfiConverterSequenceTypeCloudChatLine.read(from: &buf), 
                 answering: FfiConverterBool.read(from: &buf), 
-                left: FfiConverterOptionUInt32.read(from: &buf), 
-                signInRequired: FfiConverterBool.read(from: &buf), 
                 unsent: FfiConverterOptionString.read(from: &buf), 
                 error: FfiConverterOptionString.read(from: &buf), 
                 accountChat: FfiConverterBool.read(from: &buf)
@@ -10406,8 +10906,6 @@ public struct FfiConverterTypeCloudChatSnapshot: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.chat, into: &buf)
         FfiConverterSequenceTypeCloudChatLine.write(value.lines, into: &buf)
         FfiConverterBool.write(value.answering, into: &buf)
-        FfiConverterOptionUInt32.write(value.left, into: &buf)
-        FfiConverterBool.write(value.signInRequired, into: &buf)
         FfiConverterOptionString.write(value.unsent, into: &buf)
         FfiConverterOptionString.write(value.error, into: &buf)
         FfiConverterBool.write(value.accountChat, into: &buf)
@@ -10670,6 +11168,63 @@ public func FfiConverterTypeComposerState_lift(_ buf: RustBuffer) throws -> Comp
 #endif
 public func FfiConverterTypeComposerState_lower(_ value: ComposerState) -> RustBuffer {
     return FfiConverterTypeComposerState.lower(value)
+}
+
+
+/**
+ * A computer the phone just connected to by its code.
+ */
+public struct ConnectedComputer: Equatable, Hashable {
+    public var deviceId: String
+    public var label: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(deviceId: String, label: String) {
+        self.deviceId = deviceId
+        self.label = label
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ConnectedComputer: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeConnectedComputer: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ConnectedComputer {
+        return
+            try ConnectedComputer(
+                deviceId: FfiConverterString.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ConnectedComputer, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.deviceId, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeConnectedComputer_lift(_ buf: RustBuffer) throws -> ConnectedComputer {
+    return try FfiConverterTypeConnectedComputer.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeConnectedComputer_lower(_ value: ConnectedComputer) -> RustBuffer {
+    return FfiConverterTypeConnectedComputer.lower(value)
 }
 
 
@@ -11122,6 +11677,89 @@ public func FfiConverterTypeDebugEntry_lift(_ buf: RustBuffer) throws -> DebugEn
 #endif
 public func FfiConverterTypeDebugEntry_lower(_ value: DebugEntry) -> RustBuffer {
     return FfiConverterTypeDebugEntry.lower(value)
+}
+
+
+/**
+ * The words of the demo's way out.
+ */
+public struct DemoExitCopy: Equatable, Hashable {
+    /**
+     * The chip at the top of the shell.
+     */
+    public var chip: String
+    /**
+     * What the chip does, read aloud by VoiceOver.
+     */
+    public var chipHint: String
+    /**
+     * The Settings row.
+     */
+    public var settingsTitle: String
+    public var settingsDetail: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The chip at the top of the shell.
+         */chip: String, 
+        /**
+         * What the chip does, read aloud by VoiceOver.
+         */chipHint: String, 
+        /**
+         * The Settings row.
+         */settingsTitle: String, settingsDetail: String) {
+        self.chip = chip
+        self.chipHint = chipHint
+        self.settingsTitle = settingsTitle
+        self.settingsDetail = settingsDetail
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DemoExitCopy: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDemoExitCopy: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DemoExitCopy {
+        return
+            try DemoExitCopy(
+                chip: FfiConverterString.read(from: &buf), 
+                chipHint: FfiConverterString.read(from: &buf), 
+                settingsTitle: FfiConverterString.read(from: &buf), 
+                settingsDetail: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DemoExitCopy, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.chip, into: &buf)
+        FfiConverterString.write(value.chipHint, into: &buf)
+        FfiConverterString.write(value.settingsTitle, into: &buf)
+        FfiConverterString.write(value.settingsDetail, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDemoExitCopy_lift(_ buf: RustBuffer) throws -> DemoExitCopy {
+    return try FfiConverterTypeDemoExitCopy.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDemoExitCopy_lower(_ value: DemoExitCopy) -> RustBuffer {
+    return FfiConverterTypeDemoExitCopy.lower(value)
 }
 
 
@@ -11994,6 +12632,11 @@ public struct IdentityView: Equatable, Hashable {
      * Whether the 12 words were backed up and confirmed.
      */
     public var wordsSaved: Bool
+    /**
+     * Whether the words are kept in iCloud Keychain rather than on this
+     * phone only.
+     */
+    public var icloudCopy: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -12003,9 +12646,14 @@ public struct IdentityView: Equatable, Hashable {
          */npub: String, 
         /**
          * Whether the 12 words were backed up and confirmed.
-         */wordsSaved: Bool) {
+         */wordsSaved: Bool, 
+        /**
+         * Whether the words are kept in iCloud Keychain rather than on this
+         * phone only.
+         */icloudCopy: Bool) {
         self.npub = npub
         self.wordsSaved = wordsSaved
+        self.icloudCopy = icloudCopy
     }
 
     
@@ -12025,13 +12673,15 @@ public struct FfiConverterTypeIdentityView: FfiConverterRustBuffer {
         return
             try IdentityView(
                 npub: FfiConverterString.read(from: &buf), 
-                wordsSaved: FfiConverterBool.read(from: &buf)
+                wordsSaved: FfiConverterBool.read(from: &buf), 
+                icloudCopy: FfiConverterBool.read(from: &buf)
         )
     }
 
     public static func write(_ value: IdentityView, into buf: inout [UInt8]) {
         FfiConverterString.write(value.npub, into: &buf)
         FfiConverterBool.write(value.wordsSaved, into: &buf)
+        FfiConverterBool.write(value.icloudCopy, into: &buf)
     }
 }
 
@@ -16471,6 +17121,63 @@ public func FfiConverterTypeWidget_lift(_ buf: RustBuffer) throws -> Widget {
 #endif
 public func FfiConverterTypeWidget_lower(_ value: Widget) -> RustBuffer {
     return FfiConverterTypeWidget.lower(value)
+}
+
+
+/**
+ * One answer in the backup check: the word at a 1-based position.
+ */
+public struct WordCheck: Equatable, Hashable {
+    public var position: UInt32
+    public var word: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(position: UInt32, word: String) {
+        self.position = position
+        self.word = word
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WordCheck: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWordCheck: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WordCheck {
+        return
+            try WordCheck(
+                position: FfiConverterUInt32.read(from: &buf), 
+                word: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WordCheck, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.position, into: &buf)
+        FfiConverterString.write(value.word, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWordCheck_lift(_ buf: RustBuffer) throws -> WordCheck {
+    return try FfiConverterTypeWordCheck.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWordCheck_lower(_ value: WordCheck) -> RustBuffer {
+    return FfiConverterTypeWordCheck.lower(value)
 }
 
 
@@ -22263,6 +22970,30 @@ fileprivate struct FfiConverterOptionTypeVisualSession: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeAppAttestation: FfiConverterRustBuffer {
+    typealias SwiftType = AppAttestation?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAppAttestation.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAppAttestation.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeAppshotLabel: FfiConverterRustBuffer {
     typealias SwiftType = AppshotLabel?
 
@@ -23915,6 +24646,31 @@ fileprivate struct FfiConverterSequenceTypeWidget: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeWordCheck: FfiConverterRustBuffer {
+    typealias SwiftType = [WordCheck]
+
+    public static func write(_ value: [WordCheck], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeWordCheck.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [WordCheck] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [WordCheck]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeWordCheck.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeVisualShape: FfiConverterRustBuffer {
     typealias SwiftType = [VisualShape]
 
@@ -24092,6 +24848,18 @@ public func authRefresh(edgeUrl: String, refreshToken: String, organizationId: S
         )
 }
 /**
+ * The scanner's quick check: `None` when `text` is a computer's code to
+ * connect with, else the sentence to show. Dials nothing.
+ */
+public func computerCodeProblem(text: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_func_computer_code_problem(
+        FfiConverterString.lower(text),uniffiCallStatus
+    )
+})
+}
+/**
  * Static harness catalog (the device-unreachable fallback).
  */
 public func fallbackHarnesses() -> [HarnessInfo]  {
@@ -24246,6 +25014,32 @@ public func accountDeletionWarning() -> String  {
 })
 }
 /**
+ * The chip's and the Settings row's words.
+ */
+public func demoExitCopy() -> DemoExitCopy  {
+    return try!  FfiConverterTypeDemoExitCopy_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_func_demo_exit_copy(uniffiCallStatus
+    )
+})
+}
+/**
+ * Removes the demo's data folder after the demo client has stopped, so
+ * the next demo starts fresh and nothing the demo saved stays on the
+ * phone. Returns whether the folder is gone.
+ *
+ * It refuses any folder not named [`DEMO_DIR_NAME`], so a wrong path can
+ * never remove the account's own data.
+ */
+public func forgetDemoData(demoDir: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_func_forget_demo_data(
+        FfiConverterString.lower(demoDir),uniffiCallStatus
+    )
+})
+}
+/**
  * The canonical mention link the host understands (`[name](openagents-file:path)`).
  */
 public func fileMentionLink(path: String, isDir: Bool) -> String  {
@@ -24274,6 +25068,18 @@ public func voiceHostCapability() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_openagents_mobile_fn_func_voice_host_capability(uniffiCallStatus
+    )
+})
+}
+/**
+ * Whether `text` is a website login code (any website; the account
+ * refuses other sites' codes when asked about one). Dials nothing.
+ */
+public func isWebsiteLogin(text: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_func_is_website_login(
+        FfiConverterString.lower(text),uniffiCallStatus
     )
 })
 }
@@ -24393,6 +25199,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_func_auth_refresh() != 8370) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_func_computer_code_problem() != 9856) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_func_fallback_harnesses() != 43836) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -24438,6 +25247,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_func_account_deletion_warning() != 18673) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_func_demo_exit_copy() != 960) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_func_forget_demo_data() != 38035) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_func_file_mention_link() != 21705) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -24445,6 +25260,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_func_voice_host_capability() != 5785) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_func_is_website_login() != 43232) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_func_debug_line_starts() != 25753) {
@@ -24481,6 +25299,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreclient_close_session() != 57129) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreclient_connect_computer() != 5058) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreclient_connectivity() != 21288) {
@@ -24684,6 +25505,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreaccount_custom_agents() != 2637) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_link_computer() != 29105) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_project_sharing() != 8843) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -24694,9 +25518,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_saved_history() != 18898) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_sign_in() != 52498) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_sign_in_with_credential() != 26999) {
@@ -24717,7 +25538,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreaccount_chat_homes() != 42622) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_cloud_chat() != 33813) {
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_cloud_chat() != 45816) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_cloud_host() != 19804) {
@@ -24729,13 +25550,40 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreaccount_stop_cloud_host() != 55892) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_identity() != 38502) {
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_backup_check() != 31302) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_start_identity() != 35967) {
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_backup_words() != 26861) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_confirm_backup() != 25502) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_identity() != 27883) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_restore_from_words() != 39269) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_reveal_nsec() != 917) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_set_app_attester() != 28187) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_set_icloud_copy() != 17892) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_start_identity() != 62974) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_own_computer_offer() != 46210) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_approve_scanned_login() != 21610) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_scanned_login() != 38799) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_agentlablistener_on_agent_lab_changed() != 41969) {
@@ -24820,6 +25668,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_customagentslistener_on_custom_agents_changed() != 44752) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_appattester_attest() != 48015) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreonboarding_finish() != 30618) {
@@ -25188,12 +26039,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_constructor_orbrenderer_new() != 33643) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_constructor_corewallet_fixture() != 43539) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_constructor_corewallet_new() != 43285) {
         return InitializationResult.apiChecksumMismatch
     }
 
     uniffiCallbackInitAccountListener()
     uniffiCallbackInitAgentLabListener()
+    uniffiCallbackInitAppAttester()
     uniffiCallbackInitClientListener()
     uniffiCallbackInitCloudChatListener()
     uniffiCallbackInitCustomAgentsListener()
