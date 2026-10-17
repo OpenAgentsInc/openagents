@@ -20,7 +20,7 @@ is never proof that the signer controls that account.
 The JSON object contains exactly `schema` (`openagents.agent.definition.v1`)
 and `definition`. The definition contains `id` (64 lowercase hexadecimal
 characters), `revision` (positive integer), `spec`, and `deleted` (boolean).
-`spec` contains exactly:
+`spec` contains the fields below; `fallbacks` may be omitted when empty:
 
 | Field | Contract |
 | --- | --- |
@@ -30,6 +30,13 @@ characters), `revision` (positive integer), `spec`, and `deleted` (boolean).
 | `runtime` | 1–128 ASCII letters, digits, `.`, `_`, `:`, or `-`. An installed implementation ID, never a command or URL. |
 | `model` | Null or 1–256 UTF-8 bytes without control characters. |
 | `access` | `host_default`, `read_only`, or `workspace_write`. A request that the executing host must enforce or refuse. |
+| `fallbacks` | Optional array of at most 4 `{runtime, model?}` objects, tried in order when `runtime` is not ready on the host. Each runtime uses the `runtime` rules, appears once, differs from `runtime`, and is not `sdk` or `any`. |
+
+`runtime` `any` (with a null model) leaves the choice to the host. The runtime,
+model, and fallbacks are settings of the agent, not part of its identity: a
+revision that changes only them is the same agent, and an assigned conversation
+uses the new order from its next turn. The identity fields are `name`,
+`description`, `instructions`, and `access`.
 
 An SDK runner uses runtime `sdk` and a model naming an operator-installed
 runner. `host_default` means the host's configured access; it promises no sandbox.
@@ -55,8 +62,11 @@ by this profile.
 
 An assignment pins the definition revision and selecting account, host, project,
 and conversation. Existing SESS command identities distinguish retry from new
-work. The host checks current account, installed runtime, model, project, and
-access before dispatch. A saved assignment is not proof of execution. Lost
+work. The host checks current account, project, and access before dispatch, then uses
+the first runtime in the agent's order that is installed, enabled, signed in by
+a check that starts no login, offers the model, and enforces the access; then
+its own default. It records in the conversation which runtime ran and why it
+differs from the first choice. A saved assignment is not proof of execution. Lost
 contact cannot mean completion; uncertain execution must be inspected before
 new work is issued. Stop is an intent until the session reports it stopped.
 Completion is distinct from WORK acceptance and LAB settlement.

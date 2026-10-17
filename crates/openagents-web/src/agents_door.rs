@@ -380,6 +380,7 @@ mod tests {
                 runtime: runtime.into(),
                 model: None,
                 access: Access::HostDefault,
+                fallbacks: vec![],
             },
             deleted: false,
         }

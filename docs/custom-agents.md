@@ -12,8 +12,11 @@ is [SDK custom agents](sdk/agents.md).
 Use **Create agent…** in the new-session agent picker. Save a name, instructions,
 runtime, model, and access settings, then choose a computer and project and send
 work. Your agents appear at the top of the picker. Assignments keep the saved
-revision, use the existing conversation and controls, and refuse unavailable
-runtimes instead of choosing another agent. Editing changes future assignments.
+revision, use the existing conversation and controls, and use the next runtime in the
+agent's fallback order (then the computer's default) when the first isn't
+ready, saying so in the conversation; they never choose another agent. Editing
+the runtime applies from an assigned conversation's next turn; other edits
+change future assignments.
 Definitions created through the public Rust SDK appear in that same list.
 
 Supported runtimes are Claude Code, Codex, and an operator-installed Rust SDK
@@ -299,8 +302,9 @@ Acceptance must also cover response loss after create/assign, concurrent sends,
 host restart during dispatch, phone sleep/reconnect, revoked access before queued
 work starts, sign-out/account switch with late responses, deleted definitions,
 changed runtime versions, offline hosts, unavailable provider login, and invalid
-model/settings. No fallback may silently change the selected agent, runtime,
-account, computer, or payer. Check that built-in Claude Code/Codex sessions still
+model/settings. No fallback may change the selected agent, account, computer,
+or payer. A runtime fallback follows the agent's saved order (#11966) and is
+always shown in the conversation. Check that built-in Claude Code/Codex sessions still
 work without a custom definition.
 
 Use dedicated test accounts, scratch homes/data/projects, and disposable resources.

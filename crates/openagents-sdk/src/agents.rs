@@ -6,7 +6,9 @@ use crate::{CancellationToken, Client, Deployment, Error, Session};
 use reqwest::Method;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-pub use agent_contract::{Access, AgentDefinition, AgentSpec, Profile, valid_id};
+pub use agent_contract::{
+    ANY_RUNTIME, Access, AgentDefinition, AgentSpec, MAX_FALLBACKS, Profile, RuntimeChoice, valid_id,
+};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateAgent {
@@ -213,6 +215,7 @@ mod tests {
             runtime: "claude-code".into(),
             model: None,
             access: Access::ReadOnly,
+            fallbacks: vec![],
         };
         assert!(spec.validate().is_ok());
         for runtime in [

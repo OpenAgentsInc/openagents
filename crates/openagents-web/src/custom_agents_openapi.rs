@@ -10,8 +10,11 @@ pub(crate) fn extend(doc: &mut Value) {
   "name":{"type":"string","minLength":1,"maxLength":80,"description":"Nonblank, no control characters; at most 80 UTF-8 bytes."},
   "description":{"type":"string","maxLength":512,"description":"At most 512 UTF-8 bytes; no control characters."},
   "instructions":{"type":"string","minLength":1,"maxLength":16384,"description":"Nonblank, no NUL; at most 16,384 UTF-8 bytes."},
-  "runtime":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9_.:-]+$"},
-  "model":{"type":["string","null"],"minLength":1,"maxLength":256},"access":{"enum":["host_default","read_only","workspace_write"]}}});
+  "runtime":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9_.:-]+$","description":"The runtime to use first. `any` leaves the choice to the computer. Not part of the agent's identity: changing it keeps the agent and applies from the next turn."},
+  "model":{"type":["string","null"],"minLength":1,"maxLength":256},"access":{"enum":["host_default","read_only","workspace_write"]},
+  "fallbacks":{"type":"array","maxItems":4,"description":"Runtimes to try in order when `runtime` isn't installed, turned on, or signed in on the computer; then the computer's own default. Each runtime appears once and is not `sdk` or `any`. Omitted when empty.","items":{"type":"object","additionalProperties":false,"required":["runtime"],"properties":{
+    "runtime":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9_.:-]+$"},
+    "model":{"type":"string","minLength":1,"maxLength":256}}}}}});
     let schemas = json!({
      "CustomAgentSpec":spec,
      "CustomAgentDefinition":{"type":"object","additionalProperties":false,"required":["id","revision","spec","deleted"],"properties":{"id":id,"revision":revision,"spec":r("Spec"),"deleted":{"type":"boolean"}}},

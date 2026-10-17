@@ -36,6 +36,7 @@ pub(super) async fn run(f: &mut Fixture) -> Result<()> {
                 runtime: runtime.into(),
                 model: model.map(str::to_owned),
                 access: Access::HostDefault,
+                fallbacks: vec![],
             };
             let create = agents.create_request(spec)?;
             let definition = agents.create(&create, &cancel).await?;

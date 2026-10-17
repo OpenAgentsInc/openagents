@@ -27611,7 +27611,8 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 128,
-            "pattern": "^[A-Za-z0-9_.:-]+$"
+            "pattern": "^[A-Za-z0-9_.:-]+$",
+            "description": "The runtime to use first. `any` leaves the choice to the computer. Not part of the agent's identity: changing it keeps the agent and applies from the next turn."
           },
           "model": {
             "type": [
@@ -27627,6 +27628,31 @@
               "read_only",
               "workspace_write"
             ]
+          },
+          "fallbacks": {
+            "type": "array",
+            "maxItems": 4,
+            "description": "Runtimes to try in order when `runtime` isn't installed, turned on, or signed in on the computer; then the computer's own default. Each runtime appears once and is not `sdk` or `any`. Omitted when empty.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "runtime"
+              ],
+              "properties": {
+                "runtime": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9_.:-]+$"
+                },
+                "model": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                }
+              }
+            }
           }
         }
       },

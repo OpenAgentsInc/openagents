@@ -20,7 +20,13 @@ owner, and a definition ID cannot grant access to another account's definitions.
 | `DELETE /v1/agent-definitions/{id}` | Save `{request_id, expected_revision}` as a deletion revision. |
 
 `spec` contains `name`, `description`, `instructions`, `runtime`, optional
-`model`, and `access` (`host_default`, `read_only`, or `workspace_write`). Limits are 80 UTF-8
+`model`, `access` (`host_default`, `read_only`, or `workspace_write`), and
+optional `fallbacks`: up to 4 `{runtime, model}` choices tried in order when the
+first runtime isn't installed, turned on, or signed in on the computer, before
+the computer's own default. `runtime: "any"` leaves the choice to the computer.
+The runtime, model, and fallbacks are settings, not identity: change them with
+`PUT` and the agent's conversations use them from the next turn, noting which
+runtime ran. Limits are 80 UTF-8
 bytes for the nonblank name, 512 for the description, 16,384 for nonblank
 instructions, 128 ASCII bytes for the runtime ID, and 256 bytes for a model ID.
 Names/descriptions/models reject control characters; instructions reject NUL.

@@ -102,6 +102,7 @@ mod tests {
                 runtime: "sdk".into(),
                 model: Some("review".into()),
                 access: super::super::Access::HostDefault,
+                fallbacks: vec![],
             },
             task: "Review patch".into(),
             cwd: "/workspace".into(),

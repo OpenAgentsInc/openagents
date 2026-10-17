@@ -19,6 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         runtime: "sdk".into(),
         model: Some("reviewer".into()),
         access: Access::HostDefault,
+        fallbacks: vec![],
     };
     let request = agents.create_request(spec)?;
     // Persist this bound record privately before sending in an application that retries.

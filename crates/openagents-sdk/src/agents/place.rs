@@ -5,6 +5,9 @@
 use super::AgentDefinition;
 use crate::agent_lab::Host;
 
+/// Runtimes a host may pick for an agent that leaves the choice to it.
+pub const HOST_DEFAULTS: [&str; 3] = ["claude-code", "codex", "opencode"];
+
 /// Why no computer can run the agent now.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Unplaced {
@@ -28,26 +31,38 @@ pub fn place(
     prefer: Option<&str>,
 ) -> Result<(Host, String), Unplaced> {
     let same = |a: &str, b: &str| a.eq_ignore_ascii_case(b);
-    let runs = |h: &&Host| {
+    // The position of the first runtime in the agent's order this computer
+    // has: computers with an earlier choice come first.
+    let order = agent.spec.runtime_order();
+    let rank = |h: &Host| -> Option<usize> {
         if agent.spec.runtime == "sdk" {
             agent
                 .spec
                 .model
                 .as_ref()
                 .is_some_and(|m| h.runners.contains(m))
+                .then_some(0)
+        } else if order.is_empty() {
+            h.runtimes
+                .iter()
+                .any(|r| HOST_DEFAULTS.contains(&r.as_str()))
+                .then_some(0)
         } else {
-            h.runtimes.iter().any(|r| *r == agent.spec.runtime)
+            order
+                .iter()
+                .position(|c| h.runtimes.iter().any(|r| *r == c.runtime))
         }
     };
-    let mut fit: Vec<&Host> = hosts
+    let mut fit: Vec<(usize, &Host)> = hosts
         .iter()
-        .filter(runs)
         .filter(|h| computer.is_none_or(|c| h.id == c || same(&h.name, c)))
+        .filter_map(|h| rank(h).map(|r| (r, h)))
         .collect();
     if fit.is_empty() {
         return Err(Unplaced::NoComputer);
     }
-    fit.sort_by(|a, b| b.seen_ms.cmp(&a.seen_ms));
+    fit.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.seen_ms.cmp(&a.1.seen_ms)));
+    let fit: Vec<&Host> = fit.into_iter().map(|(_, h)| h).collect();
     let pick = |h: &Host, wanted: &str| {
         h.projects
             .iter()
@@ -89,6 +104,7 @@ mod tests {
                 runtime: runtime.into(),
                 model: model.map(Into::into),
                 access: Access::HostDefault,
+                fallbacks: vec![],
             },
             deleted: false,
         }
@@ -148,5 +164,26 @@ mod tests {
             place(&hosts, &agent("sdk", Some("other")), None, None, None).map(|(h, p)| (h.id, p)),
             Err(Unplaced::NoComputer)
         );
+    }
+
+    #[test]
+    fn computers_with_an_earlier_runtime_come_first_and_any_takes_a_default() {
+        let hosts = vec![
+            host("codex", 3, &["codex"], &["openagents"]),
+            host("claude", 1, &["claude-code"], &["openagents"]),
+            host("cursor", 5, &["cursor"], &["openagents"]),
+        ];
+        let mut a = agent("claude-code", None);
+        a.spec.fallbacks = vec![crate::agents::RuntimeChoice {
+            runtime: "codex".into(),
+            model: None,
+        }];
+        let id = |a: &AgentDefinition, hosts: &[Host]| place(hosts, a, None, None, None).map(|(h, _)| h.id);
+        assert_eq!(id(&a, &hosts), Ok("claude".into()));
+        assert_eq!(id(&a, &hosts[..1]), Ok("codex".into()));
+        assert_eq!(id(&a, &hosts[2..]), Err(Unplaced::NoComputer));
+        let any = agent(crate::agents::ANY_RUNTIME, None);
+        assert_eq!(id(&any, &hosts), Ok("codex".into()));
+        assert_eq!(id(&any, &hosts[2..]), Err(Unplaced::NoComputer));
     }
 }

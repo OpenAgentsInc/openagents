@@ -414,6 +414,7 @@ mod tests {
             runtime: "claude-code".into(),
             model: None,
             access: openagents_sdk::agents::Access::ReadOnly,
+            fallbacks: vec![],
         }
     }
     fn create(n: u8) -> Mutation {

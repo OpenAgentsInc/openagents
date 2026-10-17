@@ -23,6 +23,7 @@ pub fn foreman() -> Experiment {
                 runtime: "claude-code".into(),
                 model: Some("claude-opus-5-5".into()),
                 access: agent_contract::Access::HostDefault,
+                fallbacks: vec![],
             },
             source: None,
             components: vec![],

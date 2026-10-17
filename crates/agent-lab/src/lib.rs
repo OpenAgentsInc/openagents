@@ -502,6 +502,7 @@ pub fn starter() -> Experiment {
                 runtime: "codex".into(),
                 model: None,
                 access: agent_contract::Access::ReadOnly,
+                fallbacks: vec![],
             },
             source: None,
             components: vec![],

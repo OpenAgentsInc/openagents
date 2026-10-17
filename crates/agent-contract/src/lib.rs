@@ -10,6 +10,35 @@ pub struct AgentSpec {
     pub runtime: String,
     pub model: Option<String>,
     pub access: Access,
+    /// Runtimes to try, in order, when `runtime` isn't ready on the host.
+    /// Not part of the agent's identity ([`AgentSpec::same_identity`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fallbacks: Vec<RuntimeChoice>,
+}
+
+/// One runtime the host may use for an agent, with its model.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RuntimeChoice {
+    pub runtime: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+/// `runtime` value meaning "the host's own default runtime".
+pub const ANY_RUNTIME: &str = "any";
+/// Most fallback runtimes an agent may list.
+pub const MAX_FALLBACKS: usize = 4;
+
+fn valid_runtime(runtime: &str) -> bool {
+    !runtime.is_empty()
+        && runtime.len() <= 128
+        && runtime
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-_.:".contains(&b))
+}
+fn valid_model(model: Option<&String>) -> bool {
+    model.is_none_or(|m| !m.is_empty() && m.len() <= 256 && !m.chars().any(char::is_control))
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -36,26 +65,57 @@ impl AgentSpec {
         {
             return Err("Add instructions or shorten the text.");
         }
-        if self.runtime.is_empty()
-            || self.runtime.len() > 128
-            || !self
-                .runtime
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"-_.:".contains(&b))
-        {
+        if !valid_runtime(&self.runtime) {
             return Err("Choose a supported runtime.");
         }
-        if self
-            .model
-            .as_ref()
-            .is_some_and(|m| m.is_empty() || m.len() > 256 || m.chars().any(char::is_control))
-        {
+        if !valid_model(self.model.as_ref()) {
             return Err("Choose a supported model.");
         }
         if self.runtime == "sdk" && (self.model.is_none() || self.access != Access::HostDefault) {
             return Err("Choose an installed runner and this computer's access settings.");
         }
+        if self.runtime == ANY_RUNTIME && self.model.is_some() {
+            return Err("Choose a runtime before choosing a model.");
+        }
+        if self.fallbacks.len() > MAX_FALLBACKS {
+            return Err("Choose fewer fallback runtimes.");
+        }
+        for (i, f) in self.fallbacks.iter().enumerate() {
+            if !valid_runtime(&f.runtime)
+                || f.runtime == "sdk"
+                || f.runtime == ANY_RUNTIME
+                || f.runtime == self.runtime
+                || self.fallbacks[..i].iter().any(|e| e.runtime == f.runtime)
+            {
+                return Err("Choose different fallback runtimes.");
+            }
+            if !valid_model(f.model.as_ref()) {
+                return Err("Choose a supported model.");
+            }
+        }
         Ok(())
+    }
+
+    /// The runtimes to try, in order. Empty when the agent leaves it to the
+    /// host (`runtime: "any"` and no fallbacks).
+    pub fn runtime_order(&self) -> Vec<RuntimeChoice> {
+        (self.runtime != ANY_RUNTIME)
+            .then(|| RuntimeChoice {
+                runtime: self.runtime.clone(),
+                model: self.model.clone(),
+            })
+            .into_iter()
+            .chain(self.fallbacks.iter().cloned())
+            .collect()
+    }
+
+    /// Whether two specs describe the same agent. The runtime, model and
+    /// fallbacks are settings of the agent, not part of who it is.
+    pub fn same_identity(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.description == other.description
+            && self.instructions == other.instructions
+            && self.access == other.access
     }
 }
 
@@ -96,5 +156,76 @@ impl Profile {
             return Err("Invalid agent profile.");
         }
         self.definition.spec.validate()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn spec() -> AgentSpec {
+        AgentSpec {
+            name: "Foreman".into(),
+            description: String::new(),
+            instructions: "Oversee the work.".into(),
+            runtime: "claude-code".into(),
+            model: Some("claude-opus-5-5".into()),
+            access: Access::HostDefault,
+            fallbacks: vec![],
+        }
+    }
+    fn choice(runtime: &str) -> RuntimeChoice {
+        RuntimeChoice {
+            runtime: runtime.into(),
+            model: None,
+        }
+    }
+
+    #[test]
+    fn fallbacks_are_ordered_optional_and_omitted_when_empty() {
+        let mut s = spec();
+        let json = serde_json::to_value(&s).unwrap();
+        assert!(json.get("fallbacks").is_none());
+        s.fallbacks = vec![choice("codex"), choice("opencode")];
+        s.validate().unwrap();
+        let order: Vec<_> = s.runtime_order().into_iter().map(|c| c.runtime).collect();
+        assert_eq!(order, ["claude-code", "codex", "opencode"]);
+        let back: AgentSpec = serde_json::from_value(serde_json::to_value(&s).unwrap()).unwrap();
+        assert_eq!(back, s);
+        s.runtime = ANY_RUNTIME.into();
+        s.model = None;
+        s.fallbacks.clear();
+        s.validate().unwrap();
+        assert!(s.runtime_order().is_empty());
+    }
+
+    #[test]
+    fn fallbacks_reject_repeats_runners_and_long_lists() {
+        for fallbacks in [
+            vec![choice("claude-code")],
+            vec![choice("codex"), choice("codex")],
+            vec![choice("sdk")],
+            vec![choice(ANY_RUNTIME)],
+            vec![choice("sh -c x")],
+            vec![choice("a"), choice("b"), choice("c"), choice("d"), choice("e")],
+        ] {
+            let mut s = spec();
+            s.fallbacks = fallbacks;
+            assert!(s.validate().is_err());
+        }
+        let mut s = spec();
+        s.runtime = ANY_RUNTIME.into();
+        assert!(s.validate().is_err(), "a model needs a runtime");
+    }
+
+    #[test]
+    fn runtime_and_model_are_not_identity() {
+        let a = spec();
+        let mut b = a.clone();
+        b.runtime = "codex".into();
+        b.model = None;
+        b.fallbacks = vec![choice("opencode")];
+        assert!(a.same_identity(&b));
+        b.instructions = "Something else".into();
+        assert!(!a.same_identity(&b));
     }
 }

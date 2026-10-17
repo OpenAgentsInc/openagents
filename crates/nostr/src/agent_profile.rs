@@ -82,6 +82,7 @@ mod tests {
                 runtime: "codex".into(),
                 model: None,
                 access: Access::ReadOnly,
+                fallbacks: vec![],
             },
         })
         .unwrap();
