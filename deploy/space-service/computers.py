@@ -63,7 +63,7 @@ def configure(passwords):
     print(json.dumps({'database':'space_computers','numeric_secret_version':1,'passwords_in_sql_or_argv':False,'password_update_requested':passwords}))
 
 
-def deploy(commit,digest,template,vcpu,memory):
+def deploy(commit,digest,template,vcpu,memory,disable_creates):
     if not re.fullmatch(r'[0-9a-f]{40}',commit) or not re.fullmatch(r'sha256:[0-9a-f]{64}',digest): raise RuntimeError('Provide full source and image identities.')
     if not re.fullmatch(r'(seed|code-runtime)@sha256:[0-9a-f]{64}',template): raise RuntimeError('Pin the published system template digest.')
     if (vcpu,memory)!=(None,None) and (vcpu!=2 or memory not in (1024,2048,4096)): raise RuntimeError('Use the measured small template shape within the qualification capacity.')
@@ -80,7 +80,7 @@ def deploy(commit,digest,template,vcpu,memory):
     config={'default':'space-private-11814','policy':'space-private-11814-v1','deployments':[{
         'id':'space-private-11814','kind':'space','api_url':'https://oa-space-service-api-ezxz4mgdsq-uc.a.run.app',
         'data_plane_url':'https://oa-space-service-data-ezxz4mgdsq-uc.a.run.app','credential_env':'SPACE_API_TOKEN',
-        'template':template,'scope':'00000000-0000-4000-8000-000000011814','capacity':2,
+        'template':template,'scope':'00000000-0000-4000-8000-000000011814','capacity':2,'admit_new':not disable_creates,
         'rollout_accounts':['space-qualification-11814'],'shapes':({'small':{'vcpus':vcpu,'memory_mib':memory,'min_disk_gib':None}} if vcpu is not None else {})}]}
     registry=json.dumps(config,separators=(',',':')).encode()
     registry_key='registry-'+hashlib.sha256(registry).hexdigest()[:16]
@@ -124,7 +124,7 @@ def deploy(commit,digest,template,vcpu,memory):
         config_path=Path(directory)/'service.json';config_path.write_text(json.dumps(spec));config_path.chmod(0o600)
         result=cloud('run','services','replace',str(config_path),'--region='+REGION)
     cloud('run','services','add-iam-policy-binding',name,'--region='+REGION,'--member=allUsers','--role=roles/run.invoker')
-    print(json.dumps({'service':name,'url':result['status']['url'],'image':digest,'image_source':commit,'deployment_source':current_commit,'template':template,'qualification_only':True}))
+    print(json.dumps({'service':name,'url':result['status']['url'],'image':digest,'image_source':commit,'deployment_source':current_commit,'template':template,'admit_new':not disable_creates,'qualification_only':True}))
 
 
 if __name__=='__main__':
@@ -135,7 +135,8 @@ if __name__=='__main__':
     parser.add_argument('--template')
     parser.add_argument('--small-vcpus',type=int)
     parser.add_argument('--small-memory-mib',type=int)
+    parser.add_argument('--disable-creates',action='store_true')
     args=parser.parse_args()
     if args.deploy_commit:
-        deploy(args.deploy_commit,args.deploy_digest,args.template,args.small_vcpus,args.small_memory_mib)
+        deploy(args.deploy_commit,args.deploy_digest,args.template,args.small_vcpus,args.small_memory_mib,args.disable_creates)
     else: configure(args.set_password)

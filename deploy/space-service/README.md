@@ -134,6 +134,21 @@ unconfirmed and unattached owned disks, and counts active objects through the
 private connection. It performs no deletion and omits secret values. Soft-deleted
 objects and unfinished multipart uploads need separate checks.
 
+Install `monitor.py` beside the protected control tools and the monitor service
+and timer under `/etc/systemd/system`. Run `monitoring.py` before enabling
+`oa-space-monitor.timer`. Seven fixed measurements publish every minute through
+the control identity's Metrics Writer role; six policies alert on missing or
+unhealthy services, stale work, collection failures, and less than 60 GiB free
+on the worker data disk. Policies appear in Cloud Monitoring incidents. The
+helper preserves existing notification channels and creates none automatically.
+See the [time-series API](https://docs.cloud.google.com/monitoring/api/ref_v3/rest/v3/projects.timeSeries/create)
+and [alert policy API](https://docs.cloud.google.com/monitoring/api/ref_v3/rest/v3/projects.alertPolicies).
+
+Use `computers.py --disable-creates` with the same pinned image, template, shape,
+and deployment ID to stop new placement while retaining existing computer
+operations. The registry stays available to the reconciler. Do not remove or
+disable the deployment while its computers still need access or deletion.
+
 `database-recovery.py` creates and restores only the separate
 `oa-space-service-restore-11814` copy. Export its public connection settings after
 the restore operation completes, verify them with `database_restore.py` on the
