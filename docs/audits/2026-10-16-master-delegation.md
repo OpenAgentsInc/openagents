@@ -124,7 +124,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 7: host authority
 
-**Taken 2026-10-16 22:02 CDT** by Codex working #11817, #11911 in `~/work/openagents-bang-lanes`.
+**Released 2026-10-16 22:23 CDT** by Codex; #11817 and #11911 remain. #11817 prerequisites landed in `226ebf63a3` and `1dde3bd99a`; the enrolled adapter and project sharing are unfinished. Worktree: `~/work/openagents-bang-lanes` (removed after handoff).
 
 - **Owns:** `crates/coder-host/src/{serve/*,enroll.rs,authority.rs,computer.rs,tasks.rs}`, `crates/coder-access` (store, enrollment, shared host APIs), and `crates/coder-pty`'s command identity.
 - **Keep source-compatible, because lane 8 consumes them:** `Host::handle`, the `authority::Grants` check, and `client::Connector`. Changes there must be additive.
@@ -200,7 +200,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Risk:** the most likely Computers issue to miss Saturday. If it does, close with what was qualified and list the rest, under the brief's rule.
 
 **#11817 Computers: implement an enrolled-own-machine adapter with safe attach and detach semantics.** Lane 7, unclaimed, board says Todo.
-- **Status:** no code yet. The audit found that the 1.0.0 host grant is host-wide with no workspace root, the file API resolves absolute and home-relative paths without workspace authorization, and terminal deduplication doesn't survive a host restart. The empty branch `codex/11817-enrolled-adapter` starts at `e6f468c332`.
+- **Status:** `226ebf63a3` records terminal launches before spawning and refuses uncertain retries after restart. `1dde3bd99a` adds `coder_host::serve::workspace_files::WorkspaceFiles`, a Unix file helper anchored to directory descriptors, with escape and link refusals. The helper is not wired into grant admission, and no enrolled backend is advertised. Rebased library checks passed (host 114, PTY 34); the earlier full host and PTY suites passed. See the latest issue handoff. Host grants and the existing computer endpoint still need workspace enforcement.
 - **Remains:** host-side workspace and file admission (including symlink and root escape), command and process bounds, rights and membership checked on every effect and reattach, durable command identity, non-destructive attach and detach, and capability refusal for unsupported suspend, fork, and snapshot. Then the Core adapter, tested on a scratch host with a temporary HOME.
 - **Owner-only:** none.
 
