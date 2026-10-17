@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use futures::{StreamExt, stream::BoxStream};
-use std::sync::{Arc, Mutex};
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
 use openagents_engine::{EngineCore, HarnessRegistry};
 use openagents_harness::{Harness, HarnessError, RunControls};
@@ -9,6 +8,7 @@ use openagents_proto::{
     SteeringMode,
 };
 use openagents_rpc::methods;
+use std::sync::{Arc, Mutex};
 
 struct Capture(Arc<Mutex<Vec<RunRequest>>>);
 #[async_trait]
@@ -68,7 +68,7 @@ fn message(id: &str, role: MessageRole, text: &str, status: MessageStatus) -> Se
 }
 
 #[tokio::test]
-async fn fork_is_frozen_durable_idempotent_and_has_an_independent_provider_session() {
+async fn fork_is_a_standalone_chat_with_copied_history_and_a_source_link() {
     let dir = tempfile::tempdir().unwrap();
     let requests = Arc::new(Mutex::new(Vec::new()));
     let registry = HarnessRegistry::new();
@@ -128,10 +128,14 @@ async fn fork_is_frozen_durable_idempotent_and_has_an_independent_provider_sessi
     let client = openagents_rpc::memory_client(core.rpc_service());
     let params = serde_json::json!({ "chatId": "side", "sourceChatId": "main", "targetDeviceId": core.device_id });
     let fork = client
-        .call_as::<openagents_proto::Chat>(methods::FORK_SIDE_CHAT, params.clone())
+        .call_as::<openagents_proto::Chat>(methods::FORK_CHAT, params.clone())
         .await
         .unwrap();
-    assert_eq!(fork.parent_chat_id.as_deref(), Some("main"));
+    // A standalone chat in Sessions, not a hidden child.
+    assert_eq!(fork.parent_chat_id, None);
+    assert!(fork.is_top_level());
+    assert_eq!(fork.title.as_deref(), Some("Fork of Main conversation"));
+    assert!(core.workspace.chat("side").unwrap().unwrap().is_top_level());
     assert_eq!(fork.harness_session_id, None);
     assert_eq!(fork.cwd, Some("/tmp".into()));
     assert!(fork.on_chat2());
@@ -150,7 +154,7 @@ async fn fork_is_frozen_durable_idempotent_and_has_an_independent_provider_sessi
             source_title: "Main conversation".into(),
         }]
     );
-    client.call(methods::FORK_SIDE_CHAT, params).await.unwrap();
+    client.call(methods::FORK_CHAT, params).await.unwrap();
     assert_eq!(target.doc().read_entries().unwrap().len(), 3);
     core.sessions.set_ipc_port(27699);
     core.sessions
@@ -210,6 +214,12 @@ async fn fork_is_frozen_durable_idempotent_and_has_an_independent_provider_sessi
         }
     );
     assert!(!request.prompt.contains("fork:side"));
+    // Continuing the fork never touches the source.
+    let main = core.workspace.chat("main").unwrap().unwrap();
+    assert_eq!(
+        main.harness_session_id.as_deref(),
+        Some("parent-provider-session")
+    );
     core.shutdown().await;
     drop(client);
     drop(source);
@@ -228,9 +238,8 @@ async fn fork_is_frozen_durable_idempotent_and_has_an_independent_provider_sessi
             .chat("side")
             .unwrap()
             .unwrap()
-            .parent_chat_id
-            .as_deref(),
-        Some("main")
+            .parent_chat_id,
+        None
     );
     let entries = restarted
         .doc_host
@@ -261,7 +270,7 @@ async fn cannot_fork_an_empty_chat_or_overwrite_a_main_chat() {
     assert!(
         client
             .call(
-                methods::FORK_SIDE_CHAT,
+                methods::FORK_CHAT,
                 serde_json::json!({ "chatId": "side", "sourceChatId": "main" })
             )
             .await
@@ -271,7 +280,7 @@ async fn cannot_fork_an_empty_chat_or_overwrite_a_main_chat() {
     assert!(
         client
             .call(
-                methods::FORK_SIDE_CHAT,
+                methods::FORK_CHAT,
                 serde_json::json!({ "chatId": "main", "sourceChatId": "main" })
             )
             .await
@@ -280,7 +289,7 @@ async fn cannot_fork_an_empty_chat_or_overwrite_a_main_chat() {
 }
 
 #[tokio::test]
-async fn forking_a_side_chat_can_land_as_a_sibling_under_the_main_chat() {
+async fn forking_a_fork_keeps_its_lineage_and_both_list_in_sessions() {
     let dir = tempfile::tempdir().unwrap();
     let core = EngineCore::assemble(
         dir.path(),
@@ -310,17 +319,16 @@ async fn forking_a_side_chat_can_land_as_a_sibling_under_the_main_chat() {
         ))
         .unwrap();
     let client = openagents_rpc::memory_client(core.rpc_service());
-    // A first-level side chat, then its own fork button: the copy hangs
-    // under MAIN (the side chat's parent), not under the side chat.
+    // A fork, then a fork of the fork: both standalone chats.
     let side = client
         .call_as::<openagents_proto::Chat>(
-            methods::FORK_SIDE_CHAT,
+            methods::FORK_CHAT,
             serde_json::json!({ "chatId": "side", "sourceChatId": "main" }),
         )
         .await
         .unwrap();
     core.workspace.rename_chat("side", "Side quest").unwrap();
-    assert_eq!(side.parent_chat_id.as_deref(), Some("main"));
+    assert_eq!(side.parent_chat_id, None);
     // A turn of its own after the seam, so the seam sits inside the frozen
     // prefix the next fork copies.
     let side_doc = core.doc_host.open("side").unwrap();
@@ -344,16 +352,12 @@ async fn forking_a_side_chat_can_land_as_a_sibling_under_the_main_chat() {
         .unwrap();
     let sibling = client
         .call_as::<openagents_proto::Chat>(
-            methods::FORK_SIDE_CHAT,
-            serde_json::json!({
-                "chatId": "side-2",
-                "sourceChatId": "side",
-                "parentChatId": "main",
-            }),
+            methods::FORK_CHAT,
+            serde_json::json!({ "chatId": "side-2", "sourceChatId": "side" }),
         )
         .await
         .unwrap();
-    assert_eq!(sibling.parent_chat_id.as_deref(), Some("main"));
+    assert_eq!(sibling.parent_chat_id, None);
     let entries = core
         .doc_host
         .open("side-2")
@@ -366,25 +370,15 @@ async fn forking_a_side_chat_can_land_as_a_sibling_under_the_main_chat() {
     let seams: Vec<_> = entries
         .iter()
         .filter_map(|e| match e.parts.first() {
-            Some(openagents_doc::MessagePart::Fork { source_title, .. }) => Some(source_title.clone()),
+            Some(openagents_doc::MessagePart::Fork { source_title, .. }) => {
+                Some(source_title.clone())
+            }
             _ => None,
         })
         .collect();
     // The untitled main chat falls back to the placeholder title.
     assert_eq!(seams, ["New session", "Side quest"]);
-    // An empty parent falls back to the source, like an omitted one.
-    let nested = client
-        .call_as::<openagents_proto::Chat>(
-            methods::FORK_SIDE_CHAT,
-            serde_json::json!({
-                "chatId": "side-3",
-                "sourceChatId": "side",
-                "parentChatId": "",
-            }),
-        )
-        .await
-        .unwrap();
-    assert_eq!(nested.parent_chat_id.as_deref(), Some("side"));
+    assert_eq!(sibling.title.as_deref(), Some("Fork of Side quest"));
 }
 
 /// One turn through the engine; returns the request the provider received.
@@ -443,32 +437,35 @@ async fn side_turn(
 /// (Codex `command_request`, OpenCode commands): no bootstrap wrapper in front
 /// of it, and none at all when there is no prior conversation.
 #[tokio::test]
-async fn native_commands_and_empty_side_chats_skip_the_history_wrapper() {
+async fn native_commands_and_plain_chats_skip_the_history_wrapper() {
     let dir = tempfile::tempdir().unwrap();
     let requests = Arc::new(Mutex::new(Vec::new()));
     let registry = HarnessRegistry::new();
     registry.register(Arc::new(Capture(requests.clone())));
     let core = EngineCore::assemble(dir.path(), Arc::new(registry), HarnessId::Mock, None).unwrap();
-    for (id, parent) in [
-        ("main", None),
-        ("plus-review", Some("main")),
-        ("plus", Some("main")),
-    ] {
+    for id in ["main", "plain"] {
         core.workspace
-            .create_chat_with_parent(
-                id,
-                None,
-                Some(&core.device_id),
-                None,
-                Some("/tmp".into()),
-                parent.map(str::to_owned),
-            )
+            .create_chat(id, None, Some(&core.device_id), None, Some("/tmp".into()))
             .unwrap();
     }
-    // A fresh `+` side chat: nothing to bootstrap.
-    let request = side_turn(&core, &requests, "plus-review", "/review", "u-review").await;
+    // A side chat an older build saved still opens and runs as a chat.
+    let old_side: openagents_proto::Chat = serde_json::from_value(serde_json::json!({
+        "id": "old-side", "deviceId": core.device_id, "parentChatId": "main",
+        "cwd": "/tmp", "archived": false, "createdAt": chrono::Utc::now(),
+    }))
+    .unwrap();
+    core.workspace.import_chat_row(&old_side).unwrap();
+    assert!(
+        core.workspace
+            .chat("old-side")
+            .unwrap()
+            .unwrap()
+            .is_top_level()
+    );
+    // A chat without a fork seam: nothing to bootstrap.
+    let request = side_turn(&core, &requests, "plain", "/review", "u-review").await;
     assert_eq!(request.prompt, "/review");
-    let request = side_turn(&core, &requests, "plus", "hello there", "u-hello").await;
+    let request = side_turn(&core, &requests, "old-side", "hello there", "u-hello").await;
     assert_eq!(request.prompt, "hello there");
 
     // A fork whose first turn is a command: the command goes out bare, and
@@ -486,7 +483,7 @@ async fn native_commands_and_empty_side_chats_skip_the_history_wrapper() {
     let client = openagents_rpc::memory_client(core.rpc_service());
     client
         .call(
-            methods::FORK_SIDE_CHAT,
+            methods::FORK_CHAT,
             serde_json::json!({ "chatId": "fork", "sourceChatId": "main" }),
         )
         .await
@@ -609,7 +606,7 @@ async fn warm_side_chat_sends_owed_fork_history_once() {
     let client = openagents_rpc::memory_client(core.rpc_service());
     client
         .call(
-            methods::FORK_SIDE_CHAT,
+            methods::FORK_CHAT,
             serde_json::json!({ "chatId": "fork", "sourceChatId": "main" }),
         )
         .await
@@ -794,7 +791,7 @@ async fn orphaned_history_steer_still_owes_the_history() {
     let client = openagents_rpc::memory_client(core.rpc_service());
     client
         .call(
-            methods::FORK_SIDE_CHAT,
+            methods::FORK_CHAT,
             serde_json::json!({ "chatId": "fork", "sourceChatId": "main" }),
         )
         .await
@@ -867,4 +864,175 @@ async fn orphaned_history_steer_still_owes_the_history() {
         Some("drop-session")
     );
     core.shutdown().await;
+}
+
+/// Records requests for a harness id that forks sessions natively.
+struct NativeCapture(HarnessId, Arc<Mutex<Vec<RunRequest>>>);
+#[async_trait]
+impl Harness for NativeCapture {
+    fn id(&self) -> HarnessId {
+        self.0
+    }
+    fn display_name(&self) -> &str {
+        "Native"
+    }
+    fn supports_steering(&self) -> bool {
+        false
+    }
+    fn steering_mode(&self) -> SteeringMode {
+        SteeringMode::TurnBoundary
+    }
+    fn reasoning_levels(&self) -> &[ReasoningLevel] {
+        &[]
+    }
+    async fn models(&self) -> Result<Vec<Model>, HarnessError> {
+        Ok(vec![])
+    }
+    async fn run(
+        &self,
+        request: RunRequest,
+        _: RunControls,
+    ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
+        let n = {
+            let mut requests = self.1.lock().unwrap();
+            requests.push(request);
+            requests.len()
+        };
+        Ok(futures::stream::iter(vec![
+            Ok(AgentEvent::TextDelta {
+                text: "Forked answer".into(),
+            }),
+            Ok(AgentEvent::Done {
+                status: DoneStatus::Completed,
+                result: None,
+                error: None,
+                session_id: Some(format!("fork-session-{n}")),
+            }),
+        ])
+        .boxed())
+    }
+}
+
+/// A Claude Code or Codex source with a session is forked natively: the
+/// fork's first run resumes the source's session as a fork (no copied
+/// history in the prompt), and later runs continue the fork's own session.
+#[tokio::test]
+async fn a_claude_or_codex_fork_forks_the_source_session_natively() {
+    for harness in [HarnessId::Codex, HarnessId::ClaudeCode] {
+        let dir = tempfile::tempdir().unwrap();
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let registry = HarnessRegistry::new();
+        registry.register(Arc::new(NativeCapture(harness, requests.clone())));
+        let core = EngineCore::assemble(dir.path(), Arc::new(registry), harness, None).unwrap();
+        let config: openagents_proto::ChatConfig = serde_json::from_value(serde_json::json!({
+            "harness": harness, "sandbox": "workspace-write",
+        }))
+        .unwrap();
+        core.workspace
+            .create_chat(
+                "main",
+                None,
+                Some(&core.device_id),
+                Some(config),
+                Some("/tmp".into()),
+            )
+            .unwrap();
+        core.workspace
+            .set_chat_harness_session("main", "source-session", "/tmp");
+        let source = core.doc_host.open("main").unwrap();
+        for (id, role, text) in [
+            ("u1", MessageRole::User, "Remember PINEAPPLE"),
+            ("a1", MessageRole::Assistant, "I remember PINEAPPLE"),
+        ] {
+            source
+                .doc()
+                .push_message(&message(id, role, text, MessageStatus::Complete))
+                .unwrap();
+        }
+        let client = openagents_rpc::memory_client(core.rpc_service());
+        client
+            .call(
+                methods::FORK_CHAT,
+                serde_json::json!({ "chatId": "fork", "sourceChatId": "main" }),
+            )
+            .await
+            .unwrap();
+        let turn = |prompt: &'static str, id: &'static str| {
+            let core = &core;
+            let requests = &requests;
+            async move {
+                let before = requests.lock().unwrap().len();
+                core.sessions
+                    .dispatch(
+                        "fork",
+                        harness,
+                        RunRequest {
+                            mcp: None,
+                            prompt: prompt.into(),
+                            harness: Some(harness),
+                            model: None,
+                            reasoning: None,
+                            model_options: Default::default(),
+                            cwd: "/tmp".into(),
+                            sandbox: SandboxLevel::WorkspaceWrite,
+                            auto_approve: true,
+                            resume: None,
+                            attachments: vec![],
+                            worktree: None,
+                        },
+                        Some(id.into()),
+                    )
+                    .await
+                    .unwrap();
+                tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                    while requests.lock().unwrap().len() == before
+                        || core
+                            .sessions
+                            .session_status("fork")
+                            .is_some_and(|s| s.status != openagents_proto::SessionStatus::Idle)
+                    {
+                        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                    }
+                })
+                .await
+                .unwrap();
+                requests.lock().unwrap()[before].clone()
+            }
+        };
+        let first = turn("What should I remember?", "f1").await;
+        assert_eq!(
+            first.resume.as_deref(),
+            Some("source-session"),
+            "{harness:?}"
+        );
+        assert!(
+            first
+                .model_options
+                .contains_key(openagents_proto::FORK_SESSION_OPTION)
+        );
+        assert_eq!(first.prompt, "What should I remember?");
+        let second = turn("And now?", "f2").await;
+        assert_eq!(
+            second.resume.as_deref(),
+            Some("fork-session-1"),
+            "{harness:?}"
+        );
+        assert!(
+            !second
+                .model_options
+                .contains_key(openagents_proto::FORK_SESSION_OPTION)
+        );
+        assert_eq!(second.prompt, "And now?");
+        // The source keeps its own session.
+        assert_eq!(
+            core.workspace
+                .chat("main")
+                .unwrap()
+                .unwrap()
+                .harness_session_id
+                .as_deref(),
+            Some("source-session")
+        );
+        core.shutdown().await;
+    }
 }

@@ -1,5 +1,5 @@
-//! The session card: where this chat runs (device, project, branch), its
-//! side-chat actions, and the project's run actions, in one toggleable card.
+//! The session card: where this chat runs (device, project, branch), Fork
+//! chat, and the project's run actions, in one toggleable card.
 //! While the column has room, the card shows at its right on its own (until
 //! the user hides it), the transcript and composer shifting left as needed
 //! to clear it. Once clearing it would narrow the transcript, the card hides,
@@ -218,24 +218,14 @@ impl Shell {
         });
 
         // ── This conversation.
-        let busy = self.side_chat_creating;
-        let side_chat = popover::picker_row(&theme, false, false, "session-info-side-chat")
-            .id("session-info-side-chat")
-            .debug_selector(|| "session-info-side-chat".into())
-            .when(busy, |row| row.opacity(0.5))
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.close_session_info_overlay(cx);
-                this.create_child_chat(None, cx)
-            }))
-            .child(popover::picker_icon_slot(row_glyph(icons::PLUS, &theme)))
-            .child(div().flex_1().child("New side chat"));
+        let busy = self.fork_creating;
         let fork = popover::picker_row(&theme, false, false, "session-info-fork")
             .id("session-info-fork")
             .debug_selector(|| "session-info-fork".into())
             .when(busy, |row| row.opacity(0.5))
             .on_click(cx.listener(|this, _, _, cx| {
                 this.close_session_info_overlay(cx);
-                this.create_side_chat(cx)
+                this.fork_selected_chat(cx)
             }))
             .child(popover::picker_icon_slot(row_glyph(icons::FORK, &theme)))
             .child(div().flex_1().child("Fork chat"));
@@ -257,7 +247,6 @@ impl Shell {
             .child(project_row)
             .children(branch_row)
             .child(popover::picker_divider())
-            .child(side_chat)
             .child(fork)
             .children(actions);
 

@@ -68,7 +68,9 @@ pub mod methods {
     /// fresh chat2 socket, host nudge, drain pass, and a new delivery escort
     /// per pending command. Params `{chatId}`; IPC-only.
     pub const RETRY_DELIVERY: &str = "RetryDelivery";
-    pub const FORK_SIDE_CHAT: &str = "ForkSideChat";
+    /// Fork a chat into a new standalone chat with its history:
+    /// `{chatId, sourceChatId}` → `Chat`. Replaced `ForkSideChat` (#11963).
+    pub const FORK_CHAT: &str = "ForkChat";
     pub const WATCH_DOC_MESSAGES: &str = "WatchDocMessages";
     /// Explicit user navigation, `{chatId}`. Prioritizes this device's sync
     /// connection; automatic subscriptions and retries must not call it.

@@ -7504,7 +7504,10 @@ impl Transcript {
                 self.render_visual(&row.id, owner, path, title, cx)
             }
             RowKind::ErrorChip { message } => error_chip(message.clone(), &theme),
-            RowKind::ForkMarker { source_title, .. } => fork_marker(source_title.clone(), &theme),
+            RowKind::ForkMarker {
+                source_chat_id,
+                source_title,
+            } => fork_marker(source_chat_id.clone(), source_title.clone(), &theme),
         };
         // Diagram fences this row just requested start rendering after layout.
         self.ensure_diagram_worker(cx);
@@ -9017,7 +9020,7 @@ fn error_chip(message: SharedString, theme: &Theme) -> AnyElement {
 
 /// A quiet fork seam. The source gets its own constrained line so long
 /// titles cannot widen a narrow side-chat pane. No message metadata lane.
-fn fork_marker(source_title: SharedString, theme: &Theme) -> AnyElement {
+fn fork_marker(source_chat_id: SharedString, source_title: SharedString, theme: &Theme) -> AnyElement {
     let rule = || div().flex_1().min_w_0().h(px(1.0)).bg(theme.border_strong);
     div()
         .py(px(14.0))
@@ -9045,7 +9048,12 @@ fn fork_marker(source_title: SharedString, theme: &Theme) -> AnyElement {
                 .child(rule()),
         )
         .child(
+            // Opens the chat this one was forked from (#11963).
             div()
+                .id(SharedString::from(format!("fork-source-{source_chat_id}")))
+                .debug_selector(|| "fork-source".into())
+                .role(gpui::Role::Link)
+                .aria_label(SharedString::from(format!("Open {source_title}")))
                 .w_full()
                 .min_w_0()
                 .truncate()
@@ -9053,6 +9061,16 @@ fn fork_marker(source_title: SharedString, theme: &Theme) -> AnyElement {
                 .text_size(crate::typography::ui_rems(13.0))
                 .font_weight(gpui::FontWeight::MEDIUM)
                 .text_color(theme.text_muted)
+                .cursor_pointer()
+                .hover(|style| style.text_color(theme.text).underline())
+                .on_click(move |_, window, cx| {
+                    window.dispatch_action(
+                        Box::new(crate::shell::fork_chat::OpenForkSource(
+                            source_chat_id.to_string(),
+                        )),
+                        cx,
+                    )
+                })
                 .child(source_title),
         )
         .into_any_element()

@@ -23,7 +23,7 @@ custom `nextSession` / `prevSession` bindings retain their stored keys.
 
 The `shell::navigation_tests` suite renders production pane components and
 dispatches real configured keystrokes without starting an engine. It covers
-repeated cycling, reordering, side-chat and diff focus, tab closure, empty
+repeated cycling, reordering, diff focus, tab closure, empty
 panes, stale entries, per-session tabs, hiding/reopening, expansion, custom
 bindings, modal/picker guards, browser focus, and both terminal locations.
 `shell::navigation_focus::tests` exercises a real input's mouse-down blur.
@@ -35,7 +35,7 @@ Existing shortcut, recording, focus-recovery and tab-mouse tests remain applicab
 These are manual checks; headless GPUI tests do not validate native OS event delivery.
 Run on macOS, Linux (X11 and Wayland), and Windows with a real session:
 
-1. Open a side chat, a diff, a file editor, a terminal, and (where supported) a
+1. Open a subagent, a diff, a file editor, a terminal, and (where supported) a
    browser in the right pane. Repeatedly cycle forward and backward from each.
 2. Click and select text in the main transcript, then in a right transcript or
    diff. Check that the shortcut follows the clicked pane and does not clear

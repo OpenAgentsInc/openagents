@@ -8,8 +8,7 @@ use std::collections::{HashMap, HashSet};
 
 use gpui::{AnyElement, Context, Render, SharedString, Window, div, prelude::*, px};
 use openagents_proto::{
-    ChangeRequestListItem, ChangeRequestState, ChangeRequestSummary, Chat,
-    CheckoutChangeRequestStatus, Space,
+    ChangeRequestState, ChangeRequestSummary, Chat, CheckoutChangeRequestStatus, Space,
 };
 
 use crate::theme::Theme;
@@ -156,25 +155,6 @@ fn render_pull_request_badge(
         query,
         interactive,
         device,
-        theme,
-    )
-}
-
-/// Listing surfaces use the exact sidebar badge renderer without inventing
-/// checkout refs. Inert: the row around it already opens the pull request.
-pub(crate) fn pull_request_list_badge(
-    id: SharedString,
-    item: &ChangeRequestListItem,
-    theme: &Theme,
-) -> AnyElement {
-    render_badge_model(
-        id,
-        ChangeRequestBadgeModel::from_fields(item.number, &item.title, item.state),
-        item.url.clone(),
-        ChangeRequestBadgeSurface::Sidebar,
-        None,
-        false,
-        None,
         theme,
     )
 }

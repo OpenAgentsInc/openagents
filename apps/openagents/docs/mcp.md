@@ -29,36 +29,17 @@ one, and the server refuses to message its own chat. The transcript renders
 this routing header as “Message from **chat name**”, keeping the full routing
 instructions in the stored prompt for agents.
 
-### Parent links
+### Created chats
 
-`create_chat` and each request in `create_chats` accept `kind`:
+`create_chat` and each request in `create_chats` create a standalone session
+listed in the left **Sessions** sidebar, like one the user started. No parent
+is written. The result includes `kind: "chat"`, `chatId`, `deviceId`,
+`project`, and `createdFrom` (the chat the server speaks for, or `null`).
+Older `kind` and `parent` arguments are ignored.
 
-| Input | Placement |
-| --- | --- |
-| `kind: "chat"` | Standalone session, visible in the left **Sessions** sidebar; no `parentChatId` is written. |
-| `kind: "side"` | Child of the explicit `parent` or origin chat. Requires one of those. |
-| Kind omitted, origin or parent supplied | Child, preserving the previous default. |
-| Kind omitted, no origin or parent | Standalone, preserving terminal usage. |
-
-`kind: "chat"` with a nonempty `parent`, `kind: "side"` without an origin/parent,
-and unknown kinds fail before any writes. Empty `parent` uses the default.
-The creation result includes the effective `kind`, `chatId`, `deviceId`,
-`project` and `parentChatId`. Kind is derived from the parent; it is not persisted.
-
-Children record `Chat.parent_chat_id` (proto) ⇄ `parentChatId` on the registry
-row (`Mutate createChat { parentChatId? }`). Chats with a parent cannot create
-chats through MCP, including standalone and batch creation or an explicit parent
-override. A side chat cannot be selected as a parent; only one level is supported.
-
-For children, `parent` (id, prefix, or title) overrides the origin (`OPENAGENTS_CHAT_ID`).
-`list_chats { parent }` returns children, and chat summaries carry `parentChatId`.
-Rows from older engines read as parentless; a dangling parent id is tolerated.
-
-The left sidebar hides chats that have a parent: `AppState::visible_chats`
-(the Sessions list, project tabs, jump slots) and the Archived section both
-require `parent_chat_id == None`. Children remain addressable by id, deep
-link, and every MCP tool; `list_chats { parent }` is how an orchestrator
-finds them.
+Chats that older builds created as side chats keep their stored
+`parentChatId` (proto `Chat.parent_chat_id`). It no longer hides them:
+`Chat::is_top_level` ignores it, so they list and open as ordinary chats.
 
 ### Injection
 
@@ -90,16 +71,19 @@ the MCP child when the Pi session shuts down.
 Title runs never carry it. A run with no served port (embedded engine that
 lost the bind) gets no OpenAgents tools rather than a dead server.
 
-### Forks and the explorer
+### Forks
 
-`ForkSideChat { chatId, sourceChatId, parentChatId? }` copies a chat's
-history through its latest completed response into a new chat and appends
-a `fork` part (a system entry: `sourceChatId`, `sourceTitle`) as the seam;
-the transcript draws it as "This chat was forked from <title>". `parentChatId`
-defaults to the source; a side chat's own fork button passes its parent so
-the copy lists as a sibling. The file explorer's footer lists a chat's
-**Subagents** (its spawn chips) and **Chats** (its children: forks and
-`kind: "side"` spawns) and opens either in the right pane.
+`ForkChat { chatId, sourceChatId }` copies a chat's history through its latest
+completed response into a new standalone chat (same project, folder, harness
+and model) and appends a `fork` part (a system entry: `sourceChatId`,
+`sourceTitle`) as the seam. The transcript draws it as "Forked from <title>",
+which opens the source. The fork never writes to the source.
+
+The fork's first run continues from the copied history. Claude Code forks the
+source's session natively (`--resume <id> --fork-session`) and Codex calls
+`thread/fork`, when the source has a session in the same folder. Otherwise, or
+if the native fork fails to start, the first prompt carries the copied history
+(`fork_history_prompt`), the way a saved-chat continuation is seeded.
 
 ## Tools
 
@@ -255,7 +239,6 @@ list_projects { device: "<device-id>" }
 list_harnesses { device: "<device-id>" }
 list_models { device: "<device-id>", harness: "codex" }
 create_chat {
-  kind: "chat",
   device: "<device-id>",
   project: "<project-id>",
   harness: "codex",
@@ -269,16 +252,16 @@ create_chat {
 Without a project (the host uses its home directory unless `cwd` is given):
 
 ```json
-{"kind":"chat", "device":"<device-id>", "harness":"codex", "prompt":"Reply with pong", "wait":true}
+{"device":"<device-id>", "harness":"codex", "prompt":"Reply with pong", "wait":true}
 ```
 
-A mixed `create_chats` batch, with an origin chat or explicit top-level parent:
+A `create_chats` batch:
 
 ```json
 {
   "requests": [
-    {"kind":"chat", "device":"<device-id>", "project":"<project-id>", "title":"Feature", "prompt":"Implement the feature"},
-    {"kind":"side", "parent":"<parent-chat-id>", "project":"<project-id>", "prompt":"Review the API"}
+    {"device":"<device-id>", "project":"<project-id>", "title":"Feature", "prompt":"Implement the feature"},
+    {"project":"<project-id>", "title":"API review", "prompt":"Review the API"}
   ]
 }
 ```
@@ -294,7 +277,7 @@ assistant response to arrive within the **same timeout**. A previous response
 is never substituted for a missing response to a new send. An unfinished
 transcript or missing response at the deadline returns `timedOut`.
 
-## Parallel side chats
+## Parallel chats
 
 Use `create_chats` with a `requests` array to launch independent workers in
 one tool call, including when the harness executes its tool calls sequentially:

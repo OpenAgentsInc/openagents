@@ -1528,71 +1528,28 @@ mod tests {
             .collect()
     }
 
+    /// Side chats are gone (#11961): one an older build made is history
+    /// like any other session.
     #[gpui::test]
-    fn history_excludes_child_chats_with_and_without_search(cx: &mut TestAppContext) {
+    fn history_lists_old_side_chats_like_sessions(cx: &mut TestAppContext) {
         let (window, _dir) = palette_window(cx);
         window
             .update(cx, |shell, window, cx| {
                 shell.state.update(cx, |state, _| {
                     state.apply_chats(vec![
-                        chat("manual-sidechat", Some("main-session"), false, 0),
-                        chat("mcp-worker", Some("main-session"), false, 1),
-                        chat("archived-sidechat", Some("main-session"), true, 2),
-                        chat("orphan-sidechat", Some("deleted-parent"), false, 3),
-                        chat("main-session", None, false, 4),
-                        chat("archived-session", None, true, 5),
+                        chat("old-sidechat", Some("main-session"), false, 0),
+                        chat("archived-sidechat", Some("main-session"), true, 1),
+                        chat("main-session", None, false, 2),
                     ]);
                 });
                 shell.toggle_command_palette(window, cx);
-                // Recent Threads leaves archived threads to search.
-                assert_eq!(search_chats(shell, "", cx), ["main-session"]);
-                for query in [
-                    "manual-sidechat",
-                    "mcp-worker",
-                    "archived-sidechat",
-                    "orphan-sidechat",
-                ] {
-                    assert!(
-                        search_chats(shell, query, cx).is_empty(),
-                        "{query} must stay out of global history"
-                    );
+                let recent = search_chats(shell, "", cx);
+                assert!(recent.contains(&"old-sidechat".to_string()));
+                assert!(recent.contains(&"main-session".to_string()));
+                assert!(!recent.contains(&"archived-sidechat".to_string()));
+                for query in ["old-sidechat", "archived-sidechat"] {
+                    assert_eq!(search_chats(shell, query, cx), [query]);
                 }
-                assert_eq!(search_chats(shell, "main-session", cx), ["main-session"]);
-                assert_eq!(
-                    search_chats(shell, "archived-session", cx),
-                    ["archived-session"]
-                );
-            })
-            .unwrap();
-    }
-
-    #[gpui::test]
-    fn child_chats_do_not_consume_history_result_slots(cx: &mut TestAppContext) {
-        let (window, _dir) = palette_window(cx);
-        window
-            .update(cx, |shell, window, cx| {
-                shell.state.update(cx, |state, _| {
-                    let children = (0..THREADS_TAB_LIMIT).map(|ix| {
-                        chat(&format!("child-{ix}"), Some("session-0"), false, ix as i64)
-                    });
-                    let sessions = (0..=THREADS_TAB_LIMIT).map(|ix| {
-                        chat(
-                            &format!("session-{ix}"),
-                            None,
-                            false,
-                            (THREADS_TAB_LIMIT + ix) as i64,
-                        )
-                    });
-                    state.apply_chats(children.chain(sessions).collect());
-                });
-                shell.toggle_command_palette(window, cx);
-                shell.select_palette_tab(Tab::Threads, cx);
-                let expected: Vec<_> = (0..THREADS_TAB_LIMIT)
-                    .map(|ix| format!("session-{ix}"))
-                    .collect();
-                assert_eq!(search_chats(shell, "", cx), expected);
-                let oldest = format!("session-{THREADS_TAB_LIMIT}");
-                assert_eq!(search_chats(shell, &oldest, cx), [oldest]);
             })
             .unwrap();
     }
@@ -1704,6 +1661,7 @@ mod tests {
                 shell.state.update(cx, |state, cx| {
                     state.apply_chats(vec![
                         chat("focused", None, false, 0),
+                        // An older build's side chat is an ordinary thread.
                         chat("side", Some("focused"), false, 1),
                         chat("older", None, false, 3),
                         chat("newer", None, false, 2),
@@ -1736,7 +1694,11 @@ mod tests {
                 assert_eq!(sections[2].0, Section::RecentThreads);
                 assert_eq!(
                     sections[2].1,
-                    [RowKind::Chat("newer".into()), RowKind::Chat("older".into())]
+                    [
+                        RowKind::Chat("side".into()),
+                        RowKind::Chat("newer".into()),
+                        RowKind::Chat("older".into())
+                    ]
                 );
             })
             .unwrap();

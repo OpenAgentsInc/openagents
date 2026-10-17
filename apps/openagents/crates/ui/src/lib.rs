@@ -71,7 +71,6 @@ mod pull_request_media;
 mod pull_request_skeleton;
 #[cfg(test)]
 mod pull_request_test_support;
-pub mod pull_requests;
 pub mod queue;
 pub mod rail;
 mod roll_text;

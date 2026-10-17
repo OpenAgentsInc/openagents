@@ -107,7 +107,6 @@ fn catalog() -> Vec<ToolDef> {
                     "project": { "type": "string", "description": "Only chats in this project (id, path, or name)." },
                     "device": { "type": "string", "description": "Only chats hosted on this device (id or name)." },
                     "include_archived": { "type": "boolean", "default": false },
-                    "parent": { "type": "string", "description": "Only chats created by this chat (id, prefix, or title) — e.g. your own id to list the chats you spawned." },
                     "limit": { "type": "integer", "minimum": 1, "maximum": 500, "default": 50 }
                 }
             }),
@@ -119,14 +118,12 @@ fn catalog() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "create_chat",
-            description: "Create a standalone session visible in Sessions with kind chat, or a child with kind side. Omitted kind preserves the default: side with an origin/parent, standalone otherwise. A side chat cannot create chats. Select a project and/or device; catalogs are validated on that host. Optionally send a first prompt and wait for the reply. Returns the new chat id. For parallel delegation use create_chats, or leave wait=false on every launch and wait only after all chats have been started.",
+            description: "Create a chat. It is a standalone session listed in Sessions, like one the user started. Select a project and/or device; catalogs are validated on that host. Optionally send a first prompt and wait for the reply. Returns the new chat id. For parallel delegation use create_chats, or leave wait=false on every launch and wait only after all chats have been started.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
-                    "kind": { "type": "string", "enum": ["chat", "side"], "description": "chat: standalone, no parent allowed. side: requires parent or origin. Omit for legacy defaults." },
                     "project": { "type": "string", "description": "Project id, path, or name. Belongs to a specific device; when device is supplied, search only there. Optional." },
                     "device": { "type": "string", "description": "Host device (id or name). With project, it must own that project. Without either, use the local engine." },
-                    "parent": { "type": "string", "description": "Parent chat to record (id, prefix, or title). Defaults to the chat you are speaking from." },
                     "harness": { "type": "string", "description": "Harness id (see list_harnesses with the chosen device). Defaults to claude-code when available." },
                     "model": { "type": "string", "description": "Model id from list_models on the chosen device. Omit for the harness default." },
                     "reasoning": { "type": "string", "description": "Reasoning level the model supports (e.g. low, medium, high, max)." },
@@ -241,7 +238,7 @@ fn catalog() -> Vec<ToolDef> {
         (
             "create_chats",
             "create_chat",
-            "Create multiple standalone or side chats concurrently (kind per request). Put each chat's prompt in its request to start all work together. Prefer this for parallel delegation, including harnesses that execute tool calls sequentially. Each request has create_chat arguments; wait defaults to false. Results preserve request order and include per-request errors; successful requests are not rolled back.",
+            "Create multiple standalone chats concurrently. Put each chat's prompt in its request to start all work together. Prefer this for parallel delegation, including harnesses that execute tool calls sequentially. Each request has create_chat arguments; wait defaults to false. Results preserve request order and include per-request errors; successful requests are not rolled back.",
         ),
         (
             "send_messages",
@@ -518,15 +515,7 @@ struct ListChatsArgs {
     device: Option<String>,
     #[serde(default)]
     include_archived: bool,
-    parent: Option<String>,
     limit: Option<usize>,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-enum ChatKind {
-    Chat,
-    Side,
 }
 
 #[derive(Deserialize, Default)]
@@ -550,10 +539,8 @@ struct PendingTurn {
 
 #[derive(Deserialize, Default)]
 struct CreateChatArgs {
-    kind: Option<ChatKind>,
     project: Option<String>,
     device: Option<String>,
-    parent: Option<String>,
     harness: Option<String>,
     model: Option<String>,
     reasoning: Option<String>,
@@ -711,7 +698,6 @@ fn summarize_chat(chat: &Chat, spaces: &[Space], sessions: &[Session]) -> Value 
         "model": chat.config.as_ref().and_then(|c| c.model.clone()),
         "reasoning": chat.config.as_ref().and_then(|c| c.reasoning),
         "archived": chat.archived,
-        "parentChatId": chat.parent_chat_id,
         // The harness's own session id (Claude Code session, Codex thread):
         // the id an issue claim marker names (`session=claude-code:ID`).
         // An empty id is the engine's "do not resume" tombstone, not a session.
@@ -934,10 +920,6 @@ impl Tools {
         if !args.include_archived {
             chats.retain(|c| !c.archived);
         }
-        if let Some(parent) = args.parent.as_deref() {
-            let parent = self.openagents.resolve_chat(parent).await?;
-            chats.retain(|c| c.parent_chat_id.as_deref() == Some(parent.id.as_str()));
-        }
         chats.sort_by(|a, b| {
             let a_at = a.last_message_at.unwrap_or(a.created_at);
             let b_at = b.last_message_at.unwrap_or(b.created_at);
@@ -969,51 +951,15 @@ impl Tools {
     }
 
     async fn create_chat(&self, args: CreateChatArgs) -> anyhow::Result<Value> {
-        if let Some(origin) = self.openagents.origin().chat_id.as_deref() {
-            let chat = self.openagents.resolve_chat(origin).await?;
-            anyhow::ensure!(
-                chat.parent_chat_id.is_none(),
-                "Side chats cannot create chats. Ask your parent chat to create another side chat."
-            );
-        }
-        // Parent: the explicit `parent` argument, else the chat this server
-        // speaks for. Resolved so a prefix/title works and a typo fails loud.
-        let explicit_parent = args
-            .parent
-            .as_deref()
-            .map(str::trim)
-            .filter(|p| !p.is_empty());
-        anyhow::ensure!(
-            args.kind != Some(ChatKind::Chat) || explicit_parent.is_none(),
-            "kind chat cannot have a parent"
-        );
-        let parent_chat_id = if args.kind == Some(ChatKind::Chat) {
-            None
-        } else {
-            match explicit_parent {
-                Some(key) => Some(self.openagents.resolve_chat(key).await?.id),
-                None => self.openagents.origin().chat_id.clone(),
-            }
-            // A hidden voice orchestrator creates top-level sessions.
-            .filter(|parent| !openagents_proto::voice::is_orchestrator_chat(parent))
-        };
-        anyhow::ensure!(
-            args.kind != Some(ChatKind::Side) || parent_chat_id.is_some(),
-            "kind side requires a parent or origin chat"
-        );
-        let kind = if parent_chat_id.is_some() {
-            ChatKind::Side
-        } else {
-            ChatKind::Chat
-        };
-
-        if let Some(parent) = parent_chat_id.as_deref() {
-            let chat = self.openagents.resolve_chat(parent).await?;
-            anyhow::ensure!(
-                chat.parent_chat_id.is_none(),
-                "Cannot create a child of a side chat. Choose a top-level parent chat."
-            );
-        }
+        // Every chat an agent creates is standalone and listed in Sessions.
+        // The chat it was created from is reported back, never stored as a
+        // parent (older `kind` and `parent` arguments are ignored).
+        let origin = self
+            .openagents
+            .origin()
+            .chat_id
+            .clone()
+            .filter(|origin| !openagents_proto::voice::is_orchestrator_chat(origin));
         let (space, device_id) = self
             .openagents
             .resolve_target(args.project.as_deref(), args.device.as_deref())
@@ -1068,9 +1014,6 @@ impl Tools {
         if let Some(space) = &space {
             mutate["spaceId"] = json!(space.id);
         }
-        if let Some(parent) = &parent_chat_id {
-            mutate["parentChatId"] = json!(parent);
-        }
         if let Some(branch) = args
             .branch
             .as_deref()
@@ -1119,14 +1062,14 @@ impl Tools {
 
         let mut result = json!({
             "chatId": chat_id,
-            "kind": kind,
+            "kind": "chat",
             "deviceId": device_id,
             "project": space.as_ref().map(|s| json!({ "id": s.id, "name": s.display_name(), "path": s.path })),
             "harness": harness,
             "model": args.model,
             "reasoning": reasoning,
             "title": args.title,
-            "parentChatId": parent_chat_id,
+            "createdFrom": origin,
         });
         if let Some(prompt) = args.prompt.filter(|p| !p.trim().is_empty()) {
             // The row may not have folded into WatchChats yet; build the
@@ -1147,7 +1090,7 @@ impl Tools {
                 created_at: chrono::Utc::now(),
                 harness_session_id: None,
                 harness_session_cwd: None,
-                parent_chat_id: parent_chat_id.clone(),
+                parent_chat_id: None,
                 space_id: space.as_ref().map(|s| s.id.clone()),
                 last_seen_at: None,
                 room_gen: None,
@@ -2190,45 +2133,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_chat_records_the_origin_as_parent() {
-        let world = Arc::new(World::default());
-        let tools = tools(
-            world.clone(),
-            Origin {
-                chat_id: Some("chat-beta-2".into()),
-                device_id: None,
-            },
-        );
-        let created = tools
-            .call("create_chat", json!({ "project": "space-1" }))
-            .await
-            .unwrap();
-        assert_eq!(created["parentChatId"], "chat-beta-2");
-        assert_eq!(
-            world.writes.lock().unwrap()[0].1["parentChatId"],
-            "chat-beta-2"
-        );
-
-        // An explicit parent (by title) overrides the origin.
-        let created = tools
-            .call(
-                "create_chat",
-                json!({ "project": "space-1", "parent": "Alpha" }),
-            )
-            .await
-            .unwrap();
-        assert_eq!(created["parentChatId"], "chat-alpha-1");
-        let err = tools
-            .call(
-                "create_chat",
-                json!({ "project": "space-1", "parent": "nope" }),
-            )
-            .await
-            .unwrap_err();
-        assert!(err.contains("no chat matches"), "{err}");
-    }
-
-    #[tokio::test]
     async fn wait_on_an_idle_chat_returns_immediately() {
         let world = Arc::new(World::default());
         let tools = tools(world, Origin::default());
@@ -2333,98 +2237,50 @@ mod tests {
         assert!(world.writes.lock().unwrap().is_empty());
     }
 
+    /// Every chat an agent creates is standalone: never a hidden child,
+    /// whatever `kind` or `parent` an older caller still sends, and an old
+    /// side chat may create chats too.
     #[tokio::test]
-    async fn side_chats_cannot_create_chats_or_be_parents() {
+    async fn create_chat_always_makes_standalone_chats() {
         let world = Arc::new(World {
             beta_parent: Some("chat-alpha-1".into()),
             ..Default::default()
         });
-        let side = tools(
-            world.clone(),
-            Origin {
-                chat_id: Some("chat-beta-2".into()),
-                device_id: None,
-            },
-        );
-        for args in [json!({}), json!({"parent":"Alpha"}), json!({"kind":"chat"})] {
-            assert!(
-                side.call("create_chat", args)
-                    .await
-                    .unwrap_err()
-                    .contains("Side chats cannot")
+        for (origin, args) in [
+            ("chat-alpha-1", json!({})),
+            ("chat-alpha-1", json!({"kind":"side"})),
+            ("chat-alpha-1", json!({"kind":"chat"})),
+            ("chat-alpha-1", json!({"parent":"Beta"})),
+            ("chat-beta-2", json!({})),
+        ] {
+            let tools = tools(
+                world.clone(),
+                Origin {
+                    chat_id: Some(origin.into()),
+                    device_id: None,
+                },
             );
-        }
-        let batch = side
-            .call(
-                "create_chats",
-                json!({"requests":[{}, {"parent":"Alpha"}, {"kind":"chat"}]}),
-            )
-            .await
-            .unwrap();
-        assert!(
-            batch["results"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .all(|r| r["isError"] == true)
-        );
-        let root = tools(world.clone(), Origin::default());
-        assert!(
-            root.call("create_chat", json!({"parent":"Beta"}))
-                .await
-                .unwrap_err()
-                .contains("child of a side chat")
-        );
-        assert!(world.writes.lock().unwrap().is_empty());
-    }
-
-    #[tokio::test]
-    async fn kinds_preserve_defaults_and_reject_invalid_arguments_before_writing() {
-        let world = Arc::new(World::default());
-        let root = tools(world.clone(), Origin::default());
-        for args in [
-            json!({"kind":"side"}),
-            json!({"kind":"unknown"}),
-            json!({"kind":"chat", "parent":"Alpha", "title":"must not write"}),
-        ] {
-            assert!(root.call("create_chat", args).await.is_err());
-        }
-        assert!(world.writes.lock().unwrap().is_empty());
-        let from_chat = tools(
-            world.clone(),
-            Origin {
-                chat_id: Some("chat-alpha-1".into()),
-                device_id: None,
-            },
-        );
-        for (args, kind, parent) in [
-            (json!({"kind":"chat"}), "chat", Value::Null),
-            (json!({"kind":"chat", "parent":"  "}), "chat", Value::Null),
-            (json!({"kind":"side"}), "side", json!("chat-alpha-1")),
-            (json!({}), "side", json!("chat-alpha-1")),
-            (json!({"parent":"Beta"}), "side", json!("chat-beta-2")),
-        ] {
-            let created = from_chat.call("create_chat", args).await.unwrap();
-            assert_eq!(created["kind"], kind);
-            assert_eq!(created["parentChatId"], parent);
+            let created = tools.call("create_chat", args).await.unwrap();
+            assert_eq!(created["kind"], "chat");
+            assert_eq!(created["createdFrom"], origin);
+            assert!(created.get("parentChatId").is_none());
             let writes = world.writes.lock().unwrap();
             let row = &writes.last().unwrap().1;
-            if kind == "chat" {
-                assert!(row.get("parentChatId").is_none());
-            } else {
-                assert_eq!(row["parentChatId"], parent);
-            }
+            assert_eq!(row["op"], "createChat");
+            assert!(row.get("parentChatId").is_none());
         }
-        assert_eq!(
-            root.call("create_chat", json!({})).await.unwrap()["kind"],
-            "chat"
-        );
-        assert_eq!(
-            root.call("create_chat", json!({"kind":"side", "parent":"Alpha"}))
-                .await
-                .unwrap()["kind"],
-            "side"
-        );
+        let root = tools(world.clone(), Origin::default());
+        let created = root.call("create_chat", json!({})).await.unwrap();
+        assert_eq!(created["kind"], "chat");
+        assert_eq!(created["createdFrom"], Value::Null);
+        let schema = &root
+            .list()
+            .into_iter()
+            .find(|tool| tool.name == "create_chat")
+            .unwrap()
+            .input_schema;
+        assert!(schema["properties"].get("kind").is_none());
+        assert!(schema["properties"].get("parent").is_none());
     }
 
     #[tokio::test]
@@ -2596,9 +2452,9 @@ mod tests {
                 "create_chats",
                 json!({"requests":[
                     {"kind":"chat", "device":"Worker", "project":"comet"},
-                    {"kind":"chat", "parent":"Alpha"},
+                    {"harness":"bogus"},
                     {"kind":"side", "project":"space-1"},
-                    {"kind":"bogus"}
+                    {"sandbox":"bogus"}
                 ]}),
             )
             .await
@@ -2607,8 +2463,8 @@ mod tests {
         assert_eq!(results[0]["result"]["kind"], "chat");
         assert_eq!(results[0]["result"]["deviceId"], "dev-remote");
         assert_eq!(results[1]["isError"], true);
-        assert_eq!(results[2]["result"]["kind"], "side");
-        assert_eq!(results[2]["result"]["parentChatId"], "chat-alpha-1");
+        assert_eq!(results[2]["result"]["kind"], "chat");
+        assert_eq!(results[2]["result"]["createdFrom"], "chat-alpha-1");
         assert_eq!(results[3]["isError"], true);
         for i in 0..4 {
             assert_eq!(results[i]["index"], i);

@@ -792,11 +792,9 @@ pub struct AppState {
     pub spaces: Vec<Space>,
     /// Sorted (see [`sort_chats`]); includes archived rows — views filter.
     pub chats: Vec<Chat>,
-    /// Fork RPC may arrive ahead of its registry row on a remote device.
-    pending_side_chat: Option<Chat>,
-    /// `pending_side_chat` was started by hand and nothing has minted it:
-    /// no registry row, no doc, until its first send.
-    unsaved_side_chat: bool,
+    /// A fork's row, shown until the chats watch delivers it: the Fork RPC
+    /// may answer ahead of its registry row on a remote device.
+    pending_chat: Option<Chat>,
     pub sessions: Vec<Session>,
     /// Synced user/org sidebar pin state. Local workspaces deliberately ignore
     /// this and continue reading their device-local settings entry.
@@ -955,8 +953,7 @@ impl AppState {
             connectivity_observed: false,
             spaces: Vec::new(),
             chats: Vec::new(),
-            pending_side_chat: None,
-            unsaved_side_chat: false,
+            pending_chat: None,
             sessions: Vec::new(),
             sidebar_preferences: SidebarPreferencesState::default(),
             session_presentation: None,
@@ -1176,9 +1173,9 @@ impl AppState {
     /// each notify re-renders the whole shell.
     pub fn apply_chats(&mut self, mut chats: Vec<Chat>) -> bool {
         let mut changed = false;
-        if let Some(pending) = &self.pending_side_chat {
+        if let Some(pending) = &self.pending_chat {
             if chats.iter().any(|chat| chat.id == pending.id) {
-                self.pending_side_chat = None;
+                self.pending_chat = None;
                 changed = true;
             } else {
                 chats.push(pending.clone());
@@ -1357,10 +1354,9 @@ impl AppState {
     /// the chips update on click; the next chats watch frame carries the same
     /// value once the engine applies the LWW write.
     pub fn apply_chat_config(&mut self, chat_id: &str, config: openagents_proto::ChatConfig) {
-        // The pending side chat's copy is what `apply_chats` re-inserts and
-        // what an unsaved one is minted from.
+        // The pending chat's copy is what `apply_chats` re-inserts.
         if let Some(chat) = self
-            .pending_side_chat
+            .pending_chat
             .as_mut()
             .filter(|chat| chat.id == chat_id)
         {
@@ -1925,11 +1921,9 @@ impl AppState {
 
     // ---- queries ----
 
-    /// Non-archived, top-level chats in sidebar order. Chats spawned by
-    /// another chat (`parent_chat_id`, the OpenAgents MCP's orchestration link)
-    /// are the parent's workers, not sessions the user started: they stay
-    /// reachable by id/deep link but never take a sidebar row or jump slot.
-    /// Voice orchestrator chats are hidden the same way.
+    /// Non-archived, top-level chats in sidebar order. Voice orchestrator
+    /// chats stay hidden; an older build's side chat (`parent_chat_id`)
+    /// lists like any other chat.
     pub fn visible_chats(&self) -> impl Iterator<Item = &Chat> {
         self.chats
             .iter()
@@ -2420,8 +2414,7 @@ impl AppState {
         self.session_presence_presentation.clear();
         self.spaces.clear();
         self.chats.clear();
-        self.pending_side_chat = None;
-        self.unsaved_side_chat = false;
+        self.pending_chat = None;
         self.sessions.clear();
         self.sidebar_preferences = SidebarPreferencesState::default();
         self.session_presentation = None;
@@ -2449,89 +2442,16 @@ impl AppState {
         cx.notify();
     }
 
-    /// Independent selection and transcript subscriptions over the same engine.
-    /// An `unsaved` chat is a hand-started side chat nothing has written yet:
-    /// it opens no doc until its first send mints it (see
-    /// [`Self::unsaved_side_chat_create`]).
-    pub(crate) fn side_chat_state(
-        parent: &Entity<Self>,
-        chat: Chat,
-        unsaved: bool,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        let source = parent.read(cx);
-        let engine = source.engine.clone();
-        let mut state = Self::new();
-        state.chats = source.chats.clone();
-        if !state.chats.iter().any(|c| c.id == chat.id) {
-            state.chats.push(chat.clone());
-        }
-        state.spaces = source.spaces.clone();
-        state.devices = source.devices.clone();
-        state.data_dir = source.data_dir.clone();
-        state.auto_selected = true;
-        state.pending_side_chat = Some(chat.clone());
-        state.unsaved_side_chat = unsaved;
-        if let Some(engine) = engine {
-            state.attach_engine(engine, cx);
-        }
-        state.select_chat(Some(chat.id), cx);
-        state.watch_clock_transitions(cx);
-        state
-    }
-
-    /// This is a side chat's state whose chat its first send has yet to mint.
-    pub(crate) fn side_chat_unsaved(&self) -> bool {
-        self.unsaved_side_chat
-    }
-
-    /// The harness can change until the first send snapshots it.
-    /// Keep the harness fixed while createChat is in flight, including uploads.
-    pub(crate) fn side_chat_harness_editable(&self) -> bool {
-        self.unsaved_side_chat
-            && self
-                .selected_chat
-                .as_ref()
-                .is_some_and(|id| !self.pending_sends.contains_key(id))
-    }
-
-    fn is_unsaved_side_chat(&self, chat_id: &str) -> bool {
-        self.unsaved_side_chat
-            && self
-                .pending_side_chat
-                .as_ref()
-                .is_some_and(|chat| chat.id == chat_id)
-    }
-
-    /// The `Mutate createChat` params that mint the unsaved side chat
-    /// `chat_id` on its first send; `None` once it exists.
-    pub(crate) fn unsaved_side_chat_create(&self, chat_id: &str) -> Option<serde_json::Value> {
-        if !self.is_unsaved_side_chat(chat_id) {
-            return None;
-        }
-        let chat = self.pending_side_chat.as_ref()?;
-        Some(serde_json::json!({
-            "op": "createChat",
-            "chatId": chat.id,
-            "deviceId": chat.device_id,
-            "spaceId": chat.space_id,
-            "config": chat.config,
-            "branch": chat.branch,
-            "cwd": chat.cwd,
-            "parentChatId": chat.parent_chat_id,
-        }))
-    }
-
-    /// The unsaved side chat now exists: attach the doc watches it deferred.
-    pub(crate) fn side_chat_saved(&mut self, chat_id: &str, cx: &mut Context<Self>) {
-        if !self.is_unsaved_side_chat(chat_id) {
+    /// List `chat` (a new fork) right away; the chats watch replaces this
+    /// copy once it delivers the row.
+    pub(crate) fn add_pending_chat(&mut self, chat: Chat) {
+        if self.chats.iter().any(|c| c.id == chat.id) {
             return;
         }
-        self.unsaved_side_chat = false;
-        if self.selected_chat.as_deref() == Some(chat_id) {
-            self.focus_chat_sync(chat_id, cx);
-            self.start_chat_watches(chat_id.to_owned(), cx);
-        }
+        self.chats.push(chat.clone());
+        sort_chats(&mut self.chats);
+        self.pending_chat = Some(chat);
+        self.link_roots_revision = self.link_roots_revision.wrapping_add(1);
     }
 
     fn start_chat_watches(&mut self, chat_id: String, cx: &mut Context<Self>) {
@@ -2773,9 +2693,7 @@ impl AppState {
     /// watch server-side. Selecting a chat also lands in its space and marks it
     /// seen (a global-list click must switch the tab strip too).
     pub fn select_chat(&mut self, chat_id: Option<String>, cx: &mut Context<Self>) {
-        if let Some(id) = &chat_id
-            && !self.is_unsaved_side_chat(id)
-        {
+        if let Some(id) = &chat_id {
             self.focus_chat_sync(id, cx);
         }
         if self.selected_chat == chat_id {
@@ -2897,12 +2815,7 @@ impl AppState {
             self.mark_chat_seen(id, cx);
         }
         if let Some(chat_id) = chat_id {
-            if self.is_unsaved_side_chat(&chat_id) {
-                // Nothing to watch yet, and opening its doc would start one.
-                self.transcript_replayed = true;
-            } else {
-                self.start_chat_watches(chat_id, cx);
-            }
+            self.start_chat_watches(chat_id, cx);
         }
         cx.notify();
     }
@@ -5422,58 +5335,38 @@ mod tests {
         assert_eq!(visible, ["b"]);
     }
 
+    /// Side chats are gone (#11961): one an older build made opens and
+    /// lists as an ordinary chat.
     #[test]
-    fn visible_chats_hide_spawned_children() {
+    fn old_side_chats_list_and_open_as_ordinary_chats() {
         let now = Utc::now();
         let mut state = AppState::new();
-        let mut child = chat("child", 0, Some(1));
-        child.parent_chat_id = Some("parent".into());
-        state.apply_chats(vec![child, chat("parent", 1, Some(2))]);
+        let mut side = chat("side", 0, Some(1));
+        side.parent_chat_id = Some("parent".into());
+        state.apply_chats(vec![side, chat("parent", 1, Some(2))]);
         let visible: Vec<&str> = state.visible_chats().map(|c| c.id.as_str()).collect();
-        assert_eq!(visible, ["parent"]);
-        // The sidebar list and jump slots follow the same rule.
+        assert_eq!(visible, ["parent", "side"]);
         let rows: Vec<&str> = state
             .sidebar_chats(now, None)
             .into_iter()
             .map(|(_, c)| c.id.as_str())
             .collect();
-        assert_eq!(rows, ["parent"]);
-        // The child row itself is still addressable (deep links, tabs).
-        assert!(state.chats.iter().any(|c| c.id == "child"));
-    }
-
-    #[test]
-    fn side_chats_remain_addressable_but_do_not_appear_in_sidebar() {
-        let mut state = AppState::new();
-        let main = chat("main", 0, None);
-        let mut side = chat("side", 1, Some(2));
-        side.parent_chat_id = Some(main.id.clone());
-        state.apply_chats(vec![main, side]);
-        assert_eq!(
-            state
-                .visible_chats()
-                .map(|c| c.id.as_str())
-                .collect::<Vec<_>>(),
-            ["main"]
-        );
+        assert_eq!(rows, ["parent", "side"]);
         state.selected_chat = Some("side".into());
-        assert_eq!(
-            state.selected_chat_row().unwrap().parent_chat_id.as_deref(),
-            Some("main")
-        );
+        assert_eq!(state.selected_chat_row().unwrap().id, "side");
     }
 
     #[test]
-    fn remote_fork_waits_for_registry_then_observes_deletion() {
+    fn a_fork_lists_before_its_registry_row_then_observes_deletion() {
         let mut state = AppState::new();
-        let mut side = chat("side", 1, None);
-        side.parent_chat_id = Some("main".into());
-        state.selected_chat = Some(side.id.clone());
-        state.pending_side_chat = Some(side.clone());
+        let fork = chat("fork", 1, None);
+        state.add_pending_chat(fork.clone());
+        state.selected_chat = Some(fork.id.clone());
+        assert!(state.visible_chats().any(|c| c.id == "fork"));
         state.apply_chats(vec![]);
-        assert_eq!(state.selected_chat.as_deref(), Some("side"));
-        state.apply_chats(vec![side]);
-        assert!(state.pending_side_chat.is_none());
+        assert_eq!(state.selected_chat.as_deref(), Some("fork"));
+        state.apply_chats(vec![fork]);
+        assert!(state.pending_chat.is_none());
         state.apply_chats(vec![]);
         assert_eq!(state.selected_chat, None);
     }

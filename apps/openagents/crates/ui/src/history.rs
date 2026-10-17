@@ -4532,11 +4532,13 @@ mod tests {
             let search = cx.new(|cx| GitHistorySearchControl::new(history, cx));
             let composer = cx.new(|cx| ComposerInput::new("Message", cx));
             let focus_lost = cx.on_focus_lost(window, |this, window, cx| {
-                crate::shell::restore_focus_if_empty_on_next_frame(
-                    this.composer.read(cx).focus_handle(cx),
-                    window,
-                    cx,
-                );
+                let focus = this.composer.read(cx).focus_handle(cx);
+                window.on_next_frame(move |window, cx| {
+                    if window.focused(cx).is_none() {
+                        window.focus(&focus, cx);
+                    }
+                });
+                cx.notify();
             });
             Self {
                 composer,

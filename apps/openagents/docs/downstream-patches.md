@@ -328,3 +328,47 @@ links remain readable. Upstream fixes now require manual ports.
 
 - Coder Noir sidebar (#11964): uses `#050505`, darker than the main area's
   `#0a0a0a` background.
+
+- [OpenAgents #11962](https://github.com/OpenAgentsInc/openagents/issues/11962):
+  removed upstream's Pull requests screen. Gone: `crates/ui/src/pull_requests.rs`
+  (the board, its filters and stars), `crates/ui/src/shell/pull_request_pane.rs`
+  (its tabbed side pane), `crates/ui/examples/pull-request-fixture.rs`,
+  `Route::PullRequests`, `NavEntry::PullRequests`/`PullRequest`, the
+  `OPENAGENTS_OPEN_ROUTE=pull-requests` knob, and the sidebar footer button.
+  A pull request link inside a chat still opens beside it
+  (`shell/chat_pull_requests.rs`); outside a chat it opens in the browser. The
+  saved `pull_request_stars` and `pull_request_pane_width` settings stay
+  readable and unused.
+
+- [OpenAgents #11961](https://github.com/OpenAgentsInc/openagents/issues/11961):
+  removed upstream's side chats. Gone: `crates/ui/src/shell/side_chats.rs`,
+  `RightSurface::SideChat`, the session card's "New side chat", the file
+  explorer's **Chats** footer section and its "+"/fork buttons, side-chat state
+  in `AppState`, `Composer` and `Pickers` (`side_chat_state`, unsaved side chats),
+  the explorer rename surface, and `ForkSideChat`. MCP `create_chat` and
+  `create_chats` always make standalone chats (no `kind`/`parent` in their
+  schemas; the result reports `createdFrom`), and the engine's `createChat`
+  ignores `parentChatId`. `Chat::is_top_level` no longer checks
+  `parent_chat_id`, so side chats saved by older builds list and open as
+  ordinary chats; the stored field is kept.
+- [OpenAgents #11963](https://github.com/OpenAgentsInc/openagents/issues/11963):
+  Fork chat makes a full standalone fork. Our modules are
+  `crates/engine/src/chat_fork.rs` (the `ForkChat` RPC: copied history, the
+  "Forked from" seam, the native-fork source), `crates/doc/src/native_fork.rs`,
+  and `crates/ui/src/shell/fork_chat.rs` (the card action, opening the fork,
+  and the seam's link back). Hooks:
+  - `crates/engine/src/rpc.rs`: the `FORK_CHAT` arm and its `forwardable` entry.
+  - `crates/engine/src/sessions.rs`: in `dispatch_inner`, strip
+    `FORK_SESSION_OPTION` and inject the native fork; in `drive_run`, skip the
+    history bootstrap for a native fork and clear it on `SessionStarted`;
+    `fork_history_prompt` keys on the transcript's fork seam instead of
+    `parent_chat_id`.
+  - `crates/proto/src/agent.rs`: `FORK_SESSION_OPTION`.
+  - `crates/harness/src/claude/mod.rs`: `--fork-session` beside `--resume`.
+  - `crates/harness/src/codex/mod.rs`: `thread/fork` instead of
+    `thread/resume`; a failure is returned so the host retries with seeded
+    history.
+  - `crates/ui/src/transcript.rs`: `fork_marker` takes the source id and
+    dispatches `OpenForkSource`; `crates/ui/src/state.rs`: `add_pending_chat`
+    (the former pending side-chat row); `crates/ui/src/shell/session_info.rs`:
+    the Fork row.

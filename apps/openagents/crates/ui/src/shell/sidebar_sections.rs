@@ -742,8 +742,9 @@ mod tests {
             .expect("a wide column shows the card unasked");
         assert!(card.right() <= px(1600.0));
         assert!(card.left() > px(800.0 + 736.0 / 2.0));
-        let actions = cx.debug_bounds("session-info-side-chat").unwrap();
-        assert!(card.contains(&actions.center()));
+        let fork = cx.debug_bounds("session-info-fork").unwrap();
+        assert!(card.contains(&fork.center()));
+        assert!(cx.debug_bounds("session-info-side-chat").is_none());
 
         // Without room it hides, and opening it floats it over the transcript.
         cx.simulate_resize(gpui::size(px(900.0), px(900.0)));

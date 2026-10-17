@@ -349,36 +349,6 @@ fn panels_share_space_and_keep_rendered_geometry_through_their_lifecycle(cx: &mu
         near(frame.widths.iter().sum(), width);
         expect(draw(&shell, cx, 300), frame.widths);
     }
-    // A side chat's composer keeps its column's layout under the pane's mask.
-    change(&shell, cx, |s, _, cx| {
-        let chat = serde_json::from_value(serde_json::json!({
-            "id": "side", "parentChatId": "a", "deviceId": "local",
-            "archived": false, "createdAt": Utc::now(),
-        }))
-        .unwrap();
-        s.open_side_chat(chat, s.panel_key(cx), cx);
-    });
-    settled(&shell, cx);
-    let side_composer = |cx: &mut VisualTestContext| {
-        shell.read_with(cx, |s, cx| {
-            let tab = s.side_chats.values().next().unwrap();
-            tab.composer.read(cx).surface_bounds().get().unwrap()
-        })
-    };
-    let resting = side_composer(cx);
-    for _ in 0..2 {
-        change(&shell, cx, |s, _, cx| s.toggle_right_pane(cx));
-        draw(&shell, cx, 75);
-        let moving = side_composer(cx);
-        near(f32::from(moving.size.width), f32::from(resting.size.width));
-        near(
-            f32::from(moving.size.height),
-            f32::from(resting.size.height),
-        );
-        settled(&shell, cx);
-    }
-    change(&shell, cx, |s, _, cx| s.toggle_right_pane(cx));
-    settled(&shell, cx);
     cx.update(|_, cx| motion::set_reduced_motion(cx, true));
     for panel in [
         Panel::Sidebar,

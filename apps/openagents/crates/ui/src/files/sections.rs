@@ -1,30 +1,26 @@
-//! The explorer's footer: two collapsible sections docked under the file
-//! tree — **Subagents** (the spawn chips of the active chat's transcript,
-//! with their live status) and **Chats** (the side chats hanging off the
-//! active chat: forks, and chats an agent spawned through the OpenAgents MCP
-//! server). Rows borrow the left sidebar's compact session row — 29px, status
-//! glyph, title, time — minus the harness, project and device icons, which
-//! say nothing here (every row shares the parent's context). Clicking a row
-//! opens it in the right pane's surface host; the Chats header carries "+"
-//! and fork beside its caret; the section chrome animates with the same
-//! collapse motion as the sidebar's disclosures.
+//! The explorer's footer: a collapsible **Subagents** section docked under
+//! the file tree (the spawn chips of the active chat's transcript, with their
+//! live status). Rows borrow the left sidebar's compact session row — 29px,
+//! status glyph, title, time — minus the harness, project and device icons,
+//! which say nothing here. Clicking a row opens it in the right pane's
+//! surface host; the section chrome animates with the same collapse motion
+//! as the sidebar's disclosures.
 //!
-//! The footer has a fixed height budget that the open sections share and
-//! scroll inside, and like the sidebar's Archived shelf each shows ten rows
-//! before a "Show N more" row pages by ten.
+//! The footer has a fixed height budget that the section scrolls inside, and
+//! like the sidebar's Archived shelf it shows ten rows before a "Show N more"
+//! row pages by ten.
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 use chrono::{DateTime, Utc};
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, Context, Entity, EntityId, MouseButton, ScrollHandle,
+    Animation, AnimationExt as _, AnyElement, Context, EntityId, ScrollHandle,
     SharedString, div, prelude::*, px,
 };
 use openagents_doc::{MessagePart, SubagentStatus};
-use openagents_proto::{Chat, ChatIndicator};
+use openagents_proto::ChatIndicator;
 
-use crate::composer::ComposerInput;
 use crate::icons::{self, icon};
 use crate::state::AppState;
 use crate::theme::Theme;
@@ -38,10 +34,8 @@ const SECTION_BODY_INSET: f32 = 4.0;
 const ROW_HEIGHT: f32 = 29.0;
 const ROW_GAP: f32 = 2.0;
 /// Empty state: the copy (two 16px lines so it can wrap in a narrow
-/// explorer) and, for Chats, a row of pill actions — left-aligned like the
-/// rows it stands in for.
+/// explorer), left-aligned like the rows it stands in for.
 const EMPTY_COPY_HEIGHT: f32 = 36.0;
-const EMPTY_ACTIONS_HEIGHT: f32 = 40.0;
 const EMPTY_PAD: f32 = 10.0;
 /// Fade band under a section list's edges (the sidebar's treatment, scaled
 /// to the shorter lists).
@@ -67,21 +61,18 @@ const TWEEN_GRACE: std::time::Duration = std::time::Duration::from_millis(120);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum Section {
     Subagents,
-    Chats,
 }
 
 impl Section {
     fn key(self) -> &'static str {
         match self {
             Section::Subagents => "subagents",
-            Section::Chats => "chats",
         }
     }
 
     fn label(self) -> &'static str {
         match self {
             Section::Subagents => "Subagents",
-            Section::Chats => "Chats",
         }
     }
 }
@@ -118,8 +109,6 @@ impl DisclosureMotion {
 pub(super) struct ExplorerSections {
     open: HashMap<Section, bool>,
     motion: HashMap<Section, DisclosureMotion>,
-    /// Rows revealed per section ("Show more" pages this up).
-    shown: HashMap<Section, usize>,
     /// One scroll handle per section list, so the edge fades can read
     /// overflow at paint time.
     scroll: HashMap<Section, ScrollHandle>,
@@ -129,32 +118,18 @@ pub(super) struct ExplorerSections {
     /// re-renders the explorer when a section's contents actually changed —
     /// not on every streamed transcript delta.
     fingerprint: u64,
-    /// The side chat whose title the shell is editing in place, and its
-    /// field — drawn over that row's title.
-    chat_rename: Option<(String, Entity<ComposerInput>)>,
-    /// A section opened to reveal a renamed row: its motion starts on the
-    /// render that knows the body height.
-    reveal: Option<Section>,
 }
 
 impl Default for ExplorerSections {
     fn default() -> Self {
         Self {
-            open: [(Section::Subagents, true), (Section::Chats, true)]
+            open: [(Section::Subagents, true)].into_iter().collect(),
+            motion: HashMap::new(),
+            scroll: [(Section::Subagents, ScrollHandle::new())]
                 .into_iter()
                 .collect(),
-            motion: HashMap::new(),
-            shown: HashMap::new(),
-            scroll: [
-                (Section::Subagents, ScrollHandle::new()),
-                (Section::Chats, ScrollHandle::new()),
-            ]
-            .into_iter()
-            .collect(),
             groups: GroupState::default(),
             fingerprint: 0,
-            chat_rename: None,
-            reveal: None,
         }
     }
 }
@@ -162,14 +137,6 @@ impl Default for ExplorerSections {
 impl ExplorerSections {
     pub(super) fn is_open(&self, section: Section) -> bool {
         self.open.get(&section).copied().unwrap_or(true)
-    }
-
-    fn shown(&self, section: Section) -> usize {
-        self.shown
-            .get(&section)
-            .copied()
-            .unwrap_or(INITIAL_ROWS)
-            .max(INITIAL_ROWS)
     }
 
     fn toggle(&mut self, section: Section, resting: f32, target: f32) {
@@ -190,24 +157,6 @@ impl ExplorerSections {
         );
         let open = self.is_open(section);
         self.open.insert(section, !open);
-    }
-
-    /// Start the opening motion of a section a reveal opened.
-    fn begin_reveal(&mut self, section: Section, height: f32) {
-        if self.reveal != Some(section) || !self.is_open(section) {
-            return;
-        }
-        self.reveal = None;
-        let epoch = self.motion.get(&section).map_or(1, |m| m.epoch + 1);
-        self.motion.insert(
-            section,
-            DisclosureMotion {
-                epoch,
-                from: 0.0,
-                to: height,
-                started: std::time::Instant::now(),
-            },
-        );
     }
 
     fn scroll(&self, section: Section) -> ScrollHandle {
@@ -310,96 +259,28 @@ pub(super) fn subagent_rows(state: &AppState, chat_id: &str) -> Vec<SubagentRow>
     running
 }
 
-/// A side chat of the active chat, as the footer lists it.
-#[derive(Debug, Clone, PartialEq)]
-pub(super) struct ChildChatRow {
-    pub chat_id: String,
-    pub device_id: String,
-    pub title: SharedString,
-    pub status: ChatIndicator,
-    pub time_ago: SharedString,
-    /// The chat's linked pull request, drawn as the sidebar's badge.
-    pub change_request: Option<openagents_proto::ChangeRequestSummary>,
-    activity: DateTime<Utc>,
-}
-
-/// The live (unarchived) children of `chat_id`, most recent activity first —
-/// the same order the sidebar's Sessions list keeps.
-pub(super) fn child_chat_rows(
-    state: &AppState,
-    chat_id: &str,
-    now: DateTime<Utc>,
-) -> Vec<ChildChatRow> {
-    let mut rows: Vec<ChildChatRow> = state
-        .chats
-        .iter()
-        .filter(|chat| !chat.archived && chat.parent_chat_id.as_deref() == Some(chat_id))
-        .map(|chat| {
-            let activity = chat.last_message_at.unwrap_or(chat.created_at);
-            ChildChatRow {
-                chat_id: chat.id.clone(),
-                device_id: chat.device_id.clone(),
-                title: child_chat_title(chat).into(),
-                status: state.display_status_for(chat, now),
-                time_ago: openagents_proto::view::format_time_ago(activity, now).into(),
-                change_request: state.change_request_for_chat(chat).cloned(),
-                activity,
-            }
-        })
-        .collect();
-    rows.sort_by_key(|row| std::cmp::Reverse(row.activity));
-    rows
-}
-
-/// A side chat titles itself on its first turn; until then the preview or a
-/// placeholder stands in.
-pub(super) fn child_chat_title(chat: &Chat) -> String {
-    chat.title
-        .clone()
-        .or_else(|| chat.last_message_preview.clone())
-        .unwrap_or_else(|| "New side chat".into())
-}
-
 /// What the footer would draw for `chat_id`, hashed. Cheap enough to run on
 /// every state notification.
-pub(super) fn fingerprint(state: &AppState, chat_id: &str, now: DateTime<Utc>) -> u64 {
+pub(super) fn fingerprint(state: &AppState, chat_id: &str) -> u64 {
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     for row in subagent_rows(state, chat_id) {
         row.doc_id.hash(&mut hasher);
         row.title.as_ref().hash(&mut hasher);
         (row.status.map(|s| s as u8)).hash(&mut hasher);
     }
-    0xC0FFEEu64.hash(&mut hasher);
-    for row in child_chat_rows(state, chat_id, now) {
-        row.chat_id.hash(&mut hasher);
-        row.device_id.hash(&mut hasher);
-        row.title.as_ref().hash(&mut hasher);
-        (row.status as u8).hash(&mut hasher);
-        row.time_ago.as_ref().hash(&mut hasher);
-        row.change_request
-            .as_ref()
-            .map(|pr| (pr.number, pr.state as u8))
-            .hash(&mut hasher);
-    }
     hasher.finish()
 }
 
 /// The height a section body wants for `count` rows with `shown` revealed:
 /// inset, the visible rows, and a "Show more" row while more remain. Empty
-/// sections want their empty-state copy (Chats adds its action row).
-pub(super) fn content_height(section: Section, count: usize, shown: usize) -> f32 {
-    content_height_unfloored(section, count, shown).max(MIN_BODY_HEIGHT)
+/// sections want their empty-state copy.
+pub(super) fn content_height(count: usize, shown: usize) -> f32 {
+    content_height_unfloored(count, shown).max(MIN_BODY_HEIGHT)
 }
 
-fn content_height_unfloored(section: Section, count: usize, shown: usize) -> f32 {
+fn content_height_unfloored(count: usize, shown: usize) -> f32 {
     if count == 0 {
-        return SECTION_BODY_INSET
-            + EMPTY_PAD * 2.0
-            + EMPTY_COPY_HEIGHT
-            + match section {
-                Section::Chats => EMPTY_ACTIONS_HEIGHT,
-                Section::Subagents => 0.0,
-            };
+        return SECTION_BODY_INSET + EMPTY_PAD * 2.0 + EMPTY_COPY_HEIGHT;
     }
     let visible = count.min(shown);
     let more = if count > shown { 1 } else { 0 };
@@ -416,77 +297,20 @@ fn rows_height(slots: usize) -> f32 {
 /// empty-state copy when nothing is left to list.
 fn subagents_height(plan: &SubagentPlan, groups: &GroupState) -> f32 {
     match plan.slots(groups) {
-        0 => content_height(Section::Subagents, 0, INITIAL_ROWS),
+        0 => content_height(0, INITIAL_ROWS),
         slots => rows_height(slots).max(MIN_BODY_HEIGHT),
     }
 }
 
-/// Split the footer's body budget between two open sections: each may take
-/// what it wants, and a short one hands its slack to the other. Closed
-/// sections get 0. Pure.
-pub(super) fn body_budget(budget: f32, wants: [f32; 2], open: [bool; 2]) -> [f32; 2] {
-    let budget = budget.max(0.0);
-    let want = |i: usize| if open[i] { wants[i] } else { 0.0 };
-    let (a, b) = (want(0), want(1));
-    if a + b <= budget {
-        return [a, b];
-    }
-    let half = budget / 2.0;
-    let first = a.min(budget - b.min(half));
-    let second = b.min(budget - first);
-    [first, second]
-}
-
-/// The footer's chrome outside the bodies: padding and the two headers.
+/// The footer's chrome outside the body: padding and the header.
 fn chrome_height() -> f32 {
-    FOOTER_PAD_TOP + FOOTER_PAD_BOTTOM + 2.0 * SECTION_HEADER_HEIGHT
+    FOOTER_PAD_TOP + FOOTER_PAD_BOTTOM + SECTION_HEADER_HEIGHT
 }
 
 impl FilesSurface {
-    /// Show (or clear) the shell's inline rename of one of the Chats rows.
-    pub(crate) fn set_chat_rename(
-        &mut self,
-        rename: Option<(String, Entity<ComposerInput>)>,
-        cx: &mut Context<Self>,
-    ) {
-        let key = |rename: &Option<(String, Entity<ComposerInput>)>| {
-            rename
-                .as_ref()
-                .map(|(id, input)| (id.clone(), input.entity_id()))
-        };
-        if key(&self.sections.chat_rename) != key(&rename) {
-            if let Some((chat_id, _)) = &rename {
-                self.reveal_chat_row(chat_id, cx);
-            }
-            self.sections.chat_rename = rename;
-            cx.notify();
-        }
-    }
-
-    /// Open the Chats section, page it, and scroll its list so `chat_id`'s
-    /// row shows — the inline rename's field must never sit on a hidden row.
-    fn reveal_chat_row(&mut self, chat_id: &str, cx: &mut Context<Self>) {
-        let rows = child_chat_rows(self.state.read(cx), &self.chat_id, Utc::now());
-        let Some(index) = rows.iter().position(|row| row.chat_id == chat_id) else {
-            return;
-        };
-        if !self.sections.is_open(Section::Chats) {
-            self.sections.open.insert(Section::Chats, true);
-            self.sections.reveal = Some(Section::Chats);
-        }
-        // Page in the same steps "Show more" takes.
-        if index >= self.sections.shown(Section::Chats) {
-            self.sections.shown.insert(
-                Section::Chats,
-                INITIAL_ROWS + (index + 1 - INITIAL_ROWS).div_ceil(PAGE_ROWS) * PAGE_ROWS,
-            );
-        }
-        self.sections.scroll(Section::Chats).scroll_to_item(index);
-    }
-
     /// Re-render only when the footer's contents changed.
     pub(super) fn refresh_sections(&mut self, cx: &mut Context<Self>) {
-        let fingerprint = fingerprint(self.state.read(cx), &self.chat_id, Utc::now());
+        let fingerprint = fingerprint(self.state.read(cx), &self.chat_id);
         if fingerprint != self.sections.fingerprint {
             self.sections.fingerprint = fingerprint;
             cx.notify();
@@ -494,30 +318,15 @@ impl FilesSurface {
     }
 
     pub(super) fn render_sections(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
-        let now = Utc::now();
-        let (subagents, chats) = {
-            let state = self.state.read(cx);
-            (
-                subagent_rows(state, &self.chat_id),
-                child_chat_rows(state, &self.chat_id, now),
-            )
-        };
-        self.sections.fingerprint = fingerprint(self.state.read(cx), &self.chat_id, now);
+        let subagents = subagent_rows(self.state.read(cx), &self.chat_id);
+        self.sections.fingerprint = fingerprint(self.state.read(cx), &self.chat_id);
         let plan = SubagentPlan::new(subagents);
-        let wants = [
-            subagents_height(&plan, &self.sections.groups),
-            content_height(
-                Section::Chats,
-                chats.len(),
-                self.sections.shown(Section::Chats),
-            ),
-        ];
-        let open = [
-            self.sections.is_open(Section::Subagents),
-            self.sections.is_open(Section::Chats),
-        ];
-        let budget = FOOTER_HEIGHT - chrome_height();
-        let heights = body_budget(budget, wants, open);
+        let wanted = subagents_height(&plan, &self.sections.groups);
+        let height = if self.sections.is_open(Section::Subagents) {
+            wanted.min((FOOTER_HEIGHT - chrome_height()).max(0.0))
+        } else {
+            0.0
+        };
         let view = cx.entity_id();
         let subagent_body = self.render_subagent_rows(&plan, view, theme, cx);
         let subagent_badge = (plan.running() > 0).then(|| {
@@ -527,8 +336,6 @@ impl FilesSurface {
                 theme,
             )
         });
-        let chat_body = self.render_chat_rows(&chats, theme, cx);
-        let chats_actions = self.render_chats_header_actions(theme, cx);
         div()
             .id("files-sections")
             .relative()
@@ -542,65 +349,14 @@ impl FilesSurface {
             .child(self.render_section(
                 Section::Subagents,
                 plan.total(),
-                wants[0],
-                heights[0],
+                wanted,
+                height,
                 None,
                 subagent_badge,
                 subagent_body,
                 theme,
                 cx,
             ))
-            .child(self.render_section(
-                Section::Chats,
-                chats.len(),
-                wants[1],
-                heights[1],
-                Some(chats_actions),
-                None,
-                chat_body,
-                theme,
-                cx,
-            ))
-            .into_any_element()
-    }
-
-    /// "+" and fork beside the Chats caret: a fresh side chat of the active
-    /// chat, or a fork of it through its latest completed response.
-    fn render_chats_header_actions(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
-        // Hidden until the header is hovered, like the sidebar's row menus:
-        // the caret is the resting state, the actions appear on approach.
-        div()
-            .flex_none()
-            .flex()
-            .flex_row()
-            .items_center()
-            .gap(px(2.0))
-            .opacity(0.0)
-            .group_hover(HEADER_GROUP, |s| s.opacity(1.0))
-            .child(
-                header_action(
-                    "files-sections-new-chat",
-                    icons::PLUS,
-                    "New side chat",
-                    theme,
-                )
-                .on_click(cx.listener(|_, _, _, cx| {
-                    cx.stop_propagation();
-                    cx.emit(FilesEvent::NewChildChat);
-                })),
-            )
-            .child(
-                header_action(
-                    "files-sections-fork",
-                    icons::FORK,
-                    "Fork this chat",
-                    theme,
-                )
-                .on_click(cx.listener(|_, _, _, cx| {
-                    cx.stop_propagation();
-                    cx.emit(FilesEvent::ForkChat);
-                })),
-            )
             .into_any_element()
     }
 
@@ -618,7 +374,6 @@ impl FilesSurface {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let open = self.sections.is_open(section);
-        self.sections.begin_reveal(section, height);
         // The collapsed header carries the count; open, the rows speak.
         let label: SharedString = if open || count == 0 {
             section.label().into()
@@ -768,28 +523,6 @@ impl FilesSurface {
                 },
             )
             .into_any_element()
-    }
-
-    fn render_show_more(
-        &self,
-        section: Section,
-        remaining: usize,
-        theme: &Theme,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        show_more_row(
-            format!("files-section-{}-more", section.key()),
-            remaining,
-            0.0,
-            theme,
-        )
-        .on_click(cx.listener(move |this, _, _, cx| {
-            cx.stop_propagation();
-            let shown = this.sections.shown(section) + PAGE_ROWS;
-            this.sections.shown.insert(section, shown);
-            cx.notify();
-        }))
-        .into_any_element()
     }
 
     fn render_subagent_rows(
@@ -993,157 +726,10 @@ impl FilesSurface {
         .into_any_element()
     }
 
-    fn render_chat_rows(
-        &self,
-        rows: &[ChildChatRow],
-        theme: &Theme,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        if rows.is_empty() {
-            let actions = div()
-                .flex()
-                .flex_row()
-                .items_center()
-                .gap(px(6.0))
-                .h(px(EMPTY_ACTIONS_HEIGHT))
-                .child(
-                    pill_button(
-                        "files-sections-empty-fork",
-                        icons::FORK,
-                        "Fork",
-                        theme,
-                    )
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        cx.stop_propagation();
-                        cx.emit(FilesEvent::ForkChat);
-                    })),
-                )
-                .child(
-                    pill_button(
-                        "files-sections-empty-new",
-                        icons::PLUS,
-                        "New side chat",
-                        theme,
-                    )
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        cx.stop_propagation();
-                        cx.emit(FilesEvent::NewChildChat);
-                    })),
-                )
-                .into_any_element();
-            return empty_state(
-                "Side chats will appear here when they are created",
-                Some(actions),
-                theme,
-            );
-        }
-        let view = cx.entity_id();
-        let shown = self.sections.shown(Section::Chats);
-        let scroll = self.sections.scroll(Section::Chats);
-        let mut list = row_list("files-chat-rows", &scroll);
-        for row in rows.iter().take(shown) {
-            let glyph = status_glyph(
-                format!("files-chat-{}", row.chat_id),
-                row.status,
-                view,
-                theme,
-                cx,
-            );
-            let open_id = row.chat_id.clone();
-            let menu_id = row.chat_id.clone();
-            let rename_input = self
-                .sections
-                .chat_rename
-                .as_ref()
-                .filter(|(id, _)| *id == row.chat_id)
-                .map(|(_, input)| input.clone());
-            let title = match rename_input {
-                Some(input) => crate::shell::chat_title_editor(
-                    format!("files-chat-title-editor-{}", row.chat_id).into(),
-                    input,
-                    theme,
-                ),
-                None => row_title(
-                    format!("files-chat-title-{}", row.chat_id),
-                    row.title.clone(),
-                )
-                .into_any_element(),
-            };
-            list = list.child(
-                compact_row(format!("files-chat-{}", row.chat_id), theme)
-                    .aria_label(SharedString::from(format!("Open side chat {}", row.title)))
-                    .on_click(cx.listener(move |_, event: &gpui::ClickEvent, _, cx| {
-                        cx.stop_propagation();
-                        // The first click opened the tab; the second edits
-                        // the title in place.
-                        if event.click_count() >= 2 {
-                            cx.emit(FilesEvent::RenameChildChat(open_id.clone()));
-                        } else {
-                            cx.emit(FilesEvent::OpenChildChat(open_id.clone()));
-                        }
-                    }))
-                    .on_mouse_down(
-                        MouseButton::Right,
-                        cx.listener(move |_, event: &gpui::MouseDownEvent, _, cx| {
-                            cx.stop_propagation();
-                            cx.emit(FilesEvent::ChildChatContextMenu {
-                                chat_id: menu_id.clone(),
-                                position: event.position,
-                            });
-                        }),
-                    )
-                    .child(glyph)
-                    .child(title)
-                    .children(row.change_request.clone().map(|summary| {
-                        crate::change_requests::pull_request_badge(
-                            format!("files-chat-pr-{}", row.chat_id).into(),
-                            summary,
-                            crate::change_requests::ChangeRequestBadgeSurface::Sidebar,
-                            Some(row.device_id.clone()),
-                            theme,
-                        )
-                    }))
-                    .child(time_ago_label(row.time_ago.clone(), theme)),
-            );
-        }
-        if rows.len() > shown {
-            list = list.child(self.render_show_more(Section::Chats, rows.len() - shown, theme, cx));
-        }
-        faded_list(list, &scroll)
-    }
 }
 
 fn collapse_animation() -> Animation {
     motion::COLLAPSE.animation()
-}
-
-/// A 20px icon button in a section header, sized to sit beside the caret.
-fn header_action(
-    id: &'static str,
-    icon_path: &'static str,
-    label: &'static str,
-    theme: &Theme,
-) -> gpui::Stateful<gpui::Div> {
-    div()
-        .id(id)
-        .role(gpui::Role::Button)
-        .aria_label(label)
-        .flex_none()
-        .size(px(20.0))
-        .rounded(px(5.0))
-        .flex()
-        .items_center()
-        .justify_center()
-        .cursor_pointer()
-        .hover(|s| s.bg(crate::theme::wash(0.09)))
-        .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
-        .tooltip(crate::settings::widgets::text_tooltip(label))
-        // Icons take their color on the element itself, never inherited.
-        .child(
-            icon(icon_path)
-                .size(px(13.0))
-                .text_color(theme.text_muted.opacity(0.85)),
-        )
 }
 
 /// A section's "Show N more" row (a page is [`PAGE_ROWS`]), indented to line
@@ -1169,36 +755,6 @@ fn show_more_row(
         .text_color(theme.text_muted.opacity(0.7))
         .hover(|s| s.bg(theme.glass_hover()).text_color(theme.text_muted))
         .child(format!("Show {} more", remaining.min(PAGE_ROWS)))
-}
-
-/// The empty state's pill buttons — the explorer's Retry button shape.
-fn pill_button(
-    id: &'static str,
-    icon_path: &'static str,
-    label: &'static str,
-    theme: &Theme,
-) -> gpui::Stateful<gpui::Div> {
-    div()
-        .id(id)
-        .role(gpui::Role::Button)
-        .aria_label(label)
-        .h(px(26.0))
-        .px(px(10.0))
-        .rounded(px(7.0))
-        .border_1()
-        .border_color(theme.border)
-        .bg(crate::theme::wash(0.04))
-        .hover(|style| style.bg(crate::theme::wash(0.09)))
-        .cursor_pointer()
-        .flex()
-        .flex_row()
-        .items_center()
-        .gap(px(5.0))
-        .text_size(px(11.5))
-        .text_color(theme.text)
-        .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
-        .child(icon(icon_path).size(px(12.0)).text_color(theme.text_muted))
-        .child(label)
 }
 
 /// The scrolling column an open section's rows live in; the body frame
@@ -1336,17 +892,6 @@ mod tests {
     use super::*;
     use openagents_doc::{MessageRole, MessageStatus, SessionMessageEntry};
     use openagents_proto::ToolCall;
-
-    fn chat(id: &str, parent: Option<&str>, minutes_ago: i64) -> Chat {
-        serde_json::from_value(serde_json::json!({
-            "id": id,
-            "deviceId": "dev",
-            "archived": false,
-            "createdAt": Utc::now() - chrono::Duration::minutes(minutes_ago),
-            "parentChatId": parent,
-        }))
-        .unwrap()
-    }
 
     fn spawn(
         id: &str,
@@ -1532,194 +1077,20 @@ mod tests {
     }
 
     #[test]
-    fn child_chat_rows_are_live_children_newest_first() {
-        let mut state = AppState::new();
-        let mut archived = chat("old", Some("main"), 1);
-        archived.archived = true;
-        let mut titled = chat("b", Some("main"), 30);
-        titled.title = Some("Investigate caching".into());
-        state.apply_chats(vec![
-            chat("main", None, 60),
-            chat("a", Some("main"), 5),
-            titled,
-            chat("unrelated", Some("elsewhere"), 2),
-            archived,
-        ]);
-        let rows = child_chat_rows(&state, "main", Utc::now());
-        assert_eq!(
-            rows.iter().map(|r| r.chat_id.as_str()).collect::<Vec<_>>(),
-            ["a", "b"]
-        );
-        assert_eq!(rows[0].title.as_ref(), "New side chat");
-        assert_eq!(rows[1].title.as_ref(), "Investigate caching");
-        assert_eq!(rows[0].status, ChatIndicator::Idle);
-    }
-
-    #[gpui::test]
-    fn double_clicked_side_chat_asks_for_an_inline_rename(cx: &mut gpui::TestAppContext) {
-        use gpui::{AppContext as _, MouseDownEvent, MouseUpEvent};
-
-        let (files, cx) = super::super::test_support::setup(cx);
-        files.update(cx, |files, cx| {
-            files.state.update(cx, |state, _| {
-                let mut side = chat("side", Some("chat"), 1);
-                side.title = Some("Side work".into());
-                state.chats.push(side);
-            });
-        });
-        cx.update(|window, cx| {
-            window.refresh();
-            window.draw(cx).clear();
-        });
-        let events = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
-        let recorded = events.clone();
-        let _sub = cx.update(|_, cx| {
-            cx.subscribe(&files, move |_, event, _| {
-                recorded.borrow_mut().push(event.clone())
-            })
-        });
-        let row = cx.debug_bounds("files-chat-title-side").unwrap();
-        for click_count in [1, 2] {
-            cx.simulate_event(MouseDownEvent {
-                button: MouseButton::Left,
-                position: row.center(),
-                click_count,
-                ..Default::default()
-            });
-            cx.simulate_event(MouseUpEvent {
-                button: MouseButton::Left,
-                position: row.center(),
-                click_count,
-                ..Default::default()
-            });
-        }
-        cx.run_until_parked();
-        {
-            let events = events.borrow();
-            assert!(matches!(&events[..], [
-                FilesEvent::OpenChildChat(open),
-                FilesEvent::RenameChildChat(rename),
-            ] if open == "side" && rename == "side"));
-        }
-
-        // The shell's field replaces the row title while the edit is open.
-        let input = cx.update(|_, cx| cx.new(|cx| ComposerInput::new("Session title", cx)));
-        files.update(cx, |files, cx| {
-            files.set_chat_rename(Some(("side".into(), input)), cx)
-        });
-        cx.update(|window, cx| window.draw(cx).clear());
-        assert!(cx.debug_bounds("files-chat-title-editor-side").is_some());
-        assert!(cx.debug_bounds("files-chat-title-side").is_none());
-        files.update(cx, |files, cx| files.set_chat_rename(None, cx));
-        cx.update(|window, cx| window.draw(cx).clear());
-        assert!(cx.debug_bounds("files-chat-title-side").is_some());
-    }
-
-    #[gpui::test]
-    fn inline_rename_reveals_a_side_chat_in_a_collapsed_paged_section(
-        cx: &mut gpui::TestAppContext,
-    ) {
-        use gpui::AppContext as _;
-
-        let (files, cx) = super::super::test_support::setup(cx);
-        files.update(cx, |files, cx| {
-            files.state.update(cx, |state, _| {
-                for ix in 0..12 {
-                    state
-                        .chats
-                        .push(chat(&format!("side-{ix:02}"), Some("chat"), ix));
-                }
-            });
-            files.sections.toggle(Section::Chats, 0.0, 0.0);
-            assert!(!files.sections.is_open(Section::Chats));
-        });
-        cx.update(|window, cx| {
-            window.refresh();
-            window.draw(cx).clear();
-        });
-
-        // Newest first: side-11 is the twelfth row, past the first page.
-        let input = cx.update(|_, cx| cx.new(|cx| ComposerInput::new("Session title", cx)));
-        files.update(cx, |files, cx| {
-            files.set_chat_rename(Some(("side-11".into(), input)), cx)
-        });
-        cx.update(|window, cx| window.draw(cx).clear());
-        files.read_with(cx, |files, _| {
-            assert!(files.sections.is_open(Section::Chats));
-            assert_eq!(
-                files.sections.shown(Section::Chats),
-                INITIAL_ROWS + PAGE_ROWS
-            );
-            // The reveal became the section's opening motion.
-            assert_eq!(files.sections.reveal, None);
-            assert_eq!(files.sections.motion[&Section::Chats].from, 0.0);
-        });
-        assert!(cx.debug_bounds("files-chat-title-editor-side-11").is_some());
-    }
-
-    #[test]
-    fn fingerprint_tracks_membership_and_status() {
-        let mut state = AppState::new();
-        let now = Utc::now();
-        state.apply_chats(vec![chat("main", None, 60)]);
-        let empty = fingerprint(&state, "main", now);
-        state.apply_chats(vec![chat("main", None, 60), chat("a", Some("main"), 5)]);
-        let one = fingerprint(&state, "main", now);
-        assert_ne!(empty, one);
-        assert_eq!(one, fingerprint(&state, "main", now));
-    }
-
-    #[test]
     fn content_height_pages_at_ten_rows_and_counts_the_show_more_row() {
         // Short lists are floored so a section keeps its presence.
-        let one = content_height(Section::Chats, 1, INITIAL_ROWS);
+        let one = content_height(1, INITIAL_ROWS);
         assert_eq!(one, MIN_BODY_HEIGHT);
-        let ten = content_height(Section::Chats, 10, INITIAL_ROWS);
+        let ten = content_height(10, INITIAL_ROWS);
         // Eleven rows: ten visible plus the "Show more" slot.
-        let eleven = content_height(Section::Chats, 11, INITIAL_ROWS);
+        let eleven = content_height(11, INITIAL_ROWS);
         assert_eq!(eleven - ten, ROW_HEIGHT + ROW_GAP);
         // Paging once reveals up to 20 rows before the next "Show more".
-        let paged = content_height(Section::Chats, 40, INITIAL_ROWS + PAGE_ROWS);
+        let paged = content_height(40, INITIAL_ROWS + PAGE_ROWS);
         assert_eq!(
             paged,
             SECTION_BODY_INSET + 21.0 * ROW_HEIGHT + 20.0 * ROW_GAP
         );
-        // Empty sections want their icon + copy; Chats adds the action row.
-        assert_eq!(
-            content_height_unfloored(Section::Chats, 0, INITIAL_ROWS)
-                - content_height_unfloored(Section::Subagents, 0, INITIAL_ROWS),
-            EMPTY_ACTIONS_HEIGHT
-        );
-        assert!(content_height(Section::Subagents, 0, INITIAL_ROWS) >= MIN_BODY_HEIGHT);
-    }
-
-    #[test]
-    fn body_budget_shares_the_footer_and_hands_slack_across() {
-        // Both fit: each takes what it wants.
-        assert_eq!(
-            body_budget(300.0, [100.0, 100.0], [true, true]),
-            [100.0, 100.0]
-        );
-        // Closed sections take nothing.
-        assert_eq!(
-            body_budget(300.0, [100.0, 100.0], [false, true]),
-            [0.0, 100.0]
-        );
-        // Both oversubscribed: an even split.
-        assert_eq!(
-            body_budget(200.0, [500.0, 500.0], [true, true]),
-            [100.0, 100.0]
-        );
-        // A short second section hands its slack to the first.
-        assert_eq!(
-            body_budget(200.0, [500.0, 40.0], [true, true]),
-            [160.0, 40.0]
-        );
-        // A short first section hands its slack to the second.
-        assert_eq!(
-            body_budget(200.0, [40.0, 500.0], [true, true]),
-            [40.0, 160.0]
-        );
-        assert_eq!(body_budget(-5.0, [40.0, 500.0], [true, true]), [0.0, 0.0]);
+        assert!(content_height(0, INITIAL_ROWS) >= MIN_BODY_HEIGHT);
     }
 }

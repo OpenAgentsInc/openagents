@@ -453,7 +453,6 @@ impl MoveHooks for EngineHooks {
                     config: Some(config),
                     branch: Some(branch.unwrap_or_default().to_owned()).filter(|b| !b.is_empty()),
                     cwd: row.cwd.clone(),
-                    parent_chat_id: None,
                 })
                 .map_err(|e| e.to_string())?;
         }

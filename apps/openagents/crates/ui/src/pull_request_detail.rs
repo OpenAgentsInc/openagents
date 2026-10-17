@@ -412,8 +412,6 @@ pub struct PullRequestDetailPage {
     selection_prefix: String,
     cache: Rc<RefCell<PullRequestCache>>,
     preview: Option<ChangeRequestListItem>,
-    /// A newly observed board revision, deferred while reading or posting.
-    board_refresh_owed: bool,
     error: Option<String>,
     loading: bool,
     fetched: Option<Instant>,
@@ -489,7 +487,6 @@ impl PullRequestDetailPage {
             selection_prefix: format!("pr-detail-{}-", cx.entity_id().as_u64()),
             cache,
             preview,
-            board_refresh_owed: false,
             error: None,
             loading: false,
             fetched: None,
@@ -752,55 +749,6 @@ impl PullRequestDetailPage {
             .into_any_element()
     }
 
-    /// Reconcile already-loaded board data when this tab becomes active.
-    /// Observe each head once: a stale board or a failed refresh must not
-    /// turn tab switching into repeated network requests.
-    pub(crate) fn update_board_preview(
-        &mut self,
-        preview: ChangeRequestListItem,
-        cx: &mut Context<Self>,
-    ) {
-        if preview.url != self.url
-            || !openagents_proto::change_request_assessment::valid_head_oid(&preview.head_ref_oid)
-        {
-            return;
-        }
-        let changed = self
-            .preview
-            .as_ref()
-            .is_none_or(|old| old.head_ref_oid != preview.head_ref_oid);
-        self.preview = Some(preview);
-        if changed {
-            self.board_refresh_owed = true;
-            self.refresh_from_board(cx);
-        }
-    }
-
-    /// Drain a deferred revision after a read or comment finishes. The read
-    /// may already have caught up, in which case no extra request is needed.
-    fn refresh_from_board(&mut self, cx: &mut Context<Self>) -> bool {
-        if !self.board_refresh_owed || self.loading || self.submission.is_some() {
-            return false;
-        }
-        self.board_refresh_owed = false;
-        let Some(head) = self
-            .preview
-            .as_ref()
-            .map(|preview| preview.head_ref_oid.clone())
-        else {
-            return false;
-        };
-        if self
-            .detail
-            .as_ref()
-            .is_some_and(|detail| detail.head_ref_oid == head)
-        {
-            return false;
-        }
-        self.refresh_with_head(Some(head), cx);
-        true
-    }
-
     /// Reload the details, and the diff now or on the next Code visit.
     fn refresh(&mut self, cx: &mut Context<Self>) {
         self.refresh_with_head(None, cx);
@@ -918,11 +866,7 @@ impl PullRequestDetailPage {
                     }
                     Err(error) => page.error = Some(error),
                 }
-                if !page.refresh_from_board(cx)
-                    && loaded
-                    && page.tab == Tab::Code
-                    && page.diff.is_none()
-                {
+                if loaded && page.tab == Tab::Code && page.diff.is_none() {
                     page.load_diff(false, cx);
                 }
                 cx.notify();
@@ -1281,12 +1225,32 @@ fn inline_thread(
 fn activity_time(raw: &str) -> String {
     chrono::DateTime::parse_from_rfc3339(raw)
         .map(|time| {
-            crate::pull_requests::relative_time(
-                time.with_timezone(&chrono::Utc),
-                chrono::Utc::now(),
-            )
+            relative_time(time.with_timezone(&chrono::Utc), chrono::Utc::now())
         })
         .unwrap_or_else(|_| raw.to_owned())
+}
+
+fn relative_time(
+    timestamp: chrono::DateTime<chrono::Utc>,
+    now: chrono::DateTime<chrono::Utc>,
+) -> String {
+    let seconds = now.signed_duration_since(timestamp).num_seconds().max(0);
+    let (amount, unit) = if seconds < 60 {
+        return "just now".into();
+    } else if seconds < 3_600 {
+        (seconds / 60, "minute")
+    } else if seconds < 86_400 {
+        (seconds / 3_600, "hour")
+    } else if seconds < 604_800 {
+        (seconds / 86_400, "day")
+    } else if seconds < 2_592_000 {
+        (seconds / 604_800, "week")
+    } else if seconds < 31_536_000 {
+        (seconds / 2_592_000, "month")
+    } else {
+        (seconds / 31_536_000, "year")
+    };
+    format!("{amount} {unit}{} ago", if amount == 1 { "" } else { "s" })
 }
 
 fn action(id: &'static str, label: &'static str, theme: &Theme) -> gpui::Stateful<gpui::Div> {
@@ -1933,16 +1897,7 @@ impl Render for PullRequestDetailPage {
                                                         )
                                                     }),
                                             ),
-                                    )
-                                    .child(crate::pull_requests::star_button(
-                                        if detail.url.is_empty() {
-                                            &self.url
-                                        } else {
-                                            &detail.url
-                                        },
-                                        &theme,
-                                        cx,
-                                    )),
+                                    ),
                             );
                         column = column
                             .child(assessment_card)
@@ -2752,236 +2707,6 @@ mod tests {
             })
             .unwrap();
         assert_eq!(rpc.completed(), 2);
-    }
-
-    fn board_preview(head: &str) -> ChangeRequestListItem {
-        ChangeRequestListItem {
-            head_ref_oid: head.into(),
-            provider: "github".into(),
-            repository: "a/b".into(),
-            author: Default::default(),
-            ci: Default::default(),
-            viewer_did_author: None,
-            viewer_review_requested: None,
-            number: 1,
-            title: "Updated".into(),
-            url: "https://github.com/a/b/pull/1".into(),
-            state: openagents_proto::ChangeRequestState::Open,
-            is_draft: false,
-            review_decision: Default::default(),
-            additions: 1,
-            deletions: 1,
-            mergeability: openagents_proto::ChangeRequestMergeability::Unknown,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        }
-    }
-
-    #[gpui::test]
-    fn pull_request_board_updates_live_tabs_once_and_keeps_drafts(
-        cx: &mut gpui::TestAppContext,
-    ) {
-        let runtime = fixture::runtime();
-        let _guard = runtime.enter();
-        fixture::init(cx);
-        let rpc = ScriptedRpc::new(|method, params| async move {
-            assert_eq!(params["refresh"], true);
-            match method.as_str() {
-                methods::GET_CHANGE_REQUEST => {
-                    assert_eq!(params["headRefOid"], "b".repeat(40));
-                    assert!(params.get("baseRefOid").is_none());
-                    // GitHub can already be ahead of the board's snapshot.
-                    openagents_rpc::RpcReply::value(&ChangeRequestDetail {
-                        head_ref_oid: "c".repeat(40),
-                        base_ref_oid: "d".repeat(40),
-                        ..Default::default()
-                    })
-                }
-                methods::GET_CHANGE_REQUEST_DIFF => {
-                    assert_eq!(params["headRefOid"], "c".repeat(40));
-                    assert_eq!(params["baseRefOid"], "d".repeat(40));
-                    openagents_rpc::RpcReply::value(&"new patch")
-                }
-                _ => panic!("unexpected RPC"),
-            }
-        });
-        let cache = Rc::new(RefCell::new(PullRequestCache::default()));
-        let url = "https://github.com/a/b/pull/1";
-        let mut cached = snapshot("Before push");
-        cached.detail.head_ref_oid = "a".repeat(40);
-        cached.diff = Some(ParsedDiff::new("old patch".into()));
-        cache.borrow_mut().put(None, url.into(), cached);
-        let (page, cx) = cx.add_window_view(|window, cx| {
-            PullRequestDetailPage::new(
-                fixture::state(cx, Some(rpc.client())),
-                url.into(),
-                None,
-                cache.clone(),
-                None,
-                window,
-                cx,
-            )
-        });
-        page.update(cx, |page, cx| {
-            page.comment_input
-                .update(cx, |input, cx| input.set_text("Keep my draft", cx));
-            page.select_tab(Tab::Activity, cx);
-            page.update_board_preview(board_preview(&"a".repeat(40)), cx);
-            page.update_board_preview(board_preview(""), cx);
-            assert!(!page.loading);
-            page.update_board_preview(board_preview(&"b".repeat(40)), cx);
-            assert!(page.loading && page.diff.is_none());
-            // Repeated activation while loading must not start more reads.
-            page.update_board_preview(board_preview(&"b".repeat(40)), cx);
-        });
-        rpc.settle(cx, &runtime, |cx| page.read_with(cx, |page, _| !page.loading));
-        assert_eq!(rpc.completed(), 1, "the diff waits for Code");
-        page.update(cx, |page, cx| {
-            assert!(page.tab == Tab::Activity);
-            assert_eq!(page.comment_input.read(cx).text(), "Keep my draft");
-            assert_eq!(page.detail.as_ref().unwrap().head_ref_oid, "c".repeat(40));
-            for _ in 0..3 {
-                page.update_board_preview(board_preview(&"b".repeat(40)), cx);
-                assert!(
-                    !page.loading,
-                    "the older board must not trigger a refresh loop"
-                );
-            }
-            page.select_tab(Tab::Code, cx);
-        });
-        rpc.settle(cx, &runtime, |cx| page.read_with(cx, |page, _| page.diff.is_some()));
-        page.read_with(cx, |page, cx| {
-            assert_eq!(page.diff.as_ref().unwrap().patch, "new patch");
-            assert_eq!(page.comment_input.read(cx).text(), "Keep my draft");
-        });
-        assert_eq!(rpc.completed(), 2);
-    }
-
-    #[gpui::test]
-    fn pull_request_board_revision_during_a_read_is_not_lost(
-        cx: &mut gpui::TestAppContext,
-    ) {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        let runtime = fixture::runtime();
-        let _guard = runtime.enter();
-        fixture::init(cx);
-        let release = Arc::new(tokio::sync::Notify::new());
-        let reads = Arc::new(AtomicUsize::new(0));
-        let rpc = ScriptedRpc::new({
-            let release = release.clone();
-            let reads = reads.clone();
-            move |method, params| {
-                let release = release.clone();
-                let reads = reads.clone();
-                async move {
-                    assert_eq!(method, methods::GET_CHANGE_REQUEST);
-                    let call = reads.fetch_add(1, Ordering::SeqCst);
-                    let head = if call == 0 {
-                        release.notified().await;
-                        "b".repeat(40)
-                    } else {
-                        assert_eq!(call, 1, "only the newest deferred revision is read");
-                        assert_eq!(params["headRefOid"], "c".repeat(40));
-                        "c".repeat(40)
-                    };
-                    openagents_rpc::RpcReply::value(&ChangeRequestDetail {
-                        head_ref_oid: head,
-                        ..Default::default()
-                    })
-                }
-            }
-        });
-        let cache = Rc::new(RefCell::new(PullRequestCache::default()));
-        let url = "https://github.com/a/b/pull/1";
-        let mut cached = snapshot("Before push");
-        cached.detail.head_ref_oid = "a".repeat(40);
-        cache.borrow_mut().put(None, url.into(), cached);
-        let (page, cx) = cx.add_window_view(|window, cx| {
-            PullRequestDetailPage::new(
-                fixture::state(cx, Some(rpc.client())),
-                url.into(),
-                None,
-                cache.clone(),
-                None,
-                window,
-                cx,
-            )
-        });
-        page.update(cx, |page, cx| {
-            page.update_board_preview(board_preview(&"b".repeat(40)), cx);
-        });
-        rpc.settle(cx, &runtime, |_| reads.load(Ordering::SeqCst) == 1);
-        page.update(cx, |page, cx| {
-            page.update_board_preview(board_preview(&"c".repeat(40)), cx);
-            assert!(page.loading && page.board_refresh_owed);
-        });
-        release.notify_one();
-        rpc.settle(cx, &runtime, |cx| {
-            page.read_with(cx, |page, _| {
-                !page.loading && page.detail.as_ref().unwrap().head_ref_oid == "c".repeat(40)
-            })
-        });
-        assert_eq!(rpc.completed(), 2);
-    }
-
-    #[gpui::test]
-    fn pull_request_board_refresh_waits_for_comment_and_does_not_retry_errors(
-        cx: &mut gpui::TestAppContext,
-    ) {
-        let runtime = fixture::runtime();
-        let _guard = runtime.enter();
-        fixture::init(cx);
-        let rpc = ScriptedRpc::new(|method, params| async move {
-            assert_eq!(method, methods::GET_CHANGE_REQUEST);
-            assert_eq!(params["headRefOid"], "b".repeat(40));
-            Err(openagents_rpc::RpcError::Failed("offline".into()))
-        });
-        let cache = Rc::new(RefCell::new(PullRequestCache::default()));
-        let url = "https://github.com/a/b/pull/1";
-        let mut cached = snapshot("Before push");
-        cached.detail.head_ref_oid = "a".repeat(40);
-        cache.borrow_mut().put(None, url.into(), cached);
-        let (page, cx) = cx.add_window_view(|window, cx| {
-            PullRequestDetailPage::new(
-                fixture::state(cx, Some(rpc.client())),
-                url.into(),
-                None,
-                cache.clone(),
-                None,
-                window,
-                cx,
-            )
-        });
-        let submission = page.update(cx, |page, cx| {
-            page.comment_input
-                .update(cx, |input, cx| input.set_text("Unsent comment", cx));
-            let submission = cx.new(|_| CommentSubmission {
-                body: "Unsent comment".into(),
-                result: None,
-            });
-            page.observe_submission(submission.clone(), cx);
-            page.update_board_preview(board_preview(&"b".repeat(40)), cx);
-            assert!(!page.loading && page.board_refresh_owed);
-            submission
-        });
-        assert_eq!(rpc.completed(), 0);
-        submission.update(cx, |submission, cx| {
-            submission.result = Some(Err("Comment failed".into()));
-            cx.notify();
-        });
-        rpc.settle(cx, &runtime, |cx| {
-            page.read_with(cx, |page, _| page.error.is_some() && !page.loading)
-        });
-        page.update(cx, |page, cx| {
-            assert!(page.submission.is_none());
-            assert_eq!(page.comment_input.read(cx).text(), "Unsent comment");
-            assert_eq!(page.comment_error.as_deref(), Some("Comment failed"));
-            for _ in 0..3 {
-                page.update_board_preview(board_preview(&"b".repeat(40)), cx);
-                assert!(!page.loading);
-            }
-        });
-        assert_eq!(rpc.completed(), 1);
     }
 
     #[gpui::test]

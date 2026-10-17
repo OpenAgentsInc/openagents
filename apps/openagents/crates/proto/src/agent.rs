@@ -212,6 +212,12 @@ pub struct ModelOptionChoice {
     pub label: String,
 }
 
+/// `RunRequest::model_options` key (#11963): `resume` names another chat's
+/// session to fork natively (Claude Code `--fork-session`, Codex
+/// `thread/fork`) rather than continue. Set only by the host engine for a
+/// forked chat's first run; harnesses that can't fork ignore it.
+pub const FORK_SESSION_OPTION: &str = "openagentsForkSession";
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunRequest {

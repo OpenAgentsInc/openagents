@@ -740,7 +740,7 @@ mod tests {
     }
 
     #[test]
-    fn archived_side_chats_stay_restorable() {
+    fn archived_old_side_chats_stay_restorable() {
         let mut side = chat("side", true);
         side.parent_chat_id = Some("main".into());
         let chats = vec![chat("main", false), side];

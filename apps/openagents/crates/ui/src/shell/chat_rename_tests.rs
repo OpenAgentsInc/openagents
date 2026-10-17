@@ -126,7 +126,6 @@ fn double_click_edits_a_sidebar_title_in_place(cx: &mut TestAppContext) {
     let input = shell.read_with(cx, |shell, _| {
         let rename = shell.chat_rename.as_ref().unwrap();
         assert_eq!(rename.chat_id, "older");
-        assert_eq!(rename.surface, ChatRenameSurface::Sidebar);
         rename.input.clone()
     });
     cx.update(|window, cx| {

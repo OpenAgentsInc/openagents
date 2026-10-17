@@ -302,6 +302,12 @@ impl ClaudeHarness {
         cmd.args(Self::launch_args(request));
         if let Some(resume) = &request.resume {
             cmd.arg(format!("--resume={resume}"));
+            if request
+                .model_options
+                .contains_key(openagents_proto::FORK_SESSION_OPTION)
+            {
+                cmd.arg("--fork-session");
+            }
         }
         if !request.cwd.is_empty() {
             cmd.current_dir(&request.cwd);
@@ -1631,5 +1637,40 @@ mod custom_agent_tests {
                 .any(|a| a[0] == "--append-system-prompt" && a[1] == "Find correctness defects")
         );
         assert!(!args.iter().any(|a| a == "--system-prompt"));
+    }
+}
+
+#[cfg(all(test, unix))]
+mod fork_session_tests {
+    use super::*;
+
+    fn args(request: &RunRequest) -> Vec<String> {
+        let cmd = ClaudeHarness::new().build_command(&PathBuf::from("claude"), request);
+        cmd.as_std()
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    /// A forked chat's first run forks the source's session (#11963); a
+    /// plain resume continues its own.
+    #[test]
+    fn a_forked_chat_resumes_the_source_session_as_a_fork() {
+        let mut request: RunRequest = serde_json::from_value(serde_json::json!({
+            "prompt":"Continue", "cwd":"/workspace", "model":null, "reasoning":null,
+            "resume":"source-session", "sandbox":"workspace-write"
+        }))
+        .unwrap();
+        let resumed = args(&request);
+        assert!(resumed.iter().any(|a| a == "--resume=source-session"));
+        assert!(!resumed.iter().any(|a| a == "--fork-session"));
+        request
+            .model_options
+            .insert(openagents_proto::FORK_SESSION_OPTION.into(), true.into());
+        let forked = args(&request);
+        assert!(forked.iter().any(|a| a == "--resume=source-session"));
+        assert!(forked.iter().any(|a| a == "--fork-session"));
+        request.resume = None;
+        assert!(!args(&request).iter().any(|a| a == "--fork-session"));
     }
 }

@@ -598,10 +598,8 @@ enum MutateParams {
         /// Cwd override (isolated-worktree path); default = the space's folder.
         #[serde(default)]
         cwd: Option<String>,
-        /// The chat whose agent is creating this one (OpenAgents MCP); recorded
-        /// on the row as `parentChatId` for orchestration trees.
-        #[serde(default)]
-        parent_chat_id: Option<String>,
+        // Older builds also send `parentChatId` for side chats. It is
+        // ignored: every created chat is standalone (#11961).
     },
     /// Create a space (device + folder pair). Idempotent by id; a live
     /// duplicate `(deviceId, path)` no-ops. `gitDetected` is seeded from the
@@ -1230,23 +1228,17 @@ impl EngineRpc {
                 config,
                 branch,
                 cwd,
-                parent_chat_id,
             } => {
                 let continuation = config
                     .as_ref()
                     .is_some_and(|c| c.model_options.contains_key(chat_home::REQUEST_OPTION));
-                // A voice orchestrator is hidden, so the chats it creates are
-                // the user's top-level sessions rather than its side chats.
-                let parent_chat_id = parent_chat_id
-                    .filter(|parent| !openagents_proto::voice::is_orchestrator_chat(parent));
                 self.workspace
-                    .create_chat_with_parent(
+                    .create_chat(
                         &chat_id,
                         space_id.as_deref(),
                         device_id.as_deref(),
                         config,
                         cwd,
-                        parent_chat_id,
                     )
                     .map_err(failed)?;
                 if let Some(branch) = branch.as_deref().filter(|b| !b.is_empty()) {
@@ -1508,7 +1500,7 @@ fn forwardable(method: &str) -> bool {
     }
     matches!(
         method,
-        methods::FORK_SIDE_CHAT
+        methods::FORK_CHAT
             | methods::CONTINUE_CHAT
             | methods::PREPARE_CONTINUATION
             | methods::LIST_HARNESSES
@@ -2058,127 +2050,8 @@ impl RpcService for EngineRpc {
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
                 RpcReply::value(&serde_json::json!({ "outcome": outcome }))
             }
-            methods::FORK_SIDE_CHAT => {
-                #[derive(Deserialize)]
-                #[serde(rename_all = "camelCase")]
-                struct ForkParams {
-                    chat_id: String,
-                    source_chat_id: String,
-                    /// Where the fork hangs in the tree. Defaults to the
-                    /// source; a side chat's own fork button passes the
-                    /// side chat's parent so the copy lists as a sibling.
-                    #[serde(default)]
-                    parent_chat_id: Option<String>,
-                }
-                let p: ForkParams = parse_params(params)?;
-                let parent_chat_id = p
-                    .parent_chat_id
-                    .clone()
-                    .filter(|id| !id.trim().is_empty())
-                    .unwrap_or_else(|| p.source_chat_id.clone());
-                let failed = |e: crate::EngineError| RpcError::Failed(e.to_string());
-                let source = self
-                    .workspace
-                    .chat(&p.source_chat_id)
-                    .map_err(failed)?
-                    .ok_or_else(|| RpcError::Failed("Source chat no longer exists".into()))?;
-                if source.device_id != self.doc_host.device_id() {
-                    return Err(RpcError::Failed(
-                        "Fork must be created on the source device".into(),
-                    ));
-                }
-                if let Some(existing) = self
-                    .workspace
-                    .chat(&p.chat_id)
-                    .map_err(|e| RpcError::Failed(e.to_string()))?
-                {
-                    if existing.parent_chat_id.as_deref() == Some(parent_chat_id.as_str()) {
-                        return RpcReply::value(&existing);
-                    }
-                    return Err(RpcError::Failed("Chat id already exists".into()));
-                }
-                let source_doc = self.doc_host.open(&p.source_chat_id).map_err(failed)?;
-                let entries = source_doc
-                    .doc()
-                    .read_entries()
-                    .map_err(|e| RpcError::Failed(e.to_string()))?;
-                let boundary = entries
-                    .iter()
-                    .rposition(|entry| {
-                        entry.role == openagents_doc::MessageRole::Assistant
-                            && entry.status == Some(openagents_doc::MessageStatus::Complete)
-                    })
-                    .ok_or_else(|| {
-                        RpcError::Failed(
-                            "Wait for a completed response before starting a side chat".into(),
-                        )
-                    })?;
-                let mut chat = source.clone();
-                chat.id = p.chat_id;
-                chat.parent_chat_id = Some(parent_chat_id);
-                chat.title = None; // First side-chat turn receives its own generated title.
-                chat.archived = false;
-                chat.created_at = chrono::Utc::now();
-                chat.last_message_at = None;
-                chat.last_message_preview = None;
-                chat.last_seen_at = None;
-                chat.harness_session_id = None;
-                chat.harness_session_cwd = None;
-                chat.room_gen = Some(2);
-                // Missing rows open on chat2. Persist history before publishing
-                // the registry row so a crash cannot leave a discoverable empty fork.
-                let target = self.doc_host.open(&chat.id).map_err(failed)?;
-                let existing = target
-                    .doc()
-                    .read_entries()
-                    .map_err(|e| RpcError::Failed(e.to_string()))?;
-                for entry in entries[..=boundary]
-                    .iter()
-                    .filter(|entry| !existing.iter().any(|e| e.id == entry.id))
-                {
-                    let mut entry = entry.clone();
-                    // Historical approvals belong to the source runtime; they
-                    // must never block or send answers from the new composer.
-                    for part in &mut entry.parts {
-                        if let openagents_doc::MessagePart::Input { resolved, .. } = part {
-                            *resolved = true;
-                        }
-                    }
-                    target
-                        .doc()
-                        .push_message(&entry)
-                        .map_err(|e| RpcError::Failed(e.to_string()))?;
-                }
-                // The seam: everything above came from the source. Its own
-                // entry (system role, complete) so the copied history and the
-                // fork's first turn never share a row.
-                let marker_id = format!("fork:{}", chat.id);
-                if !existing.iter().any(|e| e.id == marker_id) {
-                    let source_title = source
-                        .title
-                        .clone()
-                        .or_else(|| source.last_message_preview.clone())
-                        .unwrap_or_else(|| "New session".into());
-                    target
-                        .doc()
-                        .push_message(&openagents_doc::SessionMessageEntry {
-                            duration_ms: None,
-                            id: marker_id.clone(),
-                            role: openagents_doc::MessageRole::System,
-                            parts: vec![openagents_doc::MessagePart::Fork {
-                                id: marker_id,
-                                source_chat_id: source.id.clone(),
-                                source_title,
-                            }],
-                            created_at: chrono::Utc::now().timestamp_millis(),
-                            device_id: self.doc_host.device_id().to_owned(),
-                            status: Some(openagents_doc::MessageStatus::Complete),
-                            continuation_of: None,
-                        })
-                        .map_err(|e| RpcError::Failed(e.to_string()))?;
-                }
-                self.doc_host.persist_fork(&target).map_err(failed)?;
-                self.workspace.import_chat_row(&chat).map_err(failed)?;
+            methods::FORK_CHAT => {
+                let chat = crate::chat_fork::fork(&self.workspace, &self.doc_host, parse_params(params)?)?;
                 RpcReply::value(&chat)
             }
             methods::FOCUS_CHAT => {
@@ -3923,7 +3796,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn chats_created_by_a_voice_orchestrator_are_top_level() {
+    async fn created_chats_are_standalone_even_with_an_older_parent_field() {
         let temp = tempfile::tempdir().unwrap();
         let core = crate::EngineCore::assemble_with_profile(
             crate::EngineProfile::local(temp.path()).unwrap(),
@@ -3934,10 +3807,7 @@ mod tests {
         .unwrap();
         let rpc = core.rpc_service();
         let orchestrator = format!("{}1", openagents_proto::voice::ORCHESTRATOR_CHAT_PREFIX);
-        for (chat, parent, expected) in [
-            ("worker", orchestrator.as_str(), None),
-            ("side", "ordinary", Some("ordinary")),
-        ] {
+        for (chat, parent) in [("worker", orchestrator.as_str()), ("side", "ordinary")] {
             rpc.handle(
                 methods::MUTATE,
                 serde_json::json!({"op":"createChat", "chatId":chat,
@@ -3947,7 +3817,8 @@ mod tests {
             .await
             .unwrap();
             let row = core.workspace.chat(chat).unwrap().unwrap();
-            assert_eq!(row.parent_chat_id.as_deref(), expected);
+            assert_eq!(row.parent_chat_id, None);
+            assert!(row.is_top_level());
         }
         core.sessions.shutdown().await;
     }

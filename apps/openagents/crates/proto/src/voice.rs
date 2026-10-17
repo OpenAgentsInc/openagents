@@ -254,7 +254,8 @@ mod tests {
         assert!(!chat.is_top_level());
         chat.id = "ordinary".into();
         assert!(chat.is_top_level());
+        // A side chat from an older build lists as an ordinary chat.
         chat.parent_chat_id = Some("parent".into());
-        assert!(!chat.is_top_level());
+        assert!(chat.is_top_level());
     }
 }

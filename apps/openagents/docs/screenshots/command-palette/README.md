@@ -33,8 +33,8 @@ file).
 - Threads are ranked in the UI (`crates/ui/src/shell/thread_search.rs`): every
   query word must match the title (weight 100), project (40), branch (30),
   device or pull request (20); a match starting a word earns half its weight
-  again; archived threads score half; ties go to recent activity. Side chats
-  and subagent workers never appear.
+  again; archived threads score half; ties go to recent activity. Subagent
+  workers never appear.
 - Files and In Files query the focused chat's host (`SearchWorkspaceFiles` at
   once, `SearchWorkspaceContent` after an 80 ms pause) once the query has two
   characters. Their headers read "Searching…" while a request runs and

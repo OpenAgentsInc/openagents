@@ -938,20 +938,6 @@ impl WorkspaceHost {
         config: Option<ChatConfig>,
         cwd: Option<String>,
     ) -> Result<(), EngineError> {
-        self.create_chat_with_parent(chat_id, space_id, device_id, config, cwd, None)
-    }
-
-    /// [`create_chat`](Self::create_chat) recording the creating chat
-    /// (`parentChatId`) — the OpenAgents MCP's orchestration link.
-    pub fn create_chat_with_parent(
-        &self,
-        chat_id: &str,
-        space_id: Option<&str>,
-        device_id: Option<&str>,
-        config: Option<ChatConfig>,
-        cwd: Option<String>,
-        parent_chat_id: Option<String>,
-    ) -> Result<(), EngineError> {
         if self.read(|doc| doc.chat(chat_id))?.is_some() {
             return Ok(()); // idempotent: optimistic client retries never duplicate
         }
@@ -1006,7 +992,7 @@ impl WorkspaceHost {
                 harness_session_cwd: None,
                 space_id: space.as_ref().map(|s| s.id.clone()),
                 last_seen_at: None,
-                parent_chat_id: parent_chat_id.filter(|p| !p.trim().is_empty()),
+                parent_chat_id: None,
             })
         })?;
         Ok(())

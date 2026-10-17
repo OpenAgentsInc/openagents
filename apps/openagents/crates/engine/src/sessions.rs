@@ -174,7 +174,7 @@ struct RunHandle {
     /// can never silently evaporate from a transcript that shows it as sent.
     routed_steers: Arc<Mutex<std::collections::VecDeque<RoutedSteer>>>,
     /// This runtime's provider session holds the fork's copied history (a
-    /// side chat's bootstrap went out on its run or on one of its steers).
+    /// fork's bootstrap went out on its run or on one of its steers).
     fork_history_sent: Arc<std::sync::atomic::AtomicBool>,
     /// The user stopped this runtime: it is being torn down and takes no
     /// more prompts. Flipped under the ledger lock, so every accepted steer
@@ -584,6 +584,10 @@ impl SessionsEngine {
         idle: bool,
     ) -> Result<String, EngineError> {
         let _admitted = keepers::admit(&self.inner)?;
+        // Only the host decides a native fork, below.
+        request
+            .model_options
+            .remove(openagents_proto::FORK_SESSION_OPTION);
         if request.model_options.contains_key("openagentsAssignment") {
             let host = self.inner.doc_host().ok_or_else(|| {
                 EngineError::Other("This computer is not ready for custom agents.".into())
@@ -766,6 +770,21 @@ impl SessionsEngine {
             request.resume = self.inner.resume_for(chat_id, &request.cwd);
             resume_injected = request.resume.is_some();
         }
+        // A fork's first run forks its source's session natively (#11963).
+        if request.resume.is_none()
+            && let Some(session) = crate::chat_fork::native_source(
+                handle.doc(),
+                harness_id,
+                &request.cwd,
+                startup_retry,
+            )
+        {
+            request.resume = Some(session);
+            request
+                .model_options
+                .insert(openagents_proto::FORK_SESSION_OPTION.into(), true.into());
+            resume_injected = true;
+        }
         lock(&self.inner.last_requests).insert(chat_id.to_string(), request.clone());
 
         let run_id = new_id();
@@ -907,7 +926,6 @@ impl SessionsEngine {
             .filter(|id| !id.is_empty());
         let handle = self.doc_handle(chat_id).ok()?;
         self.inner.fork_history_prompt(
-            chat_id,
             handle.doc(),
             harness_id,
             prompt,
@@ -1752,7 +1770,7 @@ impl Inner {
 
 // ── run task ────────────────────────────────────────────────────────────────
 
-/// Which provider session a side chat's prompt goes to.
+/// Which provider session a fork's prompt goes to.
 #[derive(Clone, Copy)]
 enum ProviderSession<'a> {
     /// A new provider session: it holds none of the transcript.
@@ -1770,14 +1788,13 @@ fn note_fork_history_session(doc: &SessionDoc, carried: bool, session_id: &str) 
 }
 
 impl Inner {
-    /// `prompt` with the conversation a side chat's provider session lacks in
+    /// `prompt` with the conversation a fork's provider session lacks in
     /// front of it, or `None` when it lacks nothing. A fresh session gets the
     /// whole transcript (`current` excluded); a continued one only the fork's
     /// copied history before the seam, until that went out to that session.
     /// Native commands are never wrapped: providers route a leading `/name`.
     fn fork_history_prompt(
         &self,
-        chat_id: &str,
         doc: &SessionDoc,
         harness_id: HarnessId,
         prompt: &str,
@@ -1800,12 +1817,7 @@ impl Inner {
                 matches!(provider, ProviderSession::Fresh),
             );
         }
-        if native_command(prompt, harness_id)
-            || !self
-                .workspace()
-                .and_then(|ws| ws.chat(chat_id).ok().flatten())
-                .is_some_and(|chat| chat.parent_chat_id.is_some())
-        {
+        if native_command(prompt, harness_id) {
             return None;
         }
         let entries: Vec<_> = doc
@@ -1814,6 +1826,15 @@ impl Inner {
             .into_iter()
             .filter(|entry| Some(entry.id.as_str()) != current)
             .collect();
+        // Only a fork owes copied history: its transcript has the seam.
+        if !entries.iter().any(|entry| {
+            entry
+                .parts
+                .iter()
+                .any(|part| matches!(part, openagents_doc::MessagePart::Fork { .. }))
+        }) {
+            return None;
+        }
         let end = match provider {
             ProviderSession::Fresh => entries.len(),
             ProviderSession::Continued(session) => {
@@ -2252,7 +2273,7 @@ async fn drive_run(
         let _ = doc.clear_context_usage();
     }
     // The host stamps its own MCP server onto every run it drives, so the
-    // agent can spawn and talk to side chats through the engine it runs in.
+    // agent can create and talk to chats through the engine it runs in.
     if request.mcp.is_none() {
         request.mcp = inner.openagents_mcp(&chat_id);
     }
@@ -2263,16 +2284,21 @@ async fn drive_run(
         resume: None,
         ..request.clone()
     });
-    // A side chat owns a fresh provider session. Bootstrap it from the frozen
-    // conversation, never resume (and mutate) the parent's provider session.
-    let mut carried_history = false;
+    // A fork owns a fresh provider session. Bootstrap it from the frozen
+    // conversation, never resume (and mutate) the source's provider session.
+    // A native fork's provider session already holds that history.
+    let native_fork = request.resume.is_some()
+        && request
+            .model_options
+            .contains_key(openagents_proto::FORK_SESSION_OPTION);
+    let mut carried_history = native_fork;
     let provider = match request.resume.as_deref() {
         None => ProviderSession::Fresh,
         resumed => ProviderSession::Continued(resumed),
     };
     if !resume_state.idle
+        && !native_fork
         && let Some(prompt) = inner.fork_history_prompt(
-            &chat_id,
             &doc,
             harness_id,
             &request.prompt,
@@ -3242,6 +3268,9 @@ async fn drive_run(
                 // session) scopes the stored id, not the request's.
                 inner.remember_harness_session(&chat_id, session_id, cwd);
                 note_fork_history_session(&doc, carried_history, session_id);
+                if native_fork {
+                    let _ = openagents_doc::native_fork::clear(&doc);
+                }
             }
             AgentEvent::Done {
                 session_id: Some(session_id),

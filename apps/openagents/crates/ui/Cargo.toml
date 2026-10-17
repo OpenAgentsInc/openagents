@@ -19,6 +19,7 @@ browser-fixture = ["gpui/bench"]
 windows-render-fixture = []
 appshots-fixture = ["gpui_platform/test-support"]
 pull-request-fixture = ["gpui_platform/test-support"]
+fork-chat-fixture = ["gpui_platform/test-support"]
 resource-profile = ["gpui/bench", "gpui_platform/test-support"]
 
 [[example]]
@@ -54,8 +55,8 @@ name = "tool-images-fixture"
 required-features = ["appshots-fixture"]
 
 [[example]]
-name = "pull-request-fixture"
-required-features = ["pull-request-fixture"]
+name = "fork-chat-fixture"
+required-features = ["fork-chat-fixture"]
 
 [[example]]
 name = "new-project-fixture"

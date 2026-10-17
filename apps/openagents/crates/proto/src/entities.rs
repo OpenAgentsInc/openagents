@@ -235,21 +235,20 @@ pub struct Chat {
     /// dials the room the registry names. Per-chat and instantly revertible.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub room_gen: Option<u32>,
-    /// The chat this one hangs off: the conversation a side chat was forked
-    /// from, or the chat whose agent spawned this one through the OpenAgents MCP
-    /// server. Children stay out of the main sidebar and list under their
-    /// parent instead. Absent for top-level chats; a dangling id (parent
-    /// deleted) is tolerated rather than cascaded.
+    /// The chat an older build's side chat hung off (a side-chat fork, or
+    /// a chat an agent spawned with MCP `kind: side`). Kept as stored data
+    /// only: side chats are gone (#11961), so it no longer hides a chat and
+    /// nothing new writes it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_chat_id: Option<String>,
 }
 
 impl Chat {
-    /// A session the user sees in chat lists: neither another chat's worker
-    /// (`parent_chat_id`) nor a hidden voice orchestrator.
+    /// A session the user sees in chat lists: not a hidden voice
+    /// orchestrator or a pending move. An older side chat
+    /// (`parent_chat_id`) lists like any other chat.
     pub fn is_top_level(&self) -> bool {
-        self.parent_chat_id.is_none()
-            && !crate::voice::is_orchestrator_chat(&self.id)
+        !crate::voice::is_orchestrator_chat(&self.id)
             && !self
                 .config
                 .as_ref()

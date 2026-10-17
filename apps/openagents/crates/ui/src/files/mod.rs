@@ -260,18 +260,6 @@ pub enum FilesEvent {
         title: String,
         frozen: bool,
     },
-    /// A footer row: open this side chat (by id) in the right pane.
-    OpenChildChat(String),
-    /// A footer row's double-click: edit this side chat's title in place.
-    RenameChildChat(String),
-    ChildChatContextMenu {
-        chat_id: String,
-        position: Point<Pixels>,
-    },
-    /// The Chats header's "+": start a fresh side chat of the active chat.
-    NewChildChat,
-    /// The Chats header's fork: fork the active chat into a side chat.
-    ForkChat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

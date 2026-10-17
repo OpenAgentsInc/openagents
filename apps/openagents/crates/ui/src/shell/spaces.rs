@@ -2798,9 +2798,6 @@ impl Shell {
         }
         self.close_spaces_menu(cx);
         self.schedule_save(cx);
-        if let Some(page) = self.pull_requests_page.as_ref() {
-            page.update(cx, |page, cx| page.on_project_scope_changed(cx));
-        }
         cx.notify();
     }
 

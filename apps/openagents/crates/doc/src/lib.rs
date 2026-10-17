@@ -10,6 +10,7 @@
 
 pub mod commands;
 pub mod continuation;
+pub mod native_fork;
 pub mod constants;
 pub mod parts;
 pub mod queue;

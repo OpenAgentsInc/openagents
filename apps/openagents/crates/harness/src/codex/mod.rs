@@ -1287,9 +1287,17 @@ async fn run_session(session: Session) {
                 }
             }
         }
+        let fork = request
+            .model_options
+            .contains_key(openagents_proto::FORK_SESSION_OPTION);
         let thread = if let Some(resume) = &request.resume {
             let mut p = start_params.clone();
             p.insert("threadId".into(), Value::String(resume.clone()));
+            if fork {
+                // A forked chat's first run (#11963): a failure is returned,
+                // so the host retries with the copied history in the prompt.
+                client.request("thread/fork", Value::Object(p)).await?
+            } else {
             match client.request("thread/resume", Value::Object(p)).await {
                 Ok(thread) => thread,
                 // A missing/foreign rollout falls back to a fresh thread.
@@ -1305,6 +1313,7 @@ async fn run_session(session: Session) {
                         .request("thread/start", Value::Object(start_params.clone()))
                         .await?
                 }
+            }
             }
         } else {
             client

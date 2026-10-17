@@ -221,7 +221,6 @@ impl PullRequestDetailPage {
                 Err(error) => page.comment_error = Some(error),
             }
             page.save_draft(cx);
-            page.refresh_from_board(cx);
             cx.notify();
         }));
     }
