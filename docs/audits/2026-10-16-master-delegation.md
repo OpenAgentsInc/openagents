@@ -83,9 +83,9 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 1: harness and chats (critical path)
 
-**Taken 2026-10-17 04:25 CDT** by Codex working #11896 in `~/work/openagents-labs-finish`. #11823 stays with its owner; #11871 stays claimed pending #11948.
+**Done 2026-10-17 04:27 CDT** by Codex in `~/work/openagents-labs-finish`: #11896 is code-complete and closing after its six children closed. #11823 stays with its owner; #11871 stays claimed pending #11948.
 
-**Claimed above:** #11896, the completed chats umbrella awaiting its closure audit. #11823 stays with its existing owner.
+**#11896 source complete:** its six children are closed, their checked source is on `main`, and cross-device runs are queued below.
 
 **Taken 2026-10-17 00:48 CDT** by a Claude Code subagent working #11823 in ~/work/openagents-11823.
 
@@ -354,8 +354,8 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ### Chats, sessions, and moving agents (#11896 epic)
 
-**#11896 Epic: OpenAgents chats are normal, resumable chats.** Lane 1.
-- **Status:** #11892, #11893, #11894, #11895, #11897, and #11898 are code-complete.
+**#11896 Epic: OpenAgents chats are normal, resumable chats.** Lane 1, code-complete.
+- **Status:** all six children are closed. Saved transcripts (`cf2ff29e53`), cloud replies (`362d0f4f01`), the shared terminal harness and Loro publisher (`f3267187d5`, `0b84201f39`), the web session index (`f00ff8f121`, `59251e460b`), and linked home changes (`cc9f2bc14c`) are on `main` with their own checks recorded. The UI follow-up #11958 passed all 1,786 tests serially.
 - **After-close:** lane 0 runs the deployed round trip and device checks below.
 
 **#11894 Continue a terminal or phone chat on this computer, as a real session.** Lane 1, code-complete.
@@ -480,6 +480,7 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 
 | Issue (closed or closing) | Check | Status |
 | --- | --- | --- |
+| #11896 | Complete the #11894 terminal-to-native and #11898 linked-home checks, plus #11897 native publisher timing, using dedicated accounts and disposable hosts. Keep the web transcript off until the chat or project opts in, then remove the fixtures. | Child source and checks complete; lane 0 owns the listed cross-device checks. |
 | #11898 | Deploy the server changes before distributing the updated native apps. With the dedicated account and disposable hosts, continue a web chat on a Mac, then back on OpenAgents; check one latest conversation row, ordered links, read-only earlier parts, bounded context, and transcript opt-in on web, desktop, and phone. Repeat with another paired computer and a cloud computer, interrupted requests, host restart, and account switching; delete all fixtures. | Source checks passed; #11958 repaired the broader UI suite (1,786 passed serially). Dedicated-account and device checks: to do. |
 | #11817 | Deploy the new host and computer service. Configure a disposable Unix host, scoped test-account grant, and explicit enrolled target. Run the public attach, command retry/reconnect/cancel, relative-file, revocation, unsupported-control, and detach flow; verify files and unrelated grants survive. Repeat the Linux-specific command checks on Linux. | source checks passed; deploy and dedicated-account run to do |
 | #11911 | Deploy a host advertising `project-sharing-v2` and the matching mobile build. With two dedicated test accounts and disposable projects, check owner approval, read-only and edit/command permissions, wrong-device and cross-project denial, retry/reconnect, expiry, scoped revocation, and account switching. Confirm unrelated chats, files, terminals, credentials, and account controls remain unavailable. Physical device and accessibility steps are in `NEEDS_OWNER.md`. | Source checks passed: access 124, host 118, sharing 12, mobile 58; deploy, live, and device checks to do |
