@@ -52,3 +52,25 @@ account/project access; the existing account access cache expires within
 The legacy `/threads` offset list, project-filtered `/threads` cursor list,
 and newest-200 `/threads/{id}` preview remain distinct and unchanged.
 See [the generated OpenAPI](openapi.app.json) for implemented history schemas.
+
+## Computer sessions
+
+Desktop and phone sessions appear beside the account's chats (#11897). The
+first page of `GET /v1/history` carries them in `sessions`, newest first,
+each with `source: "session"` and its `computer:<device>` home. They never
+join `data` or its cursor. `GET /v1/history/sessions` lists them alone, and
+`?project=` lists a shared project's rows from every member. In Rust, read
+`HistoryPage::sessions` or call `openagents::sessions::list`.
+
+A row is a summary: title, computer, project, folder, status, last
+activity, and recap. It holds no transcript. A host publishes its current
+rows with `openagents::sessions::publish`, which replaces the rows that
+computer published before and marks it online for 90 seconds. Removing the
+computer from the account removes its rows.
+
+The transcript is off by default. `set_transcript` turns it on for one chat
+and `set_project_transcripts` for a project. While it is on, the publish
+answer names the chat, and the host uploads a read-only copy with
+`upload_transcript`; the upload is refused with `transcript_off` otherwise.
+Turning it off deletes the copy. A shared project's members see a copy only
+when the project's choice is on.

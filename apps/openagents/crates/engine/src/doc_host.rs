@@ -19,6 +19,7 @@
 mod agent_lab;
 mod custom_agents;
 mod continuations;
+mod session_index;
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;

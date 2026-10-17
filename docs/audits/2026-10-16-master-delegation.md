@@ -427,6 +427,7 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 | #11881 | Register `game_lab::kind::Game` and `ship_lab::kind::Ship` in `labs_api.rs` after #11877 lands, host `/labs/game/{doc}`, and install `game-lab playtest-job` as the `playtest` handler. Then, with the dedicated test account on production: a Game Lab edit plays in the web card and appears through `/v1/history`, and a Ship Lab refusal and an accepted edit. Clean up after. | to do |
 | #11815 | Deploy storage allowances and account cleanup through lane 0; collect complete private storage inventories, including recoverable versions, and qualify limits/cleanup on synthetic fixtures. | Source checks passed 71/0 on rebased main, including five storage/cleanup cases. Usage read passed with `acct_83d16a35955ef908`: HTTP 200, pricing off, no charge; the earlier account remains outside the rollout. [Evidence](../sdk/computers-usage-evidence.json). Storage deployment and live cleanup: to do. |
 | #11928 | On the next production deploy, a candidate with no traffic does not resume setups or delete homes. | to do |
+| #11897 | Deploy web, and build the desktop app, from `main`. With the dedicated test account, a desktop session appears on openagents.com within about 30 seconds as a summary row; its transcript isn't on the server until opt-in (`openagents::sessions::set_transcript`), then renders on the summary page; a second account sees nothing; removing the computer removes its rows. Clean up the test computer and chats afterward. | to do |
 
 ## Shared rules
 

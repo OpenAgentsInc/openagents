@@ -110,6 +110,14 @@ feature keeps forms independent of the app's separate syntax-engine version.
   metadata recovery preserve one destination across retries. The account fixture
   attaches an isolated engine through the existing RPC and app-state watchers.
 
+- [OpenAgents #11897](https://github.com/OpenAgentsInc/openagents/issues/11897):
+  `doc_host::session_index` publishes this computer's top-level chats to the
+  account's chat list on openagents.com through `openagents::sessions`, as
+  summary rows only (title, folder, status, last activity). It runs in the
+  signed-in account loop in `doc_host::custom_agents` and republishes every
+  30 seconds. It uploads a read-only transcript copy only for the chats the
+  service reports as opted in.
+
 ## Complete OpenAgents names (#11899)
 
 Renamed crates, the desktop binary, iOS targets and UniFFI modules, packaging,
