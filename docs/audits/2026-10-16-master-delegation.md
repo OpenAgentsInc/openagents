@@ -156,7 +156,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 9: CLI, Agent Lab, and web fixes
 
-**Taken 2026-10-16 22:47 CDT** by Codex (Grok 4.7) working #11934, #11929, #11925, #11727 in `~/work/openagents-lane9b`.
+**Released 2026-10-17 00:13 CDT** by Codex (Grok 4.7). #11934, #11929, #11925, and #11727 are closed on code. After-close checks remain for the #11934 deploy and Foreman live check, the #11925 controlled deploy, and the #11727 named-sale test-mode check. The `~/work/openagents-lane9b` worktree is removed.
 
 The website agents door uses the shared `place` (`1708f44f49`). Deploy and the Foreman live check stay in After-close checks. #11929 is closed on code (`7fb459a5a5`). #11925 is closed on code (`534ecb5c67`). The controlled deploy check stays in After-close checks. #11727 is closed on code (`ed4c8d05c4`). The named-sale test-mode check stays in After-close checks.
 
