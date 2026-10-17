@@ -287,6 +287,7 @@ impl DocHost {
                 let agent = candidate.id.clone();
                 let revision = candidate.revision;
                 let project_id = run.experiment.project.clone();
+                let no_files = run.experiment.no_project_files;
                 let deadline_ms = run.deadline_ms;
                 let Some(version) = registry
                     .resolve(harness)
@@ -307,8 +308,8 @@ impl DocHost {
      std::fs::create_dir_all(&folder)?;
      #[cfg(unix)]{use std::os::unix::fs::PermissionsExt;std::fs::set_permissions(&folder,std::fs::Permissions::from_mode(0o700))?;}
      let work=folder.join("work");if work.exists(){std::fs::remove_dir_all(&work)?}
-     let source_sha256=copy_project(&source,&work).map_err(|_|error("Use a project under 64 MB with no links or restricted training data."))?;
-     let evidence=Evidence{project:project_id,source_sha256,context_sha256:hash(&context),runtime_version:version,context:(!context.is_empty()).then_some(context)};
+     let source_sha256=prepare_trial(&source,&work,no_files).map_err(|_|error(if no_files{"Couldn't prepare the test folder."}else{"Use a project under 64 MB with no links or restricted training data."}))?;
+     let evidence=Evidence{project:project_id,source_sha256,context_sha256:hash(&context),runtime_version:version,context:(!context.is_empty()).then_some(context),project_files:!no_files};
      let marker=Marker{run:run_id,assignment,agent,revision,task_sha256:hash(&full_task),evidence,deadline_ms};
      let bytes=serde_json::to_vec(&marker).map_err(|_|error("Couldn't save the test inputs."))?;
      let pending=folder.join("ready.new");std::fs::write(&pending,bytes)?;std::fs::rename(pending,path)?;Ok(marker)
@@ -378,6 +379,19 @@ impl DocHost {
             .map_err(EngineError::AgentService)?;
         Ok(())
     }
+}
+/// Copy the project, or leave an empty folder when the experiment chose no project files.
+fn prepare_trial(source: &Path, work: &Path, no_project_files: bool) -> io::Result<String> {
+    if no_project_files {
+        std::fs::create_dir_all(work)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(work, std::fs::Permissions::from_mode(0o700))?;
+        }
+        return Ok(empty_project_source());
+    }
+    copy_project(source, work)
 }
 /// Copy regular project files only, with deterministic evidence and finite traversal.
 fn copy_project(source: &Path, target: &Path) -> io::Result<String> {
@@ -520,6 +534,26 @@ mod tests {
             "original"
         );
         assert!(!dst.path().join("one/.env").exists());
+    }
+    #[test]
+    fn no_project_files_leaves_an_empty_folder() {
+        let src = tempfile::tempdir().unwrap();
+        std::fs::write(src.path().join("main.rs"), "secret").unwrap();
+        std::fs::write(src.path().join(".no-training"), "").unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        let work = dst.path().join("work");
+        let hash = prepare_trial(src.path(), &work, true).unwrap();
+        assert_eq!(hash, empty_project_source());
+        assert!(work.is_dir());
+        assert!(std::fs::read_dir(&work).unwrap().next().is_none());
+        assert_eq!(
+            std::fs::read_to_string(src.path().join("main.rs")).unwrap(),
+            "secret"
+        );
+        let empty = tempfile::tempdir().unwrap();
+        let copied = copy_project(empty.path(), &dst.path().join("copied")).unwrap();
+        assert_eq!(copied, empty_project_source());
+        assert!(prepare_trial(src.path(), &dst.path().join("refused"), false).is_err());
     }
     #[test]
     fn restricted_inputs_refused() {

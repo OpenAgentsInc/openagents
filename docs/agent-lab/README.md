@@ -286,7 +286,9 @@ native controller saves uncertain requests privately before sending and offers
 an explicit retry with the same request identity.
 
 A supporting desktop host copies regular project files into its own Lab trial
-directory before creating an ordinary agent assignment. Copies are limited to
+directory before creating an ordinary agent assignment. An experiment can
+choose no project files. The trial then runs in an empty folder, and the
+report says the agent had no project files. Copies are limited to
 64 MiB, 5,000 files, and 32 directory levels. Links and `.no-training` inputs
 are refused; `.git`, `target`, `node_modules`, `.env*`, private key files, and
 credential directories are excluded. Tests still have the selected runtime's

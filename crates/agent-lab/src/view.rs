@@ -244,6 +244,18 @@ impl Workbench {
                     enabled,
                 ));
             }
+            n.push(button(
+                "project-files",
+                if self.draft.no_project_files {
+                    "✓ No project files"
+                } else {
+                    "No project files"
+                },
+                enabled,
+            ));
+            if self.draft.no_project_files {
+                n.push(text("no-project-files", "Tests run in an empty folder."));
+            }
             if self.draft.draft.spec.runtime == "sdk" {
                 for runner in &h.runners {
                     n.push(button(
@@ -551,6 +563,16 @@ impl Workbench {
                     }
                 ),
             ));
+            if r.experiment.no_project_files
+                || r.trials
+                    .iter()
+                    .any(|t| t.evidence.as_ref().is_some_and(|e| !e.project_files))
+            {
+                n.push(text(
+                    "project-files-report",
+                    "The agent had no project files.",
+                ));
+            }
             if r.candidates.len() == 2 {
                 n.push(text(
                     "comparison",
@@ -760,6 +782,10 @@ impl Workbench {
             }
             "compare-none" => {
                 self.draft.compare = None;
+                self.dirty = true
+            }
+            "project-files" => {
+                self.draft.no_project_files = !self.draft.no_project_files;
                 self.dirty = true
             }
             "repeat-more" => {

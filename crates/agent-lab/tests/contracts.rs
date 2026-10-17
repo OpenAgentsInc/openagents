@@ -2,6 +2,31 @@ use agent_lab::*;
 use lab_kit::{LabKind, Want};
 use serde_json::{Value, json};
 #[test]
+fn older_experiments_still_copy_project_files() {
+    let mut saved = serde_json::to_value(starter()).unwrap();
+    saved.as_object_mut().unwrap().remove("no_project_files");
+    let back: Experiment = serde_json::from_value(saved).unwrap();
+    assert!(!back.no_project_files);
+    let mut chosen = starter();
+    chosen.no_project_files = true;
+    assert!(chosen.validate().is_ok());
+    assert_ne!(chosen.workload(), starter().workload());
+    assert!(templates::foreman().no_project_files);
+    let mut evidence = serde_json::to_value(Evidence {
+        project: "p".into(),
+        source_sha256: "a".repeat(64),
+        context_sha256: "b".repeat(64),
+        runtime_version: "c".repeat(64),
+        context: None,
+        project_files: true,
+    })
+    .unwrap();
+    evidence.as_object_mut().unwrap().remove("project_files");
+    let read: Evidence = serde_json::from_value(evidence).unwrap();
+    assert!(read.project_files);
+    assert_eq!(empty_project_source().len(), 64);
+}
+#[test]
 fn strict_documents_and_bounded_trials() {
     let mut e = starter();
     assert!(e.validate().is_ok());
@@ -240,6 +265,7 @@ fn comparisons_keep_every_trial_and_require_matching_evidence() {
                 context_sha256: "b".repeat(64),
                 runtime_version: format!("{:064x}", i / 2 + 1),
                 context: None,
+                project_files: true,
             }),
             started_ms: Some(1),
             finished_ms: Some(2),
@@ -309,6 +335,57 @@ fn editing_one_reference_preserves_the_others() {
             .instructions
             .contains("Second skill")
     );
+}
+#[cfg(feature = "views")]
+#[test]
+fn no_project_files_is_a_choice_and_the_report_says_so() {
+    use agent_lab::view::Workbench;
+    let mut s = Workbench::new("files".into());
+    s.hosts.push(agent_lab::api::Host {
+        id: "mac".into(),
+        name: "Mac".into(),
+        projects: vec![agent_lab::api::Project {
+            id: "proj".into(),
+            name: "openagents".into(),
+        }],
+        runtimes: vec!["claude-code".into()],
+        runners: vec![],
+        tools: vec![],
+        seen_ms: 1,
+    });
+    s.draft.host = "mac".into();
+    s.action("project-files").unwrap();
+    assert!(s.draft.no_project_files);
+    let form = serde_json::to_string(&s.view()).unwrap();
+    assert!(form.contains("No project files"));
+    assert!(form.contains("Tests run in an empty folder."));
+    let experiment = s.draft.clone();
+    let spec = experiment.draft.spec.clone();
+    let run = Run {
+        id: "f".repeat(64),
+        revision: 1,
+        version: Reference {
+            document: "e".repeat(64),
+            version: 1,
+        },
+        experiment,
+        candidates: vec![agent_contract::AgentDefinition {
+            id: "a".repeat(64),
+            revision: 1,
+            spec,
+            deleted: false,
+        }],
+        trials: vec![],
+        created_ms: 1,
+        deadline_ms: 100,
+        stopping: false,
+        archived: false,
+        host_settled: false,
+    };
+    s.selected_run = Some(run.id.clone());
+    s.runs.push(run);
+    let report = serde_json::to_string(&s.view()).unwrap();
+    assert!(report.contains("The agent had no project files."));
 }
 #[cfg(feature = "views")]
 #[test]

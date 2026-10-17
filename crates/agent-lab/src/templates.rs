@@ -10,6 +10,8 @@ pub const FOREMAN_INSTRUCTIONS: &str = include_str!("templates/foreman.md");
 /// reaches GitHub, the app, and the claim-to-chat join before anyone relies
 /// on it; the two reviewed cases judge the answers people actually ask for.
 /// The host and project stay unchosen: the person picks the computer.
+/// The trial starts with no project files, because Foreman reads GitHub and
+/// the app rather than the checkout.
 pub fn foreman() -> Experiment {
     Experiment {
         title: "Foreman".into(),
@@ -76,5 +78,6 @@ pub fn foreman() -> Experiment {
         project: "choose".into(),
         repetitions: 1,
         max_seconds: 900,
+        no_project_files: true,
     }
 }

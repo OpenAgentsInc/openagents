@@ -190,6 +190,10 @@ pub struct Experiment {
     pub project: String,
     pub repetitions: u32,
     pub max_seconds: u64,
+    /// When true, the trial folder stays empty. The agent does not see the
+    /// project's files, and the report says so.
+    #[serde(default)]
+    pub no_project_files: bool,
 }
 impl Experiment {
     pub fn validate(&self) -> Result<(), Refusal> {
@@ -260,7 +264,7 @@ impl Experiment {
     }
     pub fn workload(&self) -> String {
         lab_kit::digest(
-            &json!({"suite":self.suite,"host":self.host,"project":self.project,"repetitions":self.repetitions,"max_seconds":self.max_seconds,"components":self.draft.components}),
+            &json!({"suite":self.suite,"host":self.host,"project":self.project,"repetitions":self.repetitions,"max_seconds":self.max_seconds,"components":self.draft.components,"no_project_files":self.no_project_files}),
         )
     }
 }
@@ -325,6 +329,16 @@ impl Outcome {
         !matches!(self, Self::Pending | Self::Running)
     }
 }
+fn copied_project_files() -> bool {
+    true
+}
+
+/// SHA-256 of an empty file map (`{}`). A trial with no project files records
+/// this instead of a copy of the checkout.
+pub fn empty_project_source() -> String {
+    lab_kit::digest(&json!({}))
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Evidence {
@@ -333,6 +347,10 @@ pub struct Evidence {
     pub context_sha256: String,
     pub runtime_version: String,
     pub context: Option<String>,
+    /// Whether the trial folder held a copy of the project. Reports saved
+    /// before this field existed did copy the project.
+    #[serde(default = "copied_project_files")]
+    pub project_files: bool,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -444,11 +462,11 @@ impl Run {
             && self.trials.windows(2).all(|p| {
                 p[0].evidence
                     .as_ref()
-                    .map(|e| (&e.source_sha256, &e.context_sha256))
+                    .map(|e| (&e.source_sha256, &e.context_sha256, e.project_files))
                     == p[1]
                         .evidence
                         .as_ref()
-                        .map(|e| (&e.source_sha256, &e.context_sha256))
+                        .map(|e| (&e.source_sha256, &e.context_sha256, e.project_files))
             })
             && (0..2).all(|c| {
                 let versions: BTreeSet<_> = self
@@ -505,6 +523,7 @@ pub fn starter() -> Experiment {
         project: "choose".into(),
         repetitions: 1,
         max_seconds: 300,
+        no_project_files: false,
     }
 }
 pub use lab_kit::{Reference, Version};

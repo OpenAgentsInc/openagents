@@ -550,6 +550,13 @@ async fn promote(
         Err(e) => stored(&e),
     }
 }
+/// A host may report only the project-file choice the experiment recorded.
+/// A trial with no project files names the empty folder, and a copied trial
+/// says the files were there. Neither report is treated as a later copy.
+fn project_copy_matches(experiment: &Experiment, evidence: &Evidence) -> bool {
+    let copied = !experiment.no_project_files;
+    evidence.project_files == copied && (copied || evidence.source_sha256 == empty_project_source())
+}
 async fn host_update(
     State(app): State<App>,
     headers: HeaderMap,
@@ -610,6 +617,7 @@ async fn host_update(
                             != lab_kit::digest(&json!(
                                 evidence.context.as_deref().unwrap_or_default()
                             ))
+                        || !project_copy_matches(&r.experiment, evidence)
                     {
                         return Err(invalid("Check the project copy and runtime."));
                     }
@@ -617,6 +625,7 @@ async fn host_update(
                         t.evidence.as_ref().is_some_and(|e| {
                             e.source_sha256 != evidence.source_sha256
                                 || e.context_sha256 != evidence.context_sha256
+                                || e.project_files != evidence.project_files
                         })
                     }) {
                         return Err(invalid(
@@ -949,6 +958,33 @@ pub(super) async fn hidden_definitions(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_host_cannot_claim_project_files_the_experiment_did_not_copy() {
+        let mut experiment = starter();
+        experiment.no_project_files = true;
+        let mut evidence = Evidence {
+            project: experiment.project.clone(),
+            source_sha256: empty_project_source(),
+            context_sha256: "b".repeat(64),
+            runtime_version: "c".repeat(64),
+            context: None,
+            project_files: false,
+        };
+        assert!(project_copy_matches(&experiment, &evidence));
+        evidence.project_files = true;
+        assert!(!project_copy_matches(&experiment, &evidence));
+        evidence.project_files = false;
+        evidence.source_sha256 = "a".repeat(64);
+        assert!(!project_copy_matches(&experiment, &evidence));
+        experiment.no_project_files = false;
+        evidence.project_files = true;
+        evidence.source_sha256 = "a".repeat(64);
+        assert!(project_copy_matches(&experiment, &evidence));
+        evidence.project_files = false;
+        assert!(!project_copy_matches(&experiment, &evidence));
+    }
+
     #[tokio::test]
     async fn sdk_jobs_replay_isolate_stop_and_report() {
         use axum::response::IntoResponse;
@@ -1154,6 +1190,7 @@ mod tests {
                         context_sha256: lab_kit::digest(&json!("")),
                         runtime_version: "b".repeat(64),
                         context: None,
+                        project_files: true,
                     },
                 },
             });
