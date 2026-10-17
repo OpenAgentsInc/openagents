@@ -28,13 +28,33 @@ fn command_id(id: &str) -> String {
         &id[20..32]
     )
 }
+/// The largest answer the account service accepts in an assignment report.
+const RESULT_BYTES: usize = 16 * 1024;
+/// What an older account service accepts; a refused report is retried at this size.
+const LEGACY_RESULT_BYTES: usize = 4096;
+/// Ends an answer that didn't fit, so a reader knows where the rest is.
+const CUT_NOTE: &str = "\n\n… The full answer is in the OpenAgents app.";
+
+/// `text` within `limit` UTF-8 bytes. A longer text is cut on a character
+/// boundary and ends with [`CUT_NOTE`].
+fn bounded_to(text: &str, limit: usize) -> String {
+    if text.len() <= limit {
+        return text.to_owned();
+    }
+    let room = limit.saturating_sub(CUT_NOTE.len());
+    let mut end = room.min(text.len());
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{CUT_NOTE}", text[..end].trim_end())
+}
 fn bounded(text: &str) -> String {
-    text.chars()
-        .scan(0usize, |size, c| {
-            *size += c.len_utf8();
-            (*size <= 4096).then_some(c)
-        })
-        .collect()
+    bounded_to(text, RESULT_BYTES)
+}
+fn result_too_long_for_legacy(result: &Option<String>) -> bool {
+    result
+        .as_ref()
+        .is_some_and(|t| t.len() > LEGACY_RESULT_BYTES)
 }
 
 impl DocHost {
@@ -270,6 +290,7 @@ impl DocHost {
             .client()
             .agents(lease.session())
             .map_err(|_| error("Sign in again."))?;
+        let result_copy = result.clone();
         let r = agents
             .report_request(
                 self.inner.config.device_id.clone(),
@@ -282,11 +303,36 @@ impl DocHost {
                 a.after_seq,
             )
             .map_err(EngineError::AgentService)?;
-        agents
-            .report(&a.id, &r, &lease.cancel)
-            .await
-            .map_err(EngineError::AgentService)?;
-        Ok(())
+        match agents.report(&a.id, &r, &lease.cancel).await {
+            Ok(_) => Ok(()),
+            // An account service from before the 16 KiB limit refuses a longer
+            // answer as invalid. Retry once with the answer it accepts.
+            Err(openagents_account::openagents::Error::Refused { status: 400, .. })
+                if result_too_long_for_legacy(&result_copy) =>
+            {
+                let short = result_copy
+                    .as_deref()
+                    .map(|t| bounded_to(t, LEGACY_RESULT_BYTES));
+                let r = agents
+                    .report_request(
+                        self.inner.config.device_id.clone(),
+                        a.revision,
+                        state,
+                        short,
+                        a.active_command
+                            .clone()
+                            .or_else(|| a.commands.first().map(|c| c.request_id.clone())),
+                        a.after_seq,
+                    )
+                    .map_err(EngineError::AgentService)?;
+                agents
+                    .report(&a.id, &r, &lease.cancel)
+                    .await
+                    .map(|_| ())
+                    .map_err(EngineError::AgentService)
+            }
+            Err(e) => Err(EngineError::AgentService(e)),
+        }
     }
     async fn receive_custom_assignment(
         &self,
@@ -605,15 +651,19 @@ fn terminal_events<'a>(
     events: impl Iterator<Item = &'a AgentEvent>,
 ) -> (AssignmentState, Option<String>) {
     let mut text = String::new();
+    // Whether part of the current answer didn't fit in `text`.
+    let mut cut = false;
     let mut terminal = None;
     for event in events {
         match event {
             AgentEvent::TextDelta { text: fragment } => {
-                let remaining = 4096 - text.len();
+                let remaining = RESULT_BYTES.saturating_sub(text.len());
+                let before = text.len();
                 text.extend(fragment.chars().scan(0usize, |bytes, ch| {
                     *bytes += ch.len_utf8();
                     (*bytes <= remaining).then_some(ch)
                 }));
+                cut |= text.len() - before < fragment.len();
             }
             AgentEvent::Done {
                 status,
@@ -630,9 +680,19 @@ fn terminal_events<'a>(
                     .as_deref()
                     .or(error.as_deref())
                     .map(bounded)
-                    .or_else(|| (!text.is_empty()).then(|| text.clone()));
+                    .or_else(|| {
+                        (!text.is_empty()).then(|| {
+                            if cut {
+                                // Some of the answer was dropped: make the cut show.
+                                bounded_to(&format!("{text}…"), text.len())
+                            } else {
+                                text.clone()
+                            }
+                        })
+                    });
                 terminal = Some((state, summary));
                 text.clear();
+                cut = false;
             }
             _ => {}
         }
@@ -919,17 +979,31 @@ mod tests {
             terminal_events([done()].iter()),
             (AssignmentState::Completed, None)
         );
+        // A 7.6 KB answer (what Foreman wrote) arrives whole.
         let events = [
             AgentEvent::TextDelta {
-                text: "é".repeat(4096),
+                text: "a".repeat(7642),
             },
             done(),
         ];
-        assert_eq!(terminal_events(events.iter()).1.unwrap().len(), 4096);
+        assert_eq!(terminal_events(events.iter()).1.unwrap().len(), 7642);
+        // A longer one is cut within the limit and says where the rest is.
+        let events = [
+            AgentEvent::TextDelta {
+                text: "é".repeat(16 * 1024),
+            },
+            done(),
+        ];
+        let summary = terminal_events(events.iter()).1.unwrap();
+        assert!(summary.len() <= RESULT_BYTES && summary.ends_with(CUT_NOTE));
     }
     #[test]
     fn summaries_preserve_utf8_and_command_ids_are_stable() {
-        assert_eq!(bounded(&"é".repeat(4096)).len(), 4096);
+        assert!(bounded(&"é".repeat(16 * 1024)).len() <= RESULT_BYTES);
+        assert!(bounded(&"é".repeat(16 * 1024)).ends_with(CUT_NOTE));
+        assert_eq!(bounded("short answer"), "short answer");
+        let legacy = bounded_to(&"word ".repeat(2000), LEGACY_RESULT_BYTES);
+        assert!(legacy.len() <= LEGACY_RESULT_BYTES && legacy.ends_with(CUT_NOTE));
         let id = "ab".repeat(32);
         assert_eq!(command_id(&id), command_id(&id));
         assert_eq!(command_id(&id).len(), 36);

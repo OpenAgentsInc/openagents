@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::BTreeMap;
 const MAX_BYTES: usize = 4 * 1024 * 1024;
+/// The largest `result` a host may report: an agent's final answer, in UTF-8 bytes.
+pub(crate) const RESULT_BYTES: usize = 16 * 1024;
 #[derive(Default, Serialize, Deserialize)]
 pub(super) struct Book {
     pub(super) assignments: BTreeMap<String, Assignment>,
@@ -182,7 +184,7 @@ impl Book {
                     || body
                         .result
                         .as_ref()
-                        .is_some_and(|s| s.len() > 4096 || s.contains('\0'))
+                        .is_some_and(|s| s.len() > RESULT_BYTES || s.contains('\0'))
                 {
                     return Err(Refusal::Invalid);
                 }

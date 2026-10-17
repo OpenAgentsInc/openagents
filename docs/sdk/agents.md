@@ -79,7 +79,8 @@ A stale report cannot complete a later follow-up. An uncertain run is `unknown`,
 never automatically retried as new execution. Inspect its conversation first.
 
 The existing app session owns live output and native conversation controls.
-Assignment `result` is only a summary of at most 4,096 UTF-8 bytes. Task and
+Assignment `result` is the agent's final answer, at most 16,384 UTF-8 bytes. A
+longer answer is cut and ends with a note that the full answer is in the app. Task and
 follow-up text are bounded to 64 KiB. Lists have at most eight entries per page;
 follow `next` until null. The account book permits 256 unarchived assignments,
 128 commands each, 4,096 mutations, and 4 MiB including retry records.
