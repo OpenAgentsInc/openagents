@@ -40,7 +40,7 @@
       "rolesSecretName": "space-db-roles",
       "poolMaxConnections": 4
     },
-    "dataPlanePublicUrl": "https://oa-space-service-data-157437760789.us-central1.run.app",
+    "dataPlanePublicUrl": "https://oa-space-service-data-ezxz4mgdsq-uc.a.run.app",
     "nodeCensusResidency": "false",
     "secrets": {
       "create": false
