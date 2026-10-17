@@ -506,3 +506,63 @@ fn a_website_sign_in_gets_a_browser_session() {
     let answer = sign_in(&auth, &key);
     assert_eq!(answer.body["session"]["app"], "OpenAgents");
 }
+
+/// A website sign-in (#12001) by a key with no account passes the same
+/// new-key gate as the app's sign-in (#11994): the phone's approval and the
+/// browser extension can't make an account around App Attest or the proof
+/// of work. A key that already has its account signs the browser in.
+#[test]
+fn a_website_sign_in_by_a_new_key_passes_the_new_key_gate() {
+    let (dir, auth) = world();
+    let now = now();
+    let body: &[u8] = br#"{"request":"0123456789abcdef0123456789abcdef"}"#;
+    let web_sign_in = |key: &RelaySigner, path: &str, gate: &mut Refusing| {
+        let (challenge, _) = auth.issue(Purpose::SignIn, now);
+        let url = format!("{ORIGIN}{path}");
+        let header = Request {
+            signer: key,
+            created_at: now,
+            url: &url,
+            method: "POST",
+            challenge: Some(&challenge),
+            payload: Some(body),
+        }
+        .header();
+        (
+            auth.sign_in_gated(None, "signup", Some(&header), body, now, gate),
+            challenge,
+        )
+    };
+    for (n, path) in WEB_SIGN_IN_PATHS.iter().enumerate() {
+        let key = signer(40 + n as u8);
+        let mut gate = Refusing {
+            refuse: true,
+            ..Refusing::default()
+        };
+        let (answer, challenge) = web_sign_in(&key, path, &mut gate);
+        assert_eq!(answer.status, 429, "{path}: {}", answer.body);
+        assert_eq!(gate.challenges, vec![challenge], "{path}");
+        let accounts = tenancy::Accounts::open(dir.path()).unwrap();
+        assert_eq!(
+            accounts
+                .account_of_principal(&nostr_principal(&key.pubkey()))
+                .unwrap(),
+            None,
+            "{path}: a refused key makes no account"
+        );
+
+        // Once the key has its account (the phone signed in first), the
+        // website sign-in doesn't ask the gate.
+        let mut open = Refusing::default();
+        let (answer, _) = gated_sign_in(&auth, &key, &mut open);
+        assert_eq!(answer.status, 200, "{}", answer.body);
+        let mut gate = Refusing {
+            refuse: true,
+            ..Refusing::default()
+        };
+        let (answer, _) = web_sign_in(&key, path, &mut gate);
+        assert_eq!(answer.status, 200, "{path}: {}", answer.body);
+        assert!(gate.challenges.is_empty(), "{path}");
+        assert!(answer.body["session"].get("app").is_none(), "{path}");
+    }
+}

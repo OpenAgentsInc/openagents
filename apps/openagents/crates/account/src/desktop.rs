@@ -105,16 +105,23 @@ pub fn configured(data: &Path) -> Result<(Arc<Controller>, Option<String>), Erro
 /// The desktop's identity (#11995, UI in #11997): its own Keychain item
 /// for the 12 words, with no wallet on this computer yet.
 pub fn identities(data: &Path) -> crate::identity::Identities {
+    crate::identity::Identities::new(
+        Arc::new(crate::identity::KeychainVault::new(&identity_service())),
+        Arc::new(crate::identity::NoWallet),
+        &data.join("openagents-account/identity"),
+    )
+}
+
+/// The Keychain service that holds this computer's identity, the one item
+/// [`identities`] reads. The engine's device connection reads the same
+/// item to sign a phone's link proof (`identity::link`).
+pub fn identity_service() -> String {
     let bundle = if cfg!(debug_assertions) {
         openagents_brand::DEV_BUNDLE_ID
     } else {
         openagents_brand::BUNDLE_ID
     };
-    crate::identity::Identities::new(
-        Arc::new(crate::identity::KeychainVault::new(&format!("{bundle}.identity"))),
-        Arc::new(crate::identity::NoWallet),
-        &data.join("openagents-account/identity"),
-    )
+    format!("{bundle}.identity")
 }
 
 /// This computer's identity for the welcome and the identity row (#11997):
@@ -147,13 +154,22 @@ fn deployment() -> Result<Deployment, Error> {
 
 fn saved_store(data: &Path) -> PlatformStore {
     let (bundle, legacy_bundle) = if cfg!(debug_assertions) {
-        (openagents_brand::DEV_BUNDLE_ID, openagents_brand::LEGACY_DEV_BUNDLE_ID)
+        (
+            openagents_brand::DEV_BUNDLE_ID,
+            openagents_brand::LEGACY_DEV_BUNDLE_ID,
+        )
     } else {
-        (openagents_brand::BUNDLE_ID, openagents_brand::LEGACY_BUNDLE_ID)
+        (
+            openagents_brand::BUNDLE_ID,
+            openagents_brand::LEGACY_BUNDLE_ID,
+        )
     };
     let profile = data.to_string_lossy().into_owned();
-    PlatformStore::new(format!("{bundle}.account"), profile)
-        .with_legacy(legacy_entries(data, bundle, legacy_bundle))
+    PlatformStore::new(format!("{bundle}.account"), profile).with_legacy(legacy_entries(
+        data,
+        bundle,
+        legacy_bundle,
+    ))
 }
 
 /// Whether a process started now without a startup credential, such as the
@@ -169,7 +185,11 @@ pub fn has_saved_sign_in(data: &Path) -> bool {
 /// bundle's entry for this data directory, then both bundles' entries for
 /// each directory listed in `openagents-account/previous-profiles` (one
 /// absolute path per line, written when a data directory is moved).
-fn legacy_entries(data: &std::path::Path, bundle: &str, legacy_bundle: &str) -> Vec<(String, String)> {
+fn legacy_entries(
+    data: &std::path::Path,
+    bundle: &str,
+    legacy_bundle: &str,
+) -> Vec<(String, String)> {
     let current = data.to_string_lossy().into_owned();
     let mut profiles = vec![current.clone()];
     if let Ok(text) = std::fs::read_to_string(data.join("openagents-account/previous-profiles")) {
@@ -212,8 +232,14 @@ mod legacy_tests {
             entries,
             vec![
                 ("old.bundle.account".to_owned(), current),
-                ("new.bundle.account".to_owned(), "/old/checkout/target/macos-dev/data".to_owned()),
-                ("old.bundle.account".to_owned(), "/old/checkout/target/macos-dev/data".to_owned()),
+                (
+                    "new.bundle.account".to_owned(),
+                    "/old/checkout/target/macos-dev/data".to_owned()
+                ),
+                (
+                    "old.bundle.account".to_owned(),
+                    "/old/checkout/target/macos-dev/data".to_owned()
+                ),
             ]
         );
     }

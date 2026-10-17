@@ -248,27 +248,41 @@ impl DesktopIdentity for KeyIdentity {
             let pubkey = identity.pubkey_hex();
             *current.lock().unwrap() = Some(identity.clone());
             let mut state = link::offer(&data, identity.clone());
+            let mut signed_at: Option<std::time::Instant> = None;
+            let mut refreshed = std::time::Instant::now();
             loop {
-                let signed = match &*state.borrow_and_update() {
-                    link::LinkState::Linked(key) if *key == pubkey => break,
-                    link::LinkState::Signed(key) => *key == pubkey,
-                    link::LinkState::Idle => return Err(String::new()),
-                    _ => false,
-                };
-                if !signed {
-                    if state.changed().await.is_err() {
-                        return Err(String::new());
+                // The engine's device connection may run in its own process:
+                // read what it wrote beside the offer.
+                link::follow_disk(&data);
+                let now = state.borrow_and_update().clone();
+                match now {
+                    link::LinkState::Linked(key) if key == pubkey => break,
+                    link::LinkState::Signed(key) if key == pubkey => {
+                        // The phone sends the signed proof to our server and
+                        // says when it landed (#12000). Without that word the
+                        // key may not be on the phone's account, and signing
+                        // in would make it its own: offer it again.
+                        let at = *signed_at.get_or_insert_with(std::time::Instant::now);
+                        if at.elapsed() >= link::CONFIRM {
+                            state = link::offer(&data, identity.clone());
+                            signed_at = None;
+                            continue;
+                        }
                     }
-                    continue;
+                    link::LinkState::Idle => return Err(String::new()),
+                    _ => {}
                 }
-                // The phone sends the signed proof to our server and says
-                // when it landed (#12000). Without that word the key may not
-                // be on the phone's account, and signing in would make it its
-                // own: offer it again for another scan.
-                match tokio::time::timeout(link::CONFIRM, state.changed()).await {
-                    Ok(Ok(())) => {}
-                    Ok(Err(_)) => return Err(String::new()),
-                    Err(_) => state = link::offer(&data, identity.clone()),
+                if refreshed.elapsed() >= link::REFRESH {
+                    link::refresh_offer(&data, &pubkey);
+                    refreshed = std::time::Instant::now();
+                }
+                tokio::select! {
+                    changed = state.changed() => {
+                        if changed.is_err() {
+                            return Err(String::new());
+                        }
+                    }
+                    () = tokio::time::sleep(link::POLL) => {}
                 }
             }
             link::finish(&data, &pubkey);
@@ -349,7 +363,164 @@ pub mod link {
     /// How long after the computer signs a proof it waits for the phone to
     /// say the link landed, before it offers the key again.
     pub const CONFIRM: Duration = Duration::from_secs(60);
+    /// How often each side reads the other's file.
+    pub const POLL: Duration = Duration::from_secs(1);
+    /// How often the window rewrites its offer, so a closed app's offer
+    /// goes stale.
+    pub const REFRESH: Duration = Duration::from_secs(60);
+    /// An offer older than this, in seconds, offers nothing.
+    pub const OFFER_STALE: u64 = 300;
     const WAITING: &str = "openagents-account/identity/link-waiting";
+    /// The window's offer, for an engine in another process: the key and
+    /// the Keychain item it lives in, never the secret.
+    const OFFER: &str = "openagents-account/identity/link-offer.json";
+    /// What the engine did with the offer: signed a proof, or heard the
+    /// link landed.
+    const STATE: &str = "openagents-account/identity/link-state.json";
+
+    #[derive(serde::Serialize, serde::Deserialize)]
+    struct OfferFile {
+        v: u32,
+        pubkey: String,
+        keychain: String,
+        at: u64,
+    }
+
+    #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+    struct StateFile {
+        v: u32,
+        state: String,
+        pubkey: String,
+    }
+
+    fn now() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs())
+    }
+
+    /// Write `bytes` at `path` readable by this user only, in one step.
+    fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+        use std::io::Write as _;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let temporary = path.with_extension(format!("{}.tmp", std::process::id()));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&temporary)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&temporary, path)
+    }
+
+    fn write_offer(data: &Path, pubkey: &str) {
+        let offer = OfferFile {
+            v: 1,
+            pubkey: pubkey.to_owned(),
+            keychain: super::super::identity_service(),
+            at: now(),
+        };
+        if let Ok(bytes) = serde_json::to_vec(&offer) {
+            let _ = write_private(&data.join(OFFER), &bytes);
+        }
+    }
+
+    fn write_state(data: &Path, state: &str, pubkey: &str) {
+        let record = StateFile {
+            v: 1,
+            state: state.to_owned(),
+            pubkey: pubkey.to_owned(),
+        };
+        if let Ok(bytes) = serde_json::to_vec(&record) {
+            let _ = write_private(&data.join(STATE), &bytes);
+        }
+    }
+
+    fn read_state(data: &Path) -> Option<StateFile> {
+        let bytes = std::fs::read(data.join(STATE)).ok()?;
+        (bytes.len() <= 4096)
+            .then(|| serde_json::from_slice(&bytes).ok())
+            .flatten()
+    }
+
+    fn clear_files(data: &Path) {
+        let _ = std::fs::remove_file(data.join(OFFER));
+        let _ = std::fs::remove_file(data.join(STATE));
+    }
+
+    /// The window still offers `pubkey`: keep its offer fresh.
+    pub fn refresh_offer(data: &Path, pubkey: &str) {
+        write_offer(data, pubkey);
+    }
+
+    /// The key the window offers, from its file, when the offer is fresh at
+    /// `at` (Unix seconds) and names this computer's identity item.
+    pub fn offered_key(data: &Path, at: u64) -> Option<String> {
+        let bytes = std::fs::read(data.join(OFFER)).ok()?;
+        if bytes.len() > 4096 {
+            return None;
+        }
+        let offer: OfferFile = serde_json::from_slice(&bytes).ok()?;
+        (offer.v == 1
+            && offer.keychain == super::super::identity_service()
+            && at <= offer.at.saturating_add(OFFER_STALE)
+            && offer.at <= at.saturating_add(60))
+        .then_some(offer.pubkey)
+    }
+
+    /// The identity the window offers, read from the Keychain item its file
+    /// names, when the stored identity is that key. Blocking: the engine
+    /// calls it off its runtime threads.
+    pub fn load_offered(data: &Path, at: u64) -> Option<Arc<Identity>> {
+        let key = offered_key(data, at)?;
+        let identity = super::super::identities(data).load().ok()??;
+        (identity.pubkey_hex() == key).then(|| Arc::new(identity))
+    }
+
+    /// The device connection for `data` signed a link proof with `pubkey`:
+    /// tell this process's window and one in another process.
+    pub fn signed_in(data: &Path, pubkey: &str) {
+        signed(pubkey);
+        if offered_key(data, now()).as_deref() == Some(pubkey) {
+            write_state(data, "signed", pubkey);
+        }
+    }
+
+    /// The phone said the link landed for `pubkey`: tell this process's
+    /// window and one in another process.
+    pub fn linked_in(data: &Path, pubkey: &str) {
+        linked(pubkey);
+        if offered_key(data, now()).as_deref() == Some(pubkey) {
+            write_state(data, "linked", pubkey);
+        }
+    }
+
+    /// The window's side: take what an engine in another process wrote
+    /// for `data` into this process's state.
+    pub fn follow_disk(data: &Path) {
+        let Some(record) = read_state(data) else {
+            return;
+        };
+        if record.v != 1 {
+            return;
+        }
+        match record.state.as_str() {
+            "signed" => signed(&record.pubkey),
+            "linked" => {
+                // A link can land before this side read "signed".
+                signed(&record.pubkey);
+                linked(&record.pubkey);
+            }
+            _ => {}
+        }
+    }
 
     #[derive(Clone)]
     pub enum LinkState {
@@ -404,6 +575,9 @@ pub mod link {
             let _ = std::fs::create_dir_all(parent);
         }
         let _ = std::fs::write(&path, identity.pubkey_hex());
+        // A fresh offer: nothing from an earlier one carries over.
+        let _ = std::fs::remove_file(data.join(STATE));
+        write_offer(data, &identity.pubkey_hex());
         let sender = sender(data);
         let receiver = sender.subscribe();
         sender.send_replace(LinkState::Offered(identity));
@@ -443,6 +617,7 @@ pub mod link {
     /// The person picked Start here or Restore instead: offer nothing.
     pub fn stop(data: &Path) {
         let _ = std::fs::remove_file(data.join(WAITING));
+        clear_files(data);
         sender(data).send_replace(LinkState::Idle);
     }
 
@@ -451,12 +626,92 @@ pub mod link {
         if waiting(data, pubkey) {
             let _ = std::fs::remove_file(data.join(WAITING));
         }
+        clear_files(data);
         sender(data).send_replace(LinkState::Idle);
     }
 
     /// Whether the key `pubkey` still waits for a phone's link.
     pub fn waiting(data: &Path, pubkey: &str) -> bool {
         std::fs::read_to_string(data.join(WAITING)).is_ok_and(|text| text.trim() == pubkey)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn identity() -> Arc<Identity> {
+            Arc::new(
+                Identity::from_words(
+                    "abandon abandon abandon abandon abandon abandon abandon abandon abandon \
+                     abandon abandon about",
+                )
+                .unwrap(),
+            )
+        }
+
+        #[test]
+        fn an_engine_in_another_process_reads_the_offer_and_answers_on_disk() {
+            let dir = tempfile::tempdir().unwrap();
+            let data = dir.path();
+            let identity = identity();
+            let key = identity.pubkey_hex();
+            assert_eq!(offered_key(data, now()), None);
+            let mut state = offer(data, identity.clone());
+            // The offer names the key and its Keychain item, never the secret.
+            let written = std::fs::read_to_string(data.join(OFFER)).unwrap();
+            assert!(written.contains(&key));
+            assert!(written.contains(&super::super::super::identity_service()));
+            assert!(!written.contains(&identity.nsec()));
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mode = std::fs::metadata(data.join(OFFER))
+                    .unwrap()
+                    .permissions()
+                    .mode();
+                assert_eq!(mode & 0o777, 0o600);
+            }
+            assert_eq!(offered_key(data, now()), Some(key.clone()));
+            // A stale offer offers nothing.
+            assert_eq!(offered_key(data, now() + OFFER_STALE + 1), None);
+
+            // The engine's process writes "linked"; the window reads it.
+            write_state(data, "linked", &key);
+            follow_disk(data);
+            assert!(matches!(&*state.borrow_and_update(), LinkState::Linked(k) if *k == key));
+
+            // Finishing clears both files.
+            finish(data, &key);
+            assert!(!data.join(OFFER).exists());
+            assert!(!data.join(STATE).exists());
+            assert_eq!(offered_key(data, now()), None);
+        }
+
+        #[test]
+        fn the_engine_writes_its_answer_only_for_the_offered_key() {
+            let dir = tempfile::tempdir().unwrap();
+            let data = dir.path();
+            let identity = Arc::new(Identity::generate().unwrap());
+            let key = identity.pubkey_hex();
+            signed_in(data, &key);
+            assert!(
+                read_state(data).is_none(),
+                "nothing offered, nothing written"
+            );
+            let _state = offer(data, identity);
+            signed_in(data, &"ab".repeat(32));
+            assert!(read_state(data).is_none());
+            signed_in(data, &key);
+            let record = read_state(data).unwrap();
+            assert_eq!(
+                (record.state.as_str(), record.pubkey.as_str()),
+                ("signed", key.as_str())
+            );
+            linked_in(data, &key);
+            assert_eq!(read_state(data).unwrap().state, "linked");
+            stop(data);
+            assert!(read_state(data).is_none());
+        }
     }
 }
 
