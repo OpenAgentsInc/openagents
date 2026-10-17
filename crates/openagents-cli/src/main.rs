@@ -56,6 +56,7 @@ mod game;
 mod github_verbs;
 mod gym;
 mod host_observers;
+mod hosted_labs;
 mod hosts;
 mod inference;
 mod issue;

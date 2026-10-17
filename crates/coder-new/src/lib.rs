@@ -61,6 +61,7 @@ pub mod harness;
 pub mod harness_pick;
 pub mod harness_plugin;
 pub mod home;
+mod hosted_labs;
 pub mod identity;
 pub mod issue_run;
 pub mod jev_plugin;

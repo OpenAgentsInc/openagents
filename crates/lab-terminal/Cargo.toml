@@ -1,0 +1,23 @@
+[package]
+name = "lab-terminal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Hosted Labs and shared card rendering for terminal clients"
+
+[dependencies]
+openagents-sdk = { path = "../openagents-sdk" }
+lab-ui = { path = "../lab-ui" }
+rust-native = { path = "../rust-native" }
+serde_json = "1"
+tokio = { version = "1", features = ["time", "macros"] }
+base64 = "0.22"
+
+[dev-dependencies]
+axum = "0.8"
+lab-kit = { path = "../lab-kit" }
+tokio = { version = "1", features = ["rt-multi-thread", "net"] }
+
+[lints]
+workspace = true

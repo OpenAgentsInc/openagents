@@ -34,10 +34,12 @@ pub(crate) const USAGE: &str = "usage: openagents cad COMMAND [DOC] [options]
                  sections, dimensions and a title block.
   tool NAME --json ARGS  Any cad_* tool with its JSON arguments (new_part,
                  add_feature, edit_feature, set_part, assemble ...).
-Design parts and assemblies on this computer (docs/cad-lab/mvp.md). Every
+Design parts and assemblies (docs/cad-lab/mvp.md). Every
 edit is rebuilt, checked (closed solids, no undeclared overlaps) and measured
 before it's saved as a version. CAD_LAB_URL moves the Lab; CAD_LAB_BIN names
-the program that starts it when it isn't running.";
+the program that starts it when it isn't running.
+Signed-in commands use account Labs. Run openagents lab kinds for hosted
+tools. Kinds not hosted keep their local service.";
 
 /// What the command does, for the chat router's command tree
 /// (`coder::cli_route::tree`).
@@ -48,11 +50,11 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("check", Effect::ReadOnly),
     Declared::computer("versions", Effect::ReadOnly),
     Declared::computer("compare", Effect::ReadOnly),
-    Declared::computer("render", Effect::LocalWrite),
-    Declared::computer("export", Effect::LocalWrite),
-    Declared::computer("place", Effect::LocalWrite),
-    Declared::computer("drawing", Effect::LocalWrite),
-    Declared::computer("tool", Effect::LocalWrite),
+    Declared::computer("render", Effect::Publishes),
+    Declared::computer("export", Effect::Publishes),
+    Declared::computer("place", Effect::Publishes),
+    Declared::computer("drawing", Effect::Publishes),
+    Declared::computer("tool", Effect::Publishes),
 ];
 
 fn url() -> String {
@@ -311,6 +313,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         Ok(found) => found,
         Err(message) => return output.usage("cad", &message, USAGE),
     };
+    if let Some(code) = crate::hosted_labs::try_run(output, "cad", &tool, &call) {
+        return code;
+    }
     let base = url();
     let http = match reqwest::blocking::Client::builder()
         .default_headers(crate::keys::test_run_headers())

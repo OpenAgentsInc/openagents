@@ -13,6 +13,9 @@ use serde_json::{Value, json};
 use crate::{Args, Output};
 
 pub(crate) const USAGE: &str = "usage: openagents lab COMMAND [DOCUMENT] [options]
+  kinds [--space me|project:ID]  Account Labs and their tool names.
+  tool KIND NAME [--json OBJECT] [--space me|project:ID]  Call an account Lab tool.
+  watch DOCUMENT [--since N] [--count N] [--space me|project:ID]  Follow changes.
   list  The documents.
   open DOCUMENT [--version N]  Its shots, problems and versions.
   show DOCUMENT [--from T] [--to T] [--version N]  A time range.
@@ -24,23 +27,25 @@ pub(crate) const USAGE: &str = "usage: openagents lab COMMAND [DOCUMENT] [option
   render DOCUMENT [--quality preview|review|master] [--version N]  Render a version.
   compare DOCUMENT [--at T] [--a N] [--b N]  Two versions side by side.
   notes DOCUMENT [--version N]  The review notes on its videos.
-See and edit films, shots and scenes in Video Lab on this computer
-(docs/video-lab/mvp.md). Every edit is a new version; renders stay on this
-computer. Times are m:ss or seconds. Each command prints the Lab player
-link to watch it. VIDEO_LAB_URL moves the Lab; OPENAGENTS_VIDEO_LAB_SCRIPT
+Signed-in commands use account Labs. Kinds not hosted use the local Lab
+(docs/video-lab/mvp.md). Every edit is a new version. Times are m:ss or
+seconds. Each command prints the Lab player link to watch it. VIDEO_LAB_URL moves the Lab; OPENAGENTS_VIDEO_LAB_SCRIPT
 names the script that starts it when it isn't running.";
 
 /// What the command does, for the chat router's command tree
 /// (`coder::cli_route::tree`).
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::computer("kinds", Effect::ReadOnly),
+    Declared::computer("tool", Effect::Publishes),
+    Declared::computer("watch", Effect::ReadOnly),
     Declared::computer("list", Effect::ReadOnly),
     Declared::computer("open", Effect::ReadOnly),
     Declared::computer("show", Effect::ReadOnly),
     Declared::computer("frame", Effect::ReadOnly),
-    Declared::computer("edit", Effect::LocalWrite),
+    Declared::computer("edit", Effect::Publishes),
     Declared::computer("versions", Effect::ReadOnly),
-    Declared::computer("render", Effect::LocalWrite),
+    Declared::computer("render", Effect::Publishes),
     Declared::computer("compare", Effect::ReadOnly),
     Declared::computer("notes", Effect::ReadOnly),
 ];
@@ -178,6 +183,12 @@ pub(crate) fn request(words: &[String]) -> Result<(String, Value), String> {
 }
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
+    if words
+        .first()
+        .is_some_and(|w| matches!(w.as_str(), "kinds" | "tool" | "watch"))
+    {
+        return crate::hosted_labs::command(output, words);
+    }
     if words.is_empty()
         || words
             .first()
@@ -190,6 +201,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         Ok(found) => found,
         Err(message) => return output.usage("lab", &message, USAGE),
     };
+    if let Some(code) = crate::hosted_labs::try_run(output, "video", &tool, &call) {
+        return code;
+    }
     let base = url();
     let http = match reqwest::blocking::Client::builder()
         .default_headers(crate::keys::test_run_headers())

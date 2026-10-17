@@ -8,6 +8,7 @@ publish.workspace = true
 description = "The Coder terminal with model, tool, and subagent plugins."
 
 [dependencies]
+lab-terminal = { path = "../lab-terminal" }
 robot-workbench = { path = "../robot-workbench", default-features = false }
 user-home = { path = "../user-home" }
 markdown-stream = { path = "../markdown-stream" }

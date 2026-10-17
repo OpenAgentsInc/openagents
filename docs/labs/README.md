@@ -66,7 +66,7 @@ new standard view, and its hosted delivery shares the dependencies below.
   (`crates/robot-lab/src/store.rs`, also used by CAD Lab locally), and the
   CAD files kept per account and project in the chat bucket
   (`cad_web.rs`).
-- **Coder 1.0.0 and `openagents` 1.0.0 (frozen):** they carry copied
+- **Released Coder 1.0.0 and `openagents` 1.0.0 baseline:** they carry copied
   clients for `VIDEO_LAB_URL`, `ROBOT_LAB_URL`, `CAD_LAB_URL` and
   `GAME_LAB_URL`. Every one calls `{base}/healthz` and
   `POST {base}/api/tool/{name}` with no credential.
@@ -263,8 +263,12 @@ with observe and operate permissions) stay their own protocol.
 | Saved history (all clients) | An additive `cards` field (`lab.card.v1`) on `/v1/history` messages, typed in the SDK | The same card, read-only, with fresh signed media |
 | Desktop (`apps/openagents`) | `openagents::labs` from `coder-account`, by path | One Lab row type in the saved and live transcripts, the standard views, notes, compare. Kind editors come later (Video timeline first) |
 | Phone (`apps/openagents`) | A small UniFFI facade over `openagents::labs` in `crates/mobile` | The same row type and views; notes by voice; chat edits |
-| Coder 1.0.0 terminal (frozen) | A local `labs bridge`: one loopback listener with a path per kind, speaking the 1.0 routes and forwarding with the person's saved `openagents` login (`VIDEO_LAB_URL=http://127.0.0.1:8799/video`, `CAD_LAB_URL=…/cad`, `GAME_LAB_URL=…/game`, `ROBOT_LAB_URL=…/robot`) | Words and the page link, as today |
-| Next Coder release | `openagents::labs` directly, tools from `/labs/kinds` | Inline posters and strips where the terminal supports graphics |
+| Coder terminal | `openagents::labs` directly, with tools from `/v1/labs/kinds` and SDK event following (`lab_watch`) | Shared `lab-ui` card text and document links |
+| `openagents` CLI | The same SDK through `lab-terminal`; `lab kinds`, `lab tool`, and `lab watch`, plus hosted-first `cad`, `lab`, and `game` commands | Shared card text and links; verified posters and strips in Kitty and iTerm2. JSON output contains no graphics commands. |
+
+The binary freeze was lifted for the 1.0.0 big-bang release. A local kind
+keeps its existing environment URL and tools until the account hosts that
+kind. A hosted tool failure never falls back to a local document.
 
 Live updates come from document events while a card is on screen. In saved
 chats they come from the apps' existing two-second following. Readers never
@@ -307,7 +311,7 @@ and Coder 1.0.0 keep working throughout.
 | R1 | #11882 | Robot Lab documents on the platform (paired-host controls unchanged) | L4, L7 |
 | D1 | #11883 | Coder Desktop: Lab row and standard views | L5, L6 |
 | P1 | #11884 | iPhone: Lab row and standard views | D1 |
-| T1 | #11885 | `labs bridge` for Coder 1.0.0, and the next-release entry | L5 |
+| T1 | #11885 | Native SDK Labs in Coder and `openagents` | L5 |
 | D2 | #11886 | Video timeline editor in Coder Desktop over `video-lab` | V2, D1 |
 | Agent | [Proposed A1–A6 slices](../agent-lab/README.md#delivery-slices-and-exit-checks) | Agent drafts, bounded trials, comparison evidence, and explicit saving to the agent picker | Custom agents #11902; L2, L3, L5–L7 and shared views for hosted delivery |
 
@@ -322,8 +326,7 @@ and Coder 1.0.0 keep working throughout.
    accounts behind the Computers gate. Cloud jobs widen only after usage
    and billing.
 3. **Desktop video.** Recommendation: AVPlayer on macOS and iOS first.
-4. **Coder 1.0 bridge.** Recommendation: for the owner and testers only,
-   not advertised.
+4. **Terminal clients.** The big-bang release uses the SDK directly (#11885).
 
 ## Verification
 

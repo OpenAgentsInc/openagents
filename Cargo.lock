@@ -4017,6 +4017,7 @@ dependencies = [
  "inference",
  "jev",
  "jev-hosted",
+ "lab-terminal",
  "libc",
  "markdown-stream",
  "microcoder-loop",
@@ -9274,6 +9275,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "lab-terminal"
+version = "1.0.0"
+dependencies = [
+ "axum 0.8.9",
+ "base64 0.22.1",
+ "lab-kit",
+ "lab-ui",
+ "openagents-sdk",
+ "rust-native",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "lab-ui"
 version = "1.0.0"
 dependencies = [
@@ -11958,6 +11973,7 @@ dependencies = [
  "jev-hosted",
  "jsonschema",
  "knowledge",
+ "lab-terminal",
  "libc",
  "lightning-invoice 0.34.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "lnd-sdk",

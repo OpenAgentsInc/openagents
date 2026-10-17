@@ -20,6 +20,7 @@ name = "openagents"
 path = "src/main.rs"
 
 [dependencies]
+lab-terminal = { path = "../lab-terminal" }
 lightning-invoice = { version = "0.34.1", features = ["std"] }
 user-home = { path = "../user-home" }
 squeeze = { path = "../squeeze" }

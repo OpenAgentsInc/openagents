@@ -264,7 +264,7 @@ impl Family {
             "monitor" | "background_shell" => Family::Background,
             _ if crate::shells::is_tool(name) => Family::Background,
             "web_search" | "web_fetch" => Family::Web,
-            "media" => Family::Media,
+            "media" | crate::hosted_labs::WATCH => Family::Media,
             _ if crate::video_lab::is_tool(name) => Family::Media,
             _ if crate::robot_lab::is_tool(name) => Family::Media,
             "remember" | "forget" | "recall" => Family::Memory,
@@ -456,11 +456,15 @@ impl ExecutionSettings {
             definitions.extend(crate::web_tools::definitions());
             // Media files on this computer (#11172), with the same access as Run.
             definitions.push(crate::media::definition());
-            // Video Lab (docs/video-lab/mvp.md), where a Lab is on this computer.
-            if crate::video_lab::available() {
+            definitions.extend(crate::hosted_labs::definitions(self.connections.as_ref()));
+            if crate::hosted_labs::local_allowed(self.connections.as_ref(), "video")
+                && crate::video_lab::available()
+            {
                 definitions.extend(crate::video_lab::definitions());
             }
-            if crate::robot_lab::available() {
+            if crate::hosted_labs::local_allowed(self.connections.as_ref(), "robot")
+                && crate::robot_lab::available()
+            {
                 definitions.extend(crate::robot_lab::definitions());
             }
         }
@@ -597,10 +601,17 @@ impl ExecutionSettings {
             Family::Media => {
                 if self.shell {
                     guidance.push_str(crate::media::instructions());
-                    if crate::video_lab::available() {
+                    if self.connections.is_some() {
+                        guidance.push_str(crate::hosted_labs::INSTRUCTIONS);
+                    }
+                    if crate::hosted_labs::local_allowed(self.connections.as_ref(), "video")
+                        && crate::video_lab::available()
+                    {
                         guidance.push_str(crate::video_lab::INSTRUCTIONS);
                     }
-                    if crate::robot_lab::available() {
+                    if crate::hosted_labs::local_allowed(self.connections.as_ref(), "robot")
+                        && crate::robot_lab::available()
+                    {
                         guidance.push_str(crate::robot_lab::INSTRUCTIONS);
                     }
                 }
@@ -934,14 +945,29 @@ impl ExecutionSettings {
                 bundled_runtime::run_command(&args.command, &self.cwd, &keys, cancel, &mut emit)
                     .await
             }
+            name if self.shell && crate::hosted_labs::handles(self.connections.as_ref(), name) => {
+                crate::hosted_labs::execute(
+                    self.connections.as_ref().ok_or("Sign in to use Labs.")?,
+                    name,
+                    arguments,
+                    cancel,
+                )
+                .await
+            }
             "media" if self.shell => crate::media::execute(arguments, &self.cwd, cancel).await,
-            name if self.shell && crate::video_lab::is_tool(name) => {
+            name if self.shell
+                && crate::video_lab::is_tool(name)
+                && crate::hosted_labs::local_allowed(self.connections.as_ref(), "video") =>
+            {
                 tokio::select! {
                     result = crate::video_lab::execute(name, arguments) => result,
                     () = async { while !cancel.load(Ordering::Relaxed) { tokio::time::sleep(std::time::Duration::from_millis(50)).await; } } => Err("The Video Lab call was canceled.".into()),
                 }
             }
-            name if self.shell && crate::robot_lab::is_tool(name) => {
+            name if self.shell
+                && crate::robot_lab::is_tool(name)
+                && crate::hosted_labs::local_allowed(self.connections.as_ref(), "robot") =>
+            {
                 tokio::select! {
                     result=crate::robot_lab::execute(name,arguments)=>result,
                     ()=async{while !cancel.load(Ordering::Relaxed){tokio::time::sleep(std::time::Duration::from_millis(50)).await;}}=>Err("The Robot Lab call was canceled".into()),
@@ -1369,6 +1395,8 @@ mod tests {
         for (name, arguments) in [
             ("Run", json!({"command":"cat private.txt"})),
             ("Run", json!({"command":"touch changed"})),
+            ("lab_watch", json!({"document":"film"})),
+            ("cad_from_json", json!({"doc":"bracket","document":{}})),
             (
                 "openagents_cli",
                 json!({"arguments":["agent","answer","erin","confirm"]}),

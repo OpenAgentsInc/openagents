@@ -25,10 +25,12 @@ pub(crate) const USAGE: &str = "usage: openagents game COMMAND [GAME] [options]
                  bot runs measured (version 1 is the original).
   notes [GAME] [--version N] [--text TEXT] [--seconds S] [--room ROOM]
                  The notes on it, or save one at a time and place.
-Change games on this computer by editing their settings (docs/game-lab/mvp.md).
-GAME is the-ice-cream-man (the default). Every edit is a new version, kept on
-this computer. GAME_LAB_URL moves the Lab; GAME_LAB_BIN names the program
-that starts it when it isn't running.";
+Change games by editing their settings (docs/game-lab/mvp.md).
+For a local Lab, GAME defaults to the-ice-cream-man, and versions stay on
+this computer. GAME_LAB_URL moves the local Lab; GAME_LAB_BIN names the program
+that starts it when it isn't running.
+Signed-in commands use account Labs. Run openagents lab kinds for hosted
+tools. Kinds not hosted keep their local service.";
 
 /// What the command does, for the chat router's command tree
 /// (`coder::cli_route::tree`).
@@ -37,10 +39,10 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("list", Effect::ReadOnly),
     Declared::computer("open", Effect::ReadOnly),
     Declared::computer("play", Effect::ReadOnly),
-    Declared::computer("edit", Effect::LocalWrite),
+    Declared::computer("edit", Effect::Publishes),
     Declared::computer("versions", Effect::ReadOnly),
     Declared::computer("compare", Effect::ReadOnly),
-    Declared::computer("notes", Effect::LocalWrite),
+    Declared::computer("notes", Effect::Publishes),
 ];
 
 fn url() -> String {
@@ -278,6 +280,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         Ok(found) => found,
         Err(message) => return output.usage("game", &message, USAGE),
     };
+    if let Some(code) = crate::hosted_labs::try_run(output, "game", &tool, &call) {
+        return code;
+    }
     let base = url();
     let http = match reqwest::blocking::Client::builder()
         .default_headers(crate::keys::test_run_headers())

@@ -118,7 +118,26 @@ grant access to its Lab files. An unavailable document becomes a Report card.
 Artifact reads use the reader's own credential.
 
 The history SDK exposes each card with an account-bound `document_ref()`.
-Unknown card views fall back to Report. The browser composes cards through `lab-ui`'s shared Rust Native view. Desktop, phone, and terminal adapters use the same view as they are added;
+Unknown card views fall back to Report. The browser composes cards through `lab-ui`'s shared Rust Native view. The terminal adapter in `lab-terminal` uses that view; desktop and phone adapters use it as they are added;
 media surfaces resolve its opaque resources through the Labs client.
 
 [History-card source checks](lab-history-evidence.json) record the local qualification.
+
+## Terminal clients
+
+Coder discovers hosted tool definitions from the account's kind registry.
+Its `lab_watch` tool follows document events for up to 120 seconds and returns
+the latest shared card and a cursor. Canceling a wait does not stop a job.
+
+Use `openagents lab kinds` to list account Labs, then call a declared tool
+with `openagents lab tool KIND NAME --json OBJECT`. Add `--space project:ID`
+for a project. `openagents lab watch DOCUMENT --since N --count 1` follows
+from a saved event cursor. The existing `cad`, `lab`, and `game` commands
+prefer hosted kinds and retain local tools only for kinds not hosted.
+Discovery failures and unsupported hosted tools do not switch to local Labs.
+
+Terminal output uses `lab-ui`'s Rust Native view and typed document links.
+The CLI displays verified posters and strips in Kitty and iTerm2; redirected
+and JSON output contain no graphics commands. Credentials stay in the
+existing login file or environment, outside tool arguments. An explicit
+invalid login token never falls back to a saved account.

@@ -198,6 +198,30 @@ impl Client {
         connect_timeout: Duration,
         timeout: Duration,
     ) -> Result<Self, Error> {
+        Self::configured(deployment, connect_timeout, timeout, false)
+    }
+
+    /// Mark requests made by an explicitly identified test run. This option
+    /// reads no environment variables and does not change the credential.
+    pub fn with_test_run(
+        deployment: Deployment,
+        timeout: Duration,
+        test_run: bool,
+    ) -> Result<Self, Error> {
+        Self::configured(
+            deployment,
+            timeout.min(Duration::from_secs(10)),
+            timeout,
+            test_run,
+        )
+    }
+
+    fn configured(
+        deployment: Deployment,
+        connect_timeout: Duration,
+        timeout: Duration,
+        test_run: bool,
+    ) -> Result<Self, Error> {
         deployment.validate()?;
         if timeout.is_zero()
             || timeout > Duration::from_secs(120)
@@ -206,7 +230,15 @@ impl Client {
         {
             return Err(Error::InvalidTimeout);
         }
+        let mut headers = reqwest::header::HeaderMap::new();
+        if test_run {
+            headers.insert(
+                "X-OpenAgents-Test",
+                reqwest::header::HeaderValue::from_static("1"),
+            );
+        }
         let http = reqwest::Client::builder()
+            .default_headers(headers)
             .pool_max_idle_per_host(8)
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(connect_timeout)
