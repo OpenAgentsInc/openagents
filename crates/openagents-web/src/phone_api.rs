@@ -142,6 +142,16 @@ pub(crate) fn routes() -> Router<App> {
             "/v1/computers/{name}/commands/{command}/cancel",
             post(crate::computers_api::commands::cancel),
         )
+        .route(
+            "/v1/computers/{name}/credential-references",
+            post(crate::computers_api::credentials::prepare)
+                .layer(axum::extract::DefaultBodyLimit::max(8192)),
+        )
+        .route(
+            "/v1/computers/{name}/credential-references/{reference}",
+            get(crate::computers_api::credentials::read)
+                .delete(crate::computers_api::credentials::revoke),
+        )
         .route("/v1/computers/{name}/sync", get(sync_get).put(sync_put))
         .route("/v1/computers/{name}/activity", post(activity))
         .route("/v1/agents", get(agents))

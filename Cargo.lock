@@ -4500,11 +4500,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "computer-credentials"
+version = "1.0.0"
+dependencies = [
+ "async-trait",
+ "axum 0.8.9",
+ "base64 0.22.1",
+ "crc32c",
+ "hmac 0.12.1",
+ "http",
+ "libc",
+ "proptest",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "subtle",
+ "tokio",
+ "url",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "computer-driver"
 version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "boat",
+ "computer-credentials",
  "computer-files",
  "futures-util",
  "reqwest 0.12.28",
@@ -11554,6 +11578,7 @@ dependencies = [
 name = "oa-computers"
 version = "1.0.0"
 dependencies = [
+ "async-trait",
  "axum 0.8.9",
  "base64 0.22.1",
  "boat",
@@ -11561,10 +11586,12 @@ dependencies = [
  "coder-environment",
  "coder-host",
  "coder-working-computer",
+ "computer-credentials",
  "computer-driver",
  "computer-enrolled",
  "computer-files",
  "getrandom 0.4.3",
+ "libc",
  "oa-boat",
  "proptest",
  "reqwest 0.12.28",
@@ -11577,6 +11604,8 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "url",
+ "uuid",
+ "zeroize",
 ]
 
 [[package]]
@@ -13807,6 +13836,7 @@ dependencies = [
  "postgres-protocol",
  "serde_core",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]

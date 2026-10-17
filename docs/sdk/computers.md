@@ -648,27 +648,46 @@ read a supplied key, and applications, logs, files, or memory snapshots may hold
 it. Do not describe this as a universal no-secrets-on-disk guarantee. Keep private
 checkpoints account-bound and separate from clean reusable base snapshots.
 
-The target public surface uses scoped credential handles, for example:
+The optional reference API prepares a source for one saved command:
 
 ```json
 {
-  "credentials": [
-    {"name": "github", "reference": "credential-handle-example"}
-  ]
+  "source": "00000000-0000-0000-0000-000000000001",
+  "rule": "messages",
+  "command_key": "command-example",
+  "idempotency_key": "credential-example",
+  "ttl_seconds": 300
 }
 ```
 
-This is a proposal, not an implemented request field. A handle identifies an
-account-authorized source/grant and allowed computer/turn/destination/expiry.
-It is not permission to resolve an arbitrary Google Secret Manager path.
-The broker performs authorization before cloud-secret resolution and at use.
+Send it to `POST /v1/computers/{id}/credential-references`. Read or revoke it at
+`GET` or `DELETE /v1/computers/{id}/credential-references/{reference}`. These
+operations require an explicitly configured, qualified proxy deployment;
+unconfigured services refuse them as unsupported. Callers select registered
+source UUIDs and rules, never cloud secret paths or authentication header values.
 
-Qualify Google Secret Manager or our broker with SPACE's egress gateway; upstream
-AWS support is not proof of GCloud support. Verify real Git/model clients, TLS,
-streaming, redirects, subdomains, expiry, and revocation. If a client requires a
-real guest key, record its restricted exception and snapshot handling honestly.
+The Rust SDK provides `credential_request`, `prepare_credential`,
+`command_with_credential`, `credential`, and `revoke_credential`. Prepare every
+reference before dispatch. Save the final command plan with its stable key and
+pass its `oa-ref:UUID` marker as the supported client's API key or Git HTTPS
+password. The host proxy replaces only a matching, currently authorized marker.
+Stop, wake, command completion/cancellation, expiry, revocation, and broker
+restart end access. A retry keeps the original expiry; an old marker cannot
+select a newer grant.
 
-Pin named default-deny egress profiles at create. Test DNS bypass, literal IPs,
+The [SPACE credential adapter](../../deploy/space-credentials/README.md) documents
+the numeric-version Google Secret Manager reader, current authority checks,
+private service and worker setup, stream revocation, source rotation, and raw
+guest exceptions. Native AWS credential support does not qualify this path.
+Live model/Git client and deployed lifecycle checks remain required before
+customer activation; the adapter stays opt-in during qualification.
+
+Pin named default-deny egress profiles at create using the full selector
+`NAME@sha256:FULL_DIGEST` returned by capabilities and request
+`needs.credential_proxy: true` for injection. A changed definition cannot broaden
+an existing computer. The initial proxy transport permits inspected HTTPS on
+443 and filtered DNS only. It refuses TLS exemptions, QUIC, and native IPv6.
+Test DNS bypass, literal IPs,
 redirects, private networks, metadata, and IPv6 where enabled, with a reachable
 host-side denial control. Credential provider failure must fail closed. This
 work is [#11813](https://github.com/OpenAgentsInc/openagents/issues/11813) and precedes general customer access.

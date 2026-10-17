@@ -33,6 +33,8 @@ pub struct Needs {
     #[serde(default)]
     pub command_sessions: bool,
     #[serde(default)]
+    pub credential_proxy: bool,
+    #[serde(default)]
     pub min_vcpus: Option<u32>,
     #[serde(default)]
     pub min_memory_mib: Option<u64>,
@@ -64,8 +66,7 @@ pub struct CreateIntent {
     pub placement: Option<Placement>,
     #[serde(default)]
     pub needs: Option<Needs>,
-    /// Reserved for the credential/egress work. Unsupported profiles refuse;
-    /// accepting a name must never imply that its network rules were installed.
+    /// Exact name@sha256:digest selector from the authenticated offers.
     #[serde(default)]
     pub egress_profile: Option<String>,
     #[serde(default)]
@@ -90,6 +91,9 @@ impl CreateIntent {
                 "min_vcpus":needs.min_vcpus,"min_memory_mib":needs.min_memory_mib},
             "egress_profile":self.egress_profile,"enrolled_host":self.enrolled_host,
         });
+        if needs.credential_proxy {
+            material["needs"]["credential_proxy"] = serde_json::json!(true);
+        }
         if let Some(image) = &self.environment_image {
             material["environment_image"] = serde_json::to_value(image).expect("image encodes");
         }
@@ -137,6 +141,10 @@ pub struct Target {
     /// Authority derived from verified host enrollment, never public create input.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enrolled: Option<EnrolledAuthority>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_profile: Option<computer_credentials::policy::Profile>,
+    #[serde(default)]
+    pub credential_proxy: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -202,6 +210,8 @@ impl Target {
             space_compatibility: None,
             withdrawn_artifacts: BTreeSet::new(),
             enrolled: None,
+            network_profile: None,
+            credential_proxy: false,
         })
     }
     fn admits(&self, owner: &str) -> bool {
@@ -245,6 +255,10 @@ pub struct Binding {
     /// Trusted Environment attempt, resolved by the authenticated front door.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment_attempt: Option<crate::artifacts::Attempt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_profile: Option<computer_credentials::policy::Profile>,
+    #[serde(default)]
+    pub credential_proxy: bool,
 }
 impl Binding {
     pub fn operation(&self, logical: &str) -> String {
@@ -329,6 +343,13 @@ impl Catalog {
                     target.artifact_kind != ArtifactKind::SpaceTemplate
                         || profile.validate().is_err()
                 })
+                || target.network_profile.as_ref().is_some_and(|profile| {
+                    target.caps.driver != "space"
+                        || profile.validate().is_err()
+                        || target.legacy_driver.is_some()
+                        || target.credential_proxy && !profile.tls_exempt_hosts.is_empty()
+                })
+                || target.credential_proxy && target.network_profile.is_none()
                 || target.withdrawn_artifacts.len() > 512
                 || target
                     .withdrawn_artifacts
@@ -385,6 +406,8 @@ impl Catalog {
             migrated: true,
             environment_image: None,
             environment_attempt: None,
+            network_profile: None,
+            credential_proxy: false,
         })
     }
 
@@ -403,6 +426,8 @@ impl Catalog {
                     "environment_artifacts":caps.environment_artifacts,
                     "workspace_attachment":caps.workspace_attachment,
                     "enrolled_host":target.enrolled.as_ref().map(|_| target.id.as_str()),
+                    "egress_profile":target.network_profile.as_ref().and_then(|p|p.selector().ok()),
+                    "credential_proxy":target.credential_proxy,
                 }));
         }
         serde_json::Value::Array(groups.into_iter().map(|(placement,offers)|serde_json::json!({"placement":placement,"offers":offers})).collect())
@@ -424,6 +449,8 @@ impl Catalog {
             || binding.size != size
             || binding.fingerprint != target.fingerprint
             || binding.driver != target.caps.driver
+            || binding.network_profile != target.network_profile
+            || binding.credential_proxy != target.credential_proxy
             || !target.enabled
             || target
                 .enrolled
@@ -506,7 +533,7 @@ impl Catalog {
         if placement == Placement::Enrolled {
             return self.enrolled_candidates(owner, intent);
         }
-        if intent.enrolled_host.is_some() || intent.egress_profile.is_some() {
+        if intent.enrolled_host.is_some() {
             return Err(Refused::Unsupported);
         }
         let needs = intent.needs.clone().unwrap_or_default();
@@ -539,7 +566,13 @@ impl Catalog {
             }
             refusal = Refused::Unsupported;
             let caps = &target.caps;
-            if !supports_needs(caps, &needs)
+            if intent.egress_profile
+                != target
+                    .network_profile
+                    .as_ref()
+                    .and_then(|p| p.selector().ok())
+                || needs.credential_proxy && !target.credential_proxy
+                || !supports_needs(caps, &needs)
                 || intent.environment_attempt.is_some() && !caps.environment_artifacts
             {
                 continue;
@@ -624,6 +657,8 @@ impl Catalog {
                 migrated: false,
                 environment_image: intent.environment_image.clone(),
                 environment_attempt: intent.environment_attempt.clone(),
+                network_profile: target.network_profile.clone(),
+                credential_proxy: target.credential_proxy,
             });
         }
         if choices.is_empty() {
@@ -682,6 +717,8 @@ impl Catalog {
             migrated: false,
             environment_image: None,
             environment_attempt: None,
+            network_profile: None,
+            credential_proxy: false,
         }])
     }
     pub fn choose(
@@ -782,6 +819,59 @@ mod tests {
             digest(&value),
             "81e7efe44cd5cc4396dacf6c08265fffbc061930bdfd7195a0bbc713c2e48dbf"
         );
+    }
+    #[test]
+    fn network_profiles_are_explicit_pinned_and_never_silently_replaced() {
+        use computer_credentials::policy::{Host, Profile as NetworkProfile};
+        let profile = NetworkProfile::new("dev-v1", [Host::parse("github.com").unwrap()].into());
+        let mut scoped = target("scoped", "https://space.example", Placement::FastSandbox);
+        scoped.caps.driver = "space".into();
+        scoped.network_profile = Some(profile.clone());
+        scoped.credential_proxy = true;
+        let ordinary = target("ordinary", "https://boat.example", Placement::OurCloud);
+        let catalog = Catalog::new("ordinary", "p1", [ordinary.clone(), scoped.clone()]).unwrap();
+        let mut intent = CreateIntent {
+            egress_profile: Some(profile.selector().unwrap()),
+            needs: Some(Needs {
+                credential_proxy: true,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let binding = catalog.choose("owner", &intent, &BTreeMap::new()).unwrap();
+        assert_eq!(binding.deployment, "scoped");
+        assert_eq!(binding.network_profile, Some(profile.clone()));
+        let mut changed = scoped.clone();
+        changed
+            .network_profile
+            .as_mut()
+            .unwrap()
+            .allow_hosts
+            .insert(Host::parse("other.example.com").unwrap());
+        let restarted = Catalog::new("ordinary", "p2", [ordinary.clone(), changed]).unwrap();
+        assert!(
+            restarted
+                .bound(&binding, "owner", "space", "small")
+                .is_err()
+        );
+        assert!(
+            restarted
+                .choose("owner", &intent, &BTreeMap::new())
+                .is_err()
+        );
+        intent.egress_profile = Some("dev-v1".into());
+        assert!(catalog.choose("owner", &intent, &BTreeMap::new()).is_err());
+        intent.egress_profile = None;
+        assert!(catalog.choose("owner", &intent, &BTreeMap::new()).is_err());
+        assert_eq!(
+            catalog
+                .choose("owner", &CreateIntent::default(), &BTreeMap::new())
+                .unwrap()
+                .deployment,
+            "ordinary"
+        );
+        scoped.caps.driver = "oa-boat".into();
+        assert!(Catalog::new("scoped", "p1", [scoped]).is_err());
     }
     fn target(id: &str, origin: &str, placement: Placement) -> Target {
         let mut caps = Capabilities::new("fake", Profile::ALL, &["small"]);
@@ -1037,7 +1127,7 @@ mod placement_properties {
             let catalog=Catalog::new("fixture","p1",[target]).unwrap();
             let needs=Needs{profiles:Profile::ALL.into_iter().enumerate()
                 .filter_map(|(i,p)|(requested & (1<<i)!=0).then_some(p)).collect(),
-                memory_suspend:require_memory,files:require_files,command_sessions:require_commands,min_vcpus:Some(cpu),min_memory_mib:None};
+                memory_suspend:require_memory,files:require_files,command_sessions:require_commands,credential_proxy:false,min_vcpus:Some(cpu),min_memory_mib:None};
             let intent=CreateIntent{placement:explicit_fast.then_some(Placement::FastSandbox),needs:Some(needs.clone()),..Default::default()};
             let eligible=allowed && (!explicit_fast || fast) && caps.supports(Profile::Suspend)
                 && needs.profiles.is_subset(&caps.profiles) && (!require_memory || caps.memory_suspend)

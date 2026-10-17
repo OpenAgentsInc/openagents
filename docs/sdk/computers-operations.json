@@ -1,7 +1,7 @@
 {
   "format": "openagents.computers.operations.v1",
   "generator_version": 1,
-  "schema_sha256": "54ce0866363235441d42f6a4d1748bce2c8b88ca9514906de16d2b45f52dc72c",
+  "schema_sha256": "6918793182536b8dc631cef03083ad74effdac61d448582175fa05155a490e9b",
   "operations": [
     {
       "operation_id": "getAccount",
@@ -174,6 +174,54 @@
       "path": "/v1/computers/{id}/commands/{command}/output",
       "params": "AttachComputerCommandParams",
       "result": "AttachComputerCommandResult",
+      "authority": "account",
+      "success": [
+        200
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "read",
+      "max_request_bytes": 0,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "prepareComputerCredentialReference",
+      "method": "POST",
+      "path": "/v1/computers/{id}/credential-references",
+      "params": "PrepareComputerCredentialReferenceParams",
+      "result": "PrepareComputerCredentialReferenceResult",
+      "authority": "account",
+      "success": [
+        201
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "same_request_key",
+      "max_request_bytes": 8192,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "revokeComputerCredentialReference",
+      "method": "DELETE",
+      "path": "/v1/computers/{id}/credential-references/{reference}",
+      "params": "RevokeComputerCredentialReferenceParams",
+      "result": "RevokeComputerCredentialReferenceResult",
+      "authority": "account",
+      "success": [
+        204
+      ],
+      "binary_request": false,
+      "binary_response": false,
+      "retry": "manual_intent",
+      "max_request_bytes": 0,
+      "max_response_bytes": 1048576
+    },
+    {
+      "operation_id": "getComputerCredentialReference",
+      "method": "GET",
+      "path": "/v1/computers/{id}/credential-references/{reference}",
+      "params": "GetComputerCredentialReferenceParams",
+      "result": "GetComputerCredentialReferenceResult",
       "authority": "account",
       "success": [
         200

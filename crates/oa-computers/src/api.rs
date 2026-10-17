@@ -214,6 +214,7 @@ pub fn view(e: &Entry) -> Value {
         "image": e.image,
         "size": e.size,
         "desired": e.desired,
+        "intent_generation": e.intent_generation,
         "state": e.phase,
         "resource": e.record.resource(),
         "turns": e.record.turn.dispatched,

@@ -96,7 +96,10 @@ pub(super) fn qualify(document: &mut Value) {
             op["x-openagents-retry"] = json!(match method.as_str() {
                 "get" => "read",
                 "put" => "read_and_compare",
-                "post" if path == "/v1/computers" || path.ends_with("/commands") =>
+                "post"
+                    if path == "/v1/computers"
+                        || (path.ends_with("/commands")
+                            || path.ends_with("/credential-references")) =>
                     "same_request_key",
                 _ => "manual_intent",
             });
@@ -112,6 +115,8 @@ pub(super) fn qualify(document: &mut Value) {
                     4194304
                 } else if method == "post" && path.ends_with("/commands") {
                     73728
+                } else if method == "post" && path.ends_with("/credential-references") {
+                    8192
                 } else if method == "post" && path == "/v1/computers" {
                     16384
                 } else {

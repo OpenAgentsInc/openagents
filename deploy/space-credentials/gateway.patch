@@ -1,0 +1,832 @@
+diff --git a/crates/libs/api/src/routes/public/mod.rs b/crates/libs/api/src/routes/public/mod.rs
+index ac4e5e5..4520f7e 100644
+--- a/crates/libs/api/src/routes/public/mod.rs
++++ b/crates/libs/api/src/routes/public/mod.rs
+@@ -140,6 +140,10 @@ fn mounted_operations() -> Vec<(NativeOperation, MethodRouter<AppState>)> {
+             native::STREAM_SANDBOX_METRICS,
+             sandboxes::stream_sandbox_metrics,
+         ),
++        mount(
++            native::GET_SANDBOX_CREDENTIAL_CONTEXT,
++            network_policy::credential_context,
++        ),
+         mount(
+             native::GET_SANDBOX_NETWORK_POLICY,
+             network_policy::get_sandbox_network_policy,
+diff --git a/crates/libs/api/src/routes/public/network_policy.rs b/crates/libs/api/src/routes/public/network_policy.rs
+index e9b748a..660375c 100644
+--- a/crates/libs/api/src/routes/public/network_policy.rs
++++ b/crates/libs/api/src/routes/public/network_policy.rs
+@@ -37,6 +37,35 @@ pub async fn get_sandbox_network_policy(
+         .ok_or_else(|| PublicApiError::not_found("sandbox has no network policy"))
+ }
+ 
++/// Private deployment extension: current native authority for the host broker.
++/// The normal native tenant and sandbox-owner middleware applies to this read.
++pub async fn credential_context(
++    State(state): State<AppState>,
++    Extension(AuthOrg(org)): Extension<AuthOrg>,
++    Path(sandbox_id): Path<String>,
++) -> Result<Json<serde_json::Value>, PublicApiError> {
++    let sandbox_id = parse_public_sandbox_id(&sandbox_id)?;
++    ensure_sandbox_owner(&state.pool, org.id, sandbox_id).await?;
++    let candidate =
++        pplx_space_credential_injection_store::resolution::load_network_policy_candidate(
++            &state.pool,
++            sandbox_id.into(),
++        )
++        .await
++        .map_err(|_| PublicApiError::internal())?
++        .ok_or_else(|| PublicApiError::not_found("sandbox execution unavailable"))?;
++    if candidate.state.organization_id != org.id.as_uuid() {
++        return Err(PublicApiError::not_found("sandbox execution unavailable"));
++    }
++    Ok(Json(serde_json::json!({
++        "native_resource":pplx_space_common_core::types::SandboxId::from(sandbox_id).to_string(),
++        "node":candidate.state.node_id.to_string(),
++        "execution_generation":candidate.state.execution_generation.get(),
++        "native_policy_ref":candidate.effective_network_policy_ref,
++        "policy":candidate.policy,
++    })))
++}
++
+ /// Read the effective desired policy and return an opaque `ETag`.
+ mod document {
+     use super::*;
+diff --git a/crates/libs/net/gateway/server/Cargo.toml b/crates/libs/net/gateway/server/Cargo.toml
+index 22cb010..ae2fe9e 100644
+--- a/crates/libs/net/gateway/server/Cargo.toml
++++ b/crates/libs/net/gateway/server/Cargo.toml
+@@ -19,6 +19,7 @@ datadog = ["otel", "pplx-space-common-svc/datadog"]
+ datadog-otel = ["otel", "datadog"]
+ 
+ [dependencies]
++computer-credentials = { path = "../../../../openagents-credentials" }
+ zeroize = { workspace = true }
+ arc-swap = { workspace = true }
+ aws-lc-rs = { workspace = true }
+@@ -65,6 +66,8 @@ pplx-space-net-gateway-client = { workspace = true }
+ pplx-space-spaced-common = { workspace = true }
+ 
+ [dev-dependencies]
++pplx-space-net-common = { workspace = true, features = ["serde"] }
++serde_json = { workspace = true }
+ pplx-space-test-env.workspace = true
+ prost = { workspace = true }
+ tokio = { workspace = true, features = ["test-util"] }
+diff --git a/crates/libs/net/gateway/server/src/certificates/material.rs b/crates/libs/net/gateway/server/src/certificates/material.rs
+index ead3fa4..b7a22c6 100644
+--- a/crates/libs/net/gateway/server/src/certificates/material.rs
++++ b/crates/libs/net/gateway/server/src/certificates/material.rs
+@@ -58,6 +58,7 @@ pub struct CertificateLease {
+     not_before: Timestamp,
+     not_after: Timestamp,
+     fence: Fence,
++    broker_scope: tokio::sync::OnceCell<String>,
+ }
+ 
+ impl fmt::Debug for CertificateLease {
+@@ -100,6 +101,7 @@ impl CertificateLease {
+             not_after: Timestamp::from_second(material.not_after)
+                 .map_err(|_| CertificateError::Validity)?,
+             fence,
++            broker_scope: tokio::sync::OnceCell::new(),
+         };
+         if !value.is_usable() {
+             return Err(CertificateError::Stale);
+@@ -107,6 +109,38 @@ impl CertificateLease {
+         Ok(value)
+     }
+ 
++    /// Certificate signing material can be shared; a stream's grant cannot.
++    pub(crate) fn for_connection(&self) -> Self {
++        Self {
++            host: self.host.clone(),
++            port: self.port,
++            key: self.key.clone(),
++            not_before: self.not_before,
++            not_after: self.not_after,
++            fence: self.fence.clone(),
++            broker_scope: tokio::sync::OnceCell::new(),
++        }
++    }
++    async fn credential_scope(&self) -> Result<Option<&String>, NetworkCredentialAccessError> {
++        let Some(broker) = self.fence.state.credential_broker() else {
++            return Ok(None);
++        };
++        self.broker_scope
++            .get_or_try_init(|| async {
++                let policy_ref = self.fence.state.snapshot().await.installed_policy_ref;
++                broker
++                    .check_scope(&policy_ref, None)
++                    .await
++                    .map_err(|_| NetworkCredentialAccessError::TemporarilyUnavailable)
++            })
++            .await
++            .map(Some)
++    }
++
++    pub(crate) fn uses_credential_broker(&self) -> bool {
++        self.fence.state.credential_broker().is_some()
++    }
++
+     pub fn host(&self) -> &DomainName {
+         &self.host
+     }
+@@ -130,6 +164,16 @@ impl CertificateLease {
+             if !self.is_usable() {
+                 return;
+             }
++            if let Some(broker) = self.fence.state.credential_broker() {
++                let policy_ref = self.fence.state.snapshot().await.installed_policy_ref;
++                let scope = match self.credential_scope().await {
++                    Ok(Some(scope)) => scope,
++                    _ => return,
++                };
++                if broker.check_scope(&policy_ref, Some(scope)).await.is_err() {
++                    return;
++                }
++            }
+             tokio::select! {
+                 biased;
+                 () = self.fence.shutdown.cancelled() => return,
+@@ -149,11 +193,59 @@ impl CertificateLease {
+         Ok(self.key.clone())
+     }
+ 
+-    pub(crate) fn network_credential_headers(
++    pub(crate) async fn broker_network_credential_headers(
++        &self,
++        path: &str,
++        method: &str,
++        incoming: &http::HeaderMap,
++    ) -> Result<Vec<(HeaderName, HeaderValue)>, NetworkCredentialAccessError> {
++        if let Some(broker) = self.fence.state.credential_broker() {
++            if !self.is_usable() || !self.fence.policy.network_credential_rules.is_empty() {
++                return Err(NetworkCredentialAccessError::Stale);
++            }
++            let policy_ref = self.fence.state.snapshot().await.installed_policy_ref;
++            let selectors = computer_credentials::gateway::selectors(incoming)
++                .map_err(|_| NetworkCredentialAccessError::InvalidMaterial)?;
++            let headers = broker
++                .headers_scoped(
++                    &policy_ref,
++                    self.host.as_str(),
++                    self.port,
++                    path,
++                    method,
++                    &selectors,
++                    self.credential_scope().await?.map(String::as_str),
++                )
++                .await
++                .map_err(|_| NetworkCredentialAccessError::TemporarilyUnavailable)?;
++            if !self.is_usable() {
++                return Err(NetworkCredentialAccessError::Stale);
++            }
++            return headers
++                .iter()
++                .map(|header| {
++                    let name = HeaderName::from_bytes(header.name.as_bytes())
++                        .map_err(|_| NetworkCredentialAccessError::InvalidMaterial)?;
++                    let mut value = HeaderValue::from_bytes(header.value.as_bytes())
++                        .map_err(|_| NetworkCredentialAccessError::InvalidMaterial)?;
++                    value.set_sensitive(true);
++                    Ok((name, value))
++                })
++                .collect();
++        }
++        Err(NetworkCredentialAccessError::Missing)
++    }
++
++    pub(crate) async fn network_credential_headers(
+         &self,
+         path: &str,
+         method: NetworkCredentialHttpMethodV1,
+     ) -> Result<Vec<(HeaderName, HeaderValue)>, NetworkCredentialAccessError> {
++        if self.uses_credential_broker() {
++            return self
++                .broker_network_credential_headers(path, method.as_str(), &http::HeaderMap::new())
++                .await;
++        }
+         let bindings = self
+             .fence
+             .policy
+diff --git a/crates/libs/net/gateway/server/src/run.rs b/crates/libs/net/gateway/server/src/run.rs
+index d471616..da699fb 100644
+--- a/crates/libs/net/gateway/server/src/run.rs
++++ b/crates/libs/net/gateway/server/src/run.rs
+@@ -80,6 +80,8 @@ pub struct NetGatewayRunConfig {
+ /// non-zero exit for the sandbox watchdog to replace it.
+ #[derive(Debug, thiserror::Error)]
+ pub enum RunNetGatewayError {
++    #[error("credential broker configuration is invalid")]
++    CredentialBroker,
+     #[error("failed to initialize reserved-DNS resolution: {0}")]
+     ReservedDns(#[source] BuildReservedDnsCoreError),
+     #[error("failed to bind the net-gateway control socket {}: {source}", path.display())]
+@@ -252,6 +254,22 @@ pub async fn run(
+         GatewayNetworkState::pending_policy()
+     }
+     .with_readiness_metrics();
++    let network_state = if std::env::var_os("OA_SPACE_CREDENTIAL_BROKER").is_some() {
++        let node = std::env::var("OA_SPACE_CREDENTIAL_NODE_ID")
++            .map_err(|_| RunNetGatewayError::CredentialBroker)?;
++        let context = computer_credentials::gateway::Context {
++            native_resource: config.sandbox_id.to_string(),
++            node,
++            execution_generation: 0,
++            native_policy_ref: "pending".into(),
++        };
++        let broker = computer_credentials::gateway::Client::from_host_environment(context)
++            .map_err(|_| RunNetGatewayError::CredentialBroker)?
++            .ok_or(RunNetGatewayError::CredentialBroker)?;
++        network_state.with_credential_broker(Arc::new(broker))
++    } else {
++        network_state
++    };
+     let policy_loader = host_control_policy_loader(
+         config.sandbox_id,
+         stats.clone(),
+diff --git a/crates/libs/net/gateway/server/src/state.rs b/crates/libs/net/gateway/server/src/state.rs
+index 7dd2441..6c784aa 100644
+--- a/crates/libs/net/gateway/server/src/state.rs
++++ b/crates/libs/net/gateway/server/src/state.rs
+@@ -150,6 +150,7 @@ impl PolicyNotReady {
+ 
+ #[derive(Clone)]
+ pub struct GatewayNetworkState {
++    credential_broker: Option<Arc<computer_credentials::gateway::Client>>,
+     state_tx: watch::Sender<Arc<NetworkStateInner>>,
+     state_rx: watch::Receiver<Arc<NetworkStateInner>>,
+     writer_lock: Arc<Mutex<()>>,
+@@ -291,6 +292,7 @@ impl GatewayNetworkState {
+     fn new(inner: NetworkStateInner) -> Self {
+         let (state_tx, state_rx) = watch::channel(Arc::new(inner));
+         Self {
++            credential_broker: None,
+             traffic_gate: None,
+             readiness_observer: None,
+             state_tx,
+@@ -317,6 +319,18 @@ impl GatewayNetworkState {
+         self.owner_contacted.subscribe()
+     }
+ 
++    pub fn with_credential_broker(
++        mut self,
++        broker: Arc<computer_credentials::gateway::Client>,
++    ) -> Self {
++        self.credential_broker = Some(broker);
++        self
++    }
++
++    pub(crate) fn credential_broker(&self) -> Option<&Arc<computer_credentials::gateway::Client>> {
++        self.credential_broker.as_ref()
++    }
++
+     pub async fn snapshot(&self) -> NetworkStateSnapshot {
+         let inner = self.state_rx.borrow().clone();
+         self.snapshot_from_inner(inner.as_ref())
+diff --git a/crates/libs/net/gateway/server/src/tcp_proxy.rs b/crates/libs/net/gateway/server/src/tcp_proxy.rs
+index 81ac378..3993529 100644
+--- a/crates/libs/net/gateway/server/src/tcp_proxy.rs
++++ b/crates/libs/net/gateway/server/src/tcp_proxy.rs
+@@ -386,6 +386,22 @@ impl TcpProxy {
+         shutdown: &CancellationToken,
+     ) -> (Option<DomainName>, FlowOutcome) {
+         abort_on_close(&client);
++        if self.network_state.credential_broker().is_some()
++            && !computer_credentials::policy::gateway_transport(
++                true,
++                dst.port(),
++                self.reserved_dns.resolver_for(dst.ip()).is_some(),
++            )
++        {
++            return (
++                None,
++                FlowOutcome::Rejected(Rejection::Admission(
++                    crate::egress::TcpAdmissionDenial::DnsAttribution(
++                        pplx_space_net_common::DenyReason::Default,
++                    ),
++                )),
++            );
++        }
+         if let Some(resolver) = self.reserved_dns.resolver_for(dst.ip()) {
+             // Take the cancellation token before reading policy. A concurrent
+             // install therefore either cancels this connection or precedes
+diff --git a/crates/libs/net/gateway/server/src/tcp_proxy/inspected.rs b/crates/libs/net/gateway/server/src/tcp_proxy/inspected.rs
+index 8a87538..9cdaaf5 100644
+--- a/crates/libs/net/gateway/server/src/tcp_proxy/inspected.rs
++++ b/crates/libs/net/gateway/server/src/tcp_proxy/inspected.rs
+@@ -28,6 +28,11 @@ impl TcpProxy {
+         lease: Arc<CertificateLease>,
+         client_alpn: ClientAlpnOffer,
+     ) -> Result<(), HttpError> {
++        let lease = if lease.uses_credential_broker() {
++            Arc::new(lease.for_connection())
++        } else {
++            lease
++        };
+         let span = tracing::info_span!(
+             "tls.server",
+             sandbox_id = self.sandbox_id,
+diff --git a/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/credentials.rs b/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/credentials.rs
+index 62fb37b..c8f0d34 100644
+--- a/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/credentials.rs
++++ b/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/credentials.rs
+@@ -26,17 +26,37 @@ impl NetworkCredentialAccessError {
+     }
+ }
+ 
+-pub(super) fn credential_headers<B>(
++pub(super) async fn credential_headers<B>(
+     lease: &CertificateLease,
+     request: &SanitizedRequest<B>,
+ ) -> Result<CredentialHeaders, NetworkCredentialAccessError> {
++    if lease.uses_credential_broker() {
++        let mut incoming = http::HeaderMap::new();
++        for name in ["authorization", "x-api-key", "x-goog-api-key"] {
++            for value in request.headers().get_all(name).iter() {
++                incoming.append(name, value.clone());
++            }
++        }
++        return lease
++            .broker_network_credential_headers(
++                request.uri().path(),
++                request.method().as_str(),
++                &incoming,
++            )
++            .await;
++    }
+     let Some(method) = NetworkCredentialHttpMethodV1::from_http(request.method()) else {
++        if lease.uses_credential_broker() {
++            return Err(NetworkCredentialAccessError::InvalidMaterial);
++        }
+         return lease
+             .is_usable()
+             .then(Vec::new)
+             .ok_or(NetworkCredentialAccessError::Stale);
+     };
+-    lease.network_credential_headers(request.uri().path(), method)
++    lease
++        .network_credential_headers(request.uri().path(), method)
++        .await
+ }
+ 
+ pub(super) fn inject<B>(request: &mut SanitizedRequest<B>, headers: CredentialHeaders) {
+diff --git a/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/forward.rs b/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/forward.rs
+index f091fc9..fd7d984 100644
+--- a/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/forward.rs
++++ b/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/forward.rs
+@@ -15,6 +15,13 @@ where
+ {
+     pub(super) async fn forward(&self, mut request: SanitizedRequest<Incoming>) -> Response<Body> {
+         if request.method() == http::Method::CONNECT {
++            if self.lease.uses_credential_broker() {
++                return self.refuse(
++                    HttpProtocol::of(request.version()),
++                    "credential_connect_unsupported",
++                    StatusCode::FORBIDDEN,
++                );
++            }
+             return self.connect_request(request).await;
+         }
+ 
+@@ -35,11 +42,15 @@ where
+             authorization.finish(Outcome::Denied, reason.as_str());
+             return self.refuse(protocol, reason.as_str(), reason.refusal_status());
+         }
+-        let credential_bearing = match credential_headers(&self.lease, &request) {
+-            Ok(headers) => !headers.is_empty(),
+-            Err(error) => {
+-                authorization.finish(initial_credential_outcome(error), error.as_str());
+-                return self.refuse(protocol, error.as_str(), error.status());
++        let credential_bearing = if self.lease.uses_credential_broker() {
++            true
++        } else {
++            match credential_headers(&self.lease, &request).await {
++                Ok(headers) => !headers.is_empty(),
++                Err(error) => {
++                    authorization.finish(initial_credential_outcome(error), error.as_str());
++                    return self.refuse(protocol, error.as_str(), error.status());
++                }
+             }
+         };
+         if handshake.is_some() && credential_bearing {
+@@ -151,7 +162,7 @@ where
+                 return Err(refuse("lease_invalidated", StatusCode::FORBIDDEN));
+             }
+         } else {
+-            let headers = match credential_headers(&self.lease, &request) {
++            let headers = match credential_headers(&self.lease, &request).await {
+                 Ok(headers) => headers,
+                 Err(error) => {
+                     forwarding.finish(Outcome::Cancelled, error.as_str());
+diff --git a/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/tests.rs b/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/tests.rs
+index 3794908..e7fb339 100644
+--- a/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/tests.rs
++++ b/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/tests.rs
+@@ -1,3 +1,4 @@
++mod credential_broker;
+ use super::credentials::{credential_headers, inject};
+ use super::forward::authorize_authority;
+ use super::*;
+@@ -195,7 +196,7 @@ async fn network_credentials_replace_only_the_configured_header_and_are_sensitiv
+ 
+     let mut request =
+         SanitizedRequest::try_from(credential_request(http::Method::GET, "/v1/items")).unwrap();
+-    let headers = credential_headers(&lease, &request).unwrap();
++    let headers = credential_headers(&lease, &request).await.unwrap();
+     inject(&mut request, headers);
+     assert_eq!(
+         request.headers().get(header::AUTHORIZATION).unwrap(),
+@@ -215,7 +216,7 @@ async fn network_credentials_replace_only_the_configured_header_and_are_sensitiv
+         http::HeaderValue::from_static("Bearer guest-value"),
+     );
+     let mut request = SanitizedRequest::try_from(request).unwrap();
+-    let headers = credential_headers(&lease, &request).unwrap();
++    let headers = credential_headers(&lease, &request).await.unwrap();
+     inject(&mut request, headers);
+     assert_eq!(
+         request.headers().get(header::AUTHORIZATION).unwrap(),
+@@ -240,7 +241,9 @@ async fn network_credentials_replace_only_the_configured_header_and_are_sensitiv
+         http::HeaderValue::from_static("Bearer guest-value"),
+     );
+     let mut request = SanitizedRequest::try_from(request).unwrap();
+-    let headers = credential_headers(&custom_header_lease, &request).unwrap();
++    let headers = credential_headers(&custom_header_lease, &request)
++        .await
++        .unwrap();
+     inject(&mut request, headers);
+     assert_eq!(request.headers().get("x-api-key").unwrap(), NETWORK_SECRET);
+     assert!(request.headers().get("x-api-key").unwrap().is_sensitive());
+@@ -269,7 +272,9 @@ async fn network_credentials_replace_only_the_configured_header_and_are_sensitiv
+         .headers_mut()
+         .insert("x-api-key", "guest-api-key".parse().unwrap());
+     let request = SanitizedRequest::try_from(request).unwrap();
+-    let error = credential_headers(&incomplete_lease, &request).unwrap_err();
++    let error = credential_headers(&incomplete_lease, &request)
++        .await
++        .unwrap_err();
+     assert_eq!(error, NetworkCredentialAccessError::Missing);
+     assert_eq!(
+         request.headers().get(header::AUTHORIZATION).unwrap(),
+@@ -318,7 +323,7 @@ async fn matching_policy_reports_service_unavailable_during_policy_refresh() {
+     );
+     let request =
+         SanitizedRequest::try_from(credential_request(http::Method::GET, "/v1/items")).unwrap();
+-    let error = credential_headers(&lease, &request).unwrap_err();
++    let error = credential_headers(&lease, &request).await.unwrap_err();
+     assert_eq!(error, NetworkCredentialAccessError::TemporarilyUnavailable);
+     assert_eq!(error.status(), StatusCode::SERVICE_UNAVAILABLE);
+     refreshing.abort();
+diff --git a/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/tests/credential_broker.rs b/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/tests/credential_broker.rs
+new file mode 100644
+index 0000000..8ee54dd
+--- /dev/null
++++ b/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/tests/credential_broker.rs
+@@ -0,0 +1,184 @@
++//! Exercise the maintained adapter across real verified HTTPS and HTTP/2.
++use super::*;
++use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
++
++#[tokio::test]
++async fn broker_markers_are_replaced_per_request_and_revocation_closes_the_lease() {
++    use computer_credentials::{Secret, gateway};
++    use http_body_util::{BodyExt as _, Full};
++
++    let revoked = Arc::new(AtomicBool::new(false));
++    let reads = Arc::new(AtomicUsize::new(0));
++    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
++    let address = listener.local_addr().unwrap();
++    let rcgen::CertifiedKey { cert, signing_key } =
++        rcgen::generate_simple_self_signed(vec!["127.0.0.1".into()]).unwrap();
++    let pem = cert.pem();
++    let config = rustls::ServerConfig::builder_with_provider(Arc::new(
++        rustls::crypto::aws_lc_rs::default_provider(),
++    ))
++    .with_safe_default_protocol_versions()
++    .unwrap()
++    .with_no_client_auth()
++    .with_single_cert(
++        vec![cert.der().clone()],
++        rustls::pki_types::PrivatePkcs8KeyDer::from(signing_key.serialize_der()).into(),
++    )
++    .unwrap();
++    let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
++    let broker_revoked = revoked.clone();
++    let broker_reads = reads.clone();
++    let broker = tokio::spawn(async move {
++        loop {
++            let (io, _) = listener.accept().await.unwrap();
++            let acceptor = acceptor.clone();
++            let revoked = broker_revoked.clone();
++            let reads = broker_reads.clone();
++            tokio::spawn(async move {
++                let Ok(io) = acceptor.accept(io).await else {
++                    return;
++                };
++                let service = service_fn(move |request: Request<Incoming>| {
++                    let revoked = revoked.clone();
++                    let reads = reads.clone();
++                    async move {
++                        let path = request.uri().path().to_owned();
++                        let authenticated =
++                            request.headers().get("authorization").is_some_and(|v| {
++                                v == "Bearer fixture-node-token-which-is-never-in-the-guest"
++                            });
++                        let body = request.into_body().collect().await.unwrap().to_bytes();
++                        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
++                        let scope = "b".repeat(64);
++                        let admitted = authenticated
++                            && !revoked.load(Ordering::SeqCst)
++                            && body["context"]["node"] == "fixture-node"
++                            && (body["scope"].is_null() || body["scope"] == scope);
++                        let (status, reply) = if !admitted {
++                            (403, serde_json::json!({"error":"denied"}))
++                        } else if path == "/v1/check" {
++                            (200, serde_json::json!({"scope":scope}))
++                        } else if path == "/v1/resolve"
++                            && body["host"] == "allowed.test"
++                            && body["port"] == 443
++                            && body["path"] == "/v1/messages"
++                            && body["method"] == "POST"
++                            && body["selectors"]["x-api-key"]
++                                == "00000000-0000-4000-8000-000000000013"
++                        {
++                            reads.fetch_add(1, Ordering::SeqCst);
++                            (
++                                200,
++                                serde_json::json!([{"name":"x-api-key","value":"synthetic-native-proxy-canary"}]),
++                            )
++                        } else {
++                            (403, serde_json::json!({"error":"denied"}))
++                        };
++                        Ok::<_, Infallible>(
++                            Response::builder()
++                                .status(status)
++                                .body(Full::new(Bytes::from(serde_json::to_vec(&reply).unwrap())))
++                                .unwrap(),
++                        )
++                    }
++                });
++                let _ = hyper::server::conn::http1::Builder::new()
++                    .serve_connection(TokioIo::new(io), service)
++                    .await;
++            });
++        }
++    });
++    let client = gateway::Client::new(
++        &format!("https://{address}"),
++        Secret::new(b"fixture-node-token-which-is-never-in-the-guest".to_vec()).unwrap(),
++        gateway::Context {
++            native_resource: "fixture-native".into(),
++            node: "fixture-node".into(),
++            execution_generation: 0,
++            native_policy_ref: "pending".into(),
++        },
++    )
++    .unwrap()
++    .with_root_certificate(pem.as_bytes())
++    .unwrap();
++    let state = crate::state::GatewayNetworkState::pending_policy()
++        .with_credential_broker(Arc::new(client));
++    let profile = computer_credentials::policy::Profile::new(
++        "fixture-v1",
++        [computer_credentials::policy::Host::parse("allowed.test").unwrap()].into(),
++    );
++    let policy: pplx_space_net_common::NetworkPolicyV1 =
++        serde_json::from_value(profile.space_policy().unwrap()).unwrap();
++    let (_, _, provider) = crate::certificates::local_provider_with_policy(
++        state.clone(),
++        policy.clone(),
++        Default::default(),
++    )
++    .await;
++    state.dns_allow_cache().observe_response(
++        &crate::dns::test_fixtures::a_response("allowed.test", [93, 184, 216, 34], 60),
++        &policy,
++    );
++    let lease = provider
++        .get("allowed.test".parse().unwrap(), 443)
++        .await
++        .unwrap();
++    let lease = Arc::new(lease.for_connection());
++    let binding = HostBinding::new("test", "93.184.216.34:443".parse().unwrap(), state);
++    let (origin, peer) = tokio::io::duplex(4096);
++    let (observed, mut received) = tokio::sync::mpsc::channel(2);
++    let origin_task = tokio::spawn(
++        hyper::server::conn::http2::Builder::new(TokioExecutor::new()).serve_connection(
++            TokioIo::new(peer),
++            service_fn(move |request: Request<Incoming>| {
++                let observed = observed.clone();
++                async move {
++                    observed
++                        .send(request.headers().get("x-api-key").unwrap().to_owned())
++                        .await
++                        .unwrap();
++                    Ok::<_, Infallible>(Response::new(Full::new(Bytes::from_static(
++                        b"data: fixture\n\n",
++                    ))))
++                }
++            }),
++        ),
++    );
++    let (guest, peer) = tokio::io::duplex(4096);
++    let serving_lease = lease.clone();
++    let gateway_task = tokio::spawn(serve(guest, binding, serving_lease, move |_| async move {
++        Ok((origin, HttpProtocol::Http2))
++    }));
++    let (mut sender, connection) = http2::handshake(TokioExecutor::new(), TokioIo::new(peer))
++        .await
++        .unwrap();
++    let connection = tokio::spawn(connection);
++    let request = |path| {
++        Request::post(format!("https://allowed.test{path}"))
++            .header("x-api-key", "oa-ref:00000000-0000-4000-8000-000000000013")
++            .body(Empty::<Bytes>::new())
++            .unwrap()
++    };
++    let response = sender.send_request(request("/v1/messages")).await.unwrap();
++    assert_eq!(response.status(), StatusCode::OK);
++    assert_eq!(
++        response.into_body().collect().await.unwrap().to_bytes(),
++        b"data: fixture\n\n"[..]
++    );
++    let header = received.recv().await.unwrap();
++    assert_eq!(header, "synthetic-native-proxy-canary");
++    assert_eq!(reads.load(Ordering::SeqCst), 1);
++    let response = sender.send_request(request("/wrong-path")).await.unwrap();
++    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
++    assert!(received.try_recv().is_err());
++    assert_eq!(reads.load(Ordering::SeqCst), 1);
++    revoked.store(true, Ordering::SeqCst);
++    tokio::time::timeout(Duration::from_secs(7), lease.invalidated())
++        .await
++        .unwrap();
++    assert_eq!(reads.load(Ordering::SeqCst), 1);
++    connection.abort();
++    gateway_task.abort();
++    origin_task.abort();
++    broker.abort();
++}
+diff --git a/crates/libs/net/gateway/server/src/udp_proxy.rs b/crates/libs/net/gateway/server/src/udp_proxy.rs
+index 260bcc5..ef22c13 100644
+--- a/crates/libs/net/gateway/server/src/udp_proxy.rs
++++ b/crates/libs/net/gateway/server/src/udp_proxy.rs
+@@ -661,6 +661,17 @@ impl UdpProxy {
+         reserved: Option<(ReservedResolver, CancellationToken)>,
+     ) {
+         let route = udp_datagram_route(flow.orig_dst, reserved.is_some());
++        if self.network_state.credential_broker().is_some()
++            && !computer_credentials::policy::gateway_transport(
++                false,
++                flow.orig_dst.port(),
++                reserved.is_some(),
++            )
++        {
++            pplx_space_metrics::gateway::udp_datagram(route, false);
++            return;
++        }
++
+         let decision = if reserved.is_some() {
+             evaluate_reserved_dns_egress(flow.orig_dst, policy.as_ref())
+         } else {
+diff --git a/crates/libs/node/mgr/server/src/service/gateway_isolation.rs b/crates/libs/node/mgr/server/src/service/gateway_isolation.rs
+index 5846fe5..19a40e3 100644
+--- a/crates/libs/node/mgr/server/src/service/gateway_isolation.rs
++++ b/crates/libs/node/mgr/server/src/service/gateway_isolation.rs
+@@ -248,3 +248,93 @@ fn require_inactive_gateway_socket(path: &Path) -> Result<(), Status> {
+ 
+ #[cfg(test)]
+ mod tests;
++
++/// Install host-only node authority for the isolated gateway identity. Neither
++/// the guest UID nor caller-controlled launch environment can read the key.
++pub(super) fn credential_broker_environment(
++    sandbox_id: &str,
++    uid: u32,
++    isolated: bool,
++) -> Result<std::collections::HashMap<String, String>, Status> {
++    use std::{
++        io::{Read, Write},
++        os::unix::fs::{MetadataExt, OpenOptionsExt},
++    };
++    let mut env = std::collections::HashMap::new();
++    let origin = match std::env::var("OA_SPACE_CREDENTIAL_BROKER") {
++        Ok(value) => value,
++        Err(std::env::VarError::NotPresent) => return Ok(env),
++        Err(_) => {
++            return Err(Status::failed_precondition(
++                "invalid credential broker configuration",
++            ));
++        }
++    };
++    if !isolated {
++        return Err(Status::failed_precondition(
++            "credential injection requires an isolated gateway identity",
++        ));
++    }
++    let node = std::env::var("OA_SPACE_CREDENTIAL_NODE_ID")
++        .map_err(|_| Status::failed_precondition("credential node identity is missing"))?;
++    let source = std::env::var_os("OA_SPACE_CREDENTIAL_NODE_TOKEN_FILE")
++        .ok_or_else(|| Status::failed_precondition("credential node file is missing"))?;
++    let file = std::fs::OpenOptions::new()
++        .read(true)
++        .custom_flags(libc::O_NOFOLLOW)
++        .open(source)
++        .map_err(|_| Status::unavailable("credential node file is unavailable"))?;
++    let metadata = file
++        .metadata()
++        .map_err(|_| Status::unavailable("credential node file is unavailable"))?;
++    if !metadata.is_file()
++        || metadata.uid() != 0
++        || metadata.mode() & 0o077 != 0
++        || metadata.len() > 8192
++    {
++        return Err(Status::failed_precondition(
++            "credential node file must be private",
++        ));
++    }
++    let mut bytes = zeroize::Zeroizing::new(Vec::new());
++    file.take(8193)
++        .read_to_end(&mut bytes)
++        .map_err(|_| Status::unavailable("credential node file is unavailable"))?;
++    if !(32..=8192).contains(&bytes.len()) {
++        return Err(Status::failed_precondition(
++            "credential node file has invalid size",
++        ));
++    }
++    let directory = PathBuf::from(paths::isolated_net_gateway_run_dir(sandbox_id));
++    let target = directory.join("credential-node-token");
++    let staging = directory.join(format!("credential-node-token.{}", uuid::Uuid::now_v7()));
++    let result = (|| {
++        let mut output = std::fs::OpenOptions::new()
++            .write(true)
++            .create_new(true)
++            .mode(0o600)
++            .open(&staging)?;
++        output.write_all(&bytes)?;
++        output.sync_all()?;
++        nix::unistd::fchown(
++            &output,
++            Some(nix::unistd::Uid::from_raw(uid)),
++            Some(nix::unistd::Gid::from_raw(uid)),
++        )?;
++        std::fs::rename(&staging, &target)?;
++        Ok::<(), std::io::Error>(())
++    })();
++    if result.is_err() {
++        let _ = std::fs::remove_file(&staging);
++        return Err(Status::unavailable(
++            "credential node file couldn't be installed",
++        ));
++    }
++    env.insert("OA_SPACE_CREDENTIAL_BROKER".into(), origin);
++    env.insert("OA_SPACE_CREDENTIAL_NODE_ID".into(), node);
++    env.insert(
++        "OA_SPACE_CREDENTIAL_NODE_TOKEN_FILE".into(),
++        target.display().to_string(),
++    );
++    Ok(env)
++}
+diff --git a/crates/libs/node/mgr/server/src/service/runtime.rs b/crates/libs/node/mgr/server/src/service/runtime.rs
+index c7abda4..0748828 100644
+--- a/crates/libs/node/mgr/server/src/service/runtime.rs
++++ b/crates/libs/node/mgr/server/src/service/runtime.rs
+@@ -681,6 +681,15 @@ impl NodeManagerService {
+ 
+         let grant_cap =
+             req.program == pplx_space_common_core::host::linux::paths::NET_GATEWAY_SVC_BIN;
++        let mut launch_env = req.env.clone();
++        launch_env.retain(|name, _| !name.starts_with("OA_SPACE_CREDENTIAL_"));
++        if is_gateway {
++            launch_env.extend(gateway_isolation::credential_broker_environment(
++                &req.sandbox_id,
++                process_uid,
++                isolated_gateway,
++            )?);
++        }
+         let pid = self
+             .runtime_supervisor
+             .launch_sidecar(pplx_space_node_runtime_core::proto::LaunchSidecarRequest {
+@@ -692,7 +701,7 @@ impl NodeManagerService {
+                 ns_path: ns_path.clone(),
+                 program: req.program.clone(),
+                 args: launch_args,
+-                env: req.env.clone(),
++                env: launch_env,
+                 uid: process_uid,
+                 gid: process_uid,
+                 pre_exec_sockets: pre_exec_sockets
+diff --git a/crates/libs/public/api/src/routes.rs b/crates/libs/public/api/src/routes.rs
+index c66e972..689a52a 100644
+--- a/crates/libs/public/api/src/routes.rs
++++ b/crates/libs/public/api/src/routes.rs
+@@ -200,6 +200,7 @@ native_operations! {
+     STREAM_SANDBOX_LIFECYCLE_EVENTS = NativeOperation::new("/v1/sandboxes/{sandbox_id}/lifecycle-events", Get, "streamSandboxLifecycleEvents", Incubating);
+     STREAM_SANDBOX_METRICS = NativeOperation::new("/v1/sandboxes/{sandbox_id}/metrics-stream", Get, "streamSandboxMetrics", Incubating);
+     GET_SANDBOX_NETWORK_POLICY = NativeOperation::new("/v1/sandboxes/{sandbox_id}/network-policy", Get, "getSandboxNetworkPolicy", Incubating);
++    GET_SANDBOX_CREDENTIAL_CONTEXT = NativeOperation::new("/v1/sandboxes/{sandbox_id}/credential-context", Get, "getSandboxCredentialContext", Incubating);
+     CREATE_PORT_SESSION = NativeOperation::new("/v1/sandboxes/{sandbox_id}/port-sessions", Post, "createPortSession", Incubating);
+     LIST_PORTS = NativeOperation::new("/v1/sandboxes/{sandbox_id}/ports", Get, "listPorts", Incubating);
+     CLOSE_PORT = NativeOperation::new("/v1/sandboxes/{sandbox_id}/ports/{port}/close", Post, "closePort", Incubating);

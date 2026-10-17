@@ -24,6 +24,10 @@ const MIGRATIONS: &[(i32, &str)] = &[
     (12, include_str!("../migrations/0012_stopped_retention.sql")),
     (13, include_str!("../migrations/0013_delete_operations.sql")),
     (
+        14,
+        include_str!("../migrations/0014_credential_references.sql"),
+    ),
+    (
         15,
         include_str!("../migrations/0015_storage_allowances.sql"),
     ),
@@ -69,6 +73,13 @@ async fn open(config: &Config) -> Result<Client, DbError> {
 impl Db {
     /// Connect with a libpq string or URL and apply pending migrations.
     pub async fn connect(dsn: &str) -> Result<Self, DbError> {
+        let db = Self::connect_existing(dsn).await?;
+        db.migrate().await?;
+        Ok(db)
+    }
+
+    /// Connect to an initialized database without requiring migration rights.
+    pub async fn connect_existing(dsn: &str) -> Result<Self, DbError> {
         let mut config: Config = dsn
             .parse()
             .map_err(|e: tokio_postgres::Error| DbError(format!("connection string: {e}")))?;
@@ -81,7 +92,6 @@ impl Db {
             config,
             client: Arc::new(RwLock::new(Arc::new(client))),
         };
-        db.migrate().await?;
         Ok(db)
     }
 

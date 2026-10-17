@@ -10,6 +10,7 @@
 pub mod api;
 pub mod command_credentials;
 pub mod commands;
+pub mod credential_broker;
 pub mod db;
 pub mod economics;
 pub mod files;

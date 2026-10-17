@@ -18,10 +18,12 @@ macro_rules! opaque_debug {
     })+};
 }
 mod commands;
+mod credentials;
 mod files;
 mod lifecycle;
 mod wire;
 pub use commands::{Output, OutputReader};
+pub use credentials::{Credential, CredentialRef, CredentialRequest};
 pub use files::{File, WriteIntent, WriteReceipt};
 pub use lifecycle::WaitFor;
 

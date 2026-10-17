@@ -365,11 +365,25 @@ async fn reserved_names_and_foreign_or_changed_records_are_refused_before_networ
             .await,
         Err(Error::InvalidInput)
     ));
-    let mut value = serde_json::to_value(reference).unwrap();
+    let mut value = serde_json::to_value(reference.clone()).unwrap();
     value["account"] = "another-account".into();
     assert!(matches!(
         computers
             .get(
+                &serde_json::from_value(value).unwrap(),
+                &CancellationToken::new()
+            )
+            .await,
+        Err(Error::Session(openagents_sdk::Error::WrongAccount))
+    ));
+    let credential = computers
+        .credential_reference(&reference, "00000000-0000-0000-0000-000000000001")
+        .unwrap();
+    let mut value = serde_json::to_value(&credential).unwrap();
+    value["computer"]["account"] = json!("another-account");
+    assert!(matches!(
+        computers
+            .get_credential(
                 &serde_json::from_value(value).unwrap(),
                 &CancellationToken::new()
             )
@@ -733,4 +747,74 @@ async fn empty_binary_upload_and_cloud_pagination_use_the_published_contract() {
     assert!(seen[1].uri.contains("after=next%2Fpage"));
     assert_eq!(seen[3].length.as_deref(), Some("0"));
     assert!(seen[3].body.is_empty());
+}
+
+#[tokio::test]
+async fn credential_requests_keep_the_account_command_and_retry_identity() {
+    let row = json!({"id":"00000000-0000-0000-0000-000000000002","computer":ID,"source":"00000000-0000-0000-0000-000000000001","rule":"messages","command_key":"one-command","state":"prepared","created_unix":1,"expires_unix":301,"egress_profile":format!("model-v1@sha256:{}","a".repeat(64))});
+    let (server, session) = mocked(
+        vec![
+            Step::json(201, row.clone()),
+            Step::json(201, row.clone()),
+            Step::json(200, row),
+            Step {
+                status: 204,
+                body: vec![],
+                headers: vec![],
+                delay: Duration::ZERO,
+            },
+        ],
+        Duration::from_secs(5),
+    )
+    .await;
+    let computers = server.client.computers(&session).unwrap();
+    let reference = computers.reference(ID).unwrap();
+    let command = computers
+        .command_request(
+            &reference,
+            CommandOptions {
+                command: "true".into(),
+                idempotency_key: Some("one-command".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let request = computers
+        .credential_request(
+            &command,
+            "00000000-0000-0000-0000-000000000001",
+            "messages",
+            300,
+        )
+        .unwrap();
+    let saved = serde_json::to_vec(&request).unwrap();
+    let cancel = CancellationToken::new();
+    let first = computers
+        .prepare_credential(&request, &cancel)
+        .await
+        .unwrap();
+    let final_command = computers
+        .command_with_credential(&command, &first, "OA_PARAM_MODEL_REF")
+        .unwrap();
+    assert_eq!(final_command.key(), command.key());
+    assert_eq!(
+        final_command.options().env.as_ref().unwrap()["OA_PARAM_MODEL_REF"],
+        first.reference().placeholder()
+    );
+    let retry = computers
+        .prepare_credential(&serde_json::from_slice(&saved).unwrap(), &cancel)
+        .await
+        .unwrap();
+    assert_eq!(first.reference(), retry.reference());
+    computers
+        .get_credential(first.reference(), &cancel)
+        .await
+        .unwrap();
+    computers
+        .revoke_credential(first.reference(), &cancel)
+        .await
+        .unwrap();
+    let seen = server.script.seen.lock().unwrap();
+    assert_eq!(seen.len(), 4);
+    assert_eq!(seen[0].body, seen[1].body);
 }

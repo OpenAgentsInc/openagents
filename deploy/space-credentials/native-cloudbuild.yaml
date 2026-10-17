@@ -1,0 +1,57 @@
+# Produce isolated API/worker artifacts; this file does not roll out any pods.
+substitutions:
+  _COMMIT: ''
+  _IMAGE_ROOT: us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/credential-native
+steps:
+  - name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        git init -q config
+        git -C config fetch -q --depth 1 https://github.com/OpenAgentsInc/openagents.git '${_COMMIT}'
+        git -C config checkout -q FETCH_HEAD
+        test "$$(git -C config rev-parse HEAD)" = '${_COMMIT}'
+        git init -q space
+        git -C space fetch -q --depth 1 https://github.com/perplexityai/SPACE.git de87b436c35dac056564bdd5b2a113c9046e189b
+        git -C space checkout -q FETCH_HEAD
+  - name: python:3.13-slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        apt-get update -qq
+        apt-get install -y --no-install-recommends git ca-certificates
+        python3 config/deploy/space-credentials/apply.py /workspace/space
+        git -C space apply ../config/deploy/space-service/seed-kernel.patch
+        sha256sum config/deploy/space-credentials/gateway.patch config/deploy/space-service/seed-kernel.patch
+  - name: gcr.io/cloud-builders/docker
+    dir: space
+    entrypoint: bash
+    env: ['DOCKER_BUILDKIT=1']
+    args:
+      - -c
+      - |
+        set -eu
+        sed -i '/^WORKDIR \/workspace/a ENV CARGO_BUILD_JOBS=8' docker/Dockerfile.rust-build-common
+        for component in api worker; do
+          docker build -f docker/Dockerfile.rust-build-common --target "build-artifacts-$$component" \
+            --build-arg "SPACE_RUST_ARTIFACT_SET=$$component" --build-arg SPACE_CARGO_RELEASE_LTO=false \
+            -t "space-credential-build-$$component:${_COMMIT}" .
+          docker build -f "docker/Dockerfile.$$component" \
+            --build-arg "SPACE_RUST_BUILD_IMAGE=space-credential-build-$$component:${_COMMIT}" \
+            --build-arg SPACE_GIT_SHA=de87b436c35dac056564bdd5b2a113c9046e189b \
+            --label com.openagents.patch-source='${_COMMIT}' \
+            --label com.openagents.patch=credential-broker-v1 \
+            -t "${_IMAGE_ROOT}/$$component:${_COMMIT}" .
+          docker push "${_IMAGE_ROOT}/$$component:${_COMMIT}"
+        done
+images:
+  - '${_IMAGE_ROOT}/api:${_COMMIT}'
+  - '${_IMAGE_ROOT}/worker:${_COMMIT}'
+options:
+  machineType: E2_HIGHCPU_32
+  diskSizeGb: 250
+timeout: 3600s

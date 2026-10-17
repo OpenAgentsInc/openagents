@@ -16077,6 +16077,229 @@
         "x-openagents-accepted-is-complete": false
       }
     },
+    "/v1/computers/{id}/credential-references": {
+      "post": {
+        "operationId": "prepareComputerCredentialReference",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare before sending the command with command_key. A guest placeholder is not the real key.",
+        "responses": {
+          "201": {
+            "description": "Done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputerCredentialReference"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid settings"
+          },
+          "401": {
+            "description": "Sign in"
+          },
+          "403": {
+            "description": "Not allowed"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "413": {
+            "description": "Request too large"
+          },
+          "422": {
+            "description": "Unsupported"
+          },
+          "503": {
+            "description": "Unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "cmp_0123456789abcdef0123"
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$"
+            },
+            "description": "When supplied, must match idempotency_key in the body.",
+            "example": "sdk-example-key"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppPrepareComputerCredentialReference"
+              },
+              "example": {
+                "source": "00000000-0000-0000-0000-000000000001",
+                "rule": "messages",
+                "command_key": "command-example",
+                "idempotency_key": "credential-example",
+                "ttl_seconds": 300
+              }
+            }
+          }
+        },
+        "x-openagents-retry": "same_request_key",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 8192
+      }
+    },
+    "/v1/computers/{id}/credential-references/{reference}": {
+      "get": {
+        "operationId": "getComputerCredentialReference",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare before sending the command with command_key. A guest placeholder is not the real key.",
+        "responses": {
+          "200": {
+            "description": "Done",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppComputerCredentialReference"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid settings"
+          },
+          "401": {
+            "description": "Sign in"
+          },
+          "403": {
+            "description": "Not allowed"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "413": {
+            "description": "Request too large"
+          },
+          "422": {
+            "description": "Unsupported"
+          },
+          "503": {
+            "description": "Unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "cmp_0123456789abcdef0123"
+          },
+          {
+            "name": "reference",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-openagents-retry": "read",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 0
+      },
+      "delete": {
+        "operationId": "revokeComputerCredentialReference",
+        "tags": [
+          "Computers"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare before sending the command with command_key. A guest placeholder is not the real key.",
+        "responses": {
+          "204": {
+            "description": "Credential access has ended."
+          },
+          "400": {
+            "description": "Invalid settings"
+          },
+          "401": {
+            "description": "Sign in"
+          },
+          "403": {
+            "description": "Not allowed"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "413": {
+            "description": "Request too large"
+          },
+          "422": {
+            "description": "Unsupported"
+          },
+          "503": {
+            "description": "Unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "cmp_0123456789abcdef0123"
+          },
+          {
+            "name": "reference",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-openagents-retry": "manual_intent",
+        "x-openagents-no-implicit-retry": true,
+        "x-openagents-max-response-bytes": 1048576,
+        "x-openagents-max-request-bytes": 0
+      }
+    },
     "/v1/computers/{id}/files": {
       "get": {
         "operationId": "readComputerFile",
@@ -30484,7 +30707,7 @@
               "string",
               "null"
             ],
-            "description": "Reserved. Non-null profiles are refused until their network rules are supported."
+            "description": "Use an exact name@sha256:digest selection from capabilities. Unavailable selections are refused."
           },
           "enrolled_host": {
             "type": [
@@ -30526,6 +30749,10 @@
             "default": false
           },
           "command_sessions": {
+            "type": "boolean",
+            "default": false
+          },
+          "credential_proxy": {
             "type": "boolean",
             "default": false
           },
@@ -30713,6 +30940,15 @@
           },
           "command_sessions": {
             "type": "boolean"
+          },
+          "credential_proxy": {
+            "type": "boolean"
+          },
+          "egress_profile": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "workspace_file_bytes": {
             "type": [
@@ -31126,6 +31362,109 @@
             "has_more": false
           }
         ]
+      },
+      "AppPrepareComputerCredentialReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "rule",
+          "command_key",
+          "idempotency_key",
+          "ttl_seconds"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "format": "uuid",
+            "description": "A source connection authorized for this account or workspace. Cloud secret paths are not accepted."
+          },
+          "rule": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "One destination rule registered for that connection."
+          },
+          "command_key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The exact request key of the command that may use these credentials."
+          },
+          "idempotency_key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "Save this key with these exact settings before sending. Retries do not extend the expiry."
+          },
+          "ttl_seconds": {
+            "type": "integer",
+            "minimum": 30,
+            "maximum": 3600,
+            "description": "Maximum lifetime. Stop, wake, revocation, command exit, and broker restart also end access."
+          }
+        },
+        "examples": [
+          {
+            "source": "00000000-0000-0000-0000-000000000001",
+            "rule": "messages",
+            "command_key": "command-example",
+            "idempotency_key": "credential-example",
+            "ttl_seconds": 300
+          }
+        ]
+      },
+      "AppComputerCredentialReference": {
+        "type": "object",
+        "required": [
+          "id",
+          "computer",
+          "source",
+          "rule",
+          "command_key",
+          "state",
+          "created_unix",
+          "expires_unix",
+          "egress_profile"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "computer": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "command_key": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "prepared",
+              "active",
+              "revoked"
+            ]
+          },
+          "created_unix": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expires_unix": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "egress_profile": {
+            "type": "string"
+          }
+        }
       },
       "AppComputerFileInfo": {
         "type": "object",

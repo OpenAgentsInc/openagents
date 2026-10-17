@@ -10,13 +10,14 @@ description = "The one driver contract for every computer: Core, Suspend, Snapsh
 default = []
 # The Boat API driver (our oa-boat on GCE, or any Boat-shaped service).
 boat = ["dep:boat"]
-space = ["dep:reqwest", "dep:futures-util", "dep:tokio-tungstenite", "dep:uuid", "dep:sha2"]
+space = ["dep:reqwest", "dep:futures-util", "dep:tokio-tungstenite", "dep:uuid", "dep:sha2", "dep:computer-credentials"]
 
 [[example]]
 name = "space-spike"
 required-features = ["space"]
 
 [dependencies]
+computer-credentials = { path = "../computer-credentials", optional = true }
 computer-files = { path = "../computer-files" }
 boat = { path = "../boat", optional = true }
 base64 = "0.22"

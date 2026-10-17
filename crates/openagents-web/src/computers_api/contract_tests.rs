@@ -105,7 +105,7 @@ fn computers_subset_and_examples_match_the_app_contract() {
             }
         }
     }
-    assert_eq!(operations.len(), 18);
+    assert_eq!(operations.len(), 21);
     for schema in document["components"]["schemas"]
         .as_object()
         .unwrap()

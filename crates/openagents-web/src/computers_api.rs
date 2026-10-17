@@ -3,6 +3,7 @@
 
 pub(crate) mod commands;
 mod contract;
+pub(crate) mod credentials;
 pub(crate) mod files;
 pub(crate) mod usage;
 
@@ -218,6 +219,8 @@ struct Needs {
     files: bool,
     #[serde(default)]
     command_sessions: bool,
+    #[serde(default)]
+    credential_proxy: bool,
     min_vcpus: Option<u32>,
     min_memory_mib: Option<u64>,
 }
@@ -524,6 +527,8 @@ fn public_capability_fields(value: &Value) -> Value {
     json!({"profiles":profiles,"sizes":sizes,"shapes":shapes,
         "memory_suspend":value["memory_suspend"].as_bool().unwrap_or(false),
         "command_sessions":value["command_sessions"].as_bool().unwrap_or(false),
+        "credential_proxy":value["credential_proxy"].as_bool().unwrap_or(false),
+        "egress_profile":value["egress_profile"].as_str().filter(|s| valid_network_selector(s)),
         "workspace_file_bytes":value["workspace_file_bytes"].as_u64().filter(|n|*n>0 && *n<=computer_files::MAX_BYTES as u64)})
 }
 
@@ -541,6 +546,21 @@ fn public_lifecycle_policy(value: &Value) -> Value {
         "observed_extension_ms":value["observed_extension_ms"],"absolute_ms":value["absolute_ms"],
         "absolute_scope":value["absolute_scope"],"uncertain_at_absolute_limit":value["uncertain_at_absolute_limit"],
         "stopped_retention_ms":value["stopped_retention_ms"].as_u64()})
+}
+
+fn valid_network_selector(value: &str) -> bool {
+    let Some((name, hash)) = value.split_once("@sha256:") else {
+        return false;
+    };
+    !name.is_empty()
+        && name.len() <= 64
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        && hash.len() == 64
+        && hash
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 fn public_placements(value: &Value) -> Value {
@@ -627,12 +647,12 @@ pub(crate) fn extend_openapi(document: &mut Value) {
             "idempotency_key":{"type":["string","null"],"description":"Required here or as Idempotency-Key; when both are supplied they must match."},
             "placement":{"type":["string","null"],"enum":[null,"auto","our-cloud","fast-sandbox","enrolled"],"description":"The service uses the kind you choose or refuses the request. You cannot add a computer you already own here yet."},
             "needs": {"anyOf":[reference("ComputerNeeds"),{"type":"null"}]},
-            "egress_profile":{"type":["string","null"],"description":"Reserved. Non-null profiles are refused until their network rules are supported."},
+            "egress_profile":{"type":["string","null"],"description":"Use an exact name@sha256:digest selection from capabilities. Unavailable selections are refused."},
             "enrolled_host":{"type":["string","null"],"description":"Reserved. Non-null host selections are currently refused."}
         }},
         "AppComputerNeeds":{"type":"object","additionalProperties":false,"properties":{
             "profiles":{"type":"array","items":{"type":"string","enum":["core","suspend","snapshot","fork"]},"uniqueItems":true},
-            "memory_suspend":{"type":"boolean","default":false},"files":{"type":"boolean","default":false},"command_sessions":{"type":"boolean","default":false},
+            "memory_suspend":{"type":"boolean","default":false},"files":{"type":"boolean","default":false},"command_sessions":{"type":"boolean","default":false},"credential_proxy":{"type":"boolean","default":false},
             "min_vcpus":{"type":["integer","null"],"minimum":1,"maximum":u32::MAX},"min_memory_mib":{"type":["integer","null"],"minimum":1}
         }},
         "AppComputerShape":{"type":"object","required":["vcpus","memory_mib"],"properties":{
@@ -649,7 +669,7 @@ pub(crate) fn extend_openapi(document: &mut Value) {
         "AppPlacementOffer":{"type":"object","required":["profiles","sizes","shapes","memory_suspend","command_sessions","workspace_file_bytes","default_environment_available"],"properties":{
             "profiles":{"type":"array","items":{"type":"string","enum":["core","suspend","snapshot","fork"]}},
             "sizes":{"type":"array","items":{"type":"string"}},"shapes":{"type":"object","additionalProperties":reference("ComputerShape")},
-            "memory_suspend":{"type":"boolean"},"command_sessions":{"type":"boolean"},
+            "memory_suspend":{"type":"boolean"},"command_sessions":{"type":"boolean"},"credential_proxy":{"type":"boolean"},"egress_profile":{"type":["string","null"]},
             "workspace_file_bytes":{"type":["integer","null"],"minimum":1,"maximum":computer_files::MAX_BYTES},"default_environment_available":{"type":"boolean"}
         }},
         "AppPlacementCapabilities":{"type":"object","required":["placement","offers"],"properties":{
@@ -721,6 +741,7 @@ pub(crate) fn extend_openapi(document: &mut Value) {
         "get":operation("getComputerCapabilities","ComputerCapabilities"), "delete":remove_named
     });
     commands::extend_openapi(document);
+    credentials::extend_openapi(document);
     files::extend_openapi(document);
     usage::extend_openapi(document);
     contract::qualify(document);

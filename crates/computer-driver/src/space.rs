@@ -16,6 +16,8 @@ use sha2::{Digest, Sha256};
 use std::time::Duration;
 use tokio_tungstenite::tungstenite::{Message, protocol::WebSocketConfig};
 
+mod commands;
+
 const MAX_FILE: usize = 16 * 1024 * 1024;
 const MAX_RESPONSE: usize = 24 * 1024 * 1024;
 const MAX_OUTPUT: usize = 16 * 1024 * 1024;
@@ -48,6 +50,8 @@ pub struct SpaceDriver {
     token: Secret,
     template: String,
     lifecycle_journal: Option<std::sync::Arc<dyn LifecycleJournal>>,
+    network_profile: Option<computer_credentials::policy::Profile>,
+    identified_commands: bool,
 }
 
 // Never include server bodies, URLs, or websocket frames in errors: an
@@ -147,12 +151,39 @@ impl SpaceDriver {
             token,
             template: template.into(),
             lifecycle_journal: None,
+            network_profile: None,
+            identified_commands: false,
         })
     }
 
     pub fn with_lifecycle_journal(mut self, journal: std::sync::Arc<dyn LifecycleJournal>) -> Self {
         self.lifecycle_journal = Some(journal);
         self
+    }
+
+    /// A separate deployment identity pins this complete definition. Never
+    /// resolve a mutable upstream egress-profile name during create or wake.
+    pub fn with_network_profile(
+        mut self,
+        profile: computer_credentials::policy::Profile,
+    ) -> std::result::Result<Self, String> {
+        profile.validate().map_err(str::to_owned)?;
+        self.network_profile = Some(profile);
+        Ok(self)
+    }
+
+    /// Enable only after this template and broker deployment pass the proxy
+    /// qualification. Legacy SPACE command-session claims remain unchanged.
+    pub fn with_credential_commands(mut self) -> std::result::Result<Self, String> {
+        if self
+            .network_profile
+            .as_ref()
+            .is_none_or(|p| !p.tls_exempt_hosts.is_empty())
+        {
+            return Err("Choose a supported inspected network profile.".into());
+        }
+        self.identified_commands = true;
+        Ok(self)
     }
 
     pub fn from_env() -> std::result::Result<Self, String> {
@@ -661,6 +692,7 @@ impl Driver for SpaceDriver {
             &["small", "medium", "large"],
         );
         caps.memory_suspend = true;
+        caps.command_sessions = self.identified_commands;
         let artifact = crate::Artifact {
             kind: crate::ArtifactKind::SpaceTemplate,
             reference: self.template.clone(),
@@ -711,6 +743,12 @@ impl Driver for SpaceDriver {
             "auto_lifecycle":{"wake":{"on":[]},"condition_sets":{},"stages":[]}});
         if let Some(resources) = resources {
             body["resources"] = resources;
+        }
+        if let Some(profile) = &self.network_profile {
+            let Ok(policy) = profile.space_policy() else {
+                return Outcome::failed("The network settings are invalid.");
+            };
+            body["network_policy"] = policy;
         }
         let create = async {
             let response = self
@@ -808,6 +846,22 @@ impl Driver for SpaceDriver {
                 "The SPACE command exceeded its deadline. Check its outcome before running it again.",
             ),
         }
+    }
+
+    async fn start_command(&self, computer: &str, spec: &CommandSpec) -> Outcome<String> {
+        self.start_identified(computer, spec).await
+    }
+    async fn read_command(
+        &self,
+        computer: &str,
+        id: &str,
+        cursor: CommandCursor,
+        max_bytes: u64,
+    ) -> Outcome<CommandRead> {
+        self.read_identified(computer, id, cursor, max_bytes).await
+    }
+    async fn stop_command(&self, computer: &str, id: &str) -> Outcome<String> {
+        self.stop_identified(computer, id).await
     }
 
     async fn put_file(&self, computer: &str, path: &str, bytes: &[u8]) -> Outcome<()> {

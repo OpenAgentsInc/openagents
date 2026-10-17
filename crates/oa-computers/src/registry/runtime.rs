@@ -149,6 +149,10 @@ struct Deployment {
     space_compatibility: Option<coder_environment::artifacts::Compatibility>,
     #[serde(default)]
     withdrawn_artifacts: BTreeSet<String>,
+    #[serde(default)]
+    network_profile: Option<computer_credentials::policy::Profile>,
+    #[serde(default)]
+    credential_proxy: bool,
     /// A non-secret provider tenant/installation name, when URLs alone are ambiguous.
     #[serde(default)]
     scope: Option<String>,
@@ -281,6 +285,8 @@ impl Configuration {
                 shapes: BTreeMap::new(),
                 space_compatibility: None,
                 withdrawn_artifacts: BTreeSet::new(),
+                network_profile: None,
+                credential_proxy: false,
                 scope: None,
             }],
         })
@@ -342,6 +348,17 @@ async fn load(
                     deployment.template.as_deref().ok_or_else(settings)?,
                 )
                 .map_err(|_| settings())?;
+                let driver = match &deployment.network_profile {
+                    Some(profile) => driver
+                        .with_network_profile(profile.clone())
+                        .map_err(|_| settings())?,
+                    None => driver,
+                };
+                let driver = if deployment.credential_proxy {
+                    driver.with_credential_commands().map_err(|_| settings())?
+                } else {
+                    driver
+                };
                 Ok(RuntimeDriver::Space(driver))
             }
             #[cfg(not(feature = "space"))]
@@ -452,6 +469,15 @@ pub async fn from_environment() -> Result<Registry<RuntimeDriver>, Refused> {
         let connection =
             serde_json::to_string(&(api.as_str(), data.as_deref(), deployment.scope.as_deref()))
                 .expect("connection serializes");
+        if deployment.network_profile.as_ref().is_some_and(|profile| {
+            !matches!(deployment.kind, Kind::Space)
+                || profile.validate().is_err()
+                || deployment.legacy
+                || deployment.credential_proxy && !profile.tls_exempt_hosts.is_empty()
+        }) || deployment.credential_proxy && deployment.network_profile.is_none()
+        {
+            return Err(settings());
+        }
         let loaded = if deployment.enabled {
             load(&deployment, &api, data.as_deref()).await.ok()
         } else {
@@ -508,6 +534,13 @@ pub async fn from_environment() -> Result<Registry<RuntimeDriver>, Refused> {
                 "space_compatibility": compatibility,
             }));
             target.space_compatibility = Some(compatibility);
+        }
+        if let Some(profile) = deployment.network_profile {
+            target.fingerprint = super::digest(
+                &serde_json::json!({"connection_fingerprint":target.fingerprint,"network_profile":profile,"credential_proxy":deployment.credential_proxy}),
+            );
+            target.network_profile = Some(profile);
+            target.credential_proxy = deployment.credential_proxy;
         }
         target.withdrawn_artifacts = deployment.withdrawn_artifacts;
         target.priority = deployment.priority;

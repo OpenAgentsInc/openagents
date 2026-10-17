@@ -39,7 +39,7 @@ impl std::fmt::Debug for Request {
             .finish_non_exhaustive()
     }
 }
-pub const SCHEMA_SHA256: &str = "54ce0866363235441d42f6a4d1748bce2c8b88ca9514906de16d2b45f52dc72c";
+pub const SCHEMA_SHA256: &str = "6918793182536b8dc631cef03083ad74effdac61d448582175fa05155a490e9b";
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct AppAccount {
     #[serde(rename = "admin", default, skip_serializing_if = "Option::is_none")]
@@ -353,6 +353,35 @@ impl std::fmt::Debug for AppComputerCapabilitiesLimits {
     }
 }
 #[derive(Clone, Serialize, Deserialize, Default)]
+pub struct AppComputerCredentialReference {
+    #[serde(rename = "command_key")]
+    pub command_key: String,
+    #[serde(rename = "computer")]
+    pub computer: String,
+    #[serde(rename = "created_unix")]
+    pub created_unix: u64,
+    #[serde(rename = "egress_profile")]
+    pub egress_profile: String,
+    #[serde(rename = "expires_unix")]
+    pub expires_unix: u64,
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "rule")]
+    pub rule: String,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "state")]
+    pub state: String,
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+}
+impl std::fmt::Debug for AppComputerCredentialReference {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppComputerCredentialReference")
+            .finish_non_exhaustive()
+    }
+}
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct AppComputerFileInfo {
     #[serde(rename = "sha256")]
     pub sha256: String,
@@ -430,6 +459,12 @@ pub struct AppComputerNeeds {
         skip_serializing_if = "Option::is_none"
     )]
     pub command_sessions: Option<bool>,
+    #[serde(
+        rename = "credential_proxy",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub credential_proxy: Option<bool>,
     #[serde(rename = "files", default, skip_serializing_if = "Option::is_none")]
     pub files: Option<bool>,
     #[serde(
@@ -697,8 +732,20 @@ impl std::fmt::Debug for AppPlacementCapabilities {
 pub struct AppPlacementOffer {
     #[serde(rename = "command_sessions")]
     pub command_sessions: bool,
+    #[serde(
+        rename = "credential_proxy",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub credential_proxy: Option<bool>,
     #[serde(rename = "default_environment_available")]
     pub default_environment_available: bool,
+    #[serde(
+        rename = "egress_profile",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub egress_profile: Option<String>,
     #[serde(rename = "memory_suspend")]
     pub memory_suspend: bool,
     #[serde(rename = "profiles")]
@@ -715,6 +762,27 @@ pub struct AppPlacementOffer {
 impl std::fmt::Debug for AppPlacementOffer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppPlacementOffer").finish_non_exhaustive()
+    }
+}
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct AppPrepareComputerCredentialReference {
+    #[serde(rename = "command_key")]
+    pub command_key: String,
+    #[serde(rename = "idempotency_key")]
+    pub idempotency_key: String,
+    #[serde(rename = "rule")]
+    pub rule: String,
+    #[serde(rename = "source")]
+    pub source: String,
+    #[serde(rename = "ttl_seconds")]
+    pub ttl_seconds: u64,
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+}
+impl std::fmt::Debug for AppPrepareComputerCredentialReference {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppPrepareComputerCredentialReference")
+            .finish_non_exhaustive()
     }
 }
 #[derive(Clone, Serialize, Deserialize, Default)]
@@ -883,6 +951,19 @@ impl std::fmt::Debug for GetComputerCommandParams {
     }
 }
 #[derive(Clone, Serialize, Deserialize)]
+pub struct GetComputerCredentialReferenceParams {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "reference")]
+    pub reference: String,
+}
+impl std::fmt::Debug for GetComputerCredentialReferenceParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GetComputerCredentialReferenceParams")
+            .finish_non_exhaustive()
+    }
+}
+#[derive(Clone, Serialize, Deserialize)]
 pub struct GetComputerParams {
     #[serde(rename = "id")]
     pub id: String,
@@ -918,6 +999,25 @@ impl std::fmt::Debug for PollAppLoginParams {
     }
 }
 #[derive(Clone, Serialize, Deserialize)]
+pub struct PrepareComputerCredentialReferenceParams {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(
+        rename = "Idempotency-Key",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub idempotency_key: Option<String>,
+    #[serde(rename = "body")]
+    pub body: AppPrepareComputerCredentialReference,
+}
+impl std::fmt::Debug for PrepareComputerCredentialReferenceParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PrepareComputerCredentialReferenceParams")
+            .finish_non_exhaustive()
+    }
+}
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ReadComputerFileParams {
     #[serde(rename = "id")]
     pub id: String,
@@ -935,6 +1035,19 @@ pub struct RemoveComputerNamedCapabilitiesParams {}
 impl std::fmt::Debug for RemoveComputerNamedCapabilitiesParams {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RemoveComputerNamedCapabilitiesParams")
+            .finish_non_exhaustive()
+    }
+}
+#[derive(Clone, Serialize, Deserialize)]
+pub struct RevokeComputerCredentialReferenceParams {
+    #[serde(rename = "id")]
+    pub id: String,
+    #[serde(rename = "reference")]
+    pub reference: String,
+}
+impl std::fmt::Debug for RevokeComputerCredentialReferenceParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RevokeComputerCredentialReferenceParams")
             .finish_non_exhaustive()
     }
 }
@@ -1361,6 +1474,107 @@ impl AttachComputerCommandParams {
         })
     }
 }
+pub type PrepareComputerCredentialReferenceResult = AppComputerCredentialReference;
+pub const PREPARE_COMPUTER_CREDENTIAL_REFERENCE: Operation = Operation {
+    id: "prepareComputerCredentialReference",
+    method: "POST",
+    path: "/v1/computers/{id}/credential-references",
+    authority: Authority::Account,
+    success: &[201],
+    binary_response: false,
+    empty_response: false,
+    max_request_bytes: Some(8192),
+    max_response_bytes: 1048576,
+    retry: "same_request_key",
+};
+impl PrepareComputerCredentialReferenceParams {
+    pub fn into_request(self) -> Result<Request, serde_json::Error> {
+        let query = Vec::new();
+        let headers = {
+            let mut values: Vec<(&'static str, String)> = Vec::new();
+            if let Some(value) = self.idempotency_key {
+                values.push(("Idempotency-Key", value.to_string()));
+            }
+            values
+        };
+        let body = RequestBody::Json(serde_json::to_value(self.body)?);
+        Ok(Request {
+            operation: &PREPARE_COMPUTER_CREDENTIAL_REFERENCE,
+            path_segments: vec![
+                "computers".to_owned(),
+                self.id,
+                "credential-references".to_owned(),
+            ],
+            query,
+            headers,
+            body,
+        })
+    }
+}
+pub type RevokeComputerCredentialReferenceResult = ();
+pub const REVOKE_COMPUTER_CREDENTIAL_REFERENCE: Operation = Operation {
+    id: "revokeComputerCredentialReference",
+    method: "DELETE",
+    path: "/v1/computers/{id}/credential-references/{reference}",
+    authority: Authority::Account,
+    success: &[204],
+    binary_response: false,
+    empty_response: true,
+    max_request_bytes: Some(0),
+    max_response_bytes: 1048576,
+    retry: "manual_intent",
+};
+impl RevokeComputerCredentialReferenceParams {
+    pub fn into_request(self) -> Result<Request, serde_json::Error> {
+        let query = Vec::new();
+        let headers = Vec::new();
+        let body = RequestBody::Empty;
+        Ok(Request {
+            operation: &REVOKE_COMPUTER_CREDENTIAL_REFERENCE,
+            path_segments: vec![
+                "computers".to_owned(),
+                self.id,
+                "credential-references".to_owned(),
+                self.reference,
+            ],
+            query,
+            headers,
+            body,
+        })
+    }
+}
+pub type GetComputerCredentialReferenceResult = AppComputerCredentialReference;
+pub const GET_COMPUTER_CREDENTIAL_REFERENCE: Operation = Operation {
+    id: "getComputerCredentialReference",
+    method: "GET",
+    path: "/v1/computers/{id}/credential-references/{reference}",
+    authority: Authority::Account,
+    success: &[200],
+    binary_response: false,
+    empty_response: false,
+    max_request_bytes: Some(0),
+    max_response_bytes: 1048576,
+    retry: "read",
+};
+impl GetComputerCredentialReferenceParams {
+    pub fn into_request(self) -> Result<Request, serde_json::Error> {
+        let query = Vec::new();
+        let headers = Vec::new();
+        let body = RequestBody::Empty;
+        Ok(Request {
+            operation: &GET_COMPUTER_CREDENTIAL_REFERENCE,
+            path_segments: vec![
+                "computers".to_owned(),
+                self.id,
+                "credential-references".to_owned(),
+                self.reference,
+            ],
+            query,
+            headers,
+            body,
+        })
+    }
+}
 pub type ReadComputerFileResult = Vec<u8>;
 pub const READ_COMPUTER_FILE: Operation = Operation {
     id: "readComputerFile",
@@ -1590,6 +1804,9 @@ pub const OPERATIONS: &[&Operation] = &[
     &GET_COMPUTER_COMMAND,
     &CANCEL_COMPUTER_COMMAND,
     &ATTACH_COMPUTER_COMMAND,
+    &PREPARE_COMPUTER_CREDENTIAL_REFERENCE,
+    &REVOKE_COMPUTER_CREDENTIAL_REFERENCE,
+    &GET_COMPUTER_CREDENTIAL_REFERENCE,
     &READ_COMPUTER_FILE,
     &WRITE_COMPUTER_FILE,
     &STOP_COMPUTER,
