@@ -394,7 +394,8 @@ links remain readable. Upstream fixes now require manual ports.
   tool names (hook: the `Mcp` arm of `sanitize_tool_call` in `parts.rs`), and
   `crates/ui/src/tool_progress.rs` turns the running tool into the working
   row's words and timer (hook: `render_working_trailer` in
-  `crates/ui/src/transcript.rs`).
+  `crates/ui/src/transcript.rs`). `examples/tool-progress-capture.rs` draws
+  it headless.
 
 - [OpenAgents #11965](https://github.com/OpenAgentsInc/openagents/issues/11965):
   Foreman check-ins. `engine::foreman` and `doc_host/foreman.rs` run from the
