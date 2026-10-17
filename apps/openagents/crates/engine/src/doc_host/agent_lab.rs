@@ -474,7 +474,7 @@ fn loopback(origin: &str) -> bool {
 }
 async fn context(root: &Path, e: &Experiment, account: &str) -> Result<String, EngineError> {
     let installed = bindings(root);
-    let context = String::new();
+    let mut context = String::new();
     for component in &e.draft.components {
         if let Component::ToolContext { binding, sha256 } = component {
             let b = installed
@@ -485,15 +485,19 @@ async fn context(root: &Path, e: &Experiment, account: &str) -> Result<String, E
                         && b.validate(account, &e.project)
                         && loopback(&b.origin)
                 })
-                .ok_or_else(|| {
-                    error("Remove the Lab reference before running this experiment.")
-                })?;
+                .ok_or_else(|| error("Remove the Lab reference before running this experiment."))?;
             // Legacy read tools cannot supply authoritative source policy. Local flags and
             // arbitrary response JSON cannot authorize model context; do not call the tool.
-            let _ = b;
-            return Err(error(
-                "Remove the Lab reference before running this experiment.",
+            let source = b
+                .admit_model_context(account, &e.project, None)
+                .map_err(|e| error(&e.message))?;
+            context.push_str(&format!(
+                "{} (read-only reference):\n{}\n",
+                b.name, source.version.content
             ));
+            if context.len() > 16384 {
+                return Err(error("Use fewer reference documents."));
+            }
         }
     }
     Ok(context)
