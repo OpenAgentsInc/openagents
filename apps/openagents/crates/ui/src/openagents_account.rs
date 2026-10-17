@@ -355,7 +355,7 @@ impl Render for AppAccount {
         if !matches!(self.snapshot.phase, Phase::SignedIn { .. }) && self.menu.get().is_some() {
             self.menu = popover::Popup::default();
         }
-        let theme = Theme::of(cx);
+        let theme = Theme::of(cx).clone();
         let phase = self.snapshot.phase.clone();
         let mut body = div()
             .id("openagents-account")
