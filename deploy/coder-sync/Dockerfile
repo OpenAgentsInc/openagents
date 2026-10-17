@@ -15,6 +15,10 @@ COPY Cargo.toml /app/Cargo.toml
 COPY crates/coder-sync/ /app/crates/coder-sync/
 COPY crates/openagents-sdk/ /app/crates/openagents-sdk/
 COPY crates/openagents-login/ /app/crates/openagents-login/
+COPY crates/agent-contract/ /app/crates/agent-contract/
+COPY crates/agent-lab/ /app/crates/agent-lab/
+COPY crates/lab-kit/ /app/crates/lab-kit/
+COPY crates/openagents-dashboard/ /app/crates/openagents-dashboard/
 COPY apps/openagents/Cargo.toml /app/apps/openagents/Cargo.toml
 COPY apps/openagents/crates/brand/ /app/apps/openagents/crates/brand/
 COPY apps/openagents/crates/client/ /app/apps/openagents/crates/client/

@@ -260,7 +260,7 @@ pub(crate) fn spaces(now: i64) -> Vec<Space> {
             created_at: ms(now - ago),
         };
     let openagents = |mut space: Space| {
-        space.repository_id = Some("github.com/zeronsh/openagents".into());
+        space.repository_id = Some("github.com/OpenAgentsInc/openagents".into());
         space
     };
     vec![

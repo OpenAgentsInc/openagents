@@ -104,6 +104,7 @@ def revision():
 # What the image build needs (deploy/coder-sync/Dockerfile copies the same
 # paths): the server, the SDK, and the sync clients from apps/openagents.
 BUILD_PATHS = ["Cargo.toml", "Cargo.lock", "crates/coder-sync", "crates/openagents-sdk", "crates/openagents-login",
+               "crates/agent-contract", "crates/agent-lab", "crates/lab-kit", "crates/openagents-dashboard",
                "deploy/coder-sync", "apps/openagents/Cargo.toml"] + [
     f"apps/openagents/crates/{name}" for name in ("brand", "client", "doc", "orb", "proto", "rpc", "sync", "voice-session")]
 
