@@ -80,14 +80,7 @@ pub fn set_startup_credential(credential: Option<String>) {
 /// Explicit environment credentials stay in memory. Normal app logins use Keychain.
 /// The returned credential must be authenticated before it can enable sync.
 pub fn configured(data: &Path) -> Result<(Arc<Controller>, Option<String>), Error> {
-    let deployment = match (
-        std::env::var("CODER_DESKTOP_API_URL").ok(),
-        std::env::var("CODER_DESKTOP_WEBSITE_URL").ok(),
-    ) {
-        (None, None) => Deployment::production(),
-        (Some(api), Some(site)) => Deployment::new(&api, &site)?,
-        _ => return Err(Error::InvalidDeployment),
-    };
+    let deployment = deployment()?;
     let credential = startup_credential()
         .lock()
         .unwrap()
@@ -96,16 +89,7 @@ pub fn configured(data: &Path) -> Result<(Arc<Controller>, Option<String>), Erro
     let store: Arc<dyn CredentialStore + Send + Sync> = if credential.is_some() {
         Arc::new(MemoryStore::default())
     } else {
-        let (bundle, legacy_bundle) = if cfg!(debug_assertions) {
-            (openagents_brand::DEV_BUNDLE_ID, openagents_brand::LEGACY_DEV_BUNDLE_ID)
-        } else {
-            (openagents_brand::BUNDLE_ID, openagents_brand::LEGACY_BUNDLE_ID)
-        };
-        let profile = data.to_string_lossy().into_owned();
-        Arc::new(
-            PlatformStore::new(format!("{bundle}.account"), profile.clone())
-                .with_legacy(legacy_entries(data, bundle, legacy_bundle)),
-        )
+        Arc::new(saved_store(data))
     };
     let marker = if credential.is_some() {
         "openagents-account/temporary-signed-out"
@@ -115,6 +99,37 @@ pub fn configured(data: &Path) -> Result<(Arc<Controller>, Option<String>), Erro
     let controller = Controller::new(Client::new(deployment)?, store, data.join(marker));
     register(data, &controller);
     Ok((controller, credential))
+}
+
+fn deployment() -> Result<Deployment, Error> {
+    match (
+        std::env::var("CODER_DESKTOP_API_URL").ok(),
+        std::env::var("CODER_DESKTOP_WEBSITE_URL").ok(),
+    ) {
+        (None, None) => Ok(Deployment::production()),
+        (Some(api), Some(site)) => Deployment::new(&api, &site),
+        _ => Err(Error::InvalidDeployment),
+    }
+}
+
+fn saved_store(data: &Path) -> PlatformStore {
+    let (bundle, legacy_bundle) = if cfg!(debug_assertions) {
+        (openagents_brand::DEV_BUNDLE_ID, openagents_brand::LEGACY_DEV_BUNDLE_ID)
+    } else {
+        (openagents_brand::BUNDLE_ID, openagents_brand::LEGACY_BUNDLE_ID)
+    };
+    let profile = data.to_string_lossy().into_owned();
+    PlatformStore::new(format!("{bundle}.account"), profile)
+        .with_legacy(legacy_entries(data, bundle, legacy_bundle))
+}
+
+/// Whether a process started now without a startup credential, such as the
+/// background engine (#11931), finds a saved sign-in for `data`.
+pub fn has_saved_sign_in(data: &Path) -> bool {
+    let Ok(deployment) = deployment() else {
+        return false;
+    };
+    saved_store(data).load(&deployment).ok().flatten().is_some()
 }
 
 /// Earlier Keychain entries to carry a sign-in over from: the pre-rename

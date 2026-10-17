@@ -178,6 +178,15 @@ fn main() -> anyhow::Result<()> {
     #[cfg(windows)]
     attach_parent_console();
     pin_coder_environment();
+    // Hidden: this data folder's background engine service (#11931).
+    if std::env::args_os().nth(1).as_deref()
+        == Some(std::ffi::OsStr::new(openagents_background::cli::SUBCOMMAND))
+    {
+        std::process::exit(openagents_background::cli::main(
+            std::env::args_os().skip(2),
+            |dir| openagents_engine::InstanceLock::holder(dir).is_some(),
+        ));
+    }
     let cli = Cli::parse();
     #[cfg(windows)]
     if let Some(pid) = cli.wait_for_exit {

@@ -176,3 +176,22 @@ links remain readable. Upstream fixes now require manual ports.
   - `apps/openagents/src/main.rs`: the hidden `keeper` subcommand.
   Claude Code, Codex, and the other native drivers don't start under keepers
   yet; each needs its own `attach`.
+
+- [OpenAgents #11931](https://github.com/OpenAgentsInc/openagents/issues/11931):
+  the background engine by default. On launch the app starts this data
+  folder's service (a LaunchAgent on macOS, a systemd user unit on Linux, each
+  named after the data folder) and attaches over IPC instead of embedding an
+  engine. Source builds and translocated copies still embed;
+  `OPENAGENTS_ENGINE_MODE=background|embedded` or the data folder's
+  `engine-mode` file overrides. Our crate is `crates/background` (service
+  files, the attach-or-start decision, the login check before a handoff, and
+  the hidden `openagents background ensure|status|stop` command); our module
+  is `crates/ui/src/background.rs` (the launch step, and the macOS menu-bar
+  item with Open, Move to background, and Stop all and quit). Hooks:
+  - `crates/ui/src/state.rs`: `EngineHandle::bootstrap` calls
+    `background::ensure_engine` before it embeds.
+  - `crates/ui/src/lib.rs`: the `background` module and `background::init`.
+  - `apps/openagents/src/main.rs`: the hidden `background` subcommand.
+  - `crates/account/src/desktop.rs`: `has_saved_sign_in`.
+  - `crates/brand/src/lib.rs`: the service label and unit prefixes.
+  Move all to a cloud computer is commented out until #11933.

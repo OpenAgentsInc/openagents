@@ -8300,6 +8300,7 @@ dependencies = [
  "libc",
  "mimalloc",
  "openagents-account",
+ "openagents-background",
  "openagents-brand",
  "openagents-engine",
  "openagents-mcp",
@@ -8345,6 +8346,14 @@ dependencies = [
  "openagents-proto",
  "thiserror 2.0.20",
  "webrtc-audio-processing",
+]
+
+[[package]]
+name = "openagents-background"
+version = "0.2.113"
+dependencies = [
+ "openagents-brand",
+ "tempfile",
 ]
 
 [[package]]
@@ -8822,6 +8831,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "objc2-web-kit",
  "openagents-account",
+ "openagents-background",
  "openagents-brand",
  "openagents-dashboard",
  "openagents-doc",
@@ -10747,6 +10757,7 @@ dependencies = [
  "base64 0.22.1",
  "fs2",
  "glam",
+ "lab-kit",
  "robot-description",
  "roxmltree 0.21.1",
  "schemars",

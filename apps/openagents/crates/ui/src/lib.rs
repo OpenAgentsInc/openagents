@@ -19,6 +19,7 @@ pub mod appearance;
 pub mod appshots;
 mod asset_http;
 pub mod attachments;
+mod background;
 pub mod badges;
 pub mod browser;
 pub mod change_requests;
@@ -250,6 +251,7 @@ pub fn run_app(config: UiConfig) {
         })
         .detach();
         state::AppState::bootstrap(state.clone(), config.boot(), cx);
+        background::init(state.clone(), data_dir.clone(), cx);
 
         // Graceful teardown: an in-process engine drains live runs and flushes
         // doc snapshots before the process exits (remote engines outlive us).

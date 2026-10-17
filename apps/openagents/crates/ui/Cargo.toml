@@ -68,6 +68,7 @@ required-features = ["compact-picker-fixture"]
 [dependencies]
 openagents-brand.workspace = true
 openagents-account.workspace = true
+openagents-background.workspace = true
 openagents-dashboard = { path = "../../../../crates/openagents-dashboard", features = ["views"] }
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
 gethostname.workspace = true

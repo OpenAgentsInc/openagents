@@ -17,6 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 openagents-account.workspace = true
+openagents-background.workspace = true
 openagents-engine.workspace = true
 openagents-rpc.workspace = true
 openagents-ui = { workspace = true, optional = true }

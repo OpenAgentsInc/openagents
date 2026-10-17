@@ -32,6 +32,14 @@ pub const LAUNCHD_LABEL: &str = BUNDLE_ID;
 /// systemd user unit of the optional background engine service.
 pub const SYSTEMD_UNIT: &str = "openagents-desktop.service";
 
+/// launchd label prefix of the desktop app's background engine (#11931). Each
+/// data folder's service appends its own id, so it never collides with
+/// [`LAUNCHD_LABEL`].
+pub const BACKGROUND_ENGINE_LABEL: &str = "com.openagents.desktop.engine";
+
+/// systemd user unit prefix of the desktop app's background engine (#11931).
+pub const BACKGROUND_ENGINE_UNIT: &str = "openagents-desktop-engine";
+
 /// URL scheme for conversation deep links and the sign-in callback
 /// (`openagents://open/chat/...`). Never the bare `coder://`.
 pub const URL_SCHEME: &str = "openagents";
@@ -95,7 +103,7 @@ mod tests {
 
     #[test]
     fn identity_keeps_desktop_and_phone_separate() {
-        for id in [BUNDLE_ID, DEV_BUNDLE_ID, LAUNCHD_LABEL] {
+        for id in [BUNDLE_ID, DEV_BUNDLE_ID, LAUNCHD_LABEL, BACKGROUND_ENGINE_LABEL] {
             assert!(!id.starts_with("sh.zeron"));
             assert!(id.starts_with("com.openagents.desktop"));
             assert_ne!(id, "com.openagents.app");

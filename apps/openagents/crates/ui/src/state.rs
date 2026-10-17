@@ -297,6 +297,12 @@ impl EngineHandle {
         if let Some(handle) = Self::attach_to_daemon(config.ipc_port).await {
             return Ok(handle);
         }
+        // #11931: start this data folder's background engine and attach to it.
+        if crate::background::ensure_engine(&config).await
+            && let Some(handle) = Self::attach_to_daemon(config.ipc_port).await
+        {
+            return Ok(handle);
+        }
 
         tracing::info!(data_dir = %config.data_dir.display(), "no daemon on port; embedding engine");
         let engine_config = EngineConfig {

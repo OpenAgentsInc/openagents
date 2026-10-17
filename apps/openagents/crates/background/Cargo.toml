@@ -1,0 +1,16 @@
+[package]
+name = "openagents-background"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The background engine service for one data folder (#11931): a LaunchAgent on
+# macOS or a systemd user unit on Linux that runs `openagents headless`, and
+# the decision whether the app attaches to it, starts it, or embeds an engine.
+
+[dependencies]
+openagents-brand.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
