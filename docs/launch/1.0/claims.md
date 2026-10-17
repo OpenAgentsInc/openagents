@@ -34,9 +34,9 @@ study rows and isn't in the launch copy.
 | "Deleted means deleted" / "Delete means delete" | Release notes, post 3 | [Privacy and security](https://openagents.com/docs/privacy-and-security) says our storage provider may keep a copy we can recover for up to 7 days | Rewritten in the release notes to say so; cut from the post |
 | "We went through every page and took out the system talk" | Release notes | The copy check runs on the pages in the site's page test (`crates/openagents-web/src/copy_guard.rs`, #11031), not on every page | Rewritten: "We took the system talk out of the pages, and a check in the site's tests keeps it out." |
 | "Everything is open source" / "Everything we build is open source" | Post 8, homepage card | The website, Coder, and the apps are in the [public repository](https://github.com/OpenAgentsInc/openagents) under [Apache 2.0](https://github.com/OpenAgentsInc/openagents/blob/main/LICENSE). Some services are not: the Pro inference door's source is a private repository (`docs/gateway/README.md`) | Rewritten: post 8 says the website and Coder; the homepage card (and the same line in the `/ui` catalog) says "This site and our apps are open source." |
-| Coder 1.0.0 | Release notes | 1.0.0-rc.7 (`1410028479`, from `b08bc25740`) is on the rc channel on 2026-10-11 | Holds once the Coder 1.0.0 build ships (#11091) from `35e41fd528` or later; strike it otherwise |
+| Coder 1.0.0 | Release notes | Built from `main` on Monday 2026-10-19 after the release gate ([big-bang brief](../../audits/2026-10-16-coder-1.0-big-bang.md)); the 2026-10-15 build is withdrawn | Holds once that build ships (#11091); strike it otherwise |
 | Desktop: checks for updates every six hours; macOS 13 or later | Release notes; `/download` desktop section | [`CHECK_INTERVAL`](https://github.com/OpenAgentsInc/openagents/blob/main/crates/openagents-desktop/src/update.rs) is six hours | Cut: desktop is out of this launch (owner, #11104). `/download` hides the desktop section while `DESKTOP_RELEASED` is false |
-| Desktop, iPhone, and Android lines | Release notes, post 1, 7, 8, X post, What's new | Owner, 2026-10-09: the launch is web and terminal only | Cut from all three drafts |
+| Desktop, iPhone, and Android lines | Release notes, post, What's new | Owner, 2026-10-09: web and terminal only; changed 2026-10-17: the launch leads with the iPhone | iPhone back in (see [Phone claims](#phone-claims)); desktop and Android stay out |
 | `auto` is free up to about $1 of model use a day for a signed-in account; starts again at midnight UTC | Release notes, What's new | `881f380e0b`: `free_allowance.usd_micros_per_day` defaults to 1,000,000 (`GATEWAY_FREE_ALLOWANCE_MICROS`, `deploy/staging/gateway.sh`); one allowance per account per UTC day; [Pricing](https://github.com/OpenAgentsInc/openagents/blob/main/crates/openagents-web/content/docs/pricing.md) says the same | Keep, once the production gateway deploy carries it; staging only today. Left out of the post |
 | Every model call's tokens, cost, and time are recorded when it ends, and `/export` carries them | Release notes, post 6, What's new | `6ab491f16a` (`crates/coder-new/src/provider.rs`, `trajectory.rs`); `/export` is in `slash.rs` and in rc.7's command list | Keep, for a 1.0.0 build at or after that commit |
 | Coder says it is Coder, made by OpenAgents, never another product | Release notes | `crates/coder-new/src/identity.rs` opens every route with that note; tests check each route (#11264) | Keep, for a 1.0.0 build at or after `57157f1c62` |
@@ -44,6 +44,23 @@ study rows and isn't in the launch copy.
 | Tab switches between `auto` and `flash`; `flash` needs your own OpenRouter key | Release notes, post 6, What's new | `99eed810ce`: `toggle_flash` in `crates/coder-new/src/lib.rs`; without a key it says "flash needs an OpenRouter API key. Add one with F2." | Keep. The model behind `flash` is not named in the copy |
 | "Saved Claude keys are encrypted" | Release notes (earlier draft) | No public page states it, and it names a vendor | Cut |
 | X post length | Post | Counted: 245 characters with the link at its real length, which X also counts as 23; recounted 2026-10-11 | Keep |
+
+## Phone claims
+
+Added 2026-10-17 (#11985) for the phone-first launch (#11977). None has its
+evidence yet. Each stays out of the posted copy, or is cut, until the
+evidence below exists, and no number goes in without a measurement.
+
+| Claim | Where | Evidence that will prove it | Decision |
+| --- | --- | --- | --- |
+| Works with no computer: a new person gets a real answer and starts a coding task with no computer connected | Post 1, 2; X post; release notes | A run of the installed external TestFlight build on a fresh test account with no paired computer (#11979, #11981, #11986), captured by the screenshot test (#11984) | Pending |
+| A few free messages before sign-in | Post 2; X post; release notes | `MESSAGES = 10` per visitor (`crates/openagents-web/src/visitor_api.rs`, `c40a1a4019`), plus the app sending them signed out on the installed build (#11978) | Pending; say "a few", not "ten", unless the owner wants the number |
+| A few dollars of free cloud credit | Post 2; release notes | The credit amount in the Computers service config and a fresh account running a task on Our cloud without a card (#11981) | Pending; name a dollar amount only from that config |
+| An answer in the first minute (time to first answer) | Post 1 | The first-minute counts (install to first answer streamed) from the server for fresh installs (#11983), or a timed run on the installed build | Pending; cut "in the first minute" if not measured by launch |
+| Our cloud starts in N seconds | Not in the copy | First-turn time on a fresh account (#11981); the freeze doc measured about 77 seconds | Left out; add only with a measurement |
+| Sync is free | Post 4; release notes | Owner decision 2026-10-17; no sync charge in any plan file ([docs/pro](../../pro/README.md) lists sync as never gated) | Keep |
+| Sign in with one tap, with GitHub or Apple | Post 2; release notes | Sign in with Apple and the in-app sign-in sheet on the installed build (#11980) | Pending |
+| Drive your computer from the phone: send, queue, steer, stop | Post 3; release notes | #11849 (closed); a test-account run on the installed build | Keep once the run passes |
 
 ## Landing, pricing, film and posts (#11764)
 

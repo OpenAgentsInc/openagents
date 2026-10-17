@@ -6,10 +6,47 @@ Before publishing a platform's notes, open that platform's release build and
 strike any line it doesn't do. Drop the issue numbers from the public copy if
 you want it shorter.
 
-The launch is web and terminal only. What's left out, and why, is in the
-[README](README.md#left-out-on-purpose).
+The launch leads with the iPhone app, then the web and the terminal. What's
+left out, and why, is in the [README](README.md#left-out-on-purpose).
 
 Every number and comparison here is checked in [claims.md](claims.md).
+
+## iPhone (OpenAgents app)
+
+Ships through the external TestFlight group "OpenAgents Beta Testers" once
+Beta App Review passes (#11986). Lines marked **(in progress)** depend on
+work that isn't finished; strike any the installed build doesn't do.
+
+- **Chat before you sign in.** Ask a few questions with no account, answered
+  by our Gemini, then sign in and those chats move to your account. The
+  server side is on `main` (`c40a1a4019`); the app side is
+  **(in progress)**. (#11978)
+- **Opens on a chat, with no computer needed.** A new chat runs on
+  OpenAgents when no computer is connected. **(in progress)** (#11979)
+- **Sign in with one tap**, with GitHub or Apple. **(in progress)** (#11980)
+- **Code with no computer on Our cloud**, with a few dollars of free cloud
+  credit. **(in progress)** (#11981, #11852)
+- **Run it on your own computer.** A card in the chat gives the one command
+  or the desktop download. **(in progress)** (#11982)
+- **Sign in with your OpenAgents account.** (#11848)
+- **Drive your computer from the phone.** See your computer's live sessions,
+  and send, queue, steer, and stop them. (#11849)
+- **One chat list.** Your web, terminal, and phone chats are in one list.
+  (#11851, #11892, #11897)
+- **Continue a chat anywhere.** Continue a web chat on the phone, or a
+  terminal chat on a computer. (#11893, #11894)
+- **Runs on.** Move a chat between Our cloud, this Mac, another computer, or
+  a cloud computer. (#11898)
+- **Shared projects.** Invitations and project chats work without a
+  computer. (#11910)
+- **Custom agents.** Pick an agent, or build one in Agent Lab. (#11902,
+  #11921, #11926)
+- **Cards and charts in chats.** Lab cards and agent charts show in the
+  transcript. (#11884, #11948)
+- **Home and widgets** for your issues, agents, and computers. (#11912)
+- **Notifications** when an agent needs you. **(waits on the owner's push
+  setting for the App ID)** (#11853)
+- **Stay signed in** across updates. (#11922)
 
 ## Web (openagents.com)
 
@@ -27,6 +64,8 @@ Ships with the web deploy after the owner's local test (#11094).
 - **Projects.** Open [/projects](https://openagents.com/projects) and click
   **Connect GitHub**. You pick which repositories, through a GitHub App. Chats
   are grouped by project in the sidebar. (#11034, #11056)
+- **Sync is free.** Your chats on the phone, the web, the desktop, and the
+  terminal stay in sync at no cost. (#11895)
 - **Your terminal chats on the web.** Sign in from Coder and turn on sync
   (see Terminal below), and those chats show in the sidebar with live status.
   While Coder is open on that computer, you can reply from the website.
@@ -46,9 +85,8 @@ Ships with the web deploy after the owner's local test (#11094).
 
 ## Terminal (Coder 1.0.0)
 
-Ships with the Coder 1.0.0 release on the stable channel (#11091). The new
-lines below need a build from `main` at `35e41fd528` or later; release
-candidate 1.0.0-rc.7 has them.
+Ships with the Coder 1.0.0 release on the stable channel, built from `main`
+on Monday 2026-10-19 (#11091).
 
 Install or update, on macOS and Linux:
 
@@ -84,7 +122,7 @@ irm https://openagents.com/cli/install.ps1 | iex
   says to add one with F2. (`99eed810ce`)
 - **Free every day when you're signed in.** `auto` is free up to about $1
   of model use a day. Coder tells you when it's used up. It starts again at
-  midnight UTC. Goes live with the production deploy. (`881f380e0b`)
+  midnight UTC. (`881f380e0b`, #11631)
 - **Coder says it is Coder.** Ask who it is and it says Coder, made by
   OpenAgents, never another product. Ask which model it runs on and it says
   OpenAgents picks it, or names the one you picked. (#11264)
