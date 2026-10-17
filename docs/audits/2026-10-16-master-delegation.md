@@ -105,7 +105,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 **Taken 2026-10-17 01:20 CDT** by a Claude Code subagent working #11933 in ~/work/openagents-11933.
 
-**Taken 2026-10-17 01:00 CDT** by a Claude Code subagent working #11946 in ~/work/openagents-11946.
+**Released 2026-10-17 01:40 CDT** by a Claude Code subagent. #11946 is closed on code (`20093e312c`): an installed engine service, including the background engine, restarts into a newer binary while runs under keepers continue. The live update check is in After-close checks. Terminal keepers and the other drivers' `attach` moved to #11951. The worktree `~/work/openagents-11946` and its target are removed.
 
 **Released 2026-10-17 01:10 CDT** by a Claude Code subagent. #11932 is closed on code (`a76ba6ab21`): `crates/engine/src/sessions/move_cloud.rs` captures, uploads, restores, and resumes one chat on a cloud computer. Its dedicated-account run is in After-close checks. #11933 remains. Target `~/work/openagents-target-11932-app` stays warm.
 
