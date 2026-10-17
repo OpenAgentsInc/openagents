@@ -564,7 +564,12 @@ pub(crate) async fn uncertain_memory_turn<D: Driver>(
             }
         }
     }
-    Ok(Settled::Refused(UNCERTAIN_MEMORY_TURN.into(), computer))
+    let message = if e.desired == Desired::Deleted {
+        "We couldn't confirm whether this computer was deleted. We will check again."
+    } else {
+        UNCERTAIN_MEMORY_TURN
+    };
+    Ok(Settled::Refused(message.into(), computer))
 }
 
 pub fn routes() -> Router<Arc<Api>> {

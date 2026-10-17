@@ -53,7 +53,7 @@ fn settings() -> Settings {
     s
 }
 
-async fn serve(driver: Registry<RuntimeDriver>, dsn: String, token: String) {
+async fn serve(mut driver: Registry<RuntimeDriver>, dsn: String, token: String) {
     let catalog = driver.catalog().clone();
     let db = match Db::connect(&dsn).await {
         Ok(db) => db,
@@ -62,6 +62,7 @@ async fn serve(driver: Registry<RuntimeDriver>, dsn: String, token: String) {
             std::process::exit(1);
         }
     };
+    oa_computers::registry::runtime::retain_lifecycle_operations(&mut driver, db.clone());
     if let Err(error) = Store::new(db.clone()).pin_legacy(&catalog).await {
         eprintln!("oa-computers: {error}");
         std::process::exit(1);

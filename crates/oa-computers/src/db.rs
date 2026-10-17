@@ -17,6 +17,10 @@ const MIGRATIONS: &[(i32, &str)] = &[
     (8, include_str!("../migrations/0008_worker_protocol.sql")),
     (9, include_str!("../migrations/0009_recovery_protocol.sql")),
     (10, include_str!("../migrations/0010_deleted_storage.sql")),
+    (
+        11,
+        include_str!("../migrations/0011_lifecycle_operations.sql"),
+    ),
 ];
 
 #[derive(Debug)]
