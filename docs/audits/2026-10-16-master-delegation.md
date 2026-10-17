@@ -117,7 +117,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 5: Labs kinds and app views
 
-**Taken 2026-10-16 22:41 CDT** by a Claude Code subagent working #11881, then #11882 in `~/work/openagents-lane5`.
+**Released 2026-10-16 23:04 CDT** by a Claude Code subagent. #11881 is closed (`e37d66493e`, `ade5341924`). #11882 is open and free: the kind and migration landed in `d08cf1dc58`; the simulate handler, registration, and the live run remain. The worktree `~/work/openagents-lane5` is removed; target `~/work/openagents-target-agent2` stays warm.
 
 - **Owns:** `crates/game-lab`, `crates/ship-lab`, `crates/robot-lab`, `crates/video-lab`, their web adapters, and the Lab rows in `apps/openagents` (GPUI `crates/ui/src/lab_card.rs`, mobile layout, iOS cells).
 - **Order:** #11881 and #11882 as soon as #11878 lands. #11880 after #11877 and #11878. The app views #11883, #11884, and #11886 after #11876 and #11877. Each view renders `lab-ui`'s Rust Native card; don't write a card per shell.
@@ -270,9 +270,12 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Done:** `game_lab::kind::Game` and `ship_lab::kind::Ship` on `main` (`e37d66493e`, `ade5341924`), with the `game-lab playtest-job` worker handler. Parity tests run the same tool edits through the local services and the kinds. The loopback routes are unchanged.
 - **Waiting on lane 4:** registering both kinds in `crates/openagents-web/src/labs_api.rs`, next to CAD, and the `/labs/game/{doc}` page. #11877's patch edits that file, so lane 5 left it alone. The rest is in [After-close checks](#after-close-checks).
 
-**#11882 Labs R1: Robot Lab documents and runs on the platform.** Lane 5, not started.
-- **Depends on:** #11878 for the simulate job.
-- **Remains:** `impl LabKind`, a store migration from `robot_lab::Store`, and a simulation run on a cloud worker with a replay card. Physical controls stay on `remote.rs`.
+**#11882 Labs R1: Robot Lab documents and runs on the platform.** Lane 5, open and free.
+- **Done:** `robot_lab::kind::Robot` on `main` (`d08cf1dc58`): the four schemas with the local store's checks and wording, `pose` and `move_object` intents, host-checked dependencies, the `step` note locator, `preview` and `simulate` declarations, and the cards. `robot_lab::migrate::plan` reads a local project in dependency order and rewrites references to platform content digests; `migrate::import` (feature `platform`) writes it into a `lab_store::LabStore` with notes and files. `cargo test -p robot-lab --features platform` passed.
+- **Remains:**
+  1. The `simulate` handler. A job's `Work` carries only the experiment version, but `robot-sim` needs its scene, robot, and mesh files. A worker needs a way to read the referenced versions and files, which is lab-jobs and lab-api work.
+  2. Register the kind in `labs_api.rs` (lane 4's file during #11877), and add the web replay card.
+  3. A simulation run on a cloud worker with a test account, shown on the web and through `/v1/history`.
 
 **#11883 Labs D1: desktop Lab row and the standard views.** Lane 5.
 - **Status:** the native Video card with inline AVFoundation playback is in `apps/openagents/crates/ui/src/lab_card.rs` (loopback only).
