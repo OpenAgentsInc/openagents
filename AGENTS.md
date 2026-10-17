@@ -143,6 +143,12 @@ Microcoder, Solver, delegated agents, and Video Lab and Game Lab when they act
 as an agent. The bank and product-note lints refuse "I" in the OpenAgents
 voice, and Coder's identity test requires its "I".
 
+## Commit attribution (owner, 2026-10-16)
+
+Commit attribution must name the agent or person who actually contributed.
+Never add a `Co-Authored-By` trailer for a model that did not do the work.
+Codex must not credit Claude or Opus for its own work.
+
 ## Velocity (owner, 2026-10-01)
 
 Ship small changes fast. The default check for a change is `cargo test -p`
