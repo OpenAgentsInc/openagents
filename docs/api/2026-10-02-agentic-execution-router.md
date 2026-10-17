@@ -1,17 +1,21 @@
 # A router for agentic execution
 
-2026-10-02. Implementation plan, not a shipped public service. This plan expands
+2026-10-02, updated 2026-10-17. Implementation plan, not a shipped public
+service. Section 15 records what changed between 2026-10-05 and 2026-10-17:
+which parts of this plan now run in production, which were replaced, and what
+is still planned. This plan expands
 [the OpenAgents API design](2026-10-02-openagents-api.md); it does not replace its
-owner decisions. New contracts and launch gates below are proposals. The
-[PPQ research](../research/ppq.md) motivates payment interoperability, not a
-claim that PPQ implements this architecture.
+owner decisions. New contracts and launch gates below are proposals.
 
 ## 1. Product thesis
 
 The October 5 [terminal workbench roadmap](../terminal/workbench-roadmap.md)
-makes the Grid overlay and standalone terminal the next client slice, then
-connects Everglade's Agent Studio. The contract and local exit evidence
-below are current foundations; the public and paid service remains a plan.
+made the Grid overlay and standalone terminal the next client slice. Since
+2026-10-16, the next clients are the OpenAgents desktop and mobile apps
+(`apps/openagents/`) and the Coder 1.0.0 terminal; see
+[section 15](#15-what-changed-2026-10-05-to-2026-10-17). The contract and local
+exit evidence below are current foundations; the public and paid service
+remains a plan.
 
 **OpenAgents routes work, not only tokens.** A caller describes an outcome. The
 router selects an admitted capability, places execution where the caller has
@@ -73,6 +77,9 @@ permission to publish it.
 | [Free labor host](../coder/runtime/free-labor.md) | Separation of order, execution authority, delivery, checking, and acceptance | Paid labor remains unsupported; do not expose it as a working route |
 | [API design](2026-10-02-openagents-api.md) | Messages, threads, computers, runs, offers, sats pricing, HTTP conventions | The public agent service is still design work |
 | [Payments design](../payments/README.md) | Central receiving, split ledger, author fees, payout reconciliation | The shared paid execution path and its durable settlement integration |
+| [Custom agents and assignments](../sdk/agents.md) (2026-10-15) | Account-owned agent definitions and durable `POST /v1/agent-assignments` with pinned revisions and retry-safe request IDs | Admission snapshots and route records for assignments; checks on the result |
+| [Computers API](../sdk/computers.md) (2026-10-16) | Account-scoped lifecycle, durable commands with cancellation, bounded files, requirement-based placement, usage with explicit unknowns | Retail pricing and customer entitlement; SPACE qualification (#11816) |
+| [Shared harness](../audits/2026-10-16-coder-desktop-monorepo-merge.md#harness-decision-for-coder-100-2026-10-16) (2026-10-16) | One engine driver layer for Claude Code, Codex, and OpenCode, used by Coder and the apps | Coder's switch onto it (#11894); keepers for real engines (#11930) |
 
 Existing decision-gateway authentication and quota patterns are useful references,
 not evidence that the agent API already supports sats accounts or execution.
@@ -859,3 +866,90 @@ answers 404. `runs`, `runs:read`, and `runs:cancel` are its scopes. The same
 under the key is `409 idempotency_conflict`. Creation is persisted before the
 executor is asked, events carry sequence numbers with explicit retention
 gaps, and after a restart each run follows its original task.
+
+## 15. What changed 2026-10-05 to 2026-10-17
+
+This section is current as of 2026-10-17. The earlier sections remain the
+design; this section says where reality now differs from them.
+
+### 15.1 Execution that runs in production today
+
+The router's contract (`crates/route-contract`) and the local route policy are
+unchanged since 2026-10-06. Public execution arrived by other paths, and each
+one is a candidate executor or placement for the router rather than a
+replacement for it:
+
+| Path | What it does | Relation to this plan |
+| --- | --- | --- |
+| [Agent assignments](../sdk/agents.md) | `POST /v1/agent-assignments` gives a saved agent definition (pinned revision, runtime, access level) a task on an online app host of the account. Mutations bind a `request_id`, so a retry returns the original result and changed input is `409 idempotency_conflict`. The SDK's shared `openagents_sdk::agents::place::place` picks the computer and project. | The first public "route work to a computer" call. It has idempotency (section 6) and owner-derived authority (section 4), but no admission snapshot, offer, or route record yet. |
+| The chat agents door (#11934) | Website and phone chats, and `openagents chat send --project`, can ask a saved agent such as Foreman. Gemini makes a typed `ask_agent` or `general_chat` choice; no message words are matched. Asking creates an ordinary assignment. | A model-proposed route over an enumerated candidate set, as section 4 requires. It hasn't been through section 10's held-out qualification. |
+| [Computers API](../sdk/computers.md) (#11800) | Account-authenticated create, stop, wake, and delete; durable command sessions with streaming and confirmed cancellation; bounded file reads and writes; an OpenAPI contract; and the Rust client `openagents::computers`. Boat is the default backend. SPACE is deployed privately with memory-preserving suspend (#11812). Usage is recorded with explicit unknown intervals (#11815). | Section 14's "credit-funded OpenAgents cloud computer" now has its lifecycle, metering, and teardown. Customer pricing stays off, so paid admission (phase 4) still isn't open. |
+| Our cloud (#11852) | `/v1/cloud-host` starts the headless app engine on the account's Computers API computer. The run's sign-in key reaches it by credential reference, never on disk. The engine runs as one command of at most an hour, because computers suspend after each command. | A concrete cloud placement for Coder routes. |
+| Labs jobs (#11878) | A deterministic placement function over three placements: a server child process, a cloud worker on the Computers API, and an enrolled host that pulls jobs. Inputs marked `private_local` can only be leased to an enrolled host that declares them, and `no_training` propagates from inputs to outputs. | A second placement policy beside section 5's. Merge their rules rather than letting them drift apart. |
+| Model routes | `/v1/responses` serves `openagents/auto` and the other router ids, and `/v1/decisions` serves typed judgments with Clef first. | The "model answer" route family and the Jev judgments of section 5 now have public endpoints. |
+
+All public routes answer at `https://api.openagents.com/v1`. The older
+`openagents.com/v1` and `openagents.com/api/v1` addresses still answer, marked
+deprecated ([API address](README.md#api-address)).
+
+### 15.2 Still not shipped from this plan
+
+- **The HTTP runs projection.** `openagents_chat::api` (#10701) is
+  transport-free and isn't mounted on the website. No public `/v1/runs`,
+  `/v1/offers`, or route-bearing `/v1/messages` exists. Agent assignments
+  cover the nearest use case.
+- **Paid admission.** The [retail contract](../cloud/retail-contract.md) and
+  price book are frozen, and the x402 `ExecutionFront` handles fixed-charge
+  funding, but nothing is purchasable. Customer units, rates, and settlement
+  rules (#11815) and an owner pricing decision come first.
+- **MPP sessions and metered streaming costs** (phase 6).
+- **Route qualification and promotion** (#10702) for the new paths in 15.1.
+
+### 15.3 Changes to the plan
+
+- **One engine layer.** The Coder route's executor is the shared harness:
+  `crates/coder-delegate` calls `openagents-harness` in
+  `apps/openagents/crates/harness`, which owns engine arguments, protocols,
+  resume, steering, approvals, and event decoding. Coder keeps policy, leases,
+  deadlines, budgets, and its command boundary. A Coder route's adapter digest
+  (section 13.10) should name the harness revision as well as the delegate
+  recipe.
+- **Runs outlive the engine.** Keepers (#11930) hold each engine run's
+  process and journal its output, so an engine restart or app update picks the
+  run up instead of resending its last message. That changes section 6's
+  "API restart during a run" and section 13.7's host-upgrade row: reattaching
+  to a keeper replaces replaying a turn. The keeper layer is on `main`; Claude
+  Code and Codex attach next.
+- **Placement is explicit and scoped.** A paired computer's grant now admits a
+  workspace, not the whole host: file and command admission refuse root and
+  symlink escapes, and commands keep durable identities across restarts
+  (#11817). Project-scoped sharing with another account (#11911) narrows it
+  further. Cloud placement goes only through `openagents::computers` with the
+  signed-in session; no client calls Boat, SPACE, or GCE directly.
+- **Where a chat runs is part of the chat.** Each chat has one home, the
+  OpenAgents cloud or a computer (#11895). Moving it creates a linked
+  continuation seeded with bounded history (#11894, #11898). That's section
+  13.3's continuation rule applied across homes: the new part's admission
+  `inherits` the old one and can't widen it without a new offer.
+- **Sessions on the web are summaries.** Computer sessions appear in the
+  account's chat list as summary rows. Their transcripts reach the server only
+  after a per-chat or per-project opt-in (#11897). That's a disclosure grant in
+  section 4's terms.
+- **Clients.** The OpenAgents desktop app (GPUI) and mobile app (UIKit, with
+  Android planned) replace the Grid workbench as the next clients. Coder 1.0.0
+  ships on 2026-10-19 with the SDK integration
+  ([release brief](../audits/2026-10-16-coder-1.0-big-bang.md)). All of them
+  read the same `route-contract` types; none gets its own route policy.
+
+### 15.4 Phase status
+
+| Phase | Status on 2026-10-17 |
+| --- | --- |
+| 0. Freeze the contract | Done (#10205). |
+| 1. Local vertical slice | Done (#10207, #10232). |
+| 2. HTTP projection | The transport-free handler is done (#10701), but not mounted. Agent assignments serve the public need meanwhile. |
+| 3. Granted remote computer | Done for paired computers (#10699). Workspace-scoped admission landed in #11817. Computers API placement is live for assignments and Our cloud, but not yet admitted through route snapshots. |
+| 4. Paid admission | Funding front and price book done. Not purchasable: pricing and entitlement are owner decisions. |
+| 5. Capability routing | Capability dispatch and bounded fallback done (#10670). The agents door is a new, unqualified candidate. |
+| 6. Metered and composed work | Execution graphs done (#10703). MPP sessions not started. |
+
