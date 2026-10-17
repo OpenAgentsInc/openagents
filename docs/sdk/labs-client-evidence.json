@@ -88,14 +88,29 @@
   },
   "external_example": {
     "git_pin": "1b55b50ae17dcd47315f803a8238ab7c3c3afe82",
-    "build": "pending",
+    "build": "passed",
     "production_cad_workflow": "pending deployment of the CAD kind",
-    "cleanup": "pending workflow"
+    "cleanup": "pending workflow",
+    "example_commit": "025d55ed63a63e8f524ce2986d9747771d7ba367",
+    "checked_at": "2026-10-17T03:31:41.072103+00:00",
+    "external_workspace": true,
+    "command": "cargo +1.97.1 build --locked",
+    "manifest_sha256": "fe0f9f6a50131b8d84d67adc007d2cec88d052db531515713364289f8f873a34",
+    "lock_sha256": "67aa6703570b09fa2afbc6a9e6aedf181cee742c593ff9316f51421a4dd157e6",
+    "source_sha256": "8f7cdfcd33b2ccd6624b88826e1d768f67c3e34401d9142d160edbc29461730c",
+    "build_log_sha256": "86bf245de618e282d11b29772a0bef9cf5a257032899dd8dcd04b11568d705d1",
+    "binary_sha256": "96dd89f4ad642e241ba2b36825a465cc6a1b471c30070fbae3638d06fb3f6afe"
   },
   "platforms": {
     "linux": "passed",
-    "macos_ios_consumer": "pending root-coordinated warm app check",
-    "wasm": "not qualified; existing SDK transport is not a browser transport"
+    "macos_ios_consumer": "passed: macOS Engine security test and iOS account-client check, Rust 1.98.1, source 4e04e3ced6",
+    "wasm": "not qualified; existing SDK transport is not a browser transport",
+    "ios_command": "cargo check --locked -p openagents-account --target aarch64-apple-ios"
   },
-  "publication": "No package published."
+  "publication": "No package published.",
+  "external_build_archive": {
+    "path": "docs/sdk/evidence/labs-client-external-success-2026-10-17.tar.gz",
+    "sha256": "5d1cd6321c3b4cb6992797850186a191567a07a082d7ff75c529aa22668ac2a2",
+    "contains": "External Git-pinned example source and lock, successful build log, and iOS account-client check log."
+  }
 }
