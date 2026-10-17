@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .find(|p| wanted.as_ref().is_none_or(|w| &p.id == w || &p.name == w))
         .ok_or("Choose a project on that computer first.")?;
 
-    let mut experiment = templates::foreman();
+    let mut experiment = ::agent_lab::templates::foreman();
     experiment.host = host.id.clone();
     experiment.project = project.id.clone();
     let save = labs.bind(SaveDocument {
