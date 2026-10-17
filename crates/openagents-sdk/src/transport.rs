@@ -98,8 +98,6 @@ pub enum Error {
     Unauthorized,
     Forbidden,
     Denied,
-    /// Apple's identity token didn't check out on the server.
-    AppleDenied,
     /// The server didn't accept the key's signature (#11993).
     KeyDenied,
     ExpiredLogin,
@@ -151,7 +149,6 @@ impl fmt::Display for Error {
             Self::ExpiredSession | Self::Unauthorized => "Log in again to continue.",
             Self::Forbidden => "You don't have access to this.",
             Self::Denied => "Login was denied on the website.",
-            Self::AppleDenied => "Sign in with Apple didn't go through. Try again.",
             Self::KeyDenied => "Signing in with your key didn't go through. Try again.",
             Self::ExpiredLogin => "The login code expired. Start again.",
             Self::FinishedLogin => "Start a new login to continue.",

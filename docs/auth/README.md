@@ -10,6 +10,15 @@ the same, with its issue. The plan and its evidence are in the
 the tracking epic is
 [#12006](https://github.com/OpenAgentsInc/openagents/issues/12006).
 
+**GitHub sign-in is deprecated (#12005).** It signs in accounts made with it
+before and makes no new accounts: the account service answers a GitHub user
+no account holds with `403 signup_disabled` unless the deployment sets
+`accounts.github.new_accounts`. GitHub stays as a connection for
+repositories, issues, and pull requests
+(`POST /v1/account/identities/github`). Coder 1.0.0's device-code flow keeps
+working: its approval page uses an existing website session. **Sign in with
+Apple was removed**; see [below](#sign-in-with-apple-removed).
+
 | Part | State |
 | --- | --- |
 | NIP-06 key from 12 or 24 words (`crates/nostr/src/nip06.rs`) | Built ([#11992](https://github.com/OpenAgentsInc/openagents/issues/11992)) |
@@ -22,7 +31,7 @@ the tracking epic is
 | Limits for key-only accounts | Planned ([#11994](https://github.com/OpenAgentsInc/openagents/issues/11994)) |
 | Account deletion | Planned ([#12002](https://github.com/OpenAgentsInc/openagents/issues/12002)) |
 | Admin and allowlists by account, not GitHub ID or email | Planned ([#12003](https://github.com/OpenAgentsInc/openagents/issues/12003)) |
-| Remove Sign in with Apple; GitHub becomes a connection | Planned ([#12005](https://github.com/OpenAgentsInc/openagents/issues/12005)); the phone's Apple button is already gone (#11996) |
+| Remove Sign in with Apple; GitHub becomes a connection | Built ([#12005](https://github.com/OpenAgentsInc/openagents/issues/12005)): the Apple routes answer `410`, and GitHub sign-in makes no new accounts |
 | GitHub website sign-in, device-code sign-in, app OAuth, sign-in keys | Built; they keep working, and the device-code flow stays for Coder 1.0.0 |
 
 App API calls use `https://api.openagents.com/v1`; browser approval stays on
@@ -129,8 +138,8 @@ names exactly one account, enforced by the store's validation
 | Nostr key | `nostr:<64 hex pubkey>` | NIP-98 event over a server challenge | How the apps sign in; one per device, several per account | Built (#11993) |
 | API key | `key:<16 hex>` | `oak_` bearer key | Scripts and the decision API | Built |
 | Enterprise SSO | `sso:<64 hex>` | OIDC token (REV-50) | Organizations | Built |
-| GitHub | `github:<numeric user id>` | OAuth code + PKCE | A connection (repositories, issues, pull requests); still signs in existing accounts on the website | Built; becomes connection-only for new apps (#12005) |
-| Apple | `apple:<Apple sub>` | Sign in with Apple identity token + nonce | Retired from the apps | The route keeps answering for build 1012 (#12005) |
+| GitHub | `github:<numeric user id>` | OAuth code + PKCE | A connection (repositories, issues, pull requests); still signs in existing accounts on the website | Built; makes no new accounts (#12005) |
+| Apple | `apple:<Apple sub>` | none | Removed; linked accounts keep their data | The routes answer `410 apple_removed` (#12005) |
 | Passkey | `passkey:<credential id digest>` | WebAuthn assertion | Later | Not built |
 
 The GitHub reference is the numeric user id, never the login: logins can be
@@ -289,9 +298,11 @@ never ask for it, and after
 offers it as "Sign in with a connected account" beside the provider-free ways
 in. GitHub stays the connection for repositories, issues, and pull requests.
 
-1. The visitor clicks **Log in** or **Sign up** (top right, signed out only),
-   lands on `/login` (or `/signup`), and clicks **Continue with GitHub**. Any
-   page may link straight to `/auth/github?return_to=/path`.
+1. The visitor clicks **Log in** or **Sign up** (top right, signed out only)
+   and lands on `/login` (or `/signup`). The page leads with the app, which
+   needs no sign-in, and keeps **Continue with GitHub** under "Signed up with
+   GitHub before? Sign in here." Any page may link straight to
+   `/auth/github?return_to=/path`.
 2. `GET /auth/github` validates `return_to`, makes a random `state` and a PKCE
    verifier, stores both with `return_to` in a short-lived HttpOnly flow
    cookie (`oa_auth_flow`, `SameSite=Lax`, `Path=/auth/`, 10 minutes), and
@@ -303,7 +314,9 @@ in. GitHub stays the connection for repositories, issues, and pull requests.
    `POST /v1/sessions/github`. It never sees the GitHub token.
 5. The account service exchanges the code (with its client secret and the
    verifier), reads the profile and emails, discards the GitHub token, finds
-   the account by `github:<id>` or creates it with a personal workspace,
+   the account by `github:<id>` (or, only with `accounts.github.new_accounts`,
+   creates it with a personal workspace; otherwise it refuses with
+   `403 signup_disabled` and the website says new accounts start in the app),
    refreshes the identity record, issues a `sess_` session, and records the
    sign-in in the access log.
 6. The web server reads the session back like any other, sets the
@@ -604,29 +617,14 @@ transient service failure is not a successful check or proof of logout.
 For staging/local use the matching explicit API and website origins. Keep the
 app credential in its own OS storage; never adopt CLI or Zeron credentials.
 
-## Sign in with Apple (retired from the apps)
+## Sign in with Apple, removed
 
-The phone no longer shows a Sign in with Apple button (#11996); its removal
-from the server's advertised options is
-[#12005](https://github.com/OpenAgentsInc/openagents/issues/12005). The route
-keeps answering, as described below, while build 1012 calls it. An account
-made this way gets a key added on its first launch of a newer build.
-
-Built in #11980 and still in build 1012: the phone's **Sign in with Apple**
-button shows Apple's native sheet with a random nonce (its SHA-256 goes to Apple). The app sends the identity token
-and the raw nonce to `POST /v1/device/apple` on the API host, which forwards
-to the account service's `POST /v1/sessions/apple`
-(`oa_auth::apple`). That checks the token's RS256 signature against Apple's
-published keys (`https://appleid.apple.com/auth/keys`, cached an hour,
-fetched with a five-second bound), `iss` `https://appleid.apple.com`, `aud`
-one of the configured bundle ids (`accounts.apple.audiences`, rendered as
-`com.openagents.app` by `deploy/staging/gateway.sh`), `exp`, and the nonce.
-It finds or creates the account holding `apple:<sub>` (a new one gets a
-personal workspace on the sign-up tenant) and issues the same 30-day app
-session a device sign-in issues, so the phone stores it unchanged. Without
-`accounts.apple` the route answers `404 apple_disabled`; with a closed
-invite list it answers `403 invite_only`, since the list names GitHub
-people.
+Sign in with Apple (#11980) was removed before it shipped outside TestFlight
+(#12005). `POST /v1/sessions/apple` on the account service and
+`POST /v1/device/apple` on the API host stay, so build 1012 gets a plain
+answer: `410 apple_removed`, "Sign in with Apple has been removed." Accounts
+already linked to Apple keep their `apple:<sub>` principal, identity record,
+and data, and add a key from a signed-in device.
 
 The device-code flow stays, and build 1012 opens its approval page in an
 in-app sheet (`ASWebAuthenticationSession`) with `return=app`: the page

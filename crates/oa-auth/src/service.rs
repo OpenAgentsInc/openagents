@@ -65,11 +65,16 @@ impl std::fmt::Debug for SignedIn {
 /// `invite` set, a GitHub user not on it is refused
 /// ([`AuthError::InviteOnly`]) before the stores are opened: no account,
 /// no session.
+///
+/// Unless `new_accounts`, a GitHub user no account holds is refused
+/// ([`AuthError::SignupClosed`]) and nothing is made: GitHub sign-in is
+/// deprecated and only signs in accounts made with it before (#12005).
 pub async fn sign_in(
     dir: &Path,
     github: &Github,
     tenant: &str,
     invite: Option<&InviteOnly>,
+    new_accounts: bool,
     request: &CodeRequest,
 ) -> Result<SignedIn, AuthError> {
     let profile = github
@@ -80,6 +85,14 @@ pub async fn sign_in(
         return Err(AuthError::InviteOnly);
     }
     let accounts = Accounts::open(dir).map_err(|_| AuthError::Unavailable)?;
+    if !new_accounts
+        && accounts
+            .github_identity(profile.id)
+            .map_err(|_| AuthError::Unavailable)?
+            .is_none()
+    {
+        return Err(AuthError::SignupClosed);
+    }
     let signup = request
         .acquisition
         .as_ref()

@@ -809,9 +809,12 @@ fn auth_refused(error: oa_auth::AuthError) -> Response {
 
 /// `POST /v1/sessions/github` — `{code, code_verifier}` from the web
 /// server's GitHub callback. Exchanges the code with GitHub, finds the
-/// account linked to that GitHub user or creates it (with a personal
-/// workspace on the sign-up tenant), and issues a session. The GitHub
-/// token is discarded; see docs/auth.
+/// account linked to that GitHub user, and issues a session. GitHub
+/// sign-in is deprecated (#12005): it makes a new account (with a
+/// personal workspace on the sign-up tenant) only when the deployment's
+/// `github.new_accounts` is set, and otherwise refuses a GitHub user no
+/// account holds with `403 signup_disabled`. The GitHub token is
+/// discarded; see docs/auth.
 async fn github_sign_in(State(state): State<Arc<ServeState>>, Json(body): Json<Value>) -> Response {
     let Some(tenant) = accounts_config(&state).signup_tenant.clone() else {
         return refused(
@@ -836,6 +839,10 @@ async fn github_sign_in(State(state): State<Arc<ServeState>>, Json(body): Json<V
         &github,
         &tenant,
         accounts_config(&state).invite_only.as_ref(),
+        accounts_config(&state)
+            .github
+            .as_ref()
+            .is_some_and(|github| github.new_accounts),
         &request,
     )
     .await
@@ -845,65 +852,15 @@ async fn github_sign_in(State(state): State<Arc<ServeState>>, Json(body): Json<V
     }
 }
 
-/// `POST /v1/sessions/apple` — `{identity_token, nonce, device?, name?}`
-/// from the phone's Sign in with Apple sheet (#11980). Verifies the token
-/// against Apple's keys (`oa_auth::apple`), finds the account linked to
-/// that Apple user or creates it (with a personal workspace on the sign-up
-/// tenant), and issues an app session like a device sign-in's.
-async fn apple_sign_in(State(state): State<Arc<ServeState>>, body: axum::body::Bytes) -> Response {
-    let Some(config) = accounts_config(&state).apple.clone() else {
-        return refused(
-            StatusCode::NOT_FOUND,
-            "apple_disabled",
-            "Sign in with Apple isn't set up on this service.",
-        );
-    };
-    let Some(tenant) = accounts_config(&state).signup_tenant.clone() else {
-        return refused(
-            StatusCode::FORBIDDEN,
-            "signup_disabled",
-            "This service doesn't offer sign-up.",
-        );
-    };
-    // An invite list names GitHub people; nobody signing in with Apple is
-    // on it.
-    if accounts_config(&state)
-        .invite_only
-        .as_ref()
-        .is_some_and(|list| !list.open)
-    {
-        return auth_refused(oa_auth::AuthError::InviteOnly);
-    }
-    let Ok(request) = serde_json::from_slice::<oa_auth::apple::AppleRequest>(&body) else {
-        return refused(
-            StatusCode::BAD_REQUEST,
-            "invalid_request",
-            "Send `identity_token` and `nonce`.",
-        );
-    };
-    let apple = match oa_auth::apple::Apple::new(config.audiences, config.keys_url) {
-        Ok(apple) => apple,
-        Err(_) => {
-            return unavailable(
-                "apple_unavailable",
-                "Sign in with Apple isn't available right now. Try again later.",
-            );
-        }
-    };
-    let profile = match apple.verify(&request.identity_token, &request.nonce).await {
-        Ok(profile) => profile,
-        Err(error) => return auth_refused(error),
-    };
-    match oa_auth::apple::sign_in(
-        &state.dir,
-        &tenant,
-        &profile,
-        request.name.as_deref(),
-        request.device.as_ref(),
-    ) {
-        Ok(signed) => answered(StatusCode::OK, oa_auth::apple::signed_in_body(&signed)),
-        Err(error) => auth_refused(error),
-    }
+/// `POST /v1/sessions/apple` — Sign in with Apple was removed (#12005).
+/// The route stays so build 1012 gets a plain answer. Accounts linked to
+/// Apple keep their data.
+async fn apple_sign_in() -> Response {
+    refused(
+        StatusCode::GONE,
+        oa_auth::APPLE_REMOVED_CODE,
+        oa_auth::APPLE_REMOVED_MESSAGE,
+    )
 }
 
 /// `POST /v1/account/identities/github` — link the GitHub account behind

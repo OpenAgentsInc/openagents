@@ -13,7 +13,6 @@
 
 mod account;
 mod agent_lab;
-mod apple_sign_in;
 mod chat_homes;
 mod cloud_chat;
 pub use cloud_chat::*;

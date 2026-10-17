@@ -15,6 +15,9 @@ struct World {
     fake: Fake,
     app: oa_auth::GithubApp,
     service: String,
+    /// The same stores served with GitHub sign-up closed, as the gateway
+    /// runs by default (#12005).
+    closed: String,
     http: reqwest::Client,
 }
 
@@ -30,11 +33,17 @@ async fn world_with(invite: Option<oa_auth::InviteOnly>) -> World {
     let dir = tempfile::tempdir().unwrap();
     let local = LocalService::install(
         dir.path(),
-        Github::new(credentials).unwrap(),
+        Github::new(credentials.clone()).unwrap(),
         "signup",
         3600,
     )
     .unwrap();
+    let closed = LocalService::open(dir.path(), Github::new(credentials).unwrap(), "signup")
+        .unwrap()
+        .without_github_signup()
+        .spawn()
+        .await
+        .unwrap();
     let local = match invite {
         Some(invite) => local.with_invite_only(invite),
         None => local,
@@ -45,6 +54,7 @@ async fn world_with(invite: Option<oa_auth::InviteOnly>) -> World {
         fake,
         app,
         service,
+        closed,
         http: reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .build()
@@ -227,6 +237,44 @@ async fn invite_only_lets_in_the_invited_admin_and_refuses_everyone_else_without
         .await
         .unwrap();
     assert_eq!(response.status(), 403);
+}
+
+#[tokio::test]
+async fn closed_github_sign_up_refuses_a_new_user_and_signs_in_an_existing_one() {
+    let world = world().await;
+    let closed = |code: String, verifier: String| {
+        let world = &world;
+        async move {
+            let response = world
+                .http
+                .post(format!("{}/v1/sessions/github", world.closed))
+                .json(&json!({"code": code, "code_verifier": verifier}))
+                .send()
+                .await
+                .unwrap();
+            (
+                response.status().as_u16(),
+                response.json::<Value>().await.unwrap(),
+            )
+        }
+    };
+    // Nobody holds quiet's GitHub identity: refused, and nothing is made.
+    let (flow, query) = authorize(&world, "login=quiet-local").await;
+    let code = param(&query, "code").unwrap().to_string();
+    let (status, body) = closed(code, flow.verifier().to_string()).await;
+    assert_eq!(status, 403, "{body}");
+    assert_eq!(body["error"]["code"], "signup_disabled");
+    let raw = std::fs::read_to_string(world._dir.path().join("accounts.json")).unwrap();
+    assert!(!raw.contains("acct_"), "no account was created");
+
+    // An account made with GitHub before still signs in.
+    let first = sign_in(&world, "octo-local").await;
+    let (flow, query) = authorize(&world, "login=octo-local").await;
+    let code = param(&query, "code").unwrap().to_string();
+    let (status, body) = closed(code, flow.verifier().to_string()).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["created"], false);
+    assert_eq!(body["session"]["account"], first["session"]["account"]);
 }
 
 #[tokio::test]

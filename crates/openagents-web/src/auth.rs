@@ -4,8 +4,9 @@
 //! The browser half lives here: a fresh `state` and PKCE verifier in a
 //! short-lived flow cookie, then the trip to GitHub and back. The callback
 //! hands the code and verifier to the account service, which talks to
-//! GitHub, finds or creates the account, and issues the session this
-//! server sets as the usual Cloud session cookie.
+//! GitHub, finds the account, and issues the session this server sets as
+//! the usual Cloud session cookie. GitHub sign-in is deprecated: it signs
+//! in accounts made with it before and makes no new ones (#12005).
 //!
 //! Connecting repositories ([`crate::projects`]) uses the same trip with
 //! more scopes ([`oa_auth::Purpose::Repos`]) and the same callback, which
@@ -94,8 +95,10 @@ async fn page(app: &App, headers: &HeaderMap, back: Back, signup: bool) -> Respo
 
 /// The sign-in page (`/login`, or `/signup` when `signup`): shadcn's
 /// login block on its own, without the app shell. Our mark and name, a
-/// card with one GitHub button, the way to the other page, and the terms
-/// line under it.
+/// card that leads with the app (which needs no sign-in), then GitHub
+/// sign-in for accounts made with it before, and the terms line under it.
+/// GitHub sign-in is deprecated and makes no new accounts (#12005), so
+/// the two pages differ only in their heading.
 pub(crate) fn sign_in_page(
     headers: &HeaderMap,
     signup: bool,
@@ -109,14 +112,14 @@ pub(crate) fn sign_in_page(
         .size(ControlSize::Lg)
         .block(true)
         .icon_start(PreEscaped(GITHUB_MARK));
-    let (heading, line) = if signup {
-        ("Create your account", "Sign up with your GitHub account.")
+    let heading = if signup {
+        "Get started"
     } else {
-        ("Welcome back", "Log in with your GitHub account.")
+        "Welcome back"
     };
     let card = auth_card(
         heading,
-        Some(html! { (line) }),
+        Some(html! { "The OpenAgents app needs no sign-in. Open it and start." }),
         html! {
             div.oa-auth-login-form data-slot="login-form" {
                 @if invite_only {
@@ -126,16 +129,8 @@ pub(crate) fn sign_in_page(
                         .title("Login is invite-only for now.")
                         .description("If you were invited, continue with GitHub."))
                 }
+                p.oa-auth-switch { "Signed up with GitHub before? Sign in here." }
                 (continue_button)
-                @if !invite_only {
-                    p.oa-auth-switch {
-                        @if signup {
-                            "Already have an account? " a href=(login_href(return_to, false)) { "Log in" }
-                        } @else {
-                            "New here? " a href=(login_href(return_to, true)) { "Sign up" }
-                        }
-                    }
-                }
             }
         },
     );
@@ -378,6 +373,15 @@ async fn finish(
                 StatusCode::FORBIDDEN,
                 "Login is invite-only for now",
                 "OpenAgents accounts are open to invited people only for now. Nothing was saved.",
+            );
+        }
+        // GitHub sign-in makes no new accounts (#12005): nothing was made.
+        Err(SessionError::SignupClosed) => {
+            return notice(
+                headers,
+                StatusCode::FORBIDDEN,
+                "No account uses that GitHub account",
+                "GitHub sign-in is only for accounts made with GitHub before. New accounts start in the OpenAgents app. Nothing was saved.",
             );
         }
         Err(_) => {

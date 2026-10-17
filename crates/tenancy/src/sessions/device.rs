@@ -456,9 +456,9 @@ impl SessionBook {
     }
 
     /// Issue an app session (labeled, standing [`APP_SESSION_TTL`]) for
-    /// a user the caller already authenticated another way, such as a
-    /// verified Sign in with Apple token (#11980). The same kind of
-    /// session a device sign-in issues, so the app stores it the same way.
+    /// a user the caller already authenticated another way. The same kind
+    /// of session a device sign-in issues, so the app stores it the same
+    /// way.
     pub fn issue_app(
         &mut self,
         user: UserId,

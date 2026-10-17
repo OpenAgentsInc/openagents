@@ -42,10 +42,6 @@
 #   INVITE_ONLY_JSON            optional: accounts.invite_only, the GitHub people who
 #                               may sign in ({"github": [{"id": N, "login": L, "admin": true}]})
 #   GATEWAY_HOLD                optional: `serving` (above)
-#   APPLE_SIGN_IN_AUDIENCES     optional: the bundle ids Sign in with Apple tokens may be
-#                               issued to, comma-separated (default com.openagents.app, the
-#                               phone app, on staging and production alike); `off` turns
-#                               POST /v1/sessions/apple off (#11980)
 #   AGENT_FORWARDED_HOPS        optional: X-Forwarded-For entries the platform appends
 #                               in front of the gateway (default 1); agent sign-up limits
 #                               count the address that many entries from the right (#11630)
@@ -294,14 +290,6 @@ if [ -n "${AGENT_CREDIT_JSON:-}" ]; then
     agent_credit=", \"credit\": $AGENT_CREDIT_JSON"
 fi
 agents="\"agents\": {\"forwarded_hops\": ${AGENT_FORWARDED_HOPS:-1}$agent_credit},"
-# Sign in with Apple for the phone (#11980): identity tokens issued to these
-# bundle ids, checked against Apple's published keys.
-apple_audiences=${APPLE_SIGN_IN_AUDIENCES:-com.openagents.app}
-apple=""
-if [ "$apple_audiences" != off ]; then
-    apple_list=$(printf '%s' "$apple_audiences" | sed 's/[^A-Za-z0-9.,-]//g; s/,/", "/g')
-    apple="\"apple\": {\"audiences\": [\"$apple_list\"]},"
-fi
 cat > "$private/gateway.json" << EOF
 {
   "v": "openagents.gateway.v1",
@@ -314,7 +302,6 @@ cat > "$private/gateway.json" << EOF
     $invite
     $database
     $github_app
-    $apple
     "github": {
       "credentials": "$private/github-oauth.json",
       "redirect_url": "$PUBLIC_ORIGIN/auth/github/callback"

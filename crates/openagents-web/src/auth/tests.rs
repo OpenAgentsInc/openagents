@@ -49,6 +49,22 @@ async fn world_with_extra_routes(
     web_invite: Option<oa_auth::InviteOnly>,
     extra: Option<Router>,
 ) -> World {
+    world_built(with_github, service_invite, web_invite, extra, true).await
+}
+
+/// The site over an account service whose GitHub sign-in makes no new
+/// accounts, as the gateway runs by default (#12005).
+async fn world_without_github_signup() -> World {
+    world_built(true, None, None, None, false).await
+}
+
+async fn world_built(
+    with_github: bool,
+    service_invite: Option<oa_auth::InviteOnly>,
+    web_invite: Option<oa_auth::InviteOnly>,
+    extra: Option<Router>,
+    github_signup: bool,
+) -> World {
     let fake = Fake::new(CLIENT, SECRET, REDIRECT, vec![fake::octo(), fake::quiet()]);
     let github_origin = fake.spawn().await.unwrap();
     let credentials = fake::credentials(&github_origin, CLIENT, SECRET, REDIRECT).unwrap();
@@ -65,6 +81,11 @@ async fn world_with_extra_routes(
     let service = match service_invite {
         Some(invite) => service.with_invite_only(invite),
         None => service,
+    };
+    let service = if github_signup {
+        service
+    } else {
+        service.without_github_signup()
     };
     let account_service = if let Some(extra) = extra {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -358,14 +379,15 @@ async fn signed_out_header_offers_log_in_and_sign_up_and_login_offers_github() {
     let login = browser.get(&world, "/login?return_to=%2Fcloud%2Fapp").await;
     assert_eq!(login.status, StatusCode::OK);
     assert!(login.body.contains("Welcome back"));
-    // On its own: no app shell, the terms line under the card, and the
-    // way to sign up instead.
+    // On its own: no app shell and the terms line under the card. It leads
+    // with the app, and keeps GitHub for accounts made with it (#12005).
     assert!(!login.body.contains("oa-sidebar") && login.body.contains("data-slot=\"card\""));
     assert!(login.body.contains("href=\"/terms\"") && login.body.contains("href=\"/privacy\""));
+    assert!(login.body.contains("The OpenAgents app needs no sign-in."));
     assert!(
         login
             .body
-            .contains("href=\"/signup?return_to=%2Fcloud%2Fapp\"")
+            .contains("Signed up with GitHub before? Sign in here.")
     );
     crate::copy_guard::assert_plain("/login", &login.body);
     assert!(login.body.contains("Continue with GitHub"));
@@ -378,9 +400,7 @@ async fn signed_out_header_offers_log_in_and_sign_up_and_login_offers_github() {
     assert!(!login.body.contains("credential") && !login.body.contains("href=\"/signup\""));
     let signup = browser.get(&world, "/signup").await;
     crate::copy_guard::assert_plain("/signup", &signup.body);
-    assert!(
-        signup.body.contains("Create your account") && signup.body.contains("Continue with GitHub")
-    );
+    assert!(signup.body.contains("Get started") && signup.body.contains("Continue with GitHub"));
 
     // The old key form sends people here.
     let old = browser.get(&world, "/sign-in").await;
@@ -519,6 +539,22 @@ fn assert_turned_away(browser: &Browser, done: &Answer) {
     crate::copy_guard::assert_plain("/auth/github/callback", &done.body);
     assert!(!browser.0.contains_key("oa_cloud_session"));
     assert!(!browser.0.contains_key("oa_auth_flow"));
+}
+
+/// GitHub sign-in makes no new accounts (#12005): a GitHub user no account
+/// holds lands on a plain page, with no session cookie and nothing kept.
+#[tokio::test]
+async fn github_sign_in_makes_no_new_account() {
+    let world = world_without_github_signup().await;
+    let mut browser = Browser::default();
+    let done = browser
+        .through_github(&world, "%2F", "login=quiet-local")
+        .await;
+    assert_eq!(done.status, StatusCode::FORBIDDEN, "{}", done.body);
+    assert!(done.body.contains("No account uses that GitHub account"));
+    crate::copy_guard::assert_plain("/auth/github/callback", &done.body);
+    assert!(!browser.0.contains_key("oa_cloud_session"));
+    assert!(accounts(&world).accounts.is_empty(), "no account was made");
 }
 
 #[tokio::test]
@@ -1819,22 +1855,21 @@ async fn the_phone_sheet_approval_returns_to_the_app() {
     assert_eq!(decided.status, StatusCode::OK);
 }
 
-/// `POST /v1/device/apple` answers plainly when the account service has
-/// no Apple sign-in, and refuses a body without its fields.
+/// `POST /v1/device/apple` answers that Sign in with Apple was removed
+/// (#12005), whatever it is sent.
 #[tokio::test]
-async fn apple_sign_in_is_refused_until_the_service_offers_it() {
+async fn apple_sign_in_was_removed_and_answers_gone() {
     let world = world(true).await;
-    let (status, body) = public_call(
-        &world,
-        "POST",
-        "/v1/device/apple",
+    for body in [
         json!({"identity_token": "a.b.c", "nonce": "n", "computer": "iPhone"}),
-        None,
-    )
-    .await;
-    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
-    assert_eq!(body["error"], "apple_disabled");
-    let (status, body) = public_call(&world, "POST", "/v1/device/apple", json!({}), None).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-    assert_eq!(body["error"], "invalid_request");
+        json!({}),
+    ] {
+        let (status, body) = public_call(&world, "POST", "/v1/device/apple", body, None).await;
+        assert_eq!(status, StatusCode::GONE, "{body}");
+        assert_eq!(body["error"], "apple_removed");
+        assert_eq!(
+            body["error_description"],
+            "Sign in with Apple has been removed."
+        );
+    }
 }

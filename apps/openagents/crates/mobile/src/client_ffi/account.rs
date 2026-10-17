@@ -82,7 +82,7 @@ pub struct CoreAccount {
     cancel: CancellationToken,
 }
 impl CoreAccount {
-    pub(crate) fn from_store(
+    fn from_store(
         client: Client,
         store: Arc<dyn CredentialStore + Send + Sync>,
         data_dir: PathBuf,
@@ -143,10 +143,6 @@ impl CoreAccount {
     }
     pub(crate) fn data_dir(&self) -> &std::path::Path {
         &self.data_dir
-    }
-    /// Close this account's open clients before a new sign-in.
-    pub(crate) fn close_clients(&self) {
-        close_clients(&self.clients, None);
     }
     fn profile(&self, account: &str, edge: &str) -> PathBuf {
         self.data_dir.join(format!(

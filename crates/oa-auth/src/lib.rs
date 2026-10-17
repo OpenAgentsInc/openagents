@@ -2,9 +2,6 @@
 //!
 //! - [`app`]: the GitHub App: its key and JWT, installation tokens and
 //!   their cache (#11056).
-//! - [`apple`]: Sign in with Apple for the phone: identity-token checks
-//!   against Apple's keys, then the same app session a device sign-in
-//!   issues (#11980).
 //! - [`config`]: the OAuth App settings and the private credentials file.
 //! - [`flow`]: the browser half (state, PKCE verifier, `return_to`), used
 //!   by the web server's `/auth/github` and `/auth/github/callback`.
@@ -25,7 +22,6 @@
 //! - `local` (feature): a small account service for local fixtures.
 
 pub mod app;
-pub mod apple;
 pub mod cache;
 pub mod config;
 pub mod device;
@@ -62,9 +58,9 @@ pub enum AuthError {
     /// The deployment is invite-only and this GitHub account isn't
     /// invited ([`invite`]). Nothing was made.
     InviteOnly,
-    /// Apple's identity token didn't check out (signature, issuer,
-    /// audience, expiry, or nonce).
-    AppleDenied,
+    /// No account holds this GitHub identity, and the deployment makes no
+    /// new accounts from GitHub sign-in (#12005). Nothing was made.
+    SignupClosed,
 }
 
 impl AuthError {
@@ -72,11 +68,12 @@ impl AuthError {
     #[must_use]
     pub fn code(self) -> &'static str {
         match self {
-            Self::Denied | Self::AppleDenied => "sign_in_denied",
+            Self::Denied => "sign_in_denied",
             Self::Taken => "identity_taken",
             Self::AlreadyLinked => "provider_linked",
             Self::Unavailable => "sign_in_unavailable",
             Self::InviteOnly => "invite_only",
+            Self::SignupClosed => "signup_disabled",
         }
     }
 
@@ -84,10 +81,10 @@ impl AuthError {
     #[must_use]
     pub fn status(self) -> u16 {
         match self {
-            Self::Denied | Self::AppleDenied => 401,
+            Self::Denied => 401,
             Self::Taken | Self::AlreadyLinked => 409,
             Self::Unavailable => 503,
-            Self::InviteOnly => 403,
+            Self::InviteOnly | Self::SignupClosed => 403,
         }
     }
 
@@ -110,9 +107,18 @@ impl std::fmt::Display for AuthError {
             Self::AlreadyLinked => "This account already has a different GitHub account linked.",
             Self::Unavailable => "Login isn't available right now. Try again in a minute.",
             Self::InviteOnly => "Login is invite-only for now.",
-            Self::AppleDenied => "Apple sign-in didn't go through. Try again.",
+            Self::SignupClosed => {
+                "No OpenAgents account uses that GitHub account. New accounts start in the OpenAgents app."
+            }
         })
     }
 }
 
 impl std::error::Error for AuthError {}
+
+/// The code `POST /v1/sessions/apple` and `POST /v1/device/apple` answer
+/// with `410 Gone` since Sign in with Apple was removed (#12005).
+pub const APPLE_REMOVED_CODE: &str = "apple_removed";
+
+/// The message those routes answer with.
+pub const APPLE_REMOVED_MESSAGE: &str = "Sign in with Apple has been removed.";
