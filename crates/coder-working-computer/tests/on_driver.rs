@@ -301,3 +301,84 @@ async fn observed_deletion_settles_a_memory_operation_whose_result_cannot_be_rea
     assert_eq!(memory.operations.lock().unwrap().len(), 1);
     assert!(memory.inner.live().is_empty());
 }
+
+#[tokio::test]
+async fn memory_idle_and_absolute_bounds_survive_restart_without_an_automatic_wake() {
+    use std::sync::{Arc, Mutex, atomic::AtomicBool};
+    for observed in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let memory = MemoryDriver {
+            inner: FakeDriver::new(dir.path().join("machines")).boot_observations(0),
+            complete: Arc::new(AtomicBool::new(true)),
+            operations: Arc::new(Mutex::new(Default::default())),
+        };
+        let store = Store::under(dir.path().join("records"));
+        let mut request = spec();
+        request.bounds = Bounds {
+            idle_ms: 10,
+            observed_extension_ms: 20,
+            absolute_ms: 30,
+        };
+        store.create(&Computer::new(request, 0).unwrap()).unwrap();
+        let provider = fast(memory.clone());
+        {
+            let lease = store.lease("computer-1").unwrap();
+            let awake = coder_working_computer::driver::settle(&provider, &lease, Trigger::Wake, 0)
+                .await
+                .unwrap();
+            assert_eq!(awake.computer().phase, Phase::Awake);
+        }
+        let driver = Driver::new(store.clone(), provider);
+        let end = if observed {
+            assert_eq!(
+                driver
+                    .tick("computer-1", true, 9)
+                    .await
+                    .unwrap()
+                    .computer()
+                    .boot()
+                    .unwrap()
+                    .idle_deadline_ms,
+                29
+            );
+            assert_eq!(
+                driver
+                    .tick("computer-1", true, 29)
+                    .await
+                    .unwrap()
+                    .computer()
+                    .boot()
+                    .unwrap()
+                    .idle_deadline_ms,
+                30
+            );
+            30
+        } else {
+            10
+        };
+        let stopped = driver.tick("computer-1", false, end).await.unwrap();
+        assert_eq!(stopped.computer().phase, Phase::Stopped);
+        assert_eq!(
+            stopped.computer().boot().unwrap().stop_reason,
+            Some(if observed {
+                StopReason::Absolute
+            } else {
+                StopReason::Idle
+            })
+        );
+        let calls = memory.operations.lock().unwrap().len();
+        let restarted = Driver::new(store, fast(memory.clone()));
+        assert_eq!(
+            restarted
+                .tick("computer-1", false, end + 1)
+                .await
+                .unwrap()
+                .computer()
+                .phase,
+            Phase::Stopped
+        );
+        assert_eq!(memory.operations.lock().unwrap().len(), calls);
+        restarted.delete("computer-1", end + 2).await.unwrap();
+        assert!(memory.inner.live().is_empty());
+    }
+}
