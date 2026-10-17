@@ -10,6 +10,7 @@ use super::Command;
 #[derive(Clone)]
 pub struct LaunchBroker {
     sender: mpsc::UnboundedSender<LaunchRequest>,
+    pub(crate) stop: tokio_util::sync::CancellationToken,
     pub(crate) options: crate::host::NativeOptions,
     accounting: std::sync::Arc<std::sync::Mutex<crate::host::AccountingReader>>,
     #[cfg(feature = "supervised")]
@@ -32,6 +33,7 @@ impl LaunchBroker {
         (
             Self {
                 sender: tx,
+                stop: tokio_util::sync::CancellationToken::new(),
                 options: Default::default(),
                 accounting: Default::default(),
                 #[cfg(feature = "supervised")]
@@ -52,6 +54,27 @@ impl LaunchBroker {
             .unwrap_or_else(|e| e.into_inner())
             .snapshot
             .clone()
+    }
+
+    /// Stop every process this run started through the host supervisor.
+    pub fn stop_processes(&self) {
+        self.stop.cancel();
+    }
+
+    /// Return a command's native exit status once its tool result arrives.
+    pub fn take_exit_code(&self, id: &str) -> Option<i64> {
+        self.accounting
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take_exit_code(id)
+    }
+
+    /// Full file paths behind a completed native patch tool.
+    pub fn take_changes(&self, id: &str) -> Result<Vec<(String, String)>, String> {
+        self.accounting
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take_changes(id)
     }
 
     pub(crate) fn record_claude(&self, line: &str) {
@@ -81,6 +104,9 @@ impl LaunchBroker {
     }
 
     pub(crate) async fn prepare(&self, command: Command) -> io::Result<Command> {
+        if self.stop.is_cancelled() {
+            return Err(unavailable());
+        }
         let (reply, response) = oneshot::channel();
         self.sender
             .send(LaunchRequest {
@@ -92,6 +118,9 @@ impl LaunchBroker {
             .await
             .map_err(|_| unavailable())?
             .map_err(|reason| io::Error::new(io::ErrorKind::PermissionDenied, reason))?;
+        if self.stop.is_cancelled() {
+            return Err(unavailable());
+        }
         let mut command = Command::from(command);
         // Tokio's kill-on-drop flag is not part of std::process::Command.
         command.kill_on_drop(true).process_group(0);
@@ -194,6 +223,14 @@ mod tests {
                 .kind(),
             io::ErrorKind::PermissionDenied
         );
+    }
+
+    #[tokio::test]
+    async fn a_stopped_host_refuses_future_launches_before_requesting_a_wrapper() {
+        let (broker, mut requests) = LaunchBroker::channel();
+        broker.stop_processes();
+        assert!(broker.prepare(Command::new("/bin/sh")).await.is_err());
+        assert!(requests.try_recv().is_err());
     }
 
     #[tokio::test]

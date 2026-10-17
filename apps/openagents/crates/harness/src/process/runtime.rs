@@ -38,7 +38,7 @@ impl RuntimeChild {
             command = broker.prepare(command).await?;
             #[cfg(feature = "supervised")]
             if let Some(supervision) = &broker.supervision {
-                return Self::supervised(command, pipes, supervision.clone());
+                return Self::supervised(command, pipes, supervision.clone(), broker.stop.clone());
             }
         }
         command
@@ -158,11 +158,12 @@ impl RuntimeChild {
 
     pub(crate) async fn shutdown(&mut self, earlier: Vec<i32>, grace: Duration) {
         if let Some(child) = &mut self.native {
-            crate::shutdown_agent(child, earlier, grace).await;
+            crate::shutdown_agent(child, earlier.clone(), grace).await;
         }
         #[cfg(all(unix, feature = "supervised"))]
         if let Some(child) = &self.supervised {
             child.stop.cancel();
+            super::terminate_tree(&earlier, grace).await;
         }
         let _ = self.wait().await;
     }
@@ -215,6 +216,7 @@ impl RuntimeChild {
         command: Command,
         pipes: RuntimePipes,
         supervision: Supervision,
+        host_stop: tokio_util::sync::CancellationToken,
     ) -> io::Result<Self> {
         let mut live = supervise::Job::from_command(command.into_std())
             .bounded(supervision.limits)
@@ -229,7 +231,7 @@ impl RuntimeChild {
         let stdin = live.take_input().map(|io| Box::new(io) as RuntimeInput);
         let (stdout, out) = tokio::io::duplex(64 * 1024);
         let (stderr, err) = tokio::io::duplex(64 * 1024);
-        let stop = tokio_util::sync::CancellationToken::new();
+        let stop = host_stop.child_token();
         let (ended_tx, ended) = tokio::sync::watch::channel(None);
         tokio::spawn(pump(
             live,
@@ -291,11 +293,20 @@ async fn pump(
             _ = tokio::time::sleep(Duration::from_millis(5)) => {}
         }
     }
+    let descendants = if interrupted {
+        match live.pid() {
+            Some(pid) => super::descendants(pid).await,
+            None => Vec::new(),
+        }
+    } else {
+        Vec::new()
+    };
     let mut stopped = if interrupted {
         live.stop().await
     } else {
         live.wait().await
     };
+    super::terminate_tree(&descendants, supervise::GRACE).await;
     if !stopped.rest.is_empty() {
         (supervision.observe)(SupervisedEvent::Output(stopped.rest.clone()));
         if !interrupted && !discard_stdout && stopped.rest.gaps.is_empty() {

@@ -627,10 +627,19 @@ impl ClaudeHarness {
             broker.options.claude_command(&mut cmd);
         }
         let normalizer = if let Some(session_id) = &request.resume {
-            let config = crate::model_context::root(
-                "CLAUDE_CONFIG_DIR",
-                crate::executable::home_or_current_dir().join(".claude"),
-            );
+            #[cfg(unix)]
+            let host_root = self
+                .launch_broker
+                .as_ref()
+                .and_then(|b| b.options.claude_config_root.clone());
+            #[cfg(not(unix))]
+            let host_root = None;
+            let config = host_root.unwrap_or_else(|| {
+                crate::model_context::root(
+                    "CLAUDE_CONFIG_DIR",
+                    crate::executable::home_or_current_dir().join(".claude"),
+                )
+            });
             Normalizer::for_resume(&config, session_id).await
         } else {
             Normalizer::new()

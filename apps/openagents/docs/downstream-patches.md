@@ -146,3 +146,6 @@ links remain readable. Upstream fixes now require manual ports.
   terminal callers pass prompt settings and command hooks through `host::NativeOptions`.
   The launch broker reports bounded provider accounting and process cleanup to the
   terminal host. Codex hook trust travels in thread configuration, including resume.
+  The host also receives native exit codes, complete patch paths, and retry metadata.
+  A host stop ends supervised processes and their child groups before acknowledgement;
+  terminal resume recovery can select its own native history directory.

@@ -68,6 +68,8 @@ fn shell_word(text: &str) -> String {
 #[derive(Clone, Default)]
 pub struct NativeOptions {
     pub session_id: Option<String>,
+    /// Native history directory selected by the host for resume recovery.
+    pub claude_config_root: Option<PathBuf>,
     pub tools: Option<String>,
     pub effort: Option<String>,
     pub system_prompt_file: Option<PathBuf>,
@@ -124,6 +126,7 @@ impl NativeOptions {
 /// Provider-reported accounting. Missing figures stay unknown.
 #[derive(Clone, Debug, Default)]
 pub struct Accounting {
+    pub failure: Option<Failure>,
     pub model: Option<String>,
     pub version: Option<String>,
     pub api_key_source: Option<String>,
@@ -139,12 +142,23 @@ pub struct Accounting {
     pub limit_window: Option<String>,
 }
 
+/// Native failure metadata used by the host's refusal and retry policy.
+#[derive(Clone, Debug)]
+pub struct Failure {
+    pub kind: String,
+    pub status: Option<u64>,
+    pub retry_after_seconds: Option<u64>,
+}
+
 #[derive(Default)]
 pub(crate) struct AccountingReader {
     pub snapshot: Accounting,
     calls: BTreeMap<String, u64>,
     call_order: Vec<String>,
     opencode_messages: BTreeMap<String, OpenCodeUsage>,
+    exits: BTreeMap<String, i64>,
+    changes: BTreeMap<String, Vec<(String, String)>>,
+    incomplete_changes: bool,
 }
 
 #[derive(Default)]
@@ -158,6 +172,60 @@ struct OpenCodeUsage {
 }
 
 impl AccountingReader {
+    fn exit(&mut self, id: &Value, code: &Value) {
+        if let (Some(id), Some(code)) = (id.as_str(), code.as_i64())
+            && id.len() <= 256
+            && (self.exits.len() < 4096 || self.exits.contains_key(id))
+        {
+            self.exits.insert(id.into(), code);
+        }
+    }
+
+    pub(crate) fn take_exit_code(&mut self, id: &str) -> Option<i64> {
+        self.exits.remove(id)
+    }
+
+    pub(crate) fn take_changes(&mut self, id: &str) -> Result<Vec<(String, String)>, String> {
+        if self.incomplete_changes {
+            return Err("The agent's changed files could not all be read.".into());
+        }
+        Ok(self.changes.remove(id).unwrap_or_default())
+    }
+
+    fn file_changes(&mut self, item: &Value) {
+        let Some(id) = item["id"].as_str().filter(|id| id.len() <= 256) else {
+            self.incomplete_changes = true;
+            return;
+        };
+        if matches!(
+            item["status"].as_str(),
+            Some("failed" | "errored" | "declined")
+        ) {
+            self.changes.remove(id);
+            return;
+        }
+        let Some(changes) = item["changes"].as_array() else {
+            return;
+        };
+        if changes.len() > 64 || (self.changes.len() >= 256 && !self.changes.contains_key(id)) {
+            self.incomplete_changes = true;
+            return;
+        }
+        let mut files = Vec::with_capacity(changes.len());
+        for change in changes {
+            let Some(path) = change["path"].as_str().filter(|path| path.len() <= 4096) else {
+                self.incomplete_changes = true;
+                return;
+            };
+            let kind = change["kind"]
+                .as_str()
+                .or_else(|| change["kind"]["type"].as_str())
+                .unwrap_or("update");
+            files.push((path.into(), kind.chars().take(32).collect()));
+        }
+        self.changes.insert(id.into(), files);
+    }
+
     pub(crate) fn claude(&mut self, line: &str) {
         let Ok(frame) = serde_json::from_str::<Value>(line) else {
             return;
@@ -216,6 +284,21 @@ impl AccountingReader {
         let Ok(frame) = serde_json::from_str::<Value>(line) else {
             return;
         };
+        if matches!(
+            frame["method"].as_str(),
+            Some("item/started" | "item/completed")
+        ) {
+            let item = &frame["params"]["item"];
+            if matches!(item["type"].as_str(), Some("fileChange" | "file_change")) {
+                self.file_changes(item);
+            }
+        }
+        if frame["method"] == "item/completed" {
+            self.exit(
+                &frame["params"]["item"]["id"],
+                &frame["params"]["item"]["exitCode"],
+            );
+        }
         if frame["method"] != "thread/tokenUsage/updated" {
             return;
         }
@@ -246,6 +329,43 @@ impl AccountingReader {
 
     pub(crate) fn opencode(&mut self, event: &Value, session: &str) {
         let event = event.get("payload").unwrap_or(event);
+        if event["type"] == "session.error" {
+            let properties = &event["properties"];
+            if properties["sessionID"].is_null() || properties["sessionID"] == session {
+                let error = &properties["error"];
+                let headers = error
+                    .pointer("/data/responseHeaders")
+                    .and_then(Value::as_object);
+                let header = |name: &str| {
+                    headers
+                        .and_then(|h| h.iter().find(|(key, _)| key.eq_ignore_ascii_case(name)))
+                        .and_then(|(_, value)| value.as_str())
+                        .and_then(|value| value.trim().parse::<f64>().ok())
+                        .filter(|value| value.is_finite() && *value >= 0.)
+                };
+                self.snapshot.failure = Some(Failure {
+                    kind: error["name"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .chars()
+                        .take(256)
+                        .collect(),
+                    status: error.pointer("/data/statusCode").and_then(Value::as_u64),
+                    retry_after_seconds: header("retry-after-ms")
+                        .map(|v| (v / 1000.).ceil() as u64)
+                        .or_else(|| header("retry-after").map(|v| v.ceil() as u64)),
+                });
+            }
+        }
+        if event["type"] == "message.part.updated" {
+            let part = &event["properties"]["part"];
+            if part["sessionID"] == session && part["type"] == "tool" {
+                self.exit(
+                    part.get("callID").unwrap_or(&part["id"]),
+                    &part["state"]["metadata"]["exit"],
+                );
+            }
+        }
         if event["type"] != "message.updated" {
             return;
         }
@@ -382,6 +502,54 @@ mod tests {
         assert_eq!(reader.snapshot.api_calls, Some(2));
         assert_eq!(reader.snapshot.total_cost_usd, None);
     }
+    #[test]
+    fn native_failure_metadata_preserves_status_and_retry_headers() {
+        let mut reader = AccountingReader::default();
+        let event = |session| json!({"type":"session.error","properties":{"sessionID":session,"error":{"name":"APIError","data":{"statusCode":429,"responseHeaders":{"Retry-After-Ms":"1501"}}}}});
+        reader.opencode(&event("other"), "ours");
+        assert!(reader.snapshot.failure.is_none());
+        reader.opencode(&event("ours"), "ours");
+        let failure = reader.snapshot.failure.unwrap();
+        assert_eq!(failure.kind, "APIError");
+        assert_eq!(failure.status, Some(429));
+        assert_eq!(failure.retry_after_seconds, Some(2));
+    }
+
+    #[test]
+    fn codex_multi_file_changes_survive_the_display_call_reduction() {
+        let mut reader = AccountingReader::default();
+        reader.codex(r#"{"method":"item/completed","params":{"item":{"type":"fileChange","id":"patch","status":"completed","changes":[{"path":"a.rs","kind":"add"},{"path":"b.rs","kind":{"type":"update"}}]}}}"#);
+        assert_eq!(
+            reader.take_changes("patch").unwrap(),
+            [
+                ("a.rs".into(), "add".into()),
+                ("b.rs".into(), "update".into())
+            ]
+        );
+        assert!(reader.take_changes("patch").unwrap().is_empty());
+        reader.file_changes(&json!({"id":"large","changes":(0..65).map(|i|json!({"path":i.to_string()})).collect::<Vec<_>>()}));
+        assert!(reader.take_changes("large").is_err());
+    }
+
+    #[test]
+    fn native_exit_codes_are_scoped_bounded_and_taken_once() {
+        let mut reader = AccountingReader::default();
+        reader.codex(
+            r#"{"method":"item/completed","params":{"item":{"id":"codex-tool","exitCode":17}}}"#,
+        );
+        assert_eq!(reader.take_exit_code("codex-tool"), Some(17));
+        assert_eq!(reader.take_exit_code("codex-tool"), None);
+        let event = |session| json!({"type":"message.part.updated","properties":{"part":{"sessionID":session,"id":"part","callID":"call","type":"tool","state":{"metadata":{"exit":2}}}}});
+        reader.opencode(&event("other"), "ours");
+        assert_eq!(reader.take_exit_code("call"), None);
+        reader.opencode(&event("ours"), "ours");
+        assert_eq!(reader.take_exit_code("call"), Some(2));
+        for i in 0..4100 {
+            reader.exit(&json!(i.to_string()), &json!(1));
+        }
+        assert_eq!(reader.exits.len(), 4096);
+    }
+
     #[test]
     fn accounting_bounds_provider_identifiers_and_call_count() {
         let mut reader = AccountingReader::default();
