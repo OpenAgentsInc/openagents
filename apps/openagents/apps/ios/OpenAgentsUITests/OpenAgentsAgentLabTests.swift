@@ -85,7 +85,7 @@ final class OpenAgentsAgentLabTests: XCTestCase {
         saved.tap()
         XCTAssertTrue(app.buttons["composer-chip-model"].label.contains("phone fixture " + suffix))
         app.navigationBars.buttons.firstMatch.tap()
-        app.tabBars.buttons["Settings"].tap()
+        app.openSettings()
         let signOut = app.cells["settings-signout"]
         reveal(signOut); signOut.tap(); app.buttons["Sign Out"].tap()
         XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 10))

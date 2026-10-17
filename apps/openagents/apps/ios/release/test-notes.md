@@ -1,4 +1,18 @@
-# OpenAgents 1.0.0 (1010)
+# OpenAgents 1.0.0 (1011)
+
+The tab bar is gone. Tap the menu button at the top left, or swipe in from the
+left edge, to open the drawer: your sessions with search, plus Home, Settings
+and New session in its bottom bar. Tap a session to open it as the page; tap
+or swipe the dimmed page to close the drawer. New session also stays at the
+bottom of Home and Settings.
+
+Check opening and closing the drawer during a reply, search in the drawer,
+the left-edge swipe on Home, a session, and Settings (deeper Settings pages
+still swipe back), VoiceOver (the drawer reads on its own; escape closes it),
+and voice calls from the New session bar. On iPad the sidebar is unchanged;
+in Slide Over the iPhone drawer is used.
+
+OpenAgents 1.0.0 (1010)
 
 Open Agent Lab from the agent picker in a new conversation. Choose a connected
 computer and project, edit an agent and a small set of tests, then save and run.

@@ -82,8 +82,7 @@ final class OpenAgentsCustomAgentTests: XCTestCase {
         result.lifetime = .keepAlways
         add(result)
         app.navigationBars.buttons.firstMatch.tap()
-        XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 10))
-        app.tabBars.buttons["Settings"].tap()
+        app.openSettings()
         let signOut = app.cells["settings-signout"]
         for _ in 0..<6 where !signOut.isHittable { app.swipeUp() }
         signOut.tap()

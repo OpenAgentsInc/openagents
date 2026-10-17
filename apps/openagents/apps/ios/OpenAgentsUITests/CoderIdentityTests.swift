@@ -2,9 +2,7 @@ import XCTest
 
 final class CoderIdentityTests: XCTestCase {
     private func openSessions(_ app: XCUIApplication) {
-        let sessions = app.tabBars.buttons["Sessions"]
-        XCTAssertTrue(sessions.waitForExistence(timeout: 15))
-        sessions.tap()
+        XCTAssertTrue(app.openDrawer(timeout: 15))
     }
 
     func testSignedOutCanOpenDemo() {

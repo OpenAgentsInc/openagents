@@ -302,7 +302,11 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
         case let .savedChat(id):
             do {
                 try app.savedHistory?.action(action: .open(id: id))
-                navigationController?.pushViewController(SavedTranscriptController(app: app), animated: true)
+                if let shell = drawerShell {
+                    shell.showPage(SavedTranscriptController(app: app))
+                } else {
+                    navigationController?.pushViewController(SavedTranscriptController(app: app), animated: true)
+                }
             } catch { Toast.show("Couldn’t open this chat. Refresh and try again.", in: view.window) }
         case let .savedControl(control):
             savedControl(control)
@@ -335,8 +339,10 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
             split.openSession(id)
             return
         }
+        // iPhone: the session takes the page beside the drawer.
+        if let shell = drawerShell { return shell.openSession(id) }
         guard let session = SessionViewController(app: app, chatId: id) else {
-            (tabBarController as? MainTabController)?.showSessionOpenError()
+            Toast.show("Couldn't open session. Try again.", in: view.window)
             return
         }
         navigationController?.pushViewController(session, animated: true)

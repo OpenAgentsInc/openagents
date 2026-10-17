@@ -56,8 +56,10 @@ OpenAgents/
                send/queue/steer/stop), question and queue panels, attachments
   Threads/     Sessions (foldable sidebar sections)/folder/search lists,
                cells, new-project folder browser
-  Shell/       Tab bar (Sessions, Settings, search; "New session" accessory
-               with live summary), sign-in
+  Shell/       iPhone drawer shell (one page at a time under a menu button;
+               the drawer holds Sessions, search, Home and Settings; a
+               floating "New session" capsule with live summary), iPad
+               split, sign-in
   Debug/       Transcript lab + hitch meter
 OpenAgentsLiveActivity/  Widget extension: the voice call's Live Activity (Dynamic
                Island + Lock Screen), with the orb's states exported from

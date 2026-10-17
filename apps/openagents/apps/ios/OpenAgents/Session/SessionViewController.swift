@@ -45,7 +45,7 @@ final class SessionViewController: UIViewController, UIGestureRecognizerDelegate
         navigationItem.largeTitleDisplayMode = .never
         navigationItem.titleView = titleView
         navigationItem.rightBarButtonItem = UIBarButtonItem(image: UIImage(systemName: "ellipsis"), menu: sessionMenu())
-        // The session has its own composer, so the tab bar's voice control
+        // The session has its own composer, so the capsule's voice control
         // steps aside with the accessory; the call stays a tap away up here.
         let voiceBar = VoiceBarItem(app: app, host: self)
         self.voiceBar = voiceBar
@@ -207,16 +207,22 @@ final class SessionViewController: UIViewController, UIGestureRecognizerDelegate
         if let backgroundObserver { NotificationCenter.default.removeObserver(backgroundObserver) }
     }
 
-    /// Swap the tab accessory *inside* the push/pop animation so it travels
-    /// with the tab bar instead of snapping ahead of it (no empty glass pill,
-    /// no composer ghosting over the tab bar).
+    /// The drawer shell, kept past removal (a replaced page has no parent
+    /// by the time it disappears).
+    private weak var shell: DrawerShellController?
+    private weak var split: SplitRootController?
+
+    /// Swap the New session capsule *inside* a push/pop animation so it
+    /// travels with it instead of snapping ahead (no empty glass pill, no
+    /// composer ghosting over it).
     private func setAccessory(visible: Bool) {
-        guard let tabs = tabBarController as? MainTabController else { return }
+        if let found = drawerShell { shell = found }
+        guard let tabs = shell else { return }
         guard let coordinator = transitionCoordinator else {
             return tabs.setAccessoryVisible(visible, animated: false)
         }
-        // Our bottom glass (composer stack) and the tab bar's glass never
-        // overlap: the stack fades opposite to the tab bar, tracking an
+        // Our bottom glass (composer stack) and the capsule's glass never
+        // overlap: the stack fades opposite to the capsule, tracking an
         // interactive swipe-back too.
         let bottomStack = bottom
         let jumpButton = jump
@@ -296,7 +302,8 @@ final class SessionViewController: UIViewController, UIGestureRecognizerDelegate
         super.viewDidAppear(animated)
         hasAppeared = true
         landed = true
-        (splitViewController as? SplitRootController)?.sessionDidAppear(chatId)
+        split = splitViewController as? SplitRootController
+        split?.sessionDidAppear(chatId)
         list.settleEdgeEffect()
         showTranscriptIfReady()
         if holdingTranscript {
@@ -308,7 +315,7 @@ final class SessionViewController: UIViewController, UIGestureRecognizerDelegate
                 self.showTranscriptIfReady()
             }
         }
-        (tabBarController as? MainTabController)?.syncAccessory()
+        drawerShell?.syncAccessory()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -326,7 +333,7 @@ final class SessionViewController: UIViewController, UIGestureRecognizerDelegate
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         if isMovingFromParent || navigationController == nil {
-            if tabBarController != nil { (splitViewController as? SplitRootController)?.sessionDidClose(chatId) }
+            if shell != nil { split?.sessionDidClose(chatId) }
             source.detach()
             engine.close()
             app.markSeen(chatId)

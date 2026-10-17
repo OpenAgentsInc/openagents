@@ -17,11 +17,12 @@ final class HomeDashboardTests: XCTestCase {
         XCTAssertFalse(app.buttons["import"].exists)
         XCTAssertFalse(app.buttons["new-dashboard"].exists)
         for _ in 0..<3 { app.swipeUp() }
-        XCTAssertTrue(app.tabBars.buttons["Sessions"].isHittable)
-        app.tabBars.buttons["Sessions"].tap()
+        XCTAssertTrue(app.buttons["drawer-menu"].isHittable)
+        XCTAssertTrue(app.openDrawer())
         XCTAssertTrue(app.cells["section-pinned"].waitForExistence(timeout: 5))
-        app.tabBars.buttons["Home"].tap()
-        app.buttons["home-sessions"].tap()
+        app.buttons["sidebar-home"].tap()
+        XCTAssertTrue(app.buttons["drawer-menu"].waitForExistence(timeout: 5))
+        app.buttons["drawer-menu"].tap()
         XCTAssertTrue(app.cells["section-pinned"].waitForExistence(timeout: 5))
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "original-sessions-restored"
@@ -38,7 +39,7 @@ final class HomeDashboardTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-demo"]
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["drawer-menu"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.buttons["edit"].waitForExistence(timeout: 10))
         app.buttons["manage"].tap()
         let create = app.buttons["new-dashboard"]

@@ -13,9 +13,7 @@ final class OurCloudLiveTests: XCTestCase {
     }
 
     private func openSettings(_ app: XCUIApplication) {
-        let tab = app.tabBars.buttons["Settings"]
-        XCTAssertTrue(tab.waitForExistence(timeout: 30))
-        tab.tap()
+        app.openSettings(timeout: 30)
     }
 
     func testLocalCloudControls() throws {
@@ -70,8 +68,7 @@ final class OurCloudLiveTests: XCTestCase {
         capture(app, "our-cloud-online")
 
         // A session on it, with no desktop anywhere.
-        let sessions = app.tabBars.buttons["Sessions"]
-        sessions.tap()
+        XCTAssertTrue(app.openDrawer())
         app.buttons["new-session"].tap()
         let host = app.buttons["composer-chip-host"]
         XCTAssertTrue(host.waitForExistence(timeout: 15))

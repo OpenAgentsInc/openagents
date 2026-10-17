@@ -392,7 +392,7 @@ extension UIViewController {
 
     func presentVoiceSettings(app: AppModel) {
         let settings = VoiceViewController(app: app)
-        let nav = MainTabController.nav(settings)
+        let nav = DrawerShellController.nav(settings)
         settings.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak nav] _ in
             nav?.dismiss(animated: true)
         })

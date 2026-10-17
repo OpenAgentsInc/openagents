@@ -7,9 +7,7 @@ final class OpenAgentsHistoryTests: XCTestCase {
     }
 
     private func expandSavedChats(_ app: XCUIApplication) {
-        let sessions = app.tabBars.buttons["Sessions"]
-        XCTAssertTrue(sessions.waitForExistence(timeout: 10))
-        sessions.tap()
+        XCTAssertTrue(app.openDrawer())
         let header = app.cells["section-oa-saved-history"]
         XCTAssertTrue(header.waitForExistence(timeout: 20))
         if header.value as? String == "Collapsed" { header.tap() }
@@ -60,7 +58,7 @@ final class OpenAgentsHistoryTests: XCTestCase {
         tap("saved-projects")
         XCTAssertTrue(app.staticTexts["Shared project"].waitForExistence(timeout: 10))
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.tabBars.buttons["Settings"].tap()
+        app.openSettings()
         let signOut = app.cells["settings-signout"]
         for _ in 0..<8 where !signOut.isHittable { app.swipeUp() }
         signOut.tap(); app.buttons["Sign Out"].tap()
@@ -166,7 +164,7 @@ final class OpenAgentsHistoryTests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [stopped], timeout: 30), .completed)
         signal("web-seen")
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.tabBars.buttons["Settings"].tap()
+        app.openSettings()
         let signOut = app.cells["settings-signout"]
         for _ in 0..<8 where !signOut.isHittable { app.swipeUp() }
         signOut.tap(); app.buttons["Sign Out"].tap()
@@ -189,7 +187,7 @@ final class OpenAgentsHistoryTests: XCTestCase {
         XCTAssertTrue(app.scrollViews["transcript"].waitForValue("205 messages loaded", timeout: 20))
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "public-account-history"; shot.lifetime = .keepAlways; add(shot)
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.tabBars.buttons["Settings"].tap()
+        app.openSettings()
         let signOut = app.cells["settings-signout"]
         for _ in 0..<8 where !signOut.isHittable { app.swipeUp() }
         signOut.tap(); app.buttons["Sign Out"].tap()
@@ -225,7 +223,7 @@ final class OpenAgentsHistoryTests: XCTestCase {
         XCTAssertTrue(app.scrollViews["transcript"].waitForValue("6 messages loaded", timeout: 12))
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "live-account-history"; shot.lifetime = .keepAlways; add(shot)
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.tabBars.buttons["Settings"].tap()
+        app.openSettings()
         let signOut = app.cells["settings-signout"]
         for _ in 0..<8 where !signOut.isHittable { app.swipeUp() }
         signOut.tap(); app.buttons["Sign Out"].tap()
@@ -266,7 +264,7 @@ final class OpenAgentsHistoryTests: XCTestCase {
         }
         XCTAssertLessThan(Date(), deadline)
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.tabBars.buttons["Settings"].tap()
+        app.openSettings()
         let signOut = app.cells["settings-signout"]
         for _ in 0..<8 where !signOut.isHittable { app.swipeUp() }
         signOut.tap(); app.buttons["Sign Out"].tap()

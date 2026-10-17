@@ -1,7 +1,7 @@
 import UIKit
 
 /// Navigation entry points the scene and screens use without knowing which
-/// shell is on screen (iPhone tabs or the iPad split).
+/// shell is on screen (the iPhone drawer or the iPad split).
 protocol AppRouter: AnyObject {
     func showHome()
     func showSessions()
@@ -14,13 +14,13 @@ protocol AppRouter: AnyObject {
 /// iPad shell: OpenAgents mobile with a sidebar. The sidebar is the phone's
 /// Sessions page (same rows, sections, wallpaper) over a bottom toolbar;
 /// the main column shows the open session or the phone's new-session page.
-/// Compact widths (Slide Over, narrow Split View) collapse to the iPhone tab
-/// shell.
+/// Compact widths (Slide Over, narrow Split View) collapse to the iPhone
+/// drawer shell.
 final class SplitRootController: UISplitViewController, UISplitViewControllerDelegate, AppRouter {
     private let app: AppModel
     private let sidebar: SidebarViewController
     private let detail = UINavigationController()
-    private lazy var tabs = MainTabController(app: app)
+    private lazy var tabs = DrawerShellController(app: app)
     private(set) var currentChatId: String?
 
     init(app: AppModel) {
@@ -141,7 +141,7 @@ final class SplitRootController: UISplitViewController, UISplitViewControllerDel
 
     func showSettings() {
         guard !isCollapsed else { return tabs.showSettings() }
-        let nav = MainTabController.nav(MoreViewController(app: app))
+        let nav = DrawerShellController.nav(MoreViewController(app: app))
         nav.modalPresentationStyle = .formSheet
         nav.topViewController?.navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak nav] _ in
             nav?.dismiss(animated: true)
@@ -155,14 +155,14 @@ final class SplitRootController: UISplitViewController, UISplitViewControllerDel
         sidebar.focusSearch()
     }
 
-    /// A session came on screen in either shell (sidebar, tabs, search):
+    /// A session came on screen in either shell (sidebar, drawer, search):
     /// it's the one to keep across a width change.
     func sessionDidAppear(_ chatId: String) {
         currentChatId = chatId
         sidebar.currentChatId = chatId
     }
 
-    /// A session was closed in the tab shell (compact): widening shouldn't
+    /// A session was closed in the drawer shell (compact): widening shouldn't
     /// bring it back.
     func sessionDidClose(_ chatId: String) {
         guard isCollapsed, currentChatId == chatId else { return }
@@ -172,7 +172,7 @@ final class SplitRootController: UISplitViewController, UISplitViewControllerDel
 
     // MARK: Collapse / expand
 
-    /// Narrowing to compact carries the open session into the tab shell; the
+    /// Narrowing to compact carries the open session into the drawer shell; the
     /// column lets go of its copy (one live view per session).
     func splitViewController(_ svc: UISplitViewController, topColumnForCollapsingToProposedTopColumn proposed: UISplitViewController.Column) -> UISplitViewController.Column {
         let chatId = currentChatId
@@ -185,7 +185,7 @@ final class SplitRootController: UISplitViewController, UISplitViewControllerDel
         return .compact
     }
 
-    /// Widening back brings the session last open in the tab shell into the
+    /// Widening back brings the session last open in the drawer shell into the
     /// main column (or the new-session page when none was).
     func splitViewController(_ svc: UISplitViewController, displayModeForExpandingToProposedDisplayMode proposed: UISplitViewController.DisplayMode) -> UISplitViewController.DisplayMode {
         DispatchQueue.main.async {
@@ -208,7 +208,7 @@ final class SplitRootController: UISplitViewController, UISplitViewControllerDel
     }
 }
 
-/// The iPad sidebar: the phone's Sessions page in its own navigation stack
+/// The iPad sidebar, and the iPhone drawer: the Sessions page in its own navigation stack
 /// (sections, folders, Archived push inside it), search in the bar, and
 /// the actions in a toolbar at the bottom: Settings and options on the
 /// left, new session on the right, within thumb reach.
@@ -229,7 +229,7 @@ final class SidebarViewController: UIViewController, UISearchResultsUpdating {
     init(app: AppModel) {
         self.app = app
         self.list = SessionsViewController(app: app)
-        self.nav = MainTabController.nav(list)
+        self.nav = DrawerShellController.nav(list)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -320,6 +320,6 @@ final class SidebarViewController: UIViewController, UISearchResultsUpdating {
 }
 
 extension UIViewController {
-    /// The shell's router (tabs or split), wherever this controller sits.
+    /// The shell's router (drawer or split), wherever this controller sits.
     var router: AppRouter? { view.window?.rootViewController as? AppRouter }
 }

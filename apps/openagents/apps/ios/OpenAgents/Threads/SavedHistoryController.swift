@@ -279,17 +279,17 @@ final class SavedTranscriptController: UIViewController {
     }
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        (tabBarController as? MainTabController)?.setAccessoryVisible(false, animated: animated)
+        drawerShell?.setAccessoryVisible(false, animated: animated)
     }
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        (tabBarController as? MainTabController)?.syncAccessory()
+        drawerShell?.syncAccessory()
         app.savedHistory?.follow(visible: true)
     }
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         app.savedHistory?.follow(visible: false)
-        if isMovingFromParent, let tabs = tabBarController as? MainTabController {
+        if isMovingFromParent, let tabs = drawerShell {
             tabs.setAccessoryVisible(true, animated: animated)
             transitionCoordinator?.animate(alongsideTransition: nil) { _ in tabs.syncAccessory() }
         }

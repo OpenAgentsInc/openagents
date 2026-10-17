@@ -135,11 +135,16 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate, UIDr
         }
         let name = children.first { $0["key"] as? String == "dashboard-name" }
         title = (((name?["element"] as? [String: Any])?["props"] as? [String: Any])?["value"] as? String) ?? "Home"
-        let sessions = UIBarButtonItem(title: "Sessions", primaryAction: UIAction { [weak self] _ in
-            self?.router?.showSessions()
-        })
-        sessions.accessibilityIdentifier = "home-sessions"
-        navigationItem.leftBarButtonItem = sessions
+        // iPhone: the drawer's menu button (the drawer holds Sessions).
+        if let shell = drawerShell {
+            navigationItem.leftBarButtonItem = shell.menuButton()
+        } else {
+            let sessions = UIBarButtonItem(title: "Sessions", primaryAction: UIAction { [weak self] _ in
+                self?.router?.showSessions()
+            })
+            sessions.accessibilityIdentifier = "home-sessions"
+            navigationItem.leftBarButtonItem = sessions
+        }
         navigationItem.rightBarButtonItems = [("manage", "ellipsis", "Manage dashboards"), ("edit", "slider.horizontal.3", "Edit widgets")].map { key, icon, label in
             let item = UIBarButtonItem(image: UIImage(systemName: icon), primaryAction: UIAction { [weak self] _ in
                 self?.activate(key, instance: instance, revision: revision)

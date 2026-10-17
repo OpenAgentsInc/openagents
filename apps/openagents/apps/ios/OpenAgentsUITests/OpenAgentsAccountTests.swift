@@ -18,7 +18,7 @@ final class OpenAgentsAccountTests: XCTestCase {
         signedIn.name = "openagents-account-signed-in"
         signedIn.lifetime = .keepAlways
         add(signedIn)
-        app.tabBars.buttons["Settings"].tap()
+        app.openSettings()
         let signOut = app.cells["settings-signout"]
         for _ in 0..<6 where !signOut.isHittable { app.swipeUp() }
         XCTAssertTrue(signOut.isHittable)

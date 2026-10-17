@@ -1,6 +1,6 @@
 import UIKit
 
-/// Voice inside the tab bar's bottom accessory. Idle: a round waveform button
+/// Voice inside the "New session" capsule. Idle: a round waveform button
 /// beside "New session" (tap to call, hold for host and style). Live: a call
 /// strip with the orb, the call clock and mute/hang-up — tap it for the stage.
 final class VoiceAccessoryView: UIView {

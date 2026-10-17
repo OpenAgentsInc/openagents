@@ -12,8 +12,7 @@ final class SessionFlowTests: XCTestCase {
         app.launchArguments = ["-demo"] + (fast ? ["-fast"] : []) + args
         app.launch()
         if !args.contains("-route") {
-            let sessions = app.tabBars.buttons["Sessions"]
-            if sessions.waitForExistence(timeout: 10) { sessions.tap() }
+            app.openDrawer()
         }
         return app
     }
@@ -85,8 +84,8 @@ final class SessionFlowTests: XCTestCase {
         input.tap()
         input.typeText("let's fix the new worktree icon it makes no sense, also let's make it so that there's no descriptions the line is too long and wraps onto a fourth line")
         snapshot(app, "draft-focused")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        let row = app.cells["session-chat-deploy"]
+        XCTAssertTrue(app.openDrawer())
+        let row = app.drawerCell("session-chat-deploy")
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
         XCTAssertTrue(input.waitForExistence(timeout: 10))
@@ -154,23 +153,27 @@ final class SessionFlowTests: XCTestCase {
         jump.tap()
     }
 
-    /// Search → back to Sessions / Settings (recorded for the accessory
-    /// transition).
+    /// Drawer search → back to Home / Settings: the New session capsule
+    /// comes back usable once the drawer closes.
     func testSearchTabRoundTrip() {
         let app = launch()
         XCTAssertTrue(app.staticTexts["Sessions"].waitForExistence(timeout: 10))
-        let accessory = app.buttons["new-session"]
-        XCTAssertTrue(accessory.waitForExistence(timeout: 5))
-        for back in ["Sessions", "Settings"] {
-            app.tabBars.buttons[back].tap()
+        for page in ["sidebar-home", "sidebar-settings"] {
+            XCTAssertTrue(app.openDrawer())
+            app.buttons[page].tap()
             sleep(1)
-            app.tabBars.buttons["Search"].tap()
-            sleep(2)
-            // Close beside the field leaves search for the tab you came from.
-            app.buttons["Close"].firstMatch.tap()
-            sleep(2)
-            XCTAssertTrue(accessory.waitForExistence(timeout: 5), "accessory back after search")
-            XCTAssertTrue(accessory.isHittable, "accessory usable after search")
+            let accessory = app.buttons["new-session"]
+            XCTAssertTrue(accessory.waitForExistence(timeout: 5))
+            XCTAssertTrue(app.openDrawer())
+            let search = app.descendants(matching: .any)["sidebar-search"].firstMatch
+            XCTAssertTrue(search.waitForExistence(timeout: 5))
+            search.tap()
+            search.typeText("rewrite")
+            sleep(1)
+            app.buttons["drawer-scrim"].tap()
+            sleep(1)
+            XCTAssertTrue(accessory.waitForExistence(timeout: 5), "capsule back after search")
+            XCTAssertTrue(accessory.isHittable, "capsule usable after search")
         }
     }
 
@@ -197,8 +200,7 @@ final class SessionFlowTests: XCTestCase {
         let ready = "/tmp/openagents-push-ready"
         try? FileManager.default.removeItem(atPath: ready)
         let app = launch()
-        XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 10))
-        app.tabBars.buttons["Settings"].tap()
+        app.openSettings()
         let toggle = app.switches["toggle-notify:enabled"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         if (toggle.value as? String) != "1" {
@@ -251,11 +253,12 @@ final class SessionFlowTests: XCTestCase {
     func testTabsAndSearch() {
         let app = launch()
         XCTAssertTrue(app.staticTexts["Sessions"].waitForExistence(timeout: 10))
-        app.tabBars.buttons["Settings"].tap()
+        app.openSettings()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
         snapshot(app, "settings")
-        app.tabBars.buttons["Sessions"].tap()
+        XCTAssertTrue(app.openDrawer())
         XCTAssertTrue(app.navigationBars["Sessions"].waitForExistence(timeout: 5))
+        snapshot(app, "drawer")
     }
 
     func testNewSessionFromAccessory() {
@@ -293,10 +296,10 @@ final class SessionFlowTests: XCTestCase {
 
     func testArchiveWithUndo() {
         let app = launch()
-        let cell = app.cells["session-chat-deploy"]
-        XCTAssertTrue(cell.waitForExistence(timeout: 10))
-        // Recent sits below the inline sections; bring the row clear of the accessory.
-        app.collectionViews.firstMatch.swipeUp()
+        // Recent sits below the inline sections; bring the row into the
+        // drawer and clear of its toolbar.
+        let cell = app.drawerCell("session-chat-deploy")
+        XCTAssertTrue(cell.waitForExistence(timeout: 5))
         cell.swipeLeft()
         app.buttons["Archive"].tap()
         let undo = app.buttons["toast-action"]
@@ -430,7 +433,9 @@ final class SessionFlowTests: XCTestCase {
         // Sending uses it up: the next page starts empty.
         app.buttons["composer-send"].tap()
         XCTAssertTrue(app.scrollViews["transcript"].waitForExistence(timeout: 10))
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        // The session stays as the page; Home brings the capsule back.
+        XCTAssertTrue(app.openDrawer())
+        app.buttons["sidebar-home"].tap()
         XCTAssertTrue(accessory.waitForExistence(timeout: 5))
         accessory.tap()
         XCTAssertTrue(input.waitForExistence(timeout: 5))
@@ -593,11 +598,13 @@ final class SessionFlowTests: XCTestCase {
         input.typeText("Then add a TL;DR.")
         app.buttons["Queue message"].tap()
         XCTAssertTrue(app.buttons["More queue actions"].waitForExistence(timeout: 5))
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.openDrawer())
+        app.buttons["sidebar-home"].tap()
         let accessory = app.buttons["new-session"]
         XCTAssertTrue(accessory.waitForExistence(timeout: 5))
-        XCTAssertGreaterThan(accessory.frame.minY, app.windows.firstMatch.frame.height * 0.6, "accessory sits above the tab bar")
-        app.cells["session-chat-home"].firstMatch.tap()
+        XCTAssertGreaterThan(accessory.frame.minY, app.windows.firstMatch.frame.height * 0.6, "capsule sits at the bottom of the page")
+        XCTAssertTrue(app.openDrawer())
+        app.drawerCell("session-chat-home").firstMatch.tap()
         let more = app.buttons["More queue actions"]
         XCTAssertTrue(more.waitForExistence(timeout: 5))
         XCTAssertTrue(more.isHittable, "queue shows again after coming back")
@@ -615,7 +622,7 @@ final class SessionFlowTests: XCTestCase {
         XCTAssertTrue(effect.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Halftone'")).firstMatch.exists)
         snapshot(app, "wallpaper-settings")
-        // Scroll the row clear of the bottom accessory / tab bar before tapping.
+        // Scroll the row clear of the New session capsule before tapping.
         let remove = app.staticTexts["Remove Wallpaper"]
         let limit = app.windows.firstMatch.frame.height * 0.7
         for _ in 0..<4 where remove.frame.maxY > limit { app.swipeUp() }

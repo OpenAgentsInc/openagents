@@ -47,7 +47,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             WallpaperStore.effect = effect
         }
         if args.contains("-lab") {
-            window.rootViewController = MainTabController.nav(TranscriptLabViewController())
+            window.rootViewController = DrawerShellController.nav(TranscriptLabViewController())
         } else {
             showRoot(animated: false)
         }
@@ -88,11 +88,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     private func showRoot(animated: Bool) {
         guard let window else { return }
-        // iPad gets the split shell (it collapses to the tab shell
-        // at compact widths); iPhone the tab shell directly.
+        // iPad gets the split shell (it collapses to the drawer shell
+        // at compact widths); iPhone the drawer shell directly.
         let root: UIViewController = !app.isSignedIn
             ? SignInViewController(app: app)
-            : UIDevice.current.userInterfaceIdiom == .pad ? SplitRootController(app: app) : MainTabController(app: app)
+            : UIDevice.current.userInterfaceIdiom == .pad ? SplitRootController(app: app) : DrawerShellController(app: app)
         // Sheets (new session, Settings) belong to the old root: they'd
         // stay on top of the new one.
         if let old = window.rootViewController, old.presentedViewController != nil {

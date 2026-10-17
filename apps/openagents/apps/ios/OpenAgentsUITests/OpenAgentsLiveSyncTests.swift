@@ -96,8 +96,7 @@ final class OpenAgentsLiveSyncTests: XCTestCase {
         capture(app, "live-host-reconnected")
         // Leave the conversation and remove this test app's saved credential.
         app.navigationBars.buttons.firstMatch.tap()
-        XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 10))
-        app.tabBars.buttons["Settings"].tap()
+        app.openSettings()
         let signOut = app.cells["settings-signout"]
         for _ in 0..<6 where !signOut.isHittable { app.swipeUp() }
         signOut.tap()
@@ -117,9 +116,7 @@ final class OpenAgentsLiveSyncTests: XCTestCase {
         app.launchArguments = ["-no-auth-browser", "-account-fixture", "-account-test-credential-url", try XCTUnwrap(config["credential_url"]), "-edge", try XCTUnwrap(config["sync"])]
         app.launch()
         ownedApp = app
-        let sessions = app.tabBars.buttons["Sessions"]
-        XCTAssertTrue(sessions.waitForExistence(timeout: 20))
-        sessions.tap()
+        XCTAssertTrue(app.openDrawer(timeout: 20))
         let session = app.cells["session-" + (try XCTUnwrap(config["chat"]))]
         XCTAssertTrue(session.waitForExistence(timeout: 90))
         session.tap()
