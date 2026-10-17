@@ -54,8 +54,9 @@
     "native_delete_operation": "op_01a14771-d84e-7254-8412-f3d2b1cb9790",
     "native_state": "failed",
     "native_code": "conflict",
-    "provider_row_absent_afterward": true,
-    "private_checkpoint_removed_afterward": true
+    "private_checkpoint_removed_afterward": true,
+    "public_get_status_afterward": 404,
+    "native_finalization_before_cleanup": "Deleted/unplaced row with two attached snapshots; worker directory absence did not establish upload cleanup."
   },
   "fixed_retry": {
     "source_commit": "0ef037a3bedefb838ac60d546b3e54ee751b1fba",
