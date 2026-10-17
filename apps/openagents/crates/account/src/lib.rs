@@ -19,6 +19,7 @@ pub mod desktop;
 pub mod history;
 pub mod lab_cards;
 pub mod lab_row;
+pub mod own_computer;
 mod platform;
 pub mod reader;
 pub mod turns;

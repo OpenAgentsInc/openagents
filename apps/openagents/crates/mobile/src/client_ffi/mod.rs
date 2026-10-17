@@ -22,6 +22,7 @@ pub use agent_lab::*;
 mod custom_agents;
 mod home;
 mod labs;
+mod own_computer;
 pub use account::*;
 pub use custom_agents::*;
 pub use home::*;
