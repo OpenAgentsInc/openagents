@@ -292,9 +292,10 @@ The status lines below summarize each issue and its comments. Open the issue for
 **#11884 Labs P1: iPhone Lab row and standard views, notes by voice.** Lane 5, not started.
 - **Remains:** a small UniFFI facade over `openagents::labs`, a Lab row and a cell per view, dictated notes, stopping media on background, and fixture UI tests. The bundle is now `com.openagents.app`.
 
-**#11885 Labs T1: Labs in Coder 1.0.0.** Lane 4, not started.
+**#11885 Labs T1: Labs in Coder 1.0.0.** Lane 4, code complete on `main`.
 - **New scope:** native Labs in `coder` and `openagents` through `openagents::labs`, not a bridge for a frozen binary. Read tools from `/v1/labs/kinds`, follow events, and keep the `VIDEO_LAB_URL`-style loopback only for local Labs not yet on the platform.
-- **Remains:** request and response tests, and an isolated-HOME run where `openagents cad` and the Coder video tools edit account documents.
+- **Done:** native SDK discovery, calls, and events in Coder and `openagents`, shared `lab-ui` terminal text and links, verified CLI previews, and retained local tools for unhosted kinds (`d37b9a9b6b` through `0cedf5dbf1`). Adapter, native client, generated-tree, and isolated-HOME CLI checks passed. Evidence: `docs/sdk/labs-terminal-evidence.json`.
+- **After-close:** the production terminal flow and visual check are listed below. The separate Cursor screen test failure is recorded in the evidence.
 
 **#11886 Labs D2: video timeline editor in the desktop app.** Lane 5, last in the lane.
 - **Depends on:** #11880, #11883.
@@ -430,6 +431,7 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 | #11876 | Run the Git-pinned `examples/sdk-labs` CAD flow against production with the dedicated account, including ranged GLB, notes, events, and deletion. | Passed on production image `sha256:51e2d77b…202a7` using the previously qualified Git-pinned binary: CAD edits/refusal, restored job retry, ranged GLB, notes, 14 events, design deletion, and artifact refusal after deletion. Evidence: `docs/sdk/labs-client-evidence.json`. |
 | #11877 | A CAD chat's card through `/v1/history`, re-rendered in a second browser session. | to do |
 | #11878 | Deploy the account-service worker routes before the web worker routes. Run dedicated-account Echo on server, disposable enrolled, and cloud placements; prove private input bytes and paths stay local, retire scoped keys, and observe cloud computer deletion. The cloud environment needs the pinned `labs-worker` and trusted handlers installed. | to do; owner Mac installation is in `NEEDS_OWNER.md` |
+| #11885 | After the server deploy and native binary build, use the dedicated test account in an isolated HOME: edit a CAD document with `openagents cad`, edit a hosted Video document with Coder, follow its events, open the page links, and delete the fixtures. Check posters and strips in Kitty and iTerm2. Hosted Video depends on #11880; Game and Ship integration remains under #11881. | Local SDK wire, native dispatch, generated-tree, and actual CLI fixture checks passed; production and visual checks: to do. |
 | #11852 | Deploy `4a796e8ff8` or newer. Run `OurCloudLiveTests/testStartRunAndStopOurCloud` with the dedicated test account, check `GET /v1/computer-usage`, delete the computer with `DELETE /v1/cloud-host`, and remove its test registry rows. Validate TestFlight 1011 or the next free build. | to do; phone source `d37ed99d0c`, local control acceptance `a67ec60b44` passed |
 | #11894 | A test account's terminal chat continued on the desktop: the first turn knows the history, and the phone steers it. | to do |
 | #11881 | Register `game_lab::kind::Game` and `ship_lab::kind::Ship` in `labs_api.rs` after #11877 lands, host `/labs/game/{doc}`, and install `game-lab playtest-job` as the `playtest` handler. Then, with the dedicated test account on production: a Game Lab edit plays in the web card and appears through `/v1/history`, and a Ship Lab refusal and an accepted edit. Clean up after. | to do |

@@ -1,0 +1,109 @@
+{
+  "schema": "openagents.labs.terminal-checks.v1",
+  "issue": 11885,
+  "source_commit": "0cedf5dbf17b22daa0d7a40142cf927b4037812e",
+  "source_commits": [
+    "d37b9a9b6b",
+    "7219f053d0",
+    "ebd9d282a6",
+    "0cedf5dbf1"
+  ],
+  "checks": {
+    "adapter": {
+      "passed": 3,
+      "failed": 0,
+      "log": "11885-adapter-final.log"
+    },
+    "native_coder_and_cli": {
+      "passed": 4,
+      "failed": 0,
+      "log": "11885-native-final.log"
+    },
+    "isolated_home_cli": {
+      "passed": 1,
+      "failed": 0,
+      "log": "11885-cli-fixture.log"
+    },
+    "generated_tree_and_worktree_helpers": {
+      "passed": 12,
+      "failed": 0,
+      "log": "11885-tree-final.log"
+    },
+    "cli_unit_suite": {
+      "passed": 431,
+      "failed": 0,
+      "ignored": 1,
+      "log": "11885-terminals.log"
+    },
+    "coder_unit_suite": {
+      "passed": 1053,
+      "failed": 2,
+      "ignored": 24,
+      "log": "11885-terminals.log"
+    },
+    "isolated_model_picker": {
+      "passed": 1,
+      "failed": 0,
+      "log": "11885-model-picker-isolated.log"
+    },
+    "isolated_cursor_layout": {
+      "passed": 0,
+      "failed": 1,
+      "log": "11885-cursor-layout-isolated.log"
+    },
+    "format": {
+      "passed": true,
+      "log": "11885-format.log"
+    }
+  },
+  "coverage": [
+    "Dynamic manifests and exact kind dispatch",
+    "Captured account and cache separation",
+    "No local fallback after discovery or hosted-tool failure",
+    "Checked current bases and numeric legacy version strings; stale refusal without rebasing",
+    "SDK event cursors, cancellation, and account invalidation",
+    "Shared lab-ui text, unknown-view fallback, typed version-and-space links, and terminal-control filtering",
+    "Bounded preview downloads with complete digest verification before Kitty or iTerm2 output",
+    "Actual CLI binary under a fresh HOME and cleared environment: discovery, CAD, new video tool, and event following",
+    "Distinct global JSON output and Lab tool JSON bodies"
+  ],
+  "limitations": [
+    "The broader Coder run reported model-picker and Cursor screen failures outside the Labs changes. The model-picker case passes with a fresh HOME and system-only PATH. The Cursor screen assertion at crates/coder-new/src/ui/plugins.rs:1462 still fails in isolation; its exact output is retained.",
+    "The SDK default test targets depend on openagents-web. They were excluded to keep this qualification scoped; the new explicit SDK test-run header is verified by the adapter wire checks.",
+    "Two broader compilation attempts were interrupted to preserve the 30 GiB disk floor. Their output is not counted as a pass.",
+    "Rebase preserved all checked source bytes. Cargo.lock only gained the unrelated coder-sharing package and video-lab dependencies already on main.",
+    "Production, a real Coder engine turn, and visual graphics checks remain in After-close checks."
+  ],
+  "source_files_sha256": {
+    "Cargo.lock": "0e8bda1515eb3825dc25838136d887afec77124a087346b350d900a6232e42f4",
+    "crates/coder-new/Cargo.toml": "12bf728ed1b96693a628361886f52eea23dafe08f668ab1d30ab457eda34cc21",
+    "crates/coder-new/src/hosted_labs.rs": "1cead2e6fd520a4873e466aeba6f98197af895fa5e2f819b07d351f2f9447ab6",
+    "crates/coder-new/src/lib.rs": "b5dbc8d7980235f5d086d0b381fb885c79293dab176fb35c9d5e06cf67d0c2cf",
+    "crates/coder-new/src/plugin_tools.rs": "3c066738664bdadd61c33a57571ce1291490b31847ba0253dfc27de0d25d8215",
+    "crates/coder/src/cli_route/tree.json": "47bb7adc0e49fe36bf15c0cfd480e39873752ac9757d551a1cf99840211873cd",
+    "crates/lab-terminal/Cargo.toml": "11758dedac56c0f41407935d18f893cc1fe61382d9432096a97f802df1af13ec",
+    "crates/lab-terminal/src/lib.rs": "9c5471ed32b1ecb219e5338f660b003c187647dab6121057b72b6e1ef9594f9a",
+    "crates/openagents-cli/Cargo.toml": "18163fa09a67a90e3a46efaf89538ca26d291ca5a9b280613791ab3cf544f13c",
+    "crates/openagents-cli/src/cad.rs": "37b7c789d43950cc266d7eb119cd7c1d6cdd64a850926ba879733f4b341317b6",
+    "crates/openagents-cli/src/game.rs": "d36ce0229b44a3bdf1d898a4e464373df133a4532d8b3e7f36fee6657128c5e4",
+    "crates/openagents-cli/src/hosted_labs.rs": "662f0b95cebf4d80876781dd1867bce5e10206a93ee7c663c68a59a202bc3d3d",
+    "crates/openagents-cli/src/lab.rs": "d8a1b51c04b9c40dc41a8871c2e59b21c795f579e2cbaeef35786d69584356c3",
+    "crates/openagents-cli/src/main.rs": "4167b44cbd7cf16784943ca1e3a3685150295dd076172d6a652d61dbef97b507",
+    "crates/openagents-cli/tests/labs.rs": "dade22a3192ca8de873700301063b15b2eaf62cc469802efcbfc16bfb9d804b3",
+    "crates/openagents-sdk/src/transport.rs": "b6a0fdec8be05287e395941f57e170a0b1da2aa1aa3321646c69cf9c0440b7b8",
+    "docs/labs/README.md": "9e91d88f8d1a41ad47cac8b47ae212d407db2c1b163500da0e001c67efe90879",
+    "docs/sdk/labs.md": "275d1ffa5b3602eee53bb4ed01e297d1539eb01eb7b415c359a7550b6b485f8e"
+  },
+  "archive": "docs/sdk/evidence/labs-terminal-checks-2026-10-17.tar.gz",
+  "archive_sha256": "8c8e0243a55e5e2a09da7760c2df6704c2ece518dc0eff69ef421fbc667d73fc",
+  "logs_sha256": {
+    "11885-adapter-final.log": "18e533978bfbb141ae9ed98875e30102bf73262744c2a12608aeca34287e9ebb",
+    "11885-native-final.log": "39c99d1c0f1d1265d52eb4f71fd20b604fb058e88956dd4fc2d50c7b202fb435",
+    "11885-cli-fixture.log": "48de75b68c096efd20306021b205821f320d6abfe1e871762164fc347732e685",
+    "11885-tree-final.log": "e5063d7c5eaf4e8e57ce9eded2d2f005a5afe26bac95ddeaa566da91e6eb32ce",
+    "11885-terminals.log": "885842f5e87d441e23248372c0a023ca1bb82a0ce0f004b8d81b83bf9d85f618",
+    "11885-model-picker-isolated.log": "8b9a1eb35d8b093dff6e36b0de943d8c01c43549ce83dc183836a48ee8ff0579",
+    "11885-cursor-layout-isolated.log": "7b615a9c66d37d398c5b773f8bdd1858b8d4e80cc4a2fb85b788c21a7c797a81",
+    "11885-format.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}
