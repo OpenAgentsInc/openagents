@@ -18,7 +18,7 @@ serde_json.workspace = true
 tokio.workspace = true
 tokio-tungstenite.workspace = true
 futures.workspace = true
-rusqlite.workspace = true
+rusqlite = { workspace = true, optional = true }
 thiserror.workspace = true
 tracing.workspace = true
 uuid.workspace = true
@@ -28,6 +28,8 @@ uuid.workspace = true
 block2 = "0.6"
 
 [features]
+default = ["store"]
+store = ["dep:rusqlite"]
 # In-process registry server speaking the DO's JSON WS protocol — test
 # infrastructure for this crate's tests and openagents-engine's integration tests.
 mock-server = []

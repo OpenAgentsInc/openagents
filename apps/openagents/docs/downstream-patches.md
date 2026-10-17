@@ -168,6 +168,9 @@ links remain readable. Upstream fixes now require manual ports.
   The host also receives native exit codes, complete patch paths, and retry metadata.
   A host stop ends supervised processes and their child groups before acknowledgement;
   terminal resume recovery can select its own native history directory.
+  Terminal sessions now call these native drivers through the borrowed host
+  launch broker. The sync client's default-on `store` feature lets terminal
+  callers reuse the Loro room client without linking a second SQLite version.
 
 - [OpenAgents #11930](https://github.com/OpenAgentsInc/openagents/issues/11930):
   run keepers, so a running agent outlives the engine that started it. Our

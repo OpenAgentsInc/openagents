@@ -1671,7 +1671,9 @@ async fn http_catchup_crosses_a_contained_checkpoint_and_repairs_causal_gaps() {
     }
 }
 
+#[cfg(feature = "store")]
 struct JournalSink(crate::DocsStore, RecordingSink);
+#[cfg(feature = "store")]
 impl ChatDocSink for JournalSink {
     fn pending_updates(&self) -> Result<Vec<(String, Vec<u8>)>, String> {
         self.0
@@ -1774,6 +1776,7 @@ impl ChatTransport for LostAckHttp {
     }
 }
 
+#[cfg(feature = "store")]
 #[tokio::test(start_paused = true)]
 async fn blocked_websockets_deliver_reopened_outbox_over_http_despite_lost_ack() {
     let _serial = PATH_AND_TIMING.lock().await;
