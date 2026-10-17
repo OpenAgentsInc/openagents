@@ -3287,7 +3287,7 @@
     },
     "/v1/computers/{id}/credential-references": {
       "post": {
-        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare before sending the command with command_key. A guest placeholder is not the real key.",
+        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare all references before sending the command with command_key. Pass oa-ref:REFERENCE_UUID as the client API key or Git HTTPS password. The proxy replaces this non-secret marker only for an authorized matching request.",
         "operationId": "prepareComputerCredentialReference",
         "parameters": [
           {
@@ -3379,7 +3379,7 @@
     },
     "/v1/computers/{id}/credential-references/{reference}": {
       "delete": {
-        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare before sending the command with command_key. A guest placeholder is not the real key.",
+        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare all references before sending the command with command_key. Pass oa-ref:REFERENCE_UUID as the client API key or Git HTTPS password. The proxy replaces this non-secret marker only for an authorized matching request.",
         "operationId": "revokeComputerCredentialReference",
         "parameters": [
           {
@@ -3440,7 +3440,7 @@
         "x-openagents-retry": "manual_intent"
       },
       "get": {
-        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare before sending the command with command_key. A guest placeholder is not the real key.",
+        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare all references before sending the command with command_key. Pass oa-ref:REFERENCE_UUID as the client API key or Git HTTPS password. The proxy replaces this non-secret marker only for an authorized matching request.",
         "operationId": "getComputerCredentialReference",
         "parameters": [
           {

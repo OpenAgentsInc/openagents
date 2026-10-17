@@ -25,14 +25,14 @@ struct Fixture {
 }
 impl Fixture {
     async fn authorized(&self, headers: &HeaderMap, git: bool) -> bool {
-        let Ok(secret) = self.provider.access(&self.version).await else {
-            return false;
-        };
         let values = headers.get_all(if git { "authorization" } else { "x-api-key" });
         if values.iter().count() != 1 {
             return false;
         }
         let Some(value) = values.iter().next() else {
+            return false;
+        };
+        let Ok(secret) = self.provider.access(&self.version).await else {
             return false;
         };
         let expected = if git {
@@ -108,6 +108,16 @@ async fn messages(State(f): State<Arc<Fixture>>, headers: HeaderMap, body: Bytes
         }
     });
     Sse::new(tokio_stream::wrappers::ReceiverStream::new(receive)).into_response()
+}
+async fn redirect(State(f): State<Arc<Fixture>>, headers: HeaderMap) -> Response {
+    if !f.authorized(&headers, false).await {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    (
+        StatusCode::TEMPORARY_REDIRECT,
+        [(header::LOCATION, "https://example.com/")],
+    )
+        .into_response()
 }
 async fn git(
     State(f): State<Arc<Fixture>>,
@@ -218,6 +228,7 @@ async fn run() -> Result<(), ()> {
     let router = Router::new()
         .route("/healthz", get(|| async { "ok" }))
         .route("/v1/messages", post(messages))
+        .route("/v1/messages/redirect", post(redirect))
         .route("/repo.git/info/refs", get(git))
         .route("/repo.git/git-upload-pack", post(git))
         .layer(DefaultBodyLimit::max(2 * 1024 * 1024))

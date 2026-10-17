@@ -7,6 +7,9 @@ pub(crate) mod credentials;
 pub(crate) mod files;
 pub(crate) mod usage;
 
+#[cfg(all(test, unix))]
+mod credential_qualification;
+
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};

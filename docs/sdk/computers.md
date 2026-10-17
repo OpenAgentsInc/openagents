@@ -196,8 +196,8 @@ The [verification record](computers-openapi-evidence.json) pins the serving imag
 contract hash, generated outputs, checks, and independent production workflow.
 The public [OpenAPI reference](https://api.openagents.com/v1/openapi.json)
 contains the implemented Computers operations and their public authentication.
-The checked-in [Computers subset](openapi.computers.json) contains 18 operations:
-14 Computers operations, including the existing named-computer detach
+The checked-in [Computers subset](openapi.computers.json) contains 21 operations:
+17 Computers operations, including optional credential references and the existing named-computer detach
 compatibility route, and four device/account operations. It includes only the
 components those operations reference. The [operation index](computers-operations.json)
 records methods, paths, authority, successful status codes, binary bodies,
@@ -266,8 +266,9 @@ account, computer, command text, and request key for at most ten minutes before
 execution. Values stay in memory at the trusted service boundary. The web saves
 that preparation before submitting the command and does not prepare it again
 during recovery. A restart that loses waiting credentials fails that command.
-This is the web's first delivery slice; the general credential-reference API and
-network policies remain [#11813](https://github.com/OpenAgentsInc/openagents/issues/11813).
+This is the qualified Boat web path. The optional host-proxy reference API and
+fixed network profiles are described under [Credentials and egress](#credentials-and-egress);
+their live qualification is tracked in [#11813](https://github.com/OpenAgentsInc/openagents/issues/11813).
 
 Attachments up to 4 MiB use SDK file writes with saved hashes. Larger existing
 attachment requests keep their previous path. Setting

@@ -1,4 +1,5 @@
 # Build only. Deployments require separate explicit, qualified configuration.
+serviceAccount: projects/openagentsgemini/serviceAccounts/oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com
 substitutions:
   _COMMIT: ''
   _IMAGE: us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/credential-broker
@@ -19,5 +20,6 @@ steps:
     args: [build, -f, deploy/space-credentials/Dockerfile, -t, '${_IMAGE}:${_COMMIT}', .]
 images: ['${_IMAGE}:${_COMMIT}']
 options:
+  logging: CLOUD_LOGGING_ONLY
   machineType: E2_HIGHCPU_8
 timeout: 3600s

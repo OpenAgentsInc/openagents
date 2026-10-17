@@ -16088,7 +16088,7 @@
             "appBearer": []
           }
         ],
-        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare before sending the command with command_key. A guest placeholder is not the real key.",
+        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare all references before sending the command with command_key. Pass oa-ref:REFERENCE_UUID as the client API key or Git HTTPS password. The proxy replaces this non-secret marker only for an authorized matching request.",
         "responses": {
           "201": {
             "description": "Done",
@@ -16180,7 +16180,7 @@
             "appBearer": []
           }
         ],
-        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare before sending the command with command_key. A guest placeholder is not the real key.",
+        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare all references before sending the command with command_key. Pass oa-ref:REFERENCE_UUID as the client API key or Git HTTPS password. The proxy replaces this non-secret marker only for an authorized matching request.",
         "responses": {
           "200": {
             "description": "Done",
@@ -16248,7 +16248,7 @@
             "appBearer": []
           }
         ],
-        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare before sending the command with command_key. A guest placeholder is not the real key.",
+        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare all references before sending the command with command_key. Pass oa-ref:REFERENCE_UUID as the client API key or Git HTTPS password. The proxy replaces this non-secret marker only for an authorized matching request.",
         "responses": {
           "204": {
             "description": "Credential access has ended."

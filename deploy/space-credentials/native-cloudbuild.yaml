@@ -1,4 +1,5 @@
 # Produce isolated API/worker artifacts; this file does not roll out any pods.
+serviceAccount: projects/openagentsgemini/serviceAccounts/oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com
 substitutions:
   _COMMIT: ''
   _IMAGE_ROOT: us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/credential-native
@@ -52,6 +53,7 @@ images:
   - '${_IMAGE_ROOT}/api:${_COMMIT}'
   - '${_IMAGE_ROOT}/worker:${_COMMIT}'
 options:
+  logging: CLOUD_LOGGING_ONLY
   machineType: E2_HIGHCPU_32
   diskSizeGb: 250
 timeout: 3600s
