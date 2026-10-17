@@ -78,6 +78,12 @@ const WAITING_MAX: usize = 10_000;
 const BODY_MAX: usize = 4 * 1024;
 const HEADER_MAX: usize = 8 * 1024;
 
+/// Whether `path` is one of these routes, which this site answers itself
+/// and never forwards upstream.
+pub(crate) fn owns(path: &str) -> bool {
+    path.starts_with("/login/") || path.starts_with("/v1/web-sign-in/")
+}
+
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(START, post(start))
@@ -380,12 +386,9 @@ async fn start(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
         service.origin()
     );
     let lifetime = expires_at - at;
-    let Ok(cookie) = service.web_sign_in_cookie(
-        COOKIE,
-        &format!("{id}.{secret}"),
-        lifetime,
-        "/login/key",
-    ) else {
+    let Ok(cookie) =
+        service.web_sign_in_cookie(COOKIE, &format!("{id}.{secret}"), lifetime, "/login/key")
+    else {
         return unavailable();
     };
     app.config.web_sign_in.insert(
@@ -467,7 +470,7 @@ async fn qr(State(app): State<App>, Path(id): Path<String>) -> Response {
 
 /// This browser's waiting sign-in, from its cookie: the request id when
 /// the cookie's secret matches `id`'s.
-fn owns(app: &App, headers: &HeaderMap, id: &str) -> bool {
+fn started_here(app: &App, headers: &HeaderMap, id: &str) -> bool {
     let Some((cookie_id, secret)) = headers
         .get_all(header::COOKIE)
         .iter()
@@ -483,7 +486,8 @@ fn owns(app: &App, headers: &HeaderMap, id: &str) -> bool {
         return false;
     }
     let digest: [u8; 32] = Sha256::digest(secret.as_bytes()).into();
-    app.config.web_sign_in
+    app.config
+        .web_sign_in
         .lock()
         .get(id)
         .is_some_and(|r| r.secret == digest)
@@ -496,7 +500,7 @@ async fn status(State(app): State<App>, headers: HeaderMap, Path(id): Path<Strin
         Ok(service) => service,
         Err(response) => return response,
     };
-    if !valid_id(&id) || !owns(&app, &headers, &id) {
+    if !valid_id(&id) || !started_here(&app, &headers, &id) {
         return expired();
     }
     let (approved, back) = {
