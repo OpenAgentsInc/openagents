@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 
 use gpui::{AnyElement, Context, Render, SharedString, Window, div, prelude::*, px};
-use zeron_proto::{
+use openagents_proto::{
     ChangeRequestListItem, ChangeRequestState, ChangeRequestSummary, Chat,
     CheckoutChangeRequestStatus, Space,
 };
@@ -427,7 +427,7 @@ pub(crate) fn conversation_branch<'a>(chat: &'a Chat, _spaces: &'a [Space]) -> O
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone as _, Utc};
-    use zeron_proto::ChangeRequestState;
+    use openagents_proto::ChangeRequestState;
 
     use super::*;
 
@@ -478,7 +478,7 @@ mod tests {
                 provider: "github".into(),
                 number: 90,
                 title: "Add pull request badges".into(),
-                url: "https://github.com/acme/zeron/pull/90".into(),
+                url: "https://github.com/acme/openagents/pull/90".into(),
                 state: ChangeRequestState::Open,
                 base_ref: "main".into(),
                 head_ref: "feature/pr".into(),
@@ -488,7 +488,7 @@ mod tests {
     }
 
     fn with_source(mut chat: Chat, branch: &str) -> Chat {
-        chat.source_context = Some(zeron_proto::ConversationSourceContext {
+        chat.source_context = Some(openagents_proto::ConversationSourceContext {
             checkout_id: "checkout".into(),
             repo_root: "/repo".into(),
             cwd: "/repo".into(),

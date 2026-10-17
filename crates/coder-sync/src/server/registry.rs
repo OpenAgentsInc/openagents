@@ -15,6 +15,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::Response,
 };
+use openagents_doc::{OpKind, RegistryRow, RowOp, apply_op};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -23,7 +24,6 @@ use std::{
 };
 use tokio_postgres::Transaction;
 use uuid::Uuid;
-use zeron_doc::{OpKind, RegistryRow, RowOp, apply_op};
 type Result<T> = std::result::Result<T, Failure>;
 fn bad(code: &'static str) -> Failure {
     Failure(StatusCode::BAD_REQUEST, code)

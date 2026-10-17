@@ -1,5 +1,5 @@
 [package]
-name = "zeron-client"
+name = "openagents-client"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,12 +16,12 @@ publish.workspace = true
 upstream-workos = []
 
 [dependencies]
-coder-brand.workspace = true
-zeron-voice-session.workspace = true
-zeron-proto.workspace = true
-zeron-doc.workspace = true
-zeron-sync.workspace = true
-zeron-rpc.workspace = true
+openagents-brand.workspace = true
+openagents-voice-session.workspace = true
+openagents-proto.workspace = true
+openagents-doc.workspace = true
+openagents-sync.workspace = true
+openagents-rpc.workspace = true
 loro.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
@@ -37,8 +37,8 @@ async-trait.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-zeron-visual.workspace = true
-zeron-sync = { workspace = true, features = ["mock-server"] }
+openagents-visual.workspace = true
+openagents-sync = { workspace = true, features = ["mock-server"] }
 tokio-tungstenite.workspace = true
 async-trait.workspace = true
 tokio = { workspace = true, features = ["test-util"] }

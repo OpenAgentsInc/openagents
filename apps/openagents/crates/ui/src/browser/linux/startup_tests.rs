@@ -267,7 +267,7 @@ fn concurrent_profiles_can_extract_the_helper_into_a_cold_cache() {
     assert!(paths.iter().all(|path| path == &paths[0]));
     assert_eq!(
         std::fs::read(&paths[0]).unwrap(),
-        include_bytes!(concat!(env!("OUT_DIR"), "/zeron-webkit"))
+        include_bytes!(concat!(env!("OUT_DIR"), "/openagents-webkit"))
     );
     assert_eq!(
         std::fs::read_dir(root.path()).unwrap().count(),

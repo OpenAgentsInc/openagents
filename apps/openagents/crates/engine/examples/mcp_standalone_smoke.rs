@@ -1,15 +1,15 @@
 //! Isolated MCP stdio instance for manual discovery/create/converse smoke tests.
-//! Run with `cargo run -p zeron-engine --example mcp_standalone_smoke`.
+//! Run with `cargo run -p openagents-engine --example mcp_standalone_smoke`.
 //! Uses a temporary profile and scripted harness, never the user's workspace.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures::stream::BoxStream;
-use zeron_engine::{EngineCore, HarnessRegistry};
-use zeron_harness::{Harness, HarnessError, RunControls, mock::MockHarness};
-use zeron_mcp::{Origin, Tools, Zeron};
-use zeron_proto::{
+use openagents_engine::{EngineCore, HarnessRegistry};
+use openagents_harness::{Harness, HarnessError, RunControls, mock::MockHarness};
+use openagents_mcp::{Origin, Tools, OpenAgents};
+use openagents_proto::{
     AgentEvent, DoneStatus, HarnessId, Model, ReasoningLevel, RunRequest, SteeringMode,
 };
 
@@ -30,14 +30,14 @@ async fn main() -> anyhow::Result<()> {
     core.workspace
         .create_chat("smoke-origin", Some("smoke-project"), None, None, None)?;
     core.workspace.rename_chat("smoke-origin", "Coordinator")?;
-    let tools = Tools::new(Arc::new(Zeron::with_client(
-        zeron_rpc::memory_client(core.rpc_service()),
+    let tools = Tools::new(Arc::new(OpenAgents::with_client(
+        openagents_rpc::memory_client(core.rpc_service()),
         Origin {
             chat_id: Some("smoke-origin".into()),
             device_id: Some("smoke-device".into()),
         },
     )));
-    zeron_mcp::serve_stdio(Arc::new(tools)).await?;
+    openagents_mcp::serve_stdio(Arc::new(tools)).await?;
     core.shutdown().await;
     Ok(())
 }

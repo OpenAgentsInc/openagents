@@ -6,8 +6,8 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
-use zeron_harness::codex::realtime::{RealtimeHandle, VoiceCommand};
-use zeron_proto::{SessionStatus, voice::*};
+use openagents_harness::codex::realtime::{RealtimeHandle, VoiceCommand};
+use openagents_proto::{SessionStatus, voice::*};
 
 #[derive(Clone, Default)]
 pub struct VoiceManager {
@@ -17,7 +17,7 @@ pub struct VoiceManager {
 struct Inner {
     slot: Mutex<Option<Slot>>,
     attempts:
-        Mutex<std::collections::HashMap<zeron_proto::voice::remote::AttemptKey, remote::Attempt>>,
+        Mutex<std::collections::HashMap<openagents_proto::voice::remote::AttemptKey, remote::Attempt>>,
     generation: AtomicU64,
     identity_epoch: AtomicU64,
     // A successor waits until the old native stop completes, even after its owner is dropped.

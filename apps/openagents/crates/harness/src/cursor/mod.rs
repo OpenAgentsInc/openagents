@@ -1,5 +1,5 @@
 //! Cursor harness: drives Cursor's agent runtime through the PINNED
-//! `@cursor/sdk` via a thin zeron-owned Node shim (`shim.mjs`, JSONL over
+//! `@cursor/sdk` via a thin openagents-owned Node shim (`shim.mjs`, JSONL over
 //! stdio) — NOT over ACP, and NOT over `cursor-agent`'s print surface.
 //!
 //! Why: Cursor's ACP surface is lossy (subagent transcripts are stripped at
@@ -16,7 +16,7 @@
 //! Revalidate the shim against the typings on every bump.
 //!
 //! - The shim is materialized into the SDK's managed npm install
-//!   (`~/.zeron/adapters/…`, [`crate::adapter_install::ensure_installed_shim`])
+//!   (`~/.openagents/adapters/…`, [`crate::adapter_install::ensure_installed_shim`])
 //!   and spawned as `node <shim>`.
 //! - Done = the SDK run's terminal result (`turn` frame off `run.wait()` /
 //!   `turn-ended`) — a crisp turn end by construction.
@@ -47,7 +47,7 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
-use zeron_proto::{
+use openagents_proto::{
     AgentEvent, DoneStatus, HarnessId, Model, ModelOption, ModelOptionChoice, ReasoningLevel,
     RunRequest, SteeringMode, TodoItem, TodoStatus, ToolCall,
 };
@@ -58,7 +58,7 @@ use crate::{Harness, HarnessError, RunControls, Signal, send_signal, shutdown_ch
 /// The pinned SDK (public beta 1.0.x line; inspected against 1.0.31's
 /// typings). Bump deliberately — see the module header.
 const CURSOR_SDK_PIN: &str = "@cursor/sdk@1.0.32";
-const SHIM_NAME: &str = "zeron-cursor-shim.mjs";
+const SHIM_NAME: &str = "openagents-cursor-shim.mjs";
 const SHIM_SOURCE: &str = include_str!("shim.mjs");
 
 fn cursor_cli_paths() -> Vec<PathBuf> {
@@ -270,7 +270,7 @@ impl Harness for CursorHarness {
     }
     /// "Installed" means the user's own cursor-agent CLI is present — the
     /// user-visible signal they use Cursor (the SDK itself is a managed
-    /// install zeron performs on demand).
+    /// install openagents performs on demand).
     fn installed(&self) -> bool {
         self.executable.is_some()
             || crate::acp::find_on_paths("cursor-agent", cursor_cli_paths()).is_some()
@@ -359,7 +359,7 @@ impl Harness for CursorHarness {
         let mut cmd = Command::new(&exe);
         cmd.args(&args);
         if lease.is_some() {
-            cmd.env("ZERON_CURSOR_STATE_DIR", state::state_root());
+            cmd.env("OPENAGENTS_CURSOR_STATE_DIR", state::state_root());
         }
         crate::compose_child_path(&mut cmd, &exe);
         if !request.cwd.is_empty() {
@@ -391,7 +391,7 @@ impl Harness for CursorHarness {
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stderr).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    tracing::debug!(target: "zeron_harness::cursor", "stderr: {line}");
+                    tracing::debug!(target: "openagents_harness::cursor", "stderr: {line}");
                     tail.push(&line);
                 }
             });
@@ -574,7 +574,7 @@ async fn stdin_writer(mut stdin: ChildStdin, mut rx: mpsc::UnboundedReceiver<Str
             stdin.flush().await
         };
         if let Err(e) = write.await {
-            tracing::debug!(target: "zeron_harness::cursor", "stdin write failed (tolerated): {e}");
+            tracing::debug!(target: "openagents_harness::cursor", "stdin write failed (tolerated): {e}");
             return;
         }
     }
@@ -688,7 +688,7 @@ async fn run_session(session: Session) {
                         continue;
                     }
                     let Ok(frame) = serde_json::from_str::<Value>(line) else {
-                        tracing::debug!(target: "zeron_harness::cursor", "unparseable shim frame (skipped)");
+                        tracing::debug!(target: "openagents_harness::cursor", "unparseable shim frame (skipped)");
                         continue;
                     };
                     match frame.get("ev").and_then(Value::as_str).unwrap_or("") {
@@ -731,7 +731,7 @@ async fn run_session(session: Session) {
                             if frame.get("ev").and_then(Value::as_str) == Some("fatal")
                                 || frame.get("status").and_then(Value::as_str) == Some("error")
                             {
-                                tracing::warn!(target: "zeron_harness::cursor",
+                                tracing::warn!(target: "openagents_harness::cursor",
                                     session_id = ?session_id,
                                     error = ?frame.get("error").or_else(|| frame.get("message")),
                                     "Cursor SDK run failed");
@@ -1091,7 +1091,7 @@ fn map_shim_frame(frame: &Value, interrupted: bool) -> Vec<AgentEvent> {
             session_id: None,
         }],
         other => {
-            tracing::debug!(target: "zeron_harness::cursor", "unknown shim frame (skipped): {other}");
+            tracing::debug!(target: "openagents_harness::cursor", "unknown shim frame (skipped): {other}");
             Vec::new()
         }
     }

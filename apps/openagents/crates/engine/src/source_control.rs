@@ -17,7 +17,7 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 
-use zeron_proto::{
+use openagents_proto::{
     ChangeRequestListItem, ChangeRequestMergeability, ChangeRequestReviewDecision,
     ChangeRequestState, ChangeRequestSummary,
 };
@@ -256,7 +256,7 @@ impl ChangeRequestResolver {
     }
 
     /// `owner/name` for a remote on github.com. An SSH remote may name a
-    /// host alias from `~/.ssh/config` (`git@github-work:acme/zeron.git`);
+    /// host alias from `~/.ssh/config` (`git@github-work:acme/openagents.git`);
     /// `ssh -G` resolves it locally without connecting.
     async fn github_slug(&self, remote_url: &str) -> Option<String> {
         let remote = parse_git_remote(remote_url)?;
@@ -441,7 +441,7 @@ impl GitHubCli {
         &self,
         url: &str,
         refresh: bool,
-    ) -> Result<zeron_proto::ChangeRequestDetail, ChangeRequestError> {
+    ) -> Result<openagents_proto::ChangeRequestDetail, ChangeRequestError> {
         serde_json::from_value(self.detail_request(url, false, refresh, None, None).await?)
             .map_err(|_| ChangeRequestError::Decode)
     }
@@ -461,7 +461,7 @@ impl GitHubCli {
     ) -> Result<serde_json::Value, ChangeRequestError> {
         let url = validated_pull_request_url(url)?;
         for oid in [head, base].into_iter().flatten() {
-            if !zeron_proto::change_request_assessment::valid_head_oid(oid) {
+            if !openagents_proto::change_request_assessment::valid_head_oid(oid) {
                 return Err(ChangeRequestError::Decode);
             }
         }
@@ -490,7 +490,7 @@ impl GitHubCli {
         &self,
         url: &str,
         body: &str,
-    ) -> Result<zeron_proto::ChangeRequestComment, ChangeRequestError> {
+    ) -> Result<openagents_proto::ChangeRequestComment, ChangeRequestError> {
         let url = validated_pull_request_url(url)?;
         if body.trim().is_empty() || body.len() > 60_000 {
             return Err(ChangeRequestError::Decode);
@@ -537,7 +537,7 @@ impl GitHubCli {
         }
         let value: serde_json::Value =
             serde_json::from_slice(&output.stdout).map_err(|_| ChangeRequestError::Decode)?;
-        Ok(zeron_proto::ChangeRequestComment {
+        Ok(openagents_proto::ChangeRequestComment {
             id: value["node_id"].as_str().unwrap_or_default().into(),
             url: value["html_url"].as_str().unwrap_or_default().into(),
             viewer_did_author: true,
@@ -545,7 +545,7 @@ impl GitHubCli {
                 .as_str()
                 .ok_or(ChangeRequestError::Decode)?
                 .into(),
-            author: zeron_proto::ChangeRequestActor {
+            author: openagents_proto::ChangeRequestActor {
                 login: value["user"]["login"].as_str().unwrap_or_default().into(),
             },
             created_at: value["created_at"].as_str().unwrap_or_default().into(),
@@ -621,14 +621,14 @@ impl GitHubCli {
             // GitHub uses null for absent check/review data; the wire model uses defaults.
             let checks_reported = value.get("statusCheckRollup").is_some();
             remove_nulls(&mut value);
-            let mut detail: zeron_proto::ChangeRequestDetail =
+            let mut detail: openagents_proto::ChangeRequestDetail =
                 serde_json::from_value(value).map_err(|_| ChangeRequestError::Decode)?;
             if checks_reported {
-                detail.ci = zeron_proto::change_request_assessment::ChangeRequestCi::from_checks(
+                detail.ci = openagents_proto::change_request_assessment::ChangeRequestCi::from_checks(
                     &detail.status_check_rollup,
                 );
             }
-            if zeron_proto::change_request_assessment::valid_head_oid(&detail.head_ref_oid)
+            if openagents_proto::change_request_assessment::valid_head_oid(&detail.head_ref_oid)
                 && let Ok(metadata) = self.fetch_pr_metadata(&detail.url, &url).await
             {
                 // Who "you" are, so every comment of yours reads as yours,
@@ -837,11 +837,11 @@ impl GitHubCli {
     pub async fn list_page(
         &self,
         repository: &str,
-        filter: zeron_proto::ChangeRequestFilter,
+        filter: openagents_proto::ChangeRequestFilter,
         after: Option<&str>,
         refresh: bool,
         cached: bool,
-    ) -> Result<zeron_proto::ChangeRequestPage, ChangeRequestError> {
+    ) -> Result<openagents_proto::ChangeRequestPage, ChangeRequestError> {
         if !valid_pr_repository(repository) {
             return Err(ChangeRequestError::UnsupportedRepository);
         }
@@ -873,10 +873,10 @@ impl GitHubCli {
     async fn fetch_list_page(
         &self,
         repository: &str,
-        filter: zeron_proto::ChangeRequestFilter,
+        filter: openagents_proto::ChangeRequestFilter,
         after: Option<&str>,
         refresh: bool,
-    ) -> Result<zeron_proto::ChangeRequestPage, ChangeRequestError> {
+    ) -> Result<openagents_proto::ChangeRequestPage, ChangeRequestError> {
         let repository = repository.to_ascii_lowercase();
         let key = format!("list:{repository}:{filter:?}:{}", after.unwrap_or_default());
         let github = self.clone();
@@ -895,9 +895,9 @@ impl GitHubCli {
     async fn fetch_filtered_page(
         &self,
         repository: &str,
-        filter: zeron_proto::ChangeRequestFilter,
+        filter: openagents_proto::ChangeRequestFilter,
         after: Option<&str>,
-    ) -> Result<zeron_proto::ChangeRequestPage, ChangeRequestError> {
+    ) -> Result<openagents_proto::ChangeRequestPage, ChangeRequestError> {
         let (page, canonical) = self.fetch_scoped_search(repository, filter, after).await?;
         if after.is_none()
             && page.items.is_empty()
@@ -918,16 +918,16 @@ impl GitHubCli {
     async fn fetch_scoped_search(
         &self,
         repository: &str,
-        filter: zeron_proto::ChangeRequestFilter,
+        filter: openagents_proto::ChangeRequestFilter,
         after: Option<&str>,
-    ) -> Result<(zeron_proto::ChangeRequestPage, Option<String>), ChangeRequestError> {
+    ) -> Result<(openagents_proto::ChangeRequestPage, Option<String>), ChangeRequestError> {
         let (owner, name) = repository
             .split_once('/')
             .ok_or(ChangeRequestError::UnsupportedRepository)?;
         let qualifier = match filter {
-            zeron_proto::ChangeRequestFilter::All => "",
-            zeron_proto::ChangeRequestFilter::Authored => "author:@me ",
-            zeron_proto::ChangeRequestFilter::Reviewing => "review-requested:@me ",
+            openagents_proto::ChangeRequestFilter::All => "",
+            openagents_proto::ChangeRequestFilter::Authored => "author:@me ",
+            openagents_proto::ChangeRequestFilter::Reviewing => "review-requested:@me ",
         };
         let request = ProcessRequest {
             args: vec![
@@ -986,10 +986,10 @@ impl GitHubCli {
                 item.viewer_did_author = None;
                 item.viewer_review_requested = None;
             }
-            if filter == zeron_proto::ChangeRequestFilter::Authored {
+            if filter == openagents_proto::ChangeRequestFilter::Authored {
                 item.viewer_did_author = Some(true);
             }
-            if filter == zeron_proto::ChangeRequestFilter::Reviewing {
+            if filter == openagents_proto::ChangeRequestFilter::Reviewing {
                 item.viewer_review_requested = Some(true);
             }
         }
@@ -1009,7 +1009,7 @@ impl GitHubCli {
             .and_then(|info| info.end_cursor)
             .filter(|cursor| valid_page_cursor(cursor));
         Ok((
-            zeron_proto::ChangeRequestPage {
+            openagents_proto::ChangeRequestPage {
                 items,
                 next_cursor,
                 total_count: response.data.search.issue_count,
@@ -1504,7 +1504,7 @@ struct GhPullRequest {
 #[serde(rename_all = "camelCase")]
 struct GhSearchPullRequest {
     #[serde(default)]
-    author: Option<zeron_proto::ChangeRequestActor>,
+    author: Option<openagents_proto::ChangeRequestActor>,
     #[serde(flatten)]
     metadata: GhPrMetadata,
     number: u64,
@@ -1542,7 +1542,7 @@ struct GhPrMetadata {
 }
 
 impl GhPrMetadata {
-    fn checks(&self) -> Option<Vec<zeron_proto::ChangeRequestCheck>> {
+    fn checks(&self) -> Option<Vec<openagents_proto::ChangeRequestCheck>> {
         match self.status_check_rollup.as_ref()? {
             None => Some(Vec::new()),
             Some(rollup) => rollup.contexts.nodes.as_ref().map(|nodes| {
@@ -1553,7 +1553,7 @@ impl GhPrMetadata {
                         // CheckRun and legacy StatusContext have different nullable fields.
                         let text =
                             |field: &str| node[field].as_str().unwrap_or_default().to_owned();
-                        zeron_proto::ChangeRequestCheck {
+                        openagents_proto::ChangeRequestCheck {
                             name: text("name"),
                             context: text("context"),
                             status: text("status"),
@@ -1572,11 +1572,11 @@ impl GhPrMetadata {
         self,
     ) -> (
         String,
-        zeron_proto::change_request_assessment::ChangeRequestCi,
+        openagents_proto::change_request_assessment::ChangeRequestCi,
         Option<bool>,
         Option<bool>,
     ) {
-        use zeron_proto::change_request_assessment::{ChangeRequestCi, CiState};
+        use openagents_proto::change_request_assessment::{ChangeRequestCi, CiState};
         let ci = match self.status_check_rollup {
             None => ChangeRequestCi::default(),
             Some(None) => ChangeRequestCi {
@@ -1624,7 +1624,7 @@ impl GhPrMetadata {
                     )
                     .any(|count| {
                         count.count > 0
-                            && zeron_proto::change_request_assessment::check_failed(&count.state)
+                            && openagents_proto::change_request_assessment::check_failed(&count.state)
                     })
                 {
                     state = CiState::Failed;
@@ -2045,7 +2045,7 @@ impl ProcessRunner for SystemProcessRunner {
     async fn run(&self, request: ProcessRequest) -> Result<ProcessOutput, ProcessRunError> {
         let mut command = tokio::process::Command::new(&request.program);
         if request.program == "gh" {
-            zeron_harness::compose_login_shell_path(&mut command);
+            openagents_harness::compose_login_shell_path(&mut command);
         }
         #[cfg(windows)]
         {
@@ -2232,8 +2232,8 @@ mod tests {
     #[tokio::test]
     async fn pull_request_workflow_crosses_engine_transport_and_github() {
         use serde_json::json;
-        use zeron_proto::{ChangeRequestComment, ChangeRequestDetail, ChangeRequestPage};
-        use zeron_rpc::{RpcError, capability_errors, methods};
+        use openagents_proto::{ChangeRequestComment, ChangeRequestDetail, ChangeRequestPage};
+        use openagents_rpc::{RpcError, capability_errors, methods};
 
         let dir = tempfile::tempdir().unwrap();
         let checkout = dir.path().join("checkout");
@@ -2241,12 +2241,12 @@ mod tests {
         run_git(&checkout, &["init", "--quiet"]);
         run_git(
             &checkout,
-            &["remote", "add", "origin", "git@github.com:acme/zeron.git"],
+            &["remote", "add", "origin", "git@github.com:acme/openagents.git"],
         );
         let core = crate::EngineCore::assemble(
             &dir.path().join("engine"),
             Arc::new(crate::HarnessRegistry::new()),
-            zeron_proto::HarnessId::Mock,
+            openagents_proto::HarnessId::Mock,
             None,
         )
         .unwrap();
@@ -2259,15 +2259,15 @@ mod tests {
                 true,
             )
             .unwrap();
-        let url = "https://github.com/acme/zeron/pull/123";
+        let url = "https://github.com/acme/openagents/pull/123";
         let patch = "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-old\n+new\n";
         let body = "Literal `$(touch /tmp/never)`; --flag\n\"quoted\" @octocat";
         let page = |number, cursor: Option<&str>| {
             json!({
                 "data": {
-                    "repository": {"nameWithOwner": "acme/zeron"},
+                    "repository": {"nameWithOwner": "acme/openagents"},
                     "search": {
-                        "nodes": [search_pull_request("acme/zeron", number, "Add dashboard", "OPEN", "MERGEABLE",
+                        "nodes": [search_pull_request("acme/openagents", number, "Add dashboard", "OPEN", "MERGEABLE",
                             "2026-08-10T09:30:00Z", "2026-08-19T12:00:00Z", false, Some("CHANGES_REQUESTED"))],
                         "issueCount": 2,
                         "pageInfo": {"hasNextPage": cursor.is_some(), "endCursor": cursor}
@@ -2280,12 +2280,12 @@ mod tests {
             "viewerLatestReviewRequest": null,
             "reviewRequests": {"nodes": [], "pageInfo": {"hasNextPage": false}},
             "statusCheckRollup": {"commit": {"oid": head}, "state": "FAILURE", "contexts": {"totalCount": 1,
-                "nodes": [{"name": "linux", "status": "COMPLETED", "conclusion": "FAILURE", "detailsUrl": "https://github.com/acme/zeron/actions/runs/1"}]}}
+                "nodes": [{"name": "linux", "status": "COMPLETED", "conclusion": "FAILURE", "detailsUrl": "https://github.com/acme/openagents/actions/runs/1"}]}}
         });
         let metadata_response = json!({"data": {"repository": {"pullRequest": metadata}}});
         let detail = json!({"url": url, "number": 123, "title": "Add dashboard", "author": null,
             "headRefOid": head, "comments": [], "reviewDecision": null,
-            "statusCheckRollup": [{"name": "linux", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/acme/zeron/actions/runs/1"}]});
+            "statusCheckRollup": [{"name": "linux", "conclusion": "SUCCESS", "detailsUrl": "https://github.com/acme/openagents/actions/runs/1"}]});
         let mut moved_head = metadata_response.clone();
         moved_head["data"]["repository"]["pullRequest"]["headRefOid"] = "b".repeat(40).into();
         moved_head["data"]["repository"]["pullRequest"]["statusCheckRollup"]["commit"]["oid"] =
@@ -2299,7 +2299,7 @@ mod tests {
             })
         };
         let inline = json!({"id":"thread-1","isResolved":false,"isOutdated":false,"path":"a.rs","line":12,
-            "comments":connection(json!([{"id":"comment-1","body":"Inline-only change request","author":{"login":"reviewer"},"url":"https://github.com/acme/zeron/pull/123#discussion_r1"}]),Some("comments-next"))});
+            "comments":connection(json!([{"id":"comment-1","body":"Inline-only change request","author":{"login":"reviewer"},"url":"https://github.com/acme/openagents/pull/123#discussion_r1"}]),Some("comments-next"))});
         let threads_first = json!({"data":{"repository":{"pullRequest":{"reviewThreads":connection(json!([inline]),Some("threads-next"))}}}});
         let replies = json!({"data":{"node":{"comments":connection(json!([{"id":"comment-2","body":"A reply","author":null,"replyTo":{"id":"comment-1"}}]),None)}}});
         let threads_last = json!({"data":{"repository":{"pullRequest":{"reviewThreads":connection(json!([{
@@ -2338,7 +2338,7 @@ mod tests {
             .ok()
             .unwrap()
             .with_github(github);
-        let client = zeron_rpc::memory_client(Arc::new(rpc));
+        let client = openagents_rpc::memory_client(Arc::new(rpc));
         let repository: Option<String> = client
             .call_as(
                 methods::GET_CHANGE_REQUEST_REPOSITORY,
@@ -2346,7 +2346,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(repository.as_deref(), Some("acme/zeron"));
+        assert_eq!(repository.as_deref(), Some("acme/openagents"));
         // A directory that is no chat or project checkout is refused.
         let outside = dir.path().join("elsewhere");
         std::fs::create_dir(&outside).unwrap();
@@ -2378,7 +2378,7 @@ mod tests {
         // only resolves the remotes it hasn't seen.
         for (wanted, expected) in [
             ("ACME/UPSTREAM", Some("acme/upstream")),
-            ("acme/zeron", Some("acme/zeron")),
+            ("acme/openagents", Some("acme/openagents")),
             ("acme/renamed", Some("acme/renamed")),
             ("missing/repository", None),
             ("../invalid", None),
@@ -2421,11 +2421,11 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(detached.as_deref(), Some("acme/zeron"));
+        assert_eq!(detached.as_deref(), Some("acme/openagents"));
         let first: ChangeRequestPage = client.call_as(methods::LIST_CHANGE_REQUEST_PAGE,
             json!({"repository": repository, "filter": "reviewing", "targetDeviceId": core.device_id})).await.unwrap();
         assert_eq!(first.items[0].number, 123);
-        assert_eq!(first.items[0].repository, "acme/zeron");
+        assert_eq!(first.items[0].repository, "acme/openagents");
         assert_eq!(first.total_count, Some(2));
         let second: ChangeRequestPage = client.call_as(methods::LIST_CHANGE_REQUEST_PAGE,
             json!({"repository": repository, "filter": "reviewing", "after": first.next_cursor})).await.unwrap();
@@ -2444,7 +2444,7 @@ mod tests {
             assert_eq!(loaded.head_ref_oid, head);
             assert_eq!(
                 loaded.ci.state,
-                zeron_proto::change_request_assessment::CiState::Failed
+                openagents_proto::change_request_assessment::CiState::Failed
             );
             assert_eq!(loaded.ci.total_count, 1);
             assert_eq!(
@@ -2493,7 +2493,7 @@ mod tests {
         );
         assert_eq!(
             loaded.ci.state,
-            zeron_proto::change_request_assessment::CiState::Unknown,
+            openagents_proto::change_request_assessment::CiState::Unknown,
             "a changed head invalidates the old checks"
         );
         assert!(loaded.status_check_rollup.is_empty());
@@ -2512,15 +2512,15 @@ mod tests {
             (methods::LIST_CHANGE_REQUEST_PAGE, json!({})),
             (
                 methods::LIST_CHANGE_REQUEST_PAGE,
-                json!({"repository": "acme/zeron", "filter": "unknown"}),
+                json!({"repository": "acme/openagents", "filter": "unknown"}),
             ),
             (
                 methods::LIST_CHANGE_REQUEST_PAGE,
-                json!({"repository": "acme/zeron repo:other/repo"}),
+                json!({"repository": "acme/openagents repo:other/repo"}),
             ),
             (
                 methods::LIST_CHANGE_REQUEST_PAGE,
-                json!({"repository": "acme/zeron", "after": "a b"}),
+                json!({"repository": "acme/openagents", "after": "a b"}),
             ),
             (
                 methods::POST_CHANGE_REQUEST_COMMENT,
@@ -2541,7 +2541,7 @@ mod tests {
             "invalid input never reaches gh and writes are not retried"
         );
         // The first two resolve the checkout's remotes to canonical names.
-        for (request, name) in requests[..2].iter().zip(["name=zeron", "name=upstream"]) {
+        for (request, name) in requests[..2].iter().zip(["name=openagents", "name=upstream"]) {
             assert!(request.args.contains(&"owner=acme".into()));
             assert!(request.args.contains(&name.into()), "{:?}", request.args);
         }
@@ -2560,7 +2560,7 @@ mod tests {
             assert_eq!(request.output_limit, GITHUB_OUTPUT_LIMIT);
         }
         assert!(requests[0].args.contains(
-            &"search=is:pr is:open review-requested:@me repo:acme/zeron sort:updated-desc".into()
+            &"search=is:pr is:open review-requested:@me repo:acme/openagents sort:updated-desc".into()
         ));
         assert!(requests[1].args.contains(&"after=Y3Vyc29yOjE=".into()));
         assert_eq!(&requests[2].args[..3], ["pr", "view", url]);
@@ -2579,7 +2579,7 @@ mod tests {
                 "api",
                 "--method",
                 "POST",
-                "repos/acme/zeron/issues/123/comments",
+                "repos/acme/openagents/issues/123/comments",
                 "--input",
                 "-"
             ]
@@ -2649,9 +2649,9 @@ mod tests {
 
     #[test]
     fn ssh_host_aliases_resolve_only_from_safe_ssh_remotes() {
-        assert!(is_ssh_remote("git@github-work:acme/zeron.git"));
-        assert!(is_ssh_remote("ssh://git@github-work/acme/zeron.git"));
-        assert!(!is_ssh_remote("https://github-work/acme/zeron.git"));
+        assert!(is_ssh_remote("git@github-work:acme/openagents.git"));
+        assert!(is_ssh_remote("ssh://git@github-work/acme/openagents.git"));
+        assert!(!is_ssh_remote("https://github-work/acme/openagents.git"));
         assert!(valid_ssh_alias("github-work"));
         assert!(valid_ssh_alias("gh.work_2"));
         for alias in ["", "-oProxyCommand=x", "a b", "user@host", "host:22", "a;b"] {
@@ -2673,10 +2673,10 @@ mod tests {
         };
         assert_eq!(
             resolver
-                .github_slug("git@github-work:acme/zeron.git")
+                .github_slug("git@github-work:acme/openagents.git")
                 .await
                 .as_deref(),
-            Some("acme/zeron")
+            Some("acme/openagents")
         );
         let request = &runner.requests()[0];
         assert_eq!(request.program, "ssh");
@@ -2684,12 +2684,12 @@ mod tests {
         // Literal github.com and HTTPS hosts never consult ssh.
         assert_eq!(
             resolver
-                .github_slug("https://github.com/acme/zeron")
+                .github_slug("https://github.com/acme/openagents")
                 .await
                 .as_deref(),
-            Some("acme/zeron")
+            Some("acme/openagents")
         );
-        assert_eq!(resolver.github_slug("https://gitlab.com/acme/zeron").await, None);
+        assert_eq!(resolver.github_slug("https://gitlab.com/acme/openagents").await, None);
         assert_eq!(runner.requests().len(), 1);
     }
 
@@ -2868,7 +2868,7 @@ mod tests {
                 branch,
                 Some(&format!("origin/{branch}")),
                 Some("origin"),
-                Some(&format!("https://github.com/{owner}/zeron.git")),
+                Some(&format!("https://github.com/{owner}/openagents.git")),
             ),
             default_branch: default_branch.map(str::to_owned),
         }
@@ -2884,7 +2884,7 @@ mod tests {
         serde_json::json!({
             "number": number,
             "title": format!("Pull request {number}"),
-            "url": format!("https://github.com/acme/zeron/pull/{number}"),
+            "url": format!("https://github.com/acme/openagents/pull/{number}"),
             "state": state,
             "baseRefName": "main",
             "headRefName": branch,
@@ -2933,10 +2933,10 @@ mod tests {
 
     #[tokio::test]
     async fn board_metadata_is_batched_and_only_attests_to_the_current_head() {
-        use zeron_proto::change_request_assessment::{CiState, Facts, MissingInformation};
+        use openagents_proto::change_request_assessment::{CiState, Facts, MissingInformation};
         let head = "a".repeat(40);
         let nodes = (1..=50).map(|number| {
-            let mut node = search_pull_request("acme/zeron", number, "A PR", "OPEN", "MERGEABLE",
+            let mut node = search_pull_request("acme/openagents", number, "A PR", "OPEN", "MERGEABLE",
                 "2026-08-10T09:30:00Z", "2026-08-19T12:00:00Z", false, Some("REVIEW_REQUIRED"));
             node["headRefOid"] = head.clone().into();
             node["viewerDidAuthor"] = false.into();
@@ -2963,8 +2963,8 @@ mod tests {
         let github = GitHubCli::with_runner(runner.clone());
         let page = github
             .list_page(
-                "acme/zeron",
-                zeron_proto::ChangeRequestFilter::All,
+                "acme/openagents",
+                openagents_proto::ChangeRequestFilter::All,
                 None,
                 false,
                 false,
@@ -3021,7 +3021,7 @@ mod tests {
         github
             .list_page(
                 repository,
-                zeron_proto::ChangeRequestFilter::Authored,
+                openagents_proto::ChangeRequestFilter::Authored,
                 None,
                 refresh,
                 false,
@@ -3038,7 +3038,7 @@ mod tests {
     ) {
         let runner = FakeProcessRunner::with_responses([response]);
         let github = GitHubCli::with_runner(runner.clone());
-        let result = authored(&github, "acme/zeron", false).await;
+        let result = authored(&github, "acme/openagents", false).await;
         (result, runner)
     }
 
@@ -3117,7 +3117,7 @@ mod tests {
             runner.requests()[0]
                 .args
                 .iter()
-                .any(|arg| arg.contains("repo:acme/zeron"))
+                .any(|arg| arg.contains("repo:acme/openagents"))
         );
     }
 
@@ -3125,7 +3125,7 @@ mod tests {
     async fn pr_pages_pass_the_cursor_and_report_the_next_one_and_total() {
         let item = |number| {
             search_pull_request(
-                "acme/zeron",
+                "acme/openagents",
                 number,
                 "PR",
                 "OPEN",
@@ -3149,15 +3149,15 @@ mod tests {
             command_success(page(vec![item(2)], None)),
         ]);
         let github = GitHubCli::with_runner(runner.clone());
-        let filter = zeron_proto::ChangeRequestFilter::All;
+        let filter = openagents_proto::ChangeRequestFilter::All;
         let first = github
-            .list_page("acme/zeron", filter, None, false, false)
+            .list_page("acme/openagents", filter, None, false, false)
             .await
             .unwrap();
         assert_eq!(first.next_cursor.as_deref(), Some("Y3Vyc29yOjUw"));
         assert_eq!(first.total_count, Some(120));
         let second = github
-            .list_page("acme/zeron", filter, first.next_cursor.as_deref(), false, false)
+            .list_page("acme/openagents", filter, first.next_cursor.as_deref(), false, false)
             .await
             .unwrap();
         assert_eq!(second.items[0].number, 2);
@@ -3172,7 +3172,7 @@ mod tests {
         );
         assert_eq!(
             github
-                .list_page("acme/zeron", filter, Some("x repo:other/x"), false, false)
+                .list_page("acme/openagents", filter, Some("x repo:other/x"), false, false)
                 .await,
             Err(ChangeRequestError::Decode),
             "cursors cannot smuggle search qualifiers"
@@ -3184,7 +3184,7 @@ mod tests {
     async fn pr_first_page_is_stored_on_disk_and_served_when_cached() {
         let page = |title: &str| {
             command_success(search_response(vec![search_pull_request(
-                "acme/zeron",
+                "acme/openagents",
                 1,
                 title,
                 "OPEN",
@@ -3202,10 +3202,10 @@ mod tests {
             page("refreshed"),
         ]);
         let github = GitHubCli::with_runner(runner.clone()).with_store(dir.path());
-        let filter = zeron_proto::ChangeRequestFilter::All;
+        let filter = openagents_proto::ChangeRequestFilter::All;
         // Nothing stored yet: a cached read goes to GitHub and stores it.
         let first = github
-            .list_page("acme/zeron", filter, None, false, true)
+            .list_page("acme/openagents", filter, None, false, true)
             .await
             .unwrap();
         assert_eq!(first.items[0].title, "first");
@@ -3214,7 +3214,7 @@ mod tests {
         let relaunched = GitHubCli::with_runner(runner.clone()).with_store(dir.path());
         *relaunched.account.lock().await = Some((Instant::now(), Some("me".into())));
         let stored = relaunched
-            .list_page("acme/zeron", filter, None, false, true)
+            .list_page("acme/openagents", filter, None, false, true)
             .await
             .unwrap();
         assert_eq!(stored.items[0].title, "first");
@@ -3225,12 +3225,12 @@ mod tests {
         );
         // Refresh always reaches GitHub and replaces the stored page.
         let refreshed = relaunched
-            .list_page("acme/zeron", filter, None, true, false)
+            .list_page("acme/openagents", filter, None, true, false)
             .await
             .unwrap();
         assert_eq!(refreshed.items[0].title, "refreshed");
         let stored = relaunched
-            .list_page("acme/zeron", filter, None, false, true)
+            .list_page("acme/openagents", filter, None, false, true)
             .await
             .unwrap();
         assert_eq!(stored.items[0].title, "refreshed");
@@ -3246,7 +3246,7 @@ mod tests {
                 .store
                 .as_ref()
                 .unwrap()
-                .load("other", "acme/zeron", filter)
+                .load("other", "acme/openagents", filter)
                 .await
                 .is_none()
         );
@@ -3290,7 +3290,7 @@ mod tests {
     #[tokio::test]
     async fn pr_empty_canonical_search_does_not_retry() {
         let response = serde_json::json!({"data": {
-            "repository": {"nameWithOwner": "acme/zeron"},
+            "repository": {"nameWithOwner": "acme/openagents"},
             "search": {"nodes": []}
         }});
         let (items, runner) =
@@ -3301,19 +3301,19 @@ mod tests {
 
     #[tokio::test]
     async fn pr_filters_are_scoped_cached_and_never_prefetched() {
-        use zeron_proto::ChangeRequestFilter::{All, Authored, Reviewing};
+        use openagents_proto::ChangeRequestFilter::{All, Authored, Reviewing};
         let runner = FakeProcessRunner::with_responses(
             (0..3).map(|_| command_success(search_response(vec![]))),
         );
         let github = GitHubCli::with_runner(runner.clone());
         for (index, filter) in [All, Authored, Reviewing].into_iter().enumerate() {
             github
-                .list_page("acme/zeron", filter, None, false, false)
+                .list_page("acme/openagents", filter, None, false, false)
                 .await
                 .unwrap();
             assert_eq!(runner.requests().len(), index + 1);
             github
-                .list_page("ACME/ZERON", filter, None, false, false)
+                .list_page("ACME/OPENAGENTS", filter, None, false, false)
                 .await
                 .unwrap();
             assert_eq!(runner.requests().len(), index + 1);
@@ -3326,11 +3326,11 @@ mod tests {
         {
             assert_eq!(
                 request.args.last().unwrap(),
-                &format!("search=is:pr is:open {qualifier}repo:acme/zeron sort:updated-desc")
+                &format!("search=is:pr is:open {qualifier}repo:acme/openagents sort:updated-desc")
             );
         }
         github
-            .list_page("acme/zeron", All, None, false, false)
+            .list_page("acme/openagents", All, None, false, false)
             .await
             .unwrap();
         assert_eq!(runner.requests().len(), 3);
@@ -3345,21 +3345,21 @@ mod tests {
         ]);
         let github = GitHubCli::with_runner(runner.clone());
         let (a, b) = tokio::join!(
-            authored(&github, "acme/zeron", false),
-            authored(&github, "ACME/ZERON", false)
+            authored(&github, "acme/openagents", false),
+            authored(&github, "ACME/OPENAGENTS", false)
         );
         assert!(a.unwrap().is_empty() && b.unwrap().is_empty());
-        authored(&github, "acme/zeron", true).await.unwrap();
+        authored(&github, "acme/openagents", true).await.unwrap();
         assert_eq!(
             runner.requests().len(),
             1,
             "concurrent and immediate refresh calls reuse one response"
         );
         github.pr_cache.lock().await.entries[0].1 = Instant::now() - Duration::from_secs(16);
-        authored(&github, "acme/zeron", true).await.unwrap();
+        authored(&github, "acme/openagents", true).await.unwrap();
         assert_eq!(runner.requests().len(), 2);
         github.pr_cache.lock().await.entries[0].1 = Instant::now() - Duration::from_secs(301);
-        authored(&github, "acme/zeron", false).await.unwrap();
+        authored(&github, "acme/openagents", false).await.unwrap();
         assert_eq!(runner.requests().len(), 3);
     }
 
@@ -3515,7 +3515,7 @@ mod tests {
     #[tokio::test]
     async fn github_search_uses_exact_repository_arguments_and_environment() {
         let json = search_response(vec![search_pull_request(
-            "acme/zeron",
+            "acme/openagents",
             123,
             "Dashboard",
             "OPEN",
@@ -3528,7 +3528,7 @@ mod tests {
         let (result, runner) = list_with(command_success(json)).await;
 
         let item = &result.unwrap()[0];
-        assert_eq!(item.repository, "acme/zeron");
+        assert_eq!(item.repository, "acme/openagents");
         assert!(item.is_draft);
         assert_eq!(
             item.review_decision,
@@ -3557,9 +3557,9 @@ mod tests {
                 "-f",
                 "owner=acme",
                 "-f",
-                "name=zeron",
+                "name=openagents",
                 "-f",
-                "search=is:pr is:open author:@me repo:acme/zeron sort:updated-desc"
+                "search=is:pr is:open author:@me repo:acme/openagents sort:updated-desc"
             ]
         );
         assert_eq!(
@@ -3577,7 +3577,7 @@ mod tests {
     async fn github_search_normalizes_titles_and_sorts_results_stably() {
         let json = search_response(vec![
             search_pull_request(
-                "acme/zeron",
+                "acme/openagents",
                 8,
                 "  A title\nwith\tspacing  ",
                 "OPEN",
@@ -3588,7 +3588,7 @@ mod tests {
                 Some("APPROVED"),
             ),
             search_pull_request(
-                "acme/zeron",
+                "acme/openagents",
                 4,
                 "Alpha",
                 "OPEN",
@@ -3599,7 +3599,7 @@ mod tests {
                 Some("REVIEW_REQUIRED"),
             ),
             search_pull_request(
-                "acme/zeron",
+                "acme/openagents",
                 2,
                 "Earlier number",
                 "OPEN",
@@ -3618,7 +3618,7 @@ mod tests {
                 .iter()
                 .map(|item| (item.repository.as_str(), item.number))
                 .collect::<Vec<_>>(),
-            [("acme/zeron", 2), ("acme/zeron", 4), ("acme/zeron", 8)]
+            [("acme/openagents", 2), ("acme/openagents", 4), ("acme/openagents", 8)]
         );
         assert_eq!(items[2].title, "A title with spacing");
         assert_eq!(items[0].state, ChangeRequestState::Open);
@@ -3627,7 +3627,7 @@ mod tests {
     #[tokio::test]
     async fn github_search_rejects_invalid_structural_fields() {
         let base = search_pull_request(
-            "acme/zeron",
+            "acme/openagents",
             1,
             "Valid",
             "OPEN",
@@ -3641,7 +3641,7 @@ mod tests {
         for (pointer, value) in [
             ("/number", serde_json::json!(0)),
             ("/title", serde_json::json!(" \n\t ")),
-            ("/repository/nameWithOwner", serde_json::json!("zeron")),
+            ("/repository/nameWithOwner", serde_json::json!("openagents")),
             ("/repository/nameWithOwner", serde_json::json!("a/b/c")),
             ("/url", serde_json::json!("file:///tmp/pr")),
             ("/state", serde_json::json!("CLOSED")),
@@ -3664,7 +3664,7 @@ mod tests {
         let json = serde_json::to_vec(&serde_json::json!({"data": {"search": {"nodes": [
             null,
             search_pull_request(
-                "acme/zeron",
+                "acme/openagents",
                 3,
                 "Readable",
                 "OPEN",
@@ -3685,7 +3685,7 @@ mod tests {
     #[tokio::test]
     async fn github_search_keeps_readable_results_when_gh_reports_partial_errors() {
         let readable = search_pull_request(
-            "acme/zeron",
+            "acme/openagents",
             3,
             "Readable",
             "OPEN",
@@ -3708,7 +3708,7 @@ mod tests {
             })
         };
         let (result, _) = list_with(partial(serde_json::json!({
-            "nameWithOwner": "acme/zeron"
+            "nameWithOwner": "acme/openagents"
         })))
         .await;
         assert_eq!(result.unwrap()[0].number, 3);
@@ -3770,7 +3770,7 @@ mod tests {
                 "remote",
                 "add",
                 "origin",
-                "https://github.com/acme/zeron.git",
+                "https://github.com/acme/openagents.git",
             ],
         );
 
@@ -3784,14 +3784,14 @@ if [ "$GH_PROMPT_DISABLED" != "1" ]; then
   echo "interactive auth was not disabled" >&2
   exit 2
 fi
-printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https://github.com/acme/zeron/pull/90","state":"OPEN","baseRefName":"main","headRefName":"feature/status","updatedAt":"2026-08-15T12:00:00Z","isCrossRepository":false,"headRepositoryOwner":{"login":"acme"}}]'
+printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https://github.com/acme/openagents/pull/90","state":"OPEN","baseRefName":"main","headRefName":"feature/status","updatedAt":"2026-08-15T12:00:00Z","isCrossRepository":false,"headRepositoryOwner":{"login":"acme"}}]'
 "##;
         #[cfg(windows)]
         let fake_gh_contents = r##"if ($env:GH_PROMPT_DISABLED -ne '1') {
   [Console]::Error.WriteLine('interactive auth was not disabled')
   exit 2
 }
-[Console]::Out.WriteLine('[{"number":90,"title":"Host-resolved pull request","url":"https://github.com/acme/zeron/pull/90","state":"OPEN","baseRefName":"main","headRefName":"feature/status","updatedAt":"2026-08-15T12:00:00Z","isCrossRepository":false,"headRepositoryOwner":{"login":"acme"}}]')
+[Console]::Out.WriteLine('[{"number":90,"title":"Host-resolved pull request","url":"https://github.com/acme/openagents/pull/90","state":"OPEN","baseRefName":"main","headRefName":"feature/status","updatedAt":"2026-08-15T12:00:00Z","isCrossRepository":false,"headRepositoryOwner":{"login":"acme"}}]')
 "##;
         std::fs::write(&fake_gh, fake_gh_contents).expect("write fake gh");
         #[cfg(unix)]
@@ -3849,7 +3849,7 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
         );
         let custom_root = temp.path().join("other disk/worktrees");
         repos
-            .set_worktree_settings(zeron_proto::WorktreeSettings {
+            .set_worktree_settings(openagents_proto::WorktreeSettings {
                 use_custom_directory: true,
                 custom_directory: Some(custom_root.to_string_lossy().into_owned()),
             })
@@ -3881,7 +3881,7 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
             .await
             .unwrap();
         repos
-            .set_worktree_settings(zeron_proto::WorktreeSettings::default())
+            .set_worktree_settings(openagents_proto::WorktreeSettings::default())
             .await
             .unwrap();
         let default_worktree = repos.create_worktree(&checkout, "HEAD").await.unwrap();
@@ -3922,7 +3922,7 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
                 "remote",
                 "add",
                 "origin",
-                "git@github.com:contributor/zeron.git",
+                "git@github.com:contributor/openagents.git",
             ],
         );
         run_git(
@@ -3931,7 +3931,7 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
                 "remote",
                 "add",
                 "upstream",
-                "https://github.com/acme/zeron.git",
+                "https://github.com/acme/openagents.git",
             ],
         );
 
@@ -3944,7 +3944,7 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
         assert_eq!(source.branch.remote_name.as_deref(), Some("origin"));
         assert_eq!(
             source.branch.remote_url.as_deref(),
-            Some("git@github.com:contributor/zeron.git")
+            Some("git@github.com:contributor/openagents.git")
         );
         assert_eq!(source.branch.owner.as_deref(), Some("contributor"));
         assert_eq!(
@@ -3963,7 +3963,7 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
         run_git(&checkout, &["init", "-q", "-b", "main"]);
         run_git(
             &checkout,
-            &["remote", "add", "upstream", "git@github.com:acme/zeron.git"],
+            &["remote", "add", "upstream", "git@github.com:acme/openagents.git"],
         );
         run_git(
             &checkout,
@@ -3987,11 +3987,11 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
         assert_eq!(source.branch.remote_name.as_deref(), Some("upstream"));
         assert_eq!(
             source.branch.remote_url.as_deref(),
-            Some("git@github.com:acme/zeron.git")
+            Some("git@github.com:acme/openagents.git")
         );
         assert_eq!(
             resolver.repository_for_checkout(&checkout).await.as_deref(),
-            Some("acme/zeron")
+            Some("acme/openagents")
         );
     }
 
@@ -4016,7 +4016,7 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
         );
         run_git(
             &checkout,
-            &["remote", "add", "origin", "git@github.com:acme/zeron.git"],
+            &["remote", "add", "origin", "git@github.com:acme/openagents.git"],
         );
         // A repository-controlled transport command: any Git subcommand that
         // touches the remote (such as the former `ls-remote` default-branch
@@ -4295,7 +4295,7 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
             [
                 "repo",
                 "view",
-                "github.com/acme/zeron",
+                "github.com/acme/openagents",
                 "--json",
                 "defaultBranchRef"
             ]
@@ -4350,7 +4350,7 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
             command_success("feature/status\n"),
             command_success("fork/published-status\n"),
             command_success("fork\n"),
-            command_success("git@github.com:contributor/zeron.git\n"),
+            command_success("git@github.com:contributor/openagents.git\n"),
             command_success("fork/main\n"),
         ]);
         let inspector = GitCheckoutInspector::new(runner.clone());
@@ -4428,12 +4428,12 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
             "local-name",
             Some("fork/published-name"),
             Some("fork"),
-            Some("git@github.com:contributor/zeron.git"),
+            Some("git@github.com:contributor/openagents.git"),
         );
 
         assert_eq!(context.host.as_deref(), Some("github.com"));
         assert_eq!(context.owner.as_deref(), Some("contributor"));
-        assert_eq!(context.repository.as_deref(), Some("zeron"));
+        assert_eq!(context.repository.as_deref(), Some("openagents"));
         assert_eq!(context.head_branch, "published-name");
         assert_eq!(
             context.head_selectors,
@@ -4447,7 +4447,7 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
             "feature/local",
             None,
             Some("origin"),
-            Some("https://github.com/acme/zeron.git"),
+            Some("https://github.com/acme/openagents.git"),
         );
 
         assert_eq!(context.head_branch, "feature/local");
@@ -4463,7 +4463,7 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
             "feature/shared",
             Some("refs/remotes/origin/feature/shared"),
             Some("origin"),
-            Some("https://github.com/acme/zeron"),
+            Some("https://github.com/acme/openagents"),
         );
 
         assert_eq!(context.remote_name.as_deref(), Some("origin"));

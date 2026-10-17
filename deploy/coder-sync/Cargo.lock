@@ -9,6 +9,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "agent-contract"
+version = "1.0.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "agent-lab"
+version = "1.0.0"
+dependencies = [
+ "agent-contract",
+ "lab-kit",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -324,10 +341,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "coder-brand"
-version = "0.2.113"
-
-[[package]]
 name = "coder-sync-conformance"
 version = "1.0.0"
 dependencies = [
@@ -336,7 +349,12 @@ dependencies = [
  "futures",
  "image",
  "loro",
+ "openagents-client",
+ "openagents-doc",
+ "openagents-proto",
+ "openagents-rpc",
  "openagents-sdk",
+ "openagents-sync",
  "reqwest",
  "serde_json",
  "stateright",
@@ -345,11 +363,6 @@ dependencies = [
  "tokio-tungstenite 0.24.0",
  "tower",
  "uuid",
- "zeron-client",
- "zeron-doc",
- "zeron-proto",
- "zeron-rpc",
- "zeron-sync",
 ]
 
 [[package]]
@@ -359,7 +372,11 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "bytes",
+ "openagents-doc",
+ "openagents-proto",
+ "openagents-rpc",
  "openagents-sdk",
+ "openagents-sync",
  "reqwest",
  "serde",
  "serde_json",
@@ -370,10 +387,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
- "zeron-doc",
- "zeron-proto",
- "zeron-rpc",
- "zeron-sync",
 ]
 
 [[package]]
@@ -1309,6 +1322,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lab-kit"
+version = "1.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1764,6 +1787,57 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
+name = "openagents-brand"
+version = "0.2.113"
+
+[[package]]
+name = "openagents-client"
+version = "0.2.113"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "futures",
+ "loro",
+ "openagents-brand",
+ "openagents-doc",
+ "openagents-proto",
+ "openagents-rpc",
+ "openagents-sync",
+ "openagents-voice-session",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "openagents-dashboard"
+version = "1.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "openagents-doc"
+version = "0.2.113"
+dependencies = [
+ "chrono",
+ "loro",
+ "openagents-proto",
+ "serde",
+ "serde_json",
+ "similar",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "openagents-login"
 version = "1.0.0"
 dependencies = [
@@ -1774,12 +1848,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-orb"
+version = "0.2.113"
+
+[[package]]
+name = "openagents-proto"
+version = "0.2.113"
+dependencies = [
+ "chrono",
+ "openagents-brand",
+ "pulldown-cmark",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "openagents-rpc"
+version = "0.2.113"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "futures",
+ "openagents-brand",
+ "openagents-proto",
+ "openagents-sync",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-tungstenite 0.24.0",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "openagents-sdk"
 version = "1.0.0"
 dependencies = [
+ "agent-contract",
+ "agent-lab",
  "base64 0.22.1",
  "getrandom 0.4.3",
  "httpdate",
+ "openagents-dashboard",
  "openagents-login",
  "reqwest",
  "serde",
@@ -1788,6 +1900,42 @@ dependencies = [
  "tokio",
  "tokio-util",
  "url",
+]
+
+[[package]]
+name = "openagents-sync"
+version = "0.2.113"
+dependencies = [
+ "block2",
+ "futures",
+ "loro",
+ "loro-protocol",
+ "openagents-brand",
+ "openagents-doc",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-tungstenite 0.24.0",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "openagents-voice-session"
+version = "0.2.113"
+dependencies = [
+ "async-trait",
+ "futures",
+ "openagents-orb",
+ "openagents-proto",
+ "openagents-rpc",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]
@@ -3623,113 +3771,6 @@ name = "zeroize"
 version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879"
-
-[[package]]
-name = "zeron-client"
-version = "0.2.113"
-dependencies = [
- "async-trait",
- "chrono",
- "coder-brand",
- "futures",
- "loro",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
- "zeron-doc",
- "zeron-proto",
- "zeron-rpc",
- "zeron-sync",
- "zeron-voice-session",
-]
-
-[[package]]
-name = "zeron-doc"
-version = "0.2.113"
-dependencies = [
- "chrono",
- "loro",
- "serde",
- "serde_json",
- "similar",
- "thiserror 2.0.21",
- "tracing",
- "zeron-proto",
-]
-
-[[package]]
-name = "zeron-orb"
-version = "0.2.113"
-
-[[package]]
-name = "zeron-proto"
-version = "0.2.113"
-dependencies = [
- "chrono",
- "coder-brand",
- "pulldown-cmark",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "zeron-rpc"
-version = "0.2.113"
-dependencies = [
- "anyhow",
- "async-trait",
- "futures",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tokio",
- "tokio-tungstenite 0.24.0",
- "tracing",
- "uuid",
- "zeron-proto",
- "zeron-sync",
-]
-
-[[package]]
-name = "zeron-sync"
-version = "0.2.113"
-dependencies = [
- "block2",
- "futures",
- "loro",
- "loro-protocol",
- "rusqlite",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tokio",
- "tokio-tungstenite 0.24.0",
- "tracing",
- "uuid",
- "zeron-doc",
-]
-
-[[package]]
-name = "zeron-voice-session"
-version = "0.2.113"
-dependencies = [
- "async-trait",
- "futures",
- "serde",
- "serde_json",
- "tokio",
- "tokio-util",
- "tracing",
- "zeron-orb",
- "zeron-proto",
- "zeron-rpc",
-]
 
 [[package]]
 name = "zerotrie"

@@ -297,7 +297,7 @@ impl Element for LinkRanges {
                 let pending = state.menu_focus_pending.clone();
                 let initial_focus = state.menu_focus[0].clone();
                 // A resolved file link swaps the web actions for rows about
-                // the file itself: "Open in Zeron" opens it in the file
+                // the file itself: "Open in OpenAgents" opens it in the file
                 // viewer, and the system-level rows mount only when the
                 // owning root lives on this device. The tab cycle visits
                 // only mounted rows.
@@ -431,7 +431,7 @@ impl Element for LinkRanges {
                         icons::GLOBE
                     },
                     0,
-                    "link-menu-open-zeron",
+                    "link-menu-open-openagents",
                 ));
                 if let Some(file) = &file {
                     if file.local {
@@ -487,7 +487,7 @@ impl Element for LinkRanges {
                         5,
                         "link-menu-copy-address",
                     ));
-                    let open_in_zeron = crate::settings::current(cx).open_web_links_in_zeron;
+                    let open_in_openagents = crate::settings::current(cx).open_web_links_in_openagents;
                     let menu = state.menu.clone();
                     card = card.child(popover::menu_separator()).child(
                         popover::menu_row(
@@ -495,9 +495,9 @@ impl Element for LinkRanges {
                             false,
                             format!("{}-link-{index}-default-destination", self.id),
                         )
-                        .id("Open links in Zeron")
+                        .id("Open links in OpenAgents")
                         .debug_selector(|| "link-menu-default-destination".into())
-                        .child(div().w(px(16.)).flex_none().when(open_in_zeron, |el| {
+                        .child(div().w(px(16.)).flex_none().when(open_in_openagents, |el| {
                             el.child(
                                 icons::icon(icons::CHECK)
                                     .size(px(16.))
@@ -507,7 +507,7 @@ impl Element for LinkRanges {
                         .child("Open links in OpenAgents")
                         .track_focus(&state.menu_focus[6])
                         .role(Role::Button)
-                        .aria_label(if open_in_zeron {
+                        .aria_label(if open_in_openagents {
                             "Open links in OpenAgents, checked"
                         } else {
                             "Open links in OpenAgents, unchecked"
@@ -518,7 +518,7 @@ impl Element for LinkRanges {
                                 crate::settings::SavePolicy::Immediate,
                                 cx,
                                 |settings| {
-                                    settings.open_web_links_in_zeron = !open_in_zeron;
+                                    settings.open_web_links_in_openagents = !open_in_openagents;
                                 },
                             );
                             menu.borrow_mut().take();
@@ -986,13 +986,13 @@ mod rendered_tests {
                                 !draw_has_tooltip(window, cx),
                                 "pending hover must not appear over the menu"
                             );
-                            let before = crate::settings::current(cx).open_web_links_in_zeron;
+                            let before = crate::settings::current(cx).open_web_links_in_openagents;
                             key(window, "down", cx);
                             key(window, "down", cx);
                             key(window, "down", cx);
                             key(window, "enter", cx);
                             assert_ne!(
-                                crate::settings::current(cx).open_web_links_in_zeron,
+                                crate::settings::current(cx).open_web_links_in_openagents,
                                 before,
                                 "the fourth menu row toggles the default destination"
                             );
@@ -1057,7 +1057,7 @@ mod rendered_tests {
                 assert_eq!(log.borrow().len(), 2);
                 assert_eq!(log.borrow()[0].target.original, "https://example.com/one");
                 assert_eq!(log.borrow()[1].target.original, "https://example.org/two");
-                // Menu starts on Open in Zeron; choose the external action.
+                // Menu starts on Open in OpenAgents; choose the external action.
                 for key in ["down", "enter"] {
                     window.dispatch_event(
                         gpui::PlatformInput::KeyDown(gpui::KeyDownEvent {
@@ -1193,7 +1193,7 @@ mod rendered_tests {
     /// A resolved file link's context menu swaps the web actions for file
     /// rows — the system-level ones only when the owning root is on this
     /// device — which act on the resolved absolute path, and "Open in
-    /// Zeron" routes the file to the viewer.
+    /// OpenAgents" routes the file to the viewer.
     #[cfg(unix)]
     #[gpui::test]
     fn file_link_menu_offers_local_rows_and_acts_on_the_absolute_path(
@@ -1224,7 +1224,7 @@ mod rendered_tests {
         cx.simulate_mouse_down(position, MouseButton::Right, gpui::Modifiers::default());
         cx.simulate_mouse_up(position, MouseButton::Right, gpui::Modifiers::default());
         for selector in [
-            "link-menu-open-zeron",
+            "link-menu-open-openagents",
             "link-menu-open-default",
             "link-menu-show-in-folder",
             "link-menu-copy-path",
@@ -1253,7 +1253,7 @@ mod rendered_tests {
             cx.opened_url().as_deref(),
             Some("file:///repo%20dir/src/lib.rs")
         );
-        assert!(cx.debug_bounds("link-menu-open-zeron").is_none());
+        assert!(cx.debug_bounds("link-menu-open-openagents").is_none());
 
         // "Copy file path" copies the resolved absolute path, decoded.
         cx.simulate_mouse_down(position, MouseButton::Right, gpui::Modifiers::default());
@@ -1266,24 +1266,24 @@ mod rendered_tests {
             Some("/repo dir/src/lib.rs")
         );
 
-        // "Open in Zeron" is live for a file link and hands it to the
+        // "Open in OpenAgents" is live for a file link and hands it to the
         // owning surface as an internal open.
         cx.simulate_mouse_down(position, MouseButton::Right, gpui::Modifiers::default());
         cx.simulate_mouse_up(position, MouseButton::Right, gpui::Modifiers::default());
-        let row = cx.debug_bounds("link-menu-open-zeron").unwrap().center();
+        let row = cx.debug_bounds("link-menu-open-openagents").unwrap().center();
         cx.simulate_click(row, gpui::Modifiers::default());
         let activated = activated.borrow();
-        let last = activated.last().expect("open in zeron activates the link");
+        let last = activated.last().expect("open in openagents activates the link");
         assert_eq!(last.action, LinkAction::Internal);
         assert_eq!(last.target.original, "src/lib.rs");
     }
 
     /// An absolute destination no root owns is still a file: its menu keeps
-    /// "Open in Zeron" and, when the linking chat is on this device, the
+    /// "Open in OpenAgents" and, when the linking chat is on this device, the
     /// system-level rows that act on the absolute path.
     #[cfg(unix)]
     #[gpui::test]
-    fn outside_file_link_menu_keeps_open_in_zeron_and_local_rows(cx: &mut gpui::TestAppContext) {
+    fn outside_file_link_menu_keeps_open_in_openagents_and_local_rows(cx: &mut gpui::TestAppContext) {
         let dir = tempfile::tempdir().unwrap();
         cx.update(|cx| {
             cx.set_global(Theme::dark());
@@ -1309,7 +1309,7 @@ mod rendered_tests {
         cx.simulate_mouse_down(position, MouseButton::Right, gpui::Modifiers::default());
         cx.simulate_mouse_up(position, MouseButton::Right, gpui::Modifiers::default());
         for selector in [
-            "link-menu-open-zeron",
+            "link-menu-open-openagents",
             "link-menu-open-default",
             "link-menu-show-in-folder",
             "link-menu-copy-path",
@@ -1329,10 +1329,10 @@ mod rendered_tests {
                 "{selector} is a web-link row"
             );
         }
-        let row = cx.debug_bounds("link-menu-open-zeron").unwrap().center();
+        let row = cx.debug_bounds("link-menu-open-openagents").unwrap().center();
         cx.simulate_click(row, gpui::Modifiers::default());
         let activated = activated.borrow();
-        let last = activated.last().expect("open in zeron activates the link");
+        let last = activated.last().expect("open in openagents activates the link");
         assert_eq!(last.action, LinkAction::Internal);
         assert_eq!(last.target.original, "/elsewhere/team/INFORME.md");
     }
@@ -1373,7 +1373,7 @@ mod rendered_tests {
             });
             cx.simulate_mouse_down(position, MouseButton::Right, gpui::Modifiers::default());
             cx.simulate_mouse_up(position, MouseButton::Right, gpui::Modifiers::default());
-            assert!(cx.debug_bounds("link-menu-open-zeron").is_some());
+            assert!(cx.debug_bounds("link-menu-open-openagents").is_some());
             for selector in [
                 "link-menu-open-external",
                 "link-menu-copy-address",

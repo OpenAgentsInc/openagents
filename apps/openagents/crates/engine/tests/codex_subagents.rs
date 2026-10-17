@@ -5,10 +5,10 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use zeron_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry, SubagentStatus};
-use zeron_engine::{EngineCore, EngineProfile, HarnessRegistry};
-use zeron_harness::CodexHarness;
-use zeron_proto::{HarnessId, RunRequest, SandboxLevel, SessionStatus};
+use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry, SubagentStatus};
+use openagents_engine::{EngineCore, EngineProfile, HarnessRegistry};
+use openagents_harness::CodexHarness;
+use openagents_proto::{HarnessId, RunRequest, SandboxLevel, SessionStatus};
 
 const CHAT: &str = "codex-subagents";
 

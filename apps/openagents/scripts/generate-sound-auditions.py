@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ten original auditions using Zeron's approved rounded pressure-pulse click.
+"""Ten original auditions using OpenAgents's approved rounded pressure-pulse click.
 Standalone standard-library synthesis. Only --install-attention changes an
 application asset.
 """

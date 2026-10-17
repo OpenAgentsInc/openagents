@@ -29,7 +29,7 @@ A tool chip whose call or output names an image file (PNG, JPEG, GIF, WebP, BMP,
 
 Right-clicking a tool preview, a user attachment thumbnail or a generated image opens **Copy path** / **Copy image**. Copy image fetches the original file from its owning device, not the preview; SVG is copied as the sanitized, re-serialized tree.
 
-`cargo run --locked -p zeron-ui --example tool-images-fixture --features appshots-fixture` opens an isolated session with mock images. `-- --capture <dir>` runs the automated expand / toggle-spam / collapse / copy check instead.
+`cargo run --locked -p openagents-ui --example tool-images-fixture --features appshots-fixture` opens an isolated session with mock images. `-- --capture <dir>` runs the automated expand / toggle-spam / collapse / copy check instead.
 
 ## Verification
 
@@ -40,8 +40,8 @@ The `workspace_file_surface_proxies_over_the_relay` integration test runs two en
 Validation commands:
 
 ```sh
-cargo test --release --locked -p zeron-ui --lib -- --test-threads=1
-cargo test --release --locked -p zeron-engine --lib --test workspace_files --test device_routing
+cargo test --release --locked -p openagents-ui --lib -- --test-threads=1
+cargo test --release --locked -p openagents-engine --lib --test workspace_files --test device_routing
 ```
 
 Automated results recorded on 2026-09-12 (Linux):
@@ -61,4 +61,4 @@ Physical-device validation is separate from these automated tests. This implemen
 - Physical mouse: Ctrl + wheel zooms; unmodified wheel pans; releasing a drag outside the image does not close the lightbox.
 - A second physical remote device: open images, switch files during loading, modify/rename/delete them, and switch workspace/device while requests are pending.
 
-No zui dependency changes are required. Zeron uses `on_pinch` and `on_scroll_wheel` from its existing pinned revision.
+No zui dependency changes are required. OpenAgents uses `on_pinch` and `on_scroll_wheel` from its existing pinned revision.

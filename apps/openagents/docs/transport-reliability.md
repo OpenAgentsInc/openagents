@@ -109,15 +109,15 @@ regression, and the final implementation uses byte progress and fragmentation.
 ## Reproduce
 
 ```sh
-cargo test -p zeron-sync -p zeron-rpc --features zeron-sync/mock-server
-cargo test -p zeron-sync --lib socket:: -- --nocapture
-cargo clippy -p zeron-sync -p zeron-rpc --all-targets --features zeron-sync/mock-server
-cargo build -p zeron-sync --example transport_live
+cargo test -p openagents-sync -p openagents-rpc --features openagents-sync/mock-server
+cargo test -p openagents-sync --lib socket:: -- --nocapture
+cargo clippy -p openagents-sync -p openagents-rpc --all-targets --features openagents-sync/mock-server
+cargo build -p openagents-sync --example transport_live
 
 # Requires authenticated Wrangler and an account with Workers/R2 enabled.
 cd edge
 npm ci
-node_modules/.bin/wrangler r2 bucket create zeron-transport-385-20260915
+node_modules/.bin/wrangler r2 bucket create openagents-transport-385-20260915
 node_modules/.bin/wrangler deploy --config wrangler.transport-test.jsonc
 cd ..
 
@@ -140,7 +140,7 @@ After testing, delete only the isolated resources:
 ```sh
 cd edge
 node_modules/.bin/wrangler delete --config wrangler.transport-test.jsonc
-node_modules/.bin/wrangler r2 bucket delete zeron-transport-385-20260915
+node_modules/.bin/wrangler r2 bucket delete openagents-transport-385-20260915
 ```
 
 ## Scope and remaining limits

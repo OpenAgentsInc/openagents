@@ -395,7 +395,7 @@ impl Shell {
         // header over the empty canvas was noise); the bar keeps its height,
         // drag region, and buttons. Where a session runs, and its side-chat
         // and project actions, live in the session card.
-        let (title, harness, on_canvas): (SharedString, Option<zeron_proto::HarnessId>, bool) = {
+        let (title, harness, on_canvas): (SharedString, Option<openagents_proto::HarnessId>, bool) = {
             let state = self.state.read(cx);
             match state.selected_chat_row() {
                 Some(chat) => (

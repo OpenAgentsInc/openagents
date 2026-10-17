@@ -107,7 +107,7 @@ impl QueueKey {
 
 struct Candidate {
     source: PathBuf,
-    color: Option<zeron_theme::Color>,
+    color: Option<openagents_theme::Color>,
     file: super::PreparedBackgroundFile,
     artwork: crate::new_thread_background_effects::PreloadedArtwork,
 }

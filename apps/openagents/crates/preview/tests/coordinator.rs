@@ -1,13 +1,13 @@
 //! Full authenticated Worker → catalog → SDP/ICE → P2P → HTTP integration.
 //! Run against `wrangler dev --local --var AUTH_MODE:dev --port 27641`:
-//! ZERON_PREVIEW_TEST_EDGE=http://127.0.0.1:27641 cargo test -p zeron-preview --test coordinator -- --ignored
+//! OPENAGENTS_PREVIEW_TEST_EDGE=http://127.0.0.1:27641 cargo test -p openagents-preview --test coordinator -- --ignored
 use std::{sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
 use tokio_util::sync::CancellationToken;
-use zeron_preview::{
+use openagents_preview::{
     catalog::Catalog,
     discovery::Listener,
     mux::{self, BoxIo, Connector},
@@ -36,8 +36,8 @@ impl Connector for Backend {
 #[tokio::test]
 #[ignore = "requires a local Worker in AUTH_MODE=dev"]
 async fn authenticated_coordinator_pairs_devices_for_large_http_preview() {
-    let edge = std::env::var("ZERON_PREVIEW_TEST_EDGE")
-        .expect("set ZERON_PREVIEW_TEST_EDGE to the local dev Worker");
+    let edge = openagents_brand::env_var("OPENAGENTS_PREVIEW_TEST_EDGE")
+        .expect("set OPENAGENTS_PREVIEW_TEST_EDGE to the local dev Worker");
     tokio::time::timeout(Duration::from_secs(60), async {
         let temp = tempfile::tempdir().unwrap(); let stop = CancellationToken::new();
         let host = Catalog::open(temp.path().join("host.json"),"host".into(),"MacBook".into()).unwrap();
@@ -51,7 +51,7 @@ async fn authenticated_coordinator_pairs_devices_for_large_http_preview() {
             for _ in 0..512 { socket.write_all(&[42;8192]).await.unwrap(); }
             socket.shutdown().await.unwrap();
         });
-        host.replace_local(vec![("/work/project".into(),Listener { pid:std::process::id(),parent:1,cwd:"/work/project".into(),args:vec!["node".into(),"vite".into()],started_at:1,address,zeron_owned:true })]).unwrap();
+        host.replace_local(vec![("/work/project".into(),Listener { pid:std::process::id(),parent:1,cwd:"/work/project".into(),args:vec!["node".into(),"vite".into()],started_at:1,address,openagents_owned:true })]).unwrap();
         let host_backend = Arc::new(Backend(host.clone())); let viewer_backend = Arc::new(Backend(viewer.clone()));
         let (host_peers, host_output) = Peers::new("host".into(),host_backend,stop.child_token());
         let (viewer_peers, viewer_output) = Peers::new("viewer".into(),viewer_backend.clone(),stop.child_token());

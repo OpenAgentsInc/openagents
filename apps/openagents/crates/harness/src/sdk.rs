@@ -12,7 +12,7 @@ use std::{
     process::Stdio,
 };
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use zeron_proto::{
+use openagents_proto::{
     AgentEvent, DoneStatus, HarnessId, Model, ReasoningLevel, RunRequest, SteeringMode,
 };
 
@@ -107,7 +107,7 @@ impl Harness for SdkHarness {
     async fn skills(
         &self,
         _: &Path,
-    ) -> Result<Option<Vec<zeron_proto::invocation::Skill>>, HarnessError> {
+    ) -> Result<Option<Vec<openagents_proto::invocation::Skill>>, HarnessError> {
         Ok(None)
     }
     async fn models(&self) -> Result<Vec<Model>, HarnessError> {

@@ -6,7 +6,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use coder_account::openagents::{Client, Deployment};
+use openagents_account::openagents::{Client, Deployment};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -16,7 +16,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::Mutex;
-use zeron_rpc::{RpcClient, methods};
+use openagents_rpc::{RpcClient, methods};
 
 #[path = "custom_agent_fixture/mod.rs"]
 mod custom_agent_fixture;
@@ -68,13 +68,13 @@ impl Fixture {
             .env("XDG_CONFIG_HOME", home.join("config"))
             .env("XDG_CACHE_HOME", home.join("cache"))
             .env("XDG_DATA_HOME", home.join("share"))
-            .env("ZERON_DATA_DIR", self.root.join("data"))
-            .env("ZERON_IPC_PORT", self.port.to_string())
-            .env("ZERON_EDGE_URL", &self.edge)
+            .env("OPENAGENTS_DATA_DIR", self.root.join("data"))
+            .env("OPENAGENTS_IPC_PORT", self.port.to_string())
+            .env("OPENAGENTS_EDGE_URL", &self.edge)
             .env("CODER_DESKTOP_CREDENTIAL", &self.credential)
-            .env("ZERON_HARNESS", "mock")
-            .env("ZERON_MOCK_REPEAT", "500")
-            .env("ZERON_MOCK_DELAY_MS", "250")
+            .env("OPENAGENTS_HARNESS", "mock")
+            .env("OPENAGENTS_MOCK_REPEAT", "500")
+            .env("OPENAGENTS_MOCK_DELAY_MS", "250")
             .env("BROWSER", "/usr/bin/true")
             .env("NO_OPEN_BROWSER", "1")
             .current_dir(&home)
@@ -100,7 +100,7 @@ impl Fixture {
                     .any(|line| line.parse::<u32>().ok() == Some(pid))
                 {
                     if let Ok(ipc) =
-                        zeron_rpc::connect_ws(&format!("ws://127.0.0.1:{}", self.port)).await
+                        openagents_rpc::connect_ws(&format!("ws://127.0.0.1:{}", self.port)).await
                     {
                         let info = ipc.call(methods::ENGINE_INFO, json!({})).await?;
                         ensure!(
@@ -373,7 +373,7 @@ async fn main() -> Result<()> {
         std::fs::write(
             data.join("sdk-runners.json"),
             serde_json::to_vec(
-                &json!({"fixture":{"label":"Fixture Rust agent","sha256":zeron_harness::sdk::executable_digest(std::path::Path::new(&runner))?,"executable":runner,"args":[]}}),
+                &json!({"fixture":{"label":"Fixture Rust agent","sha256":openagents_harness::sdk::executable_digest(std::path::Path::new(&runner))?,"executable":runner,"args":[]}}),
             )?,
         )?;
         if std::env::var_os("OA_CUSTOM_AGENT_UI").is_none() {

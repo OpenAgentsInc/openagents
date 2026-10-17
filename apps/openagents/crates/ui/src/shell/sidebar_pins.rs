@@ -4,7 +4,7 @@
 use super::*;
 use crate::state::EngineHandle;
 use std::collections::VecDeque;
-use zeron_proto::{SidebarPinChange, SidebarPreferencesState};
+use openagents_proto::{SidebarPinChange, SidebarPreferencesState};
 
 pub(super) struct PendingSidebarPins {
     pub id: u64,
@@ -166,7 +166,7 @@ impl Shell {
                 matches!(
                     pending.queue.front(),
                     Some(SidebarPinChange::Section {
-                        change: zeron_proto::SidebarSectionChange::Import { .. }
+                        change: openagents_proto::SidebarSectionChange::Import { .. }
                     })
                 )
                 .then(|| pending.profile_key.clone())

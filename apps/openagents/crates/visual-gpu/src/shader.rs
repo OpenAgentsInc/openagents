@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use wgpu::util::DeviceExt;
-use zeron_visual::shader::{Blend, MAX_BUFFERS, ShaderUniforms};
+use openagents_visual::shader::{Blend, MAX_BUFFERS, ShaderUniforms};
 
 use crate::{EDGE_FADE, FORMAT, Frame, gpu};
 
@@ -23,7 +23,7 @@ pub struct ShaderSpec<'a> {
     pub blend: Blend,
     pub bloom: f32,
     /// Images sampled as `iTexture0`-`3`.
-    pub textures: &'a [zeron_visual::TextureData],
+    pub textures: &'a [openagents_visual::TextureData],
 }
 
 /// One shader's textures between frames: each buffer's previous and
@@ -438,7 +438,7 @@ pub fn render_shader(
         .map(String::as_str)
         .chain([spec.image])
     {
-        let (program, _) = zeron_visual::shader::program(code, spec.inputs);
+        let (program, _) = openagents_visual::shader::program(code, spec.inputs);
         programs.push(pipelines.pass(device, &program)?);
     }
     let fresh = state
@@ -462,7 +462,7 @@ pub fn render_shader(
     let view = |t: &wgpu::Texture| t.create_view(&Default::default());
     let empty = view(&pipelines.empty);
     let noise = view(&pipelines.noise);
-    let images: Vec<wgpu::TextureView> = (0..zeron_visual::shader::MAX_TEXTURES)
+    let images: Vec<wgpu::TextureView> = (0..openagents_visual::shader::MAX_TEXTURES)
         .map(|i| {
             spec.textures
                 .get(i)
@@ -740,7 +740,7 @@ mod tests {
             fragColor = texture(iTexture0, fragCoord / iResolution.xy);\n\
         }";
         // Left texel red, right texel a mid blue (stored values, not sRGB).
-        let textures = [zeron_visual::TextureData::Rgba {
+        let textures = [openagents_visual::TextureData::Rgba {
             width: 2,
             height: 1,
             pixels: vec![255, 0, 0, 255, 0, 0, 128, 255].into(),
@@ -773,7 +773,7 @@ mod tests {
             fragColor = texture(iTexture0, fragCoord / iResolution.xy);\n\
         }";
         // Top texel red, bottom texel blue, as an image stores them.
-        let textures = [zeron_visual::TextureData::Rgba {
+        let textures = [openagents_visual::TextureData::Rgba {
             width: 1,
             height: 2,
             pixels: vec![255, 0, 0, 255, 0, 0, 255, 255].into(),
@@ -890,7 +890,7 @@ mod tests {
             return;
         }
         let code = include_str!("../tests/mandelbulb.glsl");
-        zeron_visual::shader::validate(code, &[]).unwrap();
+        openagents_visual::shader::validate(code, &[]).unwrap();
         let uniforms = ShaderUniforms {
             resolution: [96.0, 96.0, 1.0, 0.0],
             camera: [0.6, 0.3, 1.0, 0.0],

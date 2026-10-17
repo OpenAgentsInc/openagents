@@ -1,11 +1,11 @@
 //! Credential bytes are hashed locally and never included in diagnostics or disk catalogs.
 use crate::{HarnessError, ModelContext};
+use openagents_proto::HarnessId;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
-use zeron_proto::HarnessId;
 
 pub(crate) fn root(variable: &str, fallback: PathBuf) -> PathBuf {
-    std::env::var_os(variable)
+    openagents_brand::env_var_os(variable)
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
         .unwrap_or(fallback)

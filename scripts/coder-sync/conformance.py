@@ -14,7 +14,7 @@ import time
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "deploy/coder-sync/Cargo.toml"
 APPS = ROOT / "apps/openagents"
-CLIENTS = {"zeron-sync", "zeron-client", "zeron-proto", "zeron-doc", "zeron-rpc"}
+CLIENTS = {"openagents-sync", "openagents-client", "openagents-proto", "openagents-doc", "openagents-rpc"}
 MIN_FREE = 8 * 1024**3
 
 
@@ -25,7 +25,7 @@ def disk_check():
 
 def check_clients(text):
     """The server must use the sync clients from this checkout's apps, never a Git pin."""
-    declarations = dict(re.findall(r'^(zeron-[a-z-]+) = \{ path = "([^"]+)" \}$', text, re.M))
+    declarations = dict(re.findall(r'^(openagents-[a-z-]+) = \{ path = "([^"]+)" \}$', text, re.M))
     if set(declarations) != CLIENTS:
         raise RuntimeError("Every sync client must be a path dependency on apps/openagents/crates.")
     for name, path in declarations.items():
@@ -79,15 +79,15 @@ def main():
             raise RuntimeError("Another conformance run is using this apps target directory.")
         run(["cargo", "metadata", "--manifest-path", str(MANIFEST), "--format-version", "1", "--locked"], env, scratch, "Resolve the sync clients")
         # Only the server's packages: --all would also check its path dependencies,
-        # including upstream Zeron code that is deliberately not reformatted.
+        # including imported app code that is deliberately not reformatted.
         run(["cargo", "fmt", "--manifest-path", str(MANIFEST), "-p", "coder-sync-service", "-p", "coder-sync-conformance", "--", "--check"], env, scratch, "Check server formatting")
         # The headless engine is the desktop app's own binary, from this checkout.
         build_env = dict(env, CARGO_TARGET_DIR=str(apps_target))
-        run(["cargo", "build", "--locked", "--manifest-path", str(APPS / "Cargo.toml"), "-p", "zeron", "--profile", "mobile"], build_env, scratch, "Build the headless engine")
-        executable = apps_target / "mobile/zeron"
+        run(["cargo", "build", "--locked", "--manifest-path", str(APPS / "Cargo.toml"), "-p", "openagents", "--profile", "mobile"], build_env, scratch, "Build the headless engine")
+        executable = apps_target / "mobile/openagents"
         if not executable.is_file():
             raise RuntimeError("The headless engine was not built.")
-        test_env = dict(env, ZERON_TEST_HEADLESS_BIN=str(executable))
+        test_env = dict(env, OPENAGENTS_TEST_HEADLESS_BIN=str(executable))
         run([str(ROOT / "scripts/coder-sync/test.sh"), "--", "--include-ignored"], test_env, scratch, "Run protocol conformance")
         run(["cargo", "build", "--locked", "--manifest-path", str(MANIFEST), "--features", "server"], env, scratch, "Build server executable")
         commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, text=True).strip()

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use gpui::{Entity, SharedString, Subscription, Task};
 use gpui_base::input::EditorState;
-use zeron_proto::{
+use openagents_proto::{
     WorkspaceFileText, WorkspaceLineEnding, WorkspaceReadOnlyReason, WorkspaceTextEncoding,
     WorkspaceWritableEncoding, WorkspaceWritableLineEnding,
 };
@@ -383,7 +383,7 @@ fn writable_line_ending(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zeron_proto::WorkspaceTextEncoding;
+    use openagents_proto::WorkspaceTextEncoding;
 
     fn key(path: &str) -> DocumentKey {
         DocumentKey {

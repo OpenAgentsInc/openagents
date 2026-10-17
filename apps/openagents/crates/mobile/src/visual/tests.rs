@@ -3,7 +3,7 @@ use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use zeron_text::WidthCache;
+use openagents_text::WidthCache;
 
 use super::layout::{self, SurfaceNode};
 use super::paint::TextCtx;
@@ -428,7 +428,7 @@ fn charts_read_out_the_category_under_a_finger() {
 
 #[test]
 fn scenes_and_shaders_render_premultiplied_frames_on_the_gpu() {
-    if !zeron_visual_gpu::available() {
+    if !openagents_visual_gpu::available() {
         return;
     }
     let open = open(

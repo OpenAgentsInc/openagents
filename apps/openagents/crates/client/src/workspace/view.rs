@@ -5,7 +5,7 @@
 //! Ordering mirrors the desktop sidebar (`Shell::sidebar_visible_order`,
 //! "In one list" + "Last updated"): pinned sessions in their shared manual
 //! order, then the user's sections (each in recency order), then everything
-//! else by recency ([`zeron_proto::view::sort_active`] keys). Archived and
+//! else by recency ([`openagents_proto::view::sort_active`] keys). Archived and
 //! child (side/subagent) chats never appear in the active lists, and a chat
 //! pointing at a deleted project is hidden (projectless chats are first-class).
 
@@ -14,9 +14,9 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use zeron_doc::WorkspaceState;
-use zeron_proto::view::{attention_rank, display_status, project_key, representative_space};
-use zeron_proto::{
+use openagents_doc::WorkspaceState;
+use openagents_proto::view::{attention_rank, display_status, project_key, representative_space};
+use openagents_proto::{
     ChangeRequestState, ChangeRequestSummary, Chat, ChatIndicator, CheckoutChangeRequestStatus,
     Device, Session, SidebarPreferences, Space,
 };
@@ -131,7 +131,7 @@ pub struct ProjectView {
     pub git_detected: bool,
     pub created_at_ms: i64,
     /// The repository project this checkout belongs to
-    /// ([`zeron_proto::view::project_key`]): clones and worktrees of one
+    /// ([`openagents_proto::view::project_key`]): clones and worktrees of one
     /// repository, on any device, share it.
     pub group_key: String,
     /// The group's name — its representative checkout's — shared by every
@@ -472,7 +472,7 @@ fn build_row(chat: &Chat, rc: &RowContext<'_>, cx: &DeriveContext<'_>) -> Arc<Se
         preview: chat
             .last_message_preview
             .as_deref()
-            .map(zeron_proto::view::single_line)
+            .map(openagents_proto::view::single_line)
             .filter(|p| !p.is_empty()),
         project,
         device_id: chat.device_id.clone(),
@@ -528,7 +528,7 @@ pub(crate) fn derive(
 ) -> WorkspaceSnapshot {
     let now_ms = cx.now.timestamp_millis();
     let pinned_order: &[String] = prefs.map_or(&[], |p| p.pinned_session_ids.as_slice());
-    let sections: &[zeron_proto::SidebarSection] = prefs.map_or(&[], |p| p.sections.as_slice());
+    let sections: &[openagents_proto::SidebarSection] = prefs.map_or(&[], |p| p.sections.as_slice());
     let mut section_of: HashMap<&str, &str> = HashMap::new();
     for section in sections {
         for id in &section.session_ids {

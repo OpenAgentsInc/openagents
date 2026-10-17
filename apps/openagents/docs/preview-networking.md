@@ -18,7 +18,7 @@ creation time and socket descriptors to listening TCP sockets. On macOS it uses
 cwd belongs to a known local project are probed. The deepest matching project
 wins. Commands with explicit authentication arguments (`login`, `auth`,
 `authenticate`, `signin`, `sign-in`, `sso`, `oauth`, or `oauth2`, before `--`)
-are excluded before any connection, even when started by a Zeron terminal or
+are excluded before any connection, even when started by a OpenAgents terminal or
 agent. Their listeners may be one-shot browser callbacks: for example,
 `infisical login` fails with EOF if it receives a discovery HEAD without the
 browser's JSON body. This command check does not identify custom callback
@@ -30,7 +30,7 @@ authentication and application errors). Confirmed HTTP listeners are not
 probed again during that socket's lifetime; non-HTTP results use a capped
 exponential backoff.
 
-Zeron terminal/task/agent descendants are marked as Zeron-owned. Framework
+OpenAgents terminal/task/agent descendants are marked as OpenAgents-owned. Framework
 commands identify Vite, Next.js, Astro, Miniflare and Node servers; otherwise the
 list uses a generic HTTP label. Before a local backend connection, the daemon
 rechecks the listener's process identity and cwd to reject stale port reuse.
@@ -102,7 +102,7 @@ independently of edge availability. macOS and Linux currently provide discovery.
 
 ## Validation
 
-`cargo test --locked -p zeron-preview` covers real process/cwd isolation, non-HTTP
+`cargo test --locked -p openagents-preview` covers real process/cwd isolation, non-HTTP
 exclusion, live disappearance, persistent aliases, port changes, concurrent
 streams, slow readers, cancellation, large bodies, streaming HTTP headers and
 redirects, WebSocket traffic, and a real WebRTC pair in both directions.
@@ -111,7 +111,7 @@ redirects, WebSocket traffic, and a real WebRTC pair in both directions.
 organization authorization, stamped signaling, disconnect cleanup and binary
 traffic rejection. CI runs networking tests on Linux and macOS.
 
-Build `cargo build -p zeron-ui --example preview-fixture --features browser-fixture`.
+Build `cargo build -p openagents-ui --example preview-fixture --features browser-fixture`.
 Run the fixture with an output directory, an available display and `VITE_BINARY`
 pointing to an installed `vite/bin/vite.js`. It starts real Vite/API processes in
 an isolated project, discovers them through daemon RPC and waits for a native
@@ -122,4 +122,4 @@ attachments, not the repository.
 The opt-in `coordinator` integration test connects two authenticated clients to a
 local Worker, advertises a service, pairs over SDP/ICE, then transfers a 4 MiB
 HTTP response through the remote hostname. Run it with
-`ZERON_PREVIEW_TEST_EDGE=http://127.0.0.1:27641 cargo test -p zeron-preview --test coordinator -- --ignored`.
+`OPENAGENTS_PREVIEW_TEST_EDGE=http://127.0.0.1:27641 cargo test -p openagents-preview --test coordinator -- --ignored`.

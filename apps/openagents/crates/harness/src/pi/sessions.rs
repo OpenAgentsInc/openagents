@@ -28,7 +28,14 @@ impl Store {
         let home = crate::executable::home_or_current_dir();
         let agent = agent_dir(agent);
         Self {
-            root: root.unwrap_or_else(|| agent.join("zeron-sessions")),
+            root: root.unwrap_or_else(|| {
+                let previous = agent.join("zeron-sessions");
+                if previous.is_dir() {
+                    previous
+                } else {
+                    agent.join("openagents-sessions")
+                }
+            }),
             agent,
             legacy: home.join(".pi/pi-acp/session-map.json"),
         }

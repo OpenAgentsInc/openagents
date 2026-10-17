@@ -1,5 +1,5 @@
 //! `ui.scene` 3D: the draw function gets a scene object whose methods add
-//! world-space geometry (y up). Zeron frames the camera on the geometry,
+//! world-space geometry (y up). OpenAgents frames the camera on the geometry,
 //! orbits it on drag, shades faces with one soft light, and projects
 //! everything to depth-sorted 2D polygons that the desktop paints like any
 //! other vector shape, so a 3D view stays transparent over glass and uses the

@@ -1,7 +1,7 @@
 //! Client-owned media: host state contains signaling and canonical text only.
 use super::*;
 use tokio::sync::watch;
-use zeron_proto::voice::remote as wire;
+use openagents_proto::voice::remote as wire;
 
 type PreparedResult = Option<Result<wire::Prepared, VoiceRejection>>;
 pub(crate) struct Attempt {
@@ -307,7 +307,7 @@ impl VoiceManager {
         doc: Arc<crate::doc_host::ChatDocHandle>,
         sessions: crate::sessions::SessionsEngine,
         workspace: crate::workspace_host::WorkspaceHost,
-        expected: zeron_proto::Chat,
+        expected: openagents_proto::Chat,
         epoch: u64,
         attempt: CancellationToken,
     ) -> Result<wire::Prepared, VoiceRejection> {

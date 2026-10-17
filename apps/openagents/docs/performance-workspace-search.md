@@ -72,7 +72,7 @@ names-only walk instead (`crates/engine/src/home_index.rs`):
 - No content search: `SearchWorkspaceContent` on home answers no matches.
 
 New projectless chats don't run in home at all: each gets its own folder,
-`~/.zeron/scratch/<date>-<id>` (`zeron_proto::projectless`), created by the
+`~/.openagents/scratch/<date>-<id>` (`openagents_proto::projectless`), created by the
 host when it first runs or browses the chat.
 
 ## Measurements
@@ -164,7 +164,7 @@ build CPU from ~2.0 s to ~0.9 s.
 ## Reproduce
 
 ```text
-BENCH_ROOT=/path/to/checkout cargo run --release -p zeron-engine \
+BENCH_ROOT=/path/to/checkout cargo run --release -p openagents-engine \
     --example workspace_search_bench
 ```
 

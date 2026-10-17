@@ -2,7 +2,7 @@
 use crate::{
     composer::ComposerInput, openagents_account::AppAccount, state::AppState, theme::Theme,
 };
-use coder_account::dashboard::{Effect, Home};
+use openagents_account::dashboard::{Effect, Home};
 use gpui::{
     AnyElement, AppContext, Context, Entity, EventEmitter, Render, SharedString, Subscription,
     Task, Window, div, prelude::*, px,
@@ -72,7 +72,7 @@ impl HomePage {
             self.fields.clear();
             self.generation = generation;
             if let (Some(lease), Some(root)) = (lease, self.state.read(cx).data_dir.clone()) {
-                let scope = coder_account::desktop::sync_scope(
+                let scope = openagents_account::desktop::sync_scope(
                     lease.client().deployment(),
                     "home",
                     &lease.session().account().id,
@@ -126,10 +126,10 @@ impl HomePage {
                 let online = device
                     .is_some_and(|d| crate::settings::devices::device_online(d.last_seen_at, now));
                 let status = match session.map(|s| s.status) {
-                    Some(zeron_proto::SessionStatus::Working) => "working",
-                    Some(zeron_proto::SessionStatus::AwaitingInput) => "awaiting",
-                    Some(zeron_proto::SessionStatus::Errored) => "failed",
-                    Some(zeron_proto::SessionStatus::Idle) => {
+                    Some(openagents_proto::SessionStatus::Working) => "working",
+                    Some(openagents_proto::SessionStatus::AwaitingInput) => "awaiting",
+                    Some(openagents_proto::SessionStatus::Errored) => "failed",
+                    Some(openagents_proto::SessionStatus::Idle) => {
                         if session.is_some_and(|s| s.last_completed_turn.is_some()) {
                             "completed"
                         } else {
@@ -150,17 +150,17 @@ impl HomePage {
                         .as_ref()
                         .map(|c| {
                             match c.harness {
-                                zeron_proto::HarnessId::ClaudeCode => "Claude Code",
-                                zeron_proto::HarnessId::Codex => "Codex",
-                                zeron_proto::HarnessId::Cursor => "Cursor",
-                                zeron_proto::HarnessId::Devin => "Devin",
-                                zeron_proto::HarnessId::Grok => "Grok",
-                                zeron_proto::HarnessId::Hermes => "Hermes",
-                                zeron_proto::HarnessId::Pi => "Pi",
-                                zeron_proto::HarnessId::Opencode => "OpenCode",
-                                zeron_proto::HarnessId::Antigravity => "Antigravity",
-                                zeron_proto::HarnessId::Mock => "Test agent",
-                                zeron_proto::HarnessId::Sdk => "Custom agent",
+                                openagents_proto::HarnessId::ClaudeCode => "Claude Code",
+                                openagents_proto::HarnessId::Codex => "Codex",
+                                openagents_proto::HarnessId::Cursor => "Cursor",
+                                openagents_proto::HarnessId::Devin => "Devin",
+                                openagents_proto::HarnessId::Grok => "Grok",
+                                openagents_proto::HarnessId::Hermes => "Hermes",
+                                openagents_proto::HarnessId::Pi => "Pi",
+                                openagents_proto::HarnessId::Opencode => "OpenCode",
+                                openagents_proto::HarnessId::Antigravity => "Antigravity",
+                                openagents_proto::HarnessId::Mock => "Test agent",
+                                openagents_proto::HarnessId::Sdk => "Custom agent",
                             }
                             .to_owned()
                         })

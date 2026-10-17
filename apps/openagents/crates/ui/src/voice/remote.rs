@@ -2,10 +2,10 @@ use crate::state::EngineHandle;
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
-use zeron_proto::voice::{remote::Sdp, *};
-use zeron_voice_session::VoiceMediaEndpoint;
+use openagents_proto::voice::{remote::Sdp, *};
+use openagents_voice_session::VoiceMediaEndpoint;
 
-struct Media(zeron_voice_media::DesktopMedia);
+struct Media(openagents_voice_media::DesktopMedia);
 #[async_trait::async_trait]
 impl VoiceMediaEndpoint for Media {
     async fn prepare(&self) -> Result<(), VoiceRejection> {
@@ -32,7 +32,7 @@ impl VoiceMediaEndpoint for Media {
 pub(super) async fn run(
     engine: EngineHandle,
     host: String,
-    config: zeron_proto::ChatConfig,
+    config: openagents_proto::ChatConfig,
     voice: Option<String>,
     cancel: CancellationToken,
     events: mpsc::Sender<VoiceEvent>,
@@ -44,19 +44,19 @@ pub(super) async fn run(
             .await
             .map_err(|_| VoiceRejection::Protocol)?,
     );
-    let control = Arc::new(zeron_voice_session::RpcTransport { client, host });
+    let control = Arc::new(openagents_voice_session::RpcTransport { client, host });
     // Audio runs here through this device's own standalone Codex helper; the
     // call's app-server runs on `host`. Resolution may consult the login shell.
-    let codex = tokio::task::spawn_blocking(zeron_harness::codex::resolve_codex_executable)
+    let codex = tokio::task::spawn_blocking(openagents_harness::codex::resolve_codex_executable)
         .await
         .ok()
         .flatten();
-    let media = Arc::new(Media(zeron_voice_media::DesktopMedia::for_codex(
+    let media = Arc::new(Media(openagents_voice_media::DesktopMedia::for_codex(
         codex.as_deref(),
     )?));
     let (mute_tx, muted) = watch::channel(false);
     let call =
-        zeron_voice_session::run(control, media, config, voice, cancel.clone(), events, muted);
+        openagents_voice_session::run(control, media, config, voice, cancel.clone(), events, muted);
     tokio::pin!(call);
     loop {
         tokio::select! {biased;

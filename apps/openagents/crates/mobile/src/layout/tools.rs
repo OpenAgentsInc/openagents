@@ -7,10 +7,10 @@
 
 use std::sync::Arc;
 
-use zeron_doc::parts::{MessagePart, SubagentStatus};
-use zeron_markdown::parser::{Block, BlockTree, IncrementalParser, InlineRun, InlineStyle};
-use zeron_proto::ToolCall;
-use zeron_text::WhiteSpace;
+use openagents_doc::parts::{MessagePart, SubagentStatus};
+use openagents_markdown::parser::{Block, BlockTree, IncrementalParser, InlineRun, InlineStyle};
+use openagents_proto::ToolCall;
+use openagents_text::WhiteSpace;
 
 use super::display::{ColorRole, Decoration, DisplayBuilder, FadeEdge, WidgetKind};
 use super::file_icons::{basename, file_icon_asset};
@@ -109,7 +109,7 @@ fn group_summary(thoughts: usize, calls: &[(ToolCall, bool)]) -> String {
         n => segments.push(format!("thought {n} times")),
     }
     if !calls.is_empty() {
-        let s = zeron_proto::view::tool_group_summary(calls);
+        let s = openagents_proto::view::tool_group_summary(calls);
         let mut c = s.chars();
         let lowered = c.next().map(|f| f.to_lowercase().collect::<String>() + c.as_str()).unwrap_or_default();
         segments.push(lowered);
@@ -223,7 +223,7 @@ fn lines_block(ctx: &mut Ctx, st: &Styles, text: &str, wrap: Option<usize>) -> O
     Some(DetailBlock::Lines { lines, more })
 }
 
-fn diff_block(ctx: &mut Ctx, st: &Styles, diff: &zeron_proto::ToolDiff) -> Option<DetailBlock> {
+fn diff_block(ctx: &mut Ctx, st: &Styles, diff: &openagents_proto::ToolDiff) -> Option<DetailBlock> {
     let old = diff.old_text.as_deref().unwrap_or("");
     // Bounded: a huge rewrite falls back to a coarser diff instead of
     // stalling the layout worker (the transcript would stop updating).
@@ -594,7 +594,7 @@ fn prepare_thought(ctx: &mut Ctx, st: &Styles, lines: &[Vec<InlineRun>], more: b
             continue;
         }
         let mut text = String::new();
-        let mut spans: Vec<zeron_text::Span> = Vec::with_capacity(runs.len());
+        let mut spans: Vec<openagents_text::Span> = Vec::with_capacity(runs.len());
         let mut paints = Vec::with_capacity(runs.len());
         for run in runs {
             if run.text.is_empty() {
@@ -612,7 +612,7 @@ fn prepare_thought(ctx: &mut Ctx, st: &Styles, lines: &[Vec<InlineRun>], more: b
             };
             let start = text.len();
             text.push_str(&run.text);
-            spans.push(zeron_text::Span {
+            spans.push(openagents_text::Span {
                 range: start..text.len(),
                 style: style.id,
                 pad_start: 0.0,
@@ -635,14 +635,14 @@ fn prepare_thought(ctx: &mut Ctx, st: &Styles, lines: &[Vec<InlineRun>], more: b
         // Code lines are verbatim (indentation, aligned spaces); prose
         // collapses whitespace like the transcript's markdown does.
         let verbatim = runs.iter().all(|r| r.style.code);
-        let p = zeron_text::prepare(
+        let p = openagents_text::prepare(
             &ctx.typo.book,
             ctx.cache,
             &text,
             &spans,
-            &zeron_text::PrepareOptions {
+            &openagents_text::PrepareOptions {
                 white_space: if verbatim { WhiteSpace::PreWrap } else { WhiteSpace::PreLine },
-                overflow_wrap: zeron_text::OverflowWrap::Anywhere,
+                overflow_wrap: openagents_text::OverflowWrap::Anywhere,
                 ..Default::default()
             },
         );
@@ -785,7 +785,7 @@ impl RowBuilder {
                 let dkey = row_key(&format!("{id}/{}", part.id()));
                 match part {
                     MessagePart::Tool { call, is_error, resolved, subagent_ref, subagent_status, .. } => {
-                        let (label, detail) = zeron_proto::view::tool_chip_content(call);
+                        let (label, detail) = openagents_proto::view::tool_chip_content(call);
                         // Subagent lifecycle is distinct from `resolved`: under
                         // eager-done the spawn call resolves while the subagent
                         // still runs (desktop transcript.rs `running`/`failed`).
@@ -1145,7 +1145,7 @@ mod tests {
 
     #[test]
     fn thought_lines_stop_at_the_visible_cap() {
-        use zeron_markdown::parser::parse_full;
+        use openagents_markdown::parser::parse_full;
         let long: String = (0..100).map(|i| format!("para {i}\n\n")).collect();
         let (lines, more) = thought_lines(&parse_full(&long), MAX_LINES);
         assert!(more && lines.len() <= MAX_LINES && lines.len() >= MAX_LINES - 1, "{}", lines.len());
@@ -1157,7 +1157,7 @@ mod tests {
 
     #[test]
     fn thought_lines_clip_one_huge_paragraph_to_the_byte_budget() {
-        use zeron_markdown::parser::parse_full;
+        use openagents_markdown::parser::parse_full;
         let bytes = |lines: &[Vec<InlineRun>]| lines.iter().flatten().map(|r| r.text.len()).sum::<usize>();
         let (lines, more) = thought_lines(&parse_full(&"word ".repeat(20_000)), MAX_LINES);
         assert!(more && bytes(&lines) <= THOUGHT_BYTES && bytes(&lines) > THOUGHT_BYTES - 8, "{}", bytes(&lines));

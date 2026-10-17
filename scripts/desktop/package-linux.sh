@@ -143,7 +143,7 @@ glibc="$(for bin in "${binaries[@]}"; do objdump -T "$lib/$bin" 2>/dev/null; don
   | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1 || true)"
 echo "package-linux: needs ${glibc:-an unknown glibc} or newer"
 
-icon_src="$root/apps/openagents/apps/ios/Zeron/Assets.xcassets/AppIcon.appiconset/AppIcon1024.png"
+icon_src="$root/apps/openagents/apps/ios/OpenAgents/Assets.xcassets/AppIcon.appiconset/AppIcon1024.png"
 desktop_entry() {
   # $1: the Exec= command
   cat <<EOF

@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::ops::Range;
 
-pub const INVOCATION_SCHEME: &str = "zeron-invoke:";
+pub const INVOCATION_SCHEME: &str = "openagents-invoke:";
 
 fn escape_label(label: &str) -> String {
     label
@@ -119,7 +119,7 @@ impl Invocation {
 }
 
 pub fn invocation_links(text: &str) -> Vec<(Range<usize>, Invocation)> {
-    if !text.contains(INVOCATION_SCHEME) {
+    if !text.contains(INVOCATION_SCHEME) && !text.contains("zeron-invoke:") {
         return Vec::new();
     }
     let mut links = Vec::new();
@@ -141,7 +141,10 @@ pub fn invocation_links(text: &str) -> Vec<(Range<usize>, Invocation)> {
         let pulldown_cmark::Event::Start(pulldown_cmark::Tag::Link { dest_url, .. }) = event else {
             continue;
         };
-        let Some(hex) = dest_url.strip_prefix(INVOCATION_SCHEME) else {
+        let Some(hex) = dest_url
+            .strip_prefix(INVOCATION_SCHEME)
+            .or_else(|| dest_url.strip_prefix("zeron-invoke:"))
+        else {
             continue;
         };
         let (start, end) = (range.start, range.end);
@@ -171,6 +174,7 @@ pub fn invocation_links(text: &str) -> Vec<(Range<usize>, Invocation)> {
         // Older transcripts did not escape label backticks. Accept an old
         // token only when Markdown still identifies the complete link.
         let source = &text[start..end];
+        let source = source.replacen("zeron-invoke:", INVOCATION_SCHEME, 1);
         if (canonical == source || canonical.replace("\\`", "`") == source)
             && links
                 .last()
@@ -346,6 +350,15 @@ mod tests {
         ] {
             assert_eq!(leading_command(text), None, "{text:?}");
         }
+    }
+
+    #[test]
+    fn saved_invocation_links_remain_readable() {
+        let invocation = skill("review", "/repo/SKILL.md");
+        let previous = invocation
+            .link()
+            .replace("openagents-invoke:", "zeron-invoke:");
+        assert_eq!(invocation_links(&previous)[0].1, invocation);
     }
 
     #[test]
@@ -606,7 +619,7 @@ mod tests {
             "first /compact then [$review](/repo/a%20b/SKILL.md) finally"
         );
         assert_eq!(invocation_prompt("/$not-a-chip"), "/$not-a-chip");
-        assert!(invocation_links("[x](zeron-invoke:bad)").is_empty());
+        assert!(invocation_links("[x](openagents-invoke:bad)").is_empty());
         for code in [
             format!("`{}`", command.link()),
             format!("```\n{}\n```", command.link()),

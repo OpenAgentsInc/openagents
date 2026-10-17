@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Coder
+GenericName=Coding Agent Desktop
+Comment=OpenAgents: a desktop for coding agents (based on OpenAgents)
+Exec=openagents %u
+TryExec=openagents
+Icon=openagents
+Terminal=false
+StartupNotify=true
+Categories=Development;Utility;
+Keywords=agent;claude;codex;ai;coding;
+StartupWMClass=openagents
+MimeType=x-scheme-handler/coder-desktop;

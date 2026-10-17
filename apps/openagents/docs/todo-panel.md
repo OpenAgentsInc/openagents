@@ -84,13 +84,13 @@ the first todo.
 ## Testing
 
 ```sh
-cargo test --locked -p zeron-proto todo_item_tests
-cargo test --locked -p zeron-harness            # normalizers: claude, opencode, acp, codex, cursor
-cargo test --locked -p zeron-doc todo
-cargo test --locked -p zeron-ui --lib todo_panel
+cargo test --locked -p openagents-proto todo_item_tests
+cargo test --locked -p openagents-harness            # normalizers: claude, opencode, acp, codex, cursor
+cargo test --locked -p openagents-doc todo
+cargo test --locked -p openagents-ui --lib todo_panel
 ```
 
-Live: `ZERON_HARNESS=mock ZERON_MOCK_TODO=1 ZERON_MOCK_DELAY_MS=900` (see
+Live: `OPENAGENTS_HARNESS=mock OPENAGENTS_MOCK_TODO=1 OPENAGENTS_MOCK_DELAY_MS=900` (see
 `CONTRIBUTORS.md`) walks an 8-item list through every state.
 
 ## Not done

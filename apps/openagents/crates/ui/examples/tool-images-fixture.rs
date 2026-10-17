@@ -5,8 +5,8 @@ use gpui::{AppContext, Bounds, WindowBounds, WindowOptions, px, size};
 use image::{ImageEncoder, Rgba, RgbaImage};
 use serde_json::json;
 use std::{path::Path, sync::Arc};
-use zeron_proto::ToolCall;
-use zeron_ui::*;
+use openagents_proto::ToolCall;
+use openagents_ui::*;
 
 fn port() -> u16 {
     std::net::TcpListener::bind("127.0.0.1:0")
@@ -74,7 +74,7 @@ fn seed_workspace(root: &Path) -> anyhow::Result<()> {
     }
     std::fs::write(
         root.join("assets/logo.svg"),
-        r##"<svg xmlns="http://www.w3.org/2000/svg" width="420" height="160"><rect width="420" height="160" rx="24" fill="#1d1f27"/><circle cx="80" cy="80" r="48" fill="#7aa2ff"/><text x="150" y="98" font-size="44" fill="#e6e6e6" font-family="Geist">zeron</text></svg>"##,
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="420" height="160"><rect width="420" height="160" rx="24" fill="#1d1f27"/><circle cx="80" cy="80" r="48" fill="#7aa2ff"/><text x="150" y="98" font-size="44" fill="#e6e6e6" font-family="Geist">openagents</text></svg>"##,
     )?;
     std::fs::write(root.join("assets/notes.txt"), "not an image")?;
     // Decode-bound check: 15 MP source, previewed as a ≤1280×640 thumbnail.
@@ -234,7 +234,7 @@ async fn self_check(
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter("warn,zeron_ui::tool_images=debug")
+        .with_env_filter("warn,openagents_ui::tool_images=debug")
         .init();
     let temp = tempfile::tempdir()?;
     let workspace = temp.path().join("workspace");
@@ -248,10 +248,10 @@ fn main() -> anyhow::Result<()> {
     };
     let runtime = tokio::runtime::Runtime::new()?;
     let core = runtime.block_on(async {
-        zeron_engine::EngineCore::assemble(
+        openagents_engine::EngineCore::assemble(
             &temp.path().join("engine"),
-            Arc::new(zeron_engine::default_registry()),
-            zeron_proto::HarnessId::ClaudeCode,
+            Arc::new(openagents_engine::default_registry()),
+            openagents_proto::HarnessId::ClaudeCode,
             None,
         )
     })?;
@@ -265,7 +265,7 @@ fn main() -> anyhow::Result<()> {
     core.workspace
         .rename_chat("tool-images", "Tool image previews")?;
     let ipc_port = port();
-    let _ipc = runtime.block_on(zeron_engine::serve_ipc(ipc_port, core.rpc_service()))?;
+    let _ipc = runtime.block_on(openagents_engine::serve_ipc(ipc_port, core.rpc_service()))?;
     let data = temp.path().join("ui");
     std::fs::create_dir(&data)?;
     let boot = EngineBootConfig {
@@ -275,7 +275,7 @@ fn main() -> anyhow::Result<()> {
         edge_token: None,
         org_id: None,
         workos_client_id: None,
-        default_harness: zeron_proto::HarnessId::ClaudeCode,
+        default_harness: openagents_proto::HarnessId::ClaudeCode,
     };
     let handle = runtime.block_on(state::EngineHandle::bootstrap(boot.clone()))?;
     let chats = core.workspace.read_chats()?;
@@ -360,8 +360,8 @@ fn main() -> anyhow::Result<()> {
             let state = cx.new(|_| {
                 let mut s = state::AppState::new();
                 s.fixture_attachment_engine(handle);
-                s.connection = zeron_proto::view::ConnectionStatus::Ready;
-                s.workspace_scope = Some(zeron_proto::WorkspaceScope::Development);
+                s.connection = openagents_proto::view::ConnectionStatus::Ready;
+                s.workspace_scope = Some(openagents_proto::WorkspaceScope::Development);
                 s.local_device_id = Some(device.clone());
                 s.devices = vec![
                     serde_json::from_value(json!({"id": device, "name": "This device",
@@ -398,7 +398,7 @@ fn main() -> anyhow::Result<()> {
                     .await;
                 state.update(cx, |s, cx| {
                     s.receive_transcript_frame(
-                        zeron_doc::TranscriptFrame::Reset {
+                        openagents_doc::TranscriptFrame::Reset {
                             reset: serde_json::from_value(entries).unwrap(),
                         },
                         cx,

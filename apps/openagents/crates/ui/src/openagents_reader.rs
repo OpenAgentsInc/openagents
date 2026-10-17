@@ -3,8 +3,8 @@ use crate::{
     markdown::{self, BlockTree, render},
     theme::Theme,
 };
-use coder_account::reader::text_part;
-use coder_account::{
+use openagents_account::reader::text_part;
+use openagents_account::{
     Controller,
     history::{ExistingChat, LoadState},
     openagents::AttachmentRef,
@@ -28,7 +28,7 @@ pub enum ReaderEvent {
 }
 pub struct SavedReader {
     pub model: Arc<Reader>,
-    cloud_turns: Arc<coder_account::turns::Turns>,
+    cloud_turns: Arc<openagents_account::turns::Turns>,
     composer: gpui::Entity<crate::openagents_composer::AccountComposer>,
     pub snapshot: Snapshot,
     state: gpui::Entity<crate::state::AppState>,
@@ -62,7 +62,7 @@ impl SavedReader {
         cx: &mut Context<Self>,
     ) -> Self {
         let model = Reader::new();
-        let cloud_turns = coder_account::turns::Turns::new(model.clone());
+        let cloud_turns = openagents_account::turns::Turns::new(model.clone());
         let composer = cx.new(|cx| {
             crate::openagents_composer::AccountComposer::new(model.clone(), cloud_turns.clone(), cx)
         });
@@ -164,7 +164,7 @@ impl SavedReader {
             .update(cx, |composer, cx| composer.fixture_submit(text, cx));
     }
     #[cfg(feature = "account-fixture")]
-    pub fn fixture_turn(&self) -> coder_account::turns::Snapshot {
+    pub fn fixture_turn(&self) -> openagents_account::turns::Snapshot {
         self.cloud_turns.snapshot()
     }
     fn sync(&mut self, snapshot: Snapshot, cx: &mut Context<Self>) {
@@ -187,9 +187,9 @@ impl SavedReader {
         }
         if new_content || changed {
             let entries = self.model.target().map_or_else(
-                || coder_account::chat_entries::entries(&snapshot.messages, snapshot.epoch),
+                || openagents_account::chat_entries::entries(&snapshot.messages, snapshot.epoch),
                 |target| {
-                    coder_account::chat_entries::entries_for_chat(
+                    openagents_account::chat_entries::entries_for_chat(
                         &snapshot.messages,
                         snapshot.epoch,
                         &target.chat,
@@ -653,7 +653,7 @@ impl Render for SavedReader {
                 } else {
                     files = files.child(SharedString::from(format!(
                         "{label} · {}",
-                        if capture.state == coder_account::openagents::CaptureState::NotSaved {
+                        if capture.state == openagents_account::openagents::CaptureState::NotSaved {
                             "Not saved"
                         } else {
                             "Unavailable"

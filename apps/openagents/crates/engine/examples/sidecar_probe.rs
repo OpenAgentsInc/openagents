@@ -4,8 +4,8 @@
 use std::sync::Arc;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use zeron_engine::doc_host::{DocHost, DocHostConfig, EdgeConfig};
-use zeron_sync::DocsStore;
+use openagents_engine::doc_host::{DocHost, DocHostConfig, EdgeConfig};
+use openagents_sync::DocsStore;
 
 #[tokio::main]
 async fn main() {
@@ -35,7 +35,7 @@ async fn main() {
         store,
         DocHostConfig {
             device_id: "probe-dev".into(),
-            default_harness: zeron_proto::HarnessId::ClaudeCode,
+            default_harness: openagents_proto::HarnessId::ClaudeCode,
             edge: Some(EdgeConfig::with_static_token(
                 format!("http://{addr}"),
                 "probe-user",
@@ -44,7 +44,7 @@ async fn main() {
     );
     host.upload_tool_sidecar(
         "chat-probe",
-        zeron_doc::SidecarPayload {
+        openagents_doc::SidecarPayload {
             part_id: "part#1".into(),
             output: Some("full output body".into()),
             diff: None,

@@ -1,13 +1,13 @@
 //! Repos — this device's git repositories, branches, worktrees, and the folder
-//! browser (feature-inventory §3.5; port of zeron's `repos.ts` + `folder-lister.ts`).
+//! browser (feature-inventory §3.5; port of openagents's `repos.ts` + `folder-lister.ts`).
 //!
 //! Repos are device-local (paths differ per machine), so the known set is a plain
 //! JSON list (`{data_dir}/repos.json`) — no sync. Existing repos can live anywhere
 //! the user points us; cloned/created ones land in `{data_dir}/repos`. Worktrees are
-//! created under `~/.zeron/worktrees/<repoName>/<worktreeName>` (NOT the data
+//! created under `~/.openagents/worktrees/<repoName>/<worktreeName>` (NOT the data
 //! dir — worktrees are user-facing working checkouts), with an auto-generated name +
-//! matching `zeron/<name>` branch. Device preferences can choose another root;
-//! `ZERON_WORKTREES_DIR` takes precedence over those preferences.
+//! matching `openagents/<name>` branch. Device preferences can choose another root;
+//! `OPENAGENTS_WORKTREES_DIR` takes precedence over those preferences.
 //!
 //! All git access is via subprocess (`tokio::process`) — never libgit2.
 
@@ -18,7 +18,7 @@ use std::time::Duration;
 use futures::{StreamExt, stream};
 use sha2::{Digest, Sha256};
 
-use zeron_proto::{
+use openagents_proto::{
     DriveEntry, FileSearchMatch, FolderEntry, FolderListing, GitHistoryCommit,
     GitHistoryComparison, GitHistoryPage, GitHistoryRef, GitHistoryRefKind, HomeFolderMatch,
     HomeFolderSearchResult, Repo, RepoRef, Worktree,
@@ -59,7 +59,7 @@ const ADJECTIVES: &[&str] = &[
     "sharp", "gentle", "vivid", "amber", "cobalt",
 ];
 const NOUNS: &[&str] = &[
-    "otter", "harbor", "falcon", "cedar", "meadow", "zeron", "delta", "ember", "lynx", "maple",
+    "otter", "harbor", "falcon", "cedar", "meadow", "openagents", "delta", "ember", "lynx", "maple",
     "onyx", "quartz", "raven", "summit", "willow", "aspen",
 ];
 
@@ -108,7 +108,7 @@ pub(crate) fn expand_home(cwd: &str) -> Result<String, &'static str> {
 /// folder under `scratch_root`, created on first use — createChat only names
 /// it, possibly on another device.
 pub(crate) fn resolve_chat_cwd(cwd: &str, scratch_root: &Path) -> Result<String, String> {
-    if !zeron_proto::projectless::is_scratch_cwd(cwd) {
+    if !openagents_proto::projectless::is_scratch_cwd(cwd) {
         return expand_home(cwd).map_err(str::to_string);
     }
     let name = cwd.trim().rsplit('/').next().unwrap_or_default();
@@ -173,7 +173,7 @@ impl Repos {
     }
 
     /// Where projectless chats' folders live on this host: the engine data
-    /// dir's `scratch` (`~/.zeron/scratch` for the default data dir), as
+    /// dir's `scratch` (`~/.openagents/scratch` for the default data dir), as
     /// t3code keeps its under `~/.t3/scratch`.
     pub(crate) fn scratch_root(&self) -> PathBuf {
         self.inner.data_dir.join("scratch")
@@ -184,16 +184,16 @@ impl Repos {
     }
 
     /// Device preferences live in `data_dir`. New worktrees use the custom
-    /// location or `~/.zeron/worktrees`; a nonempty `$ZERON_WORKTREES_DIR`
+    /// location or `~/.openagents/worktrees`; a nonempty `$OPENAGENTS_WORKTREES_DIR`
     /// overrides both (including test isolation).
     pub fn new(data_dir: &Path, device_id: &str) -> Self {
         Self::with_worktree_preferences(
             data_dir,
             device_id,
             home_dir()
-                .join(coder_brand::HOME_WORK_DIR)
+                .join(openagents_brand::HOME_WORK_DIR)
                 .join("worktrees"),
-            std::env::var_os("ZERON_WORKTREES_DIR")
+            openagents_brand::env_var_os("OPENAGENTS_WORKTREES_DIR")
                 .filter(|s| !s.is_empty())
                 .map(PathBuf::from),
         )
@@ -232,14 +232,14 @@ impl Repos {
         }
     }
 
-    pub fn worktree_settings(&self) -> zeron_proto::WorktreeSettingsStatus {
+    pub fn worktree_settings(&self) -> openagents_proto::WorktreeSettingsStatus {
         self.inner.worktrees.status()
     }
 
     pub async fn set_worktree_settings(
         &self,
-        settings: zeron_proto::WorktreeSettings,
-    ) -> Result<zeron_proto::WorktreeSettingsStatus, EngineError> {
+        settings: openagents_proto::WorktreeSettings,
+    ) -> Result<openagents_proto::WorktreeSettingsStatus, EngineError> {
         self.inner.worktrees.set(settings).await
     }
 
@@ -781,7 +781,7 @@ impl Repos {
     }
 
     /// Public commit history in topological order. Only user-facing branches,
-    /// remotes, and tags seed the walk, so Zeron's internal refs never leak
+    /// remotes, and tags seed the walk, so OpenAgents's internal refs never leak
     /// into the graph or keep otherwise-unreachable checkpoints visible.
     pub async fn history(
         &self,
@@ -1344,7 +1344,7 @@ impl Repos {
     // ── worktrees ───────────────────────────────────────────────────────────
 
     /// `git worktree add` an isolated checkout under
-    /// `{worktrees_root}/<repoName>/<generatedName>`, on a fresh `zeron/<name>`
+    /// `{worktrees_root}/<repoName>/<generatedName>`, on a fresh `openagents/<name>`
     /// branch off `branch`.
     pub async fn create_worktree(
         &self,
@@ -1391,7 +1391,7 @@ impl Repos {
                 ADJECTIVES[(seed % ADJECTIVES.len() as u64) as usize],
                 NOUNS[((seed / 31) % NOUNS.len() as u64) as usize]
             );
-            if !base.join(&candidate).exists() && !existing.contains(&format!("zeron/{candidate}"))
+            if !base.join(&candidate).exists() && !existing.contains(&format!("openagents/{candidate}"))
             {
                 name = Some(candidate);
                 break;
@@ -1403,7 +1403,7 @@ impl Repos {
         #[cfg(windows)]
         validate_windows_worktree_path(&path.to_string_lossy())?;
         std::fs::create_dir_all(&base)?;
-        let branch_name = format!("zeron/{name}");
+        let branch_name = format!("openagents/{name}");
         #[cfg(windows)]
         self.add_worktree_in_two_steps(repo_path, &path, &branch_name, branch)
             .await?;
@@ -1539,10 +1539,10 @@ impl Repos {
         .is_ok()
     }
 
-    /// Rename a zeron-created worktree branch after its chat's generated title
-    /// (port of zeron's `renameWorktreeBranch`). Guards:
+    /// Rename a openagents-created worktree branch after its chat's generated title
+    /// (port of openagents's `renameWorktreeBranch`). Guards:
     /// - respect an external checkout/rename: only act while the worktree is still
-    ///   on `expected_branch` AND that branch is the original `zeron/<folderName>`;
+    ///   on `expected_branch` AND that branch is the original `openagents/<folderName>`;
     /// - a title-slug collision gets a stable 6-hex suffix (hash of the worktree
     ///   path); a collision on THAT too fails.
     ///
@@ -1559,7 +1559,7 @@ impl Repos {
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
-        if current != expected_branch || expected_branch != format!("zeron/{folder}") {
+        if current != expected_branch || expected_branch != format!("openagents/{folder}") {
             return Ok(current);
         }
         let preferred = worktree_branch_from_title(title);
@@ -1588,7 +1588,7 @@ impl Repos {
     }
 
     /// Best-effort worktree removal (if it still exists), then prune stale refs.
-    /// Deletes the worktree's branch ONLY when zeron created it (`zeron/…`) — the
+    /// Deletes the worktree's branch ONLY when openagents created it (`openagents/…`) — the
     /// user may have checked out their own branch inside the worktree.
     pub async fn delete_worktree(
         &self,
@@ -1618,7 +1618,7 @@ impl Repos {
             }
         }
         let _ = self.git(&["worktree", "prune"], Some(repo_path)).await;
-        if branch.starts_with("zeron/") {
+        if branch.starts_with("openagents/") {
             let _ = self.git(&["branch", "-D", &branch], Some(repo_path)).await;
         }
         Ok(())
@@ -1692,7 +1692,7 @@ impl Repos {
     /// The walk runs on a DETACHED OS thread (not the tokio blocking pool): a
     /// readdir wedged in the kernel can't be cancelled, and a poisoned blocking
     /// pool — or a runtime shutdown waiting on it — must never be possible. On
-    /// timeout the thread is simply abandoned (the zeron backend's disposable
+    /// timeout the thread is simply abandoned (the openagents backend's disposable
     /// worker, minus the terminate()).
     #[doc(hidden)]
     pub async fn list_folders_with(
@@ -2336,8 +2336,8 @@ fn canonical_search_root(root: &Path) -> Result<PathBuf, EngineError> {
         .map_err(|e| EngineError::Other(format!("could not search workspace: {e}")))
 }
 
-/// Turn a generated chat title into the semantic portion of a Zeron branch
-/// (port of zeron's `worktreeBranchFromTitle`). Zeron NFKD-normalizes accented
+/// Turn a generated chat title into the semantic portion of a OpenAgents branch
+/// (port of openagents's `worktreeBranchFromTitle`). OpenAgents NFKD-normalizes accented
 /// letters first; native keeps it ASCII-only (generated titles are Title Case
 /// English), so non-ASCII characters collapse into the `-` separator.
 pub fn worktree_branch_from_title(title: &str) -> String {
@@ -2354,7 +2354,7 @@ pub fn worktree_branch_from_title(title: &str) -> String {
     }
     slug.truncate(48);
     let slug = slug.trim_matches('-');
-    format!("zeron/{}", if slug.is_empty() { "update" } else { slug })
+    format!("openagents/{}", if slug.is_empty() { "update" } else { slug })
 }
 
 fn bounded_field(value: &str, max_chars: usize) -> String {
@@ -2626,7 +2626,7 @@ mod tests {
                 .await
                 .unwrap()
                 .iter()
-                .all(|b| !b.starts_with("zeron/"))
+                .all(|b| !b.starts_with("openagents/"))
         );
 
         // A sibling location for the same parent is fine.
@@ -2690,7 +2690,7 @@ mod tests {
         let (tmp, repos, repo) = two_step_fixture(0).await;
         let path = tmp.path().join("new checkout");
         repos
-            .add_worktree_in_two_steps(&repo, &path, "zeron/test", "main")
+            .add_worktree_in_two_steps(&repo, &path, "openagents/test", "main")
             .await
             .unwrap();
         let head = repos
@@ -2733,7 +2733,7 @@ mod tests {
             .unwrap();
         let path = tmp.path().join("failed checkout");
         let error = repos
-            .add_worktree_in_two_steps(&repo, &path, "zeron/failed", "main")
+            .add_worktree_in_two_steps(&repo, &path, "openagents/failed", "main")
             .await
             .unwrap_err();
         assert!(error.to_string().contains("smudge"), "{error}");
@@ -2757,7 +2757,7 @@ mod tests {
         let path = tmp.path().join("hook failure");
         assert!(
             repos
-                .add_worktree_in_two_steps(&repo, &path, "zeron/hook-failure", "main")
+                .add_worktree_in_two_steps(&repo, &path, "openagents/hook-failure", "main")
                 .await
                 .is_err()
         );

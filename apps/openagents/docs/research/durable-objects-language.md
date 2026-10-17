@@ -1,6 +1,6 @@
 # Durable Objects: Rust (workers-rs) vs TypeScript — Decision (2026-07)
 
-## Decision: KEEP THE DOs IN TYPESCRIPT (reuse/adapt zeron's existing apps/edge).
+## Decision: KEEP THE DOs IN TYPESCRIPT (reuse/adapt openagents's existing apps/edge).
 
 Deciding fact: Loro's core is already Rust compiled to wasm — loro-crdt npm wraps the same Rust
 engine a workers-rs build would link. Rewriting the DO layer in Rust buys ~zero performance on the
@@ -25,7 +25,7 @@ only CPU-heavy path (compaction/snapshot export) while adding real risk.
 - Pricing has no language-sensitive CPU component; dominant cost lever is maximizing hibernation.
 - Ecosystem: production CRDT-DO backends (pluv, y-durableobjects, PartyKit-style) are TS + wasm cores.
 
-## Consequences for zeron
+## Consequences for openagents
 - apps/edge (session-room, device-room, worker front, auth, R2 attachments) carries over as the
   TS edge — port/adapt, don't rewrite. All 14 smoke assertions already exist.
 - Rust backend + gpui app use the `loro` Rust crate 1.13.7; binary format identical to JS 1.13.7

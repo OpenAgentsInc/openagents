@@ -129,7 +129,7 @@ def main():
     args.scratch.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    env = dict(os.environ, ZERON_SKIP_CORE="1", ZERON_ACCOUNT_FIXTURE="1", CARGO_TARGET_DIR=str(args.target_dir),
+    env = dict(os.environ, OPENAGENTS_SKIP_CORE="1", OPENAGENTS_ACCOUNT_FIXTURE="1", CARGO_TARGET_DIR=str(args.target_dir),
                TEST_RUNNER_CODER_HISTORY_FIXTURE=f"http://127.0.0.1:{server.server_port}")
     if args.public_history:
         env["TEST_RUNNER_CODER_PUBLIC_HISTORY_CONFIG"] = json.dumps({"key_url": f"http://127.0.0.1:{server.server_port}/fixture-key", "chat": chat_ids[0]})
@@ -138,10 +138,10 @@ def main():
     test = "testSharedProjectsWithoutComputer" if args.projects else "testPublicCloudChat" if args.public_chat else "testPublicSavedAccountHistory" if args.public_history else "testRichAccountHistory" if args.rich else "testLiveAccountHistory" if args.live else "testSavedAccountHistory"
     try:
         with (args.scratch / "history-uitest.log").open("w") as log:
-            subprocess.run(["xcodebuild", "test", "-project", "apps/ios/Zeron.xcodeproj", "-scheme", "Zeron", "-configuration", "Debug",
+            subprocess.run(["xcodebuild", "test", "-project", "apps/ios/OpenAgents.xcodeproj", "-scheme", "OpenAgents", "-configuration", "Debug",
                             "-destination", "id=" + args.simulator, "-derivedDataPath", str(args.target_dir / "ios-derived"),
                             "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-", "ARCHS=arm64", "SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CODER_ACCOUNT_FIXTURE",
-                            "-only-testing:ZeronUITests/OpenAgentsHistoryTests/" + test], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
+                            "-only-testing:OpenAgentsUITests/OpenAgentsHistoryTests/" + test], cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
         print("Phone shared projects: Home rows, empty project, and shared chat without a computer passed." if args.projects else
               "Public phone cloud reply and sign-out passed." if args.public_chat else "Public phone history: complete 205-message read and sign-out passed." if args.public_history else
               "Phone account history: paging, full text, file, archives, projects, and sign-out passed.")

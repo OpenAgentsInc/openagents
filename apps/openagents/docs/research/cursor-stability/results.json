@@ -181,12 +181,12 @@
   "limitations": [
     "Finite Linux tests; not a guarantee against future provider failures.",
     "Actual provider ERROR_NOT_LOGGED_IN incident covered by fixture, not reproduced live.",
-    "New recovery applies to Zeron-managed per-agent stores; remote owning engine must be updated.",
+    "New recovery applies to OpenAgents-managed per-agent stores; remote owning engine must be updated.",
     "Model last-good cache is process-local.",
     "Cancelling the first turn before a provider checkpoint exists can lose that unfinished turn context on resume; established checkpoint recall passed."
   ],
   "harnessTests": {
-    "command": "cargo test -p zeron-harness",
+    "command": "cargo test -p openagents-harness",
     "passed": 297,
     "failed": 0,
     "ignored": 10

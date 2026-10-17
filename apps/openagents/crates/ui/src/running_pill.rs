@@ -10,7 +10,7 @@ use gpui::{
 };
 
 use crate::loaders;
-use crate::motion::{self, ZERON_PULSE};
+use crate::motion::{self, OPENAGENTS_PULSE};
 use crate::theme::Theme;
 
 /// Pill height. The sidebar's status slot is 13px and its rows 29px; 16px
@@ -171,7 +171,7 @@ impl Render for PillView {
         let spec = self.spec.clone();
         let font_size = pill_font_size(window);
         let line = spec.shape(window, font_size);
-        let delta = motion::pulse_delta_slow(&ZERON_PULSE, cx.entity_id(), cx);
+        let delta = motion::pulse_delta_slow(&OPENAGENTS_PULSE, cx.entity_id(), cx);
         let wave = motion::lerp(0.4, 1.0, (motion::pulse_opacity(delta) - 0.08) / 0.92);
         canvas(
             |_, _, _| (),

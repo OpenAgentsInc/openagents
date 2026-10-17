@@ -5,7 +5,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use coder_account::{
+use openagents_account::{
     Controller,
     desktop::{self, MemoryStore},
     openagents::{Client, Deployment},
@@ -18,8 +18,8 @@ use std::{
     },
     time::Duration,
 };
-use zeron_engine::{AuthState, Engine, EngineConfig, EngineProfile, WorkspaceScope};
-use zeron_proto::HarnessId;
+use openagents_engine::{AuthState, Engine, EngineConfig, EngineProfile, WorkspaceScope};
+use openagents_proto::HarnessId;
 #[tokio::test]
 async fn sdk_identity_drives_synced_rooms_and_logout_removes_authority() {
     let root = tempfile::tempdir().unwrap();
@@ -136,7 +136,7 @@ async fn sdk_identity_drives_synced_rooms_and_logout_removes_authority() {
 
 #[tokio::test]
 async fn local_boot_does_not_wait_for_a_blocked_credential_restore() {
-    use coder_account::openagents::{CredentialRecord, CredentialStore, StorageError};
+    use openagents_account::openagents::{CredentialRecord, CredentialStore, StorageError};
     use std::sync::Condvar;
     struct Store(Arc<(Mutex<bool>, Condvar)>);
     impl CredentialStore for Store {

@@ -1,12 +1,12 @@
 //! Round 17 probe: RunRequest.attachments must survive the command ledger's
 //! loro round trip.
 
-use zeron_doc::{SessionCommandEntry, SessionCommandPayload, SessionCommandStatus, SessionDoc};
+use openagents_doc::{SessionCommandEntry, SessionCommandPayload, SessionCommandStatus, SessionDoc};
 
 #[test]
 fn run_request_attachments_survive_command_round_trip() {
     let doc = SessionDoc::init("chat-1").unwrap();
-    let request = zeron_proto::RunRequest {
+    let request = openagents_proto::RunRequest {
         mcp: None,
         prompt: "p".into(),
         harness: None,
@@ -14,7 +14,7 @@ fn run_request_attachments_survive_command_round_trip() {
         reasoning: None,
         model_options: Default::default(),
         cwd: "/tmp".into(),
-        sandbox: zeron_proto::SandboxLevel::WorkspaceWrite,
+        sandbox: openagents_proto::SandboxLevel::WorkspaceWrite,
         auto_approve: true,
         attachments: vec!["/tmp/a.png".into()],
         worktree: None,

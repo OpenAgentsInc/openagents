@@ -1,5 +1,5 @@
 [package]
-name = "zeron-markdown"
+name = "openagents-markdown"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

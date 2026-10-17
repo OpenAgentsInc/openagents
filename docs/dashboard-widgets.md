@@ -2,7 +2,7 @@
 
 2026-10-16. The implementation is tracked in
 [#11912](https://github.com/OpenAgentsInc/openagents/issues/11912). Home uses a
-shared Rust controller in `apps/openagents/crates/coder-account`, native iOS
+shared Rust controller in `apps/openagents/crates/account`, native iOS
 and GPUI adapters, and the [public Home SDK](sdk/dashboard.md). Android and
 other app hosts can mount the same Rust cards when those hosts are available.
 

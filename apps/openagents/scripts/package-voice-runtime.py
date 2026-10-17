@@ -112,7 +112,7 @@ def install(package, destination, target=None):
                     subprocess.run(['codesign', '--verify', '--strict', str(path)], check=True)
         hashes = {p.relative_to(stage).as_posix(): checksum(p)
                   for p in sorted(stage.rglob('*')) if p.is_file()}
-        (stage / 'zeron-runtime.json').write_text(json.dumps({
+        (stage / 'openagents-runtime.json').write_text(json.dumps({
             'protocol': 1, 'buildCommit': BUILD, 'sourceVersion': VERSION,
             'target': target, 'sha256': hashes}, indent=2) + '\n')
         if destination.exists():
@@ -130,7 +130,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     target = args.target or host_target()
     if args.download:
-        with tempfile.TemporaryDirectory(prefix='zeron-voice-package-') as temporary:
+        with tempfile.TemporaryDirectory(prefix='openagents-voice-package-') as temporary:
             package = download_package(Path(temporary), target)
             install(package, args.destination.resolve(), target)
     else:

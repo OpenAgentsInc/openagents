@@ -16,11 +16,11 @@ args = parser.parse_args()
 out = args.output.resolve()
 out.mkdir(parents=True, exist_ok=False)
 name = out.name
-binary = out / 'profiled-zeron'
+binary = out / 'profiled-openagents'
 shutil.copy2(args.binary, binary)
 settings = json.loads(args.settings.read_text())
 (out / 'ui-settings.json').write_text(json.dumps(settings))
-env = os.environ | {'DISPLAY': args.display, 'WAYLAND_DISPLAY': '', 'ZERON_IPC_PORT': args.ipc_port, 'ZERON_HARNESS': 'mock', 'ZERON_WORKOS_CLIENT_ID': '', 'ZERON_EDGE_URL': 'http://127.0.0.1:1', 'ZERON_DATA_DIR': str(out), 'RUST_LOG': 'warn', 'LP_NUM_THREADS': '4'}
+env = os.environ | {'DISPLAY': args.display, 'WAYLAND_DISPLAY': '', 'OPENAGENTS_IPC_PORT': args.ipc_port, 'OPENAGENTS_HARNESS': 'mock', 'OPENAGENTS_WORKOS_CLIENT_ID': '', 'OPENAGENTS_EDGE_URL': 'http://127.0.0.1:1', 'OPENAGENTS_DATA_DIR': str(out), 'RUST_LOG': 'warn', 'LP_NUM_THREADS': '4'}
 p = subprocess.Popen([str(binary)], env=env, stdout=open(out / 'ui.log', 'w'), stderr=subprocess.STDOUT, start_new_session=True)
 hz = os.sysconf('SC_CLK_TCK')
 
@@ -90,7 +90,7 @@ def phase(name, fn):
     print(json.dumps(result), flush=True)
 try:
     time.sleep(2)
-    ids = subprocess.check_output(['xdotool', 'search', '--class', 'zeron'], env=env, text=True).splitlines()
+    ids = subprocess.check_output(['xdotool', 'search', '--class', 'openagents'], env=env, text=True).splitlines()
     wid = ids[-1]
     key('windowmap', wid, 'windowsize', wid, '1280', '900', 'windowmove', wid, '0', '0', 'windowfocus', wid)
     time.sleep(1)

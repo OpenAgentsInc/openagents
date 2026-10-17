@@ -15,7 +15,7 @@
 
 use std::time::{Duration, Instant};
 
-use zeron_rpc::{RpcClient, connect_ws, methods};
+use openagents_rpc::{RpcClient, connect_ws, methods};
 
 const STEP_TIMEOUT: Duration = Duration::from_secs(90);
 const MOCK_TEXT: &str = "Mock harness reporting in.";
@@ -97,12 +97,12 @@ async fn wait_stream<T>(
 }
 
 fn apply_transcript_item(
-    current: &mut Vec<zeron_doc::SessionMessageEntry>,
+    current: &mut Vec<openagents_doc::SessionMessageEntry>,
     item: &serde_json::Value,
 ) -> Result<(), String> {
-    let frame: zeron_doc::TranscriptFrame =
+    let frame: openagents_doc::TranscriptFrame =
         serde_json::from_value(item.clone()).map_err(|err| err.to_string())?;
-    zeron_doc::apply_transcript_frame(current, frame).map_err(|err| err.to_string())
+    openagents_doc::apply_transcript_frame(current, frame).map_err(|err| err.to_string())
 }
 
 #[tokio::main]
@@ -249,8 +249,8 @@ async fn main() {
             apply_transcript_item(&mut transcript, item)
                 .unwrap_or_else(|err| fail(&format!("assistant transcript on B: {err}")));
             let entry = transcript.iter().find(|entry| {
-                entry.role == zeron_doc::MessageRole::Assistant
-                    && entry.status == Some(zeron_doc::MessageStatus::Complete)
+                entry.role == openagents_doc::MessageRole::Assistant
+                    && entry.status == Some(openagents_doc::MessageStatus::Complete)
             })?;
             let device = entry.device_id.clone();
             let text = serde_json::to_string(entry)
@@ -318,7 +318,7 @@ mod tests {
         assert_eq!(transcript[0].device_id, "device-a");
         assert_eq!(
             transcript[0].status,
-            Some(zeron_doc::MessageStatus::Complete)
+            Some(openagents_doc::MessageStatus::Complete)
         );
     }
 }

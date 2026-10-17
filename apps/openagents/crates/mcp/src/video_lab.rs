@@ -52,7 +52,7 @@ pub fn script() -> Option<PathBuf> {
             .find(|path| path.is_file())
     });
     [
-        std::env::var_os("OPENAGENTS_VIDEO_LAB_SCRIPT").map(PathBuf::from),
+        openagents_brand::env_var_os("OPENAGENTS_VIDEO_LAB_SCRIPT").map(PathBuf::from),
         from_exe,
         home.map(|h| h.join("work/openagents/scripts/film/lab.py")),
     ]
@@ -654,7 +654,7 @@ mod tests {
             "compare": {"at": 86.0, "a": {"version": 2, "summary": "Take 2", "video": "http://127.0.0.1:8792/media/b.mp4"},
                         "b": {"version": 3, "summary": "Plays through", "video": null}}});
         let plain = card_script(card.as_object().unwrap(), "Episode 290", None, 1.7778);
-        zeron_visual::check(&plain, 1).unwrap_or_else(|e| panic!("{e}\n{plain}"));
+        openagents_visual::check(&plain, 1).unwrap_or_else(|e| panic!("{e}\n{plain}"));
         let with = card_script(
             card.as_object().unwrap(),
             "Episode 290",
@@ -665,7 +665,7 @@ mod tests {
             "picture.png".to_owned(),
             std::sync::Arc::<[u8]>::from(tiny_png()),
         )]);
-        zeron_visual::check_with_assets(&with, 1, zeron_visual::Assets::new(files))
+        openagents_visual::check_with_assets(&with, 1, openagents_visual::Assets::new(files))
             .unwrap_or_else(|e| panic!("{e}\n{with}"));
         let rendering = json!({"card": "video_lab", "doc": "d", "version": 1, "quality": "preview",
             "job": {"state": "running", "estimate": 166.0}, "player": "http://x/player"});

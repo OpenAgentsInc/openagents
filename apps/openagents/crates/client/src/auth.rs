@@ -30,7 +30,7 @@ pub const PRODUCTION_EDGE_URL: &str = "https://sync.openagents.com";
 pub const WORKOS_CLIENT_ID: &str = "client_01KWD0EAKZKD50YCQJNYSRE4BY";
 pub const WORKOS_API_BASE: &str = "https://api.workos.com";
 /// OAuth redirect: `openagents://callback?code=…&state=…`.
-pub const CALLBACK_SCHEME: &str = coder_brand::URL_SCHEME;
+pub const CALLBACK_SCHEME: &str = openagents_brand::URL_SCHEME;
 
 fn percent_encode(value: &str) -> String {
     let mut out = String::with_capacity(value.len());

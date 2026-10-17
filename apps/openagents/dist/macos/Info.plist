@@ -10,9 +10,9 @@
     <key>CFBundleDisplayName</key>
     <string>OpenAgents</string>
     <key>CFBundleExecutable</key>
-    <string>zeron</string>
+    <string>openagents</string>
     <key>CFBundleIconFile</key>
-    <string>coder.icns</string>
+    <string>openagents.icns</string>
     <key>CFBundleIdentifier</key>
     <string>com.openagents.desktop</string>
     <key>CFBundleInfoDictionaryVersion</key>

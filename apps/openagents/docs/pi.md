@@ -1,18 +1,18 @@
 # Pi native RPC
 
-Zeron launches `pi --mode rpc` directly. Pi 0.85.1 or newer is required; 0.85.1
+OpenAgents launches `pi --mode rpc` directly. Pi 0.85.1 or newer is required; 0.85.1
 is covered by a real-process test with a local mock provider. Protocol details
 and the acceptance barrier are in [PROTOCOL.md](../crates/harness/src/pi/PROTOCOL.md).
 
 Install and authenticate Pi through its CLI. `PI_EXECUTABLE` selects an explicit
-Pi executable; otherwise Zeron uses its usual PATH, login-shell and install-dir
+Pi executable; otherwise OpenAgents uses its usual PATH, login-shell and install-dir
 discovery. `PI_CODING_AGENT_DIR` continues to control Pi settings and credentials.
-`PI_ACP_EXECUTABLE` and `PI_ACP_PI_COMMAND` are no longer used. Zeron neither
+`PI_ACP_EXECUTABLE` and `PI_ACP_PI_COMMAND` are no longer used. OpenAgents neither
 installs nor launches `pi-acp`, and existing adapter files need not be deleted.
 
-Sessions retain their native UUID and JSONL history. Zeron records the UUID to
-absolute file mapping in `PI_CODING_AGENT_DIR/zeron-sessions` (normally
-`~/.pi/agent/zeron-sessions`). For older chats it also reads
+Sessions retain their native UUID and JSONL history. OpenAgents records the UUID to
+absolute file mapping in `PI_CODING_AGENT_DIR/openagents-sessions` (normally
+`~/.pi/agent/openagents-sessions`). For older chats it also reads
 `~/.pi/pi-acp/session-map.json`, then searches native session directories,
 including configured `sessionDir` locations. It validates the session header
 before reopening the exact file. A session that cannot be found starts a new
@@ -31,39 +31,39 @@ process; model switches do not persist global defaults. Commands and skills
 are discovered in the workspace. Pi controls project-extension trust.
 
 Steering queues at a model step boundary and starts immediately when idle.
-When no steering mode is configured, Zeron selects Pi's `all` mode, so messages
+When no steering mode is configured, OpenAgents selects Pi's `all` mode, so messages
 queued before the next model call enter that call together. Pi persists this
 mode in its global settings. A mode already set in Pi's global or project
 settings (including one chosen with `/steering`) is never overwritten.
 Each input is sent as soon as the preceding preflight and ordered state query
 finish, without waiting for earlier queued inputs to be consumed or adding a
 batching delay. Inputs arriving after a model call starts belong to a later step.
-Zeron confirms each original message only when Pi consumes it. Extension commands
+OpenAgents confirms each original message only when Pi consumes it. Extension commands
 and inputs handled without a model run retain serialized delivery.
 Interrupt clears queues, aborts
 the run and terminates the owned process tree after a grace period. A completed
 model iteration (`agent_end`) alone does not close the turn: retries,
 compaction and handled extension commands follow the native lifecycle.
 
-Extension `select`, `confirm`, `input` and `editor` dialogs use Zeron questions.
+Extension `select`, `confirm`, `input` and `editor` dialogs use OpenAgents questions.
 Editor content preserves whitespace and prefill; desktop supports Shift+Enter
 and iOS uses a multiline editor. Timeouts and interruption remove pending
 questions. Notifications appear in the transcript. Terminal-only extension UI
 such as widgets and custom TUI components is not rendered.
 
-Zeron's existing delegation uses a temporary MCP bridge loaded with
+OpenAgents's existing delegation uses a temporary MCP bridge loaded with
 `--extension`. Tools and chat identity retain the existing engine contract;
 no Pi subagent extension is installed. Image attachments are sent as native
-image blocks; image-only tool results do not yet render inline in Zeron.
+image blocks; image-only tool results do not yet render inline in OpenAgents.
 
 Validation:
 
 ```sh
-cargo test -p zeron-harness --features native-fixture
-cargo test -p zeron-engine --lib --test pi_resume --test acp_lifecycle --test message_queue --test e2e
-cargo test -p zeron-harness --test pi_live -- --ignored --nocapture
-cargo check -p zeron-ui --tests
-cargo build -p zeron-mobile --features bindgen
+cargo test -p openagents-harness --features native-fixture
+cargo test -p openagents-engine --lib --test pi_resume --test acp_lifecycle --test message_queue --test e2e
+cargo test -p openagents-harness --test pi_live -- --ignored --nocapture
+cargo check -p openagents-ui --tests
+cargo build -p openagents-mobile --features bindgen
 ```
 
 The ignored Pi test requires an installed CLI and uses isolated settings and a

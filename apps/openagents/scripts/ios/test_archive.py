@@ -14,15 +14,15 @@ class ArchiveChecks(unittest.TestCase):
     def setUp(self):
         self.scratch = tempfile.TemporaryDirectory()
         self.addCleanup(self.scratch.cleanup)
-        self.app = Path(self.scratch.name) / "Zeron.app"
+        self.app = Path(self.scratch.name) / "OpenAgents.app"
         self.app.mkdir()
         self.version = {"version": "1.0.0", "build": "1002"}
         self.info = {"CFBundleIdentifier": "com.openagents.app",
                      "CFBundleShortVersionString": "1.0.0", "CFBundleVersion": "1002",
-                     "CFBundleExecutable": "Zeron", "ITSAppUsesNonExemptEncryption": False}
+                     "CFBundleExecutable": "OpenAgents", "ITSAppUsesNonExemptEncryption": False}
         self.write_info()
-        (self.app / "Zeron").write_text("clean binary strings")
-        self.privacy = plistlib.loads((archive.ROOT / "apps/ios/Zeron/PrivacyInfo.xcprivacy").read_bytes())
+        (self.app / "OpenAgents").write_text("clean binary strings")
+        self.privacy = plistlib.loads((archive.ROOT / "apps/ios/OpenAgents/PrivacyInfo.xcprivacy").read_bytes())
         self.write_privacy()
 
     def write_info(self):
@@ -46,7 +46,7 @@ class ArchiveChecks(unittest.TestCase):
                     archive.verify(self.app, self.version)
 
     def test_wrong_bundle_is_rejected(self):
-        self.info["CFBundleIdentifier"] = "sh.zeron.ios"
+        self.info["CFBundleIdentifier"] = "sh.openagents.ios"
         self.write_info()
         with self.assertRaises(AssertionError):
             archive.verify(self.app, self.version)
@@ -74,7 +74,7 @@ class ArchiveChecks(unittest.TestCase):
     def test_fixture_and_push_permission_code_are_rejected(self):
         for symbol in ("sign_in_from_fixture", "requestAuthorizationWithOptions"):
             with self.subTest(symbol=symbol):
-                (self.app / "Zeron").write_text(symbol)
+                (self.app / "OpenAgents").write_text(symbol)
                 with self.assertRaises(AssertionError):
                     archive.verify(self.app, self.version)
 

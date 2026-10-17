@@ -94,7 +94,7 @@ fn main() {
             }
             "set_steering_mode" => {
                 steering_all.store(v["mode"] == "all", Ordering::SeqCst);
-                // Recorded so tests can prove when Zeron leaves the mode alone.
+                // Recorded so tests can prove when OpenAgents leaves the mode alone.
                 std::fs::write("steering-mode", v["mode"].as_str().unwrap_or("")).unwrap();
                 response(&v, json!({}));
             }

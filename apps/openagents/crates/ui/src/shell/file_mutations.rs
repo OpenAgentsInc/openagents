@@ -1,7 +1,7 @@
 //! Coordinate structural changes across every editor of the affected workspace.
 use super::*;
 use crate::files::{client::WorkspaceFilesClient, mutations::MutationIntent};
-use zeron_proto::{
+use openagents_proto::{
     DeleteWorkspaceEntryRequest, MoveWorkspaceEntryRequest, WorkspaceMutationOutcome,
 };
 
@@ -96,7 +96,7 @@ impl Shell {
                 if waited_for_save {
                     let page = client
                         .list_directory_snapshot(
-                            zeron_proto::ListWorkspaceDirectoryRequest {
+                            openagents_proto::ListWorkspaceDirectoryRequest {
                                 target: intent.origin.context.target.clone(),
                                 directory: crate::files::model::parent_path(&intent.entry.path)
                                     .unwrap_or_default(),
@@ -162,7 +162,7 @@ impl Shell {
                             expected_source_revision: revision,
                             expected_kind: intent.entry.kind,
                             recursive: intent.entry.kind
-                                == zeron_proto::WorkspaceEntryKind::Directory,
+                                == openagents_proto::WorkspaceEntryKind::Directory,
                         })
                         .await
                         .map_err(|e| e.to_string())
@@ -266,7 +266,7 @@ mod tests {
                         edge_token: None,
                         org_id: None,
                         workos_client_id: None,
-                        default_harness: zeron_proto::HarnessId::Mock,
+                        default_harness: openagents_proto::HarnessId::Mock,
                     },
                     cx,
                 );
@@ -407,7 +407,7 @@ mod tests {
             origin: files.interaction_origin(cx).unwrap(),
             entry: crate::files::test_support::entry(
                 "src/a.txt",
-                zeron_proto::WorkspaceEntryKind::File,
+                openagents_proto::WorkspaceEntryKind::File,
             ),
             destination: Some("dest/a.txt".into()),
         });

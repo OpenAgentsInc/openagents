@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exercise real browser storage with synthetic data across independent processes.
 
-Linux: xvfb-run -a python3 scripts/test-browser-storage.py --helper /path/to/zeron-webkit
+Linux: xvfb-run -a python3 scripts/test-browser-storage.py --helper /path/to/openagents-webkit
 Native shell (Linux/macOS): python3 scripts/test-browser-storage.py --fixture /path/to/browser-fixture
 """
 import argparse
@@ -175,7 +175,7 @@ def main():
     server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     origin = f'http://127.0.0.1:{server.server_port}'
-    with tempfile.TemporaryDirectory(prefix='zeron-browser-storage-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='openagents-browser-storage-') as temporary:
         root = Path(temporary)
         def run(profile, mode):
             if args.helper:
@@ -189,9 +189,9 @@ def main():
                 finally:
                     browser.close()
             else:
-                env = dict(os.environ, ZERON_BROWSER_STORAGE_ROOT=str(root),
-                           ZERON_BROWSER_STORAGE_PROFILE=profile,
-                           ZERON_BROWSER_STORAGE_URL=origin + '/' + mode)
+                env = dict(os.environ, OPENAGENTS_BROWSER_STORAGE_ROOT=str(root),
+                           OPENAGENTS_BROWSER_STORAGE_PROFILE=profile,
+                           OPENAGENTS_BROWSER_STORAGE_URL=origin + '/' + mode)
                 captures = root / f'{profile}-{mode}'
                 result_file = captures / 'storage-result.json'
                 result_file.unlink(missing_ok=True)
@@ -227,9 +227,9 @@ def main():
             cleanup_errors = []
             if args.fixture and os.uname().sysname == 'Darwin':
                 for profile in ('a', 'a-other', 'b'):
-                    env = dict(os.environ, ZERON_BROWSER_STORAGE_ROOT=str(root),
-                               ZERON_BROWSER_STORAGE_PROFILE=profile,
-                               ZERON_BROWSER_STORAGE_URL='cleanup')
+                    env = dict(os.environ, OPENAGENTS_BROWSER_STORAGE_ROOT=str(root),
+                               OPENAGENTS_BROWSER_STORAGE_PROFILE=profile,
+                               OPENAGENTS_BROWSER_STORAGE_URL='cleanup')
                     captures = root / f'{profile}-cleanup'
                     result_file = captures / 'storage-result.json'
                     try:

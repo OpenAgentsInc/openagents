@@ -1,7 +1,7 @@
 //! DocHost — per-chat `SessionDoc` handles: snapshot persistence (debounced), edge room
 //! sync (offline-tolerant), and the HOST-ONLY durable command executor.
 //!
-//! Pragmatic port of zeron's `session-docs.ts` + the `main.ts` executor (spec:
+//! Pragmatic port of openagents's `session-docs.ts` + the `main.ts` executor (spec:
 //! feature-inventory §3.3, ARCHITECTURE §2 "command plane"):
 //! - the doc IS the outbox: commands and user entries commit locally and sync whenever a
 //!   room connection exists; the engine is fully functional with sync disabled;
@@ -31,14 +31,14 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use zeron_doc::{
+use openagents_doc::{
     COMMAND_DEFAULT_TTL_MS, CommandBasedOn, CommandDisposition, DocError, EvaluationContext,
     MessagePart, MessageRole, MessageStatus, QueueDeliveryGate, QueuedMessage, SessionCommandEntry,
     SessionCommandPayload, SessionCommandStatus, SessionDoc, SessionMessageEntry, SubagentStatus,
     evaluate_command, join_continuation_entries,
 };
-use zeron_proto::{ConversationSourceContext, HarnessId, UserInputAnswer, UserInputQuestion};
-use zeron_sync::DocsStore;
+use openagents_proto::{ConversationSourceContext, HarnessId, UserInputAnswer, UserInputQuestion};
+use openagents_sync::DocsStore;
 
 use crate::http_error::describe_http_error;
 use crate::project_actions::{
@@ -57,7 +57,7 @@ const SNAPSHOT_DEBOUNCE_MS: u64 = 1_000;
 pub const QUEUE_EDIT_LEASE_MS: i64 = 60_000;
 
 /// Warm-doc LRU: how many unwatched, run-less docs stay fully open. Everything
-/// beyond this (and beyond [`zeron_doc::DOC_LRU_BYTE_BUDGET`]) is evicted
+/// beyond this (and beyond [`openagents_doc::DOC_LRU_BYTE_BUDGET`]) is evicted
 /// oldest-access-first — reopening from the SQLite snapshot measured within
 /// ~11ms of a warm doc, so the cap trades no perceptible open latency.
 const WARM_DOC_CAP: usize = 12;
@@ -132,14 +132,14 @@ const RELAY_MIN_VERSION: (u64, u64, u64) = (0, 2, 12);
 /// Edge connection config. The bearer is a **provider**, never a snapshot:
 /// every room (re)connect and HTTP request re-reads it, so WorkOS access-token
 /// refreshes (~1h expiry) take effect without an engine restart. Dev bearers
-/// (which never expire) ride the same seam as a [`zeron_rpc::StaticToken`].
+/// (which never expire) ride the same seam as a [`openagents_rpc::StaticToken`].
 #[derive(Clone)]
 pub struct EdgeConfig {
     /// Edge base URL (`http(s)://…`); rewritten to `ws(s)` for the room socket.
     pub url: String,
     /// Fresh-bearer provider (the relay's `TokenSource`), consulted per
     /// connect/request. Temporary failures preserve the signed-in session.
-    pub token: Arc<dyn zeron_rpc::TokenSource>,
+    pub token: Arc<dyn openagents_rpc::TokenSource>,
     /// This engine's device id, carried on room dials (`&device=`) so the
     /// edge can attribute sockets in logs. Debugging the 2026-08-04 deaf
     /// socket meant reverse-engineering devices from rotating IPv6 privacy
@@ -157,7 +157,7 @@ impl std::fmt::Debug for EdgeConfig {
 }
 
 impl EdgeConfig {
-    pub fn new(url: impl Into<String>, token: Arc<dyn zeron_rpc::TokenSource>) -> Self {
+    pub fn new(url: impl Into<String>, token: Arc<dyn openagents_rpc::TokenSource>) -> Self {
         Self {
             url: url.into(),
             token,
@@ -173,11 +173,11 @@ impl EdgeConfig {
 
     /// Fixed bearer — dev mode and tests, where tokens never expire.
     pub fn with_static_token(url: impl Into<String>, token: impl Into<String>) -> Self {
-        Self::new(url, Arc::new(zeron_rpc::StaticToken(token.into())))
+        Self::new(url, Arc::new(openagents_rpc::StaticToken(token.into())))
     }
 
     /// The current bearer, or a distinct signed-out/temporarily-unavailable error.
-    pub async fn bearer(&self) -> Result<String, zeron_rpc::TokenError> {
+    pub async fn bearer(&self) -> Result<String, openagents_rpc::TokenError> {
         self.token.token().await
     }
 
@@ -188,7 +188,7 @@ impl EdgeConfig {
     /// A per-dial room URL provider for `path` (e.g. `/session/{chatId}/ws`):
     /// the bearer is re-fetched before every connect, so reconnects after a
     /// token expiry present a fresh `?token=` instead of the boot-time one.
-    pub fn room_url(&self, path: impl Into<String>) -> Arc<dyn zeron_sync::UrlProvider> {
+    pub fn room_url(&self, path: impl Into<String>) -> Arc<dyn openagents_sync::UrlProvider> {
         self.room_url_with_host(path, None)
     }
 
@@ -196,7 +196,7 @@ impl EdgeConfig {
         &self,
         path: impl Into<String>,
         host_device: Option<String>,
-    ) -> Arc<dyn zeron_sync::UrlProvider> {
+    ) -> Arc<dyn openagents_sync::UrlProvider> {
         let ws_base = self.url.replacen("http", "ws", 1);
         Arc::new(EdgeRoomUrl {
             base: format!("{}{}", ws_base.trim_end_matches('/'), path.into()),
@@ -209,26 +209,26 @@ impl EdgeConfig {
 
 struct EdgeRoomUrl {
     base: String,
-    token: Arc<dyn zeron_rpc::TokenSource>,
+    token: Arc<dyn openagents_rpc::TokenSource>,
     device_id: String,
     host_device: Option<String>,
 }
 
-impl zeron_sync::UrlProvider for EdgeRoomUrl {
-    fn url(&self) -> futures::future::BoxFuture<'static, Result<String, zeron_sync::SyncError>> {
+impl openagents_sync::UrlProvider for EdgeRoomUrl {
+    fn url(&self) -> futures::future::BoxFuture<'static, Result<String, openagents_sync::SyncError>> {
         let token = self.token.clone();
         let base = self.base.clone();
         let device = self.device_id.clone();
         let host = self.host_device.clone();
         Box::pin(async move {
-            let token = token.token().await.map_err(zeron_sync::SyncError::from)?;
+            let token = token.token().await.map_err(openagents_sync::SyncError::from)?;
             let mut url = format!("{base}?token={token}");
             if !device.is_empty() {
                 url.push_str(&format!("&device={device}"));
             }
             if let Some(host) = host {
                 let mut parsed = reqwest::Url::parse(&url)
-                    .map_err(|e| zeron_sync::SyncError::Protocol(e.to_string()))?;
+                    .map_err(|e| openagents_sync::SyncError::Protocol(e.to_string()))?;
                 parsed.query_pairs_mut().append_pair("hostDevice", &host);
                 url = parsed.into();
             }
@@ -288,14 +288,14 @@ struct DocHostInner {
     uploads: OnceLock<crate::uploads::Uploads>,
     /// Connectivity watch (`WatchConnectivity`): lazily-started monitor
     /// publishes the edge posture on change (see `watch_connectivity`).
-    connectivity: OnceLock<watch::Sender<zeron_proto::Connectivity>>,
+    connectivity: OnceLock<watch::Sender<openagents_proto::Connectivity>>,
     connectivity_started: AtomicBool,
     /// In-flight queued-attachment transfers, published per landed chunk
     /// (see `watch_transfers`). Entries live exactly as long as bytes are
     /// moving: added when a file's push starts, removed on commit or failure
     /// (a retry re-adds), so consumers can render a real percent while the
     /// relay leg runs and fall back to indeterminate otherwise.
-    transfers: watch::Sender<Vec<zeron_proto::TransferProgress>>,
+    transfers: watch::Sender<Vec<openagents_proto::TransferProgress>>,
     connectivity_grace: Mutex<DegradeGrace>,
     /// Command ids currently BETWEEN mark-processed and their resolution in a
     /// drain. Distinguishes "executing right now" from "consumed by the
@@ -305,7 +305,7 @@ struct DocHostInner {
     executing: Mutex<HashSet<String>>,
     /// Peer links (engine assembly, edge runtimes only) — the transport that
     /// pushes queued attachment bytes to a remote host.
-    links: OnceLock<Arc<zeron_rpc::LinkCache>>,
+    links: OnceLock<Arc<openagents_rpc::LinkCache>>,
     /// Shared client for sidecar blob PUT/GET (30s timeout, uploads.rs
     /// discipline — diff_sync's untimed client hung on dead links).
     http: reqwest::Client,
@@ -416,7 +416,7 @@ impl DegradeGrace {
 struct ChatConnectionSnapshot {
     sync_started: bool,
     sync_requested: bool,
-    stats: Option<zeron_sync::ChatStatsSnapshot>,
+    stats: Option<openagents_sync::ChatStatsSnapshot>,
     delivery_live: bool,
 }
 
@@ -549,7 +549,7 @@ pub enum FinishQueueEditOutcome {
 #[derive(Clone, Default)]
 pub struct TranscriptSnapshot {
     pub entries: Arc<Vec<SessionMessageEntry>>,
-    pub replay_baseline: Arc<zeron_doc::TranscriptBaseline>,
+    pub replay_baseline: Arc<openagents_doc::TranscriptBaseline>,
 }
 
 /// One open chat doc: the `SessionDoc`, its change plumbing, and the room client.
@@ -584,7 +584,7 @@ pub struct ChatDocHandle {
     /// Sends held for a turn-boundary agent's turn end (rather than queued
     /// by the user), with the run configuration each was sent with: the row
     /// carries only its text and images.
-    held_sends: Mutex<HashMap<String, zeron_proto::RunRequest>>,
+    held_sends: Mutex<HashMap<String, openagents_proto::RunRequest>>,
     /// The latest Stop command that has acted. A prompt sent before it that
     /// only executes now (a loaded host, a slow agent) was cancelled by it:
     /// running it would start the stopped work again in a fresh runtime.
@@ -623,7 +623,7 @@ pub struct ChatDocHandle {
     retired: AtomicBool,
     /// chat2 relay client (docs/chat2-sync.md C3) — populated once the
     /// registry names roomGen 2 for this chat and the join resolves.
-    chat2: Mutex<Option<zeron_sync::ChatClient>>,
+    chat2: Mutex<Option<openagents_sync::ChatClient>>,
     sync_started: AtomicBool,
     sync_requested: AtomicBool,
     sync_background: AtomicBool,
@@ -734,10 +734,10 @@ impl ChatDocHandle {
 
     pub(crate) fn commit_voice(
         &self,
-        transcript: &zeron_proto::voice::VoiceTranscript,
+        transcript: &openagents_proto::voice::VoiceTranscript,
     ) -> Result<Option<String>, EngineError> {
         let _owner = lock(&self.transcript_import);
-        zeron_doc::voice::commit_voice_transcript(
+        openagents_doc::voice::commit_voice_transcript(
             &self.doc,
             transcript,
             &self.device_id,
@@ -872,7 +872,7 @@ impl ChatDocHandle {
     /// chips in completed parent turns), then stamp abandoned `streaming`
     /// entries `aborted`, appending
     /// `note` as a visible error part so the transcript says WHY the turn
-    /// ended (zeron folded "Run interrupted by backend restart" the same
+    /// ended (openagents folded "Run interrupted by backend restart" the same
     /// way). Returns the stamped entries' `(id, created_at)` — recovery uses
     /// them for the resume-freshness check.
     pub fn mark_abandoned_streams(&self, note: &str) -> Result<Vec<(String, i64)>, DocError> {
@@ -1080,7 +1080,7 @@ impl DocHost {
     /// see — so watch session status instead and re-drain every warm chat.
     /// `drain_queue` is a cheap no-op for empty queues and busy agents, which
     /// is why this can afford to be indiscriminate.
-    fn spawn_queue_flush_watcher(&self, mut statuses: watch::Receiver<Vec<zeron_proto::Session>>) {
+    fn spawn_queue_flush_watcher(&self, mut statuses: watch::Receiver<Vec<openagents_proto::Session>>) {
         let host = self.clone();
         self.spawn_worker(async move {
             while statuses.changed().await.is_ok() {
@@ -1141,7 +1141,7 @@ impl DocHost {
     }
 
     /// Wire the repos engine (engine assembly) — worktree materialization for
-    /// Run commands carrying a [`zeron_proto::WorktreeSpec`].
+    /// Run commands carrying a [`openagents_proto::WorktreeSpec`].
     pub fn set_repos(&self, repos: crate::repos::Repos) {
         let _ = self.inner.repos.set(repos);
     }
@@ -1165,7 +1165,7 @@ impl DocHost {
 
     /// Wire the peer-link cache (engine assembly, edge runtimes only) — the
     /// transport for queued attachment transfers to a remote host.
-    pub fn set_links(&self, links: Arc<zeron_rpc::LinkCache>) {
+    pub fn set_links(&self, links: Arc<openagents_rpc::LinkCache>) {
         let _ = self.inner.links.set(links);
     }
 
@@ -1215,7 +1215,7 @@ impl DocHost {
                     return; // edge-less engine: nothing to migrate onto
                 };
                 let Some(ws) = host.workspace() else { continue };
-                let chats: Vec<zeron_proto::Chat> = ws.watch_chats().borrow().clone();
+                let chats: Vec<openagents_proto::Chat> = ws.watch_chats().borrow().clone();
                 let device = host.inner.config.device_id.clone();
                 let now = now_ms();
                 let candidate = chats.into_iter().find(|c| {
@@ -1258,7 +1258,7 @@ impl DocHost {
     /// the chat2 adopt path. A handle with a LIVE local writer (a running
     /// turn's doc ref) is left alone — the host never flips mid-run, and a
     /// racing writer must never lose its doc out from under it.
-    fn spawn_cutover_watcher(&self, mut chats: watch::Receiver<Vec<zeron_proto::Chat>>) {
+    fn spawn_cutover_watcher(&self, mut chats: watch::Receiver<Vec<openagents_proto::Chat>>) {
         let host = self.clone();
         self.spawn_worker(async move {
             loop {
@@ -1997,7 +1997,7 @@ impl DocHost {
                 let available = ACTIVE_SYNC_CAP.saturating_sub(running);
                 let now = now_ms();
                 let contended = available == 0 && !waiting.is_empty();
-                let budget = zeron_sync::budget::shared().stats();
+                let budget = openagents_sync::budget::shared().stats();
                 let global_contended = !budget.resource_paused && budget.sockets >= budget.socket_limit && budget.socket_waiting > 0;
                 // A teardown gap or the end of a paged disk scan is not the
                 // end of contention. Resetting there starves cold jobs under
@@ -2207,9 +2207,9 @@ impl DocHost {
         let cancel = CancellationToken::new();
         *lock(&handle.sync_cancel) = cancel.clone();
         let priority = if handle.sync_background.load(Ordering::Acquire) {
-            zeron_sync::budget::Priority::Background
+            openagents_sync::budget::Priority::Background
         } else {
-            zeron_sync::budget::Priority::Interactive
+            openagents_sync::budget::Priority::Interactive
         };
         let chat = handle.chat_id.clone();
         let doc = handle.doc.clone();
@@ -2233,7 +2233,7 @@ impl DocHost {
             ).with_priority(priority));
             let remote_host = host.remote_host_for(&chat);
             let url = edge.room_url_with_host(format!("/chat2/{chat}/ws"), remote_host.clone());
-            let mut wake = zeron_sync::wake::subscribe();
+            let mut wake = openagents_sync::wake::subscribe();
             // Sibling-dial successes end a backoff wait immediately, exactly
             // like the joined clients' own reconnect loops (chat_client.rs).
             // Without this, a NEW chat whose first joins hit a network blip
@@ -2241,7 +2241,7 @@ impl DocHost {
             // established room redialed instantly on recovery — fresh sends
             // to new sessions stalled while other chats hummed (2026-08-19
             // user report, reproduced on two networks).
-            let mut online = zeron_sync::wake::subscribe_online();
+            let mut online = openagents_sync::wake::subscribe_online();
             let mut backoff = crate::workspace_host::JOIN_RETRY_BASE;
             loop {
                 if weak.upgrade().is_none() {
@@ -2260,7 +2260,7 @@ impl DocHost {
                 ).with_host_device(remote_host.clone()).with_priority(priority));
                 let dial = tokio::time::timeout(
                     std::time::Duration::from_secs(60),
-                    zeron_sync::ChatClient::connect_via_transport(
+                    openagents_sync::ChatClient::connect_via_transport(
                         url.clone(),
                         sink.clone(),
                         fetcher.clone(),
@@ -2272,7 +2272,7 @@ impl DocHost {
                 .await;
                 match dial {
                     Ok(Ok(client)) => {
-                        if matches!(edge.bearer().await, Err(zeron_rpc::TokenError::SignedOut)) {
+                        if matches!(edge.bearer().await, Err(openagents_rpc::TokenError::SignedOut)) {
                             return;
                         }
                         let Some(handle) = weak.upgrade() else {
@@ -2374,7 +2374,7 @@ impl DocHost {
                             let weak = weak.clone();
                             let chat = chat.clone();
                             host.clone().spawn_sync_worker(cancel.clone(), async move {
-                                use zeron_sync::chat_client::ChatEvent;
+                                use openagents_sync::chat_client::ChatEvent;
                                 loop {
                                     match events.recv().await {
                                         Ok(ChatEvent::ServerReset) => {
@@ -2405,7 +2405,7 @@ impl DocHost {
                                     Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
                                 },
                                 _ = crate::workspace_host::token_changed(&mut token_changes) => {
-                                    if matches!(edge.bearer().await, Err(zeron_rpc::TokenError::SignedOut)) {
+                                    if matches!(edge.bearer().await, Err(openagents_rpc::TokenError::SignedOut)) {
                                         if let Some(handle) = weak.upgrade() {
                                             lock(&handle.chat2).take();
                                             // Keep journaling local cleanup after credentials disappear.
@@ -2544,7 +2544,7 @@ impl DocHost {
     ) -> Result<(), String> {
         use base64::Engine as _;
         let vv_at_rebuild = doc.doc().oplog_vv().encode();
-        let rebuilt = zeron_doc::rebuild::rebuild_thin_doc(&doc).map_err(|e| e.to_string())?;
+        let rebuilt = openagents_doc::rebuild::rebuild_thin_doc(&doc).map_err(|e| e.to_string())?;
         // The seed's own doc ref must be gone before the pinned re-check
         // below: `pinned` reads `Arc::strong_count(&handle.doc) > 1`, and
         // holding this clone made that true unconditionally — every seed
@@ -2565,8 +2565,8 @@ impl DocHost {
             edge.url.trim_end_matches('/'),
             chat_id
         );
-        let _permit = zeron_sync::budget::shared()
-            .http(zeron_sync::budget::Priority::Background)
+        let _permit = openagents_sync::budget::shared()
+            .http(openagents_sync::budget::Priority::Background)
             .await
             .map_err(|e| e.to_string())?;
         let res = self
@@ -2672,7 +2672,7 @@ impl DocHost {
             // Let boot settle (registry load, room joins) before sweeping.
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             let Some(ws) = host.workspace() else { return };
-            let chats: Vec<zeron_proto::Chat> = ws.watch_chats().borrow().clone();
+            let chats: Vec<openagents_proto::Chat> = ws.watch_chats().borrow().clone();
             for chat in chats {
                 if chat.device_id != host.inner.config.device_id {
                     continue; // only the host owns its chats' history
@@ -2769,7 +2769,7 @@ impl DocHost {
         let raw = loro::LoroDoc::new();
         raw.import(&bytes).map_err(|e| e.to_string())?;
         let fat = SessionDoc::from_doc(raw);
-        let rebuilt = zeron_doc::rebuild::rebuild_thin_doc(&fat).map_err(|e| e.to_string())?;
+        let rebuilt = openagents_doc::rebuild::rebuild_thin_doc(&fat).map_err(|e| e.to_string())?;
         let entries = rebuilt.doc.read_entries().map_err(|e| e.to_string())?;
         if entries.is_empty() {
             return Ok(());
@@ -2852,7 +2852,7 @@ impl DocHost {
         let doc = handle.doc.clone();
         let body = tokio::task::spawn_blocking(move || {
             let tail =
-                zeron_doc::materialize_tail(&doc, now_ms(), zeron_doc::TAIL_MESSAGE_COUNT).ok()?;
+                openagents_doc::materialize_tail(&doc, now_ms(), openagents_doc::TAIL_MESSAGE_COUNT).ok()?;
             serde_json::to_vec(&tail).ok()
         })
         .await
@@ -2871,8 +2871,8 @@ impl DocHost {
                     edge_tail.url.trim_end_matches('/'),
                     chat
                 );
-                let Ok(_permit) = zeron_sync::budget::shared()
-                    .http(zeron_sync::budget::Priority::Background)
+                let Ok(_permit) = openagents_sync::budget::shared()
+                    .http(openagents_sync::budget::Priority::Background)
                     .await
                 else {
                     return;
@@ -2954,7 +2954,7 @@ impl DocHost {
                 chat_id,
                 seq_covered
             );
-            let Ok(_permit) = zeron_sync::budget::shared().http(zeron_sync::budget::Priority::Background).await else {
+            let Ok(_permit) = openagents_sync::budget::shared().http(openagents_sync::budget::Priority::Background).await else {
                 return;
             };
             let size = snapshot.len() as u64;
@@ -3028,7 +3028,7 @@ impl DocHost {
                         .sum::<usize>(),
                 )
             };
-            if count <= WARM_DOC_CAP && estimate <= zeron_doc::DOC_LRU_BYTE_BUDGET {
+            if count <= WARM_DOC_CAP && estimate <= openagents_doc::DOC_LRU_BYTE_BUDGET {
                 return;
             }
             let evicted = {
@@ -3143,14 +3143,14 @@ impl DocHost {
             if let Ok(res) = res
                 && res.status().is_success()
             {
-                zeron_sync::wake::notify_online();
+                openagents_sync::wake::notify_online();
             }
         });
     }
 
     /// The in-flight queued-attachment transfer set: current entries first,
     /// then a fresh snapshot per landed chunk (see `push_attachments`).
-    pub fn watch_transfers(&self) -> watch::Receiver<Vec<zeron_proto::TransferProgress>> {
+    pub fn watch_transfers(&self) -> watch::Receiver<Vec<openagents_proto::TransferProgress>> {
         self.inner.transfers.subscribe()
     }
 
@@ -3162,7 +3162,7 @@ impl DocHost {
                     t.done = done;
                     t.total = total;
                 }
-                None => list.push(zeron_proto::TransferProgress {
+                None => list.push(openagents_proto::TransferProgress {
                     upload_id: upload_id.to_string(),
                     file_name: file_name.to_string(),
                     done,
@@ -3185,7 +3185,7 @@ impl DocHost {
     /// (atomics + small locks), published only when the value changes. The
     /// retry countdown renders client-side from `retry_at_ms`, so quiet
     /// periods emit nothing at all.
-    pub fn watch_connectivity(&self) -> watch::Receiver<zeron_proto::Connectivity> {
+    pub fn watch_connectivity(&self) -> watch::Receiver<openagents_proto::Connectivity> {
         let tx = self
             .inner
             .connectivity
@@ -3226,8 +3226,8 @@ impl DocHost {
     /// those flashed amber warnings and "Queued" badges at every chat
     /// switch. Raw degradation must persist [`DEGRADE_GRACE`] before it is
     /// reported; recovery reports instantly.
-    fn compute_connectivity(&self) -> zeron_proto::Connectivity {
-        use zeron_proto::{ChatConnectivity, Connectivity, ConnectivityState};
+    fn compute_connectivity(&self) -> openagents_proto::Connectivity {
+        use openagents_proto::{ChatConnectivity, Connectivity, ConnectivityState};
         let workspace = self.workspace();
         let edge_expected = self.inner.config.edge.is_some()
             || workspace.as_ref().is_some_and(|w| w.edge_expected());
@@ -3267,7 +3267,7 @@ impl DocHost {
             .and_then(|w| w.sync_status())
             .is_some_and(|s| s.connected);
         let path_offline =
-            grace.degraded(GraceKey::OsPath, zeron_sync::wake::path_is_offline(), now);
+            grace.degraded(GraceKey::OsPath, openagents_sync::wake::path_is_offline(), now);
         let registry_down = grace.degraded(GraceKey::Registry, !registry_connected, now);
         let (state, retry_at_ms, last_failure) = if path_offline {
             (
@@ -3293,8 +3293,8 @@ impl DocHost {
         }
     }
 
-    pub fn chat_sync_state(&self, chat_id: &str) -> zeron_proto::ChatSyncState {
-        use zeron_proto::ChatSyncState as S;
+    pub fn chat_sync_state(&self, chat_id: &str) -> openagents_proto::ChatSyncState {
+        use openagents_proto::ChatSyncState as S;
         let handle = lock(&self.inner.handles).get(chat_id).cloned();
         let Some(handle) = handle else {
             return S::Local;
@@ -3307,8 +3307,8 @@ impl DocHost {
         &self,
         handle: &ChatDocHandle,
         snapshot: &ChatConnectionSnapshot,
-    ) -> zeron_proto::ChatSyncState {
-        use zeron_proto::ChatSyncState as S;
+    ) -> openagents_proto::ChatSyncState {
+        use openagents_proto::ChatSyncState as S;
         if handle.publication_failed.load(Ordering::Acquire) {
             return S::StorageError;
         }
@@ -3324,7 +3324,7 @@ impl DocHost {
         }
         match snapshot.stats {
             Some(stats) if snapshot.delivery_live && stats.pending_pushes == 0 => S::Synced,
-            Some(_) if !snapshot.delivery_live && zeron_sync::wake::path_is_offline() => S::Offline,
+            Some(_) if !snapshot.delivery_live && openagents_sync::wake::path_is_offline() => S::Offline,
             _ => S::Connecting,
         }
     }
@@ -3367,7 +3367,7 @@ impl DocHost {
         #[cfg(not(unix))]
         let fd_limit: Option<u64> = None;
         serde_json::json!({
-            "budget": zeron_sync::budget::shared().stats(),
+            "budget": openagents_sync::budget::shared().stats(),
             "activeClientLimit": ACTIVE_SYNC_CAP,
             "openDocuments": handles.len(), "waitingDocuments": waiting,
             "documentLoads": self.inner.document_loads.load(Ordering::Relaxed),
@@ -3377,12 +3377,12 @@ impl DocHost {
         })
     }
 
-    /// Per-open-chat room introspection for SyncStatus / `zeron sync`.
+    /// Per-open-chat room introspection for SyncStatus / `openagents sync`.
     /// `None` room = still dialing (join retry loop) or edge-less.
-    pub fn sync_statuses(&self) -> Vec<(String, Option<zeron_sync::ChatStatsSnapshot>)> {
+    pub fn sync_statuses(&self) -> Vec<(String, Option<openagents_sync::ChatStatsSnapshot>)> {
         let handles: Vec<Arc<ChatDocHandle>> =
             lock(&self.inner.handles).values().cloned().collect();
-        let mut rows: Vec<(String, Option<zeron_sync::ChatStatsSnapshot>)> = handles
+        let mut rows: Vec<(String, Option<openagents_sync::ChatStatsSnapshot>)> = handles
             .iter()
             .map(|h| {
                 (
@@ -4369,7 +4369,7 @@ impl DocHost {
     /// 2. give the normal path (chat2 rows → edge → host's room) a short
     ///    grace to ack;
     /// 3. rows still not at the edge but the peer link alive → relay-forward
-    ///    the entry itself ([`zeron_rpc::methods::RELAY_COMMAND`]). The
+    ///    the entry itself ([`openagents_rpc::methods::RELAY_COMMAND`]). The
     ///    host's processed ledger claims the client-minted id, so the doc
     ///    row arriving later dedupes to a no-op — exactly-once by
     ///    construction (the 2026-08-18 03:45 incident shape: nudges flowed,
@@ -4394,8 +4394,8 @@ impl DocHost {
             if !transfers.is_empty() && !host.deliver_attachments(&chat, &transfers).await {
                 return; // gave up; the drain's wait cap surfaces the failure
             }
-            let mut wake = zeron_sync::wake::subscribe();
-            let mut online = zeron_sync::wake::subscribe_online();
+            let mut wake = openagents_sync::wake::subscribe();
+            let mut online = openagents_sync::wake::subscribe_online();
             let give_up = tokio::time::Instant::now() + RELAY_GIVE_UP;
             let grace_end = tokio::time::Instant::now() + ROWS_GRACE;
             while tokio::time::Instant::now() < grace_end {
@@ -4446,8 +4446,8 @@ impl DocHost {
         chat: &str,
         transfers: &[crate::uploads::AttachmentTransfer],
     ) -> bool {
-        let mut wake = zeron_sync::wake::subscribe();
-        let mut online = zeron_sync::wake::subscribe_online();
+        let mut wake = openagents_sync::wake::subscribe();
+        let mut online = openagents_sync::wake::subscribe_online();
         let mut backoff = TRANSFER_BACKOFF_BASE;
         let deadline = tokio::time::Instant::now() + ATTACHMENT_WAIT_MAX;
         loop {
@@ -4518,7 +4518,7 @@ impl DocHost {
             .into_iter()
             .flatten()
             .find(|d| d.id == target)
-            .and_then(|d| d.version.as_deref().and_then(zeron_proto::version_triple))
+            .and_then(|d| d.version.as_deref().and_then(openagents_proto::version_triple))
             .is_some_and(|v| v >= RELAY_MIN_VERSION);
         if !supported {
             return Err("host does not support relay delivery (version gate)".into());
@@ -4533,13 +4533,13 @@ impl DocHost {
             .await
             .map_err(|e| format!("peer link: {e}"))?;
         let params = serde_json::json!({ "chatId": chat_id, "entry": entry });
-        let call = client.call(zeron_rpc::methods::RELAY_COMMAND, params);
+        let call = client.call(openagents_rpc::methods::RELAY_COMMAND, params);
         match tokio::time::timeout(RELAY_CALL_TIMEOUT, call).await {
             Err(_) => {
                 links.invalidate(target);
                 Err("relay call timed out; peer link suspect".into())
             }
-            Ok(Err(zeron_rpc::RpcError::Failed(err))) => Err(format!("host refused: {err}")),
+            Ok(Err(openagents_rpc::RpcError::Failed(err))) => Err(format!("host refused: {err}")),
             Ok(Err(err)) => {
                 links.invalidate(target);
                 Err(format!("relay call failed: {err}"))
@@ -4689,7 +4689,7 @@ impl DocHost {
         Ok(())
     }
 
-    /// Host side of [`zeron_rpc::methods::RELAY_COMMAND`]: evaluate the
+    /// Host side of [`openagents_rpc::methods::RELAY_COMMAND`]: evaluate the
     /// forwarded entry against OUR doc (dedupe/TTL/supersede rules apply
     /// unchanged), claim its client-minted id in the processed ledger, then
     /// execute. The claim is what makes the doc row arriving later — over
@@ -4809,13 +4809,13 @@ impl DocHost {
                 let params = serde_json::json!({
                     "uploadId": transfer.upload_id, "seq": seq, "data": &b64[start..end],
                 });
-                let call = client.call(zeron_rpc::methods::UPLOAD_CHUNK, params);
+                let call = client.call(openagents_rpc::methods::UPLOAD_CHUNK, params);
                 match tokio::time::timeout(TRANSFER_CHUNK_TIMEOUT, call).await {
                     Err(_) => {
                         links.invalidate(target);
                         return Err(Transient("chunk push timed out; peer link suspect".into()));
                     }
-                    Ok(Err(zeron_rpc::RpcError::Failed(err))) => {
+                    Ok(Err(openagents_rpc::RpcError::Failed(err))) => {
                         return Err(Permanent(format!("host refused chunk: {err}")));
                     }
                     Ok(Err(err)) => {
@@ -4837,13 +4837,13 @@ impl DocHost {
             let params = serde_json::json!({
                 "uploadId": transfer.upload_id, "fileName": transfer.file_name,
             });
-            let call = client.call(zeron_rpc::methods::UPLOAD_COMMIT, params);
+            let call = client.call(openagents_rpc::methods::UPLOAD_COMMIT, params);
             match tokio::time::timeout(TRANSFER_COMMIT_TIMEOUT, call).await {
                 Err(_) => {
                     links.invalidate(target);
                     return Err(Transient("commit timed out; peer link suspect".into()));
                 }
-                Ok(Err(zeron_rpc::RpcError::Failed(err))) => {
+                Ok(Err(openagents_rpc::RpcError::Failed(err))) => {
                     return Err(Permanent(format!("host refused commit: {err}")));
                 }
                 Ok(Err(err)) => {
@@ -4861,7 +4861,7 @@ impl DocHost {
     /// Fire-and-forget: the doc already carries the summary, so a lost upload
     /// degrades to "full output unavailable" — it must never block or fail
     /// the run. Offline/edge-less engines skip silently.
-    pub fn upload_tool_sidecar(&self, chat_id: &str, payload: zeron_doc::SidecarPayload) {
+    pub fn upload_tool_sidecar(&self, chat_id: &str, payload: openagents_doc::SidecarPayload) {
         let Some(edge) = self.inner.config.edge.clone() else {
             return;
         };
@@ -4993,7 +4993,7 @@ impl DocHost {
     pub(crate) fn harness_for_request(
         &self,
         chat_id: &str,
-        request: &zeron_proto::RunRequest,
+        request: &openagents_proto::RunRequest,
     ) -> HarnessId {
         request.harness.unwrap_or_else(|| self.harness_for(chat_id))
     }
@@ -5237,7 +5237,7 @@ impl DocHost {
     /// paths — in the attachments list AND the prompt text — so the harness
     /// (and the persisted user entry) see ordinary local files, exactly like
     /// the legacy pre-upload flow produced.
-    fn resolve_request_attachments(&self, request: &mut zeron_proto::RunRequest) {
+    fn resolve_request_attachments(&self, request: &mut openagents_proto::RunRequest) {
         self.resolve_attachment_refs(&mut request.prompt, &mut request.attachments);
     }
 
@@ -5392,17 +5392,17 @@ impl DocHost {
                     ws.claim_chat(chat_id, Some(&request.cwd))?;
                     // Older clients send `~` for a projectless run; a chat
                     // created with a scratch folder runs there instead.
-                    if zeron_proto::projectless::is_home_cwd(&request.cwd)
+                    if openagents_proto::projectless::is_home_cwd(&request.cwd)
                         && let Ok(Some(chat)) = ws.chat(chat_id)
                         && let Some(cwd) = chat.cwd.filter(|cwd| {
-                            chat.space_id.is_none() && zeron_proto::projectless::is_scratch_cwd(cwd)
+                            chat.space_id.is_none() && openagents_proto::projectless::is_scratch_cwd(cwd)
                         })
                     {
                         request.cwd = cwd;
                     }
                     // A pre-existing row (the client's createChat raced ahead)
                     // still carries the repo folder — repoint it at the fresh
-                    // worktree, and stamp the actual `zeron/<name>` branch so
+                    // worktree, and stamp the actual `openagents/<name>` branch so
                     // the footer and the title-rename flow see it.
                     if let Some(wt) = &fresh_worktree {
                         if let Err(err) = ws.set_chat_cwd(chat_id, &wt.path) {
@@ -5432,7 +5432,7 @@ impl DocHost {
                 if let Some(ws) = self.workspace()
                     && ws.chat_config(chat_id).is_none()
                 {
-                    let config = zeron_proto::ChatConfig {
+                    let config = openagents_proto::ChatConfig {
                         harness,
                         model: request.model.clone(),
                         reasoning: request.reasoning,
@@ -5601,7 +5601,7 @@ impl DocHost {
         prompt: &str,
         issued_at: i64,
         steer: bool,
-        request: Option<&zeron_proto::RunRequest>,
+        request: Option<&openagents_proto::RunRequest>,
     ) -> Result<(), EngineError> {
         let item = QueuedMessage {
             id: message_id.to_string(),
@@ -5635,7 +5635,7 @@ impl DocHost {
     /// Put a typed prompt in front of a live agent: steer it in, or — with no
     /// live steerable run — deliver the durable command as the next turn.
     /// After an engine restart `last_request` is empty too, so rebuild the run
-    /// config from the chat's workspace row (zeron derived dispatch config from
+    /// config from the chat's workspace row (openagents derived dispatch config from
     /// the chat row the same way — sessions.ts:601-620); dispatch's engine-owned
     /// resume then reattaches the prior harness conversation.
     ///
@@ -5754,7 +5754,7 @@ impl DocHost {
         sessions: &SessionsEngine,
         chat_id: &str,
         harness: HarnessId,
-        request: zeron_proto::RunRequest,
+        request: openagents_proto::RunRequest,
         message_id: Option<String>,
     ) -> Result<String, EngineError> {
         if let Some(workspace) = self.workspace()
@@ -5771,8 +5771,8 @@ impl DocHost {
     async fn materialize_worktree(
         &self,
         chat_id: &str,
-        spec: &zeron_proto::WorktreeSpec,
-    ) -> Result<(String, Option<zeron_proto::Worktree>), EngineError> {
+        spec: &openagents_proto::WorktreeSpec,
+    ) -> Result<(String, Option<openagents_proto::Worktree>), EngineError> {
         if let Some(ws) = self.workspace()
             && let Ok(Some(chat)) = ws.chat(chat_id)
             && let Some(cwd) = chat.cwd
@@ -5804,8 +5804,8 @@ impl DocHost {
         &self,
         command_id: &str,
         chat_id: &str,
-        spec: &zeron_proto::WorktreeSpec,
-        fresh_worktree: Option<&zeron_proto::Worktree>,
+        spec: &openagents_proto::WorktreeSpec,
+        fresh_worktree: Option<&openagents_proto::Worktree>,
     ) {
         let Some((project_actions, terminals)) = self.inner.project_action_runtime.get() else {
             return;
@@ -5836,8 +5836,8 @@ impl DocHost {
         project_actions: &ProjectActionsStore,
         terminals: &Terminals,
         space_id: &str,
-        spec: &zeron_proto::WorktreeSpec,
-        worktree: &zeron_proto::Worktree,
+        spec: &openagents_proto::WorktreeSpec,
+        worktree: &openagents_proto::Worktree,
     ) -> Result<ProjectActionSetupHandoff, EngineError> {
         let workspace = self
             .workspace()
@@ -5887,7 +5887,7 @@ impl DocHost {
         &self,
         chat_id: &str,
         prompt: &str,
-    ) -> Option<zeron_proto::RunRequest> {
+    ) -> Option<openagents_proto::RunRequest> {
         let workspace = self.workspace()?;
         let chat = match workspace.chat(chat_id) {
             Ok(chat) => chat?,
@@ -5897,7 +5897,7 @@ impl DocHost {
             }
         };
         let config = chat.config;
-        Some(zeron_proto::RunRequest {
+        Some(openagents_proto::RunRequest {
             mcp: None,
             prompt: prompt.to_string(),
             harness: config.as_ref().map(|c| c.harness),
@@ -5911,7 +5911,7 @@ impl DocHost {
             sandbox: config
                 .as_ref()
                 .map(|c| c.sandbox)
-                .unwrap_or(zeron_proto::SandboxLevel::WorkspaceWrite),
+                .unwrap_or(openagents_proto::SandboxLevel::WorkspaceWrite),
             auto_approve: false,
             attachments: Vec::new(),
             resume: None,
@@ -6027,12 +6027,12 @@ mod transfer_progress_tests {
 
     fn host() -> (tempfile::TempDir, DocHost) {
         let dir = tempfile::tempdir().expect("tempdir");
-        let store = Arc::new(zeron_sync::DocsStore::open(dir.path()).expect("store opens"));
+        let store = Arc::new(openagents_sync::DocsStore::open(dir.path()).expect("store opens"));
         let host = DocHost::new(
             store,
             DocHostConfig {
                 device_id: "dev-test".into(),
-                default_harness: zeron_proto::HarnessId::Mock,
+                default_harness: openagents_proto::HarnessId::Mock,
                 edge: None,
             },
         );
@@ -6042,13 +6042,13 @@ mod transfer_progress_tests {
     #[tokio::test]
     async fn whale_snapshot_opens_and_reopens_without_network() {
         let (_dir, host) = host();
-        let source = zeron_doc::SessionDoc::init("persisted-whale").unwrap();
+        let source = openagents_doc::SessionDoc::init("persisted-whale").unwrap();
         for i in 0..2000 {
             source
-                .push_message(&zeron_doc::SessionMessageEntry {
+                .push_message(&openagents_doc::SessionMessageEntry {
                     id: format!("row-{i}"),
-                    role: zeron_doc::MessageRole::User,
-                    parts: vec![zeron_doc::MessagePart::Text {
+                    role: openagents_doc::MessageRole::User,
+                    parts: vec![openagents_doc::MessagePart::Text {
                         id: "text".into(),
                         text: "x".repeat(2048),
                     }],
@@ -6193,19 +6193,19 @@ mod source_context_tests {
         let repo = dir.path().join("repo");
         std::fs::create_dir(&repo).unwrap();
         git(&repo, &["init", "-b", "feature/captured"]);
-        git(&repo, &["config", "user.name", "Zeron Test"]);
-        git(&repo, &["config", "user.email", "zeron@example.com"]);
+        git(&repo, &["config", "user.name", "OpenAgents Test"]);
+        git(&repo, &["config", "user.email", "openagents@example.com"]);
         std::fs::write(repo.join("README.md"), "capture\n").unwrap();
         git(&repo, &["add", "README.md"]);
         git(&repo, &["commit", "-m", "capture"]);
 
         let store =
-            Arc::new(zeron_sync::DocsStore::open(dir.path().join("docs")).expect("store opens"));
+            Arc::new(openagents_sync::DocsStore::open(dir.path().join("docs")).expect("store opens"));
         let host = DocHost::new(
             store,
             DocHostConfig {
                 device_id: "device-a".into(),
-                default_harness: zeron_proto::HarnessId::Mock,
+                default_harness: openagents_proto::HarnessId::Mock,
                 edge: None,
             },
         );
@@ -6276,11 +6276,11 @@ mod degrade_grace_tests {
         use super::{DocHost, DocHostConfig, EdgeConfig, lock};
         use std::sync::Arc;
         use std::sync::atomic::Ordering;
-        use zeron_proto::{ChatSyncState, HarnessId};
+        use openagents_proto::{ChatSyncState, HarnessId};
 
         let dir = tempfile::tempdir().unwrap();
         let host = DocHost::new(
-            Arc::new(zeron_sync::DocsStore::open(dir.path()).unwrap()),
+            Arc::new(openagents_sync::DocsStore::open(dir.path()).unwrap()),
             DocHostConfig {
                 device_id: "local".into(),
                 default_harness: HarnessId::Mock,
@@ -6497,7 +6497,7 @@ mod publication_eviction_tests {
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         assert_eq!(
             host.chat_sync_state("failed"),
-            zeron_proto::ChatSyncState::StorageError
+            openagents_proto::ChatSyncState::StorageError
         );
         assert!(!other.sync_started.load(Ordering::Acquire));
         assert!(host.pinned(&handle));

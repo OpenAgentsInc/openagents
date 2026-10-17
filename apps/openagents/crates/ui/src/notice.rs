@@ -1,5 +1,5 @@
 //! Shared notice chip — the tinted failure card the composer strip and the
-//! transcript converged on (zeron composer.tsx `Notice` / chat-view.tsx
+//! transcript converged on (openagents composer.tsx `Notice` / chat-view.tsx
 //! `ErrorChip`).
 
 use gpui::{AnyElement, Div, FontWeight, SharedString, div, prelude::*, px};
@@ -18,7 +18,7 @@ pub enum NoticeChipIcon {
     Tile,
 }
 
-/// The failure notice both surfaces render (zeron composer.tsx `Notice`,
+/// The failure notice both surfaces render (openagents composer.tsx `Notice`,
 /// chat-view.tsx `ErrorChip`): a tinted rounded chip — `border
 /// <accent>/[0.16]` over a `<accent>/[0.05]` wash, a subtle tinted wash,
 /// never a bare stroke — with a header row (DangerTriangle + medium label, a

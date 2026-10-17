@@ -1,12 +1,12 @@
 //! Render a `ui.shader` pass headlessly, composited over a chat-like
 //! background, to check how it will look:
 //!
-//! `cargo run -p zeron-visual-gpu --example render_shader -- shader.glsl out.ppm \
+//! `cargo run -p openagents-visual-gpu --example render_shader -- shader.glsl out.ppm \
 //!    [--size 1440x840] [--blend light|alpha|opaque] [--bloom 1] [--time 2] \
 //!    [--input name=value ...] [--background r,g,b]`
 
-use zeron_visual::shader::{Blend, ShaderUniforms};
-use zeron_visual_gpu::{ShaderSpec, render_shader};
+use openagents_visual::shader::{Blend, ShaderUniforms};
+use openagents_visual_gpu::{ShaderSpec, render_shader};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();

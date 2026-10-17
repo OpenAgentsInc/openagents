@@ -116,7 +116,7 @@ impl Gpu {
             .map_err(|e| e.to_string())?;
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: Some("zeron visuals"),
+                label: Some("openagents visuals"),
                 // What this adapter has, not wgpu's defaults: some devices
                 // (the iOS simulator) fall short of a default limit the
                 // renderers never come near.

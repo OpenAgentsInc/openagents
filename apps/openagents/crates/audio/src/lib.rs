@@ -7,7 +7,7 @@ pub mod native;
 #[cfg(all(feature = "aec", feature = "native"))]
 pub mod worker;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use zeron_proto::voice::*;
+use openagents_proto::voice::*;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AudioError {

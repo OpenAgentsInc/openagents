@@ -1,5 +1,5 @@
 //! Bounded platform callbacks; no PCM or provider credentials cross UniFFI.
-//! The call state is reduced here (`zeron_voice_session::VoiceView`), so the
+//! The call state is reduced here (`openagents_voice_session::VoiceView`), so the
 //! platform renders typed snapshots exactly as the desktop reads them.
 use super::*;
 use crate::orb::VoiceOrb;
@@ -10,8 +10,8 @@ use std::sync::{
 };
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
-use zeron_proto::voice::{VoicePhase, VoiceRejection, VoiceRole, VoiceWork, remote::Sdp};
-use zeron_voice_session::{VoiceMediaEndpoint, VoiceView};
+use openagents_proto::voice::{VoicePhase, VoiceRejection, VoiceRole, VoiceWork, remote::Sdp};
+use openagents_voice_session::{VoiceMediaEndpoint, VoiceView};
 
 #[derive(Clone, Copy, uniffi::Enum)]
 pub enum VoiceMediaOperation {
@@ -92,7 +92,7 @@ pub enum VoiceEndReason {
     /// The host already has a voice call.
     Busy,
     HostUnavailable,
-    /// The host's Zeron is too old or has remote voice disabled.
+    /// The host's OpenAgents is too old or has remote voice disabled.
     HostIncompatible,
     ConnectionLost,
 }
@@ -126,12 +126,12 @@ pub trait VoiceSessionListener: Send + Sync {
 /// Hosts advertising this capability accept client-media voice calls.
 #[uniffi::export]
 pub fn voice_host_capability() -> String {
-    zeron_proto::voice::remote::CAPABILITY.into()
+    openagents_proto::voice::remote::CAPABILITY.into()
 }
 /// Codex voice styles to offer before a host reports its own.
 #[uniffi::export]
 pub fn default_voice_styles() -> Vec<String> {
-    zeron_proto::voice::DEFAULT_VOICES
+    openagents_proto::voice::DEFAULT_VOICES
         .iter()
         .map(|voice| (*voice).to_owned())
         .collect()
@@ -330,7 +330,7 @@ impl VoiceCall {
 /// Reduce owner events and local mute into call snapshots for the platform.
 async fn present(
     listener: Arc<dyn VoiceSessionListener>,
-    mut events: mpsc::Receiver<zeron_proto::voice::VoiceEvent>,
+    mut events: mpsc::Receiver<openagents_proto::voice::VoiceEvent>,
     muted: watch::Receiver<bool>,
 ) {
     let mut view = VoiceView::new();
@@ -396,14 +396,14 @@ impl CoreClient {
                     .voice_transport(&host_device_id)
                     .await
                     .map_err(|_| VoiceRejection::RemoteHost)?;
-                let config = zeron_proto::ChatConfig {
-                    harness: zeron_proto::HarnessId::Codex,
+                let config = openagents_proto::ChatConfig {
+                    harness: openagents_proto::HarnessId::Codex,
                     model: None,
                     reasoning: None,
                     model_options: Default::default(),
-                    sandbox: zeron_proto::SandboxLevel::WorkspaceWrite,
+                    sandbox: openagents_proto::SandboxLevel::WorkspaceWrite,
                 };
-                zeron_voice_session::run(
+                openagents_voice_session::run(
                     control,
                     platform.clone(),
                     config,
@@ -427,7 +427,7 @@ impl CoreClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zeron_proto::voice::{VoiceEvent, VoiceSnapshot};
+    use openagents_proto::voice::{VoiceEvent, VoiceSnapshot};
     struct Listener(Mutex<Vec<u64>>);
     impl VoiceMediaListener for Listener {
         fn on_request(&self, r: VoiceMediaRequest) {

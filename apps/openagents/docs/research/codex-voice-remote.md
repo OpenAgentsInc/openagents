@@ -30,18 +30,18 @@ stop. A desktop terminal needs macOS microphone permission for this live probe.
 
 The helper does not resolve a local Codex executable. Copying only its binary is
 insufficient: keep its adjacent libraries, plugins and runtime metadata intact.
-This probe does not package that runtime into Zeron; that is C02.
+This probe does not package that runtime into OpenAgents; that is C02.
 
 SSH runs only metadata commands and Codex app-server on Fedora, never a helper
 or an audio-device command. SSH must already work noninteractively; unknown host
-keys are not auto-accepted. The script neither registers a Zeron device nor
+keys are not auto-accepted. The script neither registers a OpenAgents device nor
 uses SSH as a proposed product transport. Product discovery and controls will
-reuse registered Zeron devices and the existing authenticated relay.
+reuse registered OpenAgents devices and the existing authenticated relay.
 
 `--live` explicitly opts into normal subscription usage. There is no API-key
 fallback. The diagnostic checks ChatGPT auth and rejects custom provider/realtime
 configuration before negotiating. Its ephemeral, read-only diagnostic thread
-instructs the model not to use tools. It does not create a Zeron orchestrator or
+instructs the model not to use tools. It does not create a OpenAgents orchestrator or
 send messages to other agents.
 
 ## What the result means
@@ -126,12 +126,12 @@ Bundled notice files cover LGPL-2.1, Opus, PCRE2, libffi, proxy-libintl, sljit a
 zlib. The package's `NOTICE.md` identifies the upstream Codex
 `third_party/voice/` build/projection/package scripts and references
 `manifest.json` for the source commit. This inventories existing provenance.
-Zeron does not redistribute this runtime: the desktop client of a remote call
+OpenAgents does not redistribute this runtime: the desktop client of a remote call
 runs the helper of its own standalone Codex installation, as local voice does.
-Redistributing it would make Zeron responsible for the LGPL source offer, the
+Redistributing it would make OpenAgents responsible for the LGPL source offer, the
 Apache NOTICE, the Windows Visual C++ runtime terms and security updates of the
 media stack. `scripts/package-voice-runtime.py` remains a development tool that
-projects a pinned package for `ZERON_VOICE_MEDIA_DIR`. The helper only
+projects a pinned package for `OPENAGENTS_VOICE_MEDIA_DIR`. The helper only
 initializes from a `codex-resources/voice` directory: anywhere else it exits
 with code 23 on `initializeRuntime`, which the client reports as an unavailable
 runtime. Projection never re-signs: upstream already signs the helper and
@@ -151,9 +151,9 @@ and will run these checks after it):
 3. Inspect the actual media contract: negotiated codecs, ICE gathering, required
    data-channel messages/readiness, barge-in and echo behavior. The presence of
    an Opus library alone does not establish the negotiated codec contract.
-4. Validate canonical finals and a real Zeron MCP delegation/return using the
+4. Validate canonical finals and a real OpenAgents MCP delegation/return using the
    full orchestrator ID. The standalone no-tools diagnostic cannot establish
-   this: it must be paired with a Zeron-hosted harness test. Do not interpret a
+   this: it must be paired with a OpenAgents-hosted harness test. Do not interpret a
    generic promoted-item notification as proof of MCP success.
 5. Record any provider restriction before committing the dependent product
    architecture. Runtime redistribution is avoided: clients use their installed

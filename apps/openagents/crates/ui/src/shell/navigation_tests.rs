@@ -84,7 +84,7 @@ fn setup(cx: &mut TestAppContext) -> (Entity<Shell>, &mut VisualTestContext) {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             );
@@ -594,7 +594,7 @@ fn pull_requests_from_a_chat_open_as_tabs_beside_the_focused_session(cx: &mut Te
         settings::update(SavePolicy::Immediate, cx, |settings| {
             settings.pull_request_destination = settings::PullRequestDestination::External;
             // Keep the link out of an embedded browser, which a test can't host.
-            settings.open_web_links_in_zeron = false;
+            settings.open_web_links_in_openagents = false;
         });
         shell.update(cx, |shell, cx| {
             let before = shell.chat_pull_requests.len();

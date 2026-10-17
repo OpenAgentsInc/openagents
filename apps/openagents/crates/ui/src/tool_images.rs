@@ -14,7 +14,7 @@ use std::{
 };
 
 use gpui::{Context, RenderImage, SharedString, Task};
-use zeron_proto::ToolCall;
+use openagents_proto::ToolCall;
 
 use crate::state::EngineHandle;
 

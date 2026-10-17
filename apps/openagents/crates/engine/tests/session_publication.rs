@@ -10,14 +10,14 @@ use std::sync::{
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
-use zeron_doc::{MessageRole, MessageStatus, SessionDoc};
-use zeron_engine::{
+use openagents_doc::{MessageRole, MessageStatus, SessionDoc};
+use openagents_engine::{
     EdgeConfig, EngineCore, EngineProfile, HarnessRegistry, chat2_host::EngineChatSink,
 };
-use zeron_harness::CodexHarness;
-use zeron_proto::{HarnessId, ReasoningLevel, RunRequest, SandboxLevel, SessionStatus};
-use zeron_sync::chat_frames::{decode, encode, frame_type};
-use zeron_sync::{
+use openagents_harness::CodexHarness;
+use openagents_proto::{HarnessId, ReasoningLevel, RunRequest, SandboxLevel, SessionStatus};
+use openagents_sync::chat_frames::{decode, encode, frame_type};
+use openagents_sync::{
     ChatClient, ChatDocSink, CheckpointFetcher, DocsStore, SyncError, chat_client::RowImportOutcome,
 };
 const CHAT: &str = "publication-regression";
@@ -320,7 +320,7 @@ async fn regression(live: bool) {
         let native_sessions: Vec<_> = events
             .iter()
             .filter_map(|e| match &e.event {
-                zeron_proto::AgentEvent::SessionStarted { session_id, .. } => Some(session_id),
+                openagents_proto::AgentEvent::SessionStarted { session_id, .. } => Some(session_id),
                 _ => None,
             })
             .collect();
@@ -428,7 +428,7 @@ async fn real_codex_restart_publication() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn disconnected_cleanup_is_durable_before_snapshot_debounce() {
-    use zeron_engine::{DocHost, DocHostConfig};
+    use openagents_engine::{DocHost, DocHostConfig};
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(DocsStore::open(dir.path()).unwrap());
     let config = || DocHostConfig {
@@ -469,7 +469,7 @@ async fn disconnected_cleanup_is_durable_before_snapshot_debounce() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires private incident snapshot paths; all writes remain in a temporary store"]
 async fn supplied_incident_snapshots_reconcile_via_durable_bootstrap() {
-    use zeron_engine::{DocHost, DocHostConfig};
+    use openagents_engine::{DocHost, DocHostConfig};
     let remote = std::fs::read(std::env::var("SESSION_SYNC_REMOTE_SNAPSHOT").unwrap()).unwrap();
     let before = std::fs::read(std::env::var("SESSION_SYNC_DESKTOP_SNAPSHOT").unwrap()).unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -493,7 +493,7 @@ async fn supplied_incident_snapshots_reconcile_via_durable_bootstrap() {
     let updates = store.pending_chat_updates(CHAT).unwrap();
     assert!(!updates.is_empty());
     for (_, bytes) in &updates {
-        assert!(bytes.len() <= zeron_sync::chat_client::MAX_PUSH_BYTES);
+        assert!(bytes.len() <= openagents_sync::chat_client::MAX_PUSH_BYTES);
     }
     let (url, _, acks, server) = relay(before.clone()).await;
     acks.store(true, Ordering::SeqCst);
@@ -555,7 +555,7 @@ async fn supplied_incident_snapshots_reconcile_via_durable_bootstrap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn rejected_update_retries_failed_checkpoint_and_retires_only_after_success() {
     use base64::Engine as _;
-    use zeron_engine::{DocHost, DocHostConfig};
+    use openagents_engine::{DocHost, DocHostConfig};
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(DocsStore::open(dir.path()).unwrap());
     let initial = SessionDoc::init(CHAT).unwrap().export_snapshot().unwrap();
@@ -627,7 +627,7 @@ async fn rejected_update_retries_failed_checkpoint_and_retires_only_after_succes
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cold_outbox_is_published_after_restart_without_opening_the_chat() {
-    use zeron_engine::{DocHost, DocHostConfig};
+    use openagents_engine::{DocHost, DocHostConfig};
     let dir = tempfile::tempdir().unwrap();
     let doc = SessionDoc::init(CHAT).unwrap();
     let before = doc.doc().oplog_vv();

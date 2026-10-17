@@ -5,7 +5,7 @@ use gpui::{
     BorderStyle, Bounds, PathBuilder, Pixels, Point, Window, opaque_grey, point, px, quad, size,
     transparent_black,
 };
-use zeron_orb::engine::{Frame, Line};
+use openagents_orb::engine::{Frame, Line};
 
 /// Map ink `white` + substrate into a grayscale with alpha.
 fn ink_color(white: f32, alpha: f32, dark: bool) -> gpui::Hsla {

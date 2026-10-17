@@ -1,6 +1,6 @@
 //! Dedicated-account custom-agent qualification; the parent owns host isolation.
 use super::*;
-use coder_account::openagents::agents::{Access, AgentSpec, assignments::*};
+use openagents_account::openagents::agents::{Access, AgentSpec, assignments::*};
 pub(super) async fn run(f: &mut Fixture) -> Result<()> {
     let client = Client::new(Deployment::production())?;
     let session = client.authenticate(&f.credential).await?;
@@ -9,7 +9,7 @@ pub(super) async fn run(f: &mut Fixture) -> Result<()> {
         "Dedicated account required"
     );
     let agents = client.agents(&session)?;
-    let cancel = coder_account::openagents::CancellationToken::new();
+    let cancel = openagents_account::openagents::CancellationToken::new();
     let folder = f.root.join("project");
     std::fs::create_dir_all(&folder)?;
     f.ipc.as_ref().unwrap().call(methods::MUTATE,json!({"op":"createSpace","spaceId":f.space,"deviceId":f.device,"path":folder,"name":"Custom agent fixture","gitDetected":false})).await?;
@@ -219,9 +219,9 @@ pub(super) async fn run(f: &mut Fixture) -> Result<()> {
     result
 }
 async fn wait(
-    agents: &coder_account::openagents::agents::Agents<'_>,
+    agents: &openagents_account::openagents::agents::Agents<'_>,
     id: &str,
-    cancel: &coder_account::openagents::CancellationToken,
+    cancel: &openagents_account::openagents::CancellationToken,
 ) -> Result<Assignment> {
     tokio::time::timeout(Duration::from_secs(150), async {
         loop {
@@ -247,7 +247,7 @@ pub(super) async fn cleanup_phone(f: &mut Fixture) -> Result<()> {
         "Dedicated account required"
     );
     let agents = client.agents(&session)?;
-    let cancel = coder_account::openagents::CancellationToken::new();
+    let cancel = openagents_account::openagents::CancellationToken::new();
     let baseline: Vec<String> =
         serde_json::from_slice(&std::fs::read(f.root.join("agent-baseline.json"))?)?;
     let mut after = None;
@@ -418,7 +418,7 @@ pub(super) async fn capture_phone_baseline(f: &Fixture) -> Result<()> {
         "Dedicated account required"
     );
     let agents = client.agents(&session)?;
-    let cancel = coder_account::openagents::CancellationToken::new();
+    let cancel = openagents_account::openagents::CancellationToken::new();
     let mut ids = vec![];
     let mut after = None;
     loop {
@@ -445,7 +445,7 @@ pub(super) fn project_name(f: &Fixture) -> String {
 }
 
 async fn cleanup_lab(f: &mut Fixture) -> Result<()> {
-    use coder_account::openagents::agent_lab::*;
+    use openagents_account::openagents::agent_lab::*;
     let client = Client::new(Deployment::production())?;
     let session = client.authenticate(&f.credential).await?;
     ensure!(
@@ -454,7 +454,7 @@ async fn cleanup_lab(f: &mut Fixture) -> Result<()> {
     );
     let labs = client.agent_lab(&session)?;
     let agents = client.agents(&session)?;
-    let cancel = coder_account::openagents::CancellationToken::new();
+    let cancel = openagents_account::openagents::CancellationToken::new();
     let mut runs = vec![];
     let mut after = None;
     loop {
@@ -473,7 +473,7 @@ async fn cleanup_lab(f: &mut Fixture) -> Result<()> {
     for mut r in runs {
         if !r.complete() {
             let request = labs.bind(RunChange {
-                request_id: coder_account::openagents::agents::request_id()?,
+                request_id: openagents_account::openagents::agents::request_id()?,
                 expected_revision: r.revision,
                 action: RunAction::Stop,
             });
@@ -488,7 +488,7 @@ async fn cleanup_lab(f: &mut Fixture) -> Result<()> {
         }
         ensure!(r.complete(), "The fixture trial did not stop");
         let request = labs.bind(RunChange {
-            request_id: coder_account::openagents::agents::request_id()?,
+            request_id: openagents_account::openagents::agents::request_id()?,
             expected_revision: r.revision,
             action: RunAction::Archive,
         });
@@ -500,7 +500,7 @@ async fn cleanup_lab(f: &mut Fixture) -> Result<()> {
             }
         }
         let request = labs.bind(DeleteDocument {
-            request_id: coder_account::openagents::agents::request_id()?,
+            request_id: openagents_account::openagents::agents::request_id()?,
             expected_revision: r.version.version,
         });
         labs.delete_document(&r.version.document, &request, &cancel)

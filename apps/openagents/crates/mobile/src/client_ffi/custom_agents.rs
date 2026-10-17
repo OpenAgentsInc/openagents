@@ -1,6 +1,6 @@
 //! Account-bound agent management and a shared Rust Native creation form.
 use super::{CoreClient, CoreError, CoreResult};
-use coder_account::{
+use openagents_account::{
     Controller, Lease,
     openagents::{
         self,
@@ -84,7 +84,7 @@ struct Form {
     #[serde(default)]
     conflict: bool,
 }
-type ModelCatalogs = BTreeMap<String, Vec<zeron_client::catalog::ModelInfo>>;
+type ModelCatalogs = BTreeMap<String, Vec<openagents_client::catalog::ModelInfo>>;
 
 struct State {
     catalogs: ModelCatalogs,
@@ -271,7 +271,7 @@ fn form_view(
         let mut models = catalogs
             .get(&form.spec.runtime)
             .cloned()
-            .unwrap_or_else(|| zeron_client::catalog::fallback_models(&form.spec.runtime));
+            .unwrap_or_else(|| openagents_client::catalog::fallback_models(&form.spec.runtime));
         models.retain(|m| {
             !m.id.eq_ignore_ascii_case("default")
                 && !m.id.is_empty()
@@ -293,9 +293,9 @@ fn form_view(
             if !models.iter().take(128).any(|m| &m.id == selected) {
                 models.insert(
                     0,
-                    zeron_client::catalog::ModelInfo {
+                    openagents_client::catalog::ModelInfo {
                         id: selected.clone(),
-                        label: zeron_client::catalog::fallback_models(&form.spec.runtime)
+                        label: openagents_client::catalog::fallback_models(&form.spec.runtime)
                             .into_iter()
                             .find(|model| &model.id == selected)
                             .map(|model| model.label)
@@ -409,7 +409,7 @@ impl CoreAgents {
         });
         let weak = Arc::downgrade(&this);
         let mut updates = controller.watch();
-        zeron_client::runtime::shared().spawn(async move {
+        openagents_client::runtime::shared().spawn(async move {
             while updates.changed().await.is_ok() {
                 let Some(this) = weak.upgrade() else { break };
                 let generation = updates.borrow().generation;
@@ -567,7 +567,7 @@ impl CoreAgents {
         drop(io);
         self.publish();
         let weak = Arc::downgrade(self);
-        zeron_client::runtime::shared().spawn(async move {
+        openagents_client::runtime::shared().spawn(async move {
             let result = async {
                 let agents = lease.client().agents(lease.session())?;
                 match &pending {
@@ -675,7 +675,7 @@ impl CoreAgents {
             s.list_ticket
         };
         let weak = Arc::downgrade(self);
-        zeron_client::runtime::shared().spawn(async move {
+        openagents_client::runtime::shared().spawn(async move {
             let result = async {
                 let agents = lease.client().agents(lease.session())?;
                 let mut rows = vec![];
@@ -738,7 +738,7 @@ impl CoreAgents {
             let client = client.clone();
             let lease = lease.clone();
             let device = device_id.clone();
-            zeron_client::runtime::shared().spawn(async move {
+            openagents_client::runtime::shared().spawn(async move {
                 let models = tokio::select! {
                     _ = lease.cancel.cancelled() => return,
                     models = client.list_models(&device, harness) => models,
@@ -873,7 +873,7 @@ impl CoreAgents {
                 drop(s);
                 let lease = self.lease()?;
                 let this = Arc::downgrade(self);
-                zeron_client::runtime::shared().spawn(async move {
+                openagents_client::runtime::shared().spawn(async move {
                     let result = match lease.client().agents(lease.session()) {
                         Ok(agents) => agents.get(&id, None, &lease.cancel).await,
                         Err(e) => Err(e),
@@ -1002,7 +1002,7 @@ impl CoreAgents {
         drop(io);
         self.publish();
         let weak = Arc::downgrade(self);
-        zeron_client::runtime::shared().spawn(async move {
+        openagents_client::runtime::shared().spawn(async move {
             let mut refusal = None;
             let result = async {
                 let agents = lease.client().agents(lease.session())?;
@@ -1090,8 +1090,8 @@ mod tests {
             conflict: false,
         }
     }
-    fn model(id: &str) -> zeron_client::catalog::ModelInfo {
-        zeron_client::catalog::ModelInfo {
+    fn model(id: &str) -> openagents_client::catalog::ModelInfo {
+        openagents_client::catalog::ModelInfo {
             id: id.into(),
             label: id.into(),
             description: None,

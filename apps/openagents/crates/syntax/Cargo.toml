@@ -1,5 +1,5 @@
 [package]
-name = "zeron-syntax"
+name = "openagents-syntax"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

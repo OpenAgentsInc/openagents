@@ -13,7 +13,7 @@ pub(crate) fn bar(
     theme: &Theme,
     cx: &mut App,
 ) -> gpui::Div {
-    let delta = crate::motion::pulse_delta(&crate::motion::ZERON_PULSE, view, cx);
+    let delta = crate::motion::pulse_delta(&crate::motion::OPENAGENTS_PULSE, view, cx);
     let phase = crate::motion::staggered_phase(delta, index, 0.08);
     div()
         .w(width.into())

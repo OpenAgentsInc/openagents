@@ -1,4 +1,4 @@
-//! Per-session on-disk event journal (port of zeron's `run-journal.ts`, JSONL-shaped).
+//! Per-session on-disk event journal (port of openagents's `run-journal.ts`, JSONL-shaped).
 //!
 //! One append-only JSONL file per chat under `{data_dir}/journals/{chat_id}.jsonl`; each
 //! line is `{"seq": n, "event": AgentEvent}` with a monotonically increasing `seq`. The
@@ -18,7 +18,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use serde::{Deserialize, Serialize};
 
-use zeron_proto::AgentEvent;
+use openagents_proto::AgentEvent;
 
 #[derive(Debug, thiserror::Error)]
 pub enum JournalError {
@@ -72,7 +72,7 @@ impl RunJournal {
         self.dir.join(format!("{}.resume", sanitize_id(chat_id)))
     }
 
-    /// Auto-resume revival budget (zeron `resumeAttempt`/`MAX_AUTO_RESUME`):
+    /// Auto-resume revival budget (openagents `resumeAttempt`/`MAX_AUTO_RESUME`):
     /// persisted beside the journal so a run that CRASHES THE ENGINE cannot
     /// revive itself in an infinite boot loop.
     pub fn resume_attempts(&self, chat_id: &str) -> u32 {
@@ -145,7 +145,7 @@ impl RunJournal {
     }
 
     /// Events with `seq > after_seq`, in order. A cursor ahead of the last issued seq is
-    /// from a previous era (file replaced) — falls back to a full replay, mirroring zeron.
+    /// from a previous era (file replaced) — falls back to a full replay, mirroring openagents.
     pub fn replay(
         &self,
         chat_id: &str,
@@ -414,7 +414,7 @@ fn sanitize_id(chat_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zeron_proto::DoneStatus;
+    use openagents_proto::DoneStatus;
 
     fn text(s: &str) -> AgentEvent {
         AgentEvent::TextDelta { text: s.into() }

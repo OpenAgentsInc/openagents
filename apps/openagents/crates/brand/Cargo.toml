@@ -1,5 +1,5 @@
 [package]
-name = "coder-brand"
+name = "openagents-brand"
 description = "Coder Desktop product identity: names, IDs, paths, ports, and hosted-service switches."
 version.workspace = true
 edition.workspace = true

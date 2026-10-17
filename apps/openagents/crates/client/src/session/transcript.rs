@@ -14,7 +14,7 @@ use loro::event::DiffEvent;
 use loro::{
     Container, ContainerID, ContainerTrait, Index, LoroDoc, LoroMap, ToJson, ValueOrContainer,
 };
-use zeron_doc::{MessagePart, SessionMessageEntry};
+use openagents_doc::{MessagePart, SessionMessageEntry};
 
 use super::snapshot::{AppendHint, Entry};
 
@@ -96,7 +96,7 @@ pub(crate) struct Tracker {
 
 fn decode(map: &LoroMap) -> Option<Arc<SessionMessageEntry>> {
     let value = map.get_deep_value().to_json_value();
-    match zeron_doc::decode_entry_json(value) {
+    match openagents_doc::decode_entry_json(value) {
         Ok(entry) => Some(Arc::new(entry)),
         Err(err) => {
             tracing::debug!(error = %err, "transcript entry not decodable yet");
@@ -344,7 +344,7 @@ fn append_hint(prev: &Entry, next: &SessionMessageEntry) -> Option<AppendHint> {
 mod tests {
     use std::sync::Mutex;
 
-    use zeron_doc::{MessageRole, MessageStatus, SegmentWriter, SessionDoc};
+    use openagents_doc::{MessageRole, MessageStatus, SegmentWriter, SessionDoc};
 
     use super::*;
 

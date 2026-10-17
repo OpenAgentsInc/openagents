@@ -1,8 +1,8 @@
 {
   "date": "2026-09-05",
   "builds": {
-    "zeron-main": "14b12a82468dfb8678235cbed403f8b18ba392553efef0d161a774ac7af8619b",
-    "zeron-candidate": "70f815758d69b46474a567f9664035e6894357b4d6123335a28ba0936c918fa5",
+    "openagents-main": "14b12a82468dfb8678235cbed403f8b18ba392553efef0d161a774ac7af8619b",
+    "openagents-candidate": "70f815758d69b46474a567f9664035e6894357b4d6123335a28ba0936c918fa5",
     "main": "6d642ac03123b7ba0c04c278b546ddb83b3d8559",
     "candidate": "ee085695a2f529e02aca682f34089ad32f9264b0"
   },
@@ -14,7 +14,7 @@
     "long": [
       {
         "name": "main-1",
-        "binary": "/tmp/cool-summit-perf/zeron-main",
+        "binary": "/tmp/cool-summit-perf/openagents-main",
         "binarySha256": "14b12a82468dfb8678235cbed403f8b18ba392553efef0d161a774ac7af8619b",
         "harness": "claude-code",
         "mode": "replay",
@@ -103,7 +103,7 @@
       },
       {
         "name": "candidate-1",
-        "binary": "/tmp/cool-summit-perf/zeron-candidate",
+        "binary": "/tmp/cool-summit-perf/openagents-candidate",
         "binarySha256": "70f815758d69b46474a567f9664035e6894357b4d6123335a28ba0936c918fa5",
         "harness": "claude-code",
         "mode": "replay",
@@ -192,7 +192,7 @@
       },
       {
         "name": "candidate-2",
-        "binary": "/tmp/cool-summit-perf/zeron-candidate",
+        "binary": "/tmp/cool-summit-perf/openagents-candidate",
         "binarySha256": "70f815758d69b46474a567f9664035e6894357b4d6123335a28ba0936c918fa5",
         "harness": "claude-code",
         "mode": "replay",
@@ -281,7 +281,7 @@
       },
       {
         "name": "main-2",
-        "binary": "/tmp/cool-summit-perf/zeron-main",
+        "binary": "/tmp/cool-summit-perf/openagents-main",
         "binarySha256": "14b12a82468dfb8678235cbed403f8b18ba392553efef0d161a774ac7af8619b",
         "harness": "claude-code",
         "mode": "replay",
@@ -372,7 +372,7 @@
     "short": [
       {
         "name": "main-short-1",
-        "binary": "/tmp/cool-summit-perf/zeron-main",
+        "binary": "/tmp/cool-summit-perf/openagents-main",
         "binarySha256": "14b12a82468dfb8678235cbed403f8b18ba392553efef0d161a774ac7af8619b",
         "harness": "claude-code",
         "mode": "replay",
@@ -461,7 +461,7 @@
       },
       {
         "name": "candidate-short-1",
-        "binary": "/tmp/cool-summit-perf/zeron-candidate",
+        "binary": "/tmp/cool-summit-perf/openagents-candidate",
         "binarySha256": "70f815758d69b46474a567f9664035e6894357b4d6123335a28ba0936c918fa5",
         "harness": "claude-code",
         "mode": "replay",
@@ -550,7 +550,7 @@
       },
       {
         "name": "candidate-short-2",
-        "binary": "/tmp/cool-summit-perf/zeron-candidate",
+        "binary": "/tmp/cool-summit-perf/openagents-candidate",
         "binarySha256": "70f815758d69b46474a567f9664035e6894357b4d6123335a28ba0936c918fa5",
         "harness": "claude-code",
         "mode": "replay",
@@ -639,7 +639,7 @@
       },
       {
         "name": "main-short-2",
-        "binary": "/tmp/cool-summit-perf/zeron-main",
+        "binary": "/tmp/cool-summit-perf/openagents-main",
         "binarySha256": "14b12a82468dfb8678235cbed403f8b18ba392553efef0d161a774ac7af8619b",
         "harness": "claude-code",
         "mode": "replay",

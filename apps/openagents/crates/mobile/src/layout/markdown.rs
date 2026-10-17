@@ -6,8 +6,8 @@
 //! same geometry as primitives. One routine for both means a row's measured
 //! height and its painted content can never disagree.
 
-use zeron_markdown::parser::{Block, InlineRun, TableAlign};
-use zeron_text::{OverflowWrap, PrepareOptions, Prepared, Span, WhiteSpace, WidthCache};
+use openagents_markdown::parser::{Block, InlineRun, TableAlign};
+use openagents_text::{OverflowWrap, PrepareOptions, Prepared, Span, WhiteSpace, WidthCache};
 
 use super::display::{ColorRole, Decoration, DisplayBuilder, TextRun, WidgetKind};
 use super::style::{Family, Resolved, TYPE, Typography, Weight, baseline};
@@ -153,7 +153,7 @@ pub(crate) fn prepare_runs(ctx: &mut Ctx, runs: &[InlineRun], kind: TextKind, mu
             chip: s.code,
         });
     }
-    let p = zeron_text::prepare(
+    let p = openagents_text::prepare(
         &ctx.typo.book,
         ctx.cache,
         &text,
@@ -191,7 +191,7 @@ pub(crate) fn prepare_plain(
         pad_end: 0.0,
         atomic: false,
     }];
-    let p = zeron_text::prepare(
+    let p = openagents_text::prepare(
         &ctx.typo.book,
         ctx.cache,
         text,
@@ -288,8 +288,8 @@ pub(crate) fn prepare_block(ctx: &mut Ctx, block: &Block, depth: usize, muted: b
     }
 }
 
-fn syntax_color(kind: zeron_syntax::HighlightKind) -> ColorRole {
-    use zeron_syntax::HighlightKind as K;
+fn syntax_color(kind: openagents_syntax::HighlightKind) -> ColorRole {
+    use openagents_syntax::HighlightKind as K;
     match kind {
         K::Comment => ColorRole::SyntaxComment,
         K::Keyword => ColorRole::SyntaxKeyword,
@@ -315,7 +315,7 @@ fn highlight_cover(source: &str, language: Option<&str>) -> Vec<(std::ops::Range
     let mut cursor = 0usize;
     let doc = (source.len() <= 64 * 1024)
         .then(|| {
-            zeron_syntax::highlight(zeron_syntax::HighlightRequest {
+            openagents_syntax::highlight(openagents_syntax::HighlightRequest {
                 source,
                 path: None,
                 fence_tag: language,
@@ -364,7 +364,7 @@ fn prepare_code(ctx: &mut Ctx, language: Option<&str>, code: &str) -> PCode {
             atomic: false,
         })
         .collect();
-    let p = zeron_text::prepare(
+    let p = openagents_text::prepare(
         &ctx.typo.book,
         ctx.cache,
         source,

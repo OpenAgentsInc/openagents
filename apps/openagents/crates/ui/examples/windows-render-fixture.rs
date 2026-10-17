@@ -5,7 +5,7 @@ use gpui::{
     Window, WindowBounds, WindowOptions, div, img, point, px, rgb, size,
 };
 use std::path::PathBuf;
-use zeron_ui::edge_fade::edge_faded;
+use openagents_ui::edge_fade::edge_faded;
 
 struct Fixture {
     image: PathBuf,
@@ -159,7 +159,7 @@ fn main() -> anyhow::Result<()> {
                     size(px(680.), px(640.)),
                 ))),
                 titlebar: Some(TitlebarOptions {
-                    title: Some("Zeron Windows rendering fixture".into()),
+                    title: Some("OpenAgents Windows rendering fixture".into()),
                     ..Default::default()
                 }),
                 ..Default::default()

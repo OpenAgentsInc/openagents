@@ -10,9 +10,10 @@ with (app / "Info.plist").open("rb") as source:
     info = plistlib.load(source)
 assert info["CFBundleIdentifier"] == "com.openagents.app", info
 assert info["CFBundleDisplayName"] == "OpenAgents", info
+assert info["CFBundleExecutable"] == "OpenAgents", info
 assert info["CFBundleURLTypes"][0]["CFBundleURLSchemes"] == ["openagents"]
 assert (app / "Assets.car").is_file(), "Missing asset catalog"
-assert "Copyright (c) 2026 Wing" in (app / "Zeron-MIT.txt").read_text()
+assert "Copyright (c) 2026 Wing" in (app / "OpenAgents-MIT.txt").read_text()
 for extension in (app / "PlugIns").glob("*.appex"):
     with (extension / "Info.plist").open("rb") as source:
         assert plistlib.load(source)["CFBundleIdentifier"].startswith("com.openagents.app.")

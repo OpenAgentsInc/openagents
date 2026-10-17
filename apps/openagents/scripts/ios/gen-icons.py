@@ -13,7 +13,7 @@ import json, os, re, shutil, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 UI = os.path.join(ROOT, "crates/ui/assets")
-CAT = os.path.join(ROOT, "apps/ios/Zeron/Assets.xcassets")
+CAT = os.path.join(ROOT, "apps/ios/OpenAgents/Assets.xcassets")
 
 TOOL_ICONS = ["terminal", "document", "document-add", "pen", "magnifer", "folder-with-files",
               "global", "checklist", "widget", "bot", "chat-round-line", "alt-arrow-down",

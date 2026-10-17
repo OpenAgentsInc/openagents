@@ -7,10 +7,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use zeron_doc::{REGISTRY_DOC_ID, RegistryDoc};
-use zeron_proto::{Chat, Device, Session, SessionStatus};
-use zeron_sync::registry::mock_server::MockRegistryServer;
-use zeron_sync::{DocsStore, RegistryClient, RegistryEvent};
+use openagents_doc::{REGISTRY_DOC_ID, RegistryDoc};
+use openagents_proto::{Chat, Device, Session, SessionStatus};
+use openagents_sync::registry::mock_server::MockRegistryServer;
+use openagents_sync::{DocsStore, RegistryClient, RegistryEvent};
 
 fn ts(ms: i64) -> DateTime<Utc> {
     DateTime::from_timestamp_millis(ms).unwrap_or(DateTime::UNIX_EPOCH)
@@ -504,11 +504,11 @@ struct FlakyAckTransport {
     push_calls: Arc<std::sync::atomic::AtomicU64>,
 }
 
-impl zeron_sync::registry::RegistryTransport for FlakyAckTransport {
+impl openagents_sync::registry::RegistryTransport for FlakyAckTransport {
     fn fetch(
         &self,
         _since: u64,
-    ) -> futures::future::BoxFuture<'static, Result<String, zeron_sync::SyncError>> {
+    ) -> futures::future::BoxFuture<'static, Result<String, openagents_sync::SyncError>> {
         Box::pin(async {
             Ok(r#"{"seq":0,"full":false,"gcFloor":0,"rows":[],"presence":{}}"#.to_string())
         })
@@ -517,7 +517,7 @@ impl zeron_sync::registry::RegistryTransport for FlakyAckTransport {
     fn push(
         &self,
         body: String,
-    ) -> futures::future::BoxFuture<'static, Result<String, zeron_sync::SyncError>> {
+    ) -> futures::future::BoxFuture<'static, Result<String, openagents_sync::SyncError>> {
         let call = self
             .push_calls
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -543,10 +543,10 @@ async fn unreadable_http_ack_retries_instead_of_stranding_the_batch() {
     }
     // The WS side never connects (dead port): every sync runs over HTTPS.
     let client = RegistryClient::connect_via_transport(
-        Arc::new(zeron_sync::StaticUrl("ws://127.0.0.1:1/ws".into())),
+        Arc::new(openagents_sync::StaticUrl("ws://127.0.0.1:1/ws".into())),
         doc.clone(),
         "dev-a",
-        zeron_sync::RegistryTuning::default(),
+        openagents_sync::RegistryTuning::default(),
         Arc::new(FlakyAckTransport {
             push_calls: push_calls.clone(),
         }),

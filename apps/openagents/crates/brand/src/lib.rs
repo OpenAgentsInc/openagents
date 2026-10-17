@@ -1,13 +1,7 @@
 //! The OpenAgents desktop app's product identity, in one place.
 //!
-//! The app (formerly Coder Desktop) is a fork of Zeron (MIT). Internal crate and module names stay
-//! `zeron-*` so upstream merges stay easy; everything a user or the operating
-//! system sees as the product's identity comes from here. See `FORK.md` for
-//! the list of call sites that read these values.
-//!
-//! The `ZERON_*` environment variables (`ZERON_DATA_DIR`, `ZERON_IPC_PORT`,
-//! ...) keep their upstream names: they are developer overrides, not product
-//! identity. Only their defaults change.
+//! The app is a fork of Zeron (MIT). Product names, stable storage locations,
+//! and the previous release's environment-variable fallbacks live here.
 
 /// The short name users see: app and bundle name, window titles, menus, dock,
 /// notifications.
@@ -32,7 +26,7 @@ pub const DEV_BUNDLE_ID: &str = "com.openagents.desktop.dev";
 /// [`BUNDLE_ID`] as a C string, for AppKit notification-center lookups.
 pub const BUNDLE_ID_C: &std::ffi::CStr = c"com.openagents.desktop";
 
-/// launchd label of the optional background engine service (`zeron daemon`).
+/// launchd label of the optional background engine service (`openagents daemon`).
 pub const LAUNCHD_LABEL: &str = BUNDLE_ID;
 
 /// systemd user unit of the optional background engine service.
@@ -42,8 +36,8 @@ pub const SYSTEMD_UNIT: &str = "openagents-desktop.service";
 /// (`openagents://open/chat/...`). Never the bare `coder://`.
 pub const URL_SCHEME: &str = "openagents";
 
-/// Default loopback port of the engine IPC socket. Zeron uses 27654; a
-/// different default lets this app and Zeron run side by side.
+/// Default loopback port of the engine IPC socket. Keep the existing app
+/// port so a renamed binary still reaches its running engine.
 pub const DEFAULT_IPC_PORT: u16 = 27854;
 
 /// Folder name of the data directory under the platform's application-data
@@ -54,25 +48,21 @@ pub const DATA_DIR_NAME: &str = "OpenAgents Desktop";
 /// Folder name of the data directory under `$XDG_DATA_HOME` on Linux.
 pub const LINUX_DATA_DIR_NAME: &str = "openagents-desktop";
 
-/// Home-relative folder for agent worktrees and projectless scratch folders
-/// (Zeron uses `~/.zeron`). Kept out of the data directory, as upstream does,
-/// because users open these folders in their editors. Kept from the Coder
-/// Desktop name so existing worktrees and the chats that use them keep their
-/// paths.
+/// Home-relative folder for agent worktrees and projectless scratch folders.
+/// Keep this existing location so saved chats still reach their worktrees.
 pub const HOME_WORK_DIR: &str = ".coder-desktop";
 
 /// Identity before the 2026-10-16 rename, read once to carry data and the
-/// OpenAgents sign-in over (`apps/zeron/src/paths.rs`,
-/// `coder-account::desktop`).
+/// OpenAgents sign-in over (`apps/openagents/src/paths.rs`,
+/// `openagents-account::desktop`).
 pub const LEGACY_BUNDLE_ID: &str = "com.openagents.coder.desktop";
 pub const LEGACY_DEV_BUNDLE_ID: &str = "com.openagents.coder.desktop.dev";
 pub const LEGACY_DATA_DIR_NAME: &str = "Coder Desktop";
 pub const LEGACY_LINUX_DATA_DIR_NAME: &str = "coder-desktop";
 
-/// The update feed (`{feed}/manifest.json`). `None` turns the updater off:
-/// there is no OpenAgents desktop feed yet, and the app must never offer a Zeron
-/// release. Set it here when the OpenAgents desktop feed exists. The developer
-/// override `ZERON_RELEASES_URL` still works.
+/// The update feed (`{feed}/manifest.json`). Updates stay off until an
+/// OpenAgents desktop feed exists. `OPENAGENTS_RELEASES_URL` overrides it
+/// for development; the previous variable name remains a fallback.
 pub const UPDATE_FEED: Option<&str> = None;
 
 /// OpenAgents sync service. Authentication uses the shared OpenAgents account
@@ -104,7 +94,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn identity_is_the_openagents_desktop_and_separate_from_zeron() {
+    fn identity_keeps_desktop_and_phone_separate() {
         for id in [BUNDLE_ID, DEV_BUNDLE_ID, LAUNCHD_LABEL] {
             assert!(!id.starts_with("sh.zeron"));
             assert!(id.starts_with("com.openagents.desktop"));
@@ -126,5 +116,66 @@ mod tests {
         assert_eq!(default_edge_url(), "https://sync.openagents.com");
         assert!(WORKOS_CLIENT_ID.is_none());
         assert!(!default_edge_url().contains("zeron"));
+    }
+}
+
+/// Read an app setting, accepting the previous release's variable name.
+/// An explicitly set OpenAgents value always wins, including an empty value.
+pub fn env_var(name: impl AsRef<std::ffi::OsStr>) -> Result<String, std::env::VarError> {
+    let name = name.as_ref();
+    match std::env::var(name) {
+        Err(std::env::VarError::NotPresent) => {
+            legacy_env_name(name).map_or(Err(std::env::VarError::NotPresent), std::env::var)
+        }
+        result => result,
+    }
+}
+
+/// Read an app setting without requiring a Unicode value.
+pub fn env_var_os(name: impl AsRef<std::ffi::OsStr>) -> Option<std::ffi::OsString> {
+    let name = name.as_ref();
+    std::env::var_os(name).or_else(|| legacy_env_name(name).and_then(std::env::var_os))
+}
+
+fn legacy_env_name(name: &std::ffi::OsStr) -> Option<String> {
+    name.to_str()?
+        .strip_prefix("OPENAGENTS_")
+        .map(|suffix| format!("ZERON_{suffix}"))
+}
+
+#[cfg(test)]
+mod environment_tests {
+    use super::*;
+
+    // Run in a child process so environment changes cannot affect parallel tests.
+    #[test]
+    fn previous_variables_are_fallbacks_and_new_variables_win() {
+        const CHILD: &str = "OPENAGENTS_BRAND_ENV_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            assert_eq!(env_var("OPENAGENTS_BRAND_OLD_ONLY").unwrap(), "old");
+            assert_eq!(env_var_os("OPENAGENTS_BRAND_OLD_ONLY").unwrap(), "old");
+            assert_eq!(env_var("OPENAGENTS_BRAND_BOTH").unwrap(), "new");
+            assert_eq!(env_var("OPENAGENTS_BRAND_EMPTY").unwrap(), "");
+            assert_eq!(
+                env_var("OPENAGENTS_BRAND_MISSING"),
+                Err(std::env::VarError::NotPresent)
+            );
+            return;
+        }
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "environment_tests::previous_variables_are_fallbacks_and_new_variables_win",
+            ])
+            .env_clear()
+            .env(CHILD, "1")
+            .env("ZERON_BRAND_OLD_ONLY", "old")
+            .env("ZERON_BRAND_BOTH", "old")
+            .env("OPENAGENTS_BRAND_BOTH", "new")
+            .env("ZERON_BRAND_EMPTY", "old")
+            .env("OPENAGENTS_BRAND_EMPTY", "")
+            .status()
+            .unwrap();
+        assert!(status.success());
     }
 }

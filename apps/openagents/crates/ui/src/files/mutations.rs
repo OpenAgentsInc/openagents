@@ -1,6 +1,6 @@
 //! Shared identity and reconciliation for tree mutations and workspace references.
 use super::*;
-use zeron_proto::{WorkspaceEntry, WorkspaceEntryKind, WorkspaceMutationOutcome};
+use openagents_proto::{WorkspaceEntry, WorkspaceEntryKind, WorkspaceMutationOutcome};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceInteractionOrigin {
@@ -267,7 +267,7 @@ impl FilesSurface {
 
     pub(super) fn apply_semantic_mutation(
         &mut self,
-        change: &zeron_proto::WorkspaceFileChange,
+        change: &openagents_proto::WorkspaceFileChange,
         entry: Option<WorkspaceEntry>,
         local: bool,
         cx: &mut Context<Self>,
@@ -284,7 +284,7 @@ impl FilesSurface {
         self.loads.clear();
         self.tree.invalidate_loads();
         match change.kind {
-            zeron_proto::WorkspaceFileChangeKind::Renamed => {
+            openagents_proto::WorkspaceFileChangeKind::Renamed => {
                 if let Some(old) = &change.old_path {
                     self.tree.relocate_subtree(old, &change.path, entry);
                     let phases = if local {
@@ -316,7 +316,7 @@ impl FilesSurface {
                     }
                 }
             }
-            zeron_proto::WorkspaceFileChangeKind::Removed => {
+            openagents_proto::WorkspaceFileChangeKind::Removed => {
                 let rows = self.tree.visible_rows().to_vec();
                 let index = rows.iter().position(|r| r.path == change.path);
                 let next = index
@@ -373,14 +373,14 @@ mod tests {
             document.saved_revision = 1;
             files.preview.documents.insert("a.txt".into(), document);
             files.prepare_mutation(intent.clone(), cx);
-            let change = zeron_proto::WorkspaceFileChange {
+            let change = openagents_proto::WorkspaceFileChange {
                 operation_id: Some("observed".into()),
-                kind: zeron_proto::WorkspaceFileChangeKind::Renamed,
+                kind: openagents_proto::WorkspaceFileChangeKind::Renamed,
                 path: "b.txt".into(),
                 old_path: Some("a.txt".into()),
             };
             files.apply_workspace_changes(
-                zeron_proto::WorkspaceFileChanges {
+                openagents_proto::WorkspaceFileChanges {
                     sequence: 2,
                     resync_required: false,
                     changes: vec![change],
@@ -389,7 +389,7 @@ mod tests {
             );
             assert!(files.preview.documents.contains_key("a.txt"));
             files.apply_workspace_changes(
-                zeron_proto::WorkspaceFileChanges {
+                openagents_proto::WorkspaceFileChanges {
                     sequence: 3,
                     resync_required: false,
                     changes: vec![],
@@ -482,9 +482,9 @@ mod tests {
                 doc.revision = 3;
                 doc.saved_revision = 1;
                 files.preview.documents.insert("folder/a.txt".into(), doc);
-                let change = zeron_proto::WorkspaceFileChange {
+                let change = openagents_proto::WorkspaceFileChange {
                     operation_id: Some("op".into()),
-                    kind: zeron_proto::WorkspaceFileChangeKind::Renamed,
+                    kind: openagents_proto::WorkspaceFileChangeKind::Renamed,
                     path: "other".into(),
                     old_path: Some("folder".into()),
                 };
@@ -496,9 +496,9 @@ mod tests {
                 assert!(doc.is_dirty());
                 assert_eq!(doc.phase, DocumentPhase::Ready);
                 assert!(!files.preview.documents.contains_key("folder/a.txt"));
-                let removed = zeron_proto::WorkspaceFileChange {
+                let removed = openagents_proto::WorkspaceFileChange {
                     operation_id: Some("delete".into()),
-                    kind: zeron_proto::WorkspaceFileChangeKind::Removed,
+                    kind: openagents_proto::WorkspaceFileChangeKind::Removed,
                     path: "other".into(),
                     old_path: None,
                 };
