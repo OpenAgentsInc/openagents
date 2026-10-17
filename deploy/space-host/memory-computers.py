@@ -13,6 +13,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+import uuid
 
 HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 OWNER = 'space-memory-11812'
@@ -74,16 +75,28 @@ def proof(result):
     return value, skew_ms
 
 
+def private_storage(worker, resource):
+    sandbox = str(uuid.UUID(resource.removeprefix('sbx_')))
+    path = '/space/cache/firecracker/sandboxes/' + sandbox
+    result = subprocess.run(['docker', 'exec', worker, 'test', '-e', path],
+                            capture_output=True, timeout=15)
+    assert result.returncode in (0, 1), 'Could not inspect private sandbox storage'
+    return result.returncode == 0
+
+
 def main():
     assert socket.gethostname().split('.')[0] == 'oa-space-spike-11812'
     assert Path.home() == Path('/var/lib/space-spike/home')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--observer', type=Path, required=True)
+    parser.add_argument('--worker', required=True)
     parser.add_argument('--evidence', type=Path, required=True)
     parser.add_argument('--commit', required=True)
     args = parser.parse_args()
     assert args.binary.is_file() and not args.evidence.exists()
+    assert args.worker.startswith('space-local-worker') and all(
+        char.isalnum() or char == '-' for char in args.worker)
     assert len(args.commit) == 40 and all(c in '0123456789abcdef' for c in args.commit)
     assert os.environ['SPACE_API_URL'] == 'http://127.0.0.1:8080'
     assert os.environ['SPACE_DATA_PLANE_URL'] == 'http://127.0.0.1:8090'
@@ -189,6 +202,8 @@ print(s.recv(4096).decode())
                 row['before'], row['before_clock_skew_ms'] = proof(turn(base, token, path, start))
                 wait(base, token, path, lambda item: item.get('state') == 'stopped')
                 row['stopped_after_turn'] = True
+                assert private_storage(args.worker, row['resource'])
+                row['private_storage_observed_while_stopped'] = True
                 for cycle in range(2):
                     # Rebuild the API/worker process against its same durable store.
                     # Reconciliation must leave the stopped policy effective.
@@ -216,10 +231,16 @@ print(s.recv(4096).decode())
                 assert call(base, token, path, 'DELETE')[0] == 202
                 wait(base, token, path, lambda item: item.get('state') == 'deleted')
                 row['deleted'] = True
-                provider_status, _ = call(os.environ['SPACE_API_URL'], os.environ['SPACE_API_TOKEN'],
-                                          '/v1/sandboxes/' + row['resource'], account=False)
-                assert provider_status == 404, 'The private checkpoint still exists'
-                row['provider_absent_after_delete'] = True
+                if row.get('resource'):
+                    provider_status, _ = call(os.environ['SPACE_API_URL'], os.environ['SPACE_API_TOKEN'],
+                                              '/v1/sandboxes/' + row['resource'], account=False)
+                    assert provider_status == 404, 'The provider sandbox still exists'
+                    row['provider_absent_after_delete'] = True
+                    deadline = time.monotonic() + 120
+                    while private_storage(args.worker, row['resource']):
+                        assert time.monotonic() < deadline, 'Private sandbox storage remains after deletion'
+                        time.sleep(1)
+                    row['private_storage_absent_after_delete'] = True
                 save(args.evidence, report)
         report['passed'] = all(row['passed'] and row.get('deleted') for row in report['samples'])
     finally:
