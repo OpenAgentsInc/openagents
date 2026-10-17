@@ -267,3 +267,41 @@ pub struct Reference {
     pub document: String,
     pub version: u64,
 }
+
+/// Purposes that must reject protected inputs, including old artifacts whose
+/// producer did not yet set `no_training`.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelUse {
+    Training,
+    Evaluation,
+    Trace,
+}
+
+pub fn check_model_use(
+    version: &Version,
+    artifacts: &[Artifact],
+    _purpose: ModelUse,
+) -> Result<(), crate::Refusal> {
+    if version
+        .assets
+        .iter()
+        .any(|a| matches!(a.class, AssetClass::PrivateLocal | AssetClass::NoTraining))
+        || artifacts.iter().any(|a| {
+            a.no_training || matches!(a.class, AssetClass::PrivateLocal | AssetClass::NoTraining)
+        })
+    {
+        return Err(crate::Refusal::new(
+            "no_training",
+            "These files cannot be used to train or evaluate a model, or saved in a model trace.",
+        ));
+    }
+    if artifacts.iter().any(|a| a.version != version.reference()) {
+        return Err(crate::Refusal::new(
+            "artifact_version",
+            "Choose files from this saved version.",
+        ));
+    }
+    Ok(())
+}
