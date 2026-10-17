@@ -551,3 +551,150 @@ async fn usage_reads_stay_account_scoped_and_legacy_chat_wake_keeps_its_200() {
         })
         .await;
 }
+
+#[tokio::test]
+async fn the_free_allowance_bounds_enrolled_accounts_and_yields_to_their_own_policy() {
+    use oa_computers::usage::{FREE_BOOT_MS, FreeAllowance};
+    let Some((db, _dsn)) = database().await else {
+        return;
+    };
+    tokio::task::LocalSet::new()
+        .run_until(async move {
+            let store = Store::new(db.clone());
+            let root = tempfile::tempdir().unwrap();
+            let a = Simulated::new(&root.path().join("a"), false);
+            let b = Simulated::new(&root.path().join("b"), true);
+            let driver = configured("b", &a, &b);
+            // Off: nobody is enrolled. (`phase` follows alice.)
+            store.set_free_allowance(None).await.unwrap();
+            assert!(!store.enroll_free("alice").await.unwrap());
+            // One free boot's worth: two hours of two vCPUs.
+            let one_boot = 2 * FREE_BOOT_MS as i64;
+            store
+                .set_free_allowance(Some(FreeAllowance {
+                    computer_count: 1,
+                    boot_cpu_ms: one_boot,
+                }))
+                .await
+                .unwrap();
+            assert!(store.enroll_free("alice").await.unwrap());
+            assert!(
+                store.enroll_free("alice").await.unwrap(),
+                "enrolling twice is fine"
+            );
+            let free = |key: &str| CreateIntent {
+                free_allowance: true,
+                ..intent(key)
+            };
+            let (made, _) = store
+                .create_placed("alice", &free("one"), driver.catalog())
+                .await
+                .unwrap();
+            assert_eq!(made.record.bounds.absolute_ms, FREE_BOOT_MS);
+            // One computer at a time.
+            assert!(matches!(
+                store
+                    .create_placed("alice", &free("two"), driver.catalog())
+                    .await,
+                Err(oa_computers::store::CreateError::Limit)
+            ));
+            let usage = store.usage("alice", 0, 200).await.unwrap();
+            assert_eq!(usage["free_allowance"]["cpu_ms"], one_boot);
+            assert_eq!(usage["free_allowance"]["counted_cpu_ms"], one_boot);
+            assert_eq!(usage["free_allowance"]["computer_count"], 1);
+            let id = &made.id;
+            phase(&db, &store, &driver, id, "awake").await;
+            store
+                .set_desired("alice", id, Desired::Stopped)
+                .await
+                .unwrap();
+            phase(&db, &store, &driver, id, "stopped").await;
+            // The first boot's maximum is still counted, so a second boot is refused.
+            assert_eq!(
+                store
+                    .set_desired("alice", id, Desired::Running)
+                    .await
+                    .unwrap_err()
+                    .0,
+                QUOTA_ERROR
+            );
+            // An account's own policy replaces the free allowance.
+            store
+                .set_usage_limits(Some("alice"), &Limits::default())
+                .await
+                .unwrap();
+            store
+                .set_desired("alice", id, Desired::Running)
+                .await
+                .unwrap();
+            assert!(store.usage("alice", 0, 200).await.unwrap()["free_allowance"].is_null());
+            // Accounts never enrolled keep the ordinary limits.
+            for key in ["i1", "i2"] {
+                store
+                    .create_placed("invited", &intent(key), driver.catalog())
+                    .await
+                    .unwrap();
+            }
+            assert!(store.usage("invited", 0, 200).await.unwrap()["free_allowance"].is_null());
+            // Switched off: an enrolled account without a policy is refused.
+            assert!(store.enroll_free("later").await.unwrap());
+            store.set_free_allowance(None).await.unwrap();
+            assert!(matches!(
+                store
+                    .create_placed("later", &free("one"), driver.catalog())
+                    .await,
+                Err(oa_computers::store::CreateError::Limit)
+            ));
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn the_front_door_enrolls_free_accounts_only_when_the_allowance_is_on() {
+    use oa_computers::usage::{FREE_BOOT_MS, FreeAllowance};
+    let Some((db, _dsn)) = database().await else {
+        return;
+    };
+    let store = Store::new(db.clone());
+    let root = tempfile::tempdir().unwrap();
+    let a = Simulated::new(&root.path().join("a"), false);
+    let b = Simulated::new(&root.path().join("b"), true);
+    let driver = configured("b", &a, &b);
+    let (url, task) = server(store.clone(), &driver).await;
+    let create = |key: &'static str, allowance: &'static str| {
+        let url = url.clone();
+        async move {
+            let response = reqwest::Client::new()
+                .post(format!("{url}/v1/computers"))
+                .bearer_auth(TOKEN)
+                .header("X-OpenAgents-Account", "free-http")
+                .header("X-OpenAgents-Allowance", allowance)
+                .json(&json!({"idempotency_key": key}))
+                .send()
+                .await
+                .unwrap();
+            (
+                response.status().as_u16(),
+                response.json::<Value>().await.unwrap(),
+            )
+        }
+    };
+    store.set_free_allowance(None).await.unwrap();
+    assert_eq!(create("off", "free").await.0, 403);
+    store
+        .set_free_allowance(Some(FreeAllowance {
+            computer_count: 1,
+            boot_cpu_ms: 120_000_000,
+        }))
+        .await
+        .unwrap();
+    assert_eq!(create("bad", "paid").await.0, 400);
+    let (status, made) = create("on", "free").await;
+    assert_eq!(status, 202, "{made}");
+    assert_eq!(made["lifecycle_policy"]["absolute_ms"], FREE_BOOT_MS);
+    assert_eq!(
+        store.usage("free-http", 0, 1).await.unwrap()["free_allowance"]["cpu_ms"],
+        120_000_000
+    );
+    task.abort();
+}

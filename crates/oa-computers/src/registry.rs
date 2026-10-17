@@ -71,6 +71,10 @@ pub struct CreateIntent {
     pub egress_profile: Option<String>,
     #[serde(default)]
     pub enrolled_host: Option<String>,
+    /// Set by the trusted front door's allowance header, never from JSON:
+    /// the computer's boots are bounded to [`crate::usage::FREE_BOOT_MS`].
+    #[serde(skip)]
+    pub free_allowance: bool,
 }
 impl CreateIntent {
     pub fn fingerprint(&self, resolved_size: &str) -> String {

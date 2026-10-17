@@ -34,6 +34,12 @@ pub(crate) fn message(error: &Error) -> CoreError {
             code: Some("needs_claude"),
             ..
         } => "Add your Claude key in Settings on openagents.com to run Claude Code on Our cloud.",
+        // The free cloud allowance is used up (#11981).
+        Error::PaymentRequired(_)
+        | Error::Refused {
+            code: Some("allowance_used"),
+            ..
+        } => "You've used your free cloud time. Top up on openagents.com or get Pro to keep going.",
         Error::Refused {
             code: Some("quota_exhausted"),
             ..
@@ -130,6 +136,11 @@ mod tests {
                 .to_string()
                 .contains("isn't available for this account")
         );
+        let used = message(&Error::Refused {
+            status: 402,
+            code: Some("allowance_used"),
+        });
+        assert!(used.to_string().contains("free cloud time"));
         assert!(matches!(
             message(&Error::Unauthorized),
             CoreError::Auth { .. }

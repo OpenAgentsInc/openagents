@@ -24,6 +24,13 @@
 //! the computer's disk or to the record kept here. A new run, stop, or
 //! delete revokes the previous run's key. Usage is recorded by the
 //! Computers service like any other computer.
+//!
+//! Free cloud (#11981): with `OPENAGENTS_CLOUD_HOST_FREE_ALLOWANCE=1`, every
+//! signed-in account can use these routes, not only invited ones. Their
+//! computer is created under the Computers service's free allowance
+//! (`oa_computers::usage::FreeAllowance`: one computer, $3 of cloud time,
+//! two-hour boots). When it is used up, a start answers 402 with one line
+//! on how to continue. The other Computers routes keep their invitation.
 
 use axum::Router;
 use axum::extract::State;
@@ -82,6 +89,39 @@ pub(crate) fn opencode_config() -> String {
 /// `OPENAGENTS_CLOUD_HOST_ENGINE_SHA256` together.
 const ENGINE_URL: &str = "https://storage.googleapis.com/openagentsgemini-cli-releases/openagents-host/3063ab036c/openagents-host-linux-x86_64";
 const ENGINE_SHA256: &str = "c5e3ee693f8235039d5881c6d3721753cea94de19f26c6b1431f2e2add1138f6";
+
+/// What a free account reads when its free cloud time is used up.
+pub(crate) const ALLOWANCE_USED: &str =
+    "You've used your free cloud time. Top up on openagents.com or get Pro to keep going.";
+/// One free boot's most CPU ms: the service's two-hour free boot on the
+/// two-vCPU small computer (`oa_computers::usage::FREE_BOOT_MS`).
+const FREE_BOOT_VCPUS: i64 = 2;
+
+/// Whether every signed-in account may use Our cloud under the free
+/// allowance. Off unless `OPENAGENTS_CLOUD_HOST_FREE_ALLOWANCE` is `1`.
+pub(crate) fn free_allowance() -> bool {
+    std::env::var("OPENAGENTS_CLOUD_HOST_FREE_ALLOWANCE")
+        .is_ok_and(|v| matches!(v.trim(), "1" | "true"))
+}
+
+/// The service's usage answer says the free allowance can't hold another boot.
+pub(crate) fn allowance_used(usage: &Value) -> bool {
+    let free = &usage["free_allowance"];
+    let (Some(limit), Some(counted)) = (free["cpu_ms"].as_i64(), free["counted_cpu_ms"].as_i64())
+    else {
+        return false;
+    };
+    let boot = free["boot_ms"].as_i64().unwrap_or(0) * FREE_BOOT_VCPUS;
+    free["unknown_allowances"].as_i64().unwrap_or(0) > 0 || counted.saturating_add(boot) > limit
+}
+
+fn allowance_refusal() -> Response {
+    refused(
+        StatusCode::PAYMENT_REQUIRED,
+        "allowance_used",
+        ALLOWANCE_USED,
+    )
+}
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
@@ -188,6 +228,8 @@ pub(crate) fn running(state: &str) -> bool {
 struct Caller {
     owner: String,
     token: String,
+    /// Not invited: Our cloud runs under the free allowance.
+    free: bool,
 }
 
 async fn caller(app: &App, headers: &HeaderMap) -> Result<Caller, Response> {
@@ -199,7 +241,8 @@ async fn caller(app: &App, headers: &HeaderMap) -> Result<Caller, Response> {
             "This key can't use Our cloud.",
         ));
     }
-    if !identity.permitted {
+    let free = !identity.permitted && free_allowance();
+    if !identity.permitted && !free {
         return Err(refused(
             StatusCode::FORBIDDEN,
             "invite_only",
@@ -215,6 +258,7 @@ async fn caller(app: &App, headers: &HeaderMap) -> Result<Caller, Response> {
     Ok(Caller {
         owner: identity.owner,
         token,
+        free,
     })
 }
 
@@ -267,11 +311,35 @@ async fn call(
     path: &str,
     body: Option<Value>,
 ) -> Result<(u16, Value), Response> {
+    call_free(owner, method, path, body, false).await
+}
+
+async fn call_free(
+    owner: &str,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<Value>,
+    free: bool,
+) -> Result<(u16, Value), Response> {
     let client = crate::computers::client().ok_or_else(unavailable)?;
     client
-        .call_scoped(method, path, owner, body, None)
+        .call_with(method, path, owner, body, None, free)
         .await
         .map_err(|_| unavailable())
+}
+
+/// A free account's refused create: its allowance, or its last computer
+/// still being removed.
+async fn free_create_refused(owner: &str) -> Response {
+    match call(owner, reqwest::Method::GET, "/v1/usage?limit=1", None).await {
+        Ok((200, usage)) if allowance_used(&usage) => allowance_refusal(),
+        Ok(_) => refused(
+            StatusCode::TOO_MANY_REQUESTS,
+            "quota_exhausted",
+            "Our cloud is still shutting down. Try again in a minute.",
+        ),
+        Err(r) => r,
+    }
 }
 
 /// The computer, when it still exists and isn't being deleted.
@@ -390,11 +458,12 @@ async fn start(State(app): State<App>, headers: HeaderMap) -> Response {
         record.generation += 1;
         let account = crate::chat_store::digest(caller.owner.as_bytes());
         let key = format!("cloud-host-{}-{}", &account[..16], record.generation);
-        match call(
+        match call_free(
             &caller.owner,
             reqwest::Method::POST,
             "/v1/computers",
             Some(json!({"idempotency_key": key})),
+            caller.free,
         )
         .await
         {
@@ -405,6 +474,7 @@ async fn start(State(app): State<App>, headers: HeaderMap) -> Response {
                 record.command = None;
                 computer = Some(v);
             }
+            Ok((429, _)) if caller.free => return free_create_refused(&caller.owner).await,
             Ok((429, _)) => {
                 return refused(
                     StatusCode::TOO_MANY_REQUESTS,
@@ -504,6 +574,12 @@ async fn start(State(app): State<App>, headers: HeaderMap) -> Response {
     .await;
     let command = match sent {
         Ok((200 | 202, v)) => v,
+        // Waking the computer for this run needs another boot's allowance.
+        Ok((429, _)) if caller.free => {
+            revoke_key(&app, &caller.token, &mut record).await;
+            let _ = save(&app, &caller.owner, &record, generation.as_deref()).await;
+            return allowance_refusal();
+        }
         _ => return unavailable(),
     };
     record.command = command["id"].as_str().map(str::to_owned);
@@ -511,6 +587,7 @@ async fn start(State(app): State<App>, headers: HeaderMap) -> Response {
     if let Err(r) = save(&app, &caller.owner, &record, generation.as_deref()).await {
         return r;
     }
+    app.config.analytics.event("app_cloud_host_started", "");
     answer(
         StatusCode::ACCEPTED,
         view(&record, computer.as_ref(), command["state"].as_str()),
@@ -642,6 +719,27 @@ mod tests {
         for state in ["succeeded", "failed", "cancelled", "timed_out", "unknown"] {
             assert!(!running(state));
         }
+    }
+
+    #[test]
+    fn the_free_allowance_is_off_unless_configured_and_reads_its_usage() {
+        if std::env::var_os("OPENAGENTS_CLOUD_HOST_FREE_ALLOWANCE").is_none() {
+            assert!(!free_allowance());
+        }
+        let usage = |counted: i64, unknown: i64| {
+            json!({"free_allowance": {"cpu_ms": 120_000_000, "computer_count": 1,
+                "counted_cpu_ms": counted, "unknown_allowances": unknown, "boot_ms": 7_200_000}})
+        };
+        // Eight two-hour, two-vCPU boots fit in $3; the ninth doesn't.
+        assert!(!allowance_used(&usage(7 * 14_400_000, 0)));
+        assert!(allowance_used(&usage(8 * 14_400_000, 0)));
+        assert!(
+            allowance_used(&usage(0, 1)),
+            "an unknown boot is never free room"
+        );
+        // No free allowance (an invited account, or its own policy): not used up.
+        assert!(!allowance_used(&json!({"free_allowance": null})));
+        assert!(ALLOWANCE_USED.contains("openagents.com") && ALLOWANCE_USED.contains("Pro"));
     }
 
     #[test]

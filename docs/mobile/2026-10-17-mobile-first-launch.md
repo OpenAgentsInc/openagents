@@ -151,7 +151,15 @@ no computer and no key, and a real coding task started in under 3 minutes.**
   row in the chat instead of a toast and a second trip to the menu.
 - **Our cloud must be open to every account.** It already defaults to our
   gateway models; what's missing is admission. A free cloud allowance worth a
-  few dollars, kept by the Computers service, bounds it (#11981).
+  few dollars, kept by the Computers service, bounds it (#11981): **$3 of
+  cloud time per account**, at the Pro rate of $0.18 per standard machine-hour
+  (2 vCPU), so 16⅔ machine-hours, kept as 120,000,000 CPU ms. One computer at
+  a time, each boot at most two hours (14,400,000 CPU ms held per boot until
+  its usage settles, so at most eight boots). Model use stays on the free
+  daily allowance at the gateway. When it's used up, Our cloud says: "You've
+  used your free cloud time. Top up on openagents.com or get Pro to keep
+  going." It's on after the deploy in After-close checks
+  (`OA_COMPUTERS_FREE_ALLOWANCE`, `OPENAGENTS_CLOUD_HOST_FREE_ALLOWANCE`).
 - **Start time is the hardest number here.** The freeze doc measured about
   77 seconds for a cloud computer's first turn; the SPACE work (#11728,
   #11800 series) aims under 2 seconds to create. For launch, a warm pool of
@@ -225,7 +233,7 @@ Pro already covers:
 | The phone app, sign-in, chats on our models | Yes, with the free daily allowance | More allowance (proposed $5 a month included) |
 | Drive your own computers from the phone | **Yes, unlimited** | Yes |
 | Same chats on web, desktop, terminal, phone | **Yes** | Yes |
-| Our cloud (coding with no computer) | **A few dollars of free cloud credit** (#11981) | 100 machine-hours a month |
+| Our cloud (coding with no computer) | **$3 of free cloud time** (16⅔ machine-hours, one computer, two-hour boots; #11981) | 100 machine-hours a month |
 | Cloud agents that keep running with your laptop closed | No | Yes |
 | Photos and files in chats | Proposed: photos yes, files Pro | Yes, 5 GB project storage |
 | Push notifications | Yes | Yes |

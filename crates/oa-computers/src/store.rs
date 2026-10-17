@@ -310,6 +310,7 @@ impl Store {
                     idempotency_key: intent.idempotency_key.clone(),
                     environment: intent.environment.clone(),
                     version: intent.version.clone(),
+                    free_allowance: intent.free_allowance,
                     ..Default::default()
                 };
                 let record = crate::api::admit_create(&target.caps, owner, &body)

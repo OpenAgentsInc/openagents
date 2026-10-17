@@ -111,6 +111,9 @@ def main():
         # Chats on their own computers through oa-computers (#11624).
         plain("OPENAGENTS_WEB_COMPUTERS_URL", "https://oa-computers-157437760789.us-central1.run.app"),
         secret("oa-computers-token", "OPENAGENTS_WEB_COMPUTERS_TOKEN"),
+        # Our cloud for every signed-in account under the Computers
+        # service's free allowance (#11981; OA_COMPUTERS_FREE_ALLOWANCE).
+        plain("OPENAGENTS_CLOUD_HOST_FREE_ALLOWANCE", "1"),
         # The production test account (#11601): the site forwards the
         # operator's sign-up so checks never run as the owner.
         plain("OPENAGENTS_WEB_API_OPERATOR_SIGNUP", "1"),

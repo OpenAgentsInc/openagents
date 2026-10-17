@@ -365,6 +365,9 @@ for e in ({"name": "STACK_STATE", "value": "/stack"},
            "value": "https://oa-computers-157437760789.us-central1.run.app"},
           {"name": "OPENAGENTS_WEB_COMPUTERS_TOKEN",
            "valueFrom": {"secretKeyRef": {"name": "oa-computers-token", "key": "latest"}}},
+          # Our cloud for every signed-in account under the Computers
+          # service's free allowance (#11981; OA_COMPUTERS_FREE_ALLOWANCE).
+          {"name": "OPENAGENTS_CLOUD_HOST_FREE_ALLOWANCE", "value": "1"},
           # The contact form's mail to us, through Resend (/contact).
           {"name": "OPENAGENTS_RESEND_API_KEY",
            "valueFrom": {"secretKeyRef": {"name": "openagents-resend-api-key", "key": "latest"}}}):

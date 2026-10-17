@@ -116,6 +116,9 @@ def main():
             plain("BOAT_API_BASE", "https://oa-boat-157437760789.us-central1.run.app/api/v1"),
             plain("OPENAGENTS_WEB_COMPUTERS_URL", "https://oa-computers-staging-157437760789.us-central1.run.app"),
             secret("oa-computers-staging-token", "OPENAGENTS_WEB_COMPUTERS_TOKEN"),
+            # Our cloud for every signed-in account under the Computers
+            # service's free allowance (#11981; OA_COMPUTERS_FREE_ALLOWANCE).
+            plain("OPENAGENTS_CLOUD_HOST_FREE_ALLOWANCE", "1"),
             # Gemini on Vertex for the chat's images and PDFs (#11221).
             secret("openagents-gateway-staging-vertex-sa", "VERTEX_SA_JSON"),
             # Work hosts that take "work on this issue" runs (#11258).

@@ -102,7 +102,7 @@ gcloud run deploy "$sdk_service" --project "$sdk_project" --region "$sdk_region"
  --image "$sdk_repo@$sdk_digest" --service-account "$sdk_runtime" \
  --add-cloudsql-instances "$sdk_project:$sdk_region:$sdk_database" \
  --update-secrets "OA_COMPUTERS_DATABASE_URL=$sdk_dsn:latest,OA_COMPUTERS_TOKEN=$sdk_token:latest,BOAT_API_KEY=oa-boat-api-key:latest" \
- --update-env-vars "OA_COMPUTERS_DRIVER=boat,BOAT_API_BASE=$sdk_boat_base,OA_COMPUTERS_LEGACY_DEPLOYMENT=$sdk_legacy" \
+ --update-env-vars "OA_COMPUTERS_DRIVER=boat,BOAT_API_BASE=$sdk_boat_base,OA_COMPUTERS_LEGACY_DEPLOYMENT=$sdk_legacy,OA_COMPUTERS_FREE_ALLOWANCE=1" \
  --labels "openagents-commit=$sdk_commit" --revision-suffix "$sdk_revision_suffix" --no-traffic --min-instances 1 --max-instances 1 \
  --no-cpu-throttling --cpu 1 --memory 512Mi --allow-unauthenticated --quiet
 # Explicit traffic can remain on the old revision after a successful deploy.

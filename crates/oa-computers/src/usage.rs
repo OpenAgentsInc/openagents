@@ -15,6 +15,56 @@ use tokio_postgres::Transaction;
 
 pub const QUOTA_ERROR: &str = "The computer limit has been reached.";
 
+/// The free cloud allowance's longest boot (#11981). A free computer's boot
+/// is bounded to two hours, so each boot reserves at most
+/// `2 h x 2 vCPU = 14,400,000` CPU ms of the allowance, not the 12-hour
+/// default's 86,400,000.
+pub const FREE_BOOT_MS: u64 = 2 * 3_600_000;
+
+/// The default free allowance: $3 of cloud time at the published $0.18 per
+/// standard machine-hour (2 vCPU; `docs/pro/README.md`), counted in CPU ms
+/// like every boot allowance:
+/// `$3 / $0.18 = 16 2/3 machine-hours x 2 vCPU x 3,600,000 ms = 120,000,000`.
+/// Like an operator `boot_cpu_ms`, it sums settled usage and each unresolved
+/// boot's maximum, so it allows at most 8 two-hour boots until usage settles.
+pub const FREE_BOOT_CPU_MS: i64 = 120_000_000;
+
+/// The default free computer count: Our cloud's one computer.
+pub const FREE_COMPUTER_COUNT: i64 = 1;
+
+/// The allowance an enrolled free account gets when it has no policy of its
+/// own. Set from service configuration at start; never from a request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FreeAllowance {
+    pub computer_count: i64,
+    pub boot_cpu_ms: i64,
+}
+
+impl FreeAllowance {
+    /// `OA_COMPUTERS_FREE_ALLOWANCE=1` turns on the default allowance;
+    /// `OA_COMPUTERS_FREE_BOOT_CPU_MS` and `OA_COMPUTERS_FREE_COMPUTER_COUNT`
+    /// override its amounts. Off unless configured.
+    pub fn from_env() -> Result<Option<Self>, String> {
+        let on = std::env::var("OA_COMPUTERS_FREE_ALLOWANCE").unwrap_or_default();
+        if !matches!(on.trim(), "1" | "true") {
+            return Ok(None);
+        }
+        let number = |name: &str, default: i64| match std::env::var(name) {
+            Err(_) => Ok(default),
+            Ok(v) => v
+                .trim()
+                .parse::<i64>()
+                .ok()
+                .filter(|n| *n >= 0)
+                .ok_or_else(|| format!("{name} must be a whole number.")),
+        };
+        Ok(Some(Self {
+            computer_count: number("OA_COMPUTERS_FREE_COMPUTER_COUNT", FREE_COMPUTER_COUNT)?,
+            boot_cpu_ms: number("OA_COMPUTERS_FREE_BOOT_CPU_MS", FREE_BOOT_CPU_MS)?,
+        }))
+    }
+}
+
 /// Limits set by an operator, never accepted from an allocation request.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -65,6 +115,18 @@ pub(crate) async fn admit(tx: &Transaction<'_>, owner: &str) -> Result<(), DbErr
                 row.get(2),
                 row.get(3),
             ],
+            // An enrolled free account without its own policy gets the
+            // free allowance, or nothing when the allowance is off.
+            None if scope == "account" => match free_limits(tx, owner).await? {
+                Some(Some(free)) => [
+                    Some(free.computer_count),
+                    None,
+                    None,
+                    Some(free.boot_cpu_ms),
+                ],
+                Some(None) => return Err(DbError(QUOTA_ERROR.into())),
+                None => [default_count, None, None, None],
+            },
             None => [default_count, None, None, None],
         };
         let row = tx.query_one(
@@ -94,6 +156,30 @@ pub(crate) async fn admit(tx: &Transaction<'_>, owner: &str) -> Result<(), DbErr
         }
     }
     crate::storage::allowance::admit(tx, owner).await
+}
+
+/// `None` for an account never enrolled in the free allowance; for an
+/// enrolled one, the allowance, or `Some(None)` when it is switched off.
+async fn free_limits(
+    tx: &Transaction<'_>,
+    owner: &str,
+) -> Result<Option<Option<FreeAllowance>>, DbError> {
+    let row = tx
+        .query_opt(
+            "SELECT f.computer_count,f.boot_cpu_ms FROM computers.free_accounts a
+             LEFT JOIN computers.free_allowance f ON true WHERE a.owner=$1",
+            &[&owner],
+        )
+        .await?;
+    Ok(row.map(
+        |row| match (row.get::<_, Option<i64>>(0), row.get::<_, Option<i64>>(1)) {
+            (Some(computer_count), Some(boot_cpu_ms)) => Some(FreeAllowance {
+                computer_count,
+                boot_cpu_ms,
+            }),
+            _ => None,
+        },
+    ))
 }
 
 /// Reserve once for this boot before create or resume can reach the provider.
@@ -346,6 +432,59 @@ impl Store {
         Ok(true)
     }
 
+    /// Record the service's free allowance (#11981), or remove it so enrolled
+    /// accounts without their own policy are refused. Called at start.
+    pub async fn set_free_allowance(&self, free: Option<FreeAllowance>) -> Result<(), DbError> {
+        if free.is_some_and(|f| f.computer_count < 0 || f.boot_cpu_ms < 0) {
+            return Err(DbError("The free allowance is invalid.".into()));
+        }
+        let mut c = self.db.independent().await?;
+        let tx = c.transaction().await?;
+        lock(&tx).await?;
+        match free {
+            Some(f) => {
+                tx.execute(
+                    "INSERT INTO computers.free_allowance(singleton,computer_count,boot_cpu_ms)
+                     VALUES(true,$1,$2) ON CONFLICT(singleton) DO UPDATE SET
+                     computer_count=$1,boot_cpu_ms=$2,updated_at=now()",
+                    &[&f.computer_count, &f.boot_cpu_ms],
+                )
+                .await?;
+            }
+            None => {
+                tx.execute("DELETE FROM computers.free_allowance", &[])
+                    .await?;
+            }
+        }
+        tx.commit().await?;
+        Ok(())
+    }
+
+    /// Enroll an account in the free allowance before its first free
+    /// computer. `false`, and no enrollment, when the allowance is off.
+    /// Enrollment only adds limits: an account's own policy still wins.
+    pub async fn enroll_free(&self, owner: &str) -> Result<bool, DbError> {
+        if owner.is_empty() || owner.len() > 256 {
+            return Err(DbError("The account is invalid.".into()));
+        }
+        let mut c = self.db.independent().await?;
+        let tx = c.transaction().await?;
+        lock(&tx).await?;
+        let on = tx
+            .query_opt("SELECT 1 FROM computers.free_allowance", &[])
+            .await?
+            .is_some();
+        if on {
+            tx.execute(
+                "INSERT INTO computers.free_accounts(owner) VALUES($1) ON CONFLICT DO NOTHING",
+                &[&owner],
+            )
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(on)
+    }
+
     /// Account-scoped, bounded evidence reads. No command, output, or secret text.
     pub async fn usage(&self, owner: &str, after: i64, limit: i64) -> Result<Value, DbError> {
         let rows = self.db.client().await?.query(
@@ -367,10 +506,23 @@ impl Store {
         ).await?.get::<_,Value>(0);
         let client = self.db.client().await?;
         let storage = crate::storage::allowance::summary(client.as_ref(), owner).await?;
+        // The free allowance, for an enrolled account without its own policy.
+        let free = client.query_opt(
+            "SELECT jsonb_build_object('cpu_ms',f.boot_cpu_ms,'computer_count',f.computer_count,
+                'counted_cpu_ms',(SELECT COALESCE(sum(CASE WHEN state='settled' THEN used_cpu_ms ELSE maximum_cpu_ms END),0)
+                    FROM computers.usage_reservations WHERE owner=$1),
+                'unknown_allowances',(SELECT count(*) FROM computers.usage_reservations
+                    WHERE owner=$1 AND maximum_cpu_ms IS NULL),
+                'boot_ms',$2::bigint)
+             FROM computers.free_accounts a LEFT JOIN computers.free_allowance f ON true
+             WHERE a.owner=$1 AND NOT EXISTS(SELECT 1 FROM computers.usage_limits
+                WHERE scope='account' AND subject=$1)",
+            &[&owner, &(FREE_BOOT_MS as i64)],
+        ).await?.map(|row| row.get::<_, Value>(0));
         Ok(
             json!({"schema":"openagents.computers.usage.v1","events":events,"after":cursor,
             "allocation_allowance":reservations,"storage_allowance":storage,
-            "customer_charge":null,"pricing":"not_enabled"}),
+            "free_allowance":free,"customer_charge":null,"pricing":"not_enabled"}),
         )
     }
 

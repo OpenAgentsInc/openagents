@@ -31,6 +31,8 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
 pub const ACCOUNT_HEADER: &str = "x-openagents-account";
+/// `free` when the front door creates a computer under the free allowance.
+pub const ALLOWANCE_HEADER: &str = "x-openagents-allowance";
 
 /// Lifecycle bounds for a new computer: stop after 30 idle minutes, never
 /// run one boot past 12 hours.
@@ -357,6 +359,12 @@ pub fn admit_create(
             absolute_ms: remaining,
         };
     }
+    if body.free_allowance {
+        // A free boot reserves at most two hours of its vCPUs (#11981).
+        bounds.absolute_ms = bounds.absolute_ms.min(crate::usage::FREE_BOOT_MS);
+        bounds.idle_ms = bounds.idle_ms.min(bounds.absolute_ms);
+        bounds.observed_extension_ms = bounds.observed_extension_ms.min(bounds.absolute_ms);
+    }
     let spec = Spec {
         chat: body.chat.clone().unwrap_or_else(|| id.clone()),
         id,
@@ -403,6 +411,32 @@ async fn create(
         && (body.environment_image.is_some() || body.environment_attempt.is_some())
     {
         return admission_error(crate::registry::Refused::Artifact);
+    }
+    // The front door names a free-allowance account (#11981). Enrolling it
+    // only adds limits; its own operator policy, when it has one, still wins.
+    if let Some(allowance) = headers.get(ALLOWANCE_HEADER) {
+        if allowance.as_bytes() != b"free" || headers.get_all(ALLOWANCE_HEADER).iter().count() != 1
+        {
+            return err(
+                StatusCode::BAD_REQUEST,
+                "invalid",
+                "The allowance is invalid.",
+            );
+        }
+        match api.store.enroll_free(&owner).await {
+            Ok(true) => body.free_allowance = true,
+            Ok(false) => {
+                return err(
+                    StatusCode::FORBIDDEN,
+                    "forbidden",
+                    "Free cloud computers aren't available right now.",
+                );
+            }
+            Err(e) => {
+                eprintln!("oa-computers: free allowance: {e}");
+                return err(StatusCode::SERVICE_UNAVAILABLE, "unavailable", "Try again.");
+            }
+        }
     }
     if let Some(key) = headers.get("idempotency-key") {
         let Ok(key) = key.to_str() else {

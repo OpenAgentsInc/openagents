@@ -135,6 +135,23 @@ operator decision. These allowances are distinct from provider usage and the
 purchased compute balance. Customer prices and charges remain disabled. The
 allowance is not a verified ceiling on runtime or provider cost.
 
+**Free cloud allowance (#11981).** With `OA_COMPUTERS_FREE_ALLOWANCE=1`, the
+service records a default allowance at start (migration 17,
+`oa_computers::usage::FreeAllowance`): one computer and 120,000,000 boot CPU
+ms. That is $3 at the published $0.18 per standard machine-hour (2 vCPU,
+[Pro](../pro/README.md)): `$3 / $0.18 = 16 2/3 h x 2 vCPU x 3,600,000 ms`.
+`OA_COMPUTERS_FREE_BOOT_CPU_MS` and `OA_COMPUTERS_FREE_COMPUTER_COUNT` change
+the amounts. It applies only to accounts the front door enrolled, by sending
+`X-OpenAgents-Allowance: free` on a create (openagents.com does that for Our
+cloud, `/v1/cloud-host`, when `OPENAGENTS_CLOUD_HOST_FREE_ALLOWANCE=1` and the
+account isn't invited), and only while the account has no policy of its own:
+an account policy always replaces it. A free computer's boots last at most two
+hours, so each holds 14,400,000 CPU ms until an operator settles its usage.
+With the allowance off, enrolled accounts without a policy are refused.
+`GET /v1/usage` reports it as `free_allowance` (`cpu_ms`, `counted_cpu_ms`,
+`unknown_allowances`, `boot_ms`, `computer_count`). It is an allowance, not a
+charge: nothing is debited.
+
 Use `oa-computers-usage` with `OA_COMPUTERS_DATABASE_URL` for operator reads,
 limit changes, and retry-safe allowance decisions:
 

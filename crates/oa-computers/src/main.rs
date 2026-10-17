@@ -67,6 +67,18 @@ async fn serve(mut driver: Registry<RuntimeDriver>, dsn: String, token: String) 
         eprintln!("oa-computers: {error}");
         std::process::exit(1);
     }
+    // The free cloud allowance (#11981): recorded, or removed, at every start.
+    let free = match oa_computers::usage::FreeAllowance::from_env() {
+        Ok(free) => free,
+        Err(error) => {
+            eprintln!("oa-computers: {error}");
+            std::process::exit(1);
+        }
+    };
+    if let Err(error) = Store::new(db.clone()).set_free_allowance(free).await {
+        eprintln!("oa-computers: {error}");
+        std::process::exit(1);
+    }
     let files = oa_computers::files::spawn(Store::new(db.clone()), driver.clone());
     let turns = oa_computers::turns::Secrets::default();
     if env("OA_COMPUTERS_RECONCILE").as_deref() != Some("0") {
