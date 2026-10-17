@@ -552,3 +552,9 @@ links remain readable. Upstream fixes now require manual ports.
   `CodeAction`), a Settings row, the tutorial's connect page, and the
   universal-link handler in `App/SceneDelegate.swift`. The scanner also takes
   website sign-in codes (#12001) through `client_ffi/web_login.rs`.
+- [OpenAgents #12010](https://github.com/OpenAgentsInc/openagents/issues/12010):
+  the Design Lab desktop tour. Our module `crates/ui/src/shell/design_lab_tour.rs`
+  (behind `account-fixture`) opens the whole shell offscreen with fixture data
+  and saves every screen in light and dark mode;
+  `examples/design-lab-tour.rs` and `scripts/design-lab-capture-desktop.sh`
+  run it. Hook: one `pub mod design_lab_tour` in `crates/ui/src/shell.rs`.

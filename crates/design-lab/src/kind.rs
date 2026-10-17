@@ -31,11 +31,17 @@ fn content_of(board: &Board) -> Result<Value, Refusal> {
 }
 
 fn facts(board: &Board) -> Value {
-    let areas: BTreeSet<&str> = board.screens.iter().map(|s| s.area.as_str()).collect();
+    let areas: BTreeSet<(&str, &str)> = board
+        .screens
+        .iter()
+        .map(|s| (s.app.as_str(), s.area.as_str()))
+        .collect();
+    let apps: BTreeSet<&str> = board.screens.iter().map(|s| s.app.as_str()).collect();
     json!({
         "screens": board.screens.len(),
         "versions": board.versions(),
         "areas": areas.len(),
+        "apps": apps.len(),
     })
 }
 
@@ -192,14 +198,22 @@ impl LabKind for Design {
                     format!("The screen {} has no versions.", screen.id),
                 ));
             }
-            // A picture is `<run>/<file>.png` inside the captures folder.
-            let picture = |p: &str| {
-                p.ends_with(".png")
-                    && p.split('/').count() == 2
-                    && p.split('/')
-                        .all(|part| !part.is_empty() && part != ".." && part != ".")
-            };
-            if screen.versions.iter().any(|v| !picture(&v.image)) {
+            // A picture is `<run>/<file>.png` inside the captures folder, or
+            // `desktop/<run>/<file>.png` for the desktop app.
+            if !crate::APPS.iter().any(|(app, _)| *app == screen.app) {
+                return Err(Refusal::new(
+                    "board_check",
+                    format!(
+                        "The screen {} names an app the board doesn't have.",
+                        screen.id
+                    ),
+                ));
+            }
+            if screen
+                .versions
+                .iter()
+                .any(|v| !crate::capture_path_ok(&v.image, ".png"))
+            {
                 return Err(Refusal::new(
                     "board_check",
                     format!("A version of {} doesn't name its picture.", screen.id),
@@ -317,6 +331,7 @@ mod tests {
             name: "Phone".into(),
             screens: vec![Screen {
                 id: "home".into(),
+                app: crate::PHONE.into(),
                 title: "Home".into(),
                 area: "home".into(),
                 current: true,
@@ -441,6 +456,25 @@ mod tests {
         );
         assert_eq!(
             Design::check(&empty, &Value::Null).unwrap_err().code,
+            "board_check"
+        );
+        // A desktop screen keeps its pictures under `desktop/`.
+        let mut desktop = base.content.clone();
+        desktop["screens"][0]["app"] = json!("desktop");
+        desktop["screens"][0]["versions"][0]["image"] =
+            json!("desktop/20261017-100000-aaaa/chat--conversation.png");
+        let report = Design::check(&desktop, &Value::Null).unwrap();
+        assert_eq!(report.facts["apps"], 1);
+        let mut climbing = desktop.clone();
+        climbing["screens"][0]["versions"][0]["image"] = json!("desktop/../secret/x.png");
+        assert_eq!(
+            Design::check(&climbing, &Value::Null).unwrap_err().code,
+            "board_check"
+        );
+        let mut stranger = desktop.clone();
+        stranger["screens"][0]["app"] = json!("watch");
+        assert_eq!(
+            Design::check(&stranger, &Value::Null).unwrap_err().code,
             "board_check"
         );
         assert_eq!(

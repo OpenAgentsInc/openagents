@@ -64,6 +64,8 @@ use crate::transcript::{self, Transcript, TranscriptEvent};
 
 mod account_chats;
 #[cfg(feature = "account-fixture")]
+pub mod design_lab_tour;
+#[cfg(feature = "account-fixture")]
 pub use account_chats::capture_sidebar;
 pub(crate) use connect_phone::TITLE as CONNECT_PHONE_TITLE;
 mod actions_ui;

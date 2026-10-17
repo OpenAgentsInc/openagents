@@ -43,6 +43,10 @@ name = "tool-progress-capture"
 required-features = ["account-fixture"]
 
 [[example]]
+name = "design-lab-tour"
+required-features = ["account-fixture"]
+
+[[example]]
 name = "agent-identity-fixture"
 required-features = ["account-fixture"]
 

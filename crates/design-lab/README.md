@@ -1,15 +1,16 @@
 # Design Lab
 
-A Figma-style board with every screen of the current OpenAgents phone app
-(`apps/openagents/`), so you can zoom around the whole app in one place.
-Nothing on it is an old screenshot: every picture is captured from the app's
-code.
+A Figma-style board with every screen of the current OpenAgents apps, the
+phone app and the desktop app (both in `apps/openagents/`), so you can zoom
+around a whole app in one place. Nothing on it is an old screenshot: every
+picture is captured from the app's code.
 
 ```sh
-apps/openagents/scripts/design-lab-capture.sh   # capture every screen (simulator)
-cargo run -p design-lab -- serve                 # http://127.0.0.1:8798
-cargo run -p design-lab -- export /tmp/board     # static index.html + board.json + img/
-cargo run -p design-lab -- spec m1               # a mock's spec as Markdown, plus its PNG
+apps/openagents/scripts/design-lab-capture.sh          # every phone screen (simulator)
+apps/openagents/scripts/design-lab-capture-desktop.sh  # every desktop screen (offscreen)
+cargo run -p design-lab -- serve                        # http://127.0.0.1:8798
+cargo run -p design-lab -- export /tmp/board            # static index.html + board.json + img/
+cargo run -p design-lab -- spec m1                      # a mock's spec as Markdown, plus its PNG
 ```
 
 - **Capturing.** `design-lab-capture.sh` runs `DesignLabTourTests` (in
@@ -24,6 +25,26 @@ cargo run -p design-lab -- spec m1               # a mock's spec as Markdown, pl
   (button, text field, text, image, cell, ...), identifier, label, value
   and frame in points, plus the picture's scale. Add a screen by adding a
   `shot` to the tour.
+- **Capturing the desktop app.** `design-lab-capture-desktop.sh` runs the
+  `design-lab-tour` example in `apps/openagents/crates/ui`, which draws the
+  whole desktop app offscreen (GPUI's headless renderer, no window) in a
+  1280 × 800 point window at 2x: the boot gates, Home with the account row
+  signed in and out, the sidebar, a chat with messages, tool rows and the
+  composer, the Runs on and model menus, new session, the command palette,
+  the voice stage, the terminal, files and changes panels, and every
+  Settings page. The account is a fixture served from loopback, so no real
+  account, chat or engine is used. Runs go in `<captures>/desktop/<time>-<commit>/`
+  with the same file names as the phone's; desktop pictures have no element
+  trees yet, so the board offers box selection on them. Add a screen by
+  adding a `Shot` to `shots()` in `crates/ui/src/shell/design_lab_tour.rs`.
+  To build it without running it:
+  `cargo check -p openagents-ui --example design-lab-tour --features account-fixture`
+  from `apps/openagents`.
+- **Apps.** **Phone** and **Desktop** in the toolbar (or `P`) switch between
+  the two apps' screens; `#app=desktop` in the address opens the desktop
+  board. Each app's newest run decides which of its screens are current, and
+  desktop screens are drawn at the desktop's aspect ratio. A desktop
+  screen's id is `desktop:<area>--<screen>`.
 - **Versions.** Each capture run is a version of every screen it took. A
   screen that looks exactly as it did in the run before keeps its earlier
   version, so a screen's versions are the commits that changed it.
@@ -38,10 +59,11 @@ cargo run -p design-lab -- spec m1               # a mock's spec as Markdown, pl
   click selects one (its type and label show beside it) and Shift-click adds
   more. Drag to select a box instead; a screen captured before element
   trees offers only the box.
-- **Mock screens.** **New mock screen** (or `N`) adds a blank phone-sized
-  frame to the Mocks section. On a screen, pick a mock under **Selected**
-  and choose **Copy to mock**: each selection becomes a piece cut from that
-  picture (light or dark, whichever is showing) that keeps its element.
+- **Mock screens.** **New mock screen** (or `N`) adds a blank frame the size
+  of the showing app's screens (phone or desktop) to the Mocks section. On a
+  screen, pick a mock under **Selected** and choose **Copy to mock**: each
+  selection becomes a piece cut from that picture (light or dark, whichever
+  is showing) that keeps its element.
   Click a mock to edit it: drag pieces to move them, drag the corner to
   resize, add a **Rectangle** (`R`) or **Text** (`T`), **Duplicate** (⌘D),
   **Delete** (⌫), arrange front to back, nudge with the arrow keys, and copy
