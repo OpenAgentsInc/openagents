@@ -265,6 +265,11 @@ location. The historical `openagents-ai` reference does not authorize reviving
 that repository or publishing packages. These decisions do not prevent the
 first Rust client and public API from being implemented and exercised.
 
+The [connected-source evidence](connected-sources-evidence.json) qualifies the
+existing gated account connection, Drive, and own-project source schemas with
+synthetic handlers. It does not add a typed projects client or enable Google
+for every account.
+
 The [public route inventory](public-routes.md) distinguishes verified schemas,
 implemented gaps, gated/internal routes, and separately served API families.
 Its manual drift checks keep the combined public reference tied to the front

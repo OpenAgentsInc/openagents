@@ -1,0 +1,96 @@
+{
+  "format": "openagents.sdk.connected-sources.qualification.v1",
+  "issue": 11868,
+  "parent": 11857,
+  "source_base": "ed574aa32d",
+  "scope": {
+    "operations": 8,
+    "sources": [
+      "crates/openagents-web/src/connections/mod.rs",
+      "crates/openagents-web/src/connections/sources.rs",
+      "crates/openagents-web/src/connections/access.rs",
+      "crates/openagents-web/src/cloud/connections.rs",
+      "crates/oa-connections/src/google/drive.rs"
+    ],
+    "schema": "crates/openagents-web/src/connections/openapi.rs",
+    "fixture": "docs/sdk/openapi.app.json",
+    "excluded": [
+      "Gmail and Calendar tool execution",
+      "Browser OAuth callbacks",
+      "Admin access-list operations",
+      "Typed SDK project client",
+      "Package publication",
+      "Coder binary changes"
+    ],
+    "events": "No event stream is mounted by these eight operations."
+  },
+  "authorization": {
+    "credentials": [
+      "Current account sess_ session",
+      "Current oa_sk_ sign-in key"
+    ],
+    "refused": [
+      "Cookie-only requests",
+      "oak_ keys",
+      "Expired or revoked sessions"
+    ],
+    "availability": "Connections must be enabled for the account. Other accounts and disabled servers receive 404 not_found. Google must separately allow the person to connect while verification is pending.",
+    "projects": "Source routes use the account's own projects. Shared editors/viewers receive 403 project_role; nonmembers or removed members receive 404.",
+    "grants": "Stored metadata is not a live permission check. Attach and Drive reads use the caller's own refreshed grant; read-only tools also check granted scopes and policy."
+  },
+  "synthetic_checks": {
+    "test_module": "crates/openagents-web/src/connections/tests/schema.rs",
+    "scenarios": [
+      "All API fixture responses validate against the published schema",
+      "Disabled server and account access removal",
+      "Cookie and oak_ refusals",
+      "Cross-account and shared-editor source refusal, then membership removal",
+      "External session revocation",
+      "Unconnected and revoked Google grants",
+      "Duplicate attach keeps original metadata after Drive rename",
+      "Link takes precedence over id",
+      "Project source limit and disconnect keeps sources",
+      "Detach works without a live grant; repeat returns 404",
+      "Text/Sheets tools and missing scopes without inference",
+      "Two Drive pages, search ignores page, oversized page token is ignored",
+      "Forbidden, missing, unavailable and unauthorized Drive responses",
+      "Created projects and sources are deleted"
+    ],
+    "resources": "Local temporary account services, sealed stores, and in-process fake Google only."
+  },
+  "checks": {
+    "passed": [
+      "Changed Rust files pass rustfmt",
+      "Python scripts pass py_compile",
+      "Source route inventory regenerated and checked",
+      "Edited documentation links checked",
+      "git diff --check"
+    ],
+    "pending": [
+      "cargo test -p openagents-web connections::tests --lib",
+      "cargo run -p openagents-web --example app_openapi and deterministic fixture comparison",
+      "cargo test -p openagents-web app_openapi --lib",
+      "Python public-reference regression and schema checks"
+    ],
+    "local_build": "Cold agent2 build stopped with SIGINT to preserve disk at the root agent's request; cache retained. Shared agent3 build also stopped before disk exhaustion. No test verdict was produced."
+  },
+  "deployment": {
+    "status": "Pending integration and web deployment; no handler or authorization behavior changed.",
+    "check": "python3 scripts/api/check_connected_sources_public.py --api ORIGIN --output FILE",
+    "probes": "Schema and signed-out routing only; no account credentials or resources."
+  },
+  "cleanup": {
+    "owner_data_accessed": false,
+    "production_credentials_used": false,
+    "live_google_calls": 0,
+    "live_inference_calls": 0,
+    "paid_activity": false,
+    "live_resources_created": 0
+  },
+  "owner_steps": [],
+  "limits": [
+    "This work does not enable Google for more accounts or complete Google app verification.",
+    "Authenticated mutations are qualified through isolated handlers, not live Google accounts.",
+    "Photo/video model reads and their costs remain untested; the schema describes their existing optional usage fields."
+  ]
+}

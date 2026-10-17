@@ -82,6 +82,20 @@ class PublicReference(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'component drift'):
             reference.check(document)
 
+    def test_connected_sources_keep_their_own_authority_and_failure_shapes(self):
+        document = copy.deepcopy(self.document)
+        document['paths']['/v1/projects/{id}/sources']['post']['security'] = [{'appBearer': []}]
+        with self.assertRaisesRegex(AssertionError, 'drift'):
+            reference.check(document)
+        document = copy.deepcopy(self.document)
+        del document['paths']['/v1/connections/google/drive']['get']['responses']['409']
+        with self.assertRaisesRegex(AssertionError, 'drift'):
+            reference.check(document)
+        document = copy.deepcopy(self.document)
+        document['components']['schemas']['AppConnectionDrivePage']['properties']['next'] = {'type': 'string'}
+        with self.assertRaisesRegex(AssertionError, 'component drift'):
+            reference.check(document)
+
 
 if __name__ == '__main__':
     unittest.main()
