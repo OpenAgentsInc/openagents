@@ -47,6 +47,8 @@ mod standing;
 mod terminal;
 mod threads;
 mod websocket;
+#[cfg(unix)]
+pub mod workspace_files;
 
 /// The runtime record schema SSH launchers read.
 pub const RUNTIME_SCHEMA: &str = "openagents.coder.host-runtime.v1";
