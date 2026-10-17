@@ -131,6 +131,7 @@ struct MemoryDriver {
     inner: FakeDriver,
     complete: std::sync::Arc<std::sync::atomic::AtomicBool>,
     operations: std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, String>>>,
+    clock: std::sync::Arc<std::sync::Mutex<Option<String>>>,
 }
 
 impl computer_driver::Driver for MemoryDriver {
@@ -150,6 +151,15 @@ impl computer_driver::Driver for MemoryDriver {
         c: &str,
         e: &Exec,
     ) -> computer_driver::Outcome<computer_driver::ExecOutput> {
+        if e.command == "date +%s" {
+            if let Some(clock) = self.clock.lock().unwrap().clone() {
+                return computer_driver::Outcome::done(computer_driver::ExecOutput {
+                    code: 0,
+                    stdout: clock,
+                    stderr: String::new(),
+                });
+            }
+        }
         self.inner.exec(c, e).await
     }
     async fn put_file(&self, c: &str, p: &str, b: &[u8]) -> computer_driver::Outcome<()> {
@@ -203,6 +213,7 @@ async fn memory_lifecycle_waits_for_original_operations_across_restart_and_keeps
         inner: FakeDriver::new(dir.path().join("machines")).boot_observations(0),
         complete: Arc::new(AtomicBool::new(true)),
         operations: Arc::new(Mutex::new(Default::default())),
+        clock: Arc::new(Mutex::new(None)),
     };
     let store = Store::under(dir.path().join("records"));
     let mut request = spec();
@@ -286,6 +297,7 @@ async fn observed_deletion_settles_a_memory_operation_whose_result_cannot_be_rea
         inner: FakeDriver::new(dir.path().join("machines")).boot_observations(0),
         complete: Arc::new(AtomicBool::new(true)),
         operations: Arc::new(Mutex::new(Default::default())),
+        clock: Arc::new(Mutex::new(None)),
     };
     let store = Store::under(dir.path().join("records"));
     store.create(&Computer::new(spec(), 1).unwrap()).unwrap();
@@ -311,6 +323,7 @@ async fn memory_idle_and_absolute_bounds_survive_restart_without_an_automatic_wa
             inner: FakeDriver::new(dir.path().join("machines")).boot_observations(0),
             complete: Arc::new(AtomicBool::new(true)),
             operations: Arc::new(Mutex::new(Default::default())),
+            clock: Arc::new(Mutex::new(None)),
         };
         let store = Store::under(dir.path().join("records"));
         let mut request = spec();
@@ -391,6 +404,7 @@ async fn a_restored_service_must_answer_before_dispatch_without_rerunning_startu
         inner: FakeDriver::new(dir.path().join("machines")).boot_observations(0),
         complete: Arc::new(AtomicBool::new(true)),
         operations: Arc::new(Mutex::new(Default::default())),
+        clock: Arc::new(Mutex::new(None)),
     };
     let store = Store::under(dir.path().join("records"));
     let mut request = spec();
@@ -415,6 +429,11 @@ async fn a_restored_service_must_answer_before_dispatch_without_rerunning_startu
             .is_done()
     );
     driver.turn_finished("computer-1", 1, 20).await.unwrap();
+    *memory.clock.lock().unwrap() = Some("0".into());
+    let stale_clock = driver.prompt("computer-1", 29).await.unwrap();
+    assert_eq!(stale_clock.computer().phase, Phase::Booting);
+    assert_eq!(stale_clock.computer().turn.dispatched, 1);
+    *memory.clock.lock().unwrap() = None;
     let unavailable = driver.prompt("computer-1", 30).await.unwrap();
     assert_eq!(unavailable.computer().phase, Phase::Booting);
     assert_eq!(unavailable.computer().turn.dispatched, 1);
