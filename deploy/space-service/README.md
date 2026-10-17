@@ -48,3 +48,44 @@ remain recoverable for seven days; active private data has no age-only expiry.
 `storage-probe.py` exercises the S3-compatible XML protocol with synthetic bytes
 and removes its active objects and unfinished uploads. Native checkpoint
 recovery still requires the worker-replacement qualification.
+
+
+## Native service qualification
+
+Render the pinned production charts with `render.sh`. `image-pins.json` records
+all deployed native images, the TLS startup fix for the migration CLI, and the
+private streaming frontend. The maintained seed recipe selects the public
+Firecracker CI kernel by its verified digest; it does not claim the upstream
+custom BPF profile whose configuration is absent from the public source.
+
+Install `host-prerequisites.sh` before starting worker services. It uses the
+upstream service identities and bounds the guest cgroup to four CPU cores,
+8 GiB of memory, 4,096 processes, and 64 MiB/s and 2,000 operations/s in each disk
+I/O direction. Control services have one replica each. The worker and builder
+run the same pinned Firecracker, Jailer, kernel, and containerd shim.
+
+Run the migration Job in grants-only mode, activate its five existing logins
+with `database_roles.py --activate` on the control node, and run
+`database.py --set-role-passwords` on the operator machine. Cloud SQL prevents
+the bootstrap account from disabling statement logging, so passwords go through
+the SQL Admin API instead of SQL statements. Run `database_roles.py` on the
+control node to verify each saved password, TLS, and the superuser fence.
+
+`control.py builder --builder-zone us-central1-a` creates one private temporary
+builder with a four-hour deletion limit and no Google identity. Initialize it
+with `initialize.py builder`, install the host prerequisites, runtime and shim,
+and start `builder-containerd.sh` before applying its rendered services. Delete
+the builder and its two disks as soon as publication ends; the timeout is a
+fallback. No customer checkpoint belongs on this temporary node.
+
+The API and data frontends use internal Cloud Run ingress, a dedicated identity,
+one instance each, and verified TLS to the control node. Their proxies stream
+HTTP and WebSockets without buffering or logging request paths and headers.
+`qualification-fixture.py`, `qualification_fixture.py`, and
+`qualification_native.py` use a separate synthetic account and a four-hour
+admin session. Remove its computers, credentials, session, and owner rows when
+qualification ends. The production Boat deployment remains separate.
+
+The deployment is still under qualification. A healthy process and successful
+database migration do not prove checkpoint recovery, capacity admission,
+upgrades, or customer readiness. Retain that distinction in published evidence.
