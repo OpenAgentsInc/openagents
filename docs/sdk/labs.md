@@ -38,3 +38,8 @@ JSON bodies are capped at 1 MiB. Kind manifests supply smaller document,
 argument, version, and hourly-job limits. Cards read up to 1,000 matching jobs;
 larger histories use the paged job list. Errors use `{error: {code, message}}`;
 `429` and `503` include `Retry-After`. Coder 1.0 routes remain unchanged.
+
+Deployment uses `OPENAGENTS_WEB_LABS_DATABASE_URL` as a PostgreSQL URL.
+Run `python3 deploy/labs/database.py staging` (or `production`) to create
+a URL-form secret from the existing account database credential. The original
+secret stays in place. Each Labs runtime receives access to its own new secret.

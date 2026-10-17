@@ -359,7 +359,7 @@ if "openagents-production-pg" in instances and "OPENAGENTS_WEB_ACTORS_DATABASE_U
 # Labs use their own indexes in the existing database and a private bucket prefix.
 if "openagents-production-pg" in instances:
     for entry in (
-        {"name": "OPENAGENTS_WEB_LABS_DATABASE_URL", "valueFrom": {"secretKeyRef": {"name": "openagents-production-pg-dsn", "key": "latest"}}},
+        {"name": "OPENAGENTS_WEB_LABS_DATABASE_URL", "valueFrom": {"secretKeyRef": {"name": "openagents-labs-production-pg-url", "key": "latest"}}},
         {"name": "OPENAGENTS_WEB_LABS_BUCKET", "value": "openagentsgemini-web-chats-prod"},
         {"name": "OPENAGENTS_WEB_LABS_SIGNING_ACCOUNT", "value": spec.get("serviceAccountName", "157437760789-compute@developer.gserviceaccount.com")},
     ):
