@@ -26,6 +26,14 @@ struct Configuration {
     root_ca: Option<PathBuf>,
     deployment: String,
     nodes: BTreeMap<String, String>,
+    #[serde(default)]
+    certificate_authority: Option<CertificateAuthority>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CertificateAuthority {
+    authority: String,
+    caller_token: PathBuf,
 }
 fn private(path: &Path, max: u64) -> Result<Vec<u8>, &'static str> {
     use std::{
@@ -158,7 +166,17 @@ async fn run() -> Result<(), String> {
         authority: authority.clone(),
         nodes,
     });
-    let router = control_router(authority).merge(gateway.router());
+    let mut router = control_router(authority).merge(gateway.router());
+    if let Some(ca) = config.certificate_authority {
+        use computer_credentials::certificate_authority::{GoogleCa, Service};
+        let issuer = GoogleCa::from_metadata(&ca.authority)
+            .map_err(|_| "The certificate authority settings are invalid.")?;
+        let service = Arc::new(
+            Service::new(issuer, secret(&ca.caller_token)?)
+                .map_err(|_| "The certificate authority settings are invalid.")?,
+        );
+        router = router.merge(service.router());
+    }
     let port = std::env::var("PORT").unwrap_or_else(|_| "8791".into());
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
         .await

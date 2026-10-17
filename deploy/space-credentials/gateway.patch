@@ -1,5 +1,5 @@
 diff --git a/Cargo.lock b/Cargo.lock
-index dff36d5..ac9a578 100644
+index dff36d5..f579b0f 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
 @@ -989,6 +989,15 @@ dependencies = [
@@ -121,7 +121,23 @@ index dff36d5..ac9a578 100644
   "regex-automata",
   "regex-syntax",
  ]
-@@ -5959,6 +6034,7 @@ dependencies = [
+@@ -5570,6 +5645,7 @@ dependencies = [
+  "aws-smithy-types",
+  "base64 0.23.1",
+  "bytes",
++ "computer-credentials",
+  "dashmap",
+  "futures-util",
+  "hex",
+@@ -5580,6 +5656,7 @@ dependencies = [
+  "hyper-util",
+  "insta",
+  "jiff",
++ "libc",
+  "k8s-openapi",
+  "kube",
+  "lru 0.18.4",
+@@ -5959,6 +6036,7 @@ dependencies = [
   "aws-lc-rs",
   "base64 0.23.1",
   "bytes",
@@ -129,7 +145,7 @@ index dff36d5..ac9a578 100644
   "futures-util",
   "h2",
   "hickory-resolver",
-@@ -5989,6 +6065,7 @@ dependencies = [
+@@ -5989,6 +6067,7 @@ dependencies = [
   "rand 0.10.2",
   "rcgen",
   "rustls",
@@ -137,7 +153,7 @@ index dff36d5..ac9a578 100644
   "socket2",
   "tempfile",
   "thiserror 2.0.20",
-@@ -7349,6 +7426,15 @@ dependencies = [
+@@ -7349,6 +7428,15 @@ dependencies = [
   "elliptic-curve",
  ]
 
@@ -153,7 +169,7 @@ index dff36d5..ac9a578 100644
  [[package]]
  name = "proc-macro2"
  version = "1.0.107"
-@@ -7358,6 +7444,26 @@ dependencies = [
+@@ -7358,6 +7446,26 @@ dependencies = [
   "unicode-ident",
  ]
 
@@ -180,7 +196,7 @@ index dff36d5..ac9a578 100644
  [[package]]
  name = "prost"
  version = "0.14.4"
-@@ -7451,6 +7557,12 @@ dependencies = [
+@@ -7451,6 +7559,12 @@ dependencies = [
   "pulldown-cmark",
  ]
 
@@ -193,7 +209,7 @@ index dff36d5..ac9a578 100644
  [[package]]
  name = "quinn"
  version = "0.11.12"
-@@ -7623,6 +7735,15 @@ dependencies = [
+@@ -7623,6 +7737,15 @@ dependencies = [
   "rand_core 0.10.1",
  ]
 
@@ -209,7 +225,7 @@ index dff36d5..ac9a578 100644
  [[package]]
  name = "rapidhash"
  version = "4.5.1"
-@@ -7780,6 +7901,7 @@ dependencies = [
+@@ -7780,6 +7903,7 @@ dependencies = [
   "base64 0.22.1",
   "bytes",
   "futures-core",
@@ -217,7 +233,7 @@ index dff36d5..ac9a578 100644
   "http 1.5.0",
   "http-body 1.1.0",
   "http-body-util",
-@@ -7799,12 +7921,14 @@ dependencies = [
+@@ -7799,12 +7923,14 @@ dependencies = [
   "sync_wrapper",
   "tokio",
   "tokio-rustls",
@@ -232,7 +248,7 @@ index dff36d5..ac9a578 100644
   "web-sys",
   "webpki-roots",
  ]
-@@ -8127,6 +8251,18 @@ version = "1.0.23"
+@@ -8127,6 +8253,18 @@ version = "1.0.23"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
@@ -251,7 +267,7 @@ index dff36d5..ac9a578 100644
  [[package]]
  name = "ryu"
  version = "1.0.23"
-@@ -9382,6 +9518,18 @@ dependencies = [
+@@ -9382,6 +9520,18 @@ dependencies = [
   "serde_core",
  ]
 
@@ -270,7 +286,7 @@ index dff36d5..ac9a578 100644
  [[package]]
  name = "toml_parser"
  version = "1.1.3+spec-1.1.0"
-@@ -9726,6 +9874,12 @@ version = "0.1.7"
+@@ -9726,6 +9876,12 @@ version = "0.1.7"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "2896d95c02a80c6d6a5d6e953d479f5ddf2dfdb6a244441010e373ac0fb88971"
 
@@ -283,7 +299,7 @@ index dff36d5..ac9a578 100644
  [[package]]
  name = "unicase"
  version = "2.9.0"
-@@ -9968,6 +10122,15 @@ dependencies = [
+@@ -9968,6 +10124,15 @@ dependencies = [
   "nix 0.31.3",
  ]
 
@@ -299,7 +315,7 @@ index dff36d5..ac9a578 100644
  [[package]]
  name = "walkdir"
  version = "2.5.0"
-@@ -10057,6 +10220,19 @@ dependencies = [
+@@ -10057,6 +10222,19 @@ dependencies = [
   "unicode-ident",
  ]
 
@@ -319,7 +335,7 @@ index dff36d5..ac9a578 100644
  [[package]]
  name = "wasmtimer"
  version = "0.4.3"
-@@ -10432,6 +10608,9 @@ name = "winnow"
+@@ -10432,6 +10610,9 @@ name = "winnow"
  version = "1.0.4"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
@@ -384,6 +400,185 @@ index e9b748a..660375c 100644
  /// Read the effective desired policy and return an opaque `ETag`.
  mod document {
      use super::*;
+diff --git a/crates/libs/credential/mgr/server/Cargo.toml b/crates/libs/credential/mgr/server/Cargo.toml
+index 2fc9be2..b5fb4de 100644
+--- a/crates/libs/credential/mgr/server/Cargo.toml
++++ b/crates/libs/credential/mgr/server/Cargo.toml
+@@ -19,6 +19,8 @@ datadog = ["otel", "pplx-space-common-svc/datadog"]
+ datadog-otel = ["otel", "datadog"]
+
+ [dependencies]
++libc.workspace = true
++computer-credentials = { path = "../../../../openagents-credentials" }
+ pplx-space-common-core = { workspace = true, features = ["serde", "sqlx"] }
+ aes-gcm = { workspace = true }
+ async-trait = { workspace = true }
+diff --git a/crates/libs/credential/mgr/server/src/intermediate_ca.rs b/crates/libs/credential/mgr/server/src/intermediate_ca.rs
+index c2bd68f..92a6b99 100644
+--- a/crates/libs/credential/mgr/server/src/intermediate_ca.rs
++++ b/crates/libs/credential/mgr/server/src/intermediate_ca.rs
+@@ -3,11 +3,10 @@
+ //! A node generates its own CA keypair, signs a [`csr::NodeCsr`] with it, and
+ //! asks the authority to certify it under the SPACE root. No private key
+ //! crosses a process boundary: the node's stays on the node, and the root's
+-//! never leaves AWS Private CA.
++//! stays in the configured managed CA service.
+ //!
+-//! [`aws_private_ca`] is the only signing backend. The authority holding no CA
+-//! private key of its own is what puts every issuance in CloudTrail in an
+-//! account no SPACE service can write to.
++//! Google CA Service and AWS Private CA hold the root signing key. The native
++//! central authority selects one backend and retains its node admission checks.
+ //!
+ //! Keys are ECDSA P-256 and nothing else. Guests verify these chains with
+ //! whatever TLS stack they run, and P-256 is the one curve all of them must
+@@ -19,6 +18,7 @@
+ pub mod aws_private_ca;
+ mod certificate;
+ pub mod csr;
++pub mod gcloud;
+
+ use std::time::Duration;
+
+@@ -87,8 +87,8 @@ pub enum IssueIntermediateError {
+ }
+
+ /// Signs a node's intermediate CA certificate under the SPACE root.
+-/// [`aws_private_ca::AwsPrivateCaIssuer`] is the only implementation; the trait
+-/// is here so the handler can be tested without an endpoint.
++/// Google and AWS signers implement this boundary. Handler tests substitute
++/// an issuer without contacting either service.
+ #[async_trait]
+ pub trait IntermediateCaIssuer: Send + Sync {
+     /// Returns the signed certificate, DER encoded.
+diff --git a/crates/libs/credential/mgr/server/src/intermediate_ca/gcloud.rs b/crates/libs/credential/mgr/server/src/intermediate_ca/gcloud.rs
+new file mode 100644
+index 0000000..97f47c6
+--- /dev/null
++++ b/crates/libs/credential/mgr/server/src/intermediate_ca/gcloud.rs
+@@ -0,0 +1,63 @@
++//! Google CA Service through the private host broker. Only the authenticated
++//! central authority holds this credential; workers retain their own CA keys.
++use super::{IntermediateCaIssuer, IntermediateCertificateRequest, IssueIntermediateError};
++use async_trait::async_trait;
++use std::{
++    io::Read,
++    os::unix::fs::{MetadataExt, OpenOptionsExt},
++    sync::Arc,
++};
++
++pub struct GcloudCaIssuer(computer_credentials::certificate_authority::RemoteIssuer);
++impl GcloudCaIssuer {
++    pub fn from_env() -> Result<Option<Arc<Self>>, String> {
++        let origin = std::env::var("SPACE_GCLOUD_CA_BROKER_URL").ok();
++        let path = std::env::var_os("SPACE_GCLOUD_CA_BROKER_TOKEN_FILE");
++        let (origin, path) = match (origin, path) {
++            (None, None) => return Ok(None),
++            (Some(origin), Some(path)) => (origin, path),
++            _ => return Err("Configure both the CA broker URL and private token file.".into()),
++        };
++        let file = std::fs::OpenOptions::new()
++            .read(true)
++            .custom_flags(libc::O_NOFOLLOW)
++            .open(path)
++            .map_err(|_| "The private CA broker credential could not be read.")?;
++        let metadata = file
++            .metadata()
++            .map_err(|_| "The private CA broker credential could not be read.")?;
++        if !metadata.is_file() || metadata.mode() & 0o077 != 0 || metadata.len() > 8193 {
++            return Err("The CA broker credential must be a private regular file.".into());
++        }
++        let mut bytes = zeroize::Zeroizing::new(Vec::new());
++        file.take(8194)
++            .read_to_end(&mut bytes)
++            .map_err(|_| "The private CA broker credential could not be read.")?;
++        if bytes.last() == Some(&b'\n') {
++            bytes.pop();
++        }
++        let token = computer_credentials::Secret::new(std::mem::take(&mut *bytes))
++            .map_err(|_| "The CA broker credential is invalid.")?;
++        let client = computer_credentials::certificate_authority::RemoteIssuer::new(&origin, token)
++            .map_err(|_| "The CA broker settings are invalid.")?;
++        Ok(Some(Arc::new(Self(client))))
++    }
++}
++#[async_trait]
++impl IntermediateCaIssuer for GcloudCaIssuer {
++    async fn issue(
++        &self,
++        request: &IntermediateCertificateRequest,
++    ) -> Result<Vec<u8>, IssueIntermediateError> {
++        let pem = self
++            .0
++            .issue(request.csr.pem(), request.validity.as_secs())
++            .await
++            .map_err(|_| {
++                IssueIntermediateError::Unavailable(
++                    "The Google certificate signer is unavailable.".into(),
++                )
++            })?;
++        super::certificate::certificate_der_from_pem(&pem)
++    }
++}
+diff --git a/crates/libs/credential/mgr/server/src/run.rs b/crates/libs/credential/mgr/server/src/run.rs
+index 1a48711..d8afb16 100644
+--- a/crates/libs/credential/mgr/server/src/run.rs
++++ b/crates/libs/credential/mgr/server/src/run.rs
+@@ -33,7 +33,7 @@ use crate::credential_injection_bundle::{
+ use crate::credential_store::{CredentialStore, PgCredentialStore};
+ use crate::in_memory::InMemoryKeyWrapper;
+ use crate::intermediate_ca;
+-use crate::intermediate_ca::aws_private_ca::{AwsPrivateCaConfig, AwsPrivateCaIssuer, CA_ARN_ENV};
++use crate::intermediate_ca::aws_private_ca::{AwsPrivateCaConfig, AwsPrivateCaIssuer};
+ use crate::intermediate_key_broker::{
+     BrokerProtocolConfig, BrokerProtocolConfigError, GrpcIntermediateKeyBroker,
+     IntermediateKeyCacheConfig, IntermediateKeyWrapper,
+@@ -192,6 +192,8 @@ pub enum RunCredmgrError {
+     ),
+     #[error("invalid AWS Private CA configuration: {0}")]
+     IntermediateCaConfig(#[source] crate::intermediate_ca::aws_private_ca::ConfigError),
++    #[error("invalid GCloud CA signing configuration: {0}")]
++    GcloudCa(String),
+     #[error(transparent)]
+     SecretsManagerReaderRole(#[from] crate::aws_secrets_manager::ReaderRoleArnError),
+     #[error(
+@@ -545,6 +547,13 @@ async fn initialize_authority_service(
+
+     let private_ca_config =
+         AwsPrivateCaConfig::from_env().map_err(RunCredmgrError::IntermediateCaConfig)?;
++    let gcloud_ca_issuer =
++        intermediate_ca::gcloud::GcloudCaIssuer::from_env().map_err(RunCredmgrError::GcloudCa)?;
++    if private_ca_config.is_some() && gcloud_ca_issuer.is_some() {
++        return Err(RunCredmgrError::GcloudCa(
++            "Choose exactly one CA signing backend.".into(),
++        ));
++    }
+     let secrets_manager_role_arn = crate::aws_secrets_manager::reader_role_arn_from_env()?;
+     // Database-backed credential resolution reads secrets only through the
+     // organization-scoped reader role. Without a role, or on node-local
+@@ -569,6 +578,13 @@ async fn initialize_authority_service(
+             (private_ca_issuer, resolver)
+         };
+
++    let private_ca_issuer: Option<Arc<dyn intermediate_ca::IntermediateCaIssuer>> =
++        if let Some(issuer) = gcloud_ca_issuer {
++            Some(issuer)
++        } else {
++            private_ca_issuer.map(|issuer| issuer as Arc<dyn intermediate_ca::IntermediateCaIssuer>)
++        };
++
+     let platform_kek_provider = pplx_space_common_svc::core::types::platform_default_kek_provider();
+     let in_memory_enabled = pplx_space_common_core::env::env_flag(
+         pplx_space_common_core::env::test_hook_var(IN_MEMORY_KEK_ENABLED_ENV).as_deref(),
+@@ -689,7 +705,7 @@ async fn initialize_authority_service(
+     if let Some(issuer) = private_ca_issuer {
+         service = service.with_intermediate_ca_issuer(issuer);
+     } else {
+-        tracing::info!("no {CA_ARN_ENV}; IssueIntermediateCertificate is disabled");
++        tracing::info!("no CA signing backend; IssueIntermediateCertificate is disabled");
+     }
+     match pool {
+         Some(pool) => {
 diff --git a/crates/libs/net/gateway/server/Cargo.toml b/crates/libs/net/gateway/server/Cargo.toml
 index 22cb010..ae2fe9e 100644
 --- a/crates/libs/net/gateway/server/Cargo.toml

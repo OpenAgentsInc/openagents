@@ -1,5 +1,6 @@
 //! Authorization precedes secret access and is checked again before delivery.
 //! Values belong only in the inspected host-side proxy, never in guest metadata.
+pub mod certificate_authority;
 pub mod gateway;
 pub mod policy;
 pub mod secret_manager;

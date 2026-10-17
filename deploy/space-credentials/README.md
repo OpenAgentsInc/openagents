@@ -105,6 +105,40 @@ encoding. Supported headers are `authorization`, `x-api-key`, and
 existing references. Restart after adding or rotating definitions to reload the
 provider map; every caller must prepare new references afterward.
 
+## Google certificate signing
+
+The public SPACE pin signs node intermediates with AWS Private CA. A Google
+Secret Manager reader alone does not make TLS interception work on GCloud.
+Without a configured signer, the gateway blocks all traffic, including DNS,
+while its TLS dependencies are unavailable.
+
+The adapter adds `SPACE_GCLOUD_CA_BROKER_URL` and
+`SPACE_GCLOUD_CA_BROKER_TOKEN_FILE` to the native central credential authority.
+The token is a separate private regular file; node tokens cannot use it. The
+native authority still authenticates and validates each node's P-256 CSR before
+calling the broker. Configuring both AWS and GCloud signers refuses startup.
+
+Configure the broker's optional `certificate_authority` object with `authority`
+(the exact Google CA Service authority resource, using its numeric project ID)
+and `caller_token` (the private
+file containing the central authority's token). Give the broker's Google service
+account Certificate Requester on that CA pool only. The service fixes the Google
+API origin and issuing authority, bounds requests and responses, refuses
+redirects, limits signing concurrency to two, and caps node certificates at seven
+days. Retries in the same UTC day reuse a request ID; Google's deduplication
+window is at least 60 minutes. Later renewal uses a new ID. See the
+[certificate creation API](https://cloud.google.com/certificate-authority-service/docs/reference/rest/v1/projects.locations.caPools.certificates/create).
+The pool must restrict issuance to P-256 node CAs with path length one,
+certificate-signing usage, server authentication, and a seven-day maximum
+lifetime.
+
+The root signing key stays in Google CA Service. Nodes and gateways keep their
+existing local intermediate keys. Install the exact public root certificate in
+the qualified guest runtime's trust store and record its fingerprint with the
+runtime version. Keep that interception trust separate from the broker's trust
+for Google APIs and its private management services. Guests and workers receive
+no Google service identity or CA issuance permission.
+
 ## Worker and profile configuration
 
 Enable this only on an isolated canary worker until qualification passes.
