@@ -2,7 +2,7 @@
 use crate::{
     App,
     chat_store::{Loaded, Outcome},
-    coder_sync::{answer, owner, refused, stored},
+    coder_sync::{answer, refused, stored},
 };
 use axum::{
     Router,
@@ -89,12 +89,16 @@ pub(crate) fn routes() -> Router<App> {
         .route("/v1/threads/{id}/stop", post(stop))
 }
 async fn load(app: &App, headers: &HeaderMap, id: &str) -> Result<(String, Loaded), Response> {
-    let caller = owner(app, headers).await?;
+    // A signed-out app's own chats too (#11978).
+    let (caller, visitor) = crate::visitor_api::owner(app, headers).await?;
     if !crate::chat_store::valid_id(id) {
         return Err(refused(StatusCode::NOT_FOUND, "not_found", "No such chat."));
     }
     let loaded = match app.config.chat_store.load(&caller, id).await {
         Ok(Some(v)) if !v.conversation.deleted() => v,
+        Ok(_) if visitor => {
+            return Err(refused(StatusCode::NOT_FOUND, "not_found", "No such chat."));
+        }
         Ok(_) => match crate::projects::api::shared_thread(app, headers, &caller, id).await {
             Some((v, _)) => v,
             None => return Err(refused(StatusCode::NOT_FOUND, "not_found", "No such chat.")),

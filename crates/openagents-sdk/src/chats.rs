@@ -147,19 +147,13 @@ pub struct Send {
 }
 impl Send {
     pub fn new(chat: ChatRef, text: String) -> Result<Self, Error> {
-        let mut bytes = [0u8; 16];
-        getrandom::fill(&mut bytes).map_err(|_| Error::InvalidResponse)?;
-        bytes[6] = (bytes[6] & 0x0f) | 0x40;
-        bytes[8] = (bytes[8] & 0x3f) | 0x80;
-        let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-        let id = format!(
-            "{}-{}-{}-{}-{}",
-            &hex[..8],
-            &hex[8..12],
-            &hex[12..16],
-            &hex[16..20],
-            &hex[20..]
-        );
+        Self::with_id(chat, new_id()?, text)
+    }
+    /// The first message of a new chat answered by OpenAgents (#11979): the
+    /// chat is named by this message's request id. Send it with [`start`].
+    pub fn first(client: &Client, session: &Session, text: String) -> Result<Self, Error> {
+        let id = new_id()?;
+        let chat = client.chat(session, &id)?;
         Self::with_id(chat, id, text)
     }
     /// Restore an explicitly retained request after an uncertain response.
@@ -199,7 +193,23 @@ impl Send {
         Ok(())
     }
 }
-fn uuid(id: &str) -> bool {
+/// A new random request id (a version 4 UUID).
+pub(crate) fn new_id() -> Result<String, Error> {
+    let mut bytes = [0u8; 16];
+    getrandom::fill(&mut bytes).map_err(|_| Error::InvalidResponse)?;
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    Ok(format!(
+        "{}-{}-{}-{}-{}",
+        &hex[..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..]
+    ))
+}
+pub(crate) fn uuid(id: &str) -> bool {
     id.len() == 36
         && id.bytes().enumerate().all(|(i, b)| {
             if [8, 13, 18, 23].contains(&i) {
@@ -208,6 +218,35 @@ fn uuid(id: &str) -> bool {
                 b.is_ascii_hexdigit()
             }
         })
+}
+/// Start the new chat [`Send::first`] made (`POST /v1/threads`). Retrying the
+/// same `Send` after an uncertain response starts it once.
+pub async fn start(
+    client: &Client,
+    session: &Session,
+    message: &Send,
+    cancel: &CancellationToken,
+) -> Result<(), Error> {
+    message.check(client, session)?;
+    if message.chat.id() != message.request_id {
+        return Err(Error::InvalidReference);
+    }
+    let future = async {
+        client
+            .request::<Value>(
+                Method::POST,
+                &["threads"],
+                &[],
+                Some(json!({"request_id":message.request_id,"text":message.text})),
+                Some(session.token()),
+            )
+            .await
+    };
+    let value = tokio::select! {biased; _=cancel.cancelled()=>return Err(Error::Cancelled),result=future=>result?};
+    if value["answering"] != true || value["id"] != message.request_id.as_str() {
+        return Err(Error::InvalidResponse);
+    }
+    Ok(())
 }
 /// Submit the retained message. Cancellation can leave an accepted turn; retry this same `Send`.
 pub async fn send(
@@ -274,14 +313,27 @@ pub async fn stream(
     cancel: &CancellationToken,
 ) -> Result<Stream, Error> {
     message.check(client, session)?;
-    let segments = ["threads", message.chat.id(), "events"];
+    events(
+        client,
+        message.chat.id(),
+        &message.request_id,
+        session.token(),
+        cancel,
+    )
+    .await
+}
+/// Follow one request's events in chat `chat`, with `token`'s access.
+pub(crate) async fn events(
+    client: &Client,
+    chat: &str,
+    request_id: &str,
+    token: &str,
+    cancel: &CancellationToken,
+) -> Result<Stream, Error> {
+    let segments = ["threads", chat, "events"];
     let future = async {
         client
-            .send_events(
-                &segments,
-                &[("request_id", message.request_id.clone())],
-                session.token(),
-            )
+            .send_events(&segments, &[("request_id", request_id.to_owned())], token)
             .await
     };
     let response = tokio::select! {biased; _=cancel.cancelled()=>return Err(Error::Cancelled),result=future=>result?};
@@ -300,7 +352,7 @@ pub async fn stream(
     Ok(Stream {
         response,
         buffer: Vec::new(),
-        request: message.request_id.clone(),
+        request: request_id.to_owned(),
         cancel: cancel.clone(),
         ended: false,
     })

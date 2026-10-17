@@ -160,7 +160,14 @@ pub(crate) fn routes() -> Router<App> {
 
 /// Whether `path` is one of these routes (`crate::upstream::owned`).
 pub(crate) fn owns(path: &str) -> bool {
-    if path == "/v1/computer-usage" {
+    // Our cloud (#11852) and signed-out app chats (#11978): without these,
+    // production sends them on to the gateway, which doesn't know them.
+    if path == "/v1/computer-usage"
+        || path == "/v1/cloud-host"
+        || path == "/v1/cloud-host/stop"
+        || path == "/v1/visitors"
+        || path == "/v1/visitors/claim"
+    {
         return true;
     }
     // The gateway's agent sign-up routes (#11630) share the prefix.
@@ -336,13 +343,14 @@ fn not_found() -> Response {
 }
 
 async fn thread(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
-    let owner = match coder_sync::owner(&app, &headers).await {
+    let (owner, visitor) = match crate::visitor_api::owner(&app, &headers).await {
         Ok(owner) => owner,
         Err(response) => return response,
     };
     let store = &app.config.chat_store;
     let chat = match store.load(&owner, &id).await {
         Ok(Some(loaded)) if !loaded.conversation.deleted() => loaded.conversation,
+        Ok(_) | Err(Error::Invalid(_)) if visitor => return not_found(),
         // A chat someone else started in a shared project (#11586).
         Ok(_) | Err(Error::Invalid(_)) => {
             match crate::projects::api::shared_thread(&app, &headers, &owner, &id).await {
@@ -409,6 +417,12 @@ async fn reply(
     Path(id): Path<String>,
     body: Bytes,
 ) -> Response {
+    if let Some(visitor) = crate::visitor_api::caller(&app, &headers) {
+        return match visitor {
+            Ok(visitor) => crate::visitor_api::reply(&app, &headers, &visitor, &id, &body).await,
+            Err(response) => response,
+        };
+    }
     let owner = match coder_sync::owner(&app, &headers).await {
         Ok(owner) => owner,
         Err(response) => return response,
@@ -582,6 +596,13 @@ fn sent_answer(sent: AppSent) -> Response {
 /// repository as the web's does. Answers `201 {id, answering: true}`, or
 /// `200` when the same send already made the chat.
 async fn start(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
+    // Signed out, from an app (#11978).
+    if let Some(visitor) = crate::visitor_api::caller(&app, &headers) {
+        return match visitor {
+            Ok(visitor) => crate::visitor_api::start(&app, &headers, &visitor, &body).await,
+            Err(response) => response,
+        };
+    }
     let owner = match coder_sync::owner(&app, &headers).await {
         Ok(owner) => owner,
         Err(response) => return response,
@@ -644,6 +665,7 @@ async fn start(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
             if existed {
                 StatusCode::OK
             } else {
+                app.config.analytics.event("app_cloud_chat", "");
                 StatusCode::CREATED
             },
             json!({"id": id, "answering": true}),

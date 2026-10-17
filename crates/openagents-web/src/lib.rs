@@ -100,6 +100,7 @@ mod pages;
 pub mod palette;
 mod payments;
 mod phone_api;
+mod visitor_api;
 pub mod pilot;
 pub mod plan;
 mod project_openapi;
@@ -620,6 +621,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(device::routes())
         .merge(coder_sync::routes())
         .merge(phone_api::routes())
+        .merge(visitor_api::routes())
         .merge(history_api::routes())
         .merge(session_index::routes())
         .merge(labs_api::routes(&app))

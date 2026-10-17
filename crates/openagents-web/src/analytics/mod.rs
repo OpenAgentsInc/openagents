@@ -61,7 +61,7 @@ pub const SCRIPT: &str = "/static/a.js";
 pub const DASHBOARD: &str = "/admin/analytics";
 
 /// Every product event name a row may carry.
-pub const EVENTS: [&str; 11] = [
+pub const EVENTS: [&str; 17] = [
     "chat_sent",
     "answer_shown",
     "answer_failed",
@@ -73,6 +73,16 @@ pub const EVENTS: [&str; 11] = [
     "signin_started",
     "signin_completed",
     "api_key_created",
+    // The phone's first minute (#11983): a new signed-out visitor, its
+    // first chat, the message limit reached, its chats moved to an account
+    // at sign-in, a signed-in chat started with no computer, and Our cloud
+    // started.
+    "app_visitor_started",
+    "app_visitor_chat",
+    "app_visitor_limit",
+    "app_visitor_claimed",
+    "app_cloud_chat",
+    "app_cloud_host_started",
 ];
 
 /// The events the page's script may send to [`BEACON`]; every other event

@@ -188,6 +188,11 @@ pub fn owned(path: &str) -> bool {
     path == "/api/stats"
         || path == "/labs/agent"
         || path.starts_with("/labs/agent/")
+        // A Lab document's page and its file player (crate::lab_card_view).
+        || path.starts_with("/labs/files/")
+        || path
+            .strip_prefix("/labs/")
+            .is_some_and(|rest| rest.split('/').count() == 2 && !rest.starts_with("agent/"))
         || path == "/static/agent-lab.js"
         || path == "/v1/labs/agent"
         || path.starts_with("/v1/labs/agent/")

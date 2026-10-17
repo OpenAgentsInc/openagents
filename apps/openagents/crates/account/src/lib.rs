@@ -13,6 +13,7 @@ use std::{
 use tokio::sync::watch;
 pub mod agent_lab;
 pub mod chat_entries;
+pub mod cloud_chat;
 pub mod dashboard;
 pub mod desktop;
 pub mod history;
@@ -128,6 +129,10 @@ impl Controller {
     }
     pub fn snapshot(&self) -> Snapshot {
         self.updates.borrow().clone()
+    }
+    /// The deployment's client, for calls that need no sign-in (#11978).
+    pub fn client(&self) -> &Client {
+        &self.client
     }
     pub fn lease(self: &Arc<Self>) -> Option<Lease> {
         let s = self.state.lock().unwrap();
