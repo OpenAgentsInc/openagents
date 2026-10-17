@@ -153,6 +153,9 @@ final class AppModel {
         }
         do {
             account = try CoreAccount(dataDir: Self.coreDir.path, apiUrl: Self.accountAPI, websiteUrl: Self.accountWebsite, listener: accountBridge)
+            // A new key's first sign-in shows App Attest, or a proof of work
+            // where App Attest isn't supported (#11994).
+            account?.setAppAttester(attester: AppAttest())
             #if DEBUG
             #if CODER_ACCOUNT_FIXTURE
             if let i = args.firstIndex(of: "-account-test-credential-url"), i + 1 < args.count {

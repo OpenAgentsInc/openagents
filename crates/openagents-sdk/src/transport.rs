@@ -527,6 +527,13 @@ impl Client {
                 Some("last_key") => Some("last_key"),
                 Some("too_many_keys") => Some("too_many_keys"),
                 Some("nostr_disabled") => Some("nostr_disabled"),
+                Some("proof_required") => Some("proof_required"),
+                Some("invalid_proof") => Some("invalid_proof"),
+                Some("signup_limit") => Some("signup_limit"),
+                Some("invalid_attestation") => Some("invalid_attestation"),
+                Some("attestation_in_use") => Some("attestation_in_use"),
+                Some("sign_in_denied") => Some("sign_in_denied"),
+                Some("agent_account") => Some("agent_account"),
                 _ => None,
             };
             return Err(Error::Refused {
