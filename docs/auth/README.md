@@ -229,6 +229,23 @@ unchanged.
 
 The relay keeps NIP-42 for relay admission; this route doesn't replace it.
 
+### Website sign-in with a key
+
+Built in #12001 (`crates/openagents-web/src/web_sign_in.rs`). `/login`
+shows a QR code of `https://openagents.com/login/scan#request=…&challenge=…`
+that stands five minutes and works once. The OpenAgents phone app scans it,
+can read `GET /v1/web-sign-in/{request}` to show which browser it signs in,
+and sends `POST /v1/web-sign-in/approve` with `{"request"}`, signed as
+above over that URL with the scanned challenge
+(`openagents_sdk::Client::approve_scanned_login`). The page polls
+`GET /login/key/{request}/status` and receives the usual `oa_cloud_session`
+cookie. A browser extension (NIP-07) signs the same event over
+`POST /login/key/extension` instead. Both go through
+`POST /v1/sessions/nostr`, which issues a browser session, not an app
+session, for these two paths (`oa_auth::nostr::WEB_SIGN_IN_PATHS`). A
+key-only account then uses `/device`, `/oauth/authorize`, and Settings as
+a GitHub account does.
+
 ### Linking keys
 
 Built in #11993. A signed-in app manages the account's Nostr keys:

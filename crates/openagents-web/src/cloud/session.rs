@@ -1172,6 +1172,7 @@ pub(crate) mod github;
 mod lab_workers;
 mod nostr;
 pub(crate) mod oauth;
+mod web_sign_in;
 
 #[cfg(test)]
 mod tests;

@@ -40,8 +40,19 @@ use tenancy::workspaces::UserId;
 use crate::device::Answer;
 
 /// The paths a sign-in event's `u` tag may name, on a configured origin:
-/// the account service's own and the website's forwarder.
-pub const SIGN_IN_PATHS: [&str; 2] = ["/v1/sessions/nostr", "/v1/device/nostr"];
+/// the account service's own, the website's forwarder, and the website's
+/// own sign-in ([`WEB_SIGN_IN_PATHS`]).
+pub const SIGN_IN_PATHS: [&str; 4] = [
+    "/v1/sessions/nostr",
+    "/v1/device/nostr",
+    WEB_SIGN_IN_PATHS[0],
+    WEB_SIGN_IN_PATHS[1],
+];
+/// The website's sign-in paths (#12001): a phone approving a browser's
+/// sign-in it scanned, and a browser extension (NIP-07) signing in the
+/// browser it runs in. A sign-in signed for one of these gets a browser
+/// session, as GitHub sign-in does, not an app session.
+pub const WEB_SIGN_IN_PATHS: [&str; 2] = ["/v1/web-sign-in/approve", "/login/key/extension"];
 /// The paths a key-link proof's `u` tag may name.
 pub const LINK_PATHS: [&str; 2] = ["/v1/account/keys", "/v1/device/keys"];
 /// The origins events are accepted for when a deployment names none.
@@ -429,9 +440,11 @@ impl NostrAuth {
     /// `POST /v1/sessions/nostr`: verify `authorization` over `body` (the
     /// exact bytes, `{"app", "computer"}` or empty), find or create the
     /// account holding `nostr:<pubkey>` (a new one gets a personal
-    /// workspace on `tenant`), burn the proof, and issue an app session.
-    /// Answers the device poll's `{session, token, account}` plus
-    /// `created` and `pubkey`.
+    /// workspace on `tenant`), burn the proof, and issue an app session,
+    /// or a browser session when the event names one of
+    /// [`WEB_SIGN_IN_PATHS`] (the label is then unused). Answers the
+    /// device poll's `{session, token, account}` plus `created` and
+    /// `pubkey`.
     pub fn sign_in(
         &self,
         host: Option<&str>,
@@ -494,6 +507,11 @@ impl NostrAuth {
             Ok(proof) => proof,
             Err(_) => return denied(),
         };
+        // Signed for the website's own sign-in: a browser session.
+        let browser = peek(authorization)
+            .ok()
+            .and_then(|event| single(&event, "u").ok().map(str::to_string))
+            .is_some_and(|url| WEB_SIGN_IN_PATHS.iter().any(|path| url.ends_with(path)));
         let Ok(accounts) = Accounts::open(&self.dir) else {
             return unavailable();
         };
@@ -532,7 +550,12 @@ impl NostrAuth {
         let created = resolved.created;
         let issued = sessions.mutate(|book, access, at| {
             book.burn_nostr_proofs(&[&proof.event_id, &proof.nonce], proof.expires, at)?;
-            let issued = book.issue_app(UserId::from(account.as_str()), label.clone(), at)?;
+            let user = UserId::from(account.as_str());
+            let issued = if browser {
+                book.issue(user, at)?
+            } else {
+                book.issue_app(user, label.clone(), at)?
+            };
             sessions::push_access(
                 access,
                 sessions::Access {
