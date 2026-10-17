@@ -22,6 +22,7 @@
 //! does both for agents that write OpenAgents events as JSON lines.
 
 pub mod client;
+pub(crate) mod kept;
 pub mod lines;
 pub mod protocol;
 mod server;
@@ -33,6 +34,7 @@ use std::time::Duration;
 
 pub use client::{Found, Link, LinkSender, Spawn};
 pub use protocol::{Frame, FrameBody, KeeperSignal};
+pub use kept::{ENV, allowed_by_env};
 pub use server::main;
 
 /// How long a keeper keeps its agent running with no engine connected.

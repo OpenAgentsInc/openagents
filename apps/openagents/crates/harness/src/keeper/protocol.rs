@@ -95,6 +95,9 @@ pub enum FromKeeper {
         /// The agent has exited; its exit is journaled.
         #[serde(default)]
         exited: bool,
+        /// The highest sequence number an engine acknowledged.
+        #[serde(default)]
+        acked: u64,
     },
     Refused {
         reason: String,

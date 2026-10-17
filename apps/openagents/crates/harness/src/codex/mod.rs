@@ -56,7 +56,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use futures::StreamExt;
 use futures::stream::BoxStream;
 use serde_json::{Value, json};
 use tokio::io::AsyncBufReadExt;
@@ -148,6 +147,9 @@ pub struct CodexHarness {
     interrupt_grace: Duration,
     /// Grace between SIGTERM and SIGKILL.
     kill_grace: Duration,
+    /// Run under a keeper when the engine lends one (#11930); `None` reads
+    /// [`crate::keeper::ENV`].
+    keepers: Option<bool>,
 }
 
 impl Default for CodexHarness {
@@ -159,6 +161,7 @@ impl Default for CodexHarness {
             launch_broker: None,
             interrupt_grace: Duration::from_secs(2),
             kill_grace: Duration::from_secs(3),
+            keepers: None,
         }
     }
 }
@@ -178,6 +181,12 @@ impl CodexHarness {
     #[cfg(unix)]
     pub fn with_launch_broker(mut self, broker: crate::process::LaunchBroker) -> Self {
         self.launch_broker = Some(broker);
+        self
+    }
+
+    /// Run under a keeper when the engine lends one, or never.
+    pub fn with_keepers(mut self, keepers: bool) -> Self {
+        self.keepers = Some(keepers);
         self
     }
 
@@ -723,7 +732,22 @@ impl Harness for CodexHarness {
         request: RunRequest,
         controls: RunControls,
     ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
-        self.run_with_mode(request, controls, false, false).await
+        self.run_with_mode(request, controls, false, false, None)
+            .await
+    }
+
+    #[cfg(unix)]
+    async fn attach(
+        &self,
+        request: RunRequest,
+        controls: RunControls,
+        link: crate::keeper::Link,
+    ) -> Option<Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError>> {
+        let idle = crate::keeper::kept::started_idle(&link);
+        Some(
+            self.run_with_mode(request, controls, false, idle, Some(link))
+                .await,
+        )
     }
 
     async fn start_idle(
@@ -731,7 +755,8 @@ impl Harness for CodexHarness {
         request: RunRequest,
         controls: RunControls,
     ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
-        self.run_with_mode(request, controls, false, true).await
+        self.run_with_mode(request, controls, false, true, None)
+            .await
     }
 
     async fn run_title(
@@ -745,7 +770,8 @@ impl Harness for CodexHarness {
         request.mcp = None;
         request.model_options.clear();
         request.auto_approve = false;
-        self.run_with_mode(request, controls, true, false).await
+        self.run_with_mode(request, controls, true, false, None)
+            .await
     }
 }
 
@@ -756,6 +782,8 @@ impl CodexHarness {
         controls: RunControls,
         title_only: bool,
         idle: bool,
+        #[cfg(unix)] adopt: Option<crate::keeper::Link>,
+        #[cfg(not(unix))] adopt: Option<std::convert::Infallible>,
     ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
         let native = command_request(&request.prompt, "")?;
         if native
@@ -807,20 +835,39 @@ impl CodexHarness {
         if !title_only && let Some(broker) = &self.launch_broker {
             broker.options.codex_command(&mut cmd);
         }
-        let mut child = crate::process::RuntimeChild::launch(
-            cmd,
-            #[cfg(unix)]
-            self.launch_broker.as_ref(),
-            crate::process::RuntimePipes::Interactive,
+        // Voice keeps its own routing on the live pipes, so a voice run
+        // starts directly.
+        #[cfg(unix)]
+        let kept = crate::keeper::kept::child(
+            &cmd,
+            crate::keeper::kept::Wire::Codex,
+            !title_only
+                && controls.realtime.is_none()
+                && self.launch_broker.is_none()
+                && self.keepers.unwrap_or_else(crate::keeper::allowed_by_env),
+            idle,
+            adopt,
         )
-        .await
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                HarnessError::NotInstalled(crate::executable::binary_hint(&exe))
-            } else {
-                HarnessError::Io(e)
-            }
-        })?;
+        .await?;
+        #[cfg(not(unix))]
+        let kept: Option<crate::process::RuntimeChild> = adopt.map(|never| match never {});
+        let mut child = match kept {
+            Some(child) => child,
+            None => crate::process::RuntimeChild::launch(
+                cmd,
+                #[cfg(unix)]
+                self.launch_broker.as_ref(),
+                crate::process::RuntimePipes::Interactive,
+            )
+            .await
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    HarnessError::NotInstalled(crate::executable::binary_hint(&exe))
+                } else {
+                    HarnessError::Io(e)
+                }
+            })?,
+        };
 
         let stdin = child
             .stdin
@@ -849,7 +896,13 @@ impl CodexHarness {
         #[cfg(not(unix))]
         let observer = None;
         let (client, incoming) = RpcClient::with_frame_observer(stdin, stdout, observer);
+        #[cfg(unix)]
+        let incoming = match child.keeper() {
+            Some(kept) => kept.relay(incoming),
+            None => incoming,
+        };
         let (event_tx, event_rx) = mpsc::channel::<Result<AgentEvent, HarnessError>>(256);
+        let events = child.events(&event_tx, event_rx);
         tokio::spawn(run_session(Session {
             #[cfg(unix)]
             host_options: self.launch_broker.as_ref().map(|b| b.options.clone()),
@@ -867,10 +920,7 @@ impl CodexHarness {
             stderr_tail,
         }));
 
-        Ok(futures::stream::unfold(event_rx, |mut rx| async move {
-            rx.recv().await.map(|ev| (ev, rx))
-        })
-        .boxed())
+        Ok(events)
     }
 }
 
@@ -1377,6 +1427,13 @@ async fn run_session(session: Session) {
                 return;
             }
         }
+    }
+
+    // A picked-up run has replayed its handshake: new requests take ids
+    // after every one the journal has.
+    #[cfg(unix)]
+    if let Some(through) = child.keeper().and_then(|kept| kept.handshake_replayed()) {
+        client.skip_ids_through(through);
     }
 
     // ---- main loop --------------------------------------------------------

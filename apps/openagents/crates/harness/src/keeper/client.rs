@@ -196,18 +196,20 @@ pub async fn connect(dir: &Path, after: Option<u64>) -> io::Result<Link> {
         .await
         .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "the agent keeper did not answer"))??
         .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "the agent keeper closed"))?;
-    let (version, pid, last_seq, exited) = match serde_json::from_str::<FromKeeper>(&welcome)? {
-        FromKeeper::Welcome {
-            version,
-            pid,
-            last_seq,
-            exited,
-        } => (version, pid, last_seq, exited),
-        FromKeeper::Refused { reason } => {
-            return Err(io::Error::new(io::ErrorKind::PermissionDenied, reason));
-        }
-        _ => return Err(io::Error::other("the agent keeper sent no welcome")),
-    };
+    let (version, pid, last_seq, exited, acked) =
+        match serde_json::from_str::<FromKeeper>(&welcome)? {
+            FromKeeper::Welcome {
+                version,
+                pid,
+                last_seq,
+                exited,
+                acked,
+            } => (version, pid, last_seq, exited, acked),
+            FromKeeper::Refused { reason } => {
+                return Err(io::Error::new(io::ErrorKind::PermissionDenied, reason));
+            }
+            _ => return Err(io::Error::other("the agent keeper sent no welcome")),
+        };
     if protocol::negotiate(version).is_none() {
         return Err(io::Error::other(format!(
             "the agent keeper speaks protocol {version}"
@@ -236,6 +238,7 @@ pub async fn connect(dir: &Path, after: Option<u64>) -> io::Result<Link> {
         version,
         last_seq,
         exited,
+        acked,
         sender,
         frames,
     })
@@ -252,6 +255,8 @@ pub struct Link {
     pub last_seq: u64,
     /// The agent had already exited when this engine connected.
     pub exited: bool,
+    /// The highest sequence number an earlier engine acknowledged.
+    pub acked: u64,
     sender: LinkSender,
     frames: mpsc::UnboundedReceiver<Frame>,
 }

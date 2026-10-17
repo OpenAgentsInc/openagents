@@ -398,6 +398,37 @@ case "$first" in
   exec sleep 30
   ;;
 
+*scenario:kept*)
+  # A slow turn for keeper tests: `chunks=N` chunks, an optional
+  # question at chunk `ask=N`, then one short turn per later prompt.
+  n=$(printf '%s\n' "$first" | sed 's/.*chunks=\([0-9]*\).*/\1/')
+  ask=$(printf '%s\n' "$first" | sed 's/.*ask=\(-*[0-9]*\).*/\1/')
+  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":[],"cwd":"/tmp","session_id":"sess-kept"}'
+  i=0
+  while [ "$i" -lt "$n" ]; do
+    if [ "$i" -eq "$ask" ]; then
+      emit '{"type":"control_request","request_id":"cr-kept","request":{"subtype":"can_use_tool","tool_name":"AskUserQuestion","input":{"questions":[{"header":"Choice","question":"Which one?","options":["A","B"],"multiSelect":false}]}}}'
+      read -r answer || exit 1
+      label=$(printf '%s\n' "$answer" | sed 's/.*"Which one?":"\([^"]*\)".*/\1/')
+      emit "{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"answered $label\\n\"}}}"
+    fi
+    emit "{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"chunk $i\\n\"}}}"
+    sleep 0.03
+    i=$((i+1))
+  done
+  emit '{"type":"result","subtype":"success","result":"kept","usage":{"input_tokens":1,"output_tokens":1},"session_id":"sess-kept"}'
+  while read -r next; do
+    case "$next" in
+    *'"type":"user"'*)
+      emit "$next"
+      text=$(printf '%s\n' "$next" | sed 's/.*"content":"\([^"]*\)".*/\1/')
+      emit "{\"type\":\"stream_event\",\"parent_tool_use_id\":null,\"event\":{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"heard $text\\n\"}}}"
+      emit '{"type":"result","subtype":"success","result":"heard","usage":{"input_tokens":1,"output_tokens":1},"session_id":"sess-kept"}'
+      ;;
+    esac
+  done
+  ;;
+
 *scenario:error*)
   emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":[],"cwd":"/tmp","session_id":"sess-err"}'
   # Terse assistant-level error code with no content.

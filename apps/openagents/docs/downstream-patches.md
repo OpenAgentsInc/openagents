@@ -188,8 +188,21 @@ links remain readable. Upstream fixes now require manual ports.
   - `crates/engine/src/lib.rs`: `start_keepers` before `recover_stale`, and the
     `keeper` re-export.
   - `apps/openagents/src/main.rs`: the hidden `keeper` subcommand.
-  Claude Code, Codex, and the other native drivers don't start under keepers
-  yet; each needs its own `attach`.
+  Claude Code and Codex start under keepers by default; `OPENAGENTS_KEEPERS=0`
+  (or `with_keepers(false)`) starts them directly. Our transport is
+  `crates/harness/src/keeper/kept.rs`. Hooks:
+  - `crates/harness/src/process/runtime.rs`: the `kept` field of
+    `RuntimeChild`, its constructor, `events` and `keeper`, and one branch in
+    `id`, `try_wait`, `wait`, `signal_target`, and `shutdown`.
+  - `crates/harness/src/claude/mod.rs`: the `keepers` setting, `attach`, and in
+    `run_with_mode` the keeper child, no opening lines for a picked-up run, and
+    the event stream from `RuntimeChild::events`. `first_command` is optional.
+  - `crates/harness/src/codex/mod.rs`: the same, plus the session loop's relay
+    and `skip_ids_through` after the replayed handshake.
+  - `crates/harness/src/jsonrpc.rs`: `RpcClient::skip_ids_through`.
+  - `crates/harness/tests/fixtures/fake-claude.sh` and `fake-codex.sh`: the
+    `scenario:kept` scenarios.
+  The other native drivers don't start under keepers yet.
 
 - [OpenAgents #11931](https://github.com/OpenAgentsInc/openagents/issues/11931):
   the background engine by default. On launch the app starts this data

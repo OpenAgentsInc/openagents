@@ -25,6 +25,9 @@ pub(crate) struct RuntimeChild {
     pub stderr: Option<RuntimeOutput>,
     #[cfg(all(unix, feature = "supervised"))]
     supervised: Option<SupervisedChild>,
+    /// An agent under a keeper (#11930, `crate::keeper::kept`).
+    #[cfg(unix)]
+    kept: Option<std::sync::Arc<crate::keeper::kept::Kept>>,
 }
 
 impl RuntimeChild {
@@ -62,12 +65,65 @@ impl RuntimeChild {
             native: Some(child),
             #[cfg(all(unix, feature = "supervised"))]
             supervised: None,
+            #[cfg(unix)]
+            kept: None,
         })
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn kept(
+        kept: std::sync::Arc<crate::keeper::kept::Kept>,
+        stdin: RuntimeInput,
+        stdout: RuntimeOutput,
+        stderr: RuntimeOutput,
+    ) -> Self {
+        Self {
+            native: None,
+            stdin: Some(stdin),
+            stdout: Some(stdout),
+            stderr: Some(stderr),
+            #[cfg(feature = "supervised")]
+            supervised: None,
+            kept: Some(kept),
+        }
+    }
+
+    /// The run's event stream. Under a keeper, events are counted so frames
+    /// are acknowledged only once their events are handed over.
+    pub(crate) fn events(
+        &self,
+        tx: &tokio::sync::mpsc::Sender<Result<openagents_proto::AgentEvent, crate::HarnessError>>,
+        rx: tokio::sync::mpsc::Receiver<Result<openagents_proto::AgentEvent, crate::HarnessError>>,
+    ) -> futures::stream::BoxStream<
+        'static,
+        Result<openagents_proto::AgentEvent, crate::HarnessError>,
+    > {
+        use futures::StreamExt;
+        #[cfg(unix)]
+        if let Some(kept) = &self.kept {
+            return kept.events(tx, rx);
+        }
+        let _ = tx;
+        futures::stream::unfold(
+            rx,
+            |mut rx| async move { rx.recv().await.map(|ev| (ev, rx)) },
+        )
+        .boxed()
+    }
+
+    /// The kept agent, when this runtime is one.
+    #[cfg(unix)]
+    pub(crate) fn keeper(&self) -> Option<&std::sync::Arc<crate::keeper::kept::Kept>> {
+        self.kept.as_ref()
     }
 
     pub(crate) fn id(&self) -> Option<u32> {
         if let Some(child) = &self.native {
             return child.id();
+        }
+        #[cfg(unix)]
+        if let Some(kept) = &self.kept {
+            return kept.id();
         }
         #[cfg(all(unix, feature = "supervised"))]
         if let Some(child) = &self.supervised {
@@ -85,6 +141,10 @@ impl RuntimeChild {
         if let Some(child) = &mut self.native {
             return child.try_wait();
         }
+        #[cfg(unix)]
+        if let Some(kept) = &self.kept {
+            return Ok(kept.try_wait());
+        }
         #[cfg(all(unix, feature = "supervised"))]
         if let Some(child) = &self.supervised {
             return Ok(child
@@ -99,6 +159,10 @@ impl RuntimeChild {
     pub(crate) async fn wait(&mut self) -> io::Result<ExitStatus> {
         if let Some(child) = &mut self.native {
             return child.wait().await;
+        }
+        #[cfg(unix)]
+        if let Some(kept) = &self.kept {
+            return kept.wait().await;
         }
         #[cfg(all(unix, feature = "supervised"))]
         if let Some(child) = &mut self.supervised {
@@ -148,6 +212,9 @@ impl RuntimeChild {
         if let Some(child) = &self.native {
             return super::signal_target(child);
         }
+        if let Some(kept) = &self.kept {
+            return kept.signal_target();
+        }
         self.id().map(|pid| -(pid as i32))
     }
 
@@ -157,6 +224,13 @@ impl RuntimeChild {
     }
 
     pub(crate) async fn shutdown(&mut self, earlier: Vec<i32>, grace: Duration) {
+        #[cfg(unix)]
+        if let Some(kept) = &self.kept {
+            // The keeper stops the agent's group; the engine never waits on it.
+            let _ = (earlier, grace);
+            kept.shutdown();
+            return;
+        }
         if let Some(child) = &mut self.native {
             crate::shutdown_agent(child, earlier.clone(), grace).await;
         }
@@ -249,6 +323,7 @@ impl RuntimeChild {
                 .then(|| Box::new(stdout) as RuntimeOutput),
             stderr: Some(Box::new(stderr)),
             supervised: Some(SupervisedChild { pid, stop, ended }),
+            kept: None,
         })
     }
 }

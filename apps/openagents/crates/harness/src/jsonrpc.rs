@@ -149,6 +149,11 @@ impl RpcClient {
         }
     }
 
+    /// Give later requests ids above `id` (a run picked up from a keeper).
+    pub(crate) fn skip_ids_through(&self, id: i64) {
+        self.next_id.fetch_max(id, Ordering::Relaxed);
+    }
+
     pub fn is_closed(&self) -> bool {
         self.closed.load(Ordering::Acquire)
     }

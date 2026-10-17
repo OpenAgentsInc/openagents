@@ -317,6 +317,7 @@ async fn serve(dir: &Path, orphan_after: Duration) -> std::io::Result<()> {
                     pid,
                     last_seq: journal.last_seq,
                     exited: exit_seq.is_some(),
+                    acked,
                 };
                 let (frames_tx, frames_rx) = mpsc::unbounded_channel();
                 let replay = Replay {

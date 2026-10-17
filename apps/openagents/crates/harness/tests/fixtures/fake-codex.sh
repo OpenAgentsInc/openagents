@@ -93,6 +93,51 @@ if has "$turnline" '"method":"review/start"'; then
 fi
 
 case "$turnline" in
+*scenario:kept*)
+  # A slow turn for keeper tests: `chunks=N` deltas, an optional
+  # approval at chunk `ask=N`, the message's completed item, then
+  # one short turn per later turn/start. A reused request id fails the turn.
+  n=$(printf '%s\n' "$turnline" | sed 's/.*chunks=\([0-9]*\).*/\1/')
+  ask=$(printf '%s\n' "$turnline" | sed 's/.*ask=\(-*[0-9]*\).*/\1/')
+  seen=" $tid "
+  emit "{\"id\":$tid,\"result\":{\"turn\":{\"id\":\"t-1\"}}}"
+  emit '{"method":"turn/started","params":{"threadId":"th-1","turn":{"id":"t-1"}}}'
+  full=""
+  i=0
+  while [ "$i" -lt "$n" ]; do
+    if [ "$i" -eq "$ask" ]; then
+      emit '{"id":0,"method":"item/commandExecution/requestApproval","params":{"threadId":"th-1","turnId":"t-1","itemId":"c1","command":"ls"}}'
+      read -r answer || exit 1
+      if has "$answer" '"decision":"accept"'; then word=accepted; else word=declined; fi
+      emit "{\"method\":\"item/agentMessage/delta\",\"params\":{\"threadId\":\"th-1\",\"turnId\":\"t-1\",\"itemId\":\"m1\",\"delta\":\"$word\\n\"}}"
+      full="$full$word\\n"
+    fi
+    emit "{\"method\":\"item/agentMessage/delta\",\"params\":{\"threadId\":\"th-1\",\"turnId\":\"t-1\",\"itemId\":\"m1\",\"delta\":\"chunk $i\\n\"}}"
+    full="${full}chunk $i\\n"
+    sleep 0.03
+    i=$((i+1))
+  done
+  emit "{\"method\":\"item/completed\",\"params\":{\"threadId\":\"th-1\",\"turnId\":\"t-1\",\"item\":{\"id\":\"m1\",\"type\":\"agentMessage\",\"text\":\"$full\"}}}"
+  emit '{"method":"turn/completed","params":{"threadId":"th-1","turn":{"id":"t-1","status":"completed"}}}'
+  turn=1
+  while read -r next; do
+    has "$next" '"id":' || continue
+    id=$(rid "$next")
+    case "$seen" in *" $id "*) emit "{\"id\":$id,\"error\":{\"code\":-32600,\"message\":\"request id $id was used before\"}}"; continue ;; esac
+    seen="$seen$id "
+    if has "$next" '"method":"turn/start"'; then
+      turn=$((turn+1))
+      text=$(printf '%s\n' "$next" | sed 's/.*"text":"\([^"]*\)".*/\1/')
+      emit "{\"id\":$id,\"result\":{\"turn\":{\"id\":\"t-$turn\"}}}"
+      emit "{\"method\":\"turn/started\",\"params\":{\"threadId\":\"th-1\",\"turn\":{\"id\":\"t-$turn\"}}}"
+      emit "{\"method\":\"item/agentMessage/delta\",\"params\":{\"threadId\":\"th-1\",\"turnId\":\"t-$turn\",\"itemId\":\"m$turn\",\"delta\":\"heard $text\\n\"}}"
+      emit "{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"th-1\",\"turn\":{\"id\":\"t-$turn\",\"status\":\"completed\"}}}"
+    else
+      emit "{\"id\":$id,\"result\":{}}"
+    fi
+  done
+  ;;
+
 *scenario:native-skills*)
   for want in '"type":"skill"' '"path":"/repo/a b/SKILL.md"' '[lib.rs](src/lib.rs)'; do
     has "$turnline" "$want" || { fail_turn "$tid" "initial native skill or file path missing"; exit 0; }

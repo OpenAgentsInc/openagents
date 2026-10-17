@@ -53,7 +53,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use futures::StreamExt;
 use futures::stream::BoxStream;
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -154,6 +153,9 @@ pub struct ClaudeHarness {
     initialize: discovery::InitializeCache,
     models_cache: crate::catalog::Catalog,
     workspace_commands: crate::skills::CommandDiscovery,
+    /// Run under a keeper when the engine lends one (#11930); `None` reads
+    /// [`crate::keeper::ENV`].
+    keepers: Option<bool>,
 }
 
 impl Default for ClaudeHarness {
@@ -167,6 +169,7 @@ impl Default for ClaudeHarness {
             initialize: discovery::InitializeCache::default(),
             models_cache: crate::catalog::Catalog::default(),
             workspace_commands: crate::skills::CommandDiscovery::default(),
+            keepers: None,
         }
     }
 }
@@ -186,6 +189,12 @@ impl ClaudeHarness {
     #[cfg(unix)]
     pub fn with_launch_broker(mut self, broker: crate::process::LaunchBroker) -> Self {
         self.launch_broker = Some(broker);
+        self
+    }
+
+    /// Run under a keeper when the engine lends one, or never.
+    pub fn with_keepers(mut self, keepers: bool) -> Self {
+        self.keepers = Some(keepers);
         self
     }
 
@@ -577,7 +586,20 @@ impl Harness for ClaudeHarness {
         request: RunRequest,
         controls: RunControls,
     ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
-        self.run_with_mode(request, controls, false).await
+        self.run_with_mode(request, controls, false, None).await
+    }
+
+    #[cfg(unix)]
+    async fn attach(
+        &self,
+        request: RunRequest,
+        controls: RunControls,
+        link: crate::keeper::Link,
+    ) -> Option<Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError>> {
+        Some(
+            self.run_with_mode(request, controls, false, Some(link))
+                .await,
+        )
     }
 
     async fn run_title(
@@ -591,7 +613,7 @@ impl Harness for ClaudeHarness {
         request.mcp = None;
         request.model_options.clear();
         request.auto_approve = false;
-        self.run_with_mode(request, controls, true).await
+        self.run_with_mode(request, controls, true, None).await
     }
 }
 
@@ -601,7 +623,10 @@ impl ClaudeHarness {
         request: RunRequest,
         controls: RunControls,
         title_only: bool,
+        #[cfg(unix)] adopt: Option<crate::keeper::Link>,
+        #[cfg(not(unix))] adopt: Option<std::convert::Infallible>,
     ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
+        let adopting = adopt.is_some();
         let exe = self.resolve_executable()?;
         let mut cmd = self.build_command(&exe, &request);
         if title_only {
@@ -644,20 +669,36 @@ impl ClaudeHarness {
         } else {
             Normalizer::new()
         };
-        let mut child = crate::process::RuntimeChild::launch(
-            cmd,
-            #[cfg(unix)]
-            self.launch_broker.as_ref(),
-            crate::process::RuntimePipes::Interactive,
+        #[cfg(unix)]
+        let kept = crate::keeper::kept::child(
+            &cmd,
+            crate::keeper::kept::Wire::Claude,
+            !title_only
+                && self.launch_broker.is_none()
+                && self.keepers.unwrap_or_else(crate::keeper::allowed_by_env),
+            false,
+            adopt,
         )
-        .await
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                HarnessError::NotInstalled(crate::executable::binary_hint(&exe))
-            } else {
-                HarnessError::Io(e)
-            }
-        })?;
+        .await?;
+        #[cfg(not(unix))]
+        let kept: Option<crate::process::RuntimeChild> = adopt.map(|never| match never {});
+        let mut child = match kept {
+            Some(child) => child,
+            None => crate::process::RuntimeChild::launch(
+                cmd,
+                #[cfg(unix)]
+                self.launch_broker.as_ref(),
+                crate::process::RuntimePipes::Interactive,
+            )
+            .await
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    HarnessError::NotInstalled(crate::executable::binary_hint(&exe))
+                } else {
+                    HarnessError::Io(e)
+                }
+            })?,
+        };
 
         let stdin = child
             .stdin
@@ -681,7 +722,8 @@ impl ClaudeHarness {
 
         let (stdin_tx, stdin_rx) = mpsc::unbounded_channel::<StdinMsg>();
         tokio::spawn(stdin_writer(stdin, stdin_rx));
-        if !title_only {
+        // A picked-up run continues where it is: its prompt is in flight.
+        if !title_only && !adopting {
             let _ = stdin_tx.send(StdinMsg::Line(wire::initialize_request_line(
                 "openagents_initialize",
             )));
@@ -694,15 +736,18 @@ impl ClaudeHarness {
         // also ride the prompt text, so a skipped/unreadable file degrades to
         // the old-app behavior (the agent opens the path with its Read tool).
         let images = load_image_blocks(&request.attachments).await;
-        let first_command = uuid::Uuid::new_v4().to_string();
-        let first = wire::prompt_line(
-            &apply_ultrathink(request.reasoning, &request.prompt),
-            &first_command,
-            &images,
-        );
-        let _ = stdin_tx.send(StdinMsg::Line(first));
+        let first_command = (!adopting).then(|| uuid::Uuid::new_v4().to_string());
+        if let Some(first_command) = &first_command {
+            let first = wire::prompt_line(
+                &apply_ultrathink(request.reasoning, &request.prompt),
+                first_command,
+                &images,
+            );
+            let _ = stdin_tx.send(StdinMsg::Line(first));
+        }
 
         let (event_tx, event_rx) = mpsc::channel::<Result<AgentEvent, HarnessError>>(256);
+        let events = child.events(&event_tx, event_rx);
         tokio::spawn(run_session(Session {
             normalizer,
             #[cfg(unix)]
@@ -720,10 +765,7 @@ impl ClaudeHarness {
             stderr_tail,
         }));
 
-        Ok(futures::stream::unfold(event_rx, |mut rx| async move {
-            rx.recv().await.map(|ev| (ev, rx))
-        })
-        .boxed())
+        Ok(events)
     }
 }
 
@@ -841,8 +883,9 @@ struct Session {
     title_only: bool,
     child: crate::process::RuntimeChild,
     stdout_lines: tokio::io::Lines<BufReader<crate::process::RuntimeOutput>>,
-    /// The uuid the opening prompt was written with.
-    first_command: String,
+    /// The uuid the opening prompt was written with; `None` for a run
+    /// picked up from a keeper.
+    first_command: Option<String>,
     stdin_tx: mpsc::UnboundedSender<StdinMsg>,
     event_tx: mpsc::Sender<Result<AgentEvent, HarnessError>>,
     controls: RunControls,
@@ -915,7 +958,9 @@ async fn run_session(session: Session) {
     let mut stop_done_at: Option<tokio::time::Instant> = None;
     let mut active_since_stop = false;
     let mut commands = Commands::default();
-    commands.written(first_command);
+    if let Some(first_command) = first_command {
+        commands.written(first_command);
+    }
     // A `result` that is a steer boundary rather than the turn's end (see
     // [`Commands`]). It is superseded — dropped — once the waiting message
     // starts its own turn, which ends with its own result; it is released

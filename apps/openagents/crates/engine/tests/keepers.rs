@@ -19,7 +19,8 @@ const CHAT: &str = "chat-keeper";
 /// Runs the keeper when this test binary is started as one.
 #[test]
 fn keeper_entry() {
-    if std::env::var_os("KEEPER_TEST_ENTRY").is_some() {
+    // The keeper finds its run folder in this variable; nothing else sets it.
+    if std::env::var_os("OPENAGENTS_KEEPER_DIR").is_some() {
         std::process::exit(keeper::main(std::iter::empty()));
     }
 }
@@ -45,6 +46,22 @@ fn harness(ask_at: Option<usize>) -> Arc<dyn Harness> {
 }
 
 fn assemble(dir: &Path, ask_at: Option<usize>) -> EngineCore {
+    assemble_with(dir, harness(ask_at))
+}
+
+/// Claude Code's driver over the fake CLI's slow scenario.
+fn claude() -> Arc<dyn Harness> {
+    let fixture =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../harness/tests/fixtures/fake-claude.sh");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&fixture, std::fs::Permissions::from_mode(0o755));
+    }
+    Arc::new(openagents_harness::ClaudeHarness::new().with_executable(fixture))
+}
+
+fn assemble_with(dir: &Path, harness: Arc<dyn Harness>) -> EngineCore {
+    let id = harness.id();
     openagents_engine::set_keeper_launch(
         std::env::current_exe().unwrap(),
         ["--exact", "keeper_entry", "--nocapture", "--test-threads=1"]
@@ -52,8 +69,8 @@ fn assemble(dir: &Path, ask_at: Option<usize>) -> EngineCore {
             .to_vec(),
     );
     let registry = HarnessRegistry::new();
-    registry.register(harness(ask_at));
-    EngineCore::assemble(dir, Arc::new(registry), HarnessId::Mock, None).unwrap()
+    registry.register(harness);
+    EngineCore::assemble(dir, Arc::new(registry), id, None).unwrap()
 }
 
 fn request(dir: &Path) -> RunRequest {
@@ -285,4 +302,64 @@ fn a_pending_question_is_asked_again_after_the_engine_restarts() {
     assert_eq!(replies, vec![expected(Some("B"))]);
     keeper_finishes(dir.path());
     runtime.block_on(core.shutdown());
+}
+
+#[test]
+fn a_restarted_engine_picks_up_claude_code_mid_turn() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().to_path_buf();
+    let mut run = request(dir.path());
+    run.prompt = "scenario:kept chunks=20 ask=-1".into();
+    std::thread::spawn({
+        let run = run.clone();
+        move || {
+            let runtime = tokio::runtime::Runtime::new().unwrap();
+            let core = runtime.block_on(async {
+                let core = assemble_with(&path, claude());
+                core.sessions
+                    .dispatch(CHAT, HarnessId::ClaudeCode, run, None)
+                    .await
+                    .unwrap();
+                core
+            });
+            wait_for("the first engine to see output", || {
+                journaled_text(&path).contains("chunk 3")
+            });
+            // Killed mid-turn: tasks stop where they are.
+            drop(runtime);
+            drop(core);
+        }
+    })
+    .join()
+    .unwrap();
+
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let _guard = runtime.enter();
+    let core = assemble_with(dir.path(), claude());
+    wait_for("the run to finish", || {
+        matches!(journal(dir.path()).last(), Some(AgentEvent::Done { .. }))
+    });
+    let text: String = (0..20).map(|i| format!("chunk {i}\n")).collect();
+    assert_eq!(journaled_text(dir.path()), text);
+    let events = journal(dir.path());
+    let count = |what: fn(&AgentEvent) -> bool| events.iter().filter(|e| what(e)).count();
+    assert_eq!(count(|e| matches!(e, AgentEvent::Done { .. })), 1);
+    assert_eq!(count(|e| matches!(e, AgentEvent::SessionStarted { .. })), 1);
+    wait_for("the reply to be saved", || {
+        transcript(&core).1.last().is_some_and(|t| t == &text)
+    });
+    let (users, replies) = transcript(&core);
+    assert_eq!(users, 1);
+    assert_eq!(replies, vec![text]);
+    runtime.block_on(core.shutdown());
+    // The parked session's keeper would outlive the test: end it.
+    let root = dir.path().join("orgs/dev-org/dev-user/keepers");
+    runtime.block_on(async {
+        for found in keeper::client::discover(&root) {
+            if let Ok(link) = keeper::client::connect(&found.dir, None).await {
+                let _ = link.sender().finish();
+            }
+        }
+    });
+    keeper_finishes(dir.path());
 }

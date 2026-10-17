@@ -175,6 +175,11 @@ fn main() -> anyhow::Result<()> {
     {
         std::process::exit(openagents_engine::keeper::main(std::env::args_os().skip(2)));
     }
+    // This binary runs keepers, so its engine's agents can outlive it.
+    #[cfg(unix)]
+    if let Ok(exe) = std::env::current_exe() {
+        openagents_engine::set_keeper_launch(exe, Vec::new());
+    }
     #[cfg(windows)]
     attach_parent_console();
     pin_coder_environment();

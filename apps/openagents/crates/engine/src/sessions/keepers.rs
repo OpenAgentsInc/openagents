@@ -27,11 +27,12 @@ struct RunMeta {
     request: RunRequest,
 }
 
-/// The binary and leading arguments that run a keeper. The app runs itself.
+/// The binary and leading arguments that run a keeper. The app registers
+/// itself at startup; without one, agents start without keepers.
 static LAUNCH: OnceLock<(std::path::PathBuf, Vec<std::ffi::OsString>)> = OnceLock::new();
 
-/// Run keepers with `exe` and `args` before `keeper` instead of this process's
-/// own binary. Tests pass their test binary; the first call wins.
+/// Run keepers with `exe` and `args` before `keeper`: the app passes its own
+/// binary, tests their test binary. The first call wins.
 pub fn set_keeper_launch(exe: std::path::PathBuf, args: Vec<std::ffi::OsString>) {
     let _ = LAUNCH.set((exe, args));
 }
@@ -222,10 +223,9 @@ pub(super) async fn start(
             user_message_id: user_message_id.to_owned(),
             request: request.clone(),
         };
-        let launch = LAUNCH
-            .get()
-            .cloned()
-            .or_else(|| Some((std::env::current_exe().ok()?, Vec::new())));
+        // Only a binary that registered itself runs keepers; any other
+        // host (a test, a tool) starts its agents directly.
+        let launch = LAUNCH.get().cloned();
         let scope = launch.map(|(keeper_exe, keeper_args)| keeper::KeeperScope {
             root: keepers.root.clone(),
             keeper_exe,
@@ -247,8 +247,15 @@ pub(super) async fn start(
                 ))
             });
         }
-        if !idle && let Some(scope) = scope {
-            return keeper::scope(scope, harness.run(request, controls)).await;
+        if let Some(scope) = scope {
+            let start = async {
+                if idle {
+                    harness.start_idle(request, controls).await
+                } else {
+                    harness.run(request, controls).await
+                }
+            };
+            return keeper::scope(scope, start).await;
         }
     }
     let _ = (inner, chat_id, run_id, user_message_id);
