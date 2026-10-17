@@ -107,6 +107,23 @@ fn counted(analytics: &crate::analytics::Analytics, name: &str) -> (u64, Vec<Str
 /// No count carries anything from the requests: every app event's detail
 /// is empty or a fixed time bucket, and no row holds the chats' ids, the
 /// tokens, or the words sent.
+/// [`counted`], once `name` has reached `count` or after about five
+/// seconds: an answer's events are counted just after it is saved, so a
+/// reader that saw the answer may not see its count yet.
+async fn counted_soon(
+    analytics: &crate::analytics::Analytics,
+    name: &str,
+    count: u64,
+) -> (u64, Vec<String>) {
+    for _ in 0..200 {
+        if counted(analytics, name).0 >= count {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    counted(analytics, name)
+}
+
 fn nothing_identifying(analytics: &crate::analytics::Analytics, secrets: &[&str]) {
     let buckets = ["", "under_5s", "under_15s", "under_60s", "over_60s"];
     for row in analytics.snapshot() {
@@ -183,9 +200,10 @@ async fn a_visitor_chats_until_the_limit_and_its_chats_move_to_the_account() {
             .unwrap()
             .contains("Answer to hello")
     );
-    // Its first answer is counted with how long it took (#11983).
+    // Its first answer is counted with how long it took (#11983). The
+    // count follows the answer's save, so wait for it.
     assert_eq!(
-        counted(&analytics, "app_first_answer"),
+        counted_soon(&analytics, "app_first_answer", 1).await,
         (1, vec!["under_5s".to_owned()])
     );
 
@@ -357,13 +375,7 @@ async fn a_visitor_chats_until_the_limit_and_its_chats_move_to_the_account() {
     .await;
     assert!(status == 201 || status == 202, "{status} {started}");
     answered(&world, &session, &id(500)).await;
-    for _ in 0..200 {
-        if counted(&analytics, "app_first_answer").0 == 2 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(25)).await;
-    }
-    assert_eq!(counted(&analytics, "app_first_answer").0, 2);
+    assert_eq!(counted_soon(&analytics, "app_first_answer", 2).await.0, 2);
     nothing_identifying(
         &analytics,
         &[
