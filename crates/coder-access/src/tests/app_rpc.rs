@@ -155,3 +155,42 @@ fn mismatched_app_reply_is_refused() {
         Code::Unavailable
     );
 }
+
+/// An app that doesn't know a read refuses it with a signed reply, so the
+/// device falls back at once instead of waiting out a missing reply
+/// (#12000).
+#[test]
+fn an_app_refusal_of_a_read_is_a_signed_refusal() {
+    struct Refusing;
+    impl Dispatch for Refusing {
+        fn dispatch(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: &Operation,
+        ) -> std::result::Result<Receipt, Code> {
+            Err(Code::Unsupported)
+        }
+        fn app_rpc(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: Option<(&str, u64)>,
+            _: &Request,
+        ) -> std::result::Result<Answer, Code> {
+            Err(Code::Unsupported)
+        }
+    }
+    let fixture = Fixture::local();
+    let mut app = App::default();
+    let (_, client) = enrolled(&fixture, "observe,operate", &mut app);
+    let read = client.prepare(request(Method::LinkAccount), now()).unwrap();
+    let reply = fixture
+        .host()
+        .handle(&read.event, &fixture.relay, now(), &mut Refusing)
+        .unwrap();
+    assert_eq!(
+        client.verify_reply(&read, &reply, now()).unwrap_err().code,
+        Code::Unsupported
+    );
+}
