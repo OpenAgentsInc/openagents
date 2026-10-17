@@ -1,5 +1,5 @@
 #!/bin/sh
-# fake devin acp server for zeron-harness sign-in tests.
+# fake devin acp server for openagents-harness sign-in tests.
 #
 # advertises only `devin-browser` (devin has no default method), carries an
 # unrelated url in its handshake (the sign-in must not announce it), prints

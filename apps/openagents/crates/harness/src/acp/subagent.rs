@@ -22,7 +22,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 use tokio::sync::{mpsc, oneshot};
-use zeron_proto::{AgentEvent, DoneStatus, ToolCall};
+use openagents_proto::{AgentEvent, DoneStatus, ToolCall};
 
 use crate::HarnessError;
 
@@ -682,7 +682,7 @@ mod tests {
         let result = json!({
             "type": "tool_result",
             "tool_call_id": "call-1-0",
-            "content": "1→# zeron — Architecture",
+            "content": "1→# openagents — Architecture",
         });
         assert!(matches!(
             entry_events(&result).as_slice(),

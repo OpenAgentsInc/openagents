@@ -1,7 +1,7 @@
 //! The Lab job provider prepares isolated inputs; the normal host still executes every turn.
 use super::*;
 use crate::registry::HarnessRegistry;
-use coder_account::{
+use openagents_account::{
     Lease,
     openagents::{
         self,

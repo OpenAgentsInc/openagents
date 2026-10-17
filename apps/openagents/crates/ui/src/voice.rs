@@ -6,7 +6,7 @@ use crate::orb::OrbState;
 use crate::state::EngineHandle;
 use gpui::{Context, Task};
 use gpui_tokio::Tokio;
-use zeron_proto::voice::*;
+use openagents_proto::voice::*;
 mod permissions;
 mod remote;
 
@@ -20,7 +20,7 @@ pub struct VoiceController {
     pub reason: Option<VoiceRejection>,
     pub snapshot: Option<VoiceSnapshot>,
     /// The newest speaker turn's live text, then its final.
-    pub caption: zeron_voice_session::Caption,
+    pub caption: openagents_voice_session::Caption,
     pub microphone_level: u16,
     pub speaker_level: u16,
     /// The full-window stage is presented over the shell.
@@ -94,18 +94,18 @@ impl VoiceController {
         self.codex_check = Some(cx.spawn(async move |this, cx| {
             let ready = engine
                 .client()
-                .call(zeron_rpc::methods::LIST_HARNESSES, serde_json::json!({}))
+                .call(openagents_rpc::methods::LIST_HARNESSES, serde_json::json!({}))
                 .await
                 .ok()
                 .and_then(|value| {
-                    serde_json::from_value::<Vec<zeron_engine::registry::HarnessDescriptor>>(value)
+                    serde_json::from_value::<Vec<openagents_engine::registry::HarnessDescriptor>>(value)
                         .ok()
                 })
                 .map(|list| {
                     list.iter().any(|d| {
-                        d.id == zeron_proto::HarnessId::Codex
+                        d.id == openagents_proto::HarnessId::Codex
                             && d.installed
-                            && zeron_engine::registry::descriptor_enabled(d)
+                            && openagents_engine::registry::descriptor_enabled(d)
                     })
                 });
             this.update(cx, |voice, cx| {
@@ -129,7 +129,7 @@ impl VoiceController {
         &mut self,
         engine: EngineHandle,
         host_device_id: String,
-        config: zeron_proto::ChatConfig,
+        config: openagents_proto::ChatConfig,
         voice: Option<String>,
         cx: &mut Context<Self>,
     ) {
@@ -431,7 +431,7 @@ pub fn format_elapsed(seconds: u64) -> String {
 }
 
 /// Shared with the mobile apps so every orb reads the call the same way.
-pub use zeron_voice_session::orb_state;
+pub use openagents_voice_session::orb_state;
 
 impl Drop for VoiceController {
     fn drop(&mut self) {

@@ -76,16 +76,16 @@ def main():
         parser.error("The output path must end with .xcarchive.")
     version = json.loads((ROOT / "apps/ios/release/version.json").read_text())
     project = plistlib.loads(subprocess.check_output(["plutil", "-convert", "xml1", "-o", "-",
-        str(ROOT / "apps/ios/Zeron.xcodeproj/project.pbxproj")]))
+        str(ROOT / "apps/ios/OpenAgents.xcodeproj/project.pbxproj")]))
     for entry in project["objects"].values():
         settings = entry.get("buildSettings", {})
         if "PRODUCT_BUNDLE_IDENTIFIER" in settings:
             assert settings["CURRENT_PROJECT_VERSION"] == version["build"]
             assert settings["MARKETING_VERSION"] == version["version"]
             assert not settings.get("DEVELOPMENT_TEAM"), "Do not commit a signing team."
-    source_info = plistlib.loads((ROOT / "apps/ios/Zeron/Info.plist").read_bytes())
+    source_info = plistlib.loads((ROOT / "apps/ios/OpenAgents/Info.plist").read_bytes())
     assert source_info.get("ITSAppUsesNonExemptEncryption") is False
-    entitlements = plistlib.loads((ROOT / "apps/ios/Zeron.entitlements").read_bytes())
+    entitlements = plistlib.loads((ROOT / "apps/ios/OpenAgents.entitlements").read_bytes())
     assert "aps-environment" not in entitlements
     assert not entitlements.get("get-task-allow", False)
     if args.check_only:
@@ -97,11 +97,11 @@ def main():
     if shutil.disk_usage(ROOT).free < MIN_FREE:
         parser.error("At least 9 GiB free is required before archiving.")
     env = dict(os.environ, RUSTUP_TOOLCHAIN="1.98.1", CARGO_TARGET_DIR=str(target),
-               CONFIGURATION="Release", ZERON_ACCOUNT_FIXTURE="0", ZERON_SKIP_CORE="0",
+               CONFIGURATION="Release", OPENAGENTS_ACCOUNT_FIXTURE="0", OPENAGENTS_SKIP_CORE="0",
                BROWSER="/usr/bin/true", NO_OPEN_BROWSER="1")
     run(["scripts/ios/build-core.sh", "iphoneos"], env)
-    env["ZERON_SKIP_CORE"] = "1"
-    command = ["xcodebuild", "-project", "apps/ios/Zeron.xcodeproj", "-scheme", "Zeron",
+    env["OPENAGENTS_SKIP_CORE"] = "1"
+    command = ["xcodebuild", "-project", "apps/ios/OpenAgents.xcodeproj", "-scheme", "OpenAgents",
         "-configuration", "Release", "-destination", "generic/platform=iOS",
         "-derivedDataPath", str(target / "ios-derived"), "-archivePath", str(output),
         "SWIFT_ACTIVE_COMPILATION_CONDITIONS=", "archive"]
@@ -113,7 +113,7 @@ def main():
     else:
         command += ["CODE_SIGNING_ALLOWED=NO"]
     run(command, env)
-    app = output / "Products/Applications/Zeron.app"
+    app = output / "Products/Applications/OpenAgents.app"
     verify(app, version)
     run(["python3", "scripts/ios/verify-identity.py", str(app)], env)
     if args.team:

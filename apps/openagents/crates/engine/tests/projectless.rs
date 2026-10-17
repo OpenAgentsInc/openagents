@@ -1,6 +1,6 @@
 //! "Don't work in a project" against a real engine: a chat minted through the
 //! UI's exact wire shape (`Mutate createChat` with a `deviceId` and no
-//! `spaceId`) gets its own scratch folder (`~/.zeron/scratch/<date>-<id>`),
+//! `spaceId`) gets its own scratch folder (`~/.openagents/scratch/<date>-<id>`),
 //! spawns its run there, and never mints a space row — the two failure modes
 //! of pre-#40 engines (a phantom project at root, and the run dying on the
 //! literal `~`). Chats from before scratch folders keep `~` and the host's
@@ -13,10 +13,10 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use futures::stream::BoxStream;
 
-use zeron_doc::{MessageRole, MessageStatus, SessionCommandPayload, SessionMessageEntry};
-use zeron_engine::{EngineCore, HarnessRegistry};
-use zeron_harness::{Harness, HarnessError, RunControls};
-use zeron_proto::{
+use openagents_doc::{MessageRole, MessageStatus, SessionCommandPayload, SessionMessageEntry};
+use openagents_engine::{EngineCore, HarnessRegistry};
+use openagents_harness::{Harness, HarnessError, RunControls};
+use openagents_proto::{
     AgentEvent, DoneStatus, HarnessId, Model, ReasoningLevel, RunRequest, SandboxLevel,
     SteeringMode,
 };
@@ -117,7 +117,7 @@ fn expected_cwd(chat_cwd: &str, data_dir: &std::path::Path) -> String {
         return std::env::var("HOME").expect("HOME set in test env");
     }
     assert!(
-        zeron_proto::projectless::is_scratch_cwd(chat_cwd),
+        openagents_proto::projectless::is_scratch_cwd(chat_cwd),
         "not a scratch cwd: {chat_cwd}"
     );
     let name = chat_cwd.rsplit('/').next().unwrap();
@@ -140,7 +140,7 @@ async fn legacy_home_chat_keeps_running_from_home() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn projectless_terminal_resolves_home_and_preserves_explicit_paths() {
-    use zeron_rpc::methods;
+    use openagents_rpc::methods;
 
     let tmp = tempfile::tempdir().unwrap();
     let core = EngineCore::assemble(
@@ -150,7 +150,7 @@ async fn projectless_terminal_resolves_home_and_preserves_explicit_paths() {
         None,
     )
     .expect("engine core assembles");
-    let client = zeron_rpc::memory_client(core.rpc_service());
+    let client = openagents_rpc::memory_client(core.rpc_service());
     let home = std::env::var("HOME").expect("HOME set in test env");
 
     // `None` expects the chat's own scratch folder: a new chat with no cwd,
@@ -206,7 +206,7 @@ async fn projectless_terminal_resolves_home_and_preserves_explicit_paths() {
             .expect("close terminal");
         match &cwd {
             Some(cwd) if cwd != "~/" => assert_eq!(&chat_cwd, cwd),
-            _ => assert!(zeron_proto::projectless::is_scratch_cwd(&chat_cwd)),
+            _ => assert!(openagents_proto::projectless::is_scratch_cwd(&chat_cwd)),
         }
         assert_eq!(chat.space_id, None);
     }
@@ -292,11 +292,11 @@ async fn exercise_projectless(mode: Mode) {
 
     // The composer's exact wire shape for "Don't work in a project": a
     // deviceId, no spaceId, no cwd.
-    let client = zeron_rpc::memory_client(core.rpc_service());
+    let client = openagents_rpc::memory_client(core.rpc_service());
     if !command_first {
         client
             .call(
-                zeron_rpc::methods::MUTATE,
+                openagents_rpc::methods::MUTATE,
                 serde_json::json!({
                     "op": "createChat",
                     "chatId": CHAT,
@@ -319,7 +319,7 @@ async fn exercise_projectless(mode: Mode) {
             .expect("chat row exists");
         assert_eq!(chat.space_id, None, "project-less chat must carry no space");
         assert!(
-            zeron_proto::projectless::is_scratch_cwd(chat.cwd.as_deref().unwrap()),
+            openagents_proto::projectless::is_scratch_cwd(chat.cwd.as_deref().unwrap()),
             "cwd defaults to a scratch folder: {:?}",
             chat.cwd
         );
@@ -361,13 +361,13 @@ async fn exercise_projectless(mode: Mode) {
     assert_eq!(chat.space_id, None);
     let chat_cwd = chat.cwd.clone().unwrap();
     assert_eq!(mode == Mode::Legacy, chat_cwd == "~");
-    assert!(mode == Mode::Legacy || zeron_proto::projectless::is_scratch_cwd(&chat_cwd));
+    assert!(mode == Mode::Legacy || openagents_proto::projectless::is_scratch_cwd(&chat_cwd));
     assert_eq!(chat.device_id, core.device_id);
     // Simulate the metadata arriving after the command and a retry.
     for _ in 0..2 {
         client
             .call(
-                zeron_rpc::methods::MUTATE,
+                openagents_rpc::methods::MUTATE,
                 serde_json::json!({
                     "op": "createChat", "chatId": CHAT, "deviceId": core.device_id,
                 }),

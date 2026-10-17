@@ -1,8 +1,8 @@
-# Native browser tabs for Zeron: system-webview v1
+# Native browser tabs for OpenAgents: system-webview v1
 
 Research date: 2026-09-08. Status: implemented. All 746 UI tests and the real-shell macOS browser fixture pass; screenshots and provenance are in `docs/screenshots/browser`.
 
-Zeron baseline: `8de07ee6d783a37c2cac39a259ba896d704c40e8` (latest fetched `origin/main`). This worktree was clean and fast-forwarded from `6b2ea31f`; the separate local `main` worktree was not modified.
+OpenAgents baseline: `8de07ee6d783a37c2cac39a259ba896d704c40e8` (latest fetched `origin/main`). This worktree was clean and fast-forwarded from `6b2ea31f`; the separate local `main` worktree was not modified.
 
 Diri reference: [`c564784199cfbeabd29f011bac28467a2b12fccf`](https://github.com/cristicretu/diri/tree/c564784199cfbeabd29f011bac28467a2b12fccf). Findings below come from source inspection, not a running Diri build.
 
@@ -11,7 +11,7 @@ V1 uses the system webview and native compositing; CEF remains a possible later 
 ## Current behavior update (2026-09-27)
 
 The v1 design below is historical. The embedded browser now supports Linux as
-well as macOS. Website data is persistent per Zeron profile on Linux and macOS
+well as macOS. Website data is persistent per OpenAgents profile on Linux and macOS
 14+, and remains temporary with a visible notice on macOS 12/13. Changing
 profiles closes the old views without deleting persistent data; returning to a
 profile reopens its store. Windows uses the external browser. Tab restoration
@@ -60,8 +60,8 @@ isolation and input restoration, visibility, resizing/takeover and
 teardown. It is gated behind an opt-in feature and is excluded from app builds.
 
 ```sh
-cargo test --locked -p zeron-ui --lib -- --test-threads=1
-cargo run --release --locked -p zeron-ui --example browser-fixture \
+cargo test --locked -p openagents-ui --lib -- --test-threads=1
+cargo run --release --locked -p openagents-ui --example browser-fixture \
   --features browser-fixture -- /tmp/browser-captures
 ```
 
@@ -76,7 +76,7 @@ plan; this section records the choices actually made for v1.
 
 ## Recommendation
 
-Add `Browser(id)` to Zeron's existing right-pane surfaces. Build the address bar and navigation controls in GPUI, and embed a lazily created `WKWebView` through Wry for page content on macOS. Reuse the existing tab strip, per-session ownership, resize seam, and expand control. On Linux, initially offer an explicitly labeled external-browser fallback, matching Diri; embedded Linux browsing is a separate milestone.
+Add `Browser(id)` to OpenAgents's existing right-pane surfaces. Build the address bar and navigation controls in GPUI, and embed a lazily created `WKWebView` through Wry for page content on macOS. Reuse the existing tab strip, per-session ownership, resize seam, and expand control. On Linux, initially offer an explicitly labeled external-browser fallback, matching Diri; embedded Linux browsing is a separate milestone.
 
 The first release supports multiple independent browser tabs, editable URLs, back/forward/reload, page titles and favicons, open externally, and load-failure recovery. Keep pages alive when switching tabs or sessions during the app run; closing a browser tab destroys its native view. Browser tabs remain device-local and in memory, consistent with the existing panel lifecycle. No restart restoration in this milestone.
 
@@ -104,7 +104,7 @@ Keep the backend boundary small: create/navigate/history/reload, geometry and vi
 
 Diri also has a [Playwright engine sidecar](https://github.com/cristicretu/diri/blob/c564784199cfbeabd29f011bac28467a2b12fccf/diri/crates/diri-engine/src/browser.rs) for `test.run` and `browser.act`. That is a separate browser system; the sidebar is not a streamed Playwright page. Porting that sidecar is unnecessary for this feature.
 
-## Zeron integration points
+## OpenAgents integration points
 
 | Existing code | Planned change |
 | --- | --- |
@@ -121,11 +121,11 @@ Suggested new modules: `browser/mod.rs` (surface/controller and events), `browse
 
 ## Implementation sequence
 
-### 1. Prove native embedding in Zeron's GPUI fork
+### 1. Prove native embedding in OpenAgents's GPUI fork
 
 Build an opt-in macOS fixture with one loopback page in a GPUI pane before changing the production shell. The pinned Zui source already implements `HasWindowHandle` for `Window`; invoke the trait explicitly where GPUI's own `window_handle()` name overlaps. Check the exact AppKit parent, main-thread ownership, logical coordinates and backing-scale behavior.
 
-Use macOS-only Wry plus narrowly enabled `objc2`, `objc2-app-kit`, `objc2-foundation`, `objc2-web-kit` and `block2` dependencies. Verify coexistence with Zeron's existing `objc` dependency. Audit layered rendering against the pinned Zui renderer and its existing blur/edge-fade changes. Prototype a minimal native-surface/overlay seam in Zui if needed; preserve Zui's existing renderer customizations. Prefer live page content beneath correctly composited menus. If layered integration cannot be delivered in v1, use a temporary page snapshot during overlays, with input disabled and restoration tested.
+Use macOS-only Wry plus narrowly enabled `objc2`, `objc2-app-kit`, `objc2-foundation`, `objc2-web-kit` and `block2` dependencies. Verify coexistence with OpenAgents's existing `objc` dependency. Audit layered rendering against the pinned Zui renderer and its existing blur/edge-fade changes. Prototype a minimal native-surface/overlay seam in Zui if needed; preserve Zui's existing renderer customizations. Prefer live page content beneath correctly composited menus. If layered integration cannot be delivered in v1, use a temporary page snapshot during overlays, with input disabled and restoration tested.
 
 Exit: a live page accepts input, reflows while resizing, hides/restores correctly, and detaches safely on window close. This is the main technical feasibility gate.
 
@@ -151,9 +151,9 @@ Exit: redirects, SPA history/title changes, errors and multi-tab navigation rema
 
 Centralize a browser visibility predicate in the shell. Require the chat route, ready app state, open pane, selected live Browser tab, and usable bounds. With a working overlay plane, leave the page visible beneath correctly composited overlays and route input to the overlay. Without that plane, temporarily show a bounded snapshot and suppress native input/content during covering overlays. Audit `render_overlays`, `overlay_owns_keyboard`, the right `+` menu, composer popovers, settings, dialogs and boot transitions; keyboard ownership alone is not a complete visual-occlusion test.
 
-Zeron's `right_pane_container` keeps inner content at the larger endpoint width while clipping its animated outer width. A native child does not honor that GPUI clip. First test whether the new native-surface seam can apply the real visible clip during open/close/takeover tweens. Where native clipping cannot follow the tween correctly, animate a frozen page snapshot within GPUI and restore the same live page at settled bounds. Bound snapshot size/lifetime, discard stale captures, and use a neutral placeholder if capture fails; do not keep a snapshot-driven frame loop while browsing normally. During manual pane/window resizing, keep the page visible and update its frame from measured body bounds; pass pointer events through during app drags and restore hit testing on release/cancellation.
+OpenAgents's `right_pane_container` keeps inner content at the larger endpoint width while clipping its animated outer width. A native child does not honor that GPUI clip. First test whether the new native-surface seam can apply the real visible clip during open/close/takeover tweens. Where native clipping cannot follow the tween correctly, animate a frozen page snapshot within GPUI and restore the same live page at settled bounds. Bound snapshot size/lifetime, discard stale captures, and use a neutral placeholder if capture fails; do not keep a snapshot-driven frame loop while browsing normally. During manual pane/window resizing, keep the page visible and update its frame from measured body bounds; pass pointer events through during app drags and restore hit testing on release/cancellation.
 
-Coordinate AppKit responder changes with GPUI focus and Zeron's composer-focus restoration. Scope new-tab, close-tab, focus-address and history commands to browser focus; preserve ordinary web editing shortcuts. Zeron currently uses `mod-r` for Toggle right sidebar, so do not copy Diri's global reload binding. Preserve `mod-r` for the pane and start Reload with a toolbar button plus a configurable, conflict-checked `mod-shift-r` default. Forward the configured pane-toggle shortcut from WebKit too, so the pane remains closable while the page is focused.
+Coordinate AppKit responder changes with GPUI focus and OpenAgents's composer-focus restoration. Scope new-tab, close-tab, focus-address and history commands to browser focus; preserve ordinary web editing shortcuts. OpenAgents currently uses `mod-r` for Toggle right sidebar, so do not copy Diri's global reload binding. Preserve `mod-r` for the pane and start Reload with a toolbar button plus a configurable, conflict-checked `mod-shift-r` default. Forward the configured pane-toggle shortcut from WebKit too, so the pane remains closable while the page is focused.
 
 Exit: no page paints over a dialog/chat/titlebar, no hidden page consumes keys, no shortcut dispatches twice, and reopening an overlay-hidden page works even when GPUI reuses cached paint.
 
@@ -167,6 +167,6 @@ Ship after the macOS fixture and real shell interactions pass. Source research o
 
 ## Remote sessions and follow-up scope
 
-The embedded browser runs on the UI machine. Opening `localhost:3000` while controlling a remote Zeron engine reaches the UI machine, not that engine. The initial UI should explain this when a loopback URL is used with a remote session and allow an explicitly entered reachable URL. Existing device-room command/file RPC is not an HTTP/WebSocket tunnel.
+The embedded browser runs on the UI machine. Opening `localhost:3000` while controlling a remote OpenAgents engine reaches the UI machine, not that engine. The initial UI should explain this when a loopback URL is used with a remote session and allow an explicitly entered reachable URL. Existing device-room command/file RPC is not an HTTP/WebSocket tunnel.
 
-Follow-up work can add authenticated remote port forwarding, including HTTP/WebSocket upgrades and reconnect handling. It requires a separate engine/protocol/transport design. CEF should be reconsidered only when concrete needs justify it, such as Chromium-specific compatibility, a shared automation runtime, or platform requirements the system-webview path cannot satisfy. Compare installer size, cold browser startup, representative page memory and complete teardown before adopting it. A future Windows port can evaluate WebView2 composition independently. Embedded Linux browsing also needs a separate prototype for Zeron's X11 and Wayland hosts; Diri supplies no reusable Linux implementation. Restart tab restoration, developer tools, screenshots/attach-to-chat, console capture and agent control are later features rather than prerequisites for the sidebar browser.
+Follow-up work can add authenticated remote port forwarding, including HTTP/WebSocket upgrades and reconnect handling. It requires a separate engine/protocol/transport design. CEF should be reconsidered only when concrete needs justify it, such as Chromium-specific compatibility, a shared automation runtime, or platform requirements the system-webview path cannot satisfy. Compare installer size, cold browser startup, representative page memory and complete teardown before adopting it. A future Windows port can evaluate WebView2 composition independently. Embedded Linux browsing also needs a separate prototype for OpenAgents's X11 and Wayland hosts; Diri supplies no reusable Linux implementation. Restart tab restoration, developer tools, screenshots/attach-to-chat, console capture and agent control are later features rather than prerequisites for the sidebar browser.

@@ -1,4 +1,4 @@
-//! Host-local project Actions and explicit `zeron.json` imports.
+//! Host-local project Actions and explicit `openagents.json` imports.
 //!
 //! Commands are intentionally stored outside the synced workspace registry. The
 //! owning engine is the only authority that can persist or execute them.
@@ -9,11 +9,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use zeron_proto::{
+use openagents_proto::{
     ProjectAction, ProjectActionDraft, ProjectActionIcon, ProjectActionRun, ProjectActionsSnapshot,
 };
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{EngineError, Terminals};
 
@@ -24,7 +24,7 @@ pub const MAX_PROJECT_ACTION_ID_BYTES: usize = 96;
 
 const STORE_FILE: &str = "project-actions.json";
 const STORE_VERSION: u32 = 1;
-const PROJECT_FILE: &str = "zeron.json";
+const PROJECT_FILE: &str = "openagents.json";
 const MAX_PROJECT_FILE_BYTES: u64 = 256 * 1024;
 const SETUP_HANDOFF_TTL: Duration = Duration::from_secs(10 * 60);
 
@@ -334,10 +334,14 @@ fn launch_project_action_with_environment(
     rows: u16,
     always_include_worktree: bool,
 ) -> Result<ProjectActionRun, EngineError> {
-    let mut environment =
-        HashMap::from([("ZERON_PROJECT_ROOT".to_string(), root_string(project_root))]);
+    let mut environment = HashMap::from([(
+        "OPENAGENTS_PROJECT_ROOT".to_string(),
+        root_string(project_root),
+    )]);
+    environment.insert("ZERON_PROJECT_ROOT".into(), root_string(project_root));
     if always_include_worktree || cwd != project_root {
-        environment.insert("ZERON_WORKTREE_PATH".to_string(), root_string(cwd));
+        environment.insert("OPENAGENTS_WORKTREE_PATH".to_string(), root_string(cwd));
+        environment.insert("ZERON_WORKTREE_PATH".into(), root_string(cwd));
     }
     let session = terminals.open_with_command(
         &root_string(cwd),
@@ -521,7 +525,13 @@ fn snapshot_from_actions(
 
 fn read_project_file(project_root: &Path) -> (Vec<ProjectActionDraft>, Option<String>) {
     let path = project_root.join(PROJECT_FILE);
-    let file = match open_project_file(&path) {
+    let file = match open_project_file(&path).or_else(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            open_project_file(&project_root.join("zeron.json"))
+        } else {
+            Err(error)
+        }
+    }) {
         Ok(file) => file,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return (Vec::new(), None),
         Err(err) => return project_file_issue(format!("could not read file: {err}")),
@@ -618,7 +628,10 @@ fn read_project_file_bytes(reader: impl Read) -> Result<Vec<u8>, String> {
 }
 
 fn project_file_issue(message: String) -> (Vec<ProjectActionDraft>, Option<String>) {
-    (Vec::new(), Some(format!("Invalid zeron.json: {message}")))
+    (
+        Vec::new(),
+        Some(format!("Invalid openagents.json: {message}")),
+    )
 }
 
 #[cfg(test)]
@@ -900,12 +913,12 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn project_actions_rpc_does_not_block_async_worker() {
-        use zeron_rpc::{RpcService, methods};
+        use openagents_rpc::{RpcService, methods};
         let temp = tempfile::tempdir().unwrap();
         let core = crate::EngineCore::assemble(
             temp.path(),
             Arc::new(crate::HarnessRegistry::new()),
-            zeron_proto::HarnessId::Mock,
+            openagents_proto::HarnessId::Mock,
             None,
         )
         .unwrap();
@@ -999,7 +1012,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn project_file_special_files_do_not_block() {
-        const CHILD_ENV: &str = "ZERON_TEST_PROJECT_FILE_SPECIAL_FILES";
+        const CHILD_ENV: &str = "OPENAGENTS_TEST_PROJECT_FILE_SPECIAL_FILES";
         if std::env::var_os(CHILD_ENV).is_some() {
             use std::os::unix::{ffi::OsStrExt, fs::symlink, net::UnixListener};
             let (_temp, store_root, project_root) = roots();

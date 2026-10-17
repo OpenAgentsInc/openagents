@@ -19,7 +19,7 @@ custom `nextSession` / `prevSession` bindings retain their stored keys.
 
 ## Automated checks
 
-`cargo test --locked -p zeron-ui --lib -- --test-threads=1`
+`cargo test --locked -p openagents-ui --lib -- --test-threads=1`
 
 The `shell::navigation_tests` suite renders production pane components and
 dispatches real configured keystrokes without starting an engine. It covers

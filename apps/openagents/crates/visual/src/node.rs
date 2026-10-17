@@ -292,7 +292,7 @@ fn forbidden(prop: &str) -> Option<&'static str> {
              the chat with gap, ui.rule(), and type"
         }
         "font" | "family" | "font_family" | "fontFamily" | "font_size" | "fontSize" => {
-            "text always renders in Zeron's interface font; size it with size = xs, sm, body, \
+            "text always renders in OpenAgents's interface font; size it with size = xs, sm, body, \
              lg, xl, or 2xl"
         }
         _ => return None,

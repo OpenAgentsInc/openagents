@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use chrono::{TimeZone, Utc};
 use rusqlite::{Connection, OptionalExtension, params};
-use zeron_proto::{ChangeRequestFilter, ChangeRequestListItem, ChangeRequestPage};
+use openagents_proto::{ChangeRequestFilter, ChangeRequestListItem, ChangeRequestPage};
 
 const FILE_NAME: &str = "pull-requests.sqlite3";
 /// The schema below; older files are rebuilt (it's a cache).
@@ -315,20 +315,20 @@ fn filter_key(filter: ChangeRequestFilter) -> &'static str {
 mod tests {
     use super::*;
     use chrono::DateTime;
-    use zeron_proto::{ChangeRequestMergeability, ChangeRequestState};
+    use openagents_proto::{ChangeRequestMergeability, ChangeRequestState};
 
     fn item(number: u64, title: &str) -> ChangeRequestListItem {
         ChangeRequestListItem {
             provider: "github".into(),
             author: Default::default(),
-            repository: "acme/zeron".into(),
+            repository: "acme/openagents".into(),
             head_ref_oid: String::new(),
             ci: Default::default(),
             viewer_did_author: None,
             viewer_review_requested: None,
             number,
             title: title.into(),
-            url: format!("https://github.com/acme/zeron/pull/{number}"),
+            url: format!("https://github.com/acme/openagents/pull/{number}"),
             state: ChangeRequestState::Open,
             is_draft: false,
             review_decision: Default::default(),
@@ -359,31 +359,31 @@ mod tests {
         let store = ChangeRequestStore::new(dir.path());
         let now = Utc::now();
         let all = ChangeRequestFilter::All;
-        assert!(store.load("me", "acme/zeron", all).await.is_none());
+        assert!(store.load("me", "acme/openagents", all).await.is_none());
         store
             .save(
                 "me",
-                "Acme/Zeron",
+                "Acme/OpenAgents",
                 all,
                 &page(vec![item(2, "two"), item(1, "one")], now),
             )
             .await;
-        let loaded = store.load("me", "acme/zeron", all).await.unwrap();
+        let loaded = store.load("me", "acme/openagents", all).await.unwrap();
         assert_eq!(titles(&loaded), ["two", "one"], "order is kept");
         assert_eq!(loaded.next_cursor.as_deref(), Some("Y3Vyc29yOjUw"));
         assert_eq!(loaded.total_count, Some(2));
         assert_eq!(loaded.fetched_at.unwrap().timestamp(), now.timestamp());
         // Another account, filter or repository never sees it.
         for (account, repository, filter) in [
-            ("other", "acme/zeron", all),
-            ("me", "acme/zeron", ChangeRequestFilter::Authored),
+            ("other", "acme/openagents", all),
+            ("me", "acme/openagents", ChangeRequestFilter::Authored),
             ("me", "acme/other", all),
         ] {
             assert!(store.load(account, repository, filter).await.is_none());
         }
         // It persists across instances (a relaunch).
         let reopened = ChangeRequestStore::new(dir.path());
-        let loaded = reopened.load("me", "acme/zeron", all).await.unwrap();
+        let loaded = reopened.load("me", "acme/openagents", all).await.unwrap();
         assert_eq!(titles(&loaded), ["two", "one"]);
     }
 
@@ -396,7 +396,7 @@ mod tests {
         store
             .save(
                 "me",
-                "acme/zeron",
+                "acme/openagents",
                 ChangeRequestFilter::Authored,
                 &page(vec![item(1, "CI running")], earlier),
             )
@@ -405,13 +405,13 @@ mod tests {
         store
             .save(
                 "me",
-                "acme/zeron",
+                "acme/openagents",
                 ChangeRequestFilter::All,
                 &page(vec![item(2, "other"), item(1, "CI passed")], now),
             )
             .await;
         let authored = store
-            .load("me", "acme/zeron", ChangeRequestFilter::Authored)
+            .load("me", "acme/openagents", ChangeRequestFilter::Authored)
             .await
             .unwrap();
         assert_eq!(titles(&authored), ["CI passed"]);
@@ -424,7 +424,7 @@ mod tests {
         store
             .save(
                 "me",
-                "acme/zeron",
+                "acme/openagents",
                 ChangeRequestFilter::Reviewing,
                 &page(
                     vec![item(1, "stale")],
@@ -433,7 +433,7 @@ mod tests {
             )
             .await;
         let all = store
-            .load("me", "acme/zeron", ChangeRequestFilter::All)
+            .load("me", "acme/openagents", ChangeRequestFilter::All)
             .await
             .unwrap();
         assert_eq!(titles(&all), ["other", "CI passed"]);
@@ -448,7 +448,7 @@ mod tests {
         store
             .save(
                 "me",
-                "acme/zeron",
+                "acme/openagents",
                 all,
                 &page(vec![item(1, "one"), item(2, "two")], now),
             )
@@ -457,26 +457,26 @@ mod tests {
         store
             .save(
                 "me",
-                "acme/zeron",
+                "acme/openagents",
                 all,
                 &page(vec![item(1, "one")], now + chrono::Duration::seconds(5)),
             )
             .await;
         assert_eq!(
-            titles(&store.load("me", "acme/zeron", all).await.unwrap()),
+            titles(&store.load("me", "acme/openagents", all).await.unwrap()),
             ["one"]
         );
         // An older read of the same query never replaces a newer one.
         store
             .save(
                 "me",
-                "acme/zeron",
+                "acme/openagents",
                 all,
                 &page(vec![item(3, "three")], now - chrono::Duration::seconds(5)),
             )
             .await;
         assert_eq!(
-            titles(&store.load("me", "acme/zeron", all).await.unwrap()),
+            titles(&store.load("me", "acme/openagents", all).await.unwrap()),
             ["one"]
         );
         let count = |table: &str| {

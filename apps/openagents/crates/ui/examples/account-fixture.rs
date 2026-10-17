@@ -7,7 +7,7 @@ use axum::{
     response::{Html, IntoResponse, Response},
     routing::{get, post},
 };
-use coder_account::{
+use openagents_account::{
     Controller, Phase,
     openagents::{Client, CredentialRecord, CredentialStore, Deployment, StorageError},
 };
@@ -21,7 +21,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use zeron_ui::{openagents_account::AppAccount, *};
+use openagents_ui::{openagents_account::AppAccount, *};
 #[derive(Default)]
 struct Store(Mutex<Option<CredentialRecord>>);
 impl CredentialStore for Store {
@@ -202,7 +202,7 @@ fn main() -> anyhow::Result<()> {
     })?;
     let store = Arc::new(Store::default());
     if public_mode {
-        let token = std::env::var("OPENAGENTS_TOKEN")?;
+        let token = openagents_brand::env_var("OPENAGENTS_TOKEN")?;
         // Only this explicit test mode accepts the dedicated account's sign-in key.
         anyhow::ensure!(token.starts_with("oa_sk_"), "use a dedicated sign-in key");
         let session = runtime.block_on(client.authenticate(&token))?;
@@ -255,8 +255,8 @@ fn main() -> anyhow::Result<()> {
             let account = AppAccount::install_fixture(controller.clone(), cx);
             let state = cx.new(|_| {
                 let mut s = state::AppState::new();
-                s.connection = zeron_proto::view::ConnectionStatus::Ready;
-                s.workspace_scope = Some(zeron_proto::WorkspaceScope::Local);
+                s.connection = openagents_proto::view::ConnectionStatus::Ready;
+                s.workspace_scope = Some(openagents_proto::WorkspaceScope::Local);
                 s.local_device_id = Some("fixture".into());
                 s.auto_selected = true;
                 s.chats_synced = true;
@@ -266,7 +266,7 @@ fn main() -> anyhow::Result<()> {
             let boot = EngineBootConfig {
                 data_dir: data,
                 ipc_port: 0,
-                edge_url: coder_brand::DISABLED_EDGE_URL.into(),
+                edge_url: openagents_brand::DISABLED_EDGE_URL.into(),
                 edge_token: None,
                 org_id: None,
                 workos_client_id: None,
@@ -370,7 +370,7 @@ fn main() -> anyhow::Result<()> {
                                         viewer.update(cx, |viewer, _| viewer.model.clone());
                                     let deadline = Instant::now() + Duration::from_secs(30);
                                     while reader.snapshot().state
-                                        == coder_account::history::LoadState::Loading
+                                        == openagents_account::history::LoadState::Loading
                                     {
                                         assert!(Instant::now() < deadline);
                                         cx.background_executor()
@@ -393,8 +393,8 @@ fn main() -> anyhow::Result<()> {
                                             cx.background_executor().timer(Duration::from_millis(100)).await;
                                         }
                                         let snapshot=reader.snapshot();
-                                        assert!(snapshot.messages.iter().any(|m|m.role==coder_account::openagents::MessageRole::User && m.text==prompt));
-                                        assert!(snapshot.messages.iter().rev().find(|m|m.role==coder_account::openagents::MessageRole::Assistant).unwrap().text.contains(&expected),"cloud reply lost earlier context");
+                                        assert!(snapshot.messages.iter().any(|m|m.role==openagents_account::openagents::MessageRole::User && m.text==prompt));
+                                        assert!(snapshot.messages.iter().rev().find(|m|m.role==openagents_account::openagents::MessageRole::Assistant).unwrap().text.contains(&expected),"cloud reply lost earlier context");
                                         cx.background_executor().timer(Duration::from_millis(300)).await;
                                         capture_window(window,cx,&output,"public-cloud-reply");
                                         let before=reader.snapshot().messages.len();
@@ -403,7 +403,7 @@ fn main() -> anyhow::Result<()> {
                                         let deadline=Instant::now()+Duration::from_secs(100);
                                         loop {
                                             let snapshot=reader.snapshot();
-                                            if snapshot.messages.len()>before && snapshot.messages.iter().any(|m|m.role==coder_account::openagents::MessageRole::User && m.text==web_prompt) && snapshot.messages.iter().rev().find(|m|m.role==coder_account::openagents::MessageRole::Assistant).is_some_and(|m|m.text.contains(&expected)){break;}
+                                            if snapshot.messages.len()>before && snapshot.messages.iter().any(|m|m.role==openagents_account::openagents::MessageRole::User && m.text==web_prompt) && snapshot.messages.iter().rev().find(|m|m.role==openagents_account::openagents::MessageRole::Assistant).is_some_and(|m|m.text.contains(&expected)){break;}
                                             assert!(Instant::now()<deadline,"web reply did not appear on desktop");
                                             cx.background_executor().timer(Duration::from_millis(100)).await;
                                         }
@@ -482,10 +482,10 @@ fn main() -> anyhow::Result<()> {
                                         .client()
                                         .chat(lease.session(), &chat_id(204))
                                         .unwrap();
-                                    let target = coder_account::history::ExistingChat {
+                                    let target = openagents_account::history::ExistingChat {
                                         chat: chat.clone(),
                                         lease,
-                                        summary: coder_account::openagents::ChatSummary {
+                                        summary: openagents_account::openagents::ChatSummary {
                                             chat,
                                             title: "Saved chat".into(),
                                             revision: 1,
@@ -493,7 +493,7 @@ fn main() -> anyhow::Result<()> {
                                             pinned_unix: None,
                                             archived_unix: None,
                                             project: None,
-                                            source: coder_account::openagents::ChatSource::Other(
+                                            source: openagents_account::openagents::ChatSource::Other(
                                                 "unknown".into(),
                                             ),
                                             messages: 405,
@@ -512,7 +512,7 @@ fn main() -> anyhow::Result<()> {
                                         viewer.update(cx, |viewer, _| viewer.model.clone());
                                     let deadline = Instant::now() + Duration::from_secs(10);
                                     while reader.snapshot().state
-                                        == coder_account::history::LoadState::Loading
+                                        == openagents_account::history::LoadState::Loading
                                     {
                                         assert!(Instant::now() < deadline);
                                         cx.background_executor()
@@ -550,7 +550,7 @@ fn main() -> anyhow::Result<()> {
                                     });
                                     while matches!(
                                         reader.snapshot().download.as_ref().map(|d| &d.state),
-                                        Some(coder_account::history::LoadState::Loading)
+                                        Some(openagents_account::history::LoadState::Loading)
                                     ) {
                                         cx.background_executor()
                                             .timer(Duration::from_millis(50))
@@ -598,7 +598,7 @@ fn main() -> anyhow::Result<()> {
                                     capture_window(window, cx, &output, "reader-changed");
                                     viewer.update(cx, |viewer, cx| viewer.refresh(cx));
                                     while reader.snapshot().state
-                                        == coder_account::history::LoadState::Loading
+                                        == openagents_account::history::LoadState::Loading
                                     {
                                         cx.background_executor()
                                             .timer(Duration::from_millis(50))
@@ -657,7 +657,7 @@ fn main() -> anyhow::Result<()> {
                                 let project = model.snapshot().projects[0].clone();
                                 panel.update(cx, |panel, cx| panel.project(Some(&project), cx));
                                 while model.snapshot().state
-                                    == coder_account::history::LoadState::Loading
+                                    == openagents_account::history::LoadState::Loading
                                 {
                                     cx.background_executor()
                                         .timer(Duration::from_millis(50))
@@ -676,14 +676,14 @@ fn main() -> anyhow::Result<()> {
                                     .await;
                                 assert!(matches!(
                                     model.snapshot().state,
-                                    coder_account::history::LoadState::Failed { stale: true, .. }
+                                    openagents_account::history::LoadState::Failed { stale: true, .. }
                                 ));
                                 capture_window(window, cx, &output, "offline-retry");
                                 server.history_status.store(0, Ordering::SeqCst);
                                 runtime.spawn(model.more()).await.unwrap();
                                 assert_eq!(
                                     model.snapshot().state,
-                                    coder_account::history::LoadState::Ready
+                                    openagents_account::history::LoadState::Ready
                                 );
                             }
                             account.update(cx, |a, cx| a.sign_out(cx));

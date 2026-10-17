@@ -129,7 +129,7 @@ impl AudioIo {
         }
         Ok(())
     }
-    pub fn enqueue(&mut self, frame: &zeron_proto::voice::VoiceFrame) -> Result<(), AudioError> {
+    pub fn enqueue(&mut self, frame: &openagents_proto::voice::VoiceFrame) -> Result<(), AudioError> {
         if frame.generation != self.generation.load(Ordering::Acquire) {
             return Err(AudioError::Frame);
         }

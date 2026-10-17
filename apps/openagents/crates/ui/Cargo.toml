@@ -1,5 +1,5 @@
 [package]
-name = "zeron-ui"
+name = "openagents-ui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,7 +7,7 @@ publish.workspace = true
 
 [features]
 # Legacy upstream auth comparisons only; never enable in OpenAgents builds.
-upstream-workos = ["zeron-engine/upstream-workos"]
+upstream-workos = ["openagents-engine/upstream-workos"]
 account-fixture = ["gpui_platform/test-support"]
 voice-experimental = [] # Compatibility flag; native subscription voice uses Codex's packaged helper.
 project-palette-fixture = []
@@ -66,28 +66,28 @@ name = "compact-picker-fixture"
 required-features = ["compact-picker-fixture"]
 
 [dependencies]
-coder-brand.workspace = true
-coder-account.workspace = true
+openagents-brand.workspace = true
+openagents-account.workspace = true
 openagents-dashboard = { path = "../../../../crates/openagents-dashboard", features = ["views"] }
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
 gethostname.workspace = true
-zeron-voice-media.workspace = true
-zeron-voice-session.workspace = true
-zeron-orb.workspace = true
-zeron-veil.workspace = true
-zeron-voice = { path = "../voice" }
+openagents-voice-media.workspace = true
+openagents-voice-session.workspace = true
+openagents-orb.workspace = true
+openagents-veil.workspace = true
+openagents-voice = { path = "../voice" }
 url = "2"
-zeron-proto.workspace = true
+openagents-proto.workspace = true
 similar.workspace = true
-zeron-doc.workspace = true
-zeron-engine.workspace = true
-zeron-harness.workspace = true
-zeron-rpc.workspace = true
-zeron-update.workspace = true
-zeron-syntax.workspace = true
-zeron-theme.workspace = true
-zeron-visual.workspace = true
-zeron-visual-gpu.workspace = true
+openagents-doc.workspace = true
+openagents-engine.workspace = true
+openagents-harness.workspace = true
+openagents-rpc.workspace = true
+openagents-update.workspace = true
+openagents-syntax.workspace = true
+openagents-theme.workspace = true
+openagents-visual.workspace = true
+openagents-visual-gpu.workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
 gpui_tokio.workspace = true
@@ -100,7 +100,7 @@ async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 pulldown-cmark.workspace = true
-zeron-markdown.workspace = true
+openagents-markdown.workspace = true
 html5ever = "0.39"
 alacritty_terminal.workspace = true
 base64 = "0.22"

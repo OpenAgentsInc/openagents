@@ -23,11 +23,11 @@ use gpui::{
     px,
 };
 
-use zeron_engine::registry::{HarnessDescriptor, descriptor_enabled};
+use openagents_engine::registry::{HarnessDescriptor, descriptor_enabled};
 
-use zeron_proto::{HarnessId, HarnessUpdatePhase, HarnessUpdatePolicy, HarnessUpdateStatus};
+use openagents_proto::{HarnessId, HarnessUpdatePhase, HarnessUpdatePolicy, HarnessUpdateStatus};
 
-use zeron_rpc::methods;
+use openagents_rpc::methods;
 
 use crate::motion;
 use crate::pickers::visible_harnesses;
@@ -85,7 +85,7 @@ fn install_hint(harness: HarnessId, enabled: bool, can_install: bool) -> String 
     } else {
         format!("Install the {} CLI to enable", cli_name(harness))
     };
-    if !can_install && let Some(command) = zeron_harness::install::manual_command(harness) {
+    if !can_install && let Some(command) = openagents_harness::install::manual_command(harness) {
         format!("{hint}. Install with `{command}`")
     } else {
         hint
@@ -136,7 +136,7 @@ fn harness_update_label(status: &HarnessUpdateStatus, theme: &Theme) -> (SharedS
         HarnessUpdatePhase::Dormant
         | HarnessUpdatePhase::Checking
         | HarnessUpdatePhase::Current => version_only(),
-        // The row's Update button already says it; one Zeron can only
+        // The row's Update button already says it; one OpenAgents can only
         // describe (a command to run yourself) is just the version too.
         HarnessUpdatePhase::Available | HarnessUpdatePhase::ManualActionRequired
             if status.can_apply =>
@@ -368,9 +368,9 @@ impl HarnessesPage {
             || {
                 engine
                     .engine_info()
-                    .supports(zeron_proto::capabilities::HARNESS_UPDATES_V1)
+                    .supports(openagents_proto::capabilities::HARNESS_UPDATES_V1)
             },
-            |device| state.device_supports(device, zeron_proto::capabilities::HARNESS_UPDATES_V1),
+            |device| state.device_supports(device, openagents_proto::capabilities::HARNESS_UPDATES_V1),
         )
     }
 
@@ -1300,11 +1300,11 @@ mod tests {
             let state = cx.new(|_| crate::state::AppState::new());
             super::HarnessesPage::new(state, cx)
         });
-        let descriptor = |id, name: &str| zeron_engine::registry::HarnessDescriptor {
+        let descriptor = |id, name: &str| openagents_engine::registry::HarnessDescriptor {
             id,
             name: name.into(),
             supports_steering: false,
-            steering_mode: zeron_proto::SteeringMode::TurnBoundary,
+            steering_mode: openagents_proto::SteeringMode::TurnBoundary,
             reasoning_levels: Vec::new(),
             installed: true,
             can_install: false,
@@ -1313,13 +1313,13 @@ mod tests {
         window
             .update(cx, |page, _, cx| {
                 page.harnesses = super::Loadable::Ready(vec![
-                    descriptor(zeron_proto::HarnessId::ClaudeCode, "Claude Code"),
-                    descriptor(zeron_proto::HarnessId::Codex, "Codex"),
+                    descriptor(openagents_proto::HarnessId::ClaudeCode, "Claude Code"),
+                    descriptor(openagents_proto::HarnessId::Codex, "Codex"),
                 ]);
-                page.toggle_agent_details(zeron_proto::HarnessId::ClaudeCode, cx);
+                page.toggle_agent_details(openagents_proto::HarnessId::ClaudeCode, cx);
                 assert_eq!(
                     page.expanded_harness,
-                    Some(zeron_proto::HarnessId::ClaudeCode)
+                    Some(openagents_proto::HarnessId::ClaudeCode)
                 );
                 assert_eq!(
                     page.accounts_page
@@ -1327,7 +1327,7 @@ mod tests {
                         .unwrap()
                         .read(cx)
                         .embedded_harness(),
-                    Some(zeron_proto::HarnessId::ClaudeCode)
+                    Some(openagents_proto::HarnessId::ClaudeCode)
                 );
             })
             .unwrap();
@@ -1335,15 +1335,15 @@ mod tests {
             .unwrap();
         window
             .update(cx, |page, _, cx| {
-                page.toggle_agent_details(zeron_proto::HarnessId::Codex, cx);
-                assert_eq!(page.expanded_harness, Some(zeron_proto::HarnessId::Codex));
+                page.toggle_agent_details(openagents_proto::HarnessId::Codex, cx);
+                assert_eq!(page.expanded_harness, Some(openagents_proto::HarnessId::Codex));
                 assert_eq!(
                     page.accounts_page
                         .as_ref()
                         .unwrap()
                         .read(cx)
                         .embedded_harness(),
-                    Some(zeron_proto::HarnessId::Codex)
+                    Some(openagents_proto::HarnessId::Codex)
                 );
             })
             .unwrap();
@@ -1353,17 +1353,17 @@ mod tests {
         window
             .update(cx, |page, _, cx| {
                 page.harnesses = super::Loadable::Ready(vec![descriptor(
-                    zeron_proto::HarnessId::Antigravity,
+                    openagents_proto::HarnessId::Antigravity,
                     "Antigravity",
                 )]);
-                page.toggle_agent_details(zeron_proto::HarnessId::Antigravity, cx);
+                page.toggle_agent_details(openagents_proto::HarnessId::Antigravity, cx);
                 assert_eq!(
                     page.accounts_page
                         .as_ref()
                         .unwrap()
                         .read(cx)
                         .embedded_harness(),
-                    Some(zeron_proto::HarnessId::Antigravity)
+                    Some(openagents_proto::HarnessId::Antigravity)
                 );
             })
             .unwrap();

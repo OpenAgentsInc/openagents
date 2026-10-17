@@ -13,8 +13,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use zeron_engine::{CheckoutDiffSync, EngineCore, HarnessRegistry};
-use zeron_proto::CheckoutDiff;
+use openagents_engine::{CheckoutDiffSync, EngineCore, HarnessRegistry};
+use openagents_proto::CheckoutDiff;
 
 async fn git(cwd: &Path, args: &[&str]) {
     let output = tokio::process::Command::new("git")
@@ -50,7 +50,7 @@ fn assemble(dir: &Path) -> EngineCore {
     EngineCore::assemble(
         dir,
         Arc::new(HarnessRegistry::new()),
-        zeron_proto::HarnessId::Mock,
+        openagents_proto::HarnessId::Mock,
         None,
     )
     .expect("engine assembles")
@@ -420,7 +420,7 @@ async fn archived_chats_get_no_entry_and_archiving_drops_it() {
     core.shutdown().await;
 }
 
-fn chat_row(core: &EngineCore, chat_id: &str) -> zeron_proto::Chat {
+fn chat_row(core: &EngineCore, chat_id: &str) -> openagents_proto::Chat {
     core.workspace
         .watch_chats()
         .borrow()
@@ -543,7 +543,7 @@ async fn discard_works_for_an_untracked_checkout() {
         "one\ntwo\nedited\n"
     );
 
-    let snapshot = zeron_engine::capture_diff(&core.repos, &identity.root)
+    let snapshot = openagents_engine::capture_diff(&core.repos, &identity.root)
         .await
         .expect("capture");
     sync.discard_working_tree(&identity, &snapshot.checksum)

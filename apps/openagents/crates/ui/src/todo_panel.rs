@@ -20,8 +20,8 @@ use gpui::{
     StatefulInteractiveElement as _, Styled, Window, div, prelude::*, px,
 };
 
-use zeron_doc::{MessagePart, MessageRole, SessionMessageEntry};
-use zeron_proto::{TodoItem, TodoStatus, ToolCall};
+use openagents_doc::{MessagePart, MessageRole, SessionMessageEntry};
+use openagents_proto::{TodoItem, TodoStatus, ToolCall};
 
 use crate::composer::{Composer, QUEUE_COMPOSER_OVERLAP};
 use crate::icons::{self, icon};
@@ -754,7 +754,7 @@ mod tests {
 
     #[test]
     fn acp_plan_reusing_one_id_resolves_to_the_newest_segment() {
-        let plan = zeron_proto::LIVE_PLAN_TOOL_ID;
+        let plan = openagents_proto::LIVE_PLAN_TOOL_ID;
         let old = entry(MessageRole::Assistant, vec![todo_part(plan, items(">.."))]);
         let new = entry(MessageRole::Assistant, vec![todo_part(plan, items("x>."))]);
         assert_eq!(latest_todo(&[old, new]), Some(items("x>.")));

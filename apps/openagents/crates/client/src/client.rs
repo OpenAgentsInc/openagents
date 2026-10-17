@@ -7,8 +7,8 @@ use std::time::Duration;
 
 use chrono::{TimeZone, Utc};
 use tokio_util::sync::CancellationToken;
-use zeron_doc::RegistryDoc;
-use zeron_proto::{Chat, ChatConfig, SidebarPinChange, SidebarSectionChange};
+use openagents_doc::RegistryDoc;
+use openagents_proto::{Chat, ChatConfig, SidebarPinChange, SidebarSectionChange};
 
 use crate::attachments::{self, AttachmentCache};
 use crate::auth::TokenProvider;
@@ -257,7 +257,7 @@ impl ClientInner {
 
     pub(crate) fn registry_write<R>(
         self: &Arc<Self>,
-        f: impl FnOnce(&mut RegistryDoc) -> std::result::Result<R, zeron_doc::DocError>,
+        f: impl FnOnce(&mut RegistryDoc) -> std::result::Result<R, openagents_doc::DocError>,
     ) -> Result<R> {
         let result = self.workspace.mutate(f)?;
         self.after_registry_write();
@@ -387,7 +387,7 @@ impl ClientInner {
             queued_attachments: device
                 .version
                 .as_deref()
-                .and_then(zeron_proto::version_triple)
+                .and_then(openagents_proto::version_triple)
                 .is_some_and(|v| v >= QUEUED_ATTACHMENTS_MIN),
             mid_turn_steering,
         }
@@ -536,7 +536,7 @@ impl Client {
     pub async fn voice_transport(
         &self,
         device_id: &str,
-    ) -> Result<Arc<zeron_voice_session::RpcTransport>> {
+    ) -> Result<Arc<openagents_voice_session::RpcTransport>> {
         let live = self.inner.live().ok_or_else(|| {
             ClientError::Unsupported("remote voice requires a connected account".into())
         })?;
@@ -690,7 +690,7 @@ impl Client {
     }
 
     /// Host reports from the existing registry, without opening a chat document.
-    pub fn reported_sessions(&self) -> Vec<zeron_proto::Session> {
+    pub fn reported_sessions(&self) -> Vec<openagents_proto::Session> {
         self.inner.workspace.state().0.sessions.clone()
     }
 
@@ -746,7 +746,7 @@ impl Client {
                     .iter()
                     .any(|c| c == crate::rpc::capability::PROJECTLESS_SCRATCH_V1)
                 {
-                    zeron_proto::projectless::scratch_cwd(&id, now)
+                    openagents_proto::projectless::scratch_cwd(&id, now)
                 } else {
                     "~".to_owned()
                 };
@@ -781,7 +781,7 @@ impl Client {
     fn chat_write(
         &self,
         chat_id: &str,
-        f: impl FnOnce(&mut RegistryDoc) -> std::result::Result<bool, zeron_doc::DocError>,
+        f: impl FnOnce(&mut RegistryDoc) -> std::result::Result<bool, openagents_doc::DocError>,
     ) -> Result<()> {
         if self.inner.registry_write(f)? {
             Ok(())
@@ -960,7 +960,7 @@ impl Client {
         {
             return Ok(existing.id.clone());
         }
-        let space = zeron_proto::Space {
+        let space = openagents_proto::Space {
             id: crate::new_id(),
             device_id: device_id.to_owned(),
             path: path.to_owned(),
@@ -980,7 +980,7 @@ impl Client {
                 .relay
                 .call(
                     device_id,
-                    zeron_rpc::methods::MUTATE,
+                    openagents_rpc::methods::MUTATE,
                     serde_json::json!({
                         "op": "createSpace",
                         "spaceId": id,
@@ -1144,7 +1144,7 @@ impl Client {
                     .relay
                     .call(
                         device_id,
-                        zeron_rpc::methods::LIST_HARNESSES,
+                        openagents_rpc::methods::LIST_HARNESSES,
                         serde_json::json!({}),
                     )
                     .await
@@ -1187,7 +1187,7 @@ impl Client {
                     .relay
                     .call(
                         device_id,
-                        zeron_rpc::methods::LIST_MODELS,
+                        openagents_rpc::methods::LIST_MODELS,
                         serde_json::json!({ "harness": harness }),
                     )
                     .await
@@ -1290,7 +1290,7 @@ impl Client {
                     .relay
                     .call(
                         device_id,
-                        zeron_rpc::methods::LIST_REFS,
+                        openagents_rpc::methods::LIST_REFS,
                         serde_json::json!({ "repoPath": repo_path }),
                     )
                     .await?;
@@ -1307,7 +1307,7 @@ impl Client {
         chat_id: Option<String>,
         space_id: Option<String>,
         query: &str,
-    ) -> Result<Vec<zeron_proto::FileSearchMatch>> {
+    ) -> Result<Vec<openagents_proto::FileSearchMatch>> {
         match self.inner.backend() {
             Backend::Demo(_) => {
                 const FILES: &[&str] = &[
@@ -1317,8 +1317,8 @@ impl Client {
                     "crates/text/src/layout.rs",
                     "crates/text/src/prepare.rs",
                     "crates/markdown/src/parser.rs",
-                    "apps/ios/Zeron/Transcript/TranscriptListView.swift",
-                    "apps/ios/Zeron/Composer/ComposerBar.swift",
+                    "apps/ios/OpenAgents/Transcript/TranscriptListView.swift",
+                    "apps/ios/OpenAgents/Composer/ComposerBar.swift",
                     "docs/mobile-rewrite.md",
                     "README.md",
                 ];
@@ -1326,7 +1326,7 @@ impl Client {
                 Ok(FILES
                     .iter()
                     .filter(|p| q.is_empty() || p.to_lowercase().contains(&q))
-                    .map(|p| zeron_proto::FileSearchMatch {
+                    .map(|p| openagents_proto::FileSearchMatch {
                         path: (*p).to_owned(),
                         is_dir: false,
                     })
@@ -1337,7 +1337,7 @@ impl Client {
                     .relay
                     .call(
                         device_id,
-                        zeron_rpc::methods::SEARCH_FILES,
+                        openagents_rpc::methods::SEARCH_FILES,
                         serde_json::json!({ "query": query, "chatId": chat_id, "spaceId": space_id }),
                     )
                     .await?;
@@ -1361,7 +1361,7 @@ impl Client {
                 };
                 let value = live
                     .relay
-                    .call(device_id, zeron_rpc::methods::LIST_FOLDERS, params)
+                    .call(device_id, openagents_rpc::methods::LIST_FOLDERS, params)
                     .await?;
                 serde_json::from_value(value).map_err(|e| ClientError::HostError(e.to_string()))
             }
@@ -1376,7 +1376,7 @@ impl Client {
                 .relay
                 .call(
                     device_id,
-                    zeron_rpc::methods::SWITCH_REF,
+                    openagents_rpc::methods::SWITCH_REF,
                     serde_json::json!({ "repoPath": repo_path, "refName": ref_name }),
                 )
                 .await
@@ -1401,7 +1401,7 @@ impl Client {
                 }
                 let value = live
                     .relay
-                    .call(device_id, zeron_rpc::methods::CREATE_WORKTREE, params)
+                    .call(device_id, openagents_rpc::methods::CREATE_WORKTREE, params)
                     .await?;
                 value
                     .get("path")
@@ -1468,8 +1468,8 @@ impl Client {
     pub fn set_network_online(&self, online: bool) {
         let was = self.inner.path_online.swap(online, Ordering::AcqRel);
         if !self.inner.is_demo() {
-            // Parks/un-parks every sync backoff in the process (zeron-sync).
-            zeron_sync::wake::set_path_online(online);
+            // Parks/un-parks every sync backoff in the process (openagents-sync).
+            openagents_sync::wake::set_path_online(online);
         }
         if was != online {
             self.inner.recompute_connectivity();

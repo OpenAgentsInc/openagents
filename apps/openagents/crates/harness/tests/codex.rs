@@ -10,10 +10,10 @@ use std::time::Duration;
 use futures::StreamExt;
 use tokio::sync::{mpsc, oneshot};
 
-use zeron_harness::{
+use openagents_harness::{
     CancellationToken, CodexHarness, Harness, HarnessError, RunControls, SteerMessage,
 };
-use zeron_proto::{
+use openagents_proto::{
     AgentEvent, DoneStatus, HarnessId, ReasoningLevel, RunRequest, SandboxLevel, TodoItem,
     TodoStatus, ToolCall, UserInputAnswer, UserInputQuestion,
 };
@@ -462,7 +462,7 @@ async fn a_stale_turn_completion_never_settles_the_running_turn() {
 /// its end, and the host's fallback tore the whole runtime down.
 #[tokio::test]
 async fn a_stop_before_the_turn_is_announced_still_interrupts_it() {
-    use zeron_harness::TurnControl;
+    use openagents_harness::TurnControl;
     let (mut controls, _steer, _token) = controls("Yes");
     let turn = TurnControl::default();
     controls.turn = turn.clone();
@@ -490,7 +490,7 @@ async fn a_stop_before_the_turn_is_announced_still_interrupts_it() {
 /// command — which never gets an `item/completed` — does not.
 #[tokio::test]
 async fn open_commands_report_background_work_and_killed_ones_do_not() {
-    use zeron_harness::TurnControl;
+    use openagents_harness::TurnControl;
     let (mut controls, steer, _token) = controls("Yes");
     let turn = TurnControl::default();
     controls.turn = turn.clone();
@@ -549,7 +549,7 @@ async fn rejected_steer_falls_back_to_a_follow_up_turn() {
         .send(SteerMessage {
             prompt: format!(
                 "redirect please {}",
-                zeron_proto::invocation::Invocation::Skill {
+                openagents_proto::invocation::Invocation::Skill {
                     command: None,
                     name: "review".into(),
                     path: "/repo/followup/SKILL.md".into(),
@@ -1309,7 +1309,7 @@ async fn live_subagent_spawn_and_followup_keep_one_transcript() {
 
 /// Live smoke against the REAL codex app-server (installed + authed):
 /// one trivial turn, ending on turn/completed.
-/// `cargo test -p zeron-harness --test codex -- --ignored`.
+/// `cargo test -p openagents-harness --test codex -- --ignored`.
 #[tokio::test]
 #[ignore = "spawns the real codex app-server; needs install + auth + network"]
 async fn live_real_app_server_single_turn() {
@@ -1387,7 +1387,7 @@ async fn skills_are_not_advertised_as_commands() {
     );
 }
 
-/// Live smoke against the real CLI: `cargo test -p zeron-harness --test
+/// Live smoke against the real CLI: `cargo test -p openagents-harness --test
 /// codex -- --ignored live_skills`.
 #[tokio::test]
 #[ignore]
@@ -1528,7 +1528,7 @@ async fn real_image_generation_smoke() {
 
 #[tokio::test]
 async fn native_commands_use_rpc_operations_and_render_results() {
-    let selected_review = zeron_proto::invocation::Invocation::Command {
+    let selected_review = openagents_proto::invocation::Invocation::Command {
         name: "review".into(),
     }
     .link();
@@ -1570,7 +1570,7 @@ async fn native_commands_use_rpc_operations_and_render_results() {
 
 #[tokio::test]
 async fn compact_requires_existing_session_and_commands_reject_attachments() {
-    let selected_compact = zeron_proto::invocation::Invocation::Command {
+    let selected_compact = openagents_proto::invocation::Invocation::Command {
         name: "compact".into(),
     }
     .link();
@@ -1631,7 +1631,7 @@ async fn native_command_during_a_turn_waits_for_its_boundary() {
 
 #[tokio::test]
 async fn native_skill_and_file_references_survive_initial_and_steered_turns() {
-    use zeron_proto::invocation::{Invocation, harness_prompt};
+    use openagents_proto::invocation::{Invocation, harness_prompt};
     let initial = Invocation::Skill {
         command: None,
         name: "review".into(),
@@ -1656,7 +1656,7 @@ async fn native_skill_and_file_references_survive_initial_and_steered_turns() {
     let raw = format!(
         "scenario:native-skills {} {}",
         initial.link(),
-        zeron_proto::file_mentions::local_file_link("src/lib.rs", false)
+        openagents_proto::file_mentions::local_file_link("src/lib.rs", false)
     );
     let events = run_to_end(
         &harness(),
@@ -1795,7 +1795,7 @@ async fn a_model_change_sent_mid_turn_takes_effect_in_its_own_turn() {
 
 #[tokio::test]
 async fn a_stopped_turn_keeps_the_app_server_for_the_next_prompt() {
-    use zeron_harness::TurnControl;
+    use openagents_harness::TurnControl;
     let (mut controls, steer, _token) = controls("Yes");
     let turn = TurnControl::default();
     controls.turn = turn.clone();
@@ -1866,14 +1866,14 @@ async fn idle_voice_runtime_has_no_initial_turn_and_preserves_mcp() {
         .with_graces(Duration::from_millis(10), Duration::from_millis(100));
     let mut req = request("must never be submitted");
     req.cwd = dir.path().display().to_string();
-    req.mcp = Some(zeron_proto::McpServer {
-        name: "zeron".into(),
-        command: "zeron".into(),
+    req.mcp = Some(openagents_proto::McpServer {
+        name: "openagents".into(),
+        command: "openagents".into(),
         args: vec!["mcp".into()],
         env: Default::default(),
     });
     let (mut controls, steer, token) = controls("Yes");
-    let (voice, bridge, _events) = zeron_harness::codex::realtime::channel();
+    let (voice, bridge, _events) = openagents_harness::codex::realtime::channel();
     controls.realtime = Some(bridge);
     let mut stream = driver.start_idle(req, controls).await.unwrap();
     assert!(matches!(
@@ -1887,7 +1887,7 @@ async fn idle_voice_runtime_has_no_initial_turn_and_preserves_mcp() {
     let (reply, receive) = oneshot::channel();
     voice
         .commands
-        .send(zeron_harness::codex::realtime::VoiceCommand::Start {
+        .send(openagents_harness::codex::realtime::VoiceCommand::Start {
             voice: None,
             session_id: "fixture-voice".into(),
             generation: 1,
@@ -1897,7 +1897,7 @@ async fn idle_voice_runtime_has_no_initial_turn_and_preserves_mcp() {
         .unwrap();
     assert_eq!(
         receive.await.unwrap(),
-        Err(zeron_proto::voice::VoiceRejection::NativeRuntimeUnavailable)
+        Err(openagents_proto::voice::VoiceRejection::NativeRuntimeUnavailable)
     );
     let calls = std::fs::read_to_string(dir.path().join("voice-wire.jsonl")).unwrap();
     assert!(!calls.contains("turn/start"));
@@ -1924,8 +1924,8 @@ async fn idle_voice_runtime_has_no_initial_turn_and_preserves_mcp() {
 #[tokio::test]
 async fn external_voice_keeps_canonical_events_without_any_local_helper() {
     use std::os::unix::fs::PermissionsExt;
-    use zeron_harness::codex::realtime::{VoiceCommand, channel};
-    use zeron_proto::voice::{VoiceEvent, remote::Sdp};
+    use openagents_harness::codex::realtime::{VoiceCommand, channel};
+    use openagents_proto::voice::{VoiceEvent, remote::Sdp};
     let dir = tempfile::tempdir().unwrap();
     let binary = dir.path().join("bin/codex");
     std::fs::create_dir_all(binary.parent().unwrap()).unwrap();
@@ -1938,9 +1938,9 @@ async fn external_voice_keeps_canonical_events_without_any_local_helper() {
     let driver = CodexHarness::new().with_executable(binary);
     let mut req = request("");
     req.cwd = dir.path().display().to_string();
-    req.mcp = Some(zeron_proto::McpServer {
-        name: "zeron".into(),
-        command: "zeron".into(),
+    req.mcp = Some(openagents_proto::McpServer {
+        name: "openagents".into(),
+        command: "openagents".into(),
         args: vec!["mcp".into()],
         env: Default::default(),
     });
@@ -1960,7 +1960,7 @@ async fn external_voice_keeps_canonical_events_without_any_local_helper() {
     assert!(voice.probe_external().await.unwrap().available);
     assert_eq!(
         voice.probe().await.unwrap_err(),
-        zeron_proto::voice::VoiceRejection::NativeRuntimeUnavailable
+        openagents_proto::voice::VoiceRejection::NativeRuntimeUnavailable
     );
     let (reply, answer) = oneshot::channel();
     voice

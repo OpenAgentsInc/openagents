@@ -1,6 +1,6 @@
 //! Native controls over the desktop's account-bound saved-history models.
 use super::{CoreError, CoreResult};
-use coder_account::{
+use openagents_account::{
     Lease, Snapshot as AccountUpdate,
     history::{History, LoadState},
     openagents::{AttachmentRef, ChatSource, MessageRole, SavedMessage},
@@ -222,7 +222,7 @@ impl CoreSavedHistory {
         });
         let cancel = this.cancel.clone();
         let weak = Arc::downgrade(&this);
-        zeron_client::runtime::shared().spawn(async move {
+        openagents_client::runtime::shared().spawn(async move {
             listener.on_saved_history_changed();
             let mut timer = tokio::time::interval(std::time::Duration::from_secs(2));
             timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -239,7 +239,7 @@ impl CoreSavedHistory {
                     _ = timer.tick() => {
                         reader.poll().await;
                         if weak.upgrade().is_some_and(|s|s.visible.load(Ordering::SeqCst) && s.foreground.load(Ordering::SeqCst)) {
-                            zeron_client::runtime::shared().spawn(turns.follow());
+                            openagents_client::runtime::shared().spawn(turns.follow());
                         }
                     },
                     changed = turn_updates.changed() => {
@@ -257,15 +257,15 @@ impl CoreSavedHistory {
                 }
             }
         });
-        zeron_client::runtime::shared().spawn(this.history.more());
-        zeron_client::runtime::shared().spawn(this.history.more_projects());
+        openagents_client::runtime::shared().spawn(this.history.more());
+        openagents_client::runtime::shared().spawn(this.history.more_projects());
         this
     }
     fn current(&self) -> bool {
         !self.cancel.is_cancelled() && self.lease.is_current()
     }
     fn refresh_lists(&self) {
-        let runtime = zeron_client::runtime::shared();
+        let runtime = openagents_client::runtime::shared();
         if self.history.refresh().is_ok() {
             runtime.spawn(self.history.more());
         }
@@ -303,9 +303,9 @@ impl CoreSavedHistory {
                 .reader
                 .target()
                 .map_or_else(
-                    || coder_account::chat_entries::entries(&snapshot.messages, snapshot.epoch),
+                    || openagents_account::chat_entries::entries(&snapshot.messages, snapshot.epoch),
                     |target| {
-                        coder_account::chat_entries::entries_for_chat(
+                        openagents_account::chat_entries::entries_for_chat(
                             &snapshot.messages,
                             snapshot.epoch,
                             &target.chat,
@@ -326,7 +326,7 @@ impl CoreSavedHistory {
             return Err(unavailable());
         }
         let reader = self.reader.clone();
-        zeron_client::runtime::shared()
+        openagents_client::runtime::shared()
             .spawn(async move { reader.attachment(&path).await })
             .await
             .map_err(failed)?
@@ -461,7 +461,7 @@ impl CoreSavedHistory {
     pub fn follow(&self, visible: bool) {
         self.visible.store(visible, Ordering::SeqCst);
         if visible && self.foreground.load(Ordering::SeqCst) {
-            zeron_client::runtime::shared().spawn(self.turns.resume());
+            openagents_client::runtime::shared().spawn(self.turns.resume());
         } else {
             self.turns.pause();
         }
@@ -471,7 +471,7 @@ impl CoreSavedHistory {
     pub fn set_foreground(&self, active: bool) {
         let was_active = self.foreground.swap(active, Ordering::SeqCst);
         if active && self.visible.load(Ordering::SeqCst) {
-            zeron_client::runtime::shared().spawn(self.turns.resume());
+            openagents_client::runtime::shared().spawn(self.turns.resume());
         } else {
             self.turns.pause();
         }
@@ -485,7 +485,7 @@ impl CoreSavedHistory {
         if !self.current() {
             return Err(unavailable());
         }
-        let runtime = zeron_client::runtime::shared();
+        let runtime = openagents_client::runtime::shared();
         match action {
             SavedHistoryAction::MoreChats => {
                 runtime.spawn(self.history.more());

@@ -13,8 +13,8 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use serde::{Deserialize, Serialize};
 
-use zeron_harness::{Harness, HarnessError, mock::MockHarness};
-use zeron_proto::{AgentEvent, DoneStatus, HarnessId, ReasoningLevel, SteeringMode};
+use openagents_harness::{Harness, HarnessError, mock::MockHarness};
+use openagents_proto::{AgentEvent, DoneStatus, HarnessId, ReasoningLevel, SteeringMode};
 
 /// What `ListHarnesses` reports per harness.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,7 +150,7 @@ impl HarnessRegistry {
     pub async fn discover_models(
         &self,
         id: HarnessId,
-    ) -> Result<Vec<zeron_proto::Model>, HarnessError> {
+    ) -> Result<Vec<openagents_proto::Model>, HarnessError> {
         let lease = Arc::new(self.execution_lease(id).await);
         self.discover_models_with_lease(id, lease).await
     }
@@ -161,7 +161,7 @@ impl HarnessRegistry {
         &self,
         id: HarnessId,
         lease: Arc<tokio::sync::OwnedRwLockReadGuard<()>>,
-    ) -> Result<Vec<zeron_proto::Model>, HarnessError> {
+    ) -> Result<Vec<openagents_proto::Model>, HarnessError> {
         let harness = self.resolve(id)?;
         tokio::spawn(async move {
             // An RPC cancellation must not drop the gate before the probe's
@@ -177,7 +177,7 @@ impl HarnessRegistry {
         &self,
         id: HarnessId,
         cwd: &Path,
-    ) -> Result<Vec<zeron_proto::SlashCommand>, HarnessError> {
+    ) -> Result<Vec<openagents_proto::SlashCommand>, HarnessError> {
         let cwd = cwd.to_owned();
         let lease = self.execution_lease(id).await;
         let harness = self.resolve(id)?;
@@ -195,7 +195,7 @@ impl HarnessRegistry {
         &self,
         id: HarnessId,
         cwd: &Path,
-    ) -> Result<Option<Vec<zeron_proto::invocation::Skill>>, HarnessError> {
+    ) -> Result<Option<Vec<openagents_proto::invocation::Skill>>, HarnessError> {
         let cwd = cwd.to_owned();
         let lease = self.execution_lease(id).await;
         let harness = self.resolve(id)?;
@@ -319,7 +319,7 @@ impl HarnessRegistry {
     /// Load `harness-prefs.json` from the engine data dir and remember the
     /// path for writes. Corrupt/missing files fall back to the default set.
     pub fn load_prefs(&self, data_dir: &Path) {
-        if let Ok(runner) = zeron_harness::sdk::SdkHarness::load(&data_dir.join("sdk-runners.json"))
+        if let Ok(runner) = openagents_harness::sdk::SdkHarness::load(&data_dir.join("sdk-runners.json"))
         {
             self.register(Arc::new(runner));
         }
@@ -440,7 +440,7 @@ impl HarnessRegistry {
 
     pub fn set_title_settings(&self, mut settings: TitleSettings) -> Result<(), String> {
         if let Some(id) = settings.harness {
-            if !zeron_harness::supports_titles(id) || !self.enabled_set().contains(&id) {
+            if !openagents_harness::supports_titles(id) || !self.enabled_set().contains(&id) {
                 return Err("Choose an enabled harness that supports title generation".into());
             }
         } else if settings.model.is_some() {
@@ -518,7 +518,7 @@ impl HarnessRegistry {
                     None => return None,
                 };
                 descriptor.enabled = Some(enabled.contains(id));
-                descriptor.can_install = zeron_harness::install::can_install(*id);
+                descriptor.can_install = openagents_harness::install::can_install(*id);
                 Some(descriptor)
             })
             .collect()
@@ -526,12 +526,12 @@ impl HarnessRegistry {
 }
 
 /// The production registry: MockHarness (hidden from production pickers) plus a lazy
-/// `claude-code` slot resolved through `zeron_harness` on first use (subprocess
+/// `claude-code` slot resolved through `openagents_harness` on first use (subprocess
 /// discovery only happens when a run/model call actually needs it).
 pub fn default_registry() -> HarnessRegistry {
     // Warm the login-shell PATH snapshot in the background so the first
     // claude/codex resolve doesn't pay the shell-startup latency inline.
-    zeron_harness::shell_env::prewarm();
+    openagents_harness::shell_env::prewarm();
     let registry = HarnessRegistry::new();
     registry.register(Arc::new(MockHarness {
         script: vec![
@@ -543,7 +543,7 @@ pub fn default_registry() -> HarnessRegistry {
             },
             AgentEvent::ToolCall {
                 id: "mock-tool-1".into(),
-                call: zeron_proto::ToolCall::Exec {
+                call: openagents_proto::ToolCall::Exec {
                     command: "cargo test --workspace".into(),
                 },
             },
@@ -555,7 +555,7 @@ pub fn default_registry() -> HarnessRegistry {
             },
             AgentEvent::ToolCall {
                 id: "mock-tool-2".into(),
-                call: zeron_proto::ToolCall::Exec {
+                call: openagents_proto::ToolCall::Exec {
                     command: "git log -5 --oneline --decorate && git merge-base HEAD origin/main"
                         .into(),
                 },
@@ -596,14 +596,14 @@ pub fn default_registry() -> HarnessRegistry {
             can_install: false,
             enabled: None,
         },
-        Box::new(|| zeron_harness::ClaudeHarness::new().installed()),
-        Box::new(|| Ok(Arc::new(zeron_harness::ClaudeHarness::new()) as Arc<dyn Harness>)),
+        Box::new(|| openagents_harness::ClaudeHarness::new().installed()),
+        Box::new(|| Ok(Arc::new(openagents_harness::ClaudeHarness::new()) as Arc<dyn Harness>)),
     );
     // Codex, same lazy pattern: the static descriptor mirrors AcpHarness::codex()
     // exactly (`describe()` after the first resolve must not change the
     // catalog entry) — "Codex" per the original HARNESS_LABEL, StepBoundary
     // steering via native `turn/steer`, and the unified reasoning ladder from
-    // zeron_harness::codex::catalog. CLI discovery only happens when a
+    // openagents_harness::codex::catalog. CLI discovery only happens when a
     // run/model call actually resolves the slot.
     registry.register_lazy(
         HarnessDescriptor {
@@ -624,8 +624,8 @@ pub fn default_registry() -> HarnessRegistry {
             can_install: false,
             enabled: None,
         },
-        Box::new(|| zeron_harness::CodexHarness::new().installed()),
-        Box::new(|| Ok(Arc::new(zeron_harness::CodexHarness::new()) as Arc<dyn Harness>)),
+        Box::new(|| openagents_harness::CodexHarness::new().installed()),
+        Box::new(|| Ok(Arc::new(openagents_harness::CodexHarness::new()) as Arc<dyn Harness>)),
     );
     // Cursor via the pinned @cursor/sdk shim (NOT ACP — that surface strips
     // subagent transcripts), same lazy pattern: the static descriptor mirrors
@@ -641,8 +641,8 @@ pub fn default_registry() -> HarnessRegistry {
             can_install: false,
             enabled: None,
         },
-        Box::new(|| zeron_harness::CursorHarness::new().installed()),
-        Box::new(|| Ok(Arc::new(zeron_harness::CursorHarness::new()) as Arc<dyn Harness>)),
+        Box::new(|| openagents_harness::CursorHarness::new().installed()),
+        Box::new(|| Ok(Arc::new(openagents_harness::CursorHarness::new()) as Arc<dyn Harness>)),
     );
     // Devin over ACP (`devin acp`), same lazy pattern: the static descriptor
     // mirrors AcpHarness::devin() exactly. No steering extension (turn
@@ -659,8 +659,8 @@ pub fn default_registry() -> HarnessRegistry {
             can_install: false,
             enabled: None,
         },
-        Box::new(|| zeron_harness::AcpHarness::devin().installed()),
-        Box::new(|| Ok(Arc::new(zeron_harness::AcpHarness::devin()) as Arc<dyn Harness>)),
+        Box::new(|| openagents_harness::AcpHarness::devin().installed()),
+        Box::new(|| Ok(Arc::new(openagents_harness::AcpHarness::devin()) as Arc<dyn Harness>)),
     );
     // Grok Build over ACP, same lazy pattern: the static descriptor mirrors
     // AcpHarness::grok() exactly. No `_session/steering` extension yet, so
@@ -681,8 +681,8 @@ pub fn default_registry() -> HarnessRegistry {
             can_install: false,
             enabled: None,
         },
-        Box::new(|| zeron_harness::AcpHarness::grok().installed()),
-        Box::new(|| Ok(Arc::new(zeron_harness::AcpHarness::grok()) as Arc<dyn Harness>)),
+        Box::new(|| openagents_harness::AcpHarness::grok().installed()),
+        Box::new(|| Ok(Arc::new(openagents_harness::AcpHarness::grok()) as Arc<dyn Harness>)),
     );
     // Hermes Agent over ACP (`hermes acp`), same lazy pattern: the static
     // descriptor mirrors AcpHarness::hermes() exactly. No steering extension
@@ -699,8 +699,8 @@ pub fn default_registry() -> HarnessRegistry {
             can_install: false,
             enabled: None,
         },
-        Box::new(|| zeron_harness::AcpHarness::hermes().installed()),
-        Box::new(|| Ok(Arc::new(zeron_harness::AcpHarness::hermes()) as Arc<dyn Harness>)),
+        Box::new(|| openagents_harness::AcpHarness::hermes().installed()),
+        Box::new(|| Ok(Arc::new(openagents_harness::AcpHarness::hermes()) as Arc<dyn Harness>)),
     );
     // Native Pi RPC. Thinking levels are discovered per model.
     registry.register_lazy(
@@ -714,8 +714,8 @@ pub fn default_registry() -> HarnessRegistry {
             can_install: false,
             enabled: None,
         },
-        Box::new(|| zeron_harness::PiHarness::new().installed()),
-        Box::new(|| Ok(Arc::new(zeron_harness::PiHarness::new()) as Arc<dyn Harness>)),
+        Box::new(|| openagents_harness::PiHarness::new().installed()),
+        Box::new(|| Ok(Arc::new(openagents_harness::PiHarness::new()) as Arc<dyn Harness>)),
     );
     // opencode over its NATIVE HTTP/SSE protocol (the one the opencode
     // desktop app speaks — `opencode serve` + the /global/event bus), same
@@ -739,8 +739,8 @@ pub fn default_registry() -> HarnessRegistry {
             can_install: false,
             enabled: None,
         },
-        Box::new(|| zeron_harness::OpencodeHarness::new().installed()),
-        Box::new(|| Ok(Arc::new(zeron_harness::OpencodeHarness::new()) as Arc<dyn Harness>)),
+        Box::new(|| openagents_harness::OpencodeHarness::new().installed()),
+        Box::new(|| Ok(Arc::new(openagents_harness::OpencodeHarness::new()) as Arc<dyn Harness>)),
     );
     // antigravity over acp (google's agy_acp_server), same lazy pattern: the
     // static descriptor mirrors AcpHarness::antigravity() exactly. No steering
@@ -757,8 +757,8 @@ pub fn default_registry() -> HarnessRegistry {
             can_install: false,
             enabled: None,
         },
-        Box::new(|| zeron_harness::AcpHarness::antigravity().installed()),
-        Box::new(|| Ok(Arc::new(zeron_harness::AcpHarness::antigravity()) as Arc<dyn Harness>)),
+        Box::new(|| openagents_harness::AcpHarness::antigravity().installed()),
+        Box::new(|| Ok(Arc::new(openagents_harness::AcpHarness::antigravity()) as Arc<dyn Harness>)),
     );
     registry
 }
@@ -1090,13 +1090,13 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn antigravity_detection_subprocess() {
-        let Ok(expected) = std::env::var("ZERON_TEST_AGY_INSTALLED") else {
+        let Ok(expected) = openagents_brand::env_var("OPENAGENTS_TEST_AGY_INSTALLED") else {
             return;
         };
         let registry = HarnessRegistry::new();
         let data = tempfile::tempdir().unwrap();
         registry.load_prefs(data.path());
-        registry.register(Arc::new(zeron_harness::AcpHarness::antigravity()));
+        registry.register(Arc::new(openagents_harness::AcpHarness::antigravity()));
         let expected = expected == "true";
         assert_eq!(registry.descriptors()[0].installed, expected);
         assert_eq!(
@@ -1131,8 +1131,8 @@ mod tests {
                 .env("HOME", home.path())
                 .env("PATH", &bin)
                 .env_remove("ANTIGRAVITY_ACP_EXECUTABLE")
-                .env("ZERON_NO_LOGIN_SHELL", "1")
-                .env("ZERON_TEST_AGY_INSTALLED", installed.to_string())
+                .env("OPENAGENTS_NO_LOGIN_SHELL", "1")
+                .env("OPENAGENTS_TEST_AGY_INSTALLED", installed.to_string())
                 .output()
                 .unwrap();
             assert!(
@@ -1249,7 +1249,7 @@ mod title_tests {
         let registry = HarnessRegistry::new();
         registry.load_prefs(dir.path());
         registry.register(Arc::new(
-            zeron_harness::ClaudeHarness::new().with_executable(std::env::current_exe().unwrap()),
+            openagents_harness::ClaudeHarness::new().with_executable(std::env::current_exe().unwrap()),
         ));
         let settings = TitleSettings {
             harness: Some(HarnessId::ClaudeCode),
@@ -1316,20 +1316,20 @@ mod gate_tests {
         fn reasoning_levels(&self) -> &[ReasoningLevel] {
             &[]
         }
-        async fn models(&self) -> Result<Vec<zeron_proto::Model>, HarnessError> {
+        async fn models(&self) -> Result<Vec<openagents_proto::Model>, HarnessError> {
             self.started.notify_one();
             self.release.notified().await;
             Ok(vec![])
         }
-        async fn commands(&self) -> Result<Vec<zeron_proto::SlashCommand>, HarnessError> {
+        async fn commands(&self) -> Result<Vec<openagents_proto::SlashCommand>, HarnessError> {
             self.started.notify_one();
             self.release.notified().await;
             Ok(vec![])
         }
         async fn run(
             &self,
-            _: zeron_proto::RunRequest,
-            _: zeron_harness::RunControls,
+            _: openagents_proto::RunRequest,
+            _: openagents_harness::RunControls,
         ) -> Result<
             futures::stream::BoxStream<'static, Result<AgentEvent, HarnessError>>,
             HarnessError,

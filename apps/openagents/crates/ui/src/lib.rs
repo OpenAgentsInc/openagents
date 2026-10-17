@@ -1,4 +1,4 @@
-//! zeron-ui — the gpui viewport. Shell, sidebar, conversation, composer, terminal,
+//! openagents-ui — the gpui viewport. Shell, sidebar, conversation, composer, terminal,
 //! diff pane.
 //!
 //! Design: ARCHITECTURE.md §4; animation catalog docs/research/feature-inventory.md
@@ -6,11 +6,11 @@
 //!
 //! M3a foundation:
 //! - [`theme`] — always-dark monochrome theme (oklch-derived neutrals), a gpui Global;
-//! - [`motion`] — the zeron animation catalog over gpui `Animation` + cubic-bezier;
+//! - [`motion`] — the openagents animation catalog over gpui `Animation` + cubic-bezier;
 //! - [`state`] — `AppState` entity + `EngineHandle` (connect-or-embed engine);
 //! - [`settings`] — persisted pane widths/collapse flags;
 //! - [`shell`] — sidebar + main panel + right-pane scaffold + gate;
-//! - [`loaders`] — zeron pulse loader, gradient spinner, boot splash.
+//! - [`loaders`] — openagents pulse loader, gradient spinner, boot splash.
 
 mod account_usage;
 pub mod app_menus;
@@ -95,10 +95,10 @@ use futures::{FutureExt as _, StreamExt as _};
 use gpui::{App, AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
 
 pub use state::EngineBootConfig;
-pub use zeron_proto::HarnessId;
+pub use openagents_proto::HarnessId;
 
 /// Everything the headed binary passes in (config/env resolution lives in
-/// `apps/zeron`, not here).
+/// `apps/openagents`, not here).
 #[derive(Debug, Clone)]
 pub struct UiConfig {
     /// Data directory — engine stores + `ui-settings.json`.
@@ -221,7 +221,7 @@ pub fn run_app(config: UiConfig) {
         #[cfg(target_os = "macos")]
         openagents_account::AppAccount::init(data_dir.clone(), cx);
         app_update::AppUpdate::init(config.boot().edge_url, data_dir.clone(), cx);
-        cx.register_url_scheme(coder_brand::URL_SCHEME).detach();
+        cx.register_url_scheme(openagents_brand::URL_SCHEME).detach();
 
         let state = cx.new(|cx| {
             let mut state = state::AppState::new();
@@ -287,7 +287,7 @@ pub fn run_app(config: UiConfig) {
     });
 }
 
-/// Bring Zeron forward, reopening the main window first if ⌘W closed it.
+/// Bring OpenAgents forward, reopening the main window first if ⌘W closed it.
 pub(crate) fn activate_main_window(cx: &mut App) {
     cx.activate(true);
     if cx.windows().is_empty()
@@ -298,7 +298,7 @@ pub(crate) fn activate_main_window(cx: &mut App) {
     }
 }
 
-/// A clicked banner: bring Zeron forward on its chat or settings destination,
+/// A clicked banner: bring OpenAgents forward on its chat or settings destination,
 /// reopening the main window first if ⌘W closed it.
 fn open_notification_target(target: String, state: &gpui::Entity<state::AppState>, cx: &mut App) {
     activate_main_window(cx);
@@ -420,7 +420,7 @@ fn open_main_window(
                 // Linux/Windows `appears_transparent` hides the system titlebar
                 // for our custom-drawn chrome; harmless where unsupported.
                 titlebar: Some(TitlebarOptions {
-                    title: Some(coder_brand::NAME.into()),
+                    title: Some(openagents_brand::NAME.into()),
                     appears_transparent: true,
                     // Native lights are 14px tall: top 14 → center 21, matching
                     // the 38px titlebar row with 4px top-only content padding.
@@ -430,7 +430,7 @@ fn open_main_window(
                 // Drag + start_window_move) — mark the content view app-owned
                 // so AppKit neither dead-zones the strip nor delays clicks.
                 app_owns_titlebar_drag: true,
-                // Linux: request client-side decorations — zeron draws its own
+                // Linux: request client-side decorations — openagents draws its own
                 // unified titlebar and (under CSD) its own caption buttons
                 // (shell.rs `render_linux_caption_controls`). Leaving this unset
                 // requests SERVER decorations, which stacked a compositor
@@ -450,7 +450,7 @@ fn open_main_window(
                 // — if these two ever disagree, vibrancy dies on the first theme
                 // change and never comes back.
                 window_background: theme::Theme::of(cx).window_background_appearance(),
-                app_id: Some("zeron".into()),
+                app_id: Some("openagents".into()),
                 ..Default::default()
             },
             move |window, cx| {
@@ -499,7 +499,7 @@ fn start_appshot_service(activation_dir: std::path::PathBuf, cx: &mut App) {
             };
             let capture = capture.await;
             // Coalesce presses made while capture was in flight. Delivery
-            // focuses Zeron; replaying old activations would capture the wrong
+            // focuses OpenAgents; replaying old activations would capture the wrong
             // app or show a misleading self-capture error after success.
             while matches!(shortcuts.next().now_or_never(), Some(Some(()))) {}
             cx.update(|cx| deliver_appshot(capture, cx));
@@ -510,7 +510,7 @@ fn start_appshot_service(activation_dir: std::path::PathBuf, cx: &mut App) {
 
 /// Check viewer focus on the UI thread before any native capture or portal
 /// request. Portals do not identify the source window, so their backends cannot
-/// reject Zeron after the picker or capture has already started.
+/// reject OpenAgents after the picker or capture has already started.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 fn start_appshot_capture(
     cx: &mut App,
@@ -542,7 +542,7 @@ mod appshot_activation_tests {
 
     #[gpui::test]
     fn appshot_capture_skips_any_focused_viewer_window(cx: &mut gpui::TestAppContext) {
-        // The guard must cover every Zeron window, not only a Shell/chat root.
+        // The guard must cover every OpenAgents window, not only a Shell/chat root.
         for _ in 0..2 {
             let window = cx.add_window(|_, _| ViewerWindow);
             window
@@ -608,7 +608,7 @@ fn deliver_appshot(
             }
             tracing::warn!(
                 count,
-                "Appshot captured with no Zeron window; preserving it for the next delivery"
+                "Appshot captured with no OpenAgents window; preserving it for the next delivery"
             );
         }
         return;

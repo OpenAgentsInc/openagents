@@ -10,8 +10,8 @@ use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, watch};
-use zeron_doc::RegistryDoc;
-use zeron_sync::{RegistryClient, registry::mock_server::MockRegistryServer};
+use openagents_doc::RegistryDoc;
+use openagents_sync::{RegistryClient, registry::mock_server::MockRegistryServer};
 
 struct ImpairedProxy {
     url: String,
@@ -126,7 +126,7 @@ async fn delayed_registry_survives_blackout_and_reset_without_losing_writes() {
     {
         let mut doc = doc.lock().unwrap();
         for i in 0..20 {
-            doc.upsert_device(&zeron_proto::Device {
+            doc.upsert_device(&openagents_proto::Device {
                 id: format!("offline-{i}"),
                 name: format!("queued-{i}"),
                 platform: "test".into(),

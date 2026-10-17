@@ -1,5 +1,5 @@
 //! UI settings persisted to a small JSON file in the data dir — pane widths and
-//! collapse flags (zeron persisted the same set in localStorage).
+//! collapse flags (openagents persisted the same set in localStorage).
 //!
 //! Loaded once at boot and then owned by [`SettingsStore`], the only production
 //! writer. Frequent geometry changes are debounced; durable choices flush
@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use gpui::{App, Global, Task};
 use serde::{Deserialize, Serialize};
-use zeron_proto::{AuthState, WorkspaceScope};
+use openagents_proto::{AuthState, WorkspaceScope};
 
 pub mod accounts;
 pub mod appearance;
@@ -75,7 +75,7 @@ const NEW_THREAD_BACKGROUND_DIR: &str = "new-thread-backgrounds";
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewThreadComposerBackground {
-    /// Managed copy inside Zeron's device-local data directory.
+    /// Managed copy inside OpenAgents's device-local data directory.
     pub path: String,
     /// Original file name shown in Appearance settings.
     pub name: String,
@@ -381,7 +381,7 @@ pub fn compact_model_picker(cx: &App) -> bool {
         .is_some_and(|store| store.current.compact_model_picker)
 }
 
-/// Copy a selected image into Zeron's device-local data directory and make it
+/// Copy a selected image into OpenAgents's device-local data directory and make it
 /// the new-thread canvas background. A unique file name avoids stale image
 /// caches when the background is replaced.
 pub fn install_new_thread_composer_background(source: &Path, cx: &mut App) -> Result<(), String> {
@@ -399,7 +399,7 @@ pub fn install_new_thread_composer_background(source: &Path, cx: &mut App) -> Re
 fn install_staged_background(
     source: &Path,
     staged: crate::attachments::StagedAttachment,
-    color: Option<zeron_theme::Color>,
+    color: Option<openagents_theme::Color>,
     cx: &mut App,
 ) -> Result<(), String> {
     let data_dir = cx
@@ -468,7 +468,7 @@ fn prepare_background_file(
 fn commit_background(
     source: &Path,
     mut prepared: PreparedBackgroundFile,
-    color: Option<zeron_theme::Color>,
+    color: Option<openagents_theme::Color>,
     cx: &mut App,
 ) -> Result<(), String> {
     let data_dir = cx
@@ -789,7 +789,7 @@ pub struct SkillCompletionSettings {
 impl SkillCompletionSettings {
     /// Every harness defaults to `$` skills kept out of the `/` menu; an
     /// explicit per-harness choice (or the legacy slash-menu flag) wins.
-    pub fn for_harness(_harness: zeron_proto::HarnessId) -> Self {
+    pub fn for_harness(_harness: openagents_proto::HarnessId) -> Self {
         Self {
             dollar: true,
             separate_from_slash: true,
@@ -797,23 +797,23 @@ impl SkillCompletionSettings {
     }
 }
 
-pub const SKILL_COMPLETION_HARNESSES: [(zeron_proto::HarnessId, &str); 9] = [
-    (zeron_proto::HarnessId::Antigravity, "Antigravity"),
-    (zeron_proto::HarnessId::ClaudeCode, "Claude Code"),
-    (zeron_proto::HarnessId::Codex, "Codex"),
-    (zeron_proto::HarnessId::Cursor, "Cursor"),
-    (zeron_proto::HarnessId::Devin, "Devin"),
-    (zeron_proto::HarnessId::Grok, "Grok"),
-    (zeron_proto::HarnessId::Hermes, "Hermes"),
-    (zeron_proto::HarnessId::Pi, "Pi"),
-    (zeron_proto::HarnessId::Opencode, "OpenCode"),
+pub const SKILL_COMPLETION_HARNESSES: [(openagents_proto::HarnessId, &str); 9] = [
+    (openagents_proto::HarnessId::Antigravity, "Antigravity"),
+    (openagents_proto::HarnessId::ClaudeCode, "Claude Code"),
+    (openagents_proto::HarnessId::Codex, "Codex"),
+    (openagents_proto::HarnessId::Cursor, "Cursor"),
+    (openagents_proto::HarnessId::Devin, "Devin"),
+    (openagents_proto::HarnessId::Grok, "Grok"),
+    (openagents_proto::HarnessId::Hermes, "Hermes"),
+    (openagents_proto::HarnessId::Pi, "Pi"),
+    (openagents_proto::HarnessId::Opencode, "OpenCode"),
 ];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct UiSettings {
     pub dictation_enabled: bool,
-    /// Dictation microphone as a `zeron_voice::InputDevice` id; `None`
+    /// Dictation microphone as a `openagents_voice::InputDevice` id; `None`
     /// follows the system default.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dictation_input: Option<String>,
@@ -824,7 +824,7 @@ pub struct UiSettings {
     /// Legacy global opt-in; per-harness preferences take precedence.
     pub skills_in_slash_menu: bool,
     pub skill_completion_by_harness:
-        std::collections::HashMap<zeron_proto::HarnessId, SkillCompletionSettings>,
+        std::collections::HashMap<openagents_proto::HarnessId, SkillCompletionSettings>,
     /// Open model selection with an effort slider and a separate model list.
     pub compact_model_picker: bool,
     pub sidebar_width: f32,
@@ -879,7 +879,7 @@ pub struct UiSettings {
     /// list. Kept for file compatibility; no longer read.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub space_order: Vec<String>,
-    /// Master switch for session notification chimes. `ZERON_DISABLE_SOUND`
+    /// Master switch for session notification chimes. `OPENAGENTS_DISABLE_SOUND`
     /// overrides every per-event preference below.
     pub sound_enabled: bool,
     /// Chime when an agent run completes successfully.
@@ -889,9 +889,9 @@ pub struct UiSettings {
     /// Chime when a run fails or the durable connection state degrades.
     pub sound_attention_enabled: bool,
     /// Desktop banner notifications on the same transitions.
-    /// `ZERON_DISABLE_NOTIFICATIONS` overrides.
+    /// `OPENAGENTS_DISABLE_NOTIFICATIONS` overrides.
     pub notifications_enabled: bool,
-    /// Suppress the banner while a Zeron window is focused (the chime covers
+    /// Suppress the banner while a OpenAgents window is focused (the chime covers
     /// the foreground case).
     pub notifications_background_only: bool,
     pub files_panel_width: f32,
@@ -902,7 +902,7 @@ pub struct UiSettings {
     /// Width of the pull request pane beside the board.
     pub pull_request_pane_width: f32,
     /// Legacy: panel *open* flags are session-scoped in-memory state now
-    /// (`shell::SessionPanels`, zeron `sessionPanels` parity). Kept for file
+    /// (`shell::SessionPanels`, openagents `sessionPanels` parity). Kept for file
     /// compatibility; no longer read or written by the shell.
     pub right_pane_open: bool,
     pub terminal_height: f32,
@@ -947,7 +947,7 @@ pub struct UiSettings {
     pub code_font_family: crate::typography::UiFontFamily,
     pub code_font_size: f32,
     /// Independently selected light and dark theme variants.
-    pub theme_selection: zeron_theme::ThemeSelection,
+    pub theme_selection: openagents_theme::ThemeSelection,
     /// Changes pane: side-by-side diffs instead of the unified stack.
     pub diff_split: bool,
     /// Changes pane: wrap long source lines instead of scrolling horizontally.
@@ -960,7 +960,8 @@ pub struct UiSettings {
     pub transcript_width: f32,
     /// Open a normal web-link activation in the session Browser. Explicit
     /// context-menu actions remain available regardless of this preference.
-    pub open_web_links_in_zeron: bool,
+    #[serde(alias = "openWebLinksInZeron")]
+    pub open_web_links_in_openagents: bool,
     /// Compact transcript: a turn's working steps (thinking, tool calls, and
     /// the narration between them) fold into one collapsed accordion, so only
     /// the reply text stays visible.
@@ -984,9 +985,9 @@ pub struct UiSettings {
     /// that otherwise shows beside a transcript with room for it.
     pub session_info_hidden: bool,
     /// Interactive identity overlay; imported themes default to their own accent.
-    pub accent: zeron_theme::AccentSelection,
+    pub accent: openagents_theme::AccentSelection,
     /// Glass policy, independent from the selected appearance, theme, and accent.
-    pub surface: zeron_theme::SurfacePreference,
+    pub surface: openagents_theme::SurfacePreference,
     /// Optional device-local artwork behind the blank new-thread composer.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub new_thread_composer_background: Option<NewThreadComposerBackground>,
@@ -996,7 +997,7 @@ pub struct UiSettings {
     /// Most recently displayed sources first; bounded by the shuffle cooldown.
     pub wallpaper_history: Vec<PathBuf>,
     pub wallpaper_theme_colors: bool,
-    pub wallpaper_color: Option<zeron_theme::Color>,
+    pub wallpaper_color: Option<openagents_theme::Color>,
     /// Non-destructive treatment composited inside the artwork's fade mask.
     pub new_thread_background_effect: NewThreadBackgroundEffect,
     /// Snap animations to rest. Defaults to following the OS.
@@ -1076,12 +1077,12 @@ impl Default for UiSettings {
             terminal_font_size: crate::typography::TERMINAL_FONT_SIZE_DEFAULT,
             code_font_family: crate::typography::UiFontFamily::GeistMono,
             code_font_size: crate::typography::CODE_FONT_SIZE_DEFAULT,
-            theme_selection: zeron_theme::ThemeSelection::default(),
+            theme_selection: openagents_theme::ThemeSelection::default(),
             diff_split: false,
             diff_wrap: false,
             code_fences_fit_content: false,
             transcript_width: TRANSCRIPT_WIDTH_DEFAULT,
-            open_web_links_in_zeron: true,
+            open_web_links_in_openagents: true,
             transcript_compact_mode: false,
             pull_request_destination: PullRequestDestination::Native,
             last_pull_request_repository: None,
@@ -1092,8 +1093,8 @@ impl Default for UiSettings {
             files_word_wrap: false,
             files_show_all: false,
             session_info_hidden: false,
-            accent: zeron_theme::AccentSelection::default(),
-            surface: zeron_theme::SurfacePreference::default(),
+            accent: openagents_theme::AccentSelection::default(),
+            surface: openagents_theme::SurfacePreference::default(),
             new_thread_composer_background: None,
             wallpaper_folder: None,
             wallpaper_source: None,
@@ -1189,7 +1190,7 @@ impl ShortcutId {
         self != Self::CaptureAppshot || crate::appshots::is_desktop()
     }
 
-    /// Row label (zeron lib/shortcuts.ts `SHORTCUT_DEFINITIONS`, verbatim).
+    /// Row label (openagents lib/shortcuts.ts `SHORTCUT_DEFINITIONS`, verbatim).
     pub fn label(self) -> &'static str {
         match self {
             ShortcutId::ToggleDictation => "Hold to dictate",
@@ -1327,7 +1328,7 @@ pub fn sidebar_pin_profile_key(
             }
             let org_id = token_org_id
                 .or(development_org_id.filter(|org_id| !org_id.is_empty()))
-                .unwrap_or(zeron_engine::DEFAULT_ORG_ID);
+                .unwrap_or(openagents_engine::DEFAULT_ORG_ID);
             Some(format!("development:{org_id}:{user_id}"))
         }
     }
@@ -1627,7 +1628,7 @@ impl UiSettings {
             .or_default()
     }
 
-    pub fn skill_completion(&self, harness: zeron_proto::HarnessId) -> SkillCompletionSettings {
+    pub fn skill_completion(&self, harness: openagents_proto::HarnessId) -> SkillCompletionSettings {
         self.skill_completion_by_harness
             .get(&harness)
             .copied()
@@ -1729,7 +1730,7 @@ impl UiSettings {
             diff_wrap,
             code_fences_fit_content,
             transcript_width,
-            open_web_links_in_zeron,
+            open_web_links_in_openagents,
             transcript_compact_mode,
             files_autosave_enabled,
             files_autosave_delay_ms,
@@ -1933,10 +1934,10 @@ impl UiSettings {
     }
 
     fn migrated(mut self) -> Self {
-        if self.accent == zeron_theme::AccentSelection::ThemeDefault
+        if self.accent == openagents_theme::AccentSelection::ThemeDefault
             && let Some(accent) = self.legacy_accent_color.take()
         {
-            self.accent = zeron_theme::AccentSelection::Preset(accent.into());
+            self.accent = openagents_theme::AccentSelection::Preset(accent.into());
         }
         self.legacy_accent_color = None;
         self
@@ -1963,7 +1964,7 @@ fn min_or(value: f32, min: f32, default: f32) -> f32 {
     }
 }
 
-pub use zeron_proto::SidebarSection;
+pub use openagents_proto::SidebarSection;
 
 #[cfg(test)]
 mod tests {
@@ -1971,7 +1972,7 @@ mod tests {
 
     #[test]
     fn skill_completion_defaults_overrides_and_persistence_are_per_harness() {
-        use zeron_proto::HarnessId;
+        use openagents_proto::HarnessId;
         let dir = tempfile::tempdir().unwrap();
         let mut settings = UiSettings::default();
         for (harness, _) in SKILL_COMPLETION_HARNESSES {
@@ -2064,7 +2065,7 @@ mod tests {
 
         let loaded = UiSettings::load(dir.path());
         assert_eq!(loaded.composer_send_behavior, ComposerSendBehavior::Enter);
-        assert!(loaded.open_web_links_in_zeron);
+        assert!(loaded.open_web_links_in_openagents);
         assert!(loaded.new_thread_composer_background.is_none());
         assert_eq!(
             loaded.new_thread_background_effect,
@@ -2794,7 +2795,7 @@ mod tests {
             git_history_author_display: GitHistoryAuthorDisplay::Name,
             ui_font_family: crate::typography::UiFontFamily::Installed("Arial".into()),
             ui_font_size: crate::typography::UiFontSize::ALL[5],
-            theme_selection: zeron_theme::ThemeSelection {
+            theme_selection: openagents_theme::ThemeSelection {
                 light: "catppuccin-latte".into(),
                 dark: "catppuccin-mocha".into(),
             },
@@ -2802,12 +2803,12 @@ mod tests {
             diff_wrap: true,
             code_fences_fit_content: true,
             transcript_width: 960.0,
-            open_web_links_in_zeron: false,
+            open_web_links_in_openagents: false,
             transcript_compact_mode: true,
             pull_request_destination: PullRequestDestination::External,
-            last_pull_request_repository: Some("acme/zeron".into()),
+            last_pull_request_repository: Some("acme/openagents".into()),
             last_pull_request_device: Some("remote-device".into()),
-            pull_request_stars: vec!["https://github.com/acme/zeron/pull/123".into()],
+            pull_request_stars: vec!["https://github.com/acme/openagents/pull/123".into()],
             files_autosave_enabled: true,
             files_autosave_delay_ms: 1_500,
             files_word_wrap: true,
@@ -2817,10 +2818,10 @@ mod tests {
             code_font_size: 11.0,
             files_show_all: true,
             session_info_hidden: true,
-            accent: zeron_theme::AccentSelection::Preset(zeron_theme::AccentPreset::Cyan),
-            surface: zeron_theme::SurfacePreference::Frosted,
+            accent: openagents_theme::AccentSelection::Preset(openagents_theme::AccentPreset::Cyan),
+            surface: openagents_theme::SurfacePreference::Frosted,
             new_thread_composer_background: Some(NewThreadComposerBackground {
-                path: "/tmp/zeron/new-thread-background.png".into(),
+                path: "/tmp/openagents/new-thread-background.png".into(),
                 name: "background.png".into(),
                 adjustment: NewThreadBackgroundAdjustment {
                     focal_x: 0.25,
@@ -2843,7 +2844,7 @@ mod tests {
         assert!(json.contains(r#""diffWrap": true"#));
         assert_eq!(UiSettings::load(dir.path()), settings);
         assert!(json.contains(r#""codeFencesFitContent": true"#));
-        assert!(json.contains(r#""openWebLinksInZeron": false"#));
+        assert!(json.contains(r#""openWebLinksInOpenAgents": false"#));
         assert!(json.contains(r#""newThreadBackgroundEffect": "ascii""#));
         assert!(json.contains(r#""focalX": 0.25"#));
         assert!(json.contains(r#""focalY": 0.75"#));
@@ -2988,8 +2989,8 @@ mod tests {
         .unwrap();
         let loaded = UiSettings::load(dir.path());
         assert_eq!(loaded.appearance, crate::appearance::AppearanceMode::System);
-        assert_eq!(loaded.accent, zeron_theme::AccentSelection::ThemeDefault);
-        assert_eq!(loaded.surface, zeron_theme::SurfacePreference::ThemeDefault);
+        assert_eq!(loaded.accent, openagents_theme::AccentSelection::ThemeDefault);
+        assert_eq!(loaded.surface, openagents_theme::SurfacePreference::ThemeDefault);
         assert_eq!(loaded.sidebar_width, 300.0);
         assert!(loaded.sidebar_pinned_session_ids_by_profile.is_empty());
         assert!(!loaded.sound_enabled, "other keys still parse");
@@ -3076,7 +3077,7 @@ mod tests {
         let loaded = UiSettings::load(dir.path());
         assert_eq!(
             loaded.accent,
-            zeron_theme::AccentSelection::Preset(zeron_theme::AccentPreset::Cyan)
+            openagents_theme::AccentSelection::Preset(openagents_theme::AccentPreset::Cyan)
         );
         loaded.save(dir.path()).unwrap();
         let saved = std::fs::read_to_string(UiSettings::path(dir.path())).unwrap();
@@ -3144,7 +3145,7 @@ mod tests {
 
     fn signed_in(user_id: &str, org_id: Option<&str>) -> AuthState {
         AuthState::SignedIn {
-            user: zeron_proto::UserProfile {
+            user: openagents_proto::UserProfile {
                 id: user_id.to_string(),
                 email: format!("{user_id}@example.com"),
                 name: None,
@@ -3391,7 +3392,7 @@ mod tests {
     }
 
     #[test]
-    fn defaults_match_zeron() {
+    fn defaults_match_openagents() {
         let d = UiSettings::default();
         assert_eq!(d.sidebar_width, 256.0);
         assert_eq!(d.right_pane_width, 520.0);

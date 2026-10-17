@@ -1,7 +1,7 @@
 //! Real project process discovery → RPC → native browser → stable proxy / HMR.
 use gpui::{AppContext, AsyncApp, Bounds, WindowBounds, WindowOptions, px, size};
 use std::{path::PathBuf, sync::Arc, time::Duration};
-use zeron_ui::*;
+use openagents_ui::*;
 async fn pause(cx: &mut AsyncApp, ms: u64) {
     cx.background_executor()
         .timer(Duration::from_millis(ms))
@@ -25,7 +25,7 @@ fn capture(directory: &std::path::Path, name: &str) -> anyhow::Result<()> {
     };
     #[cfg(not(target_os = "macos"))]
     let status = {
-        let capture_window = std::env::var("ZERON_BROWSER_CAPTURE_WINDOW").ok();
+        let capture_window = openagents_brand::env_var("OPENAGENTS_BROWSER_CAPTURE_WINDOW").ok();
         let windows = std::process::Command::new("xdotool")
             .args([
                 "search",
@@ -107,10 +107,10 @@ fn main() -> anyhow::Result<()> {
     );
     let runtime = tokio::runtime::Runtime::new()?;
     let core = runtime.block_on(async {
-        zeron_engine::EngineCore::assemble(
+        openagents_engine::EngineCore::assemble(
             &temp.path().join("engine"),
-            Arc::new(zeron_engine::default_registry()),
-            zeron_proto::HarnessId::ClaudeCode,
+            Arc::new(openagents_engine::default_registry()),
+            openagents_proto::HarnessId::ClaudeCode,
             None,
         )
     })?;
@@ -136,7 +136,7 @@ fn main() -> anyhow::Result<()> {
             .start(Arc::new(move || vec![root.clone()]), None),
     );
     let ipc_port = port();
-    let _ipc = runtime.block_on(zeron_engine::serve_ipc(ipc_port, core.rpc_service()))?;
+    let _ipc = runtime.block_on(openagents_engine::serve_ipc(ipc_port, core.rpc_service()))?;
     let data = temp.path().join("ui");
     std::fs::create_dir(&data)?;
     let boot = EngineBootConfig {
@@ -146,7 +146,7 @@ fn main() -> anyhow::Result<()> {
         edge_token: None,
         org_id: None,
         workos_client_id: None,
-        default_harness: zeron_proto::HarnessId::ClaudeCode,
+        default_harness: openagents_proto::HarnessId::ClaudeCode,
     };
     let handle = runtime.block_on(state::EngineHandle::bootstrap(boot.clone()))?;
     let chats = core.workspace.read_chats()?;
@@ -164,14 +164,14 @@ fn main() -> anyhow::Result<()> {
         theme_library::init(data.clone(), cx); appearance::init(appearance::AppearanceMode::Dark, settings.theme_selection, settings.accent, settings.surface, cx);
         history::init(settings.git_history_columns, settings.git_history_column_widths, settings.git_history_column_order, settings.git_history_author_display, cx);
         composer::init(cx, settings.composer_send_behavior); terminal::panel::init(cx); app_menus::init(cx);
-        let state = cx.new(|_| { let mut s = state::AppState::new(); s.connection = zeron_proto::view::ConnectionStatus::Ready; s.workspace_scope = Some(zeron_proto::WorkspaceScope::Development); s.local_device_id = Some(device.clone()); s.devices = vec![serde_json::from_value(serde_json::json!({"id":device,"name":"This device","platform":std::env::consts::OS,"lastSeenAt":null})).unwrap()]; s.chats = chats; s.spaces = spaces; s.selected_chat = Some("preview-fixture".into()); s.selected_space = Some("project".into()); s.auto_selected = true; s.chats_synced = true; s.spaces_synced = true; s });
+        let state = cx.new(|_| { let mut s = state::AppState::new(); s.connection = openagents_proto::view::ConnectionStatus::Ready; s.workspace_scope = Some(openagents_proto::WorkspaceScope::Development); s.local_device_id = Some(device.clone()); s.devices = vec![serde_json::from_value(serde_json::json!({"id":device,"name":"This device","platform":std::env::consts::OS,"lastSeenAt":null})).unwrap()]; s.chats = chats; s.spaces = spaces; s.selected_chat = Some("preview-fixture".into()); s.selected_space = Some("project".into()); s.auto_selected = true; s.chats_synced = true; s.spaces_synced = true; s });
         let window = cx.open_window(WindowOptions { window_background: theme::Theme::of(cx).window_background_appearance(), window_bounds: Some(WindowBounds::Windowed(Bounds::new(gpui::point(px(12.),px(30.)),size(px(1100.),px(760.))))), ..Default::default() }, |_,cx| cx.new(|cx| shell::Shell::new(state.clone(),boot,cx))).unwrap();
         state.update(cx, |_,cx| cx.notify()); cx.activate(true);
         cx.spawn(async move |cx| {
             let run: anyhow::Result<()> = async {
                 let mut vite_child = Some(vite_child); let mut api = Some(api);
                 pause(cx,1200).await;
-                state.update(cx, |s,cx| { s.receive_transcript_frame(zeron_doc::TranscriptFrame::Reset { reset: serde_json::from_value(serde_json::json!([
+                state.update(cx, |s,cx| { s.receive_transcript_frame(openagents_doc::TranscriptFrame::Reset { reset: serde_json::from_value(serde_json::json!([
                     {"id":"user","role":"user","parts":[{"id":"text","kind":"text","text":"Let’s preview Fieldnotes while we work on the landing page."}],"createdAt":1788900000000_i64,"deviceId":"local"},
                     {"id":"assistant","role":"assistant","parts":[{"id":"text","kind":"text","text":"The development server is running. Open **Vite** in the browser tab to see your project.\n\nYour preview keeps the same address when the server restarts, and updates appear live as we edit."}],"createdAt":1788900001000_i64,"deviceId":"local","status":"complete"}
                 ])).unwrap() },cx).unwrap(); });
@@ -182,7 +182,7 @@ fn main() -> anyhow::Result<()> {
                 let stable = snapshot.services.iter().find(|s|s.name=="Vite").unwrap().url(snapshot.proxy_port);
                 capture(&output,"preview-servers-dark")?;
                 std::fs::write(output.join("ready.txt"),&stable)?;
-                if std::env::var_os("ZERON_PREVIEW_AUTO_OPEN").is_some() {
+                if openagents_brand::env_var_os("OPENAGENTS_PREVIEW_AUTO_OPEN").is_some() {
                     // CI sends a real GPUI pointer sequence through hit testing.
                     let position = browser.read_with(cx,|b,_|b.fixture_preview_open_position()).ok_or_else(||anyhow::anyhow!("Open button was not laid out"))?;
                     gpui::AnyWindowHandle::from(window).update(cx,|_,w,cx| {

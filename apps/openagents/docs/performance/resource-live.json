@@ -1,6 +1,6 @@
 {
   "sourceRevision": "b09b37963cf9c78e1aa6acd5195f8a4427dfe21f",
-  "binary": "/tmp/zeron-cpu-round2/zeron-final",
+  "binary": "/tmp/openagents-cpu-round2/openagents-final",
   "binarySha256": "f4b91201706962a9a29a52dfbe89ccc959870132d28ff8cf1a6b964dbd1dbe20",
   "harness": "claude-code",
   "mode": "live",

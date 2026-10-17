@@ -9,7 +9,7 @@
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use zeron_harness::{AcpHarness, Harness as _};
+use openagents_harness::{AcpHarness, Harness as _};
 
 fn write_executable(path: &Path, body: &str) {
     std::fs::write(path, body).unwrap();
@@ -52,10 +52,10 @@ async fn cli_on_login_shell_path_only_is_resolved() {
         std::env::remove_var("HERMES_EXECUTABLE");
         std::env::remove_var("PI_EXECUTABLE");
         std::env::remove_var("CLAUDE_CODE_EXECUTABLE");
-        std::env::remove_var("ZERON_NO_LOGIN_SHELL");
+        std::env::remove_var("OPENAGENTS_NO_LOGIN_SHELL");
     }
 
-    let snapshot = zeron_harness::shell_env::login_shell_path().expect("snapshot captured");
+    let snapshot = openagents_harness::shell_env::login_shell_path().expect("snapshot captured");
     let snapshot = snapshot.to_string_lossy();
     assert!(
         snapshot.starts_with(&format!("{}:", shell_bin.display())),
@@ -67,7 +67,7 @@ async fn cli_on_login_shell_path_only_is_resolved() {
     // proving resolution consulted the login-shell snapshot.
     // Native drivers consult the same snapshot for the agent CLI itself.
     assert!(
-        zeron_harness::ClaudeHarness::new().installed(),
+        openagents_harness::ClaudeHarness::new().installed(),
         "claude resolves via login-shell PATH"
     );
     let devin = AcpHarness::devin()
@@ -78,7 +78,7 @@ async fn cli_on_login_shell_path_only_is_resolved() {
         .launch_program()
         .expect("hermes resolves via login-shell PATH");
     assert_eq!(hermes, shell_bin.join("hermes"), "{hermes:?}");
-    let pi = zeron_harness::PiHarness::new()
+    let pi = openagents_harness::PiHarness::new()
         .resolve_executable()
         .expect("pi resolves via login-shell PATH");
     assert_eq!(pi, shell_bin.join("pi"), "{pi:?}");

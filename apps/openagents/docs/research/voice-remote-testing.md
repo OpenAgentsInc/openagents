@@ -8,7 +8,7 @@ server deployment is part of this change.
 
 ## Desktop
 
-Start the execution host's new Zeron engine/app normally. No environment flag
+Start the execution host's new OpenAgents engine/app normally. No environment flag
 is required. Codex must already be installed and authenticated through
 ChatGPT on that host. It needs no audio helper, microphone or speaker. Continue
 using the existing registered device and account; do not register another host.
@@ -18,19 +18,19 @@ installation, version 0.159 or later, from the official installer: audio runs
 through that installation's `codex-voice-host` helper, on macOS, Linux and
 Windows alike. The client's Codex is resolved like the harness's (`CODEX_EXECUTABLE`,
 PATH, the login shell's PATH, known install locations); its credentials are not
-read. npm installations do not include the helper. Zeron packages contain no
+read. npm installations do not include the helper. OpenAgents packages contain no
 Codex runtime.
 
 ```sh
-ZERON_DEV_BUILD_ONLY=1 ./scripts/run-macos-dev.sh
+OPENAGENTS_DEV_BUILD_ONLY=1 ./scripts/run-macos-dev.sh
 ```
 
 To test a client without Codex, or a specific helper build, set
-`ZERON_VOICE_MEDIA_DIR` to a runtime projected by
+`OPENAGENTS_VOICE_MEDIA_DIR` to a runtime projected by
 `scripts/package-voice-runtime.py` (see [its notes](../../dist/voice/README.md)).
-It must be a `codex-resources/voice` directory containing `zeron-runtime.json`.
+It must be a `codex-resources/voice` directory containing `openagents-runtime.json`.
 
-Open `target/macos-dev/Zeron Dev.app`, select **Settings → Voice → Codex voice
+Open `target/macos-dev/OpenAgents Dev.app`, select **Settings → Voice → Codex voice
 device**, choose the registered Fedora host and start voice from the sidebar orb.
 The microphone permission belongs to this Mac. Host choice is local to these UI
 settings and cannot change an active call. A host with an older build that does
@@ -54,19 +54,19 @@ Offline checks:
 
 ```sh
 python3 -m unittest discover -s scripts/tests -p 'test_voice_packaging.py' -v
-cargo test --locked -p zeron-voice-media --lib
+cargo test --locked -p openagents-voice-media --lib
 ```
 
 To check an actual projected runtime's initialization without opening audio
 devices or contacting a provider:
 
 ```sh
-ZERON_VOICE_MEDIA_DIR=/absolute/path/to/codex-resources/voice \
-  cargo test --locked -p zeron-voice-media --lib \
+OPENAGENTS_VOICE_MEDIA_DIR=/absolute/path/to/codex-resources/voice \
+  cargo test --locked -p openagents-voice-media --lib \
   packaged_native_runtime_initializes_without_audio_devices -- --ignored
 ```
 
-On Windows set `$env:ZERON_VOICE_MEDIA_DIR` before the same Cargo command.
+On Windows set `$env:OPENAGENTS_VOICE_MEDIA_DIR` before the same Cargo command.
 Real microphone, playback, permissions, interruption and live-provider
 acceptance still need to be performed on each physical platform.
 
@@ -98,7 +98,7 @@ Owner decisions, not code; see the privacy/legal section of
 - [ ] iOS privacy manifest and App Store privacy labels: decide whether audio sent
   to OpenAI and synced voice transcripts are declared in `PrivacyInfo.xcprivacy`,
   and keep App Store Connect consistent with it.
-- [ ] Zeron's public privacy policy and terms (outside this repository) describe
+- [ ] OpenAgents's public privacy policy and terms (outside this repository) describe
   the OpenAI audio flow and transcript sync.
 - [ ] WebRTC's embedded third-party licenses (BoringSSL, libsrtp, Opus, libyuv,
   Abseil and others) are generated from the pinned XCFramework and shipped
@@ -114,7 +114,7 @@ frames or volume-meter stream are added to sync or the command ledger.
 ## iOS
 
 Build the Rust core with `scripts/ios/build-core.sh iphonesimulator` (or `iphoneos`
-for a physical device). Open `apps/ios/Zeron.xcodeproj` and use the **Zeron** scheme.
+for a physical device). Open `apps/ios/OpenAgents.xcodeproj` and use the **OpenAgents** scheme.
 Sign a physical-device build using your existing development team. No Codex
 executable or OpenAI credentials are installed in the iOS app.
 
@@ -144,10 +144,10 @@ Offline iOS lifecycle tests (no microphone permission or provider):
 
 ```sh
 scripts/ios/build-core.sh iphonesimulator
-ZERON_SKIP_CORE=1 xcodebuild -project apps/ios/Zeron.xcodeproj -scheme Zeron \
-  -destination 'platform=iOS Simulator,name=Zeron iPhone 17 Pro' \
+OPENAGENTS_SKIP_CORE=1 xcodebuild -project apps/ios/OpenAgents.xcodeproj -scheme OpenAgents \
+  -destination 'platform=iOS Simulator,name=OpenAgents iPhone 17 Pro' \
   ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGN_IDENTITY=- \
-  -only-testing:ZeronTests/RemoteVoiceLifecycleTests test
+  -only-testing:OpenAgentsTests/RemoteVoiceLifecycleTests test
 ```
 
 Use an available ARM64 simulator name on your machine. The Rust build script

@@ -38,14 +38,14 @@ pub(crate) trait Transcriber {
 
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
-    fn zeron_microphone_permission() -> i32;
-    fn zeron_request_microphone();
-    fn zeron_microphone_window() -> usize;
+    fn openagents_microphone_permission() -> i32;
+    fn openagents_request_microphone();
+    fn openagents_microphone_window() -> usize;
 }
 fn permission() -> i32 {
     #[cfg(target_os = "macos")]
     {
-        unsafe { zeron_microphone_permission() }
+        unsafe { openagents_microphone_permission() }
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -58,7 +58,7 @@ pub(crate) fn permission_pending() -> bool {
 fn origin_window() -> usize {
     #[cfg(target_os = "macos")]
     {
-        unsafe { zeron_microphone_window() }
+        unsafe { openagents_microphone_window() }
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -70,7 +70,7 @@ struct Native {
     origin_window: usize,
     dir: std::path::PathBuf,
     device: Option<String>,
-    session: Option<zeron_voice::Session>,
+    session: Option<openagents_voice::Session>,
     finished: bool,
 }
 impl Transcriber for Native {
@@ -98,7 +98,7 @@ impl Transcriber for Native {
                     self.finished = true;
                     return Some(Event::Cancelled);
                 }
-                _ => match zeron_voice::Session::start(self.dir.clone(), self.device.clone()) {
+                _ => match openagents_voice::Session::start(self.dir.clone(), self.device.clone()) {
                     Ok(s) => self.session = Some(s),
                     Err(e) => {
                         self.finished = true;
@@ -108,10 +108,10 @@ impl Transcriber for Native {
             }
         }
         self.session.as_mut()?.poll().map(|event| match event {
-            zeron_voice::Event::Listening => Event::Listening,
-            zeron_voice::Event::Finalizing => Event::Finalizing,
-            zeron_voice::Event::Final(t) => Event::Final(t),
-            zeron_voice::Event::Failed(e) => Event::Failed(e),
+            openagents_voice::Event::Listening => Event::Listening,
+            openagents_voice::Event::Finalizing => Event::Finalizing,
+            openagents_voice::Event::Final(t) => Event::Final(t),
+            openagents_voice::Event::Failed(e) => Event::Failed(e),
         })
     }
     fn level(&mut self) -> f32 {
@@ -134,7 +134,7 @@ pub(crate) fn start(cx: &gpui::App) -> Option<Box<dyn Transcriber>> {
     #[cfg(target_os = "macos")]
     if permission() == 0 {
         unsafe {
-            zeron_request_microphone();
+            openagents_request_microphone();
         }
     }
     Some(Box::new(Native {

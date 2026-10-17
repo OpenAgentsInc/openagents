@@ -17,7 +17,7 @@ pub struct Listener {
     pub args: Vec<String>,
     pub started_at: u64,
     pub address: SocketAddr,
-    pub zeron_owned: bool,
+    pub openagents_owned: bool,
 }
 
 impl Listener {
@@ -143,7 +143,7 @@ fn mark_descendants(listeners: &mut [Listener], parents: &HashMap<u32, u32>, own
         let mut pid = listener.pid;
         for _ in 0..128 {
             if pid == owner {
-                listener.zeron_owned = true;
+                listener.openagents_owned = true;
                 break;
             }
             let Some(&parent) = parents.get(&pid) else {
@@ -276,7 +276,7 @@ pub fn listeners() -> Vec<Listener> {
                     args: args.clone(),
                     started_at,
                     address,
-                    zeron_owned: false,
+                    openagents_owned: false,
                 });
             }
         }
@@ -437,7 +437,7 @@ pub fn listeners() -> Vec<Listener> {
                 args: args.clone(),
                 started_at: *started_at,
                 address,
-                zeron_owned: false,
+                openagents_owned: false,
             });
         }
     }
@@ -466,7 +466,7 @@ mod tests {
             args: args.iter().map(|arg| (*arg).into()).collect(),
             started_at: 1,
             address: "127.0.0.1:3000".parse().unwrap(),
-            zeron_owned: true,
+            openagents_owned: true,
         };
         for args in [
             vec!["/usr/bin/infisical", "login"],

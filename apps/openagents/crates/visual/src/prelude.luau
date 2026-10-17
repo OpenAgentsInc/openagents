@@ -1,5 +1,5 @@
 -- The `ui` library every visual script sees. Constructors only tag their
--- props table; Zeron validates and renders the tree natively.
+-- props table; OpenAgents validates and renders the tree natively.
 local ui = {}
 
 local function constructor(kind)
@@ -52,7 +52,7 @@ function ui.series(i)
 	return "chart" .. ((i - 1) % 6 + 1)
 end
 
--- The table your handlers change. Zeron renders the view again after every
+-- The table your handlers change. OpenAgents renders the view again after every
 -- handler, so plain assignment is enough.
 function ui.state(initial)
 	return initial or {}

@@ -2,7 +2,7 @@ use gpui::{
     AnyElement, Context, KeyDownEvent, ListSizingBehavior, MouseButton, Window, div, list,
     prelude::*, px,
 };
-use zeron_proto::WorkspaceEntryKind;
+use openagents_proto::WorkspaceEntryKind;
 
 use super::{
     FilesSurface, WorkspacePathDrag, model::DirectoryLoadState, model::VisibleRowKind,

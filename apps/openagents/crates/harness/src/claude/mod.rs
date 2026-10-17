@@ -11,7 +11,7 @@
 //!   live against 2.1.228: `can_use_tool` control requests arrive and
 //!   allow/deny responses are honored). The alternative channel — an MCP
 //!   permission tool — needs a server process and was rejected. Tool calls
-//!   auto-allow (zeron sessions run unattended, parity with the ACP
+//!   auto-allow (openagents sessions run unattended, parity with the ACP
 //!   harness's preferred-allow behavior); `AskUserQuestion` round-trips
 //!   through [`RunControls::request_input`].
 //! - DONE is the CLI's own `result` frame, eagerly: background work (a
@@ -59,7 +59,7 @@ use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
-use zeron_proto::{
+use openagents_proto::{
     AgentEvent, DoneStatus, HarnessId, Model, ReasoningLevel, RunRequest, SlashCommand,
     SteeringMode, UserInputAnswer, UserInputQuestion,
 };
@@ -90,7 +90,7 @@ fn resolve_claude_executable() -> Option<PathBuf> {
 
 /// The inline `--mcp-config` JSON for an injected server (the CLI accepts a
 /// JSON string as well as a file path).
-fn mcp_config_arg(mcp: &zeron_proto::McpServer) -> String {
+fn mcp_config_arg(mcp: &openagents_proto::McpServer) -> String {
     serde_json::json!({
         "mcpServers": {
             &mcp.name: {
@@ -347,7 +347,7 @@ impl ClaudeHarness {
             shutdown_child(&mut child, self.kill_grace).await;
             return Err(HarnessError::Protocol("claude child has no stdio".into()));
         };
-        const PROBE_ID: &str = "zeron-command-probe";
+        const PROBE_ID: &str = "openagents-command-probe";
         let discovery = async {
             let request = serde_json::json!({
                 "type": "control_request",
@@ -519,7 +519,7 @@ impl Harness for ClaudeHarness {
     async fn skills(
         &self,
         cwd: &std::path::Path,
-    ) -> Result<Option<Vec<zeron_proto::invocation::Skill>>, HarnessError> {
+    ) -> Result<Option<Vec<openagents_proto::invocation::Skill>>, HarnessError> {
         let (skills, commands) = tokio::try_join!(
             crate::skills::discover(self.id(), cwd),
             self.workspace_commands
@@ -535,10 +535,10 @@ impl Harness for ClaudeHarness {
                         // Shared files are not Claude command definitions. A
                         // same-named built-in must not replace their identity.
                         Some(skill)
-                    } else if zeron_proto::invocation::valid_skill_command_name(&skill.name)
+                    } else if openagents_proto::invocation::valid_skill_command_name(&skill.name)
                         && commands.iter().any(|command| command.name == skill.name)
                     {
-                        skill.command = Some(zeron_proto::invocation::SkillCommand {
+                        skill.command = Some(openagents_proto::invocation::SkillCommand {
                             name: skill.name.clone(),
                             harness: self.id(),
                         });
@@ -606,7 +606,7 @@ impl ClaudeHarness {
                 "",
             ]);
         } else if let Some(mcp) = &request.mcp {
-            // Zeron's own server rides beside the user's configured servers
+            // OpenAgents's own server rides beside the user's configured servers
             // (no `--strict-mcp-config`): the CLI merges an inline JSON
             // config with settings-sourced ones.
             cmd.args(["--mcp-config", &mcp_config_arg(mcp)]);
@@ -642,7 +642,7 @@ impl ClaudeHarness {
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stderr).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
-                    tracing::debug!(target: "zeron_harness::claude", "stderr: {line}");
+                    tracing::debug!(target: "openagents_harness::claude", "stderr: {line}");
                     tail.push(&line);
                 }
             });
@@ -652,7 +652,7 @@ impl ClaudeHarness {
         tokio::spawn(stdin_writer(stdin, stdin_rx));
         if !title_only {
             let _ = stdin_tx.send(StdinMsg::Line(wire::initialize_request_line(
-                "zeron_initialize",
+                "openagents_initialize",
             )));
         }
 
@@ -754,16 +754,16 @@ async fn load_image_blocks(paths: &[String]) -> Vec<wire::ImageBlock> {
         let bytes = match tokio::fs::read(path).await {
             Ok(bytes) => bytes,
             Err(err) => {
-                tracing::warn!(target: "zeron_harness::claude", %path, error = %err, "attachment unreadable; path ref only");
+                tracing::warn!(target: "openagents_harness::claude", %path, error = %err, "attachment unreadable; path ref only");
                 continue;
             }
         };
         if bytes.len() as u64 > MAX_INLINE_IMAGE_BYTES {
-            tracing::debug!(target: "zeron_harness::claude", %path, "attachment over inline cap; path ref only");
+            tracing::debug!(target: "openagents_harness::claude", %path, "attachment over inline cap; path ref only");
             continue;
         }
         let Some(media_type) = image_media_type(std::path::Path::new(path), &bytes) else {
-            tracing::debug!(target: "zeron_harness::claude", %path, "attachment not an inline-supported image; path ref only");
+            tracing::debug!(target: "openagents_harness::claude", %path, "attachment not an inline-supported image; path ref only");
             continue;
         };
         blocks.push(wire::ImageBlock {
@@ -786,7 +786,7 @@ async fn stdin_writer(mut stdin: ChildStdin, mut rx: mpsc::UnboundedReceiver<Std
                     stdin.flush().await
                 };
                 if let Err(e) = write.await {
-                    tracing::debug!(target: "zeron_harness::claude", "stdin write failed (tolerated): {e}");
+                    tracing::debug!(target: "openagents_harness::claude", "stdin write failed (tolerated): {e}");
                     return;
                 }
             }
@@ -904,7 +904,7 @@ async fn run_session(session: Session) {
                     let frame = match wire::parse_frame(line) {
                         Ok(frame) => frame,
                         Err(e) => {
-                            tracing::debug!(target: "zeron_harness::claude", "unparseable frame (skipped): {e}");
+                            tracing::debug!(target: "openagents_harness::claude", "unparseable frame (skipped): {e}");
                             continue;
                         }
                     };
@@ -988,7 +988,7 @@ async fn run_session(session: Session) {
                         && stop_done_at.is_some_and(|at| at.elapsed() < STOP_SETTLE)
                     {
                         tracing::debug!(
-                            target: "zeron_harness::claude",
+                            target: "openagents_harness::claude",
                             "late result of a stopped turn dropped"
                         );
                         continue;
@@ -1071,14 +1071,14 @@ async fn run_session(session: Session) {
                         reconfigures += 1;
                         if model_arg(&next) != model_arg(&config) {
                             let line = wire::set_model_request_line(
-                                &format!("zeron_model_{reconfigures}"),
+                                &format!("openagents_model_{reconfigures}"),
                                 model_arg(&next).as_deref(),
                             );
                             if stdin_tx.send(StdinMsg::Line(line)).is_err() { break 'main; }
                         }
                         if flag_settings(&next) != flag_settings(&config) {
                             let line = wire::apply_flag_settings_line(
-                                &format!("zeron_settings_{reconfigures}"),
+                                &format!("openagents_settings_{reconfigures}"),
                                 flag_settings(&next),
                             );
                             if stdin_tx.send(StdinMsg::Line(line)).is_err() { break 'main; }
@@ -1111,7 +1111,7 @@ async fn run_session(session: Session) {
             // stopped turn must not continue into them.
             _ = turn.stop_requested(), if !interrupted => {
                 stops_sent += 1;
-                let id = format!("zeron_stop_{stops_sent}");
+                let id = format!("openagents_stop_{stops_sent}");
                 pending_steers.clear();
                 commands.cancel_waiting();
                 stopping = Some(id.clone());
@@ -1345,7 +1345,7 @@ fn handle_control_request(
 ) {
     if req.request.subtype != "can_use_tool" {
         tracing::debug!(
-            target: "zeron_harness::claude",
+            target: "openagents_harness::claude",
             "unhandled control_request subtype: {}", req.request.subtype
         );
         return;
@@ -1498,22 +1498,22 @@ mod mcp_injection_tests {
 
     #[test]
     fn mcp_config_arg_spells_the_server_the_way_the_cli_reads_it() {
-        let mcp = zeron_proto::McpServer {
-            name: "zeron".into(),
-            command: "/opt/zeron/zeron".into(),
+        let mcp = openagents_proto::McpServer {
+            name: "openagents".into(),
+            command: "/opt/openagents/openagents".into(),
             args: vec!["mcp".into()],
-            env: [("ZERON_CHAT_ID".to_owned(), "chat-1".to_owned())]
+            env: [("OPENAGENTS_CHAT_ID".to_owned(), "chat-1".to_owned())]
                 .into_iter()
                 .collect(),
         };
         let parsed: Value = serde_json::from_str(&mcp_config_arg(&mcp)).unwrap();
-        assert_eq!(parsed["mcpServers"]["zeron"]["command"], "/opt/zeron/zeron");
+        assert_eq!(parsed["mcpServers"]["openagents"]["command"], "/opt/openagents/openagents");
         assert_eq!(
-            parsed["mcpServers"]["zeron"]["args"],
+            parsed["mcpServers"]["openagents"]["args"],
             serde_json::json!(["mcp"])
         );
         assert_eq!(
-            parsed["mcpServers"]["zeron"]["env"]["ZERON_CHAT_ID"],
+            parsed["mcpServers"]["openagents"]["env"]["OPENAGENTS_CHAT_ID"],
             "chat-1"
         );
     }

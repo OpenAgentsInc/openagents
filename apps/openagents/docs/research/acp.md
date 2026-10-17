@@ -6,12 +6,12 @@
   app-server — over the shared `crates/harness/src/jsonrpc.rs` client (promoted
   from `codex/rpc.rs`). Wire types are hand-rolled tolerant serde against raw
   `Value`s (house style, verified against `agent-client-protocol-schema` 1.3.0),
-  NOT the official SDK crates: zeron keeps its own child-lifecycle hardening
+  NOT the official SDK crates: openagents keeps its own child-lifecycle hardening
   (StderrTail, SIGTERM→SIGKILL, PATH composition) and shell-script test
   fixtures, and drives raw updates the SDK's `ActiveSession` abstraction hides.
 - First registered agent: **Grok Build** (`grok agent stdio`), xAI's native ACP
   agent (npm `@xai-official/grok`, ACP registry id `grok-build`). Auth: browser
-  OAuth or `XAI_API_KEY`; zeron passes env through. `GROK_EXECUTABLE` overrides
+  OAuth or `XAI_API_KEY`; openagents passes env through. `GROK_EXECUTABLE` overrides
   resolution (tests point it at `tests/fixtures/fake-acp.sh`).
 - **claude/codex converted to ACP too** (2026-08-08, wing's call: "keep things
   clean"): `AcpHarness::claude()` via `@agentclientprotocol/claude-agent-acp`
@@ -21,7 +21,7 @@
   catalogs (models, effort clamping, Ultrathink prefix) survive as spec inputs.
   Accepted deltas: Claude steering is now priority-`now` pre-emption (adapter
   semantics) instead of step-boundary stdin; sandbox policy control is
-  adapter-owned; zeron-specific settings ride config options where advertised
+  adapter-owned; openagents-specific settings ride config options where advertised
   (mode → bypassPermissions, model via family-alias matching — the claude
   adapter advertises SDK aliases like `opus[1m]`/`sonnet`/`haiku` —
   fastMode/thinking as booleans) and are silently skipped elsewhere
@@ -53,10 +53,10 @@
   fallback. Unattended parity rides the mode select's `bypass` value (added
   to the generic no-prompts preference list). CLI 3000.6.14 also exposes
   subagent lifecycle and child transcript updates when the client advertises
-  `cognition.ai/subagentSupport`; Zeron correlates the child agent id back to
+  `cognition.ai/subagentSupport`; OpenAgents correlates the child agent id back to
   the parent's `run_subagent` tool-call id and routes the tagged messages,
   thoughts and tools into a nested transcript. The separate
-  `cognition.ai/subagentControl` extension stays disabled until Zeron has a
+  `cognition.ai/subagentControl` extension stays disabled until OpenAgents has a
   foreground/background control surface.
   Resume quirks verified live (3000.6.14): `session/load` replays the full
   history (dropped, the doc has it) and then continues normally; a turn that
@@ -118,7 +118,7 @@
   session response's advertised `configOptions` (category `model` /
   `thought_level`, matched to advertised value ids, skipped when current,
   never fatal). Grok's effort ladder in the picker is Low/Medium/High →
-  `low`/`medium`/`high`; other zeron levels degrade down a preference ladder
+  `low`/`medium`/`high`; other openagents levels degrade down a preference ladder
   (`config_option_sets`).
 - Steering: `_session/steering` extension when
   `initialize._meta.steering.supported` (org adapters); request carries
@@ -150,9 +150,9 @@
   and a cold `npx` could also stall a first chat for minutes while it
   downloaded the adapter's dependency tree (claude-agent-acp's is ~570MB).
 - Replaced by `adapter_install`: pinned packages install ONCE into
-  `~/.zeron/adapters/<pkg>/<version>` (`$ZERON_ADAPTERS_DIR` overrides) with
-  a zeron-owned npm cache beside them, atomically (tmp dir + bin-entry
-  verification + `.zeron-install-ok` marker + rename), then every launch is
+  `~/.openagents/adapters/<pkg>/<version>` (`$OPENAGENTS_ADAPTERS_DIR` overrides) with
+  a openagents-owned npm cache beside them, atomically (tmp dir + bin-entry
+  verification + `.openagents-install-ok` marker + rename), then every launch is
   `node <entry>` directly. Discovery probes never block on npm (background
   install + static-catalog fallback); `run()` blocks, and install failures
   carry npm's full output plus the decoded errno. The engine prewarms
@@ -173,7 +173,7 @@ another model request. None proves that `session/prompt` has finished. The old
 then allowed another prompt into an agent that was still busy. The next request
 could fail with `Invalid request` and its specific `error.data` was discarded.
 
-The ACP quiet timer and `ZERON_ACP_QUIET_SETTLE_MS` override are retired. Pending
+The ACP quiet timer and `OPENAGENTS_ACP_QUIET_SETTLE_MS` override are retired. Pending
 prompts retain their response futures; boundary steers remain queued. Explicit
 completion extensions and `noRunningTurn` recovery retain their existing roles.
 Cancellation still sends `session/cancel`, awaits completion, and escalates to
@@ -185,8 +185,8 @@ code and non-null data, preserving the agent's explanation in the terminal event
 Regression checks:
 
 ```sh
-cargo test -p zeron-harness
-cargo test -p zeron-engine --test acp_lifecycle
+cargo test -p openagents-harness
+cargo test -p openagents-engine --test acp_lifecycle
 ```
 
 The stateful Python peer rejects overlapping prompts. Coverage includes quiet
@@ -207,7 +207,7 @@ results or synthesize an ACP completion. Then run:
 PI_CODING_AGENT_DIR=/path/to/isolated/pi-agent \
 PI_EXECUTABLE=/path/to/pi \
 ACP_TEST_RUNS=3 \
-cargo test -p zeron-harness --test real_acp_lifecycle -- --ignored --nocapture
+cargo test -p openagents-harness --test real_acp_lifecycle -- --ignored --nocapture
 ```
 
 These tests require successful real calls; missing authentication or an unloaded

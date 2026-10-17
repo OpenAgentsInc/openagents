@@ -668,7 +668,7 @@ static gboolean configure_storage(int argc, char **argv) {
     profile_lock = open(lock_path, O_RDWR | O_CREAT | O_CLOEXEC, 0600);
     g_free(lock_path);
     if (profile_lock < 0 || flock(profile_lock, LOCK_EX | LOCK_NB) < 0) {
-        const char *error = "Browser profile is in use by another process or cannot be locked. Close the other Zeron instance and reopen this tab.";
+        const char *error = "Browser profile is in use by another process or cannot be locked. Close the other OpenAgents instance and reopen this tab.";
         send_packet('E', 0, error, strlen(error));
         return FALSE;
     }

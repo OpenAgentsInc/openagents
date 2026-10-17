@@ -2,14 +2,14 @@ use super::*;
 use gpui::{
     AnyWindowHandle, Entity, MouseButton, Pixels, PlatformInput, Point, WindowHandle, point,
 };
-use zeron_ui::browser::BrowserSurface;
+use openagents_ui::browser::BrowserSurface;
 
 /// The first software-rendered frame can take longer than the fixture's
 /// initial pause on a loaded runner. Yield to GPUI until X11 maps the window;
 /// blocking this thread would prevent the frame we're waiting for.
 pub(super) async fn wait_for_visible_window(cx: &mut AsyncApp) -> anyhow::Result<()> {
     // Wayland captures the already-mapped nested compositor's X11 window.
-    if std::env::var("ZERON_BROWSER_CAPTURE_WINDOW").is_ok_and(|id| !id.is_empty()) {
+    if openagents_brand::env_var("OPENAGENTS_BROWSER_CAPTURE_WINDOW").is_ok_and(|id| !id.is_empty()) {
         return Ok(());
     }
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
@@ -56,7 +56,7 @@ pub(super) fn dispatch(
     event: PlatformInput,
     cx: &mut AsyncApp,
 ) -> anyhow::Result<()> {
-    if std::env::var_os("ZERON_BROWSER_NATIVE_POINTER").is_some() {
+    if openagents_brand::env_var_os("OPENAGENTS_BROWSER_NATIVE_POINTER").is_some() {
         let pointer = match &event {
             PlatformInput::MouseDown(e) => Some((e.position, Some(("mousedown", e.button)))),
             PlatformInput::MouseUp(e) => Some((e.position, Some(("mouseup", e.button)))),
@@ -64,7 +64,7 @@ pub(super) fn dispatch(
             _ => None,
         };
         if let Some((position, action)) = pointer {
-            let id = if let Ok(id) = std::env::var("ZERON_BROWSER_CAPTURE_WINDOW") {
+            let id = if let Ok(id) = openagents_brand::env_var("OPENAGENTS_BROWSER_CAPTURE_WINDOW") {
                 id
             } else {
                 let ids = std::process::Command::new("xdotool")
@@ -185,7 +185,7 @@ pub async fn exercise(
         eval(&page, "document.getElementById('browser-input').value", cx).await? == "hello linux",
         "GPUI keyboard input did not reach WebKit"
     );
-    if let Ok(id) = std::env::var("ZERON_BROWSER_CAPTURE_WINDOW") {
+    if let Ok(id) = openagents_brand::env_var("OPENAGENTS_BROWSER_CAPTURE_WINDOW") {
         let scale = AnyWindowHandle::from(window).update(cx, |_, w, _| w.scale_factor())?;
         let x = ((f32::from(bounds.origin.x) + input[0].as_f64().unwrap() as f32) * scale) as i32;
         let y = ((f32::from(bounds.origin.y) + input[1].as_f64().unwrap() as f32) * scale) as i32;
@@ -497,7 +497,7 @@ pub async fn exercise(
         page.read_with(cx, |b, _| b.fixture_native_visible()),
         "reopened sidebar lost browser"
     );
-    cx.update(|cx| appearance::set_surface(zeron_theme::SurfacePreference::Frosted, cx));
+    cx.update(|cx| appearance::set_surface(openagents_theme::SurfacePreference::Frosted, cx));
     capture_frame(window, output, "browser-blur-baseline-dark", cx).await?;
     window.update(cx, |s, _, cx| s.fixture_browser_menu(true, cx))?;
     pause(cx, 700).await;
@@ -541,7 +541,7 @@ pub async fn exercise(
     .await?;
     pause(cx, 300).await;
     capture_frame(window, output, "browser-blur-solid-light", cx).await?;
-    cx.update(|cx| appearance::set_surface(zeron_theme::SurfacePreference::Opaque, cx));
+    cx.update(|cx| appearance::set_surface(openagents_theme::SurfacePreference::Opaque, cx));
     pause(cx, 300).await;
     capture_frame(window, output, "browser-menu-opaque", cx).await?;
     let bounds = page.read_with(cx, |b, _| b.fixture_linux_bounds());
@@ -557,7 +557,7 @@ pub async fn exercise(
     window.update(cx, |s, _, cx| s.fixture_browser_menu(false, cx))?;
     cx.update(|cx| {
         appearance::set_mode(appearance::AppearanceMode::Dark, cx);
-        appearance::set_surface(zeron_theme::SurfacePreference::Frosted, cx);
+        appearance::set_surface(openagents_theme::SurfacePreference::Frosted, cx);
     });
     pause(cx, 300).await;
     let frames = eval(&page, "window.browserFrames", cx)

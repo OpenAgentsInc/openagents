@@ -14,10 +14,19 @@ pub(super) struct Lease {
 }
 
 pub(super) fn state_root() -> PathBuf {
-    let root = std::env::var_os("ZERON_CURSOR_STATE_DIR")
+    let root = openagents_brand::env_var_os("OPENAGENTS_CURSOR_STATE_DIR")
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| crate::executable::home_or_current_dir().join(".zeron/cursor-state"));
+        .unwrap_or_else(|| {
+            let home = crate::executable::home_or_current_dir();
+            let previous = home.join(".zeron/cursor-state");
+            if previous.is_dir() {
+                previous
+            } else {
+                home.join(openagents_brand::HOME_WORK_DIR)
+                    .join("cursor-state")
+            }
+        });
     if root.is_absolute() {
         root
     } else {

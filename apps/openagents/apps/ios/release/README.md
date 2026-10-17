@@ -12,14 +12,14 @@ How 1.0.0 (60) was shipped on 2026-10-16, from `apps/openagents` on a clean
 (`ASC_API_KEY_ID`, `ASC_API_ISSUER_ID`, `ASC_API_PRIVATE_KEY_PATH`), and it is
 never printed.
 
-1. Set `CURRENT_PROJECT_VERSION` in `Zeron.xcodeproj` (all eight entries) and
+1. Set `CURRENT_PROJECT_VERSION` in `OpenAgents.xcodeproj` (all eight entries) and
    `version.json` above the record's highest build
    (`scripts/release/asc.py builds --version 1.0.0` from the repository root),
    update `test-notes.md`, then commit and push.
 2. Archive (Release core, then Xcode):
    ```sh
-   CONFIGURATION=Release ZERON_ACCOUNT_FIXTURE=0 scripts/ios/build-core.sh iphoneos
-   ZERON_SKIP_CORE=1 xcodebuild -project apps/ios/Zeron.xcodeproj -scheme Zeron \
+   CONFIGURATION=Release OPENAGENTS_ACCOUNT_FIXTURE=0 scripts/ios/build-core.sh iphoneos
+   OPENAGENTS_SKIP_CORE=1 xcodebuild -project apps/ios/OpenAgents.xcodeproj -scheme OpenAgents \
      -configuration Release -destination generic/platform=iOS \
      -archivePath OUT.xcarchive SWIFT_ACTIVE_COMPILATION_CONDITIONS= \
      DEVELOPMENT_TEAM=HQWSG26L43 CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates \
@@ -50,7 +50,7 @@ never printed.
 
 Before signing, the owner checks that this version and build are available.
 If they are already used, change every app/extension version in
-`Zeron.xcodeproj/project.pbxproj` and `version.json` together, commit, and push.
+`OpenAgents.xcodeproj/project.pbxproj` and `version.json` together, commit, and push.
 
 ## Build locally
 
@@ -127,8 +127,8 @@ non-exempt encryption, not that it uses no cryptography. See Apple's
 
 1. Confirm `sync.openagents.com` resolves and has a valid certificate. In the
    existing App Store Connect record, confirm the candidate version/build.
-2. Open `apps/ios/Zeron.xcodeproj`. Select **Zeron > Signing & Capabilities**
-   and the OpenAgents team; do the same for **ZeronLiveActivity**. Keep Push
+2. Open `apps/ios/OpenAgents.xcodeproj`. Select **OpenAgents > Signing & Capabilities**
+   and the OpenAgents team; do the same for **OpenAgentsLiveActivity**. Keep Push
    Notifications absent. Select **Any iOS Device (arm64)**.
 3. Choose **Product > Archive**. In **Window > Organizer > Archives**, select
    OpenAgents Coder, then **Validate App**. Review privacy and encryption
@@ -153,16 +153,16 @@ Run the optimized app's first-launch, demo, scene-restoration, and send/reply
 checks before archiving. This scheme excludes the Debug unit-test host:
 
 ```sh
-ZERON_SKIP_CORE=1 CARGO_TARGET_DIR="$HOME/work/coder-desktop-target-agent1" \
-  xcodebuild -project apps/ios/Zeron.xcodeproj -scheme ZeronReleaseSmoke \
+OPENAGENTS_SKIP_CORE=1 CARGO_TARGET_DIR="$HOME/work/coder-desktop-target-agent1" \
+  xcodebuild -project apps/ios/OpenAgents.xcodeproj -scheme OpenAgentsReleaseSmoke \
   -destination 'platform=iOS Simulator,id=8010197D-517D-43DA-9559-46742EFABC65' \
   ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES \
   -parallel-testing-enabled NO \
-  -only-testing:ZeronUITests/LaunchLifecycleTests \
-  -only-testing:ZeronUITests/SessionFlowTests/testSendEchoesAndStreamsReply test
+  -only-testing:OpenAgentsUITests/LaunchLifecycleTests \
+  -only-testing:OpenAgentsUITests/SessionFlowTests/testSendEchoesAndStreamsReply test
 ```
 
-Build the Release simulator Rust core before using `ZERON_SKIP_CORE=1`:
+Build the Release simulator Rust core before using `OPENAGENTS_SKIP_CORE=1`:
 `CONFIGURATION=Release scripts/ios/build-core.sh iphonesimulator`.
 The native `CoderIdentityTests` also seeds a saved legacy delegate and checks
 that connection uses the current UIKit delegate.

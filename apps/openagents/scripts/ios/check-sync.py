@@ -35,7 +35,7 @@ def main():
     scratch = args.scratch.expanduser().resolve()
     scratch.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, RUSTUP_TOOLCHAIN="1.98.1", CARGO_TARGET_DIR=str(target),
-               BROWSER="/usr/bin/true", NO_OPEN_BROWSER="1", ZERON_ACCOUNT_FIXTURE="1")
+               BROWSER="/usr/bin/true", NO_OPEN_BROWSER="1", OPENAGENTS_ACCOUNT_FIXTURE="1")
     if args.custom_agents:
         env["OA_CUSTOM_AGENT_FIXTURE_RUNNER"] = str(args.custom_agents.expanduser().resolve())
         env["OA_CUSTOM_AGENT_UI"] = "1"
@@ -43,8 +43,8 @@ def main():
         if not args.custom_agents: parser.error("Agent Lab needs the installed fixture runner.")
         env["OA_AGENT_LAB_UI"] = "1"
     if not args.skip_build:
-        for command in (["cargo", "build", "--locked", "-p", "zeron", "--profile", "mobile"],
-                        ["cargo", "build", "--locked", "-p", "zeron-engine", "--example", "mobile_sync_fixture"],
+        for command in (["cargo", "build", "--locked", "-p", "openagents", "--profile", "mobile"],
+                        ["cargo", "build", "--locked", "-p", "openagents-engine", "--example", "mobile_sync_fixture"],
                         ["scripts/ios/build-core.sh", "iphonesimulator"]):
             subprocess.run(command, cwd=ROOT, env=env, check=True)
     deployments = ("staging", "production") if args.deployment == "both" else (args.deployment,)
@@ -53,7 +53,7 @@ def main():
         origin = "https://coder-sync" + ("-staging" if name == "staging" else "") + "-157437760789.us-central1.run.app"
         with scratch.joinpath(run.name + "-coordinator.log").open("w") as log:
             process = subprocess.Popen([str(target / "debug/examples/mobile_sync_fixture"),
-                str(target / "mobile/zeron"), origin, str(run), str(key_file), args.account],
+                str(target / "mobile/openagents"), origin, str(run), str(key_file), args.account],
                 cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT)
         config = None
         try:
@@ -65,13 +65,13 @@ def main():
                     raise RuntimeError("Coordinator readiness timed out.")
                 time.sleep(0.25)
             config = json.loads(run.joinpath("config.json").read_text())
-            test_env = dict(env, TEST_RUNNER_CODER_MOBILE_SYNC_CONFIG=json.dumps(config), ZERON_SKIP_CORE="1")
-            command = ["xcodebuild", "-project", "apps/ios/Zeron.xcodeproj", "-scheme", "Zeron",
+            test_env = dict(env, TEST_RUNNER_CODER_MOBILE_SYNC_CONFIG=json.dumps(config), OPENAGENTS_SKIP_CORE="1")
+            command = ["xcodebuild", "-project", "apps/ios/OpenAgents.xcodeproj", "-scheme", "OpenAgents",
                 "-configuration", "Debug", "-parallel-testing-enabled", "NO", "-destination", "platform=iOS Simulator,id=" + args.simulator,
                 "-derivedDataPath", str(args.derived_data or target / "ios-derived"), "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-",
                 "SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CODER_ACCOUNT_FIXTURE",
                 "-resultBundlePath", str(scratch / (run.name + ".xcresult")),
-                "-only-testing:ZeronUITests/" + ("OpenAgentsAgentLabTests" if args.agent_lab else "OpenAgentsCustomAgentTests" if args.custom_agents else "OpenAgentsLiveSyncTests"), "test"]
+                "-only-testing:OpenAgentsUITests/" + ("OpenAgentsAgentLabTests" if args.agent_lab else "OpenAgentsCustomAgentTests" if args.custom_agents else "OpenAgentsLiveSyncTests"), "test"]
             with scratch.joinpath(run.name + "-uitest.log").open("w") as log:
                 result = subprocess.run(command, cwd=ROOT, env=test_env, stdout=log, stderr=subprocess.STDOUT)
             if result.returncode:
@@ -107,7 +107,7 @@ def main():
         if len(report["checks"]) != expected_checks or not all(report["checks"].values()) or not report["child_stopped"] or not report["registry_fixtures_removed"] or report["host_restarts"] != expected_restarts:
             raise RuntimeError("Incomplete host-side assertions or cleanup.")
         print("PASS " + name + " cleanup", flush=True)
-    print("Rebuild the normal core and bindings without ZERON_ACCOUNT_FIXTURE before committing or archiving.")
+    print("Rebuild the normal core and bindings without OPENAGENTS_ACCOUNT_FIXTURE before committing or archiving.")
 
 
 if __name__ == "__main__":

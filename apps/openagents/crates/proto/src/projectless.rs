@@ -10,8 +10,8 @@
 use chrono::{DateTime, Utc};
 
 /// Home-relative parent of every projectless chat's folder.
-/// Coder Desktop: under `~/` + `coder_brand::HOME_WORK_DIR`, not Zeron's
-/// `~/.zeron`.
+/// Coder Desktop: under `~/` + `openagents_brand::HOME_WORK_DIR`, not OpenAgents's
+/// `~/.openagents`.
 pub const SCRATCH_ROOT: &str = "~/.coder-desktop/scratch";
 
 /// The scratch cwd for a new projectless chat: `<date>-<id>`, the id cut to
@@ -86,12 +86,12 @@ mod tests {
         }
         assert!(is_projectless_cwd(None));
         for cwd in [
-            "/home/w/dev/zeron",
-            "~/dev/zeron",
+            "/home/w/dev/openagents",
+            "~/dev/openagents",
             "~/.coder-desktop/scratch",
             "~/.coder-desktop/scratch/",
             "~/.coder-desktop/scratch/a/b",
-            "~/.zeron/worktrees/x",
+            "~/.openagents/worktrees/x",
         ] {
             assert!(!is_projectless_cwd(Some(cwd)), "{cwd}");
         }

@@ -20,7 +20,8 @@ pub struct PreviewService {
     pub cwd: String,
     /// Process creation time, milliseconds since the Unix epoch.
     pub started_at: u64,
-    pub zeron_owned: bool,
+    #[serde(rename = "zeronOwned", alias = "openagentsOwned")]
+    pub openagents_owned: bool,
 }
 
 impl PreviewService {

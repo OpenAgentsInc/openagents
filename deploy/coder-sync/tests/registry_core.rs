@@ -1,7 +1,7 @@
 //! Edge registry-core.test.ts vectors against the server's pinned merge core.
 use coder_sync::server::registry::{valid_hlc, validate_op};
+use openagents_doc::{RegistryRow, RowOp, apply_op, encode_hlc, row_to_seed_op};
 use serde_json::{Value, json};
-use zeron_doc::{RegistryRow, RowOp, apply_op, encode_hlc, row_to_seed_op};
 fn clock(ms: i64, device: &str) -> String {
     encode_hlc(ms, 0, device)
 }

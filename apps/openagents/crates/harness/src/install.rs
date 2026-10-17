@@ -1,8 +1,8 @@
 //! Explicit, user-requested CLI installation. Catalog probes never call this module's executor.
 use std::{path::PathBuf, time::Duration};
 
+use openagents_proto::HarnessId;
 use tokio::io::{AsyncRead, AsyncReadExt};
-use zeron_proto::HarnessId;
 
 use crate::{
     CancellationToken, Harness, HarnessError, StderrTail,
@@ -173,7 +173,7 @@ fn cli_and_dir(id: HarnessId) -> (&'static str, &'static str) {
         Grok => ("grok", "~/.grok/bin or the npm global bin"),
         Hermes => ("hermes", "~/.local/bin or ~/.hermes/bin"),
         Devin => ("devin", "~/.local/bin"),
-        Antigravity => ("agy_acp_server", "~/.zeron/adapters"),
+        Antigravity => ("agy_acp_server", "~/.openagents/adapters"),
         Mock => ("mock", "PATH"),
         Sdk => ("SDK runners", "operator configuration"),
     }
@@ -217,7 +217,9 @@ fn post_install(id: HarnessId) -> Result<(), HarnessError> {
 fn configure(command: &mut Command) {
     crate::acp::child::configure(command);
     for (key, _) in std::env::vars_os() {
-        if key.to_string_lossy().starts_with("ZERON_") {
+        if key.to_string_lossy().starts_with("OPENAGENTS_")
+            || key.to_string_lossy().starts_with("ZERON_")
+        {
             command.env_remove(key);
         }
     }

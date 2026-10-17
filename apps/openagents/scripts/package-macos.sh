@@ -23,11 +23,11 @@ DMG="$OUT_DIR/openagents-desktop-$VERSION-macos-$ARCH.dmg"
 APP_TARBALL="$OUT_DIR/openagents-desktop-$VERSION-macos-$ARCH-app.tar.gz"
 
 cd "$ROOT"
-cargo build --release -p zeron
+cargo build --release -p openagents
 
 rm -rf "$APP" "$DMG" "$APP_TARBALL"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-install -m 755 "$ROOT/target/release/zeron" "$APP/Contents/MacOS/zeron"
+install -m 755 "$ROOT/target/release/openagents" "$APP/Contents/MacOS/openagents"
 sed "s/__VERSION__/$VERSION/" "$ROOT/dist/macos/Info.plist" >"$APP/Contents/Info.plist"
 mkdir -p "$APP/Contents/Resources/licenses/fonts"
 cp "$ROOT/crates/ui/assets/fonts/licenses/"* "$APP/Contents/Resources/licenses/fonts/"
@@ -36,18 +36,18 @@ cp "$ROOT/THIRD_PARTY_NOTICES.md" "$ROOT/LICENSE" "$APP/Contents/Resources/licen
 mkdir -p "$APP/Contents/Resources/licenses"
 cp "$ROOT/crates/voice/NOTICE.md" "$APP/Contents/Resources/licenses"/parakeet-v3.txt
 
-# Icon: the Coder Desktop icon, generated from dist/coder/icon-1024.png (the
+# Icon: the Coder Desktop icon, generated from dist/openagents/icon-1024.png (the
 # OpenAgents app icon, full-bleed like the OpenAgents desktop's); see FORK.md.
-install -m 644 "$ROOT/dist/coder/coder.icns" "$APP/Contents/Resources/coder.icns"
+install -m 644 "$ROOT/dist/openagents/openagents.icns" "$APP/Contents/Resources/openagents.icns"
 
 if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
   # Hardened runtime + secure timestamp are both notarization requirements.
   # (No --deep: Apple deprecated it; the bundle is a single Mach-O anyway.)
-  codesign --entitlements "$ROOT/dist/macos/Zeron.entitlements" --force --options runtime --timestamp --sign "$CODESIGN_IDENTITY" "$APP"
+  codesign --entitlements "$ROOT/dist/macos/OpenAgents.entitlements" --force --options runtime --timestamp --sign "$CODESIGN_IDENTITY" "$APP"
 else
   # Ad-hoc signature so the app launches on Apple silicon (Gatekeeper still
   # requires right-click → Open on first launch without notarization).
-  codesign --deep --force --entitlements "$ROOT/dist/macos/Zeron.entitlements" --sign - "$APP"
+  codesign --deep --force --entitlements "$ROOT/dist/macos/OpenAgents.entitlements" --sign - "$APP"
 fi
 
 # notarize <path>: submit to Apple and wait for the verdict. A rejection may
@@ -102,7 +102,7 @@ dmgbuild.build_dmg(
         "format": "UDZO",
         "files": [app],
         "symlinks": {"Applications": "/Applications"},
-        "icon": os.path.join(app, "Contents/Resources/coder.icns"),
+        "icon": os.path.join(app, "Contents/Resources/openagents.icns"),
         "background": os.environ["BG_TIFF"],
         "show_status_bar": False,
         "show_tab_view": False,

@@ -1,7 +1,7 @@
 //! Stable conversation links shared by sidebar copy actions and inbound URL routing.
 
 use sha2::{Digest, Sha256};
-use zeron_proto::{AuthState, Chat, HarnessId, WorkspaceScope};
+use openagents_proto::{AuthState, Chat, HarnessId, WorkspaceScope};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationDeepLink {
@@ -41,18 +41,18 @@ pub fn workspace_locator(
     Some(format!("{:x}", hash.finalize())[..16].to_string())
 }
 
-pub fn zeron_conversation_link(chat_id: &str, workspace: &str) -> String {
+pub fn openagents_conversation_link(chat_id: &str, workspace: &str) -> String {
     format!(
         "{}://open/chat/{}?workspace={}",
-        coder_brand::URL_SCHEME,
+        openagents_brand::URL_SCHEME,
         encode_component(chat_id),
         encode_component(workspace)
     )
 }
 
-pub fn parse_zeron_conversation_link(url: &str) -> Result<ConversationDeepLink, &'static str> {
+pub fn parse_openagents_conversation_link(url: &str) -> Result<ConversationDeepLink, &'static str> {
     let rest = url
-        .strip_prefix(coder_brand::URL_SCHEME)
+        .strip_prefix(openagents_brand::URL_SCHEME)
         .and_then(|rest| rest.strip_prefix("://open/chat/"))
         .ok_or("not a OpenAgents conversation link")?;
     let (chat_id, query) = rest.split_once('?').ok_or("missing workspace locator")?;
@@ -130,12 +130,12 @@ mod tests {
             branch: None,
             checkout_id: None,
             source_context: None,
-            config: Some(zeron_proto::ChatConfig {
+            config: Some(openagents_proto::ChatConfig {
                 harness,
                 model: None,
                 reasoning: None,
                 model_options: Default::default(),
-                sandbox: zeron_proto::SandboxLevel::WorkspaceWrite,
+                sandbox: openagents_proto::SandboxLevel::WorkspaceWrite,
             }),
             last_message_preview: None,
             last_message_at: None,
@@ -150,10 +150,10 @@ mod tests {
     }
 
     #[test]
-    fn zeron_link_round_trips_reserved_characters() {
-        let link = zeron_conversation_link("chat/with space", "workspace:one");
+    fn openagents_link_round_trips_reserved_characters() {
+        let link = openagents_conversation_link("chat/with space", "workspace:one");
         assert_eq!(
-            parse_zeron_conversation_link(&link).unwrap(),
+            parse_openagents_conversation_link(&link).unwrap(),
             ConversationDeepLink {
                 chat_id: "chat/with space".into(),
                 workspace: "workspace:one".into(),
@@ -163,10 +163,10 @@ mod tests {
 
     #[test]
     fn malformed_or_foreign_links_are_rejected() {
-        assert!(parse_zeron_conversation_link("https://example.com").is_err());
-        assert!(parse_zeron_conversation_link("openagents://open/chat/id").is_err());
+        assert!(parse_openagents_conversation_link("https://example.com").is_err());
+        assert!(parse_openagents_conversation_link("openagents://open/chat/id").is_err());
         assert!(
-            parse_zeron_conversation_link("openagents://open/chat/%GG?workspace=x").is_err()
+            parse_openagents_conversation_link("openagents://open/chat/%GG?workspace=x").is_err()
         );
     }
 
@@ -194,7 +194,7 @@ mod tests {
             workspace_locator(
                 scope,
                 Some(&AuthState::NeedsOrganization {
-                    user: zeron_proto::UserProfile {
+                    user: openagents_proto::UserProfile {
                         id: "user-a".into(),
                         email: "user@example.com".into(),
                         name: None,
@@ -208,7 +208,7 @@ mod tests {
             workspace_locator(
                 scope,
                 Some(&AuthState::SignedIn {
-                    user: zeron_proto::UserProfile {
+                    user: openagents_proto::UserProfile {
                         id: "user-a".into(),
                         email: "user@example.com".into(),
                         name: None,

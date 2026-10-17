@@ -2,11 +2,11 @@ Native GPUI screenshots from the isolated `sidebar-fixture` example. All project
 chats, icons and PR metadata are synthetic; no engine or account is connected.
 
 ```sh
-cargo run -p zeron-ui --example sidebar-fixture --features project-palette-fixture
-ZERON_SIDEBAR_COMPACT=1 cargo run -p zeron-ui --example sidebar-fixture --features project-palette-fixture
+cargo run -p openagents-ui --example sidebar-fixture --features project-palette-fixture
+OPENAGENTS_SIDEBAR_COMPACT=1 cargo run -p openagents-ui --example sidebar-fixture --features project-palette-fixture
 ```
 
-Set `ZERON_SIDEBAR_HIDE_LABEL=1` to start with the project/device label hidden.
+Set `OPENAGENTS_SIDEBAR_HIDE_LABEL=1` to start with the project/device label hidden.
 The sidebar view menu persists all three display preferences and project grouping.
 Ungrouped rows live in a collapsible Sessions accordion; project/device groups
 remain separate accordions. All sidebar accordion headers have no divider rules.
@@ -40,7 +40,7 @@ remote pin conflicts, actual row-height hit testing, small pointer movements,
 project grouping/keyboard order, icon lookup priority, SVG/ICO decoding, and
 settings persistence. Native macOS and Windows interactions were not exercised.
 
-Validation: `cargo test -p zeron-ui --lib -- --test-threads=1` passed all 1,121
+Validation: `cargo test -p openagents-ui --lib -- --test-threads=1` passed all 1,121
 tests. The native fixture build, formatting checks, and `git diff --check` passed.
 
 Latest icon/order follow-up: all 40 sidebar regression tests passed; native screenshots

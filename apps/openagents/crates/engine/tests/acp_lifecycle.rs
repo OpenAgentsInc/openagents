@@ -1,13 +1,13 @@
 //! #296 through the engine: completed tools must not park a pending ACP turn.
 //! Separate binary because the diagnostic watchdog setting is process-wide.
 use std::{sync::Arc, time::Duration};
-use zeron_doc::{
+use openagents_doc::{
     MessagePart, MessageRole, MessageStatus, SessionCommandEntry, SessionCommandPayload,
     SessionCommandStatus,
 };
-use zeron_engine::{EngineCore, HarnessRegistry};
-use zeron_harness::AcpHarness;
-use zeron_proto::{HarnessId, RunRequest, SandboxLevel, SessionStatus};
+use openagents_engine::{EngineCore, HarnessRegistry};
+use openagents_harness::AcpHarness;
+use openagents_proto::{HarnessId, RunRequest, SandboxLevel, SessionStatus};
 
 async fn wait_for(mut condition: impl FnMut() -> bool) {
     tokio::time::timeout(Duration::from_secs(15), async {
@@ -24,7 +24,7 @@ async fn quiet_acp_prompt_stays_working_until_response() {
     // SAFETY: this is the only test in this binary, on a current-thread runtime,
     // and no engine or harness tasks have started yet.
     unsafe {
-        std::env::set_var("ZERON_TURN_QUIESCE_MS", "100");
+        std::env::set_var("OPENAGENTS_TURN_QUIESCE_MS", "100");
     }
     let dir = tempfile::tempdir().unwrap();
     let registry = HarnessRegistry::new();
@@ -130,7 +130,7 @@ async fn quiet_acp_prompt_stays_working_until_response() {
     // The steer landed with no tool open, so it preempted the model wait
     // (the peer answers `session/cancel` without "finished"). The original
     // output stays in its turn and the steer is answered in the next one.
-    let texts = |entry: &zeron_doc::SessionMessageEntry| {
+    let texts = |entry: &openagents_doc::SessionMessageEntry| {
         entry
             .parts
             .iter()

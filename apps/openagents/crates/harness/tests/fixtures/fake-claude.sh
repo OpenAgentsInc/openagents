@@ -1,5 +1,5 @@
 #!/bin/sh
-# Fake Claude Code CLI for zeron-harness tests.
+# Fake Claude Code CLI for openagents-harness tests.
 #
 # Reads the first stream-json user line from stdin, picks a scenario from the
 # prompt text, and plays a scripted stream-json transcript on stdout —
@@ -14,9 +14,9 @@ read -r first || exit 1
 initialized=false
 while :; do
   case "$first" in
-    *'"request_id":"zeron_initialize"'*)
+    *'"request_id":"openagents_initialize"'*)
       case "$first" in *'"perTaskStopAffordance":true'*) initialized=true ;; esac
-      printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zeron_initialize","response":{}}}'
+      printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"openagents_initialize","response":{}}}'
       read -r first || exit 1
       ;;
     *) break ;;

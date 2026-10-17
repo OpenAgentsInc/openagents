@@ -1,6 +1,6 @@
 use super::*;
 use gpui::{AppContext, TestAppContext, VisualTestContext};
-use zeron_proto::{WorkspaceDirectoryPage, WorkspaceEntry, WorkspaceEntryKind};
+use openagents_proto::{WorkspaceDirectoryPage, WorkspaceEntry, WorkspaceEntryKind};
 
 pub(crate) fn state() -> AppState {
     let mut state = AppState::new();
@@ -18,7 +18,7 @@ pub(crate) fn state() -> AppState {
 pub(crate) fn explorer(state: Entity<AppState>, cx: &mut Context<FilesSurface>) -> FilesSurface {
     let mut files = FilesSurface::new_explorer(state, "chat".into(), false, cx);
     files.effective_checkout_id = Some("checkout".into());
-    files.mutation_capabilities = Some(zeron_proto::WorkspaceMutationCapabilities {
+    files.mutation_capabilities = Some(openagents_proto::WorkspaceMutationCapabilities {
         move_entry: true,
         delete_entry: true,
     });

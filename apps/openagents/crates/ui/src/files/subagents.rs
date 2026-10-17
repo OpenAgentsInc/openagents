@@ -8,7 +8,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use zeron_doc::SubagentStatus;
+use openagents_doc::SubagentStatus;
 
 use super::sections::{INITIAL_ROWS, PAGE_ROWS, SubagentRow};
 

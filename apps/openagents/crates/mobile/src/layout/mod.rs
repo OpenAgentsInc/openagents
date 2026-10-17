@@ -21,10 +21,10 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Instant;
 
-use zeron_doc::parts::MessagePart;
-use zeron_doc::parts::MessageStatus;
-use zeron_doc::schema::{MessageRole, SessionMessageEntry};
-use zeron_text::WidthCache;
+use openagents_doc::parts::MessagePart;
+use openagents_doc::parts::MessageStatus;
+use openagents_doc::schema::{MessageRole, SessionMessageEntry};
+use openagents_text::WidthCache;
 
 use display::{DisplayBuilder, RowDisplay};
 use markdown::{Ctx, Px};
@@ -52,15 +52,15 @@ struct MeasurerBridge {
     styles: Arc<Mutex<HashMap<u16, StyleDesc>>>,
 }
 
-impl zeron_text::FallbackMeasurer for MeasurerBridge {
-    fn measure(&self, style: zeron_text::StyleId, text: &str) -> f32 {
+impl openagents_text::FallbackMeasurer for MeasurerBridge {
+    fn measure(&self, style: openagents_text::StyleId, text: &str) -> f32 {
         let Some(desc) = self.styles.lock().unwrap().get(&style.0).cloned() else {
             return 0.0;
         };
         self.platform.measure(desc.face, desc.size, desc.ligatures, text.to_owned())
     }
 
-    fn measure_run(&self, style: zeron_text::StyleId, text: &str, advances: &mut Vec<f32>) -> bool {
+    fn measure_run(&self, style: openagents_text::StyleId, text: &str, advances: &mut Vec<f32>) -> bool {
         let Some(desc) = self.styles.lock().unwrap().get(&style.0).cloned() else {
             return false;
         };
@@ -81,7 +81,7 @@ pub(crate) fn typography(text: &TextSystem) -> Typography {
         Arc::new(MeasurerBridge {
             platform,
             styles: styles.clone(),
-        }) as Arc<dyn zeron_text::FallbackMeasurer>
+        }) as Arc<dyn openagents_text::FallbackMeasurer>
     });
     Typography::new(&text.faces, fallback, styles)
 }
@@ -319,20 +319,20 @@ pub(crate) const FIXTURE: &str = include_str!("fixture.md");
 pub fn debug_line_starts(text_system: Arc<TextSystem>, face: FaceRole, size: f32, width: f32, text: String) -> Vec<u32> {
     let styles = Arc::new(Mutex::new(HashMap::new()));
     let fallback = text_system.measurer.clone().map(|platform| {
-        Arc::new(MeasurerBridge { platform, styles: styles.clone() }) as Arc<dyn zeron_text::FallbackMeasurer>
+        Arc::new(MeasurerBridge { platform, styles: styles.clone() }) as Arc<dyn openagents_text::FallbackMeasurer>
     });
     let mut typo = Typography::new(&text_system.faces, fallback, styles);
     let (family, weight, italic) = style::decompose(face);
     let style = typo.style(family, weight, italic, size);
-    let spans = [zeron_text::Span::new(0..text.len(), style.id)];
-    let p = zeron_text::prepare(
+    let spans = [openagents_text::Span::new(0..text.len(), style.id)];
+    let p = openagents_text::prepare(
         &typo.book,
         &mut WidthCache::new(),
         &text,
         if text.is_empty() { &[] } else { &spans },
-        &zeron_text::PrepareOptions {
-            white_space: zeron_text::WhiteSpace::PreWrap,
-            overflow_wrap: zeron_text::OverflowWrap::Anywhere,
+        &openagents_text::PrepareOptions {
+            white_space: openagents_text::WhiteSpace::PreWrap,
+            overflow_wrap: openagents_text::OverflowWrap::Anywhere,
             ..Default::default()
         },
     );
@@ -368,7 +368,7 @@ pub struct TranscriptView {
     tx: Mutex<Sender<Msg>>,
     shared: Arc<Shared>,
     /// Live session subscription (Rust→Rust; rows never cross FFI).
-    watch: Mutex<Option<zeron_client::SnapshotWatch>>,
+    watch: Mutex<Option<openagents_client::SnapshotWatch>>,
     visuals: Arc<crate::visual::VisualHub>,
 }
 
@@ -390,7 +390,7 @@ impl TranscriptView {
         let worker_shared = shared.clone();
         let worker_visuals = visuals.clone();
         thread::Builder::new()
-            .name("zeron-layout".into())
+            .name("openagents-layout".into())
             .spawn(move || Worker::new(&text, worker_shared, listener, Some(worker_visuals)).run(rx))
             .expect("spawn layout thread");
         Arc::new(Self {

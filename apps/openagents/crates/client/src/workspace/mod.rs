@@ -1,7 +1,7 @@
 //! The workspace registry replica and its derived [`WorkspaceSnapshot`].
 //!
 //! The replica is a [`RegistryDoc`] shared (`Arc<Mutex<_>>`) with the
-//! `zeron_sync::RegistryClient` in live mode; Demo mode's replica is
+//! `openagents_sync::RegistryClient` in live mode; Demo mode's replica is
 //! local-only (writes fold straight into its rows). Reads materialize
 //! the rows once per registry *generation* (cached), so the 1 Hz time-driven
 //! re-derivation (staleness, presence expiry, send grace) never re-decodes.
@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
-use zeron_doc::{RegistryDoc, WorkspaceState};
-use zeron_proto::{CheckoutChangeRequestStatus, SidebarPreferences};
+use openagents_doc::{RegistryDoc, WorkspaceState};
+use openagents_proto::{CheckoutChangeRequestStatus, SidebarPreferences};
 
 pub(crate) use view::{DeriveContext, device_online};
 pub use view::{
@@ -92,7 +92,7 @@ impl WorkspaceStore {
         (state, prefs)
     }
 
-    pub(crate) fn chat(&self, chat_id: &str) -> Option<zeron_proto::Chat> {
+    pub(crate) fn chat(&self, chat_id: &str) -> Option<openagents_proto::Chat> {
         self.state()
             .0
             .chats

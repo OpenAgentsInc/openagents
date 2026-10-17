@@ -25,7 +25,7 @@ use tokio_tungstenite::{
     tungstenite::{Message, client::IntoClientRequest, protocol::Role},
 };
 use tokio_util::sync::CancellationToken;
-use zeron_preview::{
+use openagents_preview::{
     catalog::Catalog,
     discovery::Listener,
     mux::{self, BoxIo, Connector},
@@ -173,7 +173,7 @@ async fn remote_preview_churn_does_not_accumulate_tasks_or_memory() {
                 args: vec!["node".into(), "vite".into()],
                 started_at: 1,
                 address: ([127, 0, 0, 1], backend_port).into(),
-                zeron_owned: true,
+                openagents_owned: true,
             },
         )])
         .unwrap();

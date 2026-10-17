@@ -1,8 +1,8 @@
 # Compact picker runtime evidence
 
-Captured from clean `codex/compact-picker` source `6ec139a2` (rebased on `main` `26e2b0dd`) on 2026-09-30. The fixture uses synthetic catalogs and temporary settings (default Zeron accent), with no real conversation or IPC server.
+Captured from clean `codex/compact-picker` source `6ec139a2` (rebased on `main` `26e2b0dd`) on 2026-09-30. The fixture uses synthetic catalogs and temporary settings (default OpenAgents accent), with no real conversation or IPC server.
 
-Build and run: `cargo run -p zeron-ui --features compact-picker-fixture --example compact-picker-fixture -- <output>`.
+Build and run: `cargo run -p openagents-ui --features compact-picker-fixture --example compact-picker-fixture -- <output>`.
 Executable: `target/debug/examples/compact-picker-fixture`; SHA256 `e5d97ac0f1ae1cb9a5b3afe047398435acc2c39460e599dad2c6745f5face7f5`. Exited successfully with the fixture PASS marker.
 
 All keyboard assertions passed for effort selection, fast tier and favorite identity across dark/light and 840/360 logical widths, height 560. The included captures were visually inspected: both header buttons sit one card inset from the card's top and sides, the title, rail and option labels share one leading edge, fast mode shows an accent glyph on a neutral plate, the slider thumb is a plain glass handle, and fills use the theme's accent fill token. Static screenshots do not establish animation performance or live provider compatibility.

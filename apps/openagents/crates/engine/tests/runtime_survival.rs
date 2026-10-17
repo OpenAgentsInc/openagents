@@ -18,10 +18,10 @@ use futures::StreamExt;
 use futures::stream::BoxStream;
 use tokio::sync::mpsc;
 
-use zeron_doc::{MessageStatus, SessionCommandPayload};
-use zeron_engine::{EngineCore, HarnessRegistry};
-use zeron_harness::{Harness, HarnessError, RunControls, TurnControl};
-use zeron_proto::{
+use openagents_doc::{MessageStatus, SessionCommandPayload};
+use openagents_engine::{EngineCore, HarnessRegistry};
+use openagents_harness::{Harness, HarnessError, RunControls, TurnControl};
+use openagents_proto::{
     AgentEvent, DoneStatus, HarnessId, Model, ReasoningLevel, RunRequest, SandboxLevel,
     SessionStatus, SteeringMode,
 };
@@ -438,7 +438,7 @@ async fn a_message_orphaned_by_a_dying_runtime_replays_as_sent() {
         .unwrap();
     let orphan: Vec<_> = entries
         .iter()
-        .filter(|e| e.role == zeron_doc::MessageRole::User && e.id != entries[0].id)
+        .filter(|e| e.role == openagents_doc::MessageRole::User && e.id != entries[0].id)
         .map(|e| e.id.as_str())
         .collect();
     assert_eq!(orphan, ["m-orphan"], "one entry, under its own id");

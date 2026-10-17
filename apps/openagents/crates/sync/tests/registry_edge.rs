@@ -7,16 +7,16 @@
 //! `edge/` with AUTH_MODE=dev). Run with:
 //!
 //! ```sh
-//! ZERON_EDGE_WS=ws://127.0.0.1:27640 cargo test -p zeron-sync --test registry_edge -- --ignored
+//! OPENAGENTS_EDGE_WS=ws://127.0.0.1:27640 cargo test -p openagents-sync --test registry_edge -- --ignored
 //! ```
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use zeron_doc::RegistryDoc;
-use zeron_proto::{Chat, Session, SessionStatus};
-use zeron_sync::RegistryClient;
+use openagents_doc::RegistryDoc;
+use openagents_proto::{Chat, Session, SessionStatus};
+use openagents_sync::RegistryClient;
 
 fn ts(ms: i64) -> DateTime<Utc> {
     DateTime::from_timestamp_millis(ms).unwrap_or(DateTime::UNIX_EPOCH)
@@ -59,14 +59,14 @@ async fn wait_until(mut condition: impl FnMut() -> bool) {
 }
 
 fn edge_url(org: &str, user: &str) -> String {
-    let base = std::env::var("ZERON_EDGE_WS")
-        .expect("set ZERON_EDGE_WS to the edge origin, e.g. ws://127.0.0.1:27640");
+    let base = openagents_brand::env_var("OPENAGENTS_EDGE_WS")
+        .expect("set OPENAGENTS_EDGE_WS to the edge origin, e.g. ws://127.0.0.1:27640");
     // Dev-mode bearer `user@org` carries the org claim the registry route checks.
     format!("{base}/registry/{org}/ws?token={user}@{org}&device=it")
 }
 
 #[tokio::test]
-#[ignore = "requires a live edge: set ZERON_EDGE_WS (e.g. ws://127.0.0.1:27640)"]
+#[ignore = "requires a live edge: set OPENAGENTS_EDGE_WS (e.g. ws://127.0.0.1:27640)"]
 async fn two_rust_clients_converge_through_a_real_registry_do() {
     let org = format!("org{}", uuid::Uuid::new_v4().simple());
     let url = edge_url(&org, "alice");
@@ -176,7 +176,7 @@ async fn two_rust_clients_converge_through_a_real_registry_do() {
 }
 
 #[tokio::test]
-#[ignore = "requires a live edge: set ZERON_EDGE_WS (e.g. ws://127.0.0.1:27640)"]
+#[ignore = "requires a live edge: set OPENAGENTS_EDGE_WS (e.g. ws://127.0.0.1:27640)"]
 async fn cursor_delta_and_churn_stay_bounded_on_a_real_do() {
     let org = format!("org{}", uuid::Uuid::new_v4().simple());
     let url = edge_url(&org, "alice");

@@ -1,7 +1,7 @@
 //! Stable device-local browser storage, independent of chats and repositories.
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
-use zeron_proto::{AuthState, WorkspaceScope};
+use openagents_proto::{AuthState, WorkspaceScope};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct BrowserProfile {
@@ -37,7 +37,7 @@ impl BrowserProfile {
 
     fn new(data_dir: &Path, identity: &[&str]) -> Self {
         let mut hash = Sha256::new();
-        hash.update(b"zeron-browser-profile-v1");
+        hash.update(b"openagents-browser-profile-v1");
         for part in identity {
             hash.update((part.len() as u64).to_le_bytes());
             hash.update(part.as_bytes());
@@ -58,7 +58,7 @@ impl BrowserProfile {
         // Include the installation directory: fixtures and alternative data roots
         // must never open a real user's WKWebsiteDataStore.
         let mut hash = Sha256::new();
-        hash.update(b"zeron-wkwebsite-data-store-v1");
+        hash.update(b"openagents-wkwebsite-data-store-v1");
         hash.update(self.root.as_os_str().as_encoded_bytes());
         let mut id: [u8; 16] = hash.finalize()[..16].try_into().unwrap();
         id[6] = (id[6] & 0x0f) | 0x80; // UUID v8, application-defined hash.
@@ -102,7 +102,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let make = |user: &str, org: Option<&str>, device: &str, scope| {
             let auth = AuthState::SignedIn {
-                user: zeron_proto::UserProfile {
+                user: openagents_proto::UserProfile {
                     id: user.into(),
                     email: "fixture@example.test".into(),
                     name: None,

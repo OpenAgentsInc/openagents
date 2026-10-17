@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use zeron_harness::{CodexHarness, Harness};
+use openagents_harness::{CodexHarness, Harness};
 
 #[test]
 fn availability_child() {

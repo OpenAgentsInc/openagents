@@ -1,7 +1,7 @@
 //! The app theme — two concrete appearances, one token set.
 //!
 //! Colors are precomputed from an oklch-derived neutral scale (perceptually even
-//! lightness steps; the same scale zeron's Tailwind theme used) into gpui [`Hsla`].
+//! lightness steps; the same scale openagents's Tailwind theme used) into gpui [`Hsla`].
 //! **Numbers drive layout, colors are paint**: layout constants live here as plain
 //! numbers and never depend on which color is painted.
 //!
@@ -36,8 +36,8 @@ use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
 
 use gpui::{App, Global, Hsla, SharedString, hsla};
 use serde::{Deserialize, Serialize};
-use zeron_syntax::HighlightKind;
-use zeron_theme::{
+use openagents_syntax::HighlightKind;
+use openagents_theme::{
     AccentPreset, AccentSelection, Color as ModelColor, SurfacePreference, SurfaceTreatment,
     ThemeRegistry, ThemeVariant,
 };
@@ -48,10 +48,10 @@ use zeron_theme::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AccentColor {
-    /// The exact upstream Zeron indigo.
+    /// The exact upstream OpenAgents indigo.
     #[default]
     #[serde(alias = "violet", alias = "indigo", alias = "red", alias = "purple")]
-    Zeron,
+    OpenAgents,
     Orange,
     Amber,
     Green,
@@ -63,7 +63,7 @@ pub enum AccentColor {
 
 impl AccentColor {
     pub const ALL: [Self; 7] = [
-        Self::Zeron,
+        Self::OpenAgents,
         Self::Orange,
         Self::Amber,
         Self::Green,
@@ -74,7 +74,7 @@ impl AccentColor {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Zeron => "Zeron",
+            Self::OpenAgents => "OpenAgents",
             Self::Orange => "Orange",
             Self::Amber => "Amber",
             Self::Green => "Green",
@@ -89,10 +89,10 @@ impl AccentColor {
         // used to gamut-clip OKLCH into sRGB and then mutate HSL lightness,
         // producing different chroma and apparent hues across light/dark.
         let (primary, strong) = match (self, appearance) {
-            (Self::Zeron, Appearance::Dark) => {
+            (Self::OpenAgents, Appearance::Dark) => {
                 (oklch(0.673, 0.182, 276.935), oklch(0.585, 0.233, 277.117))
             }
-            (Self::Zeron, Appearance::Light) => {
+            (Self::OpenAgents, Appearance::Light) => {
                 (oklch(0.511, 0.262, 276.966), oklch(0.511, 0.262, 276.966))
             }
             (Self::Orange, Appearance::Dark) => (oklch(0.75, 0.18, 55.0), oklch(0.54, 0.19, 55.0)),
@@ -133,7 +133,7 @@ impl AccentColor {
 impl From<AccentColor> for AccentPreset {
     fn from(value: AccentColor) -> Self {
         match value {
-            AccentColor::Zeron => Self::Zeron,
+            AccentColor::OpenAgents => Self::OpenAgents,
             AccentColor::Orange => Self::Orange,
             AccentColor::Amber => Self::Amber,
             AccentColor::Green => Self::Green,
@@ -147,7 +147,7 @@ impl From<AccentColor> for AccentPreset {
 impl From<AccentPreset> for AccentColor {
     fn from(value: AccentPreset) -> Self {
         match value {
-            AccentPreset::Zeron => Self::Zeron,
+            AccentPreset::OpenAgents => Self::OpenAgents,
             AccentPreset::Orange => Self::Orange,
             AccentPreset::Amber => Self::Amber,
             AccentPreset::Green => Self::Green,
@@ -273,10 +273,10 @@ pub(crate) fn bump_style_generation() {
     STYLE_GENERATION.fetch_add(1, Ordering::Relaxed);
 }
 
-fn model_appearance(appearance: zeron_theme::Appearance) -> Appearance {
+fn model_appearance(appearance: openagents_theme::Appearance) -> Appearance {
     match appearance {
-        zeron_theme::Appearance::Dark => Appearance::Dark,
-        zeron_theme::Appearance::Light => Appearance::Light,
+        openagents_theme::Appearance::Dark => Appearance::Dark,
+        openagents_theme::Appearance::Light => Appearance::Light,
     }
 }
 
@@ -598,7 +598,7 @@ pub struct Theme {
     /// Whether the base theme or a user preset owns interactive identity.
     pub accent_selection: AccentSelection,
     /// Effective wallpaper overlay; manual theme/accent selections remain intact.
-    pub wallpaper_color: Option<zeron_theme::Color>,
+    pub wallpaper_color: Option<openagents_theme::Color>,
     /// The persisted policy that resolved [`Self::surface_treatment`].
     pub surface_preference: SurfacePreference,
     /// The effective treatment after applying [`Self::surface_preference`] to
@@ -772,13 +772,13 @@ impl TerminalColors {
         }
     }
 
-    fn zeron(appearance: Appearance) -> Self {
+    fn openagents(appearance: Appearance) -> Self {
         let id = match appearance {
-            Appearance::Dark => "zeron-dark",
-            Appearance::Light => "zeron-light",
+            Appearance::Dark => "openagents-dark",
+            Appearance::Light => "openagents-light",
         };
         let registry = ThemeRegistry::active();
-        Self::from_variant(registry.variant(id).expect("Zeron terminal palette exists"))
+        Self::from_variant(registry.variant(id).expect("OpenAgents terminal palette exists"))
     }
 }
 
@@ -811,7 +811,7 @@ impl Theme {
     } else {
         1.0
     };
-    /// Main-panel header height (zeron `h-11`) — in-card headers (changes pane).
+    /// Main-panel header height (openagents `h-11`) — in-card headers (changes pane).
     pub const HEADER_HEIGHT: f32 = 44.0;
     /// The unified window titlebar (traffic lights + cluster + tabs). Content
     /// rides [`Self::TITLEBAR_TOP_PAD`] lower than center so the air above
@@ -820,7 +820,7 @@ impl Theme {
     /// Top-only padding moves the flex center by half this value. On macOS,
     /// 38 / 2 + 4 / 2 = 21 matches the native traffic lights' center.
     pub const TITLEBAR_TOP_PAD: f32 = 4.0;
-    /// Reserved status strip under the content outlet (zeron `h-6`) — the
+    /// Reserved status strip under the content outlet (openagents `h-6`) — the
     /// WorkingIndicator row; reserving it keeps the composer from shifting.
     pub const STATUS_STRIP_HEIGHT: f32 = 24.0;
     /// Height of the gradient that fades the transcript into the panel
@@ -848,7 +848,7 @@ impl Theme {
     /// The selected theme's shell tint painted over the blurred window
     /// background (macOS glass). Keeping the hue theme-owned matters when a
     /// user forces frost onto a palette authored for an opaque workbench: a
-    /// fixed Zeron grey would erase that palette's identity.
+    /// fixed OpenAgents grey would erase that palette's identity.
     pub fn glass(&self) -> Hsla {
         if self.surface_treatment == SurfaceTreatment::Opaque {
             return self.surface;
@@ -869,7 +869,7 @@ impl Theme {
         self.contrast_checked_tint_alpha(self.surface, base, self.adverse_backdrop())
     }
 
-    /// Increase tint coverage only as far as needed for Zeron's shared text
+    /// Increase tint coverage only as far as needed for OpenAgents's shared text
     /// roles. This is used for both window glass and in-app frosted surfaces,
     /// whose blurred content can otherwise invalidate an imported palette's
     /// original solid-background assumptions.
@@ -929,7 +929,7 @@ impl Theme {
 
     /// Theme-owned hover wash for chrome that sits on glass (sidebar rows,
     /// tabs, titlebar buttons). The importer maps this role from the source
-    /// theme, so forcing frost does not reintroduce Zeron's neutral hover.
+    /// theme, so forcing frost does not reintroduce OpenAgents's neutral hover.
     pub fn glass_hover(&self) -> Hsla {
         self.element_hover
     }
@@ -1148,8 +1148,8 @@ impl Theme {
         let accent = accent_color.tokens(Appearance::Dark);
         Self {
             appearance: Appearance::Dark,
-            variant_id: "zeron-dark".into(),
-            family_id: "zeron".into(),
+            variant_id: "openagents-dark".into(),
+            family_id: "openagents".into(),
             accent_selection: AccentSelection::Preset(accent_color.into()),
             wallpaper_color: None,
             surface_preference: SurfacePreference::ThemeDefault,
@@ -1201,7 +1201,7 @@ impl Theme {
             diff_add: oklch(0.765, 0.177, 163.223), // emerald-400
             diff_del: oklch(0.704, 0.191, 22.216),  // red-400
             diff_hunk_bg: hsla(0.6, 0.35, 0.6, 0.05),
-            terminal: TerminalColors::zeron(Appearance::Dark),
+            terminal: TerminalColors::openagents(Appearance::Dark),
             font_sans: "Geist".into(),
             font_sans_fixed: "Geist".into(),
             font_mono: "Geist Mono".into(),
@@ -1229,8 +1229,8 @@ impl Theme {
         let accent = accent_color.tokens(Appearance::Light);
         Self {
             appearance: Appearance::Light,
-            variant_id: "zeron-light".into(),
-            family_id: "zeron".into(),
+            variant_id: "openagents-light".into(),
+            family_id: "openagents".into(),
             accent_selection: AccentSelection::Preset(accent_color.into()),
             wallpaper_color: None,
             surface_preference: SurfacePreference::ThemeDefault,
@@ -1301,7 +1301,7 @@ impl Theme {
             diff_add: oklch(0.596, 0.145, 163.225), // emerald-600
             diff_del: oklch(0.577, 0.245, 27.325),  // red-600
             diff_hunk_bg: hsla(0.6, 0.35, 0.35, 0.07),
-            terminal: TerminalColors::zeron(Appearance::Light),
+            terminal: TerminalColors::openagents(Appearance::Light),
             font_sans: "Geist".into(),
             font_sans_fixed: "Geist".into(),
             font_mono: "Geist Mono".into(),
@@ -1373,7 +1373,7 @@ impl Theme {
         variant_id: &str,
         accent_selection: AccentSelection,
         surface_preference: SurfacePreference,
-        wallpaper_color: Option<zeron_theme::Color>,
+        wallpaper_color: Option<openagents_theme::Color>,
     ) -> Self {
         let registry = ThemeRegistry::active();
         let fallback_id = match appearance {
@@ -1412,7 +1412,7 @@ impl Theme {
     ) -> Self {
         let appearance = model_appearance(variant.appearance);
         let accent_color = match accent_selection {
-            AccentSelection::ThemeDefault => AccentColor::Zeron,
+            AccentSelection::ThemeDefault => AccentColor::OpenAgents,
             AccentSelection::Preset(preset) => preset.into(),
         };
         let mut theme = Self::for_preferences(appearance, accent_color);
@@ -2027,7 +2027,7 @@ mod tests {
 
     #[test]
     fn neutral_950_is_0a0a0a() {
-        // oklch(0.145 0 0) is Tailwind neutral-950, zeron's app background.
+        // oklch(0.145 0 0) is Tailwind neutral-950, openagents's app background.
         let rgb = srgb_u8(oklch_to_srgb(0.145, 0.0, 0.0));
         assert_eq!(rgb, [10, 10, 10]);
     }
@@ -2087,10 +2087,10 @@ mod tests {
     }
 
     #[test]
-    fn zeron_accent_is_the_exact_upstream_default() {
+    fn openagents_accent_is_the_exact_upstream_default() {
         let dark = Theme::dark();
         let light = Theme::light();
-        assert_eq!(dark.accent_color, AccentColor::Zeron);
+        assert_eq!(dark.accent_color, AccentColor::OpenAgents);
         assert_eq!(dark.accent, oklch(0.673, 0.182, 276.935));
         assert_eq!(dark.accent_strong, oklch(0.585, 0.233, 277.117));
         assert_eq!(dark.code_text, dark.accent);
@@ -2108,8 +2108,8 @@ mod tests {
     #[test]
     fn wallpaper_glass_interactions_lift_toward_white_in_both_appearances() {
         for (appearance, id) in [
-            (Appearance::Dark, "zeron-dark"),
-            (Appearance::Light, "zeron-light"),
+            (Appearance::Dark, "openagents-dark"),
+            (Appearance::Light, "openagents-light"),
         ] {
             let theme = Theme::for_selection_with_wallpaper(
                 appearance,
@@ -2129,8 +2129,8 @@ mod tests {
     #[test]
     fn wallpaper_colours_keep_text_readable_in_light_and_dark_modes() {
         for (appearance, id) in [
-            (Appearance::Dark, "zeron-dark"),
-            (Appearance::Light, "zeron-light"),
+            (Appearance::Dark, "openagents-dark"),
+            (Appearance::Light, "openagents-light"),
         ] {
             for color in [
                 ModelColor::BLACK,
@@ -2165,7 +2165,7 @@ mod tests {
         for old_default in ["violet", "indigo", "red", "purple"] {
             assert_eq!(
                 serde_json::from_str::<AccentColor>(&format!(r#""{old_default}""#)).unwrap(),
-                AccentColor::Zeron
+                AccentColor::OpenAgents
             );
         }
         assert_eq!(
@@ -2182,8 +2182,8 @@ mod tests {
             AccentSelection::ThemeDefault,
             SurfacePreference::ThemeDefault,
         );
-        let zeron = Theme::dark();
-        assert_ne!(catppuccin.surface, zeron.surface);
+        let openagents = Theme::dark();
+        assert_ne!(catppuccin.surface, openagents.surface);
         assert_eq!(catppuccin.busy, catppuccin.accent);
         assert_eq!(catppuccin.glyph.mid, catppuccin.accent);
         assert_eq!(catppuccin.surface_treatment, SurfaceTreatment::Opaque);
@@ -2211,14 +2211,14 @@ mod tests {
             assert!(frosted.is_frost());
         }
 
-        let opaque_zeron = Theme::for_selection(
+        let opaque_openagents = Theme::for_selection(
             Appearance::Dark,
-            "zeron-dark",
+            "openagents-dark",
             AccentSelection::ThemeDefault,
             SurfacePreference::Opaque,
         );
-        assert_eq!(opaque_zeron.surface_treatment, SurfaceTreatment::Opaque);
-        assert_eq!(opaque_zeron.glass(), opaque_zeron.surface);
+        assert_eq!(opaque_openagents.surface_treatment, SurfaceTreatment::Opaque);
+        assert_eq!(opaque_openagents.glass(), opaque_openagents.surface);
     }
 
     #[test]
@@ -2271,7 +2271,7 @@ mod tests {
     #[test]
     fn runtime_hardening_protects_native_custom_theme_edits() {
         let mut variant = ThemeRegistry::builtin()
-            .variant("zeron-dark")
+            .variant("openagents-dark")
             .unwrap()
             .clone();
         variant.colors.text = variant.colors.background;
@@ -2372,7 +2372,7 @@ mod tests {
                 assert_eq!(theme.success, baseline.success);
                 assert_eq!(theme.diff_add, baseline.diff_add);
                 assert_eq!(theme.diff_del, baseline.diff_del);
-                if accent != AccentColor::Zeron {
+                if accent != AccentColor::OpenAgents {
                     assert_ne!(theme.code_text, baseline.code_text);
                     assert_ne!(theme.busy, baseline.busy);
                     assert_ne!(theme.selection, baseline.selection);
@@ -2988,7 +2988,7 @@ mod tests {
     #[test]
     fn custom_light_popup_text_is_readable_and_preparation_is_idempotent() {
         let mut variant = ThemeRegistry::builtin()
-            .variant("zeron-light")
+            .variant("openagents-light")
             .unwrap()
             .clone();
         variant.id = "custom-light".to_owned();
@@ -3020,7 +3020,7 @@ mod tests {
     }
 
     #[test]
-    fn layout_numbers_match_zeron() {
+    fn layout_numbers_match_openagents() {
         assert_eq!(Theme::HEADER_HEIGHT, 44.0); // h-11
         assert_eq!(Theme::STATUS_STRIP_HEIGHT, 24.0); // h-6
         assert_eq!(Theme::BUBBLE_RADIUS, 16.0);

@@ -5,9 +5,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use loro::{Container, ContainerID, EventTriggerKind, Index, LoroDoc, LoroValue, ValueOrContainer};
-use zeron_doc::{SessionMessageEntry, TranscriptBaseline};
+use openagents_doc::{SessionMessageEntry, TranscriptBaseline};
 
-pub(crate) const REPLAY_ORIGIN: &str = "zeron:transcript-replay";
+pub(crate) const REPLAY_ORIGIN: &str = "openagents:transcript-replay";
 
 #[derive(Default)]
 struct Part {
@@ -137,7 +137,7 @@ impl TranscriptHistory {
 mod tests {
     use super::*;
     use std::sync::Mutex;
-    use zeron_doc::{MessagePart, MessageRole, MessageStatus, SegmentWriter, SessionDoc};
+    use openagents_doc::{MessagePart, MessageRole, MessageStatus, SegmentWriter, SessionDoc};
 
     fn entry(id: &str) -> SessionMessageEntry {
         SessionMessageEntry {

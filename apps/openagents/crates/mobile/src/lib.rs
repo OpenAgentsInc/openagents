@@ -1,15 +1,15 @@
-//! Zeron mobile core — the UniFFI surface shared by the iOS and Android apps.
+//! OpenAgents mobile core — the UniFFI surface shared by the iOS and Android apps.
 //!
-//! - [`client_ffi`]: account, workspace and session state (wraps `zeron-client`).
+//! - [`client_ffi`]: account, workspace and session state (wraps `openagents-client`).
 //! - [`layout`]: analytic transcript layout — markdown → measured display lists
-//!   (wraps `zeron-markdown` + `zeron-text`).
-//! - [`orb`]: the desktop's voice orb as paintable frames (wraps `zeron-orb`).
-//! - [`caption`]: the voice caption's streaming veil (wraps `zeron-veil`).
+//!   (wraps `openagents-markdown` + `openagents-text`).
+//! - [`orb`]: the desktop's voice orb as paintable frames (wraps `openagents-orb`).
+//! - [`caption`]: the voice caption's streaming veil (wraps `openagents-veil`).
 
 #[cfg(all(feature = "account-fixture", not(target_abi = "sim")))]
 compile_error!("The account fixture is only available for the iOS simulator.");
 
-uniffi::setup_scaffolding!("zeron_core");
+uniffi::setup_scaffolding!("openagents_core");
 
 pub mod caption;
 mod client_ffi;

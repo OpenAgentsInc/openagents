@@ -1,12 +1,12 @@
 //! Public SDK assignments enter the existing host-owned session command ledger.
 use super::*;
 use crate::{auth::Auth, registry::HarnessRegistry};
-use coder_account::{
+use openagents_account::{
     Lease,
     openagents::agents::{Access, assignments::*},
 };
 use std::sync::Arc;
-use zeron_proto::{AgentEvent, DoneStatus, SandboxLevel};
+use openagents_proto::{AgentEvent, DoneStatus, SandboxLevel};
 
 pub(super) struct AgentHost {
     auth: Auth,
@@ -84,8 +84,8 @@ impl DocHost {
         &self,
         chat_id: &str,
         harness: HarnessId,
-        mut request: zeron_proto::RunRequest,
-    ) -> Result<zeron_proto::RunRequest, EngineError> {
+        mut request: openagents_proto::RunRequest,
+    ) -> Result<openagents_proto::RunRequest, EngineError> {
         let Some(id) = request
             .model_options
             .get(ASSIGNMENT)
@@ -94,7 +94,7 @@ impl DocHost {
         else {
             return Ok(request);
         };
-        if !coder_account::openagents::agents::valid_id(&id) {
+        if !openagents_account::openagents::agents::valid_id(&id) {
             return Err(error("Choose the agent again."));
         }
         let host = self
@@ -224,7 +224,7 @@ impl DocHost {
                             if self.sessions().is_some_and(|s| s.turn_in_flight(&a.chat)) {
                                 AssignmentState::Running
                             } else if a.commands.iter().any(|c| {
-                                coder_account::openagents::agents::valid_id(&c.request_id)
+                                openagents_account::openagents::agents::valid_id(&c.request_id)
                                     && self
                                         .inner
                                         .store
@@ -287,7 +287,7 @@ impl DocHost {
         a.spec.validate().map_err(error)?;
         if a.commands
             .iter()
-            .any(|c| !coder_account::openagents::agents::valid_id(&c.request_id))
+            .any(|c| !openagents_account::openagents::agents::valid_id(&c.request_id))
         {
             return Err(error("The assignment could not be read."));
         }
@@ -386,7 +386,7 @@ impl DocHost {
         let harness: HarnessId =
             serde_json::from_value(a.definition.spec.runtime.clone().into())
                 .map_err(|_| error("This runtime is not supported on this computer."))?;
-        let config = zeron_proto::ChatConfig {
+        let config = openagents_proto::ChatConfig {
             harness,
             model: a.definition.spec.model.clone(),
             reasoning: None,
@@ -483,7 +483,7 @@ impl DocHost {
 pub(super) async fn admit_runtime(
     registry: &HarnessRegistry,
     harness: HarnessId,
-    spec: &coder_account::openagents::agents::AgentSpec,
+    spec: &openagents_account::openagents::agents::AgentSpec,
 ) -> Result<(), EngineError> {
     spec.validate().map_err(error)?;
     if !matches!(
@@ -544,7 +544,7 @@ fn validate_binding(
     chat: &str,
     project: Option<&str>,
     harness: HarnessId,
-    request: &zeron_proto::RunRequest,
+    request: &openagents_proto::RunRequest,
 ) -> Result<(), EngineError> {
     a.definition.spec.validate().map_err(error)?;
     if a.spec.host != host
@@ -638,9 +638,9 @@ fn terminal_events<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use coder_account::openagents::agents::{AgentDefinition, AgentSpec};
-    fn fixture() -> (Assignment, zeron_proto::RunRequest) {
-        let request:zeron_proto::RunRequest=serde_json::from_value(serde_json::json!({"prompt":"Test","cwd":"/workspace","sandbox":"read-only","model":null,"reasoning":null,"resume":null})).unwrap();
+    use openagents_account::openagents::agents::{AgentDefinition, AgentSpec};
+    fn fixture() -> (Assignment, openagents_proto::RunRequest) {
+        let request:openagents_proto::RunRequest=serde_json::from_value(serde_json::json!({"prompt":"Test","cwd":"/workspace","sandbox":"read-only","model":null,"reasoning":null,"resume":null})).unwrap();
         let a = Assignment {
             id: "a".repeat(64),
             revision: 1,

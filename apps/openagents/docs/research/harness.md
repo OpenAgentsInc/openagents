@@ -4,7 +4,7 @@
 - Claude Code: spawn installed `claude` CLI, speak stream-json directly. NO crates.io SDK dep
   (crate "claude-agent-sdk" is name-squatted w/ fake anthropics repo; `claude-codes` 2.1.x is a
   reasonable serde-types reference to vendor from). Python SDK source = authoritative wire spec.
-- Codex: spawn `codex app-server`, JSON-RPC 2.0 over stdio — port zeron's codex.ts (which already
+- Codex: spawn `codex app-server`, JSON-RPC 2.0 over stdio — port openagents's codex.ts (which already
   bypasses the SDK). Only option with token deltas + turn/steer + turn/interrupt + thread/resume +
   model/list + approval requests. codex-rs crates are NOT published (git dep not recommended).
   `codex exec --json` = CI-only surface (no deltas/steer/approvals).
@@ -30,7 +30,7 @@
   - CLI->client: can_use_tool {tool_name, input, permission_suggestions...} — reply
     {"behavior":"allow","updatedInput":{...}} or {"behavior":"deny","message":...}.
     AskUserQuestion ALWAYS reaches can_use_tool -> intercept, requestInput UI, allow with
-    updatedInput.answers. (Same mechanism as zeron claude.ts.)
+    updatedInput.answers. (Same mechanism as openagents claude.ts.)
   - interrupt: control request; >=2.1.205 response carries {still_queued:[uuids]}.
 - Resume: --resume=<session_id> (equals form; cwd-scoped), --continue, --fork-session.
 - One-shot interrupt: SIGTERM (kills bash trees, runs SessionEnd hooks, exit 143).

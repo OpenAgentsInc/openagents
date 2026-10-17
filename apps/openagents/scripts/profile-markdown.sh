@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Compare allocation churn using identical real captured markdown.
-# First build zeron-ui to populate deps; no extra crates are needed.
+# First build openagents-ui to populate deps; no extra crates are needed.
 # Usage: profile-markdown.sh TARGET/debug/deps TEXT_FILE [GIT_REF]
 # Omit GIT_REF for working-tree code. Output is JSON; bytes are allocator
 # requests/live heap, not RSS. The parser is compiled optimized in both runs.

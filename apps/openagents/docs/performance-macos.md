@@ -47,10 +47,10 @@ The profiling feature and its benchmark dependencies are not enabled in normal
 application builds.
 
 The final completed native replay image is pixel-identical to the baseline.
-With `ZERON_VERIFY_CACHE=1`, the example also compares the reused scene with a
+With `OPENAGENTS_VERIFY_CACHE=1`, the example also compares the reused scene with a
 forced fresh render after settling, hiding/restoring the sidebar and scrolling;
 all four comparisons are pixel-identical. With the bundled 80-section fixture,
-`ZERON_VERIFY_INTERACTIONS=1` also drives a text-selection drag, composer typing,
+`OPENAGENTS_VERIFY_INTERACTIONS=1` also drives a text-selection drag, composer typing,
 and model-menu open/outside-click dismissal. Selection, typed text and dismissal match a fresh
 render byte for byte. The model menu has no engine catalog in this isolated
 example, so its loading bars keep animating: the comparison excludes the menu
@@ -137,26 +137,26 @@ that window foreground and the display awake for the entire run. Replay uses
 an isolated profile and the bundled sanitized fixture; it makes no model API call.
 
 ```sh
-cargo build --release --locked -p zeron
-ZERON_FRAME_STATS=0 ZERON_PROFILE_IDLE_MS=10000 \
+cargo build --release --locked -p openagents
+OPENAGENTS_FRAME_STATS=0 OPENAGENTS_PROFILE_IDLE_MS=10000 \
   CLAUDE_CODE_EXECUTABLE="$PWD/scripts/replay-claude.py" \
-  ZERON_REPLAY_JOURNAL="$PWD/scripts/fixtures/resource-stream.jsonl" \
-  node scripts/resource-profile.mjs target/release/zeron /tmp/zeron-native claude-code
+  OPENAGENTS_REPLAY_JOURNAL="$PWD/scripts/fixtures/resource-stream.jsonl" \
+  node scripts/resource-profile.mjs target/release/openagents /tmp/openagents-native claude-code
 
 # UI-only offscreen replay of those verified protocol frames:
-cargo build --release --locked -p zeron-ui --features resource-profile \
+cargo build --release --locked -p openagents-ui --features resource-profile \
   --example macos-resource-profile
-ZERON_VERIFY_CACHE=1 ZERON_VERIFY_INTERACTIONS=1 ZERON_FRAME_STATS=0 \
+OPENAGENTS_VERIFY_CACHE=1 OPENAGENTS_VERIFY_INTERACTIONS=1 OPENAGENTS_FRAME_STATS=0 \
   target/release/examples/macos-resource-profile \
-  /tmp/zeron-native/frames.json /tmp/zeron-native-ui
+  /tmp/openagents-native/frames.json /tmp/openagents-native-ui
 
 # Larger/faster reply: use the foreground command above with these added:
-# ZERON_REPLAY_REPEAT=4 ZERON_REPLAY_DELAY_MS=10 ZERON_PROFILE_IDLE_MS=30000
+# OPENAGENTS_REPLAY_REPEAT=4 OPENAGENTS_REPLAY_DELAY_MS=10 OPENAGENTS_PROFILE_IDLE_MS=30000
 # and a fresh output directory.
 
 # Native counter usable with either process (CPU uses 100% per core):
-xcrun clang -O2 scripts/macos-resource-stat.c -o /tmp/zeron-stat
-/tmp/zeron-stat PID
+xcrun clang -O2 scripts/macos-resource-stat.c -o /tmp/openagents-stat
+/tmp/openagents-stat PID
 ```
 
 Compare fresh release builds in alternating order, with the same trace,

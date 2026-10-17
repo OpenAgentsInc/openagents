@@ -8,7 +8,7 @@ use crate::{
 };
 use std::collections::VecDeque;
 use std::sync::atomic::Ordering;
-use zeron_proto::voice::VoiceFrame;
+use openagents_proto::voice::VoiceFrame;
 
 pub struct AudioWorker {
     pub io: AudioIo,

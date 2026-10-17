@@ -55,7 +55,7 @@ boot, model discovery, installation, or network latency.
 
 These paths are outside provider-specific harnesses and host-platform branches.
 The failure mechanism can affect iOS/iPadOS and other frontends using
-`zeron-client`, with Linux, macOS, or Windows execution hosts, and desktop-to-
+`openagents-client`, with Linux, macOS, or Windows execution hosts, and desktop-to-
 desktop remote sends using the engine. The tests vary host platform metadata
 and RunRequest harness selection; they are not native Windows/macOS/iOS runs.
 
@@ -168,14 +168,14 @@ All 166 executed tests passed on Linux:
 
 | Check | Result |
 | --- | --- |
-| `cargo test -p zeron-client -- --test-threads=1` | 45 passed |
-| `cargo test -p zeron-sync --lib sync_jobs::tests -- --test-threads=1` | 3 passed |
-| `cargo test -p zeron-engine --lib remote_delivery -- --test-threads=1` | 2 passed |
-| `cargo test -p zeron-engine --lib sync_lifecycle_tests -- --test-threads=1` | 19 passed |
+| `cargo test -p openagents-client -- --test-threads=1` | 45 passed |
+| `cargo test -p openagents-sync --lib sync_jobs::tests -- --test-threads=1` | 3 passed |
+| `cargo test -p openagents-engine --lib remote_delivery -- --test-threads=1` | 2 passed |
+| `cargo test -p openagents-engine --lib sync_lifecycle_tests -- --test-threads=1` | 19 passed |
 | Engine `born_chat2_race`, `relay_delivery`, `rich_composer_delivery` suites | 7 passed |
 | Edge unit + real workerd suites (`npm test`) | 58 + 32 passed |
 | Edge TypeScript check and Worker bundle dry run | Passed |
-| `cargo check -p zeron-mobile` | Passed on Linux |
+| `cargo check -p openagents-mobile` | Passed on Linux |
 | Changed Rust code's rustfmt checks and `git diff --check` | Passed |
 
 The new server tests establish stored-byte and durable host-wake delivery, not

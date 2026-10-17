@@ -1,6 +1,6 @@
 //! The app account control. Local workspace and model-provider logins stay separate.
 use crate::theme::Theme;
-use coder_account::{Controller, Phase, Snapshot};
+use openagents_account::{Controller, Phase, Snapshot};
 use gpui::{
     App, AppContext, Context, Entity, Global, Render, SharedString, Task, Window, div, prelude::*,
     px,
@@ -20,7 +20,7 @@ pub struct AppAccount {
 }
 impl AppAccount {
     pub fn init(data: PathBuf, cx: &mut App) {
-        let configured = coder_account::desktop::configured(&data);
+        let configured = openagents_account::desktop::configured(&data);
         let mut credential = None;
         let entity = cx.new(|cx| match configured {
             Ok((controller, supplied)) => {

@@ -1,11 +1,11 @@
 //! Live account catalog and optional ACP run (requires authenticated Devin).
 //!
-//!     cargo run -p zeron-harness --example devin_models_probe
-//!     cargo run -p zeron-harness --example devin_models_probe -- gpt-6-astra-medium
+//!     cargo run -p openagents-harness --example devin_models_probe
+//!     cargo run -p openagents-harness --example devin_models_probe -- gpt-6-astra-medium
 
 use futures::StreamExt;
-use zeron_harness::{AcpHarness, CancellationToken, Harness, RunControls};
-use zeron_proto::{AgentEvent, DoneStatus, RunRequest, SandboxLevel};
+use openagents_harness::{AcpHarness, CancellationToken, Harness, RunControls};
+use openagents_proto::{AgentEvent, DoneStatus, RunRequest, SandboxLevel};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

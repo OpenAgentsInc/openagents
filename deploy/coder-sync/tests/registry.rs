@@ -2,13 +2,13 @@ use coder_sync::server::{
     self, StateData, config::AuthMode, db::Database, rooms::Rooms, storage::Bucket,
 };
 use futures::{SinkExt, StreamExt};
+use openagents_doc::{RegistryDoc, row_to_seed_op};
+use openagents_sync::RegistryClient;
 use serde_json::{Value, json};
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use zeron_doc::{RegistryDoc, row_to_seed_op};
-use zeron_sync::RegistryClient;
 type Socket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 struct Server {
@@ -98,7 +98,7 @@ async fn wait(mut predicate: impl FnMut() -> bool) {
     .expect("registry converges");
 }
 fn create(id: &str, title: &str, ms: i64) -> Value {
-    json!({"kind":"chats","id":id,"op":"upsert","set":{"title":title},"hlc":zeron_doc::encode_hlc(ms,0,"fixture")})
+    json!({"kind":"chats","id":id,"op":"upsert","set":{"title":title},"hlc":openagents_doc::encode_hlc(ms,0,"fixture")})
 }
 async fn send(ws: &mut Socket, frame: Value) {
     ws.send(tokio_tungstenite::tungstenite::Message::Text(
@@ -149,7 +149,8 @@ async fn pinned_registry_clients_sync_sessions_replay_tombstones_and_reconnect()
     );
     let state = server.get("/rows").await;
     let seq = state["seq"].as_u64().unwrap();
-    let rows: Vec<zeron_doc::RegistryRow> = serde_json::from_value(state["rows"].clone()).unwrap();
+    let rows: Vec<openagents_doc::RegistryRow> =
+        serde_json::from_value(state["rows"].clone()).unwrap();
     for batch in ["replay-one", "replay-two"] {
         let ack = server
             .push(json!({"batch":batch,"ops":rows.iter().map(row_to_seed_op).collect::<Vec<_>>()}))

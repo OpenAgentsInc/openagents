@@ -3,9 +3,9 @@ use coder_sync::server::{
     storage::Bucket,
 };
 use futures::{SinkExt, StreamExt};
+use openagents_rpc::{DeviceFrameHeader as Header, decode_device_frame, encode_device_frame};
 use serde_json::{Value, json};
 use std::time::Duration;
-use zeron_rpc::{DeviceFrameHeader as Header, decode_device_frame, encode_device_frame};
 trait FromHeader {
     fn with_from(self, from: &str) -> Self;
 }
@@ -453,10 +453,10 @@ impl Drop for Engine {
     }
 }
 #[tokio::test]
-#[ignore = "Requires ZERON_TEST_HEADLESS_BIN built from apps/openagents"]
+#[ignore = "Requires OPENAGENTS_TEST_HEADLESS_BIN built from apps/openagents"]
 async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
-    let binary = std::env::var("ZERON_TEST_HEADLESS_BIN")
-        .expect("Build pinned zeron, set ZERON_TEST_HEADLESS_BIN");
+    let binary = std::env::var("OPENAGENTS_TEST_HEADLESS_BIN")
+        .expect("Build pinned openagents, set OPENAGENTS_TEST_HEADLESS_BIN");
     let s = Server::start().await;
     let scratch = tempfile::Builder::new()
         .prefix("device-engine-")
@@ -482,13 +482,13 @@ async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
             .env("XDG_CONFIG_HOME", home.join("config"))
             .env("XDG_CACHE_HOME", home.join("cache"))
             .env("XDG_DATA_HOME", home.join("share"))
-            .env("ZERON_DATA_DIR", scratch.path().join("data"))
-            .env("ZERON_IPC_PORT", port.to_string())
-            .env("ZERON_EDGE_URL", &s.base)
-            .env("ZERON_EDGE_TOKEN", &s.account)
-            .env("ZERON_ORG_ID", &s.account)
-            .env("ZERON_WORKOS_CLIENT_ID", "")
-            .env("ZERON_HARNESS", "mock")
+            .env("OPENAGENTS_DATA_DIR", scratch.path().join("data"))
+            .env("OPENAGENTS_IPC_PORT", port.to_string())
+            .env("OPENAGENTS_EDGE_URL", &s.base)
+            .env("OPENAGENTS_EDGE_TOKEN", &s.account)
+            .env("OPENAGENTS_ORG_ID", &s.account)
+            .env("OPENAGENTS_WORKOS_CLIENT_ID", "")
+            .env("OPENAGENTS_HARNESS", "mock")
             .env("BROWSER", "/usr/bin/true")
             .env("NO_OPEN_BROWSER", "1")
             .current_dir(&home)
@@ -500,7 +500,7 @@ async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
     );
     let ipc = tokio::time::timeout(Duration::from_secs(40), async {
         loop {
-            if let Ok(c) = zeron_rpc::connect_ws(&format!("ws://127.0.0.1:{port}")).await {
+            if let Ok(c) = openagents_rpc::connect_ws(&format!("ws://127.0.0.1:{port}")).await {
                 break c;
             }
             assert!(
@@ -514,7 +514,7 @@ async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
     .await
     .unwrap();
     let device = ipc
-        .call(zeron_rpc::methods::LOCAL_DEVICE, json!({}))
+        .call(openagents_rpc::methods::LOCAL_DEVICE, json!({}))
         .await
         .unwrap()["deviceId"]
         .as_str()
@@ -538,18 +538,21 @@ async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
     })
     .await
     .unwrap();
-    let url = zeron_rpc::device_room::device_room_ws_url(
+    let url = openagents_rpc::device_room::device_room_ws_url(
         &s.base,
         &device,
         "client",
         Some("phone"),
         &s.account,
     );
-    let link = zeron_rpc::DeviceLink::connect(&url).await.unwrap();
+    let link = openagents_rpc::DeviceLink::connect(&url).await.unwrap();
     let client = link.client();
     let listing = tokio::time::timeout(
         Duration::from_secs(10),
-        client.call(zeron_rpc::methods::LIST_FOLDERS, json!({"path":folders})),
+        client.call(
+            openagents_rpc::methods::LIST_FOLDERS,
+            json!({"path":folders}),
+        ),
     )
     .await
     .unwrap()
@@ -563,16 +566,16 @@ async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
     );
     let space = uuid::Uuid::new_v4().to_string();
     let chat = uuid::Uuid::new_v4().to_string();
-    client.call(zeron_rpc::methods::MUTATE,json!({"op":"createSpace","spaceId":space,"deviceId":device,"path":folders,"name":"Relay fixture","gitDetected":false})).await.unwrap();
+    client.call(openagents_rpc::methods::MUTATE,json!({"op":"createSpace","spaceId":space,"deviceId":device,"path":folders,"name":"Relay fixture","gitDetected":false})).await.unwrap();
     client
         .call(
-            zeron_rpc::methods::MUTATE,
+            openagents_rpc::methods::MUTATE,
             json!({"op":"createChat","chatId":chat,"spaceId":space}),
         )
         .await
         .unwrap();
     let mut queue = client
-        .subscribe(zeron_rpc::methods::WATCH_QUEUE, json!({"chatId":chat}))
+        .subscribe(openagents_rpc::methods::WATCH_QUEUE, json!({"chatId":chat}))
         .await
         .unwrap();
     // Wait for subscription setup before queuing; writes and subscriptions run concurrently.
@@ -583,7 +586,7 @@ async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
     assert!(initial["items"].as_array().unwrap().is_empty());
     // A pending attachment keeps this fixture queued while the idle mock engine runs.
     let hold = format!("pending://{}/hold.png", uuid::Uuid::new_v4());
-    let queued=client.call(zeron_rpc::methods::QUEUE_MESSAGE,json!({"chatId":chat,"text":"Relay fixture message","attachments":[hold],"holdForTurnEnd":true})).await.unwrap();
+    let queued=client.call(openagents_rpc::methods::QUEUE_MESSAGE,json!({"chatId":chat,"text":"Relay fixture message","attachments":[hold],"holdForTurnEnd":true})).await.unwrap();
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             let state = queue.recv().await.unwrap();
@@ -601,35 +604,35 @@ async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
     .unwrap();
     let other = format!("stranger-{}", uuid::Uuid::new_v4());
     assert!(
-        matches!(tokio_tungstenite::connect_async(zeron_rpc::device_room::device_room_ws_url(&s.base,&device,"client",Some("intruder"),&other)).await.unwrap_err(),tokio_tungstenite::tungstenite::Error::Http(r) if r.status()==403)
+        matches!(tokio_tungstenite::connect_async(openagents_rpc::device_room::device_room_ws_url(&s.base,&device,"client",Some("intruder"),&other)).await.unwrap_err(),tokio_tungstenite::tungstenite::Error::Http(r) if r.status()==403)
     );
     client
         .call(
-            zeron_rpc::methods::REMOVE_QUEUED_MESSAGE,
+            openagents_rpc::methods::REMOVE_QUEUED_MESSAGE,
             json!({"chatId":chat,"id":queued["id"]}),
         )
         .await
         .unwrap();
     // These are the same engine-free client and image bytes the phone uses.
-    let phone = zeron_client::Client::new(
-        zeron_client::ClientConfig::new(&s.base, scratch.path().join("phone")),
-        zeron_client::Credentials::Dev {
+    let phone = openagents_client::Client::new(
+        openagents_client::ClientConfig::new(&s.base, scratch.path().join("phone")),
+        openagents_client::Credentials::Dev {
             user_id: s.account.clone(),
             org_id: s.account.clone(),
         },
-        std::sync::Arc::new(zeron_client::events::NullListener),
+        std::sync::Arc::new(openagents_client::events::NullListener),
     )
     .unwrap();
     let mut second_config =
-        zeron_client::ClientConfig::new(&s.base, scratch.path().join("second-viewer"));
+        openagents_client::ClientConfig::new(&s.base, scratch.path().join("second-viewer"));
     second_config.device_id = "second-viewer".into();
-    let second = zeron_client::Client::new(
+    let second = openagents_client::Client::new(
         second_config,
-        zeron_client::Credentials::Dev {
+        openagents_client::Credentials::Dev {
             user_id: s.account.clone(),
             org_id: s.account.clone(),
         },
-        std::sync::Arc::new(zeron_client::events::NullListener),
+        std::sync::Arc::new(openagents_client::events::NullListener),
     )
     .unwrap();
     let mut random = 0x12345678u32;
@@ -657,13 +660,13 @@ async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
     let c = phone.clone();
     let device_id = device.clone();
     let uploaded = png.clone();
-    let path = zeron_client::runtime::run(async move {
+    let path = openagents_client::runtime::run(async move {
         c.upload_attachment(&device_id, "fixture image.png", uploaded, None)
             .await
     })
     .await
     .unwrap();
-    let queued_image=client.call(zeron_rpc::methods::QUEUE_MESSAGE,json!({"chatId":chat,"text":"Image fixture","attachments":[path,hold],"holdForTurnEnd":true})).await.unwrap();
+    let queued_image=client.call(openagents_rpc::methods::QUEUE_MESSAGE,json!({"chatId":chat,"text":"Image fixture","attachments":[path,hold],"holdForTurnEnd":true})).await.unwrap();
     let attachment = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             let state = queue.recv().await.unwrap();
@@ -682,9 +685,11 @@ async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
     let c = second.clone();
     let device_id = device.clone();
     let downloaded =
-        zeron_client::runtime::run(async move { c.read_attachment(&device_id, &attachment).await })
-            .await
-            .unwrap();
+        openagents_client::runtime::run(
+            async move { c.read_attachment(&device_id, &attachment).await },
+        )
+        .await
+        .unwrap();
     assert_eq!(&**downloaded, &png);
     let rendered = image::load_from_memory(&downloaded).unwrap().to_rgba8();
     assert_eq!(rendered, pixels);
@@ -697,7 +702,7 @@ async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
     let c = phone.clone();
     let device_id = device.clone();
     assert!(
-        zeron_client::runtime::run(async move {
+        openagents_client::runtime::run(async move {
             c.upload_attachment(
                 &device_id,
                 "too-large.png",
@@ -713,19 +718,19 @@ async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
     second.shutdown();
     client
         .call(
-            zeron_rpc::methods::REMOVE_QUEUED_MESSAGE,
+            openagents_rpc::methods::REMOVE_QUEUED_MESSAGE,
             json!({"chatId":chat,"id":queued_image["id"]}),
         )
         .await
         .unwrap();
     client
         .call(
-            zeron_rpc::methods::MUTATE,
+            openagents_rpc::methods::MUTATE,
             json!({"op":"deleteSpace","spaceId":space}),
         )
         .await
         .unwrap();
-    ipc.call(zeron_rpc::methods::STOP_ENGINE, json!({}))
+    ipc.call(openagents_rpc::methods::STOP_ENGINE, json!({}))
         .await
         .unwrap();
     tokio::time::timeout(Duration::from_secs(10), async {

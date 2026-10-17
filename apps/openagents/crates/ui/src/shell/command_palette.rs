@@ -4,7 +4,7 @@
 use super::*;
 use crate::appearance::AppearanceMode;
 use crate::files::client::{FilesClientError, FilesRequestContext, WorkspaceFilesClient};
-use zeron_proto::{
+use openagents_proto::{
     SearchWorkspaceContentRequest, SearchWorkspaceFilesRequest, WorkspaceContentMatch,
     WorkspaceEntryKind, WorkspaceFileSearchMatch, WorkspaceSearchIndexState, WorkspaceTarget,
 };
@@ -157,7 +157,7 @@ fn search_error_message(error: &FilesClientError, what: &str) -> SharedString {
             } else {
                 "files"
             };
-            format!("The session's device runs an older zeron — update it to search its {subject}")
+            format!("The session's device runs an older openagents — update it to search its {subject}")
                 .into()
         }
         FilesClientError::Transport(_) => "The session's device is unreachable".into(),
@@ -1490,7 +1490,7 @@ mod tests {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -1498,7 +1498,7 @@ mod tests {
         (window, dir)
     }
 
-    fn chat(id: &str, parent: Option<&str>, archived: bool, age: i64) -> zeron_proto::Chat {
+    fn chat(id: &str, parent: Option<&str>, archived: bool, age: i64) -> openagents_proto::Chat {
         serde_json::from_value(serde_json::json!({
             "id": id, "title": id, "deviceId": "local", "archived": archived,
             "parentChatId": parent,
@@ -1610,7 +1610,7 @@ mod tests {
             .collect()
     }
 
-    fn titled(id: &str, title: &str, archived: bool, age: i64) -> zeron_proto::Chat {
+    fn titled(id: &str, title: &str, archived: bool, age: i64) -> openagents_proto::Chat {
         let mut chat = chat(id, None, archived, age);
         chat.title = Some(title.into());
         chat
@@ -1823,7 +1823,7 @@ mod tests {
         let (replies, inbound) = tokio::sync::mpsc::channel(64);
         let engine = {
             let _guard = runtime.enter();
-            crate::state::EngineHandle::from_test_client(zeron_rpc::RpcClient::new(out, inbound))
+            crate::state::EngineHandle::from_test_client(openagents_rpc::RpcClient::new(out, inbound))
         };
         let (window, dir) = palette_window(cx);
         window
@@ -2616,7 +2616,7 @@ mod tests {
             .update(cx, |shell, _, cx| {
                 shell.settings.sidebar_organization = SidebarOrganization::InOneList;
                 shell.state.update(cx, |state, _| {
-                    state.connection = zeron_proto::view::ConnectionStatus::Ready;
+                    state.connection = openagents_proto::view::ConnectionStatus::Ready;
                     state.workspace_scope = Some(WorkspaceScope::Local);
                     state.local_device_id = Some("local".into());
                     state.apply_chats(vec![
@@ -2802,9 +2802,9 @@ mod tests {
     fn search_matches_words_across_chat_metadata() {
         assert!(matches_query(
             "mac auth",
-            "Fix authentication Zeron @ MacBook main"
+            "Fix authentication OpenAgents @ MacBook main"
         ));
         assert!(matches_query("  ", "Any chat"));
-        assert!(!matches_query("mac windows", "Zeron @ MacBook"));
+        assert!(!matches_query("mac windows", "OpenAgents @ MacBook"));
     }
 }

@@ -7,7 +7,7 @@ use std::{
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
-use zeron_preview::mux::{self, BoxIo, Connector};
+use openagents_preview::mux::{self, BoxIo, Connector};
 struct Echo(Arc<AtomicUsize>);
 #[async_trait::async_trait]
 impl Connector for Echo {

@@ -10,7 +10,7 @@ Machine-readable evidence: [results.json](results.json).
    catalog. This overwrote a previously valid picker list. Cursor's live model
    endpoint returned an explicit **30 requests/minute** rate limit during the
    initial stress run. Refreshing on every picker open can trigger that limit.
-2. Different Zeron builds shared a mutable shim filename inside the SDK install.
+2. Different OpenAgents builds shared a mutable shim filename inside the SDK install.
    The local shared file had reverted to the older immediate-exit implementation.
    Its first 30 stress responses were truncated JSON; the next 20 returned rate
    limits. This observation is consistent with an old engine/build still being
@@ -34,8 +34,8 @@ Machine-readable evidence: [results.json](results.json).
 - The shim transmits only catalog fields used by the picker, including the
   default variant, and still drains stdout before exiting.
 - Shim filenames include their source digest and are atomically published.
-  Concurrent/older Zeron builds cannot overwrite the chosen implementation.
-- An OS lease serializes use of each Zeron-managed conversation store. A live
+  Concurrent/older OpenAgents builds cannot overwrite the chosen implementation.
+- An OS lease serializes use of each OpenAgents-managed conversation store. A live
   owner's PID marker prevents recovery from modifying an active process's store.
   Shutdown cancels/closes the SDK on EOF and signals; a parent-death watchdog
   also handles engine crashes when another process keeps the stdin pipe open.
@@ -67,7 +67,7 @@ Machine-readable evidence: [results.json](results.json).
 
 The native CLI and SDK have separate session stores. The native CLI check
 validates the updated CLI and its real session behavior; the harness tests
-exercise Zeron's actual SDK driver, not a substitution with CLI print mode.
+exercise OpenAgents's actual SDK driver, not a substitution with CLI print mode.
 All live prompts use disposable workspaces and synthetic tokens. The fault
 prompts deliberately write only a disposable side-effect counter and sleep.
 
@@ -98,34 +98,34 @@ The automated suite requires Node; subprocess catalog fixtures also use a POSIX
 shell. It does not need Cursor credentials or consume provider quota:
 
 ```sh
-cargo test -p zeron-harness -- --nocapture
+cargo test -p openagents-harness -- --nocapture
 ```
 
 The following live probes require an authenticated SDK and consume Cursor quota:
 
 ```sh
-cargo run -p zeron-harness --example cursor_stability_probe -- models 10000
-ZERON_CURSOR_STATE_DIR=$(mktemp -d) cargo run -p zeron-harness --example cursor_stability_probe -- sessions 20
-ZERON_CURSOR_STATE_DIR=$(mktemp -d) cargo run -p zeron-harness --example cursor_stability_probe -- parked 20
+cargo run -p openagents-harness --example cursor_stability_probe -- models 10000
+OPENAGENTS_CURSOR_STATE_DIR=$(mktemp -d) cargo run -p openagents-harness --example cursor_stability_probe -- sessions 20
+OPENAGENTS_CURSOR_STATE_DIR=$(mktemp -d) cargo run -p openagents-harness --example cursor_stability_probe -- parked 20
 ```
 
 Rapid live steering and cancellation (each consumes provider quota):
 
 ```sh
-ZERON_CURSOR_STATE_DIR=$(mktemp -d) cargo run -p zeron-harness --example cursor_stability_probe -- burst 24
-ZERON_CURSOR_STATE_DIR=$(mktemp -d) cargo run -p zeron-harness --example cursor_stability_probe -- cancel-burst 100
+OPENAGENTS_CURSOR_STATE_DIR=$(mktemp -d) cargo run -p openagents-harness --example cursor_stability_probe -- burst 24
+OPENAGENTS_CURSOR_STATE_DIR=$(mktemp -d) cargo run -p openagents-harness --example cursor_stability_probe -- cancel-burst 100
 ```
 
 To measure the live-catalog outage test (about two minutes, including real TTLs):
 
 ```sh
 cursor_stress_dir=$(mktemp -d)
-cargo run -p zeron-harness --example cursor_stability_probe -- resolve > "$cursor_stress_dir/launch.json"
+cargo run -p openagents-harness --example cursor_stability_probe -- resolve > "$cursor_stress_dir/launch.json"
 CURSOR_SDK_SHIM_EXECUTABLE="$PWD/crates/harness/tests/fixtures/cursor-stress-proxy.py" \
-ZERON_CURSOR_STRESS_LAUNCH="$cursor_stress_dir/launch.json" \
-ZERON_CURSOR_STRESS_COUNTER="$cursor_stress_dir/probes.log" \
-ZERON_CURSOR_STRESS_OUTAGE_FLAG="$cursor_stress_dir/outage" \
-cargo run -p zeron-harness --example cursor_stability_probe -- outage 10000
+OPENAGENTS_CURSOR_STRESS_LAUNCH="$cursor_stress_dir/launch.json" \
+OPENAGENTS_CURSOR_STRESS_COUNTER="$cursor_stress_dir/probes.log" \
+OPENAGENTS_CURSOR_STRESS_OUTAGE_FLAG="$cursor_stress_dir/outage" \
+cargo run -p openagents-harness --example cursor_stability_probe -- outage 10000
 wc -l "$cursor_stress_dir/probes.log"  # 3: live warm-up, injected failure, live recovery
 ```
 
@@ -133,8 +133,8 @@ To demonstrate the old persistent active-run failure with the same fixture:
 
 ```sh
 git show 4368e926:crates/harness/src/cursor/shim.mjs > /tmp/cursor-before-stability.mjs
-ZERON_CURSOR_TEST_SHIM=/tmp/cursor-before-stability.mjs \
-cargo test -p zeron-harness --test cursor_shim stress_100_interrupted_sessions -- --nocapture
+OPENAGENTS_CURSOR_TEST_SHIM=/tmp/cursor-before-stability.mjs \
+cargo test -p openagents-harness --test cursor_shim stress_100_interrupted_sessions -- --nocapture
 # Expected failure on the first recovery. Without the override, all 100 pass.
 ```
 
@@ -145,7 +145,7 @@ viewer alone cannot repair an older remote engine. Last-good catalogs survive
 refresh failures in that engine process; after an engine restart without network
 access, discovery reports an error until a live catalog can be obtained.
 
-Recovery applies to Zeron-managed stores, including existing per-agent stores
+Recovery applies to OpenAgents-managed stores, including existing per-agent stores
 with stale active runs. It does not rewrite unrelated native CLI or legacy
 SDK-default stores. A genuinely live owner is not cancelled by a competing
 resume. Missing/unreadable storage is reported instead of silently replacing a

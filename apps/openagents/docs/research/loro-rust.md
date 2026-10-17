@@ -19,7 +19,7 @@
   local ops from the bound peer (correct collaborative semantics).
 - EphemeralStore (loro::awareness::EphemeralStore): timestamp-LWW presence store, per-key timeout
   (JS default 30s), encode/encode_all/apply, local/remote/timeout subscription triggers. In BOTH
-  Rust and JS. (Zeron's %EPH presence maps to this.)
+  Rust and JS. (OpenAgents's %EPH presence maps to this.)
 - Serde: LoroValue impls Serialize/Deserialize, From<serde_json::Value>, ToJson trait.
 
 ## Mirror layer
@@ -31,7 +31,7 @@
   DocSync (to_doc/from_doc, #[loro(root)]), VersionGuard for stale heads.
   GAP: no incremental event-driven mirror — either re-hydrate subtrees on subscribe events or
   hand-write: subscribe_root -> walk event diffs (map/list/text deltas) -> patch cached Rust state.
-- Plan: build a small `zeron-mirror` crate: typed schema structs + incremental diff application over
+- Plan: build a small `openagents-mirror` crate: typed schema structs + incremental diff application over
   doc.subscribe events + lorosurgeon-style reconcile for writes (evaluate lorosurgeon as a dep vs
   hand-rolling; our schema is small and known).
 
@@ -43,7 +43,7 @@
 - ShallowSnapshot(frontiers): keeps state + history since frontiers; typically 70-90% smaller.
   StateOnly even smaller. Pattern: full Snapshot -> R2 cold storage, ShallowSnapshot for active use.
 - Sync caveat: peers can only sync if their version is after the shallow start — the session DO is
-  the natural sequencer for compaction (zeron already does daily frontier checkpoints >= RETAIN_DAYS).
+  the natural sequencer for compaction (openagents already does daily frontier checkpoints >= RETAIN_DAYS).
 - Redaction: loro::json::redact(json, version_range) — export_json_updates -> redact -> fresh doc.
 
 ## 2026 changes relevant to chat transcripts
@@ -54,4 +54,4 @@
   converge (useful for per-message metadata).
 - 1.12.0: atomic update imports w/ rollback.
 - Watch: #940 (storage-backed LoroDoc, open), #1040 (shallow-snapshot import w/ concurrent ops can
-  stall pending — compact at quiesced points; zeron's daily-checkpoint scheme should respect this).
+  stall pending — compact at quiesced points; openagents's daily-checkpoint scheme should respect this).

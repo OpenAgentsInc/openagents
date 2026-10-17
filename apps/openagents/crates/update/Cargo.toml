@@ -1,12 +1,12 @@
 [package]
-name = "zeron-update"
+name = "openagents-update"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [dependencies]
-coder-brand.workspace = true
+openagents-brand.workspace = true
 anyhow.workspace = true
 futures.workspace = true
 reqwest.workspace = true

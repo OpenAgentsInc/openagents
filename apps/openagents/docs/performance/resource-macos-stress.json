@@ -10,9 +10,9 @@
   "graphicsRevision": "0003b923354ea8938b2d0cadbd17ef93108e2ae5",
   "fixtureSha256": "8f91503a5a5f36b6344e347a81378696d707f4742b32e8670e76943bb1eca1cc",
   "environment": {
-    "ZERON_REPLAY_REPEAT": "4",
-    "ZERON_REPLAY_DELAY_MS": "10",
-    "ZERON_FRAME_STATS": "0"
+    "OPENAGENTS_REPLAY_REPEAT": "4",
+    "OPENAGENTS_REPLAY_DELAY_MS": "10",
+    "OPENAGENTS_FRAME_STATS": "0"
   },
   "runs": [
     {

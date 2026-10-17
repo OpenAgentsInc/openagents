@@ -1,12 +1,12 @@
 //! A minimal in-process edge for live-mode tests: one TCP port that routes
 //! WebSocket upgrades by path, like the Worker:
 //!
-//! - `/registry/{org}/ws` → proxied to zeron-sync's `MockRegistryServer`
+//! - `/registry/{org}/ws` → proxied to openagents-sync's `MockRegistryServer`
 //!   (the SAME merge fn as production);
 //! - `/chat2/{chat}/ws`   → a small chat2 room (hello/state, rowsReq/rows/
 //!   rowsDone, push/ack + broadcast, probe/probeOk) with no checkpoint;
 //! - `/device/{id}/ws`    → the DeviceRoom relay (host/client routing by
-//!   `from`/`to`, `host_offline` bounces) — port of zeron-rpc's test fake;
+//!   `from`/`to`, `host_offline` bounces) — port of openagents-rpc's test fake;
 //! - anything else (plain HTTP pulls, nudges) is refused, which the client
 //!   must tolerate (it falls back to the sockets).
 //!
@@ -27,8 +27,8 @@ use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
-use zeron_sync::chat_frames::{self, frame_type};
-use zeron_sync::registry::mock_server::MockRegistryServer;
+use openagents_sync::chat_frames::{self, frame_type};
+use openagents_sync::registry::mock_server::MockRegistryServer;
 
 #[derive(Clone, Debug)]
 pub struct Row {
@@ -495,12 +495,12 @@ fn relay_error(code: &str) -> Vec<u8> {
     json!({ "error": code }).to_string().into_bytes()
 }
 
-/// DeviceRoom semantics (edge/src/device-room.ts), as in zeron-rpc's fake.
+/// DeviceRoom semantics (edge/src/device-room.ts), as in openagents-rpc's fake.
 async fn serve_relay(ws: Ws, device: String, query: HashMap<String, String>, shared: Arc<Shared>) {
-    use zeron_rpc::device_room::{
+    use openagents_rpc::device_room::{
         CLIENT_CLOSED, CLIENT_GONE, HOST_CLOSED, HOST_OFFLINE, RELAY_KIND,
     };
-    use zeron_rpc::{DeviceFrameHeader, decode_device_frame, encode_device_frame};
+    use openagents_rpc::{DeviceFrameHeader, decode_device_frame, encode_device_frame};
 
     let is_host = query.get("role").map(String::as_str) == Some("host");
     let conn_id = query

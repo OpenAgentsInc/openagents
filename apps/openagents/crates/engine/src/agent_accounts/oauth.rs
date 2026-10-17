@@ -251,7 +251,7 @@ impl AgentAccounts {
             .http
             .post(format!("{login}/login/device/code"))
             .header("Accept", "application/json")
-            .header("User-Agent", "zeron")
+            .header("User-Agent", "openagents")
             .form(&[
                 ("client_id", OPENCODE_COPILOT_CLIENT_ID),
                 ("scope", "read:user"),
@@ -325,7 +325,7 @@ impl AgentAccounts {
                 .http
                 .post(format!("{login}/login/oauth/access_token"))
                 .header("Accept", "application/json")
-                .header("User-Agent", "zeron")
+                .header("User-Agent", "openagents")
                 .form(&[
                     ("client_id", OPENCODE_COPILOT_CLIENT_ID),
                     ("device_code", device_code),

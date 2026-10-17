@@ -21,7 +21,7 @@ use tokio_tungstenite::{
     tungstenite::{Message, client::IntoClientRequest, protocol::Role},
 };
 use tokio_util::sync::CancellationToken;
-use zeron_preview::{
+use openagents_preview::{
     catalog::Catalog,
     discovery::Listener,
     mux::{self, BoxIo, Connector},
@@ -159,7 +159,7 @@ fn observe(catalog: &Catalog, port: u16, pid: u32) {
                 args: vec!["node".into(), "vite".into()],
                 started_at: pid as u64,
                 address: ([127, 0, 0, 1], port).into(),
-                zeron_owned: true,
+                openagents_owned: true,
             },
         )])
         .unwrap();

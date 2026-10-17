@@ -8,8 +8,8 @@ use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 pub use view::{Caption, SpeakerActivity, VoiceView, orb_state};
-use zeron_proto::voice::{remote as wire, *};
-use zeron_rpc::{RpcClient, methods};
+use openagents_proto::voice::{remote as wire, *};
+use openagents_rpc::{RpcClient, methods};
 
 #[async_trait]
 pub trait VoiceMediaEndpoint: Send + Sync {
@@ -88,7 +88,7 @@ impl VoiceControlTransport for RpcTransport {
         )
     }
 }
-pub fn rejection(error: zeron_rpc::RpcError) -> VoiceRejection {
+pub fn rejection(error: openagents_rpc::RpcError) -> VoiceRejection {
     let message = error.to_string();
     for reason in [
         VoiceRejection::Disabled,
@@ -105,7 +105,7 @@ pub fn rejection(error: zeron_rpc::RpcError) -> VoiceRejection {
             return reason;
         }
     }
-    if matches!(error, zeron_rpc::RpcError::UnknownMethod(_)) {
+    if matches!(error, openagents_rpc::RpcError::UnknownMethod(_)) {
         VoiceRejection::Unsupported
     } else {
         VoiceRejection::Protocol
@@ -167,7 +167,7 @@ impl Drop for Scope {
 pub async fn run(
     control: Arc<dyn VoiceControlTransport>,
     media: Arc<dyn VoiceMediaEndpoint>,
-    config: zeron_proto::ChatConfig,
+    config: openagents_proto::ChatConfig,
     voice: Option<String>,
     cancel: CancellationToken,
     events: mpsc::Sender<VoiceEvent>,
@@ -509,7 +509,7 @@ mod tests {
             },
         })
     }
-    fn config() -> zeron_proto::ChatConfig {
+    fn config() -> openagents_proto::ChatConfig {
         serde_json::from_value(json!({"harness":"codex","sandbox":"danger-full-access"})).unwrap()
     }
     #[tokio::test]

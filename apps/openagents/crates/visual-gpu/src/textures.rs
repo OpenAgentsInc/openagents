@@ -5,8 +5,8 @@
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex, Weak};
 
-use zeron_visual::TextureData;
-use zeron_visual::image::{Image, Pixels};
+use openagents_visual::TextureData;
+use openagents_visual::image::{Image, Pixels};
 
 /// What the cache may hold on the GPU before it drops the least recently
 /// used.
@@ -109,7 +109,7 @@ impl Textures {
                 return entry.loaded.clone();
             }
         }
-        let loaded = zeron_visual::image::decode_texture(data)
+        let loaded = openagents_visual::image::decode_texture(data)
             .and_then(|image| upload(device, queue, &image, space));
         if let Err(error) = &loaded {
             tracing::warn!(%error, "visual texture unusable");

@@ -3,7 +3,7 @@
 //! tweens; content keeps its final width while the outer surface clips it.
 
 use super::*;
-use zeron_proto::{HarnessId, HarnessUpdatePhase as Phase, HarnessUpdateStatus};
+use openagents_proto::{HarnessId, HarnessUpdatePhase as Phase, HarnessUpdateStatus};
 
 pub(super) fn versionless_notification_key(device: &str, harness: HarnessId) -> String {
     format!("{device}:{harness:?}:versionless")
@@ -816,7 +816,7 @@ impl Shell {
             .iter()
             .map(|device| device.id.clone())
             .chain(std::iter::once(engine.engine_info().device_id.clone()))
-            .filter(|id| state.device_supports(id, zeron_proto::capabilities::HARNESS_UPDATES_V1))
+            .filter(|id| state.device_supports(id, openagents_proto::capabilities::HARNESS_UPDATES_V1))
             .map(|id| {
                 let online = state.device_online(&id, Utc::now());
                 (id, online)
@@ -894,7 +894,7 @@ impl Shell {
             .get(&device)
             .is_some_and(|updates| updates.online && updates.connected)
             || !state.device_online(&device, Utc::now())
-            || !state.device_supports(&device, zeron_proto::capabilities::HARNESS_UPDATES_V1)
+            || !state.device_supports(&device, openagents_proto::capabilities::HARNESS_UPDATES_V1)
         {
             return;
         }
@@ -905,7 +905,7 @@ impl Shell {
             let result = engine.client().call(method, params).await;
             this.update(cx, |shell, cx| {
                 if let Err(error) = result
-                    && !matches!(&error, zeron_rpc::RpcError::Failed(message)
+                    && !matches!(&error, openagents_rpc::RpcError::Failed(message)
                         if method == methods::APPLY_HARNESS_UPDATE && message == "update cancelled")
                 {
                     shell.show_notice(crate::toast::ToastKind::Error, format!("Agent update ({device}): {error}"), cx);

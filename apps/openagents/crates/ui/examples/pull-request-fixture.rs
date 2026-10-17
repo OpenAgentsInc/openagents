@@ -3,7 +3,7 @@
 //! local `gh`, whose calls are delayed on demand so loading states can be
 //! captured.
 //!
-//!   cargo run -p zeron-ui --example pull-request-fixture \
+//!   cargo run -p openagents-ui --example pull-request-fixture \
 //!     --features pull-request-fixture -- <output-dir> [owner/repo] [number]
 //!
 //! On Linux, run it on its own X display with a window manager; xdotool and
@@ -13,7 +13,7 @@
 //!   WAYLAND_DISPLAY= DISPLAY=:99 cargo run …
 use gpui::{AppContext, AsyncApp, Bounds, WindowBounds, WindowOptions, px, size};
 use std::{path::PathBuf, sync::Arc, time::Duration};
-use zeron_ui::*;
+use openagents_ui::*;
 
 async fn pause(cx: &mut AsyncApp, ms: u64) {
     cx.background_executor()
@@ -78,7 +78,7 @@ fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().with_env_filter("warn").init();
     let mut args = std::env::args().skip(1);
     let output = PathBuf::from(args.next().expect("output directory"));
-    let repository = args.next().unwrap_or_else(|| "zeronsh/zeron".into());
+    let repository = args.next().unwrap_or_else(|| "zeronsh/openagents".into());
     let number = args.next().unwrap_or_else(|| "591".into());
     std::fs::create_dir_all(&output)?;
     let temp = tempfile::tempdir()?;
@@ -108,21 +108,21 @@ fn main() -> anyhow::Result<()> {
     // SAFETY: set before any other thread starts.
     unsafe {
         std::env::set_var("PATH", path);
-        std::env::set_var("ZERON_OPEN_ROUTE", "pull-requests");
+        std::env::set_var("OPENAGENTS_OPEN_ROUTE", "pull-requests");
     }
     let set_delay = move |seconds: u64| std::fs::write(&delay, seconds.to_string());
 
     let runtime = tokio::runtime::Runtime::new()?;
     let core = runtime.block_on(async {
-        zeron_engine::EngineCore::assemble(
+        openagents_engine::EngineCore::assemble(
             &temp.path().join("engine"),
-            Arc::new(zeron_engine::default_registry()),
-            zeron_proto::HarnessId::ClaudeCode,
+            Arc::new(openagents_engine::default_registry()),
+            openagents_proto::HarnessId::ClaudeCode,
             None,
         )
     })?;
     let ipc_port = port();
-    let _ipc = runtime.block_on(zeron_engine::serve_ipc(ipc_port, core.rpc_service()))?;
+    let _ipc = runtime.block_on(openagents_engine::serve_ipc(ipc_port, core.rpc_service()))?;
     let data = temp.path().join("ui");
     std::fs::create_dir(&data)?;
     let boot = EngineBootConfig {
@@ -132,7 +132,7 @@ fn main() -> anyhow::Result<()> {
         edge_token: None,
         org_id: None,
         workos_client_id: None,
-        default_harness: zeron_proto::HarnessId::ClaudeCode,
+        default_harness: openagents_proto::HarnessId::ClaudeCode,
     };
     let handle = runtime.block_on(state::EngineHandle::bootstrap(boot.clone()))?;
     let device = core.device_id.clone();
@@ -149,7 +149,7 @@ fn main() -> anyhow::Result<()> {
             settings.last_pull_request_repository = Some(repository.clone());
             settings.pull_request_destination = settings::PullRequestDestination::Native;
             // Match the default desktop look: translucent, frosted surfaces.
-            settings.surface = zeron_theme::SurfacePreference::Frosted;
+            settings.surface = openagents_theme::SurfacePreference::Frosted;
             settings::init(settings.clone(), data.clone(), cx);
             let fonts = typography::register_fonts(cx);
             typography::init(
@@ -183,8 +183,8 @@ fn main() -> anyhow::Result<()> {
             let state = cx.new(|_| {
                 let mut s = state::AppState::new();
                 s.fixture_attachment_engine(handle);
-                s.connection = zeron_proto::view::ConnectionStatus::Ready;
-                s.workspace_scope = Some(zeron_proto::WorkspaceScope::Development);
+                s.connection = openagents_proto::view::ConnectionStatus::Ready;
+                s.workspace_scope = Some(openagents_proto::WorkspaceScope::Development);
                 s.local_device_id = Some(device.clone());
                 s.devices = vec![
                     serde_json::from_value(serde_json::json!({

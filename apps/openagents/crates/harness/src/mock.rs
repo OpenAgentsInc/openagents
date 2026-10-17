@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use futures::stream::BoxStream;
 
-use zeron_proto::{
+use openagents_proto::{
     AgentEvent, DoneStatus, HarnessId, Model, ReasoningLevel, RunRequest, SteeringMode,
     UserInputQuestion,
 };
@@ -15,7 +15,7 @@ pub struct MockHarness {
     pub script: Vec<AgentEvent>,
 }
 
-/// The scripted question set for the `ZERON_MOCK_QUESTION` variant (exercises
+/// The scripted question set for the `OPENAGENTS_MOCK_QUESTION` variant (exercises
 /// the QuestionPanel end-to-end: single-select page, multi-select page).
 fn question_script() -> Vec<UserInputQuestion> {
     vec![
@@ -103,17 +103,17 @@ impl Harness for MockHarness {
         request: RunRequest,
         controls: RunControls,
     ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
-        // Optional pacing knob for demos/manual testing: `ZERON_MOCK_DELAY_MS`
+        // Optional pacing knob for demos/manual testing: `OPENAGENTS_MOCK_DELAY_MS`
         // spaces the scripted events out so live-run UI states (working
         // indicator, streaming fade, trailing tool-group auto-open) are
         // observable. Unset (the default, and in tests) streams instantly.
-        let delay_ms = std::env::var("ZERON_MOCK_DELAY_MS")
+        let delay_ms = openagents_brand::env_var("OPENAGENTS_MOCK_DELAY_MS")
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(0);
         let delay = std::time::Duration::from_millis(delay_ms);
 
-        // Dev/testing knob: `ZERON_MOCK_QUESTION=1` swaps in a run that asks
+        // Dev/testing knob: `OPENAGENTS_MOCK_QUESTION=1` swaps in a run that asks
         // the user questions mid-stream via `controls.request_input` (the
         // engine mints the request id, emits `InputRequested`, and resolves it
         // from the `RespondInput` doc command) — the only data-side way to put
@@ -123,7 +123,7 @@ impl Harness for MockHarness {
             .get("mockQuestions")
             .and_then(serde_json::Value::as_bool)
             .unwrap_or(false)
-            || std::env::var("ZERON_MOCK_QUESTION")
+            || openagents_brand::env_var("OPENAGENTS_MOCK_QUESTION")
                 .ok()
                 .is_some_and(|v| !v.is_empty() && v != "0");
         if question_mode {
@@ -171,26 +171,26 @@ impl Harness for MockHarness {
             return Ok(stream.boxed());
         }
 
-        // Dev/testing knob: `ZERON_MOCK_REPEAT=N` loops the script body N times
+        // Dev/testing knob: `OPENAGENTS_MOCK_REPEAT=N` loops the script body N times
         // before the final Done — long single-reply streams for frame-cost /
         // smoothness measurement (the terminal `Done` is emitted exactly once,
         // at the very end).
-        let repeat = std::env::var("ZERON_MOCK_REPEAT")
+        let repeat = openagents_brand::env_var("OPENAGENTS_MOCK_REPEAT")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(1)
             .max(1);
-        // Dev/testing knob: `ZERON_MOCK_ERROR=1` appends a scripted error
+        // Dev/testing knob: `OPENAGENTS_MOCK_ERROR=1` appends a scripted error
         // before the terminal Done — the only data-side way to put the
         // transcript ErrorChip on screen with the mock harness.
-        let mock_error = std::env::var("ZERON_MOCK_ERROR")
+        let mock_error = openagents_brand::env_var("OPENAGENTS_MOCK_ERROR")
             .ok()
             .is_some_and(|v| !v.is_empty() && v != "0");
-        // Dev/testing knob: `ZERON_MOCK_TABLE=1` appends scripted GFM tables
+        // Dev/testing knob: `OPENAGENTS_MOCK_TABLE=1` appends scripted GFM tables
         // before the terminal Done — a plain 3-column grid plus a wide/uneven
         // one (long prose cell beside short cells, mixed alignment) for
         // table-styling checks against the reference app.
-        let mock_table = std::env::var("ZERON_MOCK_TABLE")
+        let mock_table = openagents_brand::env_var("OPENAGENTS_MOCK_TABLE")
             .ok()
             .is_some_and(|v| !v.is_empty() && v != "0");
         let done_ix = self
@@ -202,10 +202,10 @@ impl Harness for MockHarness {
         let error_event = mock_error.then(|| AgentEvent::Error {
             message: "Claude usage limit reached — try again after the limit resets.".into(),
         });
-        // Dev/testing knob: `ZERON_MOCK_CODE=1` appends rust + ts code blocks
+        // Dev/testing knob: `OPENAGENTS_MOCK_CODE=1` appends rust + ts code blocks
         // (keywords, strings, numbers, comments) plus inline code — for
         // syntax-palette and inline-code styling checks against the reference.
-        let mock_code = std::env::var("ZERON_MOCK_CODE")
+        let mock_code = openagents_brand::env_var("OPENAGENTS_MOCK_CODE")
             .ok()
             .is_some_and(|v| !v.is_empty() && v != "0");
         let code_event = mock_code.then(|| AgentEvent::TextDelta {
@@ -245,11 +245,11 @@ impl Harness for MockHarness {
                 | Sync | Session-room fan-out | 18ms |\n\n"
                 .into(),
         });
-        // Dev/testing knob: `ZERON_MOCK_MEND=1` appends a link/list-heavy
+        // Dev/testing knob: `OPENAGENTS_MOCK_MEND=1` appends a link/list-heavy
         // passage — bold-led list items, inline links, emphasis, strikethrough
         // — the shapes whose half-streamed markers the display mend
         // (crates/ui markdown/mend.rs) must hold steady while streaming.
-        let mock_mend = std::env::var("ZERON_MOCK_MEND")
+        let mock_mend = openagents_brand::env_var("OPENAGENTS_MOCK_MEND")
             .ok()
             .is_some_and(|v| !v.is_empty() && v != "0");
         let mend_event = mock_mend.then(|| AgentEvent::TextDelta {
@@ -264,11 +264,11 @@ impl Harness for MockHarness {
             )
             .into(),
         });
-        // Dev/testing knob: `ZERON_MOCK_THINKING=1` appends a markdown-heavy
+        // Dev/testing knob: `OPENAGENTS_MOCK_THINKING=1` appends a markdown-heavy
         // reasoning stream plus a command — the thought-process chip inside a
         // tool-group accordion, for checking that thinking renders styled
         // (bold/lists/inline code) instead of literal `**` markers.
-        let mock_thinking = std::env::var("ZERON_MOCK_THINKING")
+        let mock_thinking = openagents_brand::env_var("OPENAGENTS_MOCK_THINKING")
             .ok()
             .is_some_and(|v| !v.is_empty() && v != "0");
         let thinking_events = mock_thinking
@@ -293,7 +293,7 @@ impl Harness for MockHarness {
                     },
                     AgentEvent::ToolCall {
                         id: "mock-think-tool".into(),
-                        call: zeron_proto::ToolCall::Exec {
+                        call: openagents_proto::ToolCall::Exec {
                             command: "rg -n walletInsufficient apps/word/src | wc -l".into(),
                         },
                     },
@@ -307,14 +307,14 @@ impl Harness for MockHarness {
             })
             .into_iter()
             .flatten();
-        // Dev/testing knob: `ZERON_MOCK_SUBAGENT=1` appends two spawn chips
+        // Dev/testing knob: `OPENAGENTS_MOCK_SUBAGENT=1` appends two spawn chips
         // whose nested traffic arrives as tagged `AgentEvent::Subagent`
         // events — the only data-side way to put spawn chips (running → done)
         // AND their openable subagent docs on screen with the mock harness.
         // The second subagent finishes after a beat of nested activity, so a
-        // paced run (`ZERON_MOCK_DELAY_MS`) holds a Running chip long enough
+        // paced run (`OPENAGENTS_MOCK_DELAY_MS`) holds a Running chip long enough
         // to observe.
-        let mock_subagent = std::env::var("ZERON_MOCK_SUBAGENT")
+        let mock_subagent = openagents_brand::env_var("OPENAGENTS_MOCK_SUBAGENT")
             .ok()
             .is_some_and(|v| !v.is_empty() && v != "0");
         let subagent_events = mock_subagent
@@ -327,7 +327,7 @@ impl Harness for MockHarness {
                     id: id.into(),
                     // The claude-driver spawn shape: `Agent: {description}`
                     // with the task in the input (names the chip AND the tab).
-                    call: zeron_proto::ToolCall::Unknown {
+                    call: openagents_proto::ToolCall::Unknown {
                         name: format!("Agent: {description}"),
                         input: Some(serde_json::json!({
                             "description": description,
@@ -385,7 +385,7 @@ impl Harness for MockHarness {
                         "mock-sub-1",
                         AgentEvent::ToolCall {
                             id: "sub1-grep".into(),
-                            call: zeron_proto::ToolCall::Exec {
+                            call: openagents_proto::ToolCall::Exec {
                                 command: "grep -rn fold_event_into_parts crates".into(),
                             },
                         },
@@ -427,8 +427,8 @@ impl Harness for MockHarness {
                         "mock-sub-2",
                         AgentEvent::ToolCall {
                             id: "sub2-burst".into(),
-                            call: zeron_proto::ToolCall::Exec {
-                                command: "cargo test -p zeron-doc cadence_burst -- --nocapture".into(),
+                            call: openagents_proto::ToolCall::Exec {
+                                command: "cargo test -p openagents-doc cadence_burst -- --nocapture".into(),
                             },
                         },
                     ),
@@ -459,8 +459,8 @@ impl Harness for MockHarness {
                         "mock-sub-2",
                         AgentEvent::ToolCall {
                             id: "sub2-steer-burst".into(),
-                            call: zeron_proto::ToolCall::Exec {
-                                command: "cargo test -p zeron-doc cadence_steer -- --nocapture"
+                            call: openagents_proto::ToolCall::Exec {
+                                command: "cargo test -p openagents-doc cadence_steer -- --nocapture"
                                     .into(),
                             },
                         },
@@ -496,7 +496,7 @@ impl Harness for MockHarness {
                 [
                     AgentEvent::ToolCall {
                         id: "mock-code-tool".into(),
-                        call: zeron_proto::ToolCall::Exec {
+                        call: openagents_proto::ToolCall::Exec {
                             command: "set -e\nfixture_in_original=0\ngrep -rn \"veil\" crates/ui/src | wc -l".into(),
                         },
                     },
@@ -510,11 +510,11 @@ impl Harness for MockHarness {
             })
             .into_iter()
             .flatten();
-        // Dev/testing knob: `ZERON_MOCK_TODO=1` appends a checklist the agent
+        // Dev/testing knob: `OPENAGENTS_MOCK_TODO=1` appends a checklist the agent
         // works through — one `Todo` call rewritten in place per step, the way
         // TodoWrite does — so the todo panel's open / fold / finished states
-        // can be watched live (pace it with `ZERON_MOCK_DELAY_MS`).
-        let mock_todo = std::env::var("ZERON_MOCK_TODO")
+        // can be watched live (pace it with `OPENAGENTS_MOCK_DELAY_MS`).
+        let mock_todo = openagents_brand::env_var("OPENAGENTS_MOCK_TODO")
             .ok()
             .is_some_and(|v| !v.is_empty() && v != "0");
         let todo_events = mock_todo
@@ -529,19 +529,19 @@ impl Harness for MockHarness {
                     "Run the unit tests",
                     "Write the design note",
                 ];
-                let list = |active: usize| zeron_proto::ToolCall::Todo {
+                let list = |active: usize| openagents_proto::ToolCall::Todo {
                     items: STEPS
                         .iter()
                         .enumerate()
                         .map(|(ix, text)| {
-                            zeron_proto::TodoItem::new(
+                            openagents_proto::TodoItem::new(
                                 *text,
                                 match ix.cmp(&active) {
-                                    std::cmp::Ordering::Less => zeron_proto::TodoStatus::Completed,
+                                    std::cmp::Ordering::Less => openagents_proto::TodoStatus::Completed,
                                     std::cmp::Ordering::Equal => {
-                                        zeron_proto::TodoStatus::InProgress
+                                        openagents_proto::TodoStatus::InProgress
                                     }
-                                    std::cmp::Ordering::Greater => zeron_proto::TodoStatus::Pending,
+                                    std::cmp::Ordering::Greater => openagents_proto::TodoStatus::Pending,
                                 },
                             )
                         })
@@ -586,12 +586,12 @@ impl Harness for MockHarness {
             .chain(tail.iter().cloned())
             .map(Ok)
             .collect();
-        // Dev/testing knob: `ZERON_MOCK_CHARS=N` re-chunks every TextDelta
-        // into N-char deltas, so `ZERON_MOCK_DELAY_MS` paces *characters*
+        // Dev/testing knob: `OPENAGENTS_MOCK_CHARS=N` re-chunks every TextDelta
+        // into N-char deltas, so `OPENAGENTS_MOCK_DELAY_MS` paces *characters*
         // instead of whole scripted blocks — delta boundaries then land inside
         // inline markers and links, which is the streaming shape real
         // harnesses produce and the display mend exists for.
-        let chunk_chars = std::env::var("ZERON_MOCK_CHARS")
+        let chunk_chars = openagents_brand::env_var("OPENAGENTS_MOCK_CHARS")
             .ok()
             .and_then(|v| v.parse::<usize>().ok())
             .filter(|&n| n > 0);
@@ -629,13 +629,13 @@ impl Harness for MockHarness {
                 })
                 .collect(),
         };
-        // Dev/testing knob: `ZERON_MOCK_SUBAGENT_DELAY_MS` paces TAGGED
+        // Dev/testing knob: `OPENAGENTS_MOCK_SUBAGENT_DELAY_MS` paces TAGGED
         // (subagent) events on their own clock — the parent turn settles at
-        // `ZERON_MOCK_DELAY_MS` speed while the background subagents stream
+        // `OPENAGENTS_MOCK_DELAY_MS` speed while the background subagents stream
         // on slowly, which is exactly the eager-done shape live tabs are
         // observed under (and the only way a rig click can reliably land
         // inside a subagent's streaming window).
-        let sub_delay_ms = std::env::var("ZERON_MOCK_SUBAGENT_DELAY_MS")
+        let sub_delay_ms = openagents_brand::env_var("OPENAGENTS_MOCK_SUBAGENT_DELAY_MS")
             .ok()
             .and_then(|v| v.parse::<u64>().ok());
         if delay_ms == 0 && sub_delay_ms.is_none() {
@@ -675,7 +675,7 @@ mod fixture_tests {
                 Default::default()
             },
             cwd: ".".into(),
-            sandbox: zeron_proto::SandboxLevel::WorkspaceWrite,
+            sandbox: openagents_proto::SandboxLevel::WorkspaceWrite,
             auto_approve: false,
             resume: None,
             attachments: vec![],

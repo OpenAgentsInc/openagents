@@ -1,5 +1,5 @@
 [package]
-name = "zeron-text"
+name = "openagents-text"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,6 +7,7 @@ publish.workspace = true
 description = "Analytic text measurement and line layout (pretext-style prepare/layout split) for virtualized transcripts"
 
 [dependencies]
+openagents-brand.workspace = true
 rustybuzz = "0.20"
 icu_segmenter = { version = "~2.3", default-features = false, features = ["compiled_data", "unstable"] }
 icu_properties = "2.3"

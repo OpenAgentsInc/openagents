@@ -6,7 +6,7 @@
 //! fallback when a diff would approach transcript size) or the changed
 //! entries only — during streaming that is one entry per tick.
 //!
-//! Both viewports share this module (the `zeron_proto::view` rule: derivations
+//! Both viewports share this module (the `openagents_proto::view` rule: derivations
 //! that must not diverge per surface live in one place).
 
 use serde::{Deserialize, Serialize};
@@ -23,7 +23,7 @@ pub struct TranscriptUpdate {
     #[serde(flatten)]
     pub frame: TranscriptFrame,
     #[serde(default)]
-    pub context_usage: Option<zeron_proto::ContextUsage>,
+    pub context_usage: Option<openagents_proto::ContextUsage>,
     /// Historical content included in this update, independent of reset/delta
     /// encoding. Omitted on ordinary live updates and by older engines.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -513,7 +513,7 @@ mod context_update_tests {
         let value = serde_json::to_value(TranscriptUpdate {
             frame: TranscriptFrame::reset(&[]),
             replay_baseline: Some(TranscriptBaseline::default()),
-            context_usage: Some(zeron_proto::ContextUsage {
+            context_usage: Some(openagents_proto::ContextUsage {
                 tokens: Some(0),
                 window: Some(200000),
             }),
