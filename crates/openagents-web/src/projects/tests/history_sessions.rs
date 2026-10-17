@@ -15,12 +15,175 @@ fn form_csrf(html: &str) -> String {
 
 fn row(id: &str, title: &str, at: u64, project: Option<&str>) -> Value {
     json!({"id": id, "title": title, "project": project, "folder": "openagents",
-        "status": "working", "last_activity_unix": at,
+        "status": "working", "last_activity_unix": at, "home_transfer": true,
         "recap": "Fixing the sidebar badge", "workspace": "0123456789abcdef"})
 }
 
 #[tokio::test]
-async fn history_sessions_are_summaries_until_their_transcript_is_turned_on() {
+async fn continuation_round_trip_links_parts_without_publishing_the_seed() {
+    let world = world().await;
+    let api = signed_in(&world, "octo-local").await;
+    let owner = crate::chat_store::account_owner(&world.account_of("octo-local"));
+    let source = chat(CHAT, &owner, "Flower plan", None);
+    let revision = source.revision;
+    world.store.create(&source).await.unwrap();
+    let source_ref = json!({"id":CHAT,"home":"cloud"});
+    let computer_ref = json!({"id":ONE,"home":"computer:test-mac"});
+    let cloud_ref = json!({"id":TWO,"home":"cloud"});
+    let (status, moved) = api
+        .json(
+            &world,
+            "POST",
+            &format!("/v1/threads/{CHAT}/continue"),
+            json!({"revision":revision,"target":computer_ref}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{moved}");
+    let mut native = row(ONE, "Flower plan", 7, None);
+    native["status"] = json!("idle");
+    native["continues"] = source_ref.clone();
+    let (status, body) = api
+        .json(
+            &world,
+            "PUT",
+            "/v1/history/sessions/computers/test-mac",
+            json!({"name":"Test Mac","sessions":[native]}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let token = format!("sk-ant-{}", "synthetic-test-only-0000000000");
+    let seed = chat_home::Seed {
+        title: "Flower plan".into(),
+        summary: token.clone(),
+        recent: vec![chat_home::Turn {
+            role: chat_home::Role::User,
+            text: "The fictional flower is coral orchid.".into(),
+        }],
+    };
+    let transfer = json!({"revision":7,"target":cloud_ref,"seed":seed});
+    let route = format!("/v1/threads/{ONE}/continue");
+    let (status, returned) = api.json(&world, "POST", &route, transfer.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{returned}");
+    assert_eq!(returned["source"], computer_ref);
+    assert_eq!(returned["target"], cloud_ref);
+    assert!(!returned.to_string().contains(&token));
+    assert_eq!(api.json(&world, "POST", &route, transfer).await.1, returned);
+    assert_eq!(
+        api.json(
+            &world,
+            "POST",
+            &route,
+            json!({"revision":7,"target":{"id":THREE,"home":"cloud"},"seed":seed})
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let target = world.store.load(&owner, TWO).await.unwrap().unwrap();
+    assert!(
+        target.conversation.messages.is_empty(),
+        "context isn't a displayed assistant message"
+    );
+    assert_eq!(
+        target.conversation.links.continues.as_ref().unwrap().id,
+        ONE
+    );
+    let parts = crate::continuations::notice(&target.conversation)
+        .unwrap()
+        .into_string();
+    assert!(parts.contains(&format!("/chat/sessions/{ONE}")));
+    let stored = crate::continuation_receipts::load(&world.store, &owner, TWO)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        stored
+            .seed
+            .prompt("Which flower?")
+            .unwrap()
+            .contains("coral orchid")
+    );
+    let (_, index) = api
+        .json(&world, "GET", "/v1/history/sessions", Value::Null)
+        .await;
+    assert_eq!(index["data"][0]["continues"], source_ref);
+    assert_eq!(index["data"][0]["continued_by"], cloud_ref);
+    assert_eq!(index["data"][0]["transcript"], false);
+    assert!(!index.to_string().contains("coral orchid"));
+}
+
+#[tokio::test]
+async fn continuation_session_parent_requires_the_sources_destination_and_survives_old_publishers()
+{
+    let world = world().await;
+    let api = signed_in(&world, "octo-local").await;
+    let other = signed_in(&world, "quiet-local").await;
+    let owner = crate::chat_store::account_owner(&world.account_of("octo-local"));
+    let source = chat_home::PartRef {
+        id: CHAT.into(),
+        home: chat_home::Home::Cloud,
+    };
+    let target = chat_home::PartRef {
+        id: ONE.into(),
+        home: chat_home::Home::Computer("test-mac".into()),
+    };
+    let mut source_chat = chat(CHAT, &owner, "Earlier work", None);
+    world.store.create(&source_chat).await.unwrap();
+    let mut published = row(ONE, "New part", 5, None);
+    published["continues"] = serde_json::to_value(&source).unwrap();
+    let body = json!({"name":"Test Mac", "sessions":[published]});
+    let path = "/v1/history/sessions/computers/test-mac";
+    assert_eq!(
+        api.json(&world, "PUT", path, body.clone()).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    let loaded = world.store.load(&owner, CHAT).await.unwrap().unwrap();
+    source_chat.links.continued_by = Some(target);
+    source_chat.revision += 1;
+    world
+        .store
+        .compare_and_swap(&loaded, &source_chat)
+        .await
+        .unwrap();
+    assert_eq!(
+        other.json(&world, "PUT", path, body.clone()).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    let (status, response) = api.json(&world, "PUT", path, body.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{response}");
+    let mut old_body = body.clone();
+    old_body["sessions"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("continues");
+    assert_eq!(
+        api.json(&world, "PUT", path, old_body).await.0,
+        StatusCode::OK
+    );
+    let (_, detail) = api
+        .json(
+            &world,
+            "GET",
+            &format!("/v1/history/sessions/{ONE}"),
+            Value::Null,
+        )
+        .await;
+    assert_eq!(
+        detail["session"]["continues"],
+        serde_json::to_value(source).unwrap()
+    );
+    assert_eq!(detail["session"]["transcript"], false);
+    assert!(detail["messages"].is_null());
+    let mut changed = body;
+    changed["sessions"][0]["continues"]["id"] = json!(TWO);
+    assert_eq!(
+        api.json(&world, "PUT", path, changed).await.0,
+        StatusCode::BAD_REQUEST
+    );
+}
+
+#[tokio::test]
+async fn history_session_continuation_waits_for_the_computer_and_transcript_is_opt_in() {
     let world = world().await;
     let mut browser = Browser::default();
     browser.sign_in(&world, "octo-local").await;
@@ -170,6 +333,7 @@ async fn history_sessions_are_summaries_until_their_transcript_is_turned_on() {
     // Offline is said plainly.
     crate::session_index::update(&world.store, &owner, |index| {
         index.published.insert("test-mac".into(), 1);
+        index.rows.get_mut(ONE).unwrap().status = crate::session_index::Status::Idle;
         true
     })
     .await
@@ -177,7 +341,7 @@ async fn history_sessions_are_summaries_until_their_transcript_is_turned_on() {
     let page = browser.get(&world, &format!("/chat/sessions/{ONE}")).await;
     assert!(page.body.contains("Test Mac is offline"), "{}", page.body);
 
-    // Continue on the web: one linked chat, seeded with the summary.
+    // The web asks the computer to move; it never creates a second writable part itself.
     let csrf = form_csrf(&page.body);
     let started = browser
         .post(
@@ -187,16 +351,45 @@ async fn history_sessions_are_summaries_until_their_transcript_is_turned_on() {
         )
         .await;
     assert_eq!(started.status, StatusCode::SEE_OTHER, "{}", started.body);
-    let chat_path = started.location().to_owned();
-    let chat_id = chat_path.strip_prefix("/chat/").unwrap().to_owned();
-    let continued = world.store.load(&owner, &chat_id).await.unwrap().unwrap();
-    let links = &continued.conversation.links;
-    assert_eq!(links.continues.as_ref().unwrap().id, ONE);
-    assert!(
-        continued.conversation.messages[0]
-            .text
-            .contains("Fix the badge")
+    assert_eq!(
+        started.location(),
+        format!("/chat/sessions/{ONE}?continue=true")
     );
+    let moves_path = "/v1/history/sessions/computers/test-mac/moves";
+    let (_, moves) = api.json(&world, "GET", moves_path, Value::Null).await;
+    let request = &moves["moves"][0];
+    assert_eq!(request["source"], ONE);
+    let chat_id = request["target"]["id"].as_str().unwrap().to_owned();
+    assert!(world.store.load(&owner, &chat_id).await.unwrap().is_none());
+    let (_, invisible) = other.json(&world, "GET", moves_path, Value::Null).await;
+    assert_eq!(invisible["moves"], json!([]));
+    let waiting = browser.get(&world, started.location()).await;
+    assert!(waiting.body.contains("Waiting for Test Mac"));
+    // Simulate the computer's acknowledgment after its local read-only write.
+    let seed = chat_home::Seed::new("Earlier work", [(chat_home::Role::User, "Fix the badge")]);
+    let (status, moved) = api
+        .json(
+            &world,
+            "POST",
+            &format!("/v1/threads/{ONE}/continue"),
+            json!({"revision":now,"target":request["target"],"seed":seed}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{moved}");
+    let continued = world.store.load(&owner, &chat_id).await.unwrap().unwrap();
+    assert_eq!(
+        continued.conversation.links.continues.as_ref().unwrap().id,
+        ONE
+    );
+    assert!(continued.conversation.messages.is_empty());
+    assert!(
+        !crate::session_moves::pending(&world.store, &owner, ONE)
+            .await
+            .unwrap()
+    );
+    let chat_path = format!("/chat/{chat_id}");
+    let followed = browser.get(&world, started.location()).await;
+    assert_eq!(followed.location(), chat_path);
     let twice = browser
         .post(
             &world,

@@ -1,4 +1,5 @@
 //! A frozen source and one linked destination, using the chat store's existing CAS.
+use crate::continuation_receipts as receipts;
 use crate::{
     App,
     chat_store::{Conversation, Role},
@@ -11,7 +12,7 @@ use axum::{
     response::Response,
     routing::post,
 };
-use chat_home::{Claim, Continued, Home, PartRef, Seed};
+use chat_home::{Continued, Home, PartRef, Seed, TransferClaim};
 
 pub(crate) fn routes() -> Router<App> {
     Router::new().route("/v1/threads/{id}/continue", post(claim))
@@ -46,10 +47,10 @@ async fn claim(
         Err(r) => return r,
     };
     let caller = crate::chat_store::account_owner(&account);
-    let request = match serde_json::from_slice::<Claim>(&body) {
+    let request = match serde_json::from_slice::<TransferClaim>(&body) {
         Ok(v)
             if v.target.valid()
-                && matches!(v.target.home, Home::Computer(_))
+                && v.seed.as_ref().is_none_or(Seed::valid)
                 && v.target.id != id
                 && v.revision > 0 =>
         {
@@ -69,10 +70,18 @@ async fn claim(
     for _ in 0..6 {
         let loaded = match app.config.chat_store.load(&caller, &id).await {
             Ok(Some(v)) if !v.conversation.deleted() => v,
+            Ok(None) => return claim_computer(&app, &account, &caller, &id, &request).await,
             Ok(_) => return refused(StatusCode::NOT_FOUND, "not_found", "No such chat."),
             Err(e) => return stored(&e),
         };
         let chat = &loaded.conversation;
+        if request.seed.is_some() || request.target.home == home(chat) {
+            return refused(
+                StatusCode::BAD_REQUEST,
+                "invalid",
+                "Choose a different place to continue this chat.",
+            );
+        }
         if let Some(target) = &chat.links.continued_by {
             if target != &request.target {
                 return refused(
@@ -81,9 +90,10 @@ async fn claim(
                     "This chat already continues elsewhere.",
                 );
             }
-            return answer(
-                StatusCode::OK,
-                serde_json::to_value(Continued {
+            return finish(
+                &app,
+                &caller,
+                Continued {
                     account: account.clone(),
                     source: PartRef {
                         id: id.clone(),
@@ -91,9 +101,10 @@ async fn claim(
                     },
                     target: target.clone(),
                     seed: seed(chat),
-                })
-                .unwrap_or_default(),
-            );
+                },
+                chat.project.clone(),
+            )
+            .await;
         }
         if chat.working()
             || crate::pages::chat::work::running(chat)
@@ -131,25 +142,49 @@ async fn claim(
             Ok(None) => {}
             Err(e) => return stored(&e),
         }
+        match crate::session_index::load(&app.config.chat_store, &caller).await {
+            Ok(index) if index.rows.contains_key(&request.target.id) => {
+                return refused(
+                    StatusCode::CONFLICT,
+                    "invalid",
+                    "Choose a new conversation for this continuation.",
+                );
+            }
+            Ok(_) => {}
+            Err(error) => return stored(&error),
+        }
         let mut next = chat.clone();
+        let continued = match receipts::reserve(
+            &app.config.chat_store,
+            &caller,
+            &Continued {
+                account: account.clone(),
+                source: PartRef {
+                    id: id.clone(),
+                    home: home(chat),
+                },
+                target: request.target.clone(),
+                seed: seed(chat),
+            },
+        )
+        .await
+        {
+            Ok(value) => value,
+            Err(error) => return stored(&error),
+        };
+        if continued.seed != seed(chat) {
+            return refused(
+                StatusCode::CONFLICT,
+                "changed",
+                "This chat changed. Open it again before continuing.",
+            );
+        }
         next.links.continued_by = Some(request.target.clone());
         next.revision += 1;
         next.updated_unix = crate::chat_store::now_unix();
         match app.config.chat_store.compare_and_swap(&loaded, &next).await {
             Ok(_) => {
-                return answer(
-                    StatusCode::OK,
-                    serde_json::to_value(Continued {
-                        account: account.clone(),
-                        source: PartRef {
-                            id: id.clone(),
-                            home: home(chat),
-                        },
-                        target: request.target,
-                        seed: seed(chat),
-                    })
-                    .unwrap_or_default(),
-                );
+                return finish(&app, &caller, continued, chat.project.clone()).await;
             }
             Err(crate::chat_store::Error::Conflict) => continue,
             Err(e) => return stored(&e),
@@ -160,6 +195,149 @@ async fn claim(
         "changed",
         "This chat changed. Try again.",
     )
+}
+
+async fn finish(app: &App, owner: &str, continued: Continued, project: Option<String>) -> Response {
+    let continued = match receipts::reserve(&app.config.chat_store, owner, &continued).await {
+        Ok(value) => value,
+        Err(error) => return stored(&error),
+    };
+    if let Err(error) =
+        receipts::ensure_cloud(&app.config.chat_store, owner, &continued, project).await
+    {
+        return stored(&error);
+    }
+    if let Err(error) = crate::session_moves::complete(
+        &app.config.chat_store,
+        owner,
+        &continued.source.id,
+        &continued.target,
+    )
+    .await
+    {
+        return stored(&error);
+    }
+    answer(
+        StatusCode::OK,
+        serde_json::to_value(continued).unwrap_or_default(),
+    )
+}
+
+async fn claim_computer(
+    app: &App,
+    account: &str,
+    owner: &str,
+    id: &str,
+    request: &TransferClaim,
+) -> Response {
+    let index = match crate::session_index::load_linked(&app.config.chat_store, owner).await {
+        Ok(index) => index,
+        Err(error) => return stored(&error),
+    };
+    let Some(row) = index.rows.get(id) else {
+        return refused(StatusCode::NOT_FOUND, "not_found", "No such chat.");
+    };
+    let source = PartRef {
+        id: id.into(),
+        home: row.home(),
+    };
+    if request.target.home == source.home {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid",
+            "Choose a different place to continue this chat.",
+        );
+    }
+    if let Some(target) = &row.continued_by {
+        if target != &request.target {
+            return refused(
+                StatusCode::CONFLICT,
+                "continued",
+                "This chat already continues elsewhere.",
+            );
+        }
+    } else {
+        if !matches!(
+            row.status,
+            crate::session_index::Status::Idle | crate::session_index::Status::Errored
+        ) {
+            return refused(
+                StatusCode::CONFLICT,
+                "busy",
+                "Stop the current answer before continuing elsewhere.",
+            );
+        }
+        if request.revision != row.last_activity_unix.max(1) {
+            return refused(
+                StatusCode::CONFLICT,
+                "changed",
+                "This chat changed. Open it again before continuing.",
+            );
+        }
+        if index.rows.contains_key(&request.target.id) {
+            return refused(
+                StatusCode::CONFLICT,
+                "invalid",
+                "Choose a new conversation for this continuation.",
+            );
+        }
+        match app.config.chat_store.load(owner, &request.target.id).await {
+            Ok(Some(_)) => {
+                return refused(
+                    StatusCode::CONFLICT,
+                    "invalid",
+                    "Choose a new conversation for this continuation.",
+                );
+            }
+            Ok(None) => {}
+            Err(error) => return stored(&error),
+        }
+    }
+    let continued = match receipts::load(&app.config.chat_store, owner, &request.target.id).await {
+        Ok(Some(old))
+            if old.account == account
+                && receipts::source_matches(&old, &source, &request.target) =>
+        {
+            old
+        }
+        Ok(Some(_)) => {
+            return refused(
+                StatusCode::CONFLICT,
+                "invalid",
+                "Choose a new conversation for this continuation.",
+            );
+        }
+        Ok(None) => {
+            let Some(seed) = &request.seed else {
+                return refused(
+                    StatusCode::CONFLICT,
+                    "context_required",
+                    "Open this chat on its computer before continuing elsewhere.",
+                );
+            };
+            Continued {
+                account: account.into(),
+                source,
+                target: request.target.clone(),
+                seed: seed.with_recent(std::iter::empty()),
+            }
+        }
+        Err(error) => return stored(&error),
+    };
+    let continued = match receipts::reserve(&app.config.chat_store, owner, &continued).await {
+        Ok(value) => value,
+        Err(error) => return stored(&error),
+    };
+    match crate::session_index::link_part(&app.config.chat_store, owner, id, &request.target).await
+    {
+        Ok(true) => finish(app, owner, continued, row.project.clone()).await,
+        Ok(false) => refused(
+            StatusCode::CONFLICT,
+            "continued",
+            "This chat already continues elsewhere.",
+        ),
+        Err(error) => stored(&error),
+    }
 }
 
 pub(crate) fn check_update(
@@ -195,17 +373,36 @@ pub(crate) fn check_update(
 }
 
 pub(crate) fn notice(chat: &Conversation) -> Option<maud::Markup> {
-    let target = chat.links.continued_by.as_ref()?;
-    Some(match target.home {
-        Home::Cloud => {
-            let url = format!("/chat/{}", target.id);
-            maud::html! { p.oa-thread-notice { "This chat continues elsewhere. " a href=(url) { "Open the conversation" } } }
+    if chat.links.continues.is_none() && chat.links.continued_by.is_none() {
+        return None;
+    }
+    let view = chat_home::view::parts(
+        &format!("parts-{}", chat.id),
+        chat.revision.max(1),
+        &chat.links,
+    )
+    .ok()?;
+    let rust_native::Element::Stack { children, .. } = &view.view().root.element else {
+        return None;
+    };
+    Some(maud::html! { p.oa-thread-notice {
+        @if chat.links.continued_by.is_some() { "This chat continues elsewhere. " }
+        @for node in children {
+            @if let rust_native::Element::Button {label, intent: part, ..} = &node.element {
+                a href=(part_href(part)) { (label) } " "
+            }
         }
-        // Computer deep links also need an account workspace locator.
-        Home::Computer(_) => {
-            maud::html! { p.oa-thread-notice { "Continue this chat in the OpenAgents app." } }
-        }
-    })
+    } })
+}
+
+pub(crate) fn part_href(part: &PartRef) -> String {
+    let path = if matches!(&part.home, Home::Computer(device) if device != &format!("legacy-{}", part.id))
+    {
+        "chat/sessions"
+    } else {
+        "chat"
+    };
+    format!("/{path}/{}", part.id)
 }
 
 #[cfg(test)]

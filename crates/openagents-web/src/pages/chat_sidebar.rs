@@ -113,7 +113,7 @@ async fn sessions(app: &App, owner: &str) -> Vec<(crate::session_index::Row, boo
     if !crate::chat_store::is_account_owner(owner) {
         return Vec::new();
     }
-    let index = match crate::session_index::load(&app.config.chat_store, owner).await {
+    let index = match crate::session_index::load_linked(&app.config.chat_store, owner).await {
         Ok(index) => index,
         Err(error) => {
             eprintln!("openagents-web: session list: {error}");
@@ -124,6 +124,7 @@ async fn sessions(app: &App, owner: &str) -> Vec<(crate::session_index::Row, boo
     index
         .newest()
         .into_iter()
+        .filter(|row| row.continued_by.is_none())
         .map(|row| (row.clone(), index.online(row, now)))
         .collect()
 }
@@ -335,6 +336,9 @@ pub(crate) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: Vie
 /// Whether a chat matches the search: its title as you type, and its
 /// messages from two characters.
 fn matches(chat: &Conversation, q: &str) -> bool {
+    if chat.links.continued_by.is_some() {
+        return false;
+    }
     if q.is_empty() {
         return true;
     }
@@ -429,6 +433,9 @@ fn session_row(session: &crate::session_index::Row, online: bool, view: View<'_>
         detail.push(project.name.clone());
     }
     detail.push(format!("On {}", session.computer));
+    if session.continues.is_some() {
+        detail.push("Continued chat".into());
+    }
     if !online {
         detail.push("Offline".into());
     } else if let Some(label) = session.status.label() {

@@ -77,6 +77,10 @@ pub(crate) fn routes() -> Router<App> {
             put(choose_project),
         )
         .route("/v1/history/sessions/{id}/messages", put(upload))
+        .route(
+            "/v1/history/sessions/computers/{device}/moves",
+            get(crate::session_moves::route),
+        )
         .layer(axum::extract::DefaultBodyLimit::max(MAX_BODY))
 }
 
@@ -107,6 +111,10 @@ impl Status {
 #[serde(deny_unknown_fields)]
 pub(crate) struct Row {
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub continues: Option<PartRef>,
+    #[serde(default)]
+    pub home_transfer: bool,
     /// The computer's device id, its chat home.
     pub device: String,
     /// The computer's name, for showing.
@@ -221,7 +229,7 @@ pub(crate) fn view(index: &Index, row: &Row, now: u64, shared: bool) -> Value {
         "status": row.status, "last_activity_unix": row.last_activity_unix,
         "updated_unix": row.last_activity_unix, "recap": row.recap,
         "online": index.online(row, now), "transcript": shared,
-        "app_link": row.app_link(), "continued_by": row.continued_by,
+        "app_link": row.app_link(), "continues": row.continues, "continued_by": row.continued_by, "home_transfer": row.home_transfer,
     })
 }
 
@@ -358,6 +366,10 @@ pub(crate) async fn forget_computer(store: &Store, owner: &str, name: &str) -> R
 #[serde(deny_unknown_fields)]
 struct Published {
     id: String,
+    #[serde(default)]
+    home_transfer: bool,
+    #[serde(default)]
+    continues: Option<PartRef>,
     title: String,
     #[serde(default)]
     project: Option<String>,
@@ -422,6 +434,12 @@ fn checked(device: &str, body: &[u8]) -> Result<(String, Vec<Row>), &'static str
         if !chat_home::valid_id(&s.id) || !seen.insert(s.id.clone()) {
             return Err("Each session needs its own id.");
         }
+        if s.continues
+            .as_ref()
+            .is_some_and(|p| !p.valid() || p.id == s.id)
+        {
+            return Err("Open the earlier chat again.");
+        }
         if s.project
             .as_deref()
             .is_some_and(|p| !oa_auth::repos::project_id(p))
@@ -434,6 +452,8 @@ fn checked(device: &str, body: &[u8]) -> Result<(String, Vec<Row>), &'static str
         let title = clean(&s.title, MAX_TITLE);
         rows.push(Row {
             id: s.id,
+            home_transfer: s.home_transfer,
+            continues: s.continues,
             device: device.to_owned(),
             computer: name.clone(),
             title: if title.is_empty() {
@@ -474,9 +494,51 @@ async fn publish(
         Err(message) => return invalid(message),
     };
     let now = now_unix();
+    let previous = match load_linked(&app.config.chat_store, &owner).await {
+        Ok(index) => index,
+        Err(error) => return stored(&error),
+    };
+    for row in &rows {
+        let Some(source) = &row.continues else {
+            continue;
+        };
+        if let Some(old) = previous
+            .rows
+            .get(&row.id)
+            .and_then(|row| row.continues.as_ref())
+        {
+            if old != source {
+                return invalid("This chat continues from a different chat.");
+            }
+            continue;
+        }
+        let target = PartRef {
+            id: row.id.clone(),
+            home: row.home(),
+        };
+        let verified = match app.config.chat_store.load(&owner, &source.id).await {
+            Ok(Some(chat)) => {
+                crate::continuations::home(&chat.conversation) == source.home
+                    && chat.conversation.links.continued_by.as_ref() == Some(&target)
+            }
+            Ok(None) => previous.rows.get(&source.id).is_some_and(|row| {
+                row.home() == source.home && row.continued_by.as_ref() == Some(&target)
+            }),
+            Err(error) => return stored(&error),
+        };
+        if !verified {
+            return invalid("Open the earlier chat and choose where to continue it.");
+        }
+    }
     let ids: BTreeSet<String> = rows.iter().map(|r| r.id.clone()).collect();
     let mut dropped = Vec::new();
     let result = update(&app.config.chat_store, &owner, |index| {
+        let parents: BTreeMap<_, _> = index
+            .rows
+            .values()
+            .filter(|row| row.device == device)
+            .map(|row| (row.id.clone(), row.continues.clone()))
+            .collect();
         dropped = index
             .rows
             .values()
@@ -486,6 +548,9 @@ async fn publish(
         index.rows.retain(|_, r| r.device != device);
         for row in &rows {
             let mut row = row.clone();
+            if row.continues.is_none() {
+                row.continues = parents.get(&row.id).cloned().flatten();
+            }
             // Another computer's session with this id stays its own.
             if let Some(theirs) = index.rows.get(&row.id) {
                 if theirs.device != device {
@@ -558,19 +623,34 @@ pub(crate) async fn load_linked(store: &Store, owner: &str) -> Result<Index, Err
 /// Record that web chat `chat` continues session `id`. False when the
 /// session already continues in another chat.
 pub(crate) async fn link(store: &Store, owner: &str, id: &str, chat: &str) -> Result<bool, Error> {
+    link_part(
+        store,
+        owner,
+        id,
+        &PartRef {
+            id: chat.into(),
+            home: Home::Cloud,
+        },
+    )
+    .await
+}
+
+pub(crate) async fn link_part(
+    store: &Store,
+    owner: &str,
+    id: &str,
+    target: &PartRef,
+) -> Result<bool, Error> {
+    if !chat_home::valid_id(id) || !target.valid() || target.id == id {
+        return Err(Error::Invalid("Choose a new conversation."));
+    }
     let key = Store::owner_key(owner, LINKS)?;
     for _ in 0..6 {
         let (mut links, generation) = links(store, owner).await?;
         if let Some(part) = links.get(id) {
-            return Ok(part.id == chat);
+            return Ok(part == target);
         }
-        links.insert(
-            id.to_owned(),
-            PartRef {
-                id: chat.to_owned(),
-                home: Home::Cloud,
-            },
-        );
+        links.insert(id.to_owned(), target.clone());
         if links.len() > MAX_ROWS * 2 {
             let index = load(store, owner).await?;
             links.retain(|k, _| k == id || index.rows.contains_key(k));
@@ -949,6 +1029,7 @@ pub(crate) fn openapi(doc: &mut Value) {
         "status":{"enum":["idle","working","awaiting_input","errored"]},"last_activity_unix":{"type":"integer","minimum":0},"updated_unix":{"type":"integer","minimum":0},
         "recap":{"type":"string","maxLength":MAX_RECAP},"online":{"type":"boolean"},"transcript":{"type":"boolean","description":"The transcript is on for this caller, so a copy may be read."},
         "app_link":{"type":["string","null"],"description":"Opens the chat in the OpenAgents app."},
+        "continues":{"oneOf":[{"type":"null"},s("ChatPartRef")]},
         "continued_by":{"oneOf":[{"type":"null"},s("ChatPartRef")]}},
         "description":"A computer session's summary. It holds no transcript."}));
     schemas.insert("HistorySessions".into(), json!({"type":"object","required":["data"],"properties":{"data":{"type":"array","maxItems":MAX_ROWS,"items":s("HistorySession")}}}));
@@ -957,9 +1038,13 @@ pub(crate) fn openapi(doc: &mut Value) {
     schemas.insert("HistorySessionPublish".into(), json!({"type":"object","additionalProperties":false,"required":["name","sessions"],"properties":{"name":{"type":"string","maxLength":MAX_NAME},"sessions":{"type":"array","maxItems":MAX_PER_COMPUTER,"items":{"type":"object","additionalProperties":false,"required":["id","title","status","last_activity_unix"],"properties":{
         "id":{"type":"string","format":"uuid"},"title":{"type":"string"},"project":{"type":["string","null"]},"folder":{"type":["string","null"]},
         "status":{"enum":["idle","working","awaiting_input","errored"]},"last_activity_unix":{"type":"integer","minimum":0},"recap":{"type":"string"},
-        "workspace":{"type":["string","null"],"pattern":"^[0-9a-f]{16}$"}}}}}}));
+        "workspace":{"type":["string","null"],"pattern":"^[0-9a-f]{16}$"},"continues":s("ChatPartRef")}}}}}));
     schemas.insert("HistorySessionChoice".into(), json!({"type":"object","additionalProperties":false,"required":["on"],"properties":{"on":{"type":"boolean"}}}));
     schemas.insert("HistorySessionUpload".into(), json!({"type":"object","additionalProperties":false,"required":["messages"],"properties":{"messages":{"type":"array","items":s("HistorySessionMessage")}}}));
+    schemas.get_mut("HistorySession").unwrap()["properties"]["home_transfer"] = json!({"type":"boolean","description":"This computer can move a chat through its normal continuation path."});
+    schemas.get_mut("HistorySessionPublish").unwrap()["properties"]["sessions"]["items"]["properties"]
+        ["home_transfer"] = json!({"type":"boolean"});
+    schemas.insert("HistorySessionMoves".into(), json!({"type":"object","required":["moves"],"properties":{"moves":{"type":"array","maxItems":MAX_PER_COMPUTER,"items":{"type":"object","required":["source","target","expires_unix"],"properties":{"source":{"type":"string","format":"uuid"},"target":s("ChatPartRef"),"expires_unix":{"type":"integer","minimum":0}}}}}}));
     if let Some(list) = schemas.get_mut("HistoryList") {
         list["properties"]["sessions"] = json!({"type":"array","maxItems":MAX_ROWS,"items":s("HistorySession"),"description":"Computer sessions, newest first, on the first page only. They never join data or its paging."});
     }
@@ -995,4 +1080,5 @@ pub(crate) fn openapi(doc: &mut Value) {
     doc["paths"]["/v1/history/sessions/{id}/transcript"] = json!({"put": op("setSessionTranscript", vec![id.clone()], Some(body("HistorySessionChoice")), ok(json!({"type":"object","required":["on","transcript"],"properties":{"on":{"type":"boolean"},"transcript":{"type":"boolean"}}}), "The choice"), "Turn one chat's transcript on or off on the web. Off by default; off deletes the copy.")});
     doc["paths"]["/v1/history/sessions/projects/{project}/transcript"] = json!({"put": op("setProjectSessionTranscripts", vec![json!({"name":"project","in":"path","required":true,"schema":{"type":"string"}})], Some(body("HistorySessionChoice")), ok(s("HistorySessionChoice"), "The choice"), "Turn the transcripts of every session in a project on or off. Shared project members read a copy only by this choice.")});
     doc["paths"]["/v1/history/sessions/{id}/messages"] = json!({"put": op("uploadSessionTranscript", vec![id], Some(body("HistorySessionUpload")), ok(json!({"type":"object","required":["saved"],"properties":{"saved":{"type":"integer","minimum":0}}}), "Saved"), "Replace the read-only transcript copy. Refused with transcript_off while the transcript is off. Text is bounded and screened.")});
+    doc["paths"]["/v1/history/sessions/computers/{device}/moves"] = json!({"get": op("readSessionMoveRequests", vec![json!({"name":"device","in":"path","required":true,"schema":{"type":"string","pattern":"^[A-Za-z0-9._-]{1,128}$"}})], None, ok(s("HistorySessionMoves"), "Requests for this computer"), "Account-owned requests to continue on the web, plus existing cloud destinations whose local metadata may need repair. The owning computer freezes its old part before claiming the destination through continueChatOnComputer.")});
 }

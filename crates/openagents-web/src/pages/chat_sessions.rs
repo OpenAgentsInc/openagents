@@ -33,6 +33,8 @@ pub(crate) fn href(id: &str) -> String {
 #[derive(Default, Deserialize)]
 struct Scope {
     project: Option<String>,
+    #[serde(default, rename = "continue")]
+    follow: bool,
 }
 
 fn ago(at: u64, now: u64) -> String {
@@ -66,6 +68,21 @@ async fn page(
     let now = now_unix();
     let online = found.index.online(row, now);
     let own = found.owner == owner;
+    if scope.follow && own {
+        if let Some(part) = &row.continued_by {
+            return crate::chat_html::protect(
+                Redirect::to(&crate::continuations::part_href(part)).into_response(),
+            );
+        }
+    }
+    let pending = if own {
+        match crate::session_moves::pending(&app.config.chat_store, &owner, &id).await {
+            Ok(value) => value,
+            Err(error) => return unavailable(error),
+        }
+    } else {
+        false
+    };
     let copy = if found.transcript(&owner) {
         session_index::copy(&app.config.chat_store, &found.owner, &id)
             .await
@@ -99,7 +116,7 @@ async fn page(
         p.oa-session-state { (state.join(" · ")) }
         @if !online {
             p.oa-thread-notice #session-offline {
-                (row.computer) " is offline. You can read this summary, and continue the chat here."
+                (row.computer) " is offline. You can read this summary."
             }
         }
         @if !row.recap.is_empty() {
@@ -114,18 +131,24 @@ async fn page(
                     .pill(true))
             }
             @if let Some(chat) = &row.continued_by {
-                (ButtonLink::new("Open the web chat", format!("/chat/{}", chat.id))
+                (ButtonLink::new("Open the latest part", crate::continuations::part_href(chat))
                     .color(Color::Secondary)
                     .variant(ButtonVariant::Soft)
                     .size(ControlSize::Sm)
                     .pill(true))
-            } @else if own {
+            } @else if own && pending {
+                p.oa-thread-notice { "Waiting for " (row.computer) " to continue this chat." }
+            } @else if own && row.home_transfer && matches!(row.status, session_index::Status::Idle | session_index::Status::Errored) {
                 form method="post" action=(format!("/chat/sessions/{id}/continue")) {
                     input type="hidden" name="csrf" value=(token);
                     (Button::new("Continue on the web")
                         .kind(ButtonType::Submit)
                         .color(Color::Secondary))
                 }
+            } @else if own && !row.home_transfer {
+                p.oa-thread-notice { "Update OpenAgents on " (row.computer) " to continue this chat here." }
+            } @else if own {
+                p.oa-thread-notice { "Stop the current answer on " (row.computer) " before continuing here." }
             }
         }
         @if let Some(copy) = &copy {
@@ -148,7 +171,7 @@ async fn page(
     let sidebar = chat_list(&app, &owner, Some(&id), false, false).await;
     let page = UiPage::new(&row.title)
         .path(&href(&id))
-        .head(crate::chat_html::head())
+        .head(html! { (crate::chat_html::head()) @if scope.follow && pending { meta http-equiv="refresh" content="3"; } })
         .sidebar_section(sidebar)
         .content(crate::ui_page::prose(content));
     crate::chat_html::protect(page.respond(&headers))
@@ -177,44 +200,6 @@ pub(crate) fn continuation_id(owner: &str, id: &str) -> String {
     )
 }
 
-/// The first message of the web chat: where it came from, the recap, and
-/// the last few messages when the transcript is on.
-fn intro(row: &Row, copy: Option<&session_index::Copy>) -> String {
-    let mut text = format!(
-        "This continues \u{201c}{}\u{201d} from {}.",
-        row.title, row.computer
-    );
-    if !row.recap.is_empty() {
-        text.push_str(&format!("\n\nWhere it stood: {}", row.recap));
-    }
-    if let Some(copy) = copy {
-        let recent: Vec<String> = copy
-            .messages
-            .iter()
-            .filter(|m| m.role != CopiedRole::Tool)
-            .rev()
-            .take(4)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .map(|m| {
-                let who = if m.role == CopiedRole::User {
-                    "You"
-                } else {
-                    "Assistant"
-                };
-                let said: String = m.text.chars().take(300).collect();
-                format!("{who}: {said}")
-            })
-            .collect();
-        if !recent.is_empty() {
-            text.push_str("\n\nRecent messages:\n");
-            text.push_str(&recent.join("\n"));
-        }
-    }
-    text
-}
-
 async fn start(
     State(app): State<App>,
     headers: HeaderMap,
@@ -235,70 +220,39 @@ async fn start(
         Ok(found) => found,
         Err(_) => return missing(),
     };
-    let store = &app.config.chat_store;
-    let row = found.row().clone();
-    let chat = continuation_id(&owner, &id);
-    match session_index::link(store, &owner, &id, &chat).await {
-        Ok(true) => {}
-        Ok(false) => {
-            // Another chat continues it already: open that one.
-            if let Some(part) = &row.continued_by {
-                return crate::chat_html::protect(
-                    Redirect::to(&format!("/chat/{}", part.id)).into_response(),
-                );
-            }
-            return missing();
-        }
-        Err(e) => return unavailable(e),
+    let row = found.row();
+    if let Some(target) = &row.continued_by {
+        return crate::chat_html::protect(
+            Redirect::to(&crate::continuations::part_href(target)).into_response(),
+        );
     }
-    match store.load(&owner, &chat).await {
-        Ok(Some(_)) => {}
-        Ok(None) => {
-            let copy = if found.transcript(&owner) {
-                session_index::copy(store, &owner, &id).await.ok().flatten()
-            } else {
-                None
-            };
-            let now = now_unix();
-            let record = Conversation {
-                links: chat_home::Links {
-                    continues: Some(chat_home::PartRef {
-                        id: id.clone(),
-                        home: row.home(),
-                    }),
-                    continued_by: None,
-                },
-                id: chat.clone(),
-                owner: owner.clone(),
-                revision: 1,
-                title: row.title.chars().take(64).collect(),
-                messages: vec![Message {
-                    role: Role::Assistant,
-                    text: intro(&row, copy.as_ref()),
-                    request_id: None,
-                }],
-                pending: None,
-                requests: Vec::new(),
-                selection: None,
-                updated_unix: now,
-                pinned_unix: None,
-                archived_unix: None,
-                project: row.project.clone(),
-                filed: false,
-                terminal: None,
-                environment: None,
-                tasks: Vec::new(),
-                opened_unix: None,
-                branch: None,
-            };
-            match store.create(&record).await {
-                Ok(_) | Err(Error::Conflict) => {}
-                Err(e) => return unavailable(e),
-            }
-        }
-        Err(e) => return unavailable(e),
+    if !row.home_transfer {
+        return refusal(
+            StatusCode::CONFLICT,
+            "Update OpenAgents on this computer before continuing here.",
+        );
     }
-    crate::chat_html::protect(Redirect::to(&format!("/chat/{chat}")).into_response())
+    if !matches!(
+        row.status,
+        session_index::Status::Idle | session_index::Status::Errored
+    ) {
+        return refusal(
+            StatusCode::CONFLICT,
+            "Stop the current answer on this computer before continuing here.",
+        );
+    }
+    let target = chat_home::PartRef {
+        id: continuation_id(&owner, &id),
+        home: chat_home::Home::Cloud,
+    };
+    if let Err(error) =
+        crate::session_moves::begin(&app.config.chat_store, &owner, &id, target).await
+    {
+        return unavailable(error);
+    }
+    crate::chat_html::protect(
+        Redirect::to(&format!("/chat/sessions/{id}?continue=true")).into_response(),
+    )
 }
 
 fn now_unix() -> u64 {

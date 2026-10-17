@@ -2530,7 +2530,32 @@ async fn answer(
         )
         .await
     };
+    let (continuation, context_available) = if chat.links.continues.is_some() {
+        match crate::continuation_receipts::load(store, &owner, &chat.id).await {
+            Ok(Some(value))
+                if value.target.home == chat_home::Home::Cloud
+                    && value.target.id == chat.id
+                    && chat.links.continues.as_ref() == Some(&value.source)
+                    && value.seed.valid() =>
+            {
+                (Some(value), true)
+            }
+            // Older web continuations carried their context in an intro.
+            Ok(None)
+                if chat
+                    .messages
+                    .first()
+                    .is_some_and(|m| m.role == Role::Assistant) =>
+            {
+                (None, true)
+            }
+            _ => (None, false),
+        }
+    } else {
+        (None, true)
+    };
     let turns_with = |attached: &str| -> Vec<Turn> {
+        let mut context_added = false;
         chat.messages
             .iter()
             .filter(|m| !matches!(m.role, Role::Tool | Role::Thinking) && !m.text.is_empty())
@@ -2548,6 +2573,12 @@ async fn answer(
                         .collect::<String>();
                     if m.request_id.as_deref() == Some(request_id.as_str()) {
                         text.push_str(attached);
+                    }
+                    if !context_added {
+                        context_added = true;
+                        if let Some(context) = &continuation {
+                            text = context.seed.prompt(&text).unwrap_or(text);
+                        }
                     }
                     Turn::user(text)
                 } else {
@@ -2567,7 +2598,7 @@ async fn answer(
     let reply = Arc::new(Mutex::new(Reply::default()));
     // Storage admission must leave time for the bounded worker lifetime.
     // An expired admission never dispatches work, even if its write succeeded.
-    let door = if now().saturating_sub(admitted_at) <= 30 {
+    let door = if context_available && now().saturating_sub(admitted_at) <= 30 {
         app.config
             .chat
             .door(crate::ask::key(&app.config.ask_salt, &payer))
@@ -3004,6 +3035,9 @@ pub(crate) fn line_two(chat: &Conversation, repository: bool) -> Option<String> 
         return Some(format!("{surface} · {}", terminal.computer));
     }
     let mut parts = Vec::new();
+    if chat.links.continues.is_some() {
+        parts.push("Continued chat".into());
+    }
     if let Some(source) = chat.selection.as_ref().and_then(|s| s.repository.as_ref()) {
         if repository {
             parts.push(source.repository.clone());
