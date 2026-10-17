@@ -31,6 +31,10 @@ name = "chrome-fixture"
 required-features = ["account-fixture"]
 
 [[example]]
+name = "sidebar-capture"
+required-features = ["account-fixture"]
+
+[[example]]
 name = "macos-resource-profile"
 required-features = ["resource-profile"]
 

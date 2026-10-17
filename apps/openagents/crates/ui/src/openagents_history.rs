@@ -1,13 +1,17 @@
-//! Saved account chats in the sidebar. Selecting a row never selects an engine chat.
-use crate::theme::Theme;
+//! The account's saved chats behind the sidebar's one Sessions list
+//! (`shell::account_chats` draws them). Selecting a row never selects an
+//! engine chat.
+use gpui::{Context, EventEmitter, Task};
+use gpui_tokio::Tokio;
 use openagents_account::{
     Controller,
     history::{ExistingChat, History, LoadState, Snapshot},
-    openagents::HistoryProject,
 };
-use gpui::{Context, EventEmitter, Render, SharedString, Task, Window, div, prelude::*, px};
-use gpui_tokio::Tokio;
-use std::{future::Future, sync::Arc};
+use std::{
+    future::Future,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 #[derive(Clone)]
 pub enum HistoryEvent {
@@ -15,8 +19,10 @@ pub enum HistoryEvent {
     Reset,
     Close,
 }
-/// Unpinned chats shown before "Show all".
-const RECENT: usize = 10;
+/// How often the newest chats are read again while a window is active.
+const REFRESH_EVERY: Duration = Duration::from_secs(60);
+/// How often the panel checks whether the app came back to the front.
+const FOCUS_POLL: Duration = Duration::from_secs(3);
 
 pub struct HistoryPanel {
     account: Arc<Controller>,
@@ -24,15 +30,9 @@ pub struct HistoryPanel {
     pub snapshot: Snapshot,
     pub selected: Option<ExistingChat>,
     selected_scope: Option<Option<String>>,
-    archived: bool,
-    projects_open: bool,
-    /// The project picked in the sidebar's project filter (lowercased name):
-    /// OpenAgents chats from the project with the same name show with it.
-    local_project: Option<String>,
-    /// Every chat, not only the most recent.
-    show_all: bool,
     _account_watch: Task<()>,
     _history_watch: Task<()>,
+    _refresh: Task<()>,
 }
 impl EventEmitter<HistoryEvent> for HistoryPanel {}
 fn launch(f: impl Future<Output = ()> + Send + 'static, cx: &mut Context<HistoryPanel>) {
@@ -142,37 +142,52 @@ impl HistoryPanel {
                 }
             }
         });
+        // Read the newest chats again when the app comes back to the front
+        // and every minute while it stays there; a failed page is retried.
+        let refresh = cx.spawn(async move |this, cx| {
+            let mut was_active = true;
+            let mut last = Instant::now();
+            loop {
+                cx.background_executor().timer(FOCUS_POLL).await;
+                let Ok(()) = this.update(cx, |this, cx| {
+                    let active = cx.active_window().is_some();
+                    if active && (!was_active || last.elapsed() >= REFRESH_EVERY) {
+                        last = Instant::now();
+                        this.refresh(cx);
+                    }
+                    was_active = active;
+                }) else {
+                    break;
+                };
+            }
+        });
         Self {
             account,
             model,
             snapshot,
             selected: None,
             selected_scope: None,
-            archived: false,
-            projects_open: false,
-            local_project: None,
-            show_all: false,
             _account_watch: account_watch,
             _history_watch: history_watch,
+            _refresh: refresh,
         }
     }
-    fn more(&mut self, cx: &mut Context<Self>) {
+    /// The next page of older chats.
+    pub fn load_more(&mut self, cx: &mut Context<Self>) {
         launch(self.model.more(), cx);
     }
-    fn more_projects(&mut self, cx: &mut Context<Self>) {
-        launch(self.model.more_projects(), cx);
-    }
-    fn refresh(&mut self, cx: &mut Context<Self>) {
-        if self.model.refresh().is_ok() {
+    /// Read the newest chats and project names again, keeping loaded pages.
+    pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        if !self.snapshot.signed_in {
+            return;
+        }
+        if matches!(self.snapshot.state, LoadState::Failed { .. }) {
             launch(self.model.more(), cx);
+        } else {
+            launch(self.model.refresh_recent(), cx);
         }
         if self.model.refresh_projects().is_ok() {
             launch(self.model.more_projects(), cx);
-        }
-    }
-    pub fn project(&mut self, p: Option<&HistoryProject>, cx: &mut Context<Self>) {
-        if self.model.project(p).is_ok() {
-            launch(self.model.more(), cx);
         }
     }
     pub fn open(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -210,24 +225,6 @@ impl HistoryPanel {
         cx.emit(HistoryEvent::Open(target));
         cx.notify();
     }
-    /// Follow the sidebar's project filter (`None` is all projects).
-    pub fn set_local_project(&mut self, name: Option<String>) {
-        let name = name.map(|n| n.trim().to_lowercase()).filter(|n| !n.is_empty());
-        if self.local_project != name {
-            self.local_project = name;
-            self.show_all = false;
-        }
-    }
-
-    fn toggle_show_all(&mut self, cx: &mut Context<Self>) {
-        self.show_all = !self.show_all;
-        cx.notify();
-    }
-
-    pub fn toggle_archived(&mut self, cx: &mut Context<Self>) {
-        self.archived = !self.archived;
-        cx.notify();
-    }
     pub fn access_lost(&mut self, cx: &mut Context<Self>) {
         self.selected = None;
         self.selected_scope = None;
@@ -251,306 +248,9 @@ impl HistoryPanel {
         cx.emit(HistoryEvent::Close);
         cx.notify();
     }
-    fn button(
-        &self,
-        id: impl Into<gpui::ElementId>,
-        text: impl Into<SharedString>,
-        action: impl Fn(&mut Self, &mut Context<Self>) + 'static,
-        cx: &mut Context<Self>,
-    ) -> gpui::Stateful<gpui::Div> {
-        let hover = Theme::of(cx).glass_hover();
-        div()
-            .id(id)
-            .tab_index(0)
-            .role(gpui::Role::Button)
-            .cursor_pointer()
-            .px(px(6.))
-            .py(px(5.))
-            .rounded(px(5.))
-            .hover(move |s| s.bg(hover))
-            .on_click(cx.listener(move |this, _, _, cx| action(this, cx)))
-            .child(text.into())
-    }
 }
 impl Drop for HistoryPanel {
     fn drop(&mut self) {
         self.model.reset(None);
-    }
-}
-impl Render for HistoryPanel {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.snapshot = self.model.snapshot();
-        let theme = Theme::of(cx).clone();
-        let mut body = div()
-            .id("openagents-history")
-            .w_full()
-            .flex()
-            .flex_col()
-            .gap(px(4.))
-            .pb(px(12.))
-            .text_size(px(12.))
-            .text_color(theme.text);
-        body = body.child(
-            div()
-                .px(px(6.))
-                .text_color(theme.text_muted)
-                .child("OpenAgents chats"),
-        );
-        if !self.snapshot.signed_in {
-            return body.child(
-                div()
-                    .px(px(6.))
-                    .py(px(8.))
-                    .text_color(theme.text_muted)
-                    .child("Sign in to see your chats."),
-            );
-        }
-        body = body.child(
-            div()
-                .flex()
-                .items_center()
-                .justify_between()
-                .child(self.button("saved-refresh", "Refresh", Self::refresh, cx))
-                .child(self.button(
-                    "saved-archive",
-                    if self.archived { "Active" } else { "Archived" },
-                    Self::toggle_archived,
-                    cx,
-                ))
-                .child(self.button(
-                    "saved-projects",
-                    "Projects",
-                    |this, cx| {
-                        this.projects_open = !this.projects_open;
-                        cx.notify();
-                    },
-                    cx,
-                )),
-        );
-        if self.projects_open {
-            body = body.child(self.button(
-                "saved-all",
-                "My chats",
-                |this, cx| this.project(None, cx),
-                cx,
-            ));
-            let projects = self
-                .snapshot
-                .projects
-                .iter()
-                .filter(|p| p.shared)
-                .cloned()
-                .collect::<Vec<_>>();
-            for p in projects {
-                let name = p.name.clone();
-                let key = SharedString::from(format!("saved-project-{}", p.id()));
-                body = body.child(self.button(
-                    key,
-                    name,
-                    move |this, cx| this.project(Some(&p), cx),
-                    cx,
-                ));
-            }
-            match &self.snapshot.projects_state {
-                LoadState::Loading => body = body.child("Loading projects…"),
-                LoadState::Failed { message, .. } => {
-                    body = body
-                        .child(SharedString::from(message.clone()))
-                        .child(self.button(
-                            "saved-projects-retry",
-                            "Retry projects",
-                            Self::more_projects,
-                            cx,
-                        ))
-                }
-                _ if self.snapshot.more_projects => {
-                    body = body.child(self.button(
-                        "saved-projects-more",
-                        "More projects",
-                        Self::more_projects,
-                        cx,
-                    ))
-                }
-                _ => {}
-            }
-        }
-        if let Some(project) = &self.snapshot.project {
-            body = body.child(
-                div()
-                    .px(px(6.))
-                    .text_color(theme.text_muted)
-                    .child(SharedString::from(project.name.clone())),
-            );
-        }
-        match &self.snapshot.state {
-            LoadState::Loading => body = body.child(div().px(px(6.)).child("Loading chats…")),
-            LoadState::Failed { message, stale } => {
-                if *stale {
-                    body = body.child(
-                        div()
-                            .px(px(6.))
-                            .child("Couldn't refresh. Showing saved results."),
-                    );
-                }
-                body = body
-                    .child(div().px(px(6.)).child(SharedString::from(message.clone())))
-                    .child(self.button("saved-retry", "Retry", Self::more, cx));
-            }
-            _ => {}
-        }
-        if !self.snapshot.rows.is_empty() {
-            body = body.child(div().px(px(6.)).text_color(theme.text_faint).child(
-                SharedString::from(format!("{} chats loaded", self.snapshot.rows.len())),
-            ));
-        }
-        let project_name = |id: &Option<String>| {
-            id.as_ref()
-                .and_then(|id| self.snapshot.projects.iter().find(|p| p.id() == id))
-                .map(|p| p.name.clone())
-        };
-        // Newest first. With a project picked in the sidebar's filter, only
-        // chats from the project of the same name (an explicit OpenAgents
-        // project scope above already narrows the list itself).
-        let mut rows = self.snapshot.visible_rows(self.archived);
-        if self.snapshot.project.is_none()
-            && let Some(local) = &self.local_project
-        {
-            rows.retain(|row| {
-                project_name(&row.project).is_some_and(|name| name.trim().to_lowercase() == *local)
-            });
-            if rows.is_empty() {
-                body = body.child(
-                    div()
-                        .px(px(6.))
-                        .pt(px(8.))
-                        .text_color(theme.text_muted)
-                        .child("No OpenAgents chats in this project."),
-                );
-            }
-        }
-        let total = rows.len();
-        let pinned = rows.iter().filter(|r| r.pinned_unix.is_some()).count();
-        if !self.show_all {
-            rows.truncate((pinned + RECENT).min(total));
-        }
-        let mut group = None;
-        for row in rows {
-            let next = (row.pinned_unix.is_some(), None::<String>);
-            if group.as_ref() != Some(&next) {
-                let label = if next.0 { "Pinned" } else { "Recent" }.to_owned();
-                body = body.child(
-                    div()
-                        .px(px(6.))
-                        .pt(px(8.))
-                        .text_color(theme.text_faint)
-                        .child(SharedString::from(label)),
-                );
-                group = Some(next);
-            }
-            let id = row.chat.id().to_owned();
-            let selected = self
-                .selected
-                .as_ref()
-                .is_some_and(|s| s.chat == row.chat && s.is_current());
-            let source = match row.source.as_str() {
-                "web" => "Web",
-                "terminal" => "Terminal",
-                "phone" => "Phone",
-                _ => "OpenAgents",
-            };
-            let activity =
-                chrono::DateTime::from_timestamp(row.updated_unix.min(i64::MAX as u64) as i64, 0)
-                    .filter(|_| row.updated_unix != 0)
-                    .map(|d| d.format("%b %e, %Y").to_string())
-                    .unwrap_or_default();
-            let mut detail = source.to_owned();
-            if row.links.continues.is_some() {
-                detail.insert_str(0, "Continued chat · ");
-            }
-            if let Some(project) = project_name(&row.project) {
-                detail.push_str(&format!(" · {project}"));
-            }
-            if !activity.is_empty() {
-                detail.push_str(&format!(" · {activity}"));
-            }
-            body =
-                body.child(
-                    div()
-                        .id(SharedString::from(format!(
-                            "saved:{}:{}:{}:{}:{}",
-                            row.chat.deployment().api_base(),
-                            row.chat.deployment().website(),
-                            row.chat.account(),
-                            row.source.as_str(),
-                            id
-                        )))
-                        .tab_index(0)
-                        .role(gpui::Role::Button)
-                        .aria_label(SharedString::from(row.title.clone()))
-                        .cursor_pointer()
-                        .px(px(8.))
-                        .py(px(7.))
-                        .rounded(px(6.))
-                        .when(selected, |s| s.bg(theme.glass_hover()))
-                        .hover(|s| s.bg(theme.glass_hover()))
-                        .on_click(cx.listener(move |this, _, _, cx| this.open(&id, cx)))
-                        .child(div().truncate().child(SharedString::from(
-                            if row.title.is_empty() {
-                                "Untitled chat".into()
-                            } else {
-                                row.title
-                            },
-                        )))
-                        .child(
-                            div()
-                                .text_size(px(10.))
-                                .text_color(theme.text_muted)
-                                .child(SharedString::from(detail)),
-                        ),
-                );
-        }
-        if total > pinned + RECENT {
-            body = body.child(self.button(
-                "saved-show-all",
-                if self.show_all {
-                    "Show fewer".to_owned()
-                } else {
-                    format!("Show all {total}")
-                },
-                Self::toggle_show_all,
-                cx,
-            ));
-        }
-        match &self.snapshot.state {
-            LoadState::Loading | LoadState::Failed { .. } => {}
-            LoadState::Ready if !self.show_all && total > pinned + RECENT => {}
-            LoadState::Ready => {
-                let count = self
-                    .snapshot
-                    .rows
-                    .iter()
-                    .filter(|r| r.archived_unix.is_some() == self.archived)
-                    .count();
-                if count == 0 {
-                    body = body.child(div().px(px(6.)).child(if self.archived {
-                        "No archived chats in these results."
-                    } else {
-                        "No chats in these results."
-                    }));
-                }
-                if self.snapshot.has_more {
-                    body = body.child(self.button("saved-more", "Load more chats", Self::more, cx));
-                } else {
-                    body = body.child(
-                        div()
-                            .px(px(6.))
-                            .text_color(theme.text_faint)
-                            .child("All chats loaded."),
-                    );
-                }
-            }
-            LoadState::Idle => {}
-        }
-        body
     }
 }

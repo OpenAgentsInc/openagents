@@ -5821,16 +5821,23 @@ impl Shell {
         const PAGE: usize = ARCHIVED_PAGE_ROWS;
         let now = Utc::now();
         let rows = self.archived_sidebar_chats(cx);
-        if rows.is_empty() {
+        // OpenAgents (#11960): the account's archived chats share this shelf.
+        let account = self.account_rows(true, cx);
+        if rows.is_empty() && account.is_empty() {
             return None;
         }
         let rows: Vec<_> = {
             let state = self.state.read(cx);
-            rows.into_iter()
+            let local = rows
+                .into_iter()
                 .map(|chat| {
-                    self.sidebar_chat_data(state.display_status_for(&chat, now), chat, state)
+                    (
+                        self.sidebar_activity(&chat),
+                        self.sidebar_chat_data(state.display_status_for(&chat, now), chat, state),
+                    )
                 })
-                .collect()
+                .collect();
+            super::account_chats::merge_by_activity(local, account)
         };
         let total = rows.len();
         let open = self.archived_open;
@@ -5848,13 +5855,14 @@ impl Shell {
             + rows
                 .iter()
                 .take(shown)
-                .map(|row| {
-                    sidebar_row_height(
+                .map(|row| match row {
+                    super::account_chats::Merged::Local(row) => sidebar_row_height(
                         self.settings.sidebar_compact,
                         self.settings.sidebar_show_project_label,
                         row.branch.is_some(),
                         row.change_request.is_some(),
-                    )
+                    ),
+                    super::account_chats::Merged::Account(_) => self.account_row_height(),
                 })
                 .sum::<f32>()
             + visible_count.saturating_sub(1) as f32 * SIDEBAR_LIST_GAP
@@ -5897,6 +5905,13 @@ impl Shell {
                 .pt(px(SIDEBAR_DISCLOSURE_BODY_INSET))
                 .gap(px(SIDEBAR_LIST_GAP));
             for row in rows.into_iter().take(shown) {
+                let row = match row {
+                    super::account_chats::Merged::Local(row) => row,
+                    super::account_chats::Merged::Account(row) => {
+                        list = list.child(self.render_account_row(&row, theme, cx));
+                        continue;
+                    }
+                };
                 let chat = row.chat;
                 let is_selected = selected.as_deref() == Some(chat.id.as_str());
                 let harness = self

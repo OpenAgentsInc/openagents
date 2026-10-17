@@ -103,6 +103,17 @@ feature keeps forms independent of the app's separate syntax-engine version.
   Rust rejects late replies after switching computers or accounts and preserves
   saved model selections. The bundled Claude list includes Opus 5.5.
 
+- [OpenAgents #11960](https://github.com/OpenAgentsInc/openagents/issues/11960):
+  one chat list on the desktop. Our module `shell/account_chats.rs` merges the
+  account's web, terminal and phone chats into Sessions by last activity, puts
+  archived ones in Archived, applies the project filter, keeps one row per
+  linked continuation, and loads the next page near the list end.
+  `openagents_history.rs` no longer draws a section; it refreshes on focus and
+  every minute through `openagents-account`'s `History::refresh_recent`. Hooks:
+  the module line and the merge call in `render_chat_sidebar` (`shell.rs`), and
+  the merged shelf in `render_archived_section` (`shell/spaces.rs`).
+  `examples/sidebar-capture.rs` draws the sidebar offscreen.
+
 - Our cloud engine build (#11852): `apps/openagents` makes `openagents-ui` an optional
   default feature, `ui`. `cargo zigbuild --release -p openagents --no-default-features
   --target x86_64-unknown-linux-gnu.2.36` builds the headless engine alone,

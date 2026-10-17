@@ -62,6 +62,9 @@ use crate::terminal::panel::{TerminalPanel, ToggleTerminal, clamp_terminal_heigh
 use crate::theme::Theme;
 use crate::transcript::{self, Transcript, TranscriptEvent};
 
+mod account_chats;
+#[cfg(feature = "account-fixture")]
+pub use account_chats::capture_sidebar;
 mod actions_ui;
 mod chat_dropzone;
 mod chat_homes;
@@ -8969,7 +8972,8 @@ impl Shell {
         // Keyed rows: (stable key, estimated height, element) — the key + height
         // list drives the §1.6 resort FLIP diff below (attention-bucket
         // promotions glide; cleared rows just go).
-        let session_rows = self.render_active_rows(theme, cx);
+        let mut session_rows = self.render_active_rows(theme, cx);
+        self.merge_account_rows(&mut session_rows, theme, cx);
         let moving_row = session_rows
             .moving_row
             .map(|(row, height)| self.render_moving_sidebar_session(row, height, theme));
@@ -9336,46 +9340,14 @@ impl Shell {
                                     cx.notify();
                                 })),
                         )
-                        // This computer's sessions first (the live work),
-                        // then the account's OpenAgents chats, newest first.
-                        .when(
-                            self.saved_history.is_some() && !self.state.read(cx).chats.is_empty(),
-                            |el| {
-                                el.child(
-                                    div()
-                                        .pb(px(6.))
-                                        .text_color(theme.text_muted)
-                                        .child("On this computer"),
-                                )
-                            },
-                        )
-                        .when(
-                            self.saved_history.is_none() || !self.state.read(cx).chats.is_empty(),
-                            |el| el.child(active_list),
-                        )
+                        .child(active_list)
                         .children(archived_section)
                         .children(moving_row)
-                        .when_some(self.saved_history.clone(), |el, history| {
-                            el.child(div().pt(px(12.)).child(history))
-                        }),
+                        .children(self.account_chats_sentinel(cx)),
                 )),
         )
         .fade_overflow_y(&self.sidebar_scroll);
 
-        if let Some(history) = &self.saved_history {
-            let name = self.settings.space_filter.as_deref().and_then(|id| {
-                self.state.read(cx).spaces.iter().find(|s| s.id == id).map(|s| {
-                    s.name.clone().unwrap_or_else(|| {
-                        s.path
-                            .rsplit(['/', '\\'])
-                            .find(|p| !p.is_empty())
-                            .unwrap_or_default()
-                            .to_owned()
-                    })
-                })
-            });
-            history.update(cx, |history, _| history.set_local_project(name));
-        }
         let update_strip = self.render_update_strip(theme, cx);
 
         div()

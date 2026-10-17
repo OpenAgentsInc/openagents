@@ -232,6 +232,81 @@ impl History {
         self.publish(&s);
         Ok(())
     }
+    /// Read the newest page again and fold it into the loaded rows, so new and
+    /// changed chats appear without dropping older pages.
+    pub fn refresh_recent(self: &Arc<Self>) -> impl Future<Output = ()> + Send + 'static {
+        let this = self.clone();
+        let request = {
+            let s = self.state.lock().unwrap();
+            let lease = s.lease.clone().filter(Lease::is_current);
+            let reader = lease.as_ref().and_then(|lease| {
+                match &s.snapshot.project {
+                    Some(p) => lease.client().shared_history(lease.session(), p),
+                    None => lease.client().history(lease.session()),
+                }
+                .and_then(|r| r.with_page_size(200))
+                .ok()
+            });
+            match (lease, reader) {
+                (Some(lease), Some(reader))
+                    if s.index.is_some() && s.snapshot.state == LoadState::Ready =>
+                {
+                    Some((s.epoch, s.query, lease, reader, s.query_cancel.clone()))
+                }
+                _ => None,
+            }
+        };
+        async move {
+            let Some((epoch, query, lease, mut reader, cancel)) = request else {
+                return;
+            };
+            let result = reader
+                .next_page(lease.client(), lease.session(), &cancel)
+                .await;
+            let mut s = this.state.lock().unwrap();
+            if s.epoch != epoch
+                || s.query != query
+                || s.replace
+                || !lease.is_current()
+                || cancel.is_cancelled()
+            {
+                return;
+            }
+            match result {
+                Ok(Some(page)) => {
+                    let Some(index) = &mut s.index else {
+                        return;
+                    };
+                    if index.extend(page.data).is_err() {
+                        return;
+                    }
+                    let rows = index
+                        .sorted(false)
+                        .into_iter()
+                        .chain(index.sorted(true))
+                        .cloned()
+                        .collect();
+                    s.snapshot.rows = rows;
+                }
+                Ok(None) => return,
+                // Keep the loaded rows; a lost sign-in still signs out.
+                Err(e) => {
+                    if !matches!(
+                        e,
+                        Error::Unauthorized
+                            | Error::ExpiredSession
+                            | Error::WrongAccount
+                            | Error::WrongDeployment
+                            | Error::InvalidCredential
+                    ) {
+                        return;
+                    }
+                    s.snapshot.login_required = true;
+                }
+            }
+            this.publish(&s);
+        }
+    }
     pub fn refresh_projects(&self) -> Result<(), Error> {
         let mut s = self.state.lock().unwrap();
         let lease = s

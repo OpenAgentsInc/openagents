@@ -150,6 +150,13 @@ fn capture_window(
         .unwrap();
 }
 fn main() -> anyhow::Result<()> {
+    // A failed check exits instead of aborting: a panic can't unwind out of
+    // the macOS main-thread dispatcher, and an abort opens a crash report.
+    let report = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        report(info);
+        std::process::exit(101);
+    }));
     let continuation_mode = std::env::args().any(|arg| arg == "--continue-chat");
     let chat_mode = std::env::args().any(|arg| arg == "--public-chat");
     let film_mode = std::env::args().any(|arg| arg == "--film");
@@ -740,7 +747,6 @@ fn main() -> anyhow::Result<()> {
                                     assert!(state.engine().is_none());
                                 });
                                 capture_window(window, cx, &output, "selected-existing");
-                                panel.update(cx, |panel, cx| panel.toggle_archived(cx));
                                 panel.update(cx, |panel, cx| panel.open(&chat_id(5), cx));
                                 assert!(
                                     model
@@ -754,21 +760,6 @@ fn main() -> anyhow::Result<()> {
                                     .timer(Duration::from_millis(100))
                                     .await;
                                 capture_window(window, cx, &output, "archived");
-                                panel.update(cx, |panel, cx| panel.toggle_archived(cx));
-                                let project = model.snapshot().projects[0].clone();
-                                panel.update(cx, |panel, cx| panel.project(Some(&project), cx));
-                                while model.snapshot().state
-                                    == ::openagents_account::history::LoadState::Loading
-                                {
-                                    cx.background_executor()
-                                        .timer(Duration::from_millis(50))
-                                        .await;
-                                }
-                                assert_eq!(model.snapshot().rows.len(), 200);
-                                cx.background_executor()
-                                    .timer(Duration::from_millis(100))
-                                    .await;
-                                capture_window(window, cx, &output, "shared-project");
                                 server.history_status.store(503, Ordering::SeqCst);
                                 model.refresh().unwrap();
                                 runtime.spawn(model.more()).await.unwrap();
