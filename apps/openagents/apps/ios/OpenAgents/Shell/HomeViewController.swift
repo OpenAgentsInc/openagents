@@ -145,14 +145,7 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate, UIDr
             sessions.accessibilityIdentifier = "home-sessions"
             navigationItem.leftBarButtonItem = sessions
         }
-        navigationItem.rightBarButtonItems = [("manage", "ellipsis", "Manage dashboards"), ("edit", "slider.horizontal.3", "Edit widgets")].map { key, icon, label in
-            let item = UIBarButtonItem(image: UIImage(systemName: icon), primaryAction: UIAction { [weak self] _ in
-                self?.activate(key, instance: instance, revision: revision)
-            })
-            item.accessibilityIdentifier = key
-            item.accessibilityLabel = label
-            return item
-        }
+        // Widget and dashboard editing stays off the phone; dashboards are set up elsewhere and sync here.
     }
     private func font(_ size: CGFloat, weight: FaceRole = .sans) -> UIFont {
         UIFontMetrics(forTextStyle: .body).scaledFont(for: Fonts.ui(weight, size))
@@ -258,7 +251,7 @@ final class HomeViewController: UIViewController, UIDocumentPickerDelegate, UIDr
             if stack.axis == .horizontal { stack.distribution = .fillEqually }
             let children = (props["children"] as? [[String: Any]] ?? []).filter {
                 let key = $0["key"] as? String ?? ""
-                if isHome && ["dashboard-name", "home-actions"].contains(key) { return false }
+                if isHome && ["dashboard-name", "home-actions", "scope"].contains(key) { return false }
                 if screenKey.hasPrefix("home-Edit-") && key == "edit-actions" { return false }
                 if screenKey.hasPrefix("home-Manage-") && ["manage-title", "back-home"].contains(key) { return false }
                 return true

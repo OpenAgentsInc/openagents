@@ -32,10 +32,10 @@ final class LaunchLifecycleTests: XCTestCase {
         backgroundAndReturn(app)
         XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 5))
         app.buttons["open-demo"].tap()
-        XCTAssertTrue(app.buttons["edit"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["drawer-menu"].waitForExistence(timeout: 15))
         capture(app, "release-demo-opened")
         backgroundAndReturn(app)
-        XCTAssertTrue(app.buttons["edit"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["drawer-menu"].waitForExistence(timeout: 5))
         capture(app, "release-demo-restored")
     }
 
@@ -43,14 +43,14 @@ final class LaunchLifecycleTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-demo"]
         app.launch()
-        XCTAssertTrue(app.buttons["edit"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["drawer-menu"].waitForExistence(timeout: 15))
         for _ in 0..<3 {
             backgroundAndReturn(app)
-            XCTAssertTrue(app.buttons["edit"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["drawer-menu"].waitForExistence(timeout: 5))
         }
         app.terminate()
         app.launch()
-        XCTAssertTrue(app.buttons["edit"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["drawer-menu"].waitForExistence(timeout: 15))
         capture(app, "release-demo-relaunched")
     }
 }
