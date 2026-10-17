@@ -2,6 +2,9 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::VecDeque;
 
+#[cfg(feature = "ui")]
+pub mod view;
+
 pub const MAX_SEED_BYTES: usize = 16_384;
 pub const MAX_RECENT: usize = 12;
 pub const REQUEST_OPTION: &str = "openagentsContinuation";
@@ -92,6 +95,17 @@ pub struct Source {
 pub struct Claim {
     pub revision: u64,
     pub target: PartRef,
+}
+
+/// A computer supplies bounded text when its conversation is not in the
+/// account's chat store. Existing saved-chat claims omit `seed`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TransferClaim {
+    pub revision: u64,
+    pub target: PartRef,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<Seed>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

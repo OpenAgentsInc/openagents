@@ -1700,6 +1700,7 @@ dependencies = [
 name = "chat-home"
 version = "1.0.0"
 dependencies = [
+ "rust-native",
  "secret-screen",
  "serde",
  "serde_json",
@@ -9099,6 +9100,7 @@ dependencies = [
  "base64 0.22.1",
  "block",
  "block2 0.6.2",
+ "chat-home",
  "chrono",
  "core-foundation 0.10.1",
  "core-graphics 0.24.0",

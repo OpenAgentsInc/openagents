@@ -73,6 +73,7 @@ openagents-dashboard = { path = "../../../../crates/openagents-dashboard", featu
 lab-kit = { path = "../../../../crates/lab-kit" }
 lab-ui = { path = "../../../../crates/lab-ui" }
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
+chat-home = { path = "../../../../crates/chat-home", features = ["ui"] }
 gethostname.workspace = true
 openagents-voice-media.workspace = true
 openagents-voice-session.workspace = true
