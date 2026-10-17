@@ -99,6 +99,8 @@ feature keeps forms independent of the app's separate syntax-engine version.
   SDK with the current account's cancellation token and rejects replies after
   sign-out. UIKit displays its status in Settings and adds Start Our cloud to
   the new-session computer menu. The live phone check uses a dedicated account.
+  `scripts/ios/check-cloud-controls.py` checks status, start, stop, and sign-out
+  against a loopback service with the simulator credential fixture enabled.
 
 - [OpenAgents #11894](https://github.com/OpenAgentsInc/openagents/issues/11894):
   `openagents_continuation.rs` carries a saved-chat reference through the normal

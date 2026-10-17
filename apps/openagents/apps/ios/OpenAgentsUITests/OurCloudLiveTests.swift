@@ -18,6 +18,33 @@ final class OurCloudLiveTests: XCTestCase {
         tab.tap()
     }
 
+    func testLocalCloudControls() throws {
+        continueAfterFailure = false
+        guard let base = ProcessInfo.processInfo.environment["OUR_CLOUD_FIXTURE_URL"] else {
+            throw XCTSkip("Run scripts/ios/check-cloud-controls.py.")
+        }
+        let app = XCUIApplication()
+        app.launchArguments = ["-no-auth-browser", "-account-fixture", "-account-api", base + "/v1",
+                               "-account-site", base, "-account-test-credential-url", base + "/credential", "-edge", base]
+        app.launch()
+        openSettings(app)
+        let row = app.cells["settings-cloudhost"]
+        for _ in 0..<4 where !row.isHittable { app.swipeUp() }
+        XCTAssertTrue(row.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Start Our cloud"].exists)
+        row.tap()
+        XCTAssertTrue(app.staticTexts["Stop Our cloud"].waitForExistence(timeout: 20))
+        row.tap()
+        XCTAssertTrue(app.staticTexts["Start Our cloud"].waitForExistence(timeout: 20))
+        capture(app, "our-cloud-controls")
+        let signOut = app.cells["settings-signout"]
+        for _ in 0..<8 where !signOut.isHittable { app.swipeUp() }
+        signOut.tap()
+        app.buttons["Sign Out"].tap()
+        XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.staticTexts["Stop Our cloud"].exists)
+    }
+
     func testStartRunAndStopOurCloud() throws {
         continueAfterFailure = false
         guard let url = ProcessInfo.processInfo.environment["OUR_CLOUD_CREDENTIAL_URL"] else {
