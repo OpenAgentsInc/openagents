@@ -321,6 +321,10 @@ impl CloudSession {
     pub fn origin(&self) -> &str {
         &self.origin
     }
+    /// The account service this site checks sign-ins with.
+    pub(crate) fn account_service(&self) -> &str {
+        &self.account_service
+    }
     pub fn secure(&self) -> bool {
         self.secure
     }

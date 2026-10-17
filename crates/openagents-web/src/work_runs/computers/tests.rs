@@ -38,10 +38,14 @@ async fn withdrawing_a_live_repository_grant_refuses_before_new_effects() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let auth = format!("http://{}", listener.local_addr().unwrap());
     let server = tokio::spawn(async move { axum::serve(listener, broker).await.unwrap() });
-    let key = dir.path().join("csrf");
+    // The private configuration is opened without following links, so
+    // name it by its real path (macOS keeps temporary folders under the
+    // `/var` link).
+    let private = dir.path().canonicalize().unwrap();
+    let key = private.join("csrf");
     std::fs::write(&key, [9u8; 32]).unwrap();
     std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600)).unwrap();
-    let path = dir.path().join("cloud.json");
+    let path = private.join("cloud.json");
     std::fs::write(&path,serde_json::to_vec(&json!({"schema":"openagents.cloud.web-config.v1","public_origin":"http://127.0.0.1:4300","account_service":auth,"csrf_secret":key})).unwrap()).unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
     let mut config = app.config.clone();

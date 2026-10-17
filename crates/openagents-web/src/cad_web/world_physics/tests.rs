@@ -254,6 +254,10 @@ async fn serve_fixture(
     }
     std::fs::create_dir_all(root).unwrap();
     std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700)).unwrap();
+    // The private configuration is opened without following links, so
+    // name it by its real path (macOS keeps temporary folders under the
+    // `/var` link).
+    let root = &root.canonicalize().unwrap();
     let auth_socket = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let endpoint = format!("http://{}", auth_socket.local_addr().unwrap());
     let auth_server = tokio::spawn(async move {

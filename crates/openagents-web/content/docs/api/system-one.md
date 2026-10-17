@@ -1,6 +1,6 @@
 # Typed decisions with System One
 
-`POST https://api.openagents.com/v1/systemone` answers named questions about
+**Beta.** `POST https://api.openagents.com/v1/systemone` answers named questions about
 one state. The question types are `noul` (probability of yes), `choice`, and
 `score`. It returns JSON answers, not a chat transcript or an SSE stream.
 

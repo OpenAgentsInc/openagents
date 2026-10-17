@@ -258,6 +258,27 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
         "/studios/blue-rush*",
         "the Blue Rush studio site, in its own design",
     ),
+    (
+        "/chat/sessions/{id}",
+        "a session on one of the person's computers, read from that computer",
+    ),
+    (
+        "/chat/{id}/labs/{message}",
+        "a Lab card from a chat, opened on its own",
+    ),
+    (
+        "/labs/{kind}/{document}",
+        "a Lab version's card, opened on its own",
+    ),
+    ("/labs/files/{id}/play", "a Lab file, played inside a card"),
+    (
+        "/labs/agent",
+        "Agent Lab, a live workbench over the person's own experiments",
+    ),
+    (
+        "/labs/agent/tasks/{id}",
+        "one of the person's Agent Lab runs",
+    ),
 ];
 
 pub(crate) const fn state(id: &'static str, label: &'static str, render: Render) -> State {

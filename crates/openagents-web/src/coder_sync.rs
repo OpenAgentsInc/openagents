@@ -1454,12 +1454,12 @@ pub(crate) async fn account(app: &App, headers: &HeaderMap) -> Result<String, Re
         .and_then(|v| v.strip_prefix("Bearer "))
         .unwrap_or_default();
     let key: [u8; 32] = Sha256::digest(token.as_bytes()).into();
-    if let Some(account) = remembered(&key) {
+    if let Some(account) = remembered(&key, service.account_service()) {
         return Ok(account);
     }
     match service.app_account(token).await {
         Ok(account) => {
-            remember(key, &account);
+            remember(key, service.account_service(), &account);
             Ok(account)
         }
         Err(SessionError::Unauthenticated | SessionError::InvalidRequest) => Err(refused(
@@ -1479,15 +1479,21 @@ pub(crate) async fn account(app: &App, headers: &HeaderMap) -> Result<String, Re
 /// ask the account service.
 const REMEMBER: Duration = Duration::from_secs(30);
 
-fn checked_tokens() -> &'static Mutex<HashMap<[u8; 32], (String, Instant)>> {
-    static CHECKED: OnceLock<Mutex<HashMap<[u8; 32], (String, Instant)>>> = OnceLock::new();
+/// A checked token's account, the account service that answered for it,
+/// and when.
+type CheckedTokens = HashMap<[u8; 32], (String, String, Instant)>;
+
+fn checked_tokens() -> &'static Mutex<CheckedTokens> {
+    static CHECKED: OnceLock<Mutex<CheckedTokens>> = OnceLock::new();
     CHECKED.get_or_init(Default::default)
 }
 
-fn remembered(key: &[u8; 32]) -> Option<String> {
+/// The account `service` named for the token digest `key`, while fresh.
+/// Another service's answer for the same token is never reused.
+fn remembered(key: &[u8; 32], service: &str) -> Option<String> {
     let kept = checked_tokens().lock().ok()?;
-    let (account, at) = kept.get(key)?;
-    (at.elapsed() < REMEMBER).then(|| account.clone())
+    let (answered_by, account, at) = kept.get(key)?;
+    (answered_by == service && at.elapsed() < REMEMBER).then(|| account.clone())
 }
 
 /// Drop a checked token by its session id (the hex SHA-256 of the token,
@@ -1509,13 +1515,16 @@ pub(crate) fn forget_checked(session_id: &str) {
     }
 }
 
-fn remember(key: [u8; 32], account: &str) {
+fn remember(key: [u8; 32], service: &str, account: &str) {
     if let Ok(mut kept) = checked_tokens().lock() {
-        kept.retain(|_, (_, at)| at.elapsed() < REMEMBER);
+        kept.retain(|_, (_, _, at)| at.elapsed() < REMEMBER);
         if kept.len() > 4096 {
             kept.clear();
         }
-        kept.insert(key, (account.to_owned(), Instant::now()));
+        kept.insert(
+            key,
+            (service.to_owned(), account.to_owned(), Instant::now()),
+        );
     }
 }
 

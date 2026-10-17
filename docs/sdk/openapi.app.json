@@ -5865,7 +5865,7 @@
             }
           }
         ],
-        "description": "Private account-owned definition. Does not install or execute an agent. Mutation request_id is retained durably: identical retries return the original result, changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
+        "description": "Private account-owned definition. Does not install or execute an agent. We keep each change's request_id: a retry with the same inputs returns the first result, and changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
         "responses": {
           "200": {
             "description": "The account-owned result; no-store, private.",
@@ -5970,7 +5970,7 @@
           }
         ],
         "parameters": [],
-        "description": "Private account-owned definition. Does not install or execute an agent. Mutation request_id is retained durably: identical retries return the original result, changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
+        "description": "Private account-owned definition. Does not install or execute an agent. We keep each change's request_id: a retry with the same inputs returns the first result, and changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
         "responses": {
           "200": {
             "description": "The account-owned result; no-store, private.",
@@ -6105,7 +6105,7 @@
             }
           }
         ],
-        "description": "Private account-owned definition. Does not install or execute an agent. Mutation request_id is retained durably: identical retries return the original result, changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
+        "description": "Private account-owned definition. Does not install or execute an agent. We keep each change's request_id: a retry with the same inputs returns the first result, and changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
         "responses": {
           "200": {
             "description": "The account-owned result; no-store, private.",
@@ -6220,7 +6220,7 @@
             }
           }
         ],
-        "description": "Private account-owned definition. Does not install or execute an agent. Mutation request_id is retained durably: identical retries return the original result, changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
+        "description": "Private account-owned definition. Does not install or execute an agent. We keep each change's request_id: a retry with the same inputs returns the first result, and changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
         "responses": {
           "200": {
             "description": "The account-owned result; no-store, private.",
@@ -6345,7 +6345,7 @@
             }
           }
         ],
-        "description": "Private account-owned definition. Does not install or execute an agent. Mutation request_id is retained durably: identical retries return the original result, changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
+        "description": "Private account-owned definition. Does not install or execute an agent. We keep each change's request_id: a retry with the same inputs returns the first result, and changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
         "responses": {
           "200": {
             "description": "The account-owned result; no-store, private.",
@@ -6462,7 +6462,7 @@
           }
         ],
         "parameters": [],
-        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. What a host reports is the account's claim, not proof we checked.",
         "responses": {
           "200": {
             "description": "Account-owned result; Cache-Control: no-store, private."
@@ -6506,7 +6506,7 @@
           }
         ],
         "parameters": [],
-        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. What a host reports is the account's claim, not proof we checked.",
         "responses": {
           "200": {
             "description": "Account-owned result; Cache-Control: no-store, private."
@@ -6548,7 +6548,7 @@
           }
         ],
         "parameters": [],
-        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. What a host reports is the account's claim, not proof we checked.",
         "responses": {
           "200": {
             "description": "Account-owned result; Cache-Control: no-store, private."
@@ -6617,7 +6617,7 @@
             }
           }
         ],
-        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. What a host reports is the account's claim, not proof we checked.",
         "responses": {
           "200": {
             "description": "Account-owned result; Cache-Control: no-store, private."
@@ -6659,7 +6659,7 @@
           }
         ],
         "parameters": [],
-        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. What a host reports is the account's claim, not proof we checked.",
         "responses": {
           "200": {
             "description": "Account-owned result; Cache-Control: no-store, private."
@@ -6722,7 +6722,7 @@
             }
           }
         ],
-        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. What a host reports is the account's claim, not proof we checked.",
         "responses": {
           "200": {
             "description": "Account-owned result; Cache-Control: no-store, private."
@@ -6773,7 +6773,7 @@
             }
           }
         ],
-        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. What a host reports is the account's claim, not proof we checked.",
         "responses": {
           "200": {
             "description": "Account-owned result; Cache-Control: no-store, private."
@@ -6834,7 +6834,7 @@
             }
           }
         ],
-        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. What a host reports is the account's claim, not proof we checked.",
         "responses": {
           "200": {
             "description": "Account-owned result; Cache-Control: no-store, private."
@@ -6897,7 +6897,7 @@
             }
           }
         ],
-        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. What a host reports is the account's claim, not proof we checked.",
         "responses": {
           "200": {
             "description": "Account-owned result; Cache-Control: no-store, private."
@@ -6960,7 +6960,7 @@
             }
           }
         ],
-        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. What a host reports is the account's claim, not proof we checked.",
         "responses": {
           "200": {
             "description": "Account-owned result; Cache-Control: no-store, private."
@@ -7029,7 +7029,7 @@
             }
           }
         ],
-        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. What a host reports is the account's claim, not proof we checked.",
         "responses": {
           "200": {
             "description": "Account-owned result; Cache-Control: no-store, private."
@@ -7082,7 +7082,7 @@
             }
           }
         ],
-        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. What a host reports is the account's claim, not proof we checked.",
         "responses": {
           "200": {
             "description": "Account-owned result; Cache-Control: no-store, private."
@@ -7135,7 +7135,7 @@
             }
           }
         ],
-        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. What a host reports is the account's claim, not proof we checked.",
         "responses": {
           "200": {
             "description": "Account-owned result; Cache-Control: no-store, private."
@@ -7198,7 +7198,7 @@
             }
           }
         ],
-        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. Host evidence is an account claim, not remote attestation.",
+        "description": "Account-private Agent Lab documents, finite test plans and reports. See docs/agent-lab/README.md and the Rust SDK labs module for typed bodies. No execution on reads, document save, card rendering or promotion. A supporting host prepares isolated inputs before using the normal agent assignment service. Mutations retain request_id receipts; changed retries conflict. Updates require expected_revision. Maximum request 192 KiB; per-account storage 16 MiB, 64 documents, 64 versions each, 128 runs, 8 active jobs and 8192 receipts. Trials are bounded to 32 and 30 minutes. Cost may be unknown. What a host reports is the account's claim, not proof we checked.",
         "responses": {
           "200": {
             "description": "Account-owned result; Cache-Control: no-store, private."
@@ -7252,7 +7252,7 @@
           }
         ],
         "parameters": [],
-        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and a request_id we keep, so the same request can be sent again after a lost response. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
         "responses": {
           "200": {
             "description": "Private, no-store result.",
@@ -7369,7 +7369,7 @@
           }
         ],
         "parameters": [],
-        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and a request_id we keep, so the same request can be sent again after a lost response. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
         "responses": {
           "200": {
             "description": "Private, no-store result.",
@@ -7504,7 +7504,7 @@
             }
           }
         ],
-        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and a request_id we keep, so the same request can be sent again after a lost response. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
         "responses": {
           "200": {
             "description": "Private, no-store result.",
@@ -7621,7 +7621,7 @@
           }
         ],
         "parameters": [],
-        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and a request_id we keep, so the same request can be sent again after a lost response. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
         "responses": {
           "200": {
             "description": "Private, no-store result.",
@@ -7736,7 +7736,7 @@
           }
         ],
         "parameters": [],
-        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and a request_id we keep, so the same request can be sent again after a lost response. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
         "responses": {
           "200": {
             "description": "Private, no-store result.",
@@ -7895,7 +7895,7 @@
             }
           }
         ],
-        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and a request_id we keep, so the same request can be sent again after a lost response. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
         "responses": {
           "200": {
             "description": "Private, no-store result.",
@@ -8030,7 +8030,7 @@
             }
           }
         ],
-        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and a request_id we keep, so the same request can be sent again after a lost response. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
         "responses": {
           "200": {
             "description": "Private, no-store result.",
@@ -8155,7 +8155,7 @@
             }
           }
         ],
-        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and a request_id we keep, so the same request can be sent again after a lost response. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
         "responses": {
           "200": {
             "description": "Private, no-store result.",
@@ -8290,7 +8290,7 @@
             }
           }
         ],
-        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and a request_id we keep, so the same request can be sent again after a lost response. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
         "responses": {
           "200": {
             "description": "Private, no-store result.",
@@ -8427,7 +8427,7 @@
             }
           }
         ],
-        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
+        "description": "Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and a request_id we keep, so the same request can be sent again after a lost response. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.",
         "responses": {
           "200": {
             "description": "Private, no-store result.",
@@ -12076,7 +12076,7 @@
           }
         ],
         "parameters": [],
-        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
+        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are what a host the account authorized says happened, not proof we checked, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
         "responses": {
           "200": {
             "description": "Account-owned assignment or page, no-store/private.",
@@ -12210,7 +12210,7 @@
             }
           }
         ],
-        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
+        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are what a host the account authorized says happened, not proof we checked, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
         "responses": {
           "200": {
             "description": "Account-owned assignment or page, no-store/private.",
@@ -12327,7 +12327,7 @@
             }
           }
         ],
-        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
+        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are what a host the account authorized says happened, not proof we checked, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
         "responses": {
           "200": {
             "description": "Account-owned assignment or page, no-store/private.",
@@ -12444,7 +12444,7 @@
             }
           }
         ],
-        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
+        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are what a host the account authorized says happened, not proof we checked, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
         "responses": {
           "200": {
             "description": "Account-owned assignment or page, no-store/private.",
@@ -12571,7 +12571,7 @@
             }
           }
         ],
-        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are account-authorized host claims, not remote attestation, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
+        "description": "Private account-owned assignment. Creation records intent; only the selected, account-authorized host may execute through its session ledger after its own permission checks. IDs and command IDs survive restart. Retain request_id and exact inputs for retry; changed inputs conflict. Follow-up and stop are intents, not proof of consumption or cancellation. Archive is refused while queued/running. Reports are what a host the account authorized says happened, not proof we checked, and require the selected host ID and exact expected revision. The transcript remains on coder-sync under chat; result is only a bounded summary. Limits: 256 unarchived assignments, 128 commands per assignment, 4096 saved mutations and 4 MiB per account including history. Maximum JSON body 96 KiB; list pages contain at most eight assignments.",
         "responses": {
           "200": {
             "description": "Account-owned assignment or page, no-store/private.",
@@ -16495,7 +16495,7 @@
             "appBearer": []
           }
         ],
-        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare all references before sending the command with command_key. Pass oa-ref:REFERENCE_UUID as the client API key or Git HTTPS password. The proxy replaces this non-secret marker only for an authorized matching request.",
+        "description": "Optional host-side credentials. Requires a supported network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare all references before sending the command with command_key. Pass oa-ref:REFERENCE_UUID as the client API key or Git HTTPS password. The proxy replaces this non-secret marker only for an authorized matching request.",
         "responses": {
           "201": {
             "description": "Done",
@@ -16587,7 +16587,7 @@
             "appBearer": []
           }
         ],
-        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare all references before sending the command with command_key. Pass oa-ref:REFERENCE_UUID as the client API key or Git HTTPS password. The proxy replaces this non-secret marker only for an authorized matching request.",
+        "description": "Optional host-side credentials. Requires a supported network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare all references before sending the command with command_key. Pass oa-ref:REFERENCE_UUID as the client API key or Git HTTPS password. The proxy replaces this non-secret marker only for an authorized matching request.",
         "responses": {
           "200": {
             "description": "Done",
@@ -16655,7 +16655,7 @@
             "appBearer": []
           }
         ],
-        "description": "Optional host-side credentials. Requires a qualified network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare all references before sending the command with command_key. Pass oa-ref:REFERENCE_UUID as the client API key or Git HTTPS password. The proxy replaces this non-secret marker only for an authorized matching request.",
+        "description": "Optional host-side credentials. Requires a supported network profile and an authorized source connection. Credential values and cloud paths never appear in this contract. Prepare all references before sending the command with command_key. Pass oa-ref:REFERENCE_UUID as the client API key or Git HTTPS password. The proxy replaces this non-secret marker only for an authorized matching request.",
         "responses": {
           "204": {
             "description": "Credential access has ended."
@@ -31460,7 +31460,7 @@
               "string",
               "null"
             ],
-            "description": "Use an exact name@sha256:digest selection from capabilities. Unavailable selections are refused."
+            "description": "Use an exact name@sha256:HASH value from capabilities. A value that isn't offered is refused."
           },
           "enrolled_host": {
             "type": [

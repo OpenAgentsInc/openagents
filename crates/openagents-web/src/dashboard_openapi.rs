@@ -95,7 +95,7 @@ pub(crate) fn extend(doc: &mut Value) {
             );
         }
         let reference = |name: &str| json!({"$ref":format!("#/components/schemas/Home{name}")});
-        let mut op = json!({"operationId":operation,"tags":["Home"],"security":[{"appBearer":[]}],"parameters":parameters,"description":"Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and durable request_id receipts; retry the same request after response loss. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.","responses":{"200":{"description":"Private, no-store result.","content":{"application/json":{"schema":reference(result)}}}}});
+        let mut op = json!({"operationId":operation,"tags":["Home"],"security":[{"appBearer":[]}],"parameters":parameters,"description":"Account-authorized Home data. Reads do not start work. Layout writes use expected_revision and a request_id we keep, so the same request can be sent again after a lost response. Widget filters use project access plus the caller's GitHub connection. Packages contain no resource bindings or code. See docs/sdk/dashboard.md for validation and capacity limits.","responses":{"200":{"description":"Private, no-store result.","content":{"application/json":{"schema":reference(result)}}}}});
         if let Some(body) = body {
             op["requestBody"] =
                 json!({"required":true,"content":{"application/json":{"schema":reference(body)}}});

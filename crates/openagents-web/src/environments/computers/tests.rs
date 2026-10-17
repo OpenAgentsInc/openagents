@@ -138,10 +138,14 @@ impl Fixture {
             .fallback(native)
             .with_state(native_state.clone());
         let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
-        let csrf = dir.path().join("csrf");
+        // The private configuration is opened without following links, so
+        // name it by its real path (macOS keeps temporary folders under the
+        // `/var` link).
+        let private = dir.path().canonicalize().unwrap();
+        let csrf = private.join("csrf");
         std::fs::write(&csrf, [9; 32]).unwrap();
         std::fs::set_permissions(&csrf, std::fs::Permissions::from_mode(0o600)).unwrap();
-        let path = dir.path().join("cloud.json");
+        let path = private.join("cloud.json");
         std::fs::write(&path,serde_json::to_vec(&json!({"schema":"openagents.cloud.web-config.v1","public_origin":"http://127.0.0.1:4300","account_service":endpoint,"csrf_secret":csrf})).unwrap()).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
         let root = studio(&dir.path().join("owners"));

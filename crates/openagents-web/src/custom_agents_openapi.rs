@@ -77,7 +77,7 @@ pub(crate) fn extend(doc: &mut Value) {
             }
         }
         let mut op = json!({"operationId":operation,"tags":["Custom agents"],"security":[{"appBearer":[]}],"parameters":parameters,
-   "description":"Private account-owned definition. Does not install or execute an agent. Mutation request_id is retained durably: identical retries return the original result, changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
+   "description":"Private account-owned definition. Does not install or execute an agent. We keep each change's request_id: a retry with the same inputs returns the first result, and changed inputs conflict. Deleted definitions and old revisions remain readable to their owner. Lists exclude deleted definitions and continue in ID order. Capacity is 128 active definitions, 4096 mutations, and 4 MiB per account, including history; no automatic history pruning. Updates and deletion require expected_revision. Maximum JSON body is 24 KiB.",
    "responses":{"200":{"description":"The account-owned result; no-store, private.","content":{"application/json":{"schema":r(result)}}}}});
         if let Some(body) = body {
             op["requestBody"] =

@@ -75,7 +75,7 @@ pub(crate) async fn who(app: &App, headers: &HeaderMap) -> Who {
         return decide(browser, None);
     };
     let key: [u8; 32] = Sha256::digest(token.as_bytes()).into();
-    if let Some(account) = remembered(&key) {
+    if let Some(account) = remembered(&key, service.account_service()) {
         return Who::Account(account_owner(&account));
     }
     let checked = service
@@ -83,7 +83,7 @@ pub(crate) async fn who(app: &App, headers: &HeaderMap) -> Who {
         .await
         .map(|viewer| viewer.account_id);
     if let Ok(account) = &checked {
-        remember(key, account);
+        remember(key, service.account_service(), account);
     }
     decide(browser, Some(checked))
 }
@@ -112,25 +112,33 @@ fn session(headers: &HeaderMap) -> Option<String> {
         .map(|(_, value)| value.to_owned())
 }
 
+/// A checked sign-in's account service, account, and when it was checked.
+type Checked = HashMap<[u8; 32], (String, String, Instant)>;
+
 /// Sign-ins checked in the last [`REMEMBER`], by session-cookie digest.
-fn checked() -> &'static Mutex<HashMap<[u8; 32], (String, Instant)>> {
-    static CHECKED: OnceLock<Mutex<HashMap<[u8; 32], (String, Instant)>>> = OnceLock::new();
+fn checked() -> &'static Mutex<Checked> {
+    static CHECKED: OnceLock<Mutex<Checked>> = OnceLock::new();
     CHECKED.get_or_init(Default::default)
 }
 
-fn remembered(key: &[u8; 32]) -> Option<String> {
+/// The account `service` named for the cookie digest `key`, while fresh.
+/// Another service's answer for the same cookie is never reused.
+fn remembered(key: &[u8; 32], service: &str) -> Option<String> {
     let kept = checked().lock().ok()?;
-    let (account, at) = kept.get(key)?;
-    (at.elapsed() < REMEMBER).then(|| account.clone())
+    let (answered_by, account, at) = kept.get(key)?;
+    (answered_by == service && at.elapsed() < REMEMBER).then(|| account.clone())
 }
 
-fn remember(key: [u8; 32], account: &str) {
+fn remember(key: [u8; 32], service: &str, account: &str) {
     if let Ok(mut kept) = checked().lock() {
-        kept.retain(|_, (_, at)| at.elapsed() < REMEMBER);
+        kept.retain(|_, (_, _, at)| at.elapsed() < REMEMBER);
         if kept.len() > 4096 {
             kept.clear();
         }
-        kept.insert(key, (account.to_owned(), Instant::now()));
+        kept.insert(
+            key,
+            (service.to_owned(), account.to_owned(), Instant::now()),
+        );
     }
 }
 
@@ -239,10 +247,14 @@ mod tests {
     #[test]
     fn a_checked_sign_in_is_reused_only_for_its_own_cookie() {
         let key = [42; 32];
-        assert_eq!(remembered(&key), None);
-        remember(key, "acct_9");
-        assert_eq!(remembered(&key).as_deref(), Some("acct_9"));
-        assert_eq!(remembered(&[43; 32]), None);
+        let service = "http://127.0.0.1:1";
+        assert_eq!(remembered(&key, service), None);
+        remember(key, service, "acct_9");
+        assert_eq!(remembered(&key, service).as_deref(), Some("acct_9"));
+        assert_eq!(remembered(&[43; 32], service), None);
+        // Another account service's sign-in with the same cookie is checked
+        // again rather than reused.
+        assert_eq!(remembered(&key, "http://127.0.0.1:2"), None);
     }
 
     fn chat(owner: &str, id: &str, pending: bool) -> Conversation {

@@ -577,7 +577,7 @@ async fn task(
             .replace('<', "&lt;")
             .replace('>', "&gt;")
     };
-    ([("cache-control","no-store, private")],Html(format!("<!doctype html><meta name=viewport content=width=device-width,initial-scale=1><title>Agent Lab task</title><a href=/labs/agent>Agent Lab</a><h1>{}</h1><h2>Task</h2><pre style='white-space:pre-wrap'>{}</pre><h2>Result</h2><pre style='white-space:pre-wrap'>{}</pre><p>Open this task in the mobile app to read its conversation.</p>",escape(&a.definition.spec.name),escape(&a.spec.task),escape(a.result.as_deref().unwrap_or("The result is not available yet."))))).into_response()
+    ([("cache-control","no-store, private")],Html(format!("<!doctype html><meta name=viewport content=width=device-width,initial-scale=1><title>Agent Lab task</title><a href=/labs/agent>Agent Lab</a><h1>{}</h1><h2>Task</h2><pre style='white-space:pre-wrap'>{}</pre><h2>Result</h2><pre style='white-space:pre-wrap'>{}</pre><p>Open this task in the mobile app to read its conversation.</p>",escape(&a.definition.spec.name),escape(&a.spec.task),escape(a.result.as_deref().unwrap_or("No result yet."))))).into_response()
 }
 
 async fn script() -> Response {

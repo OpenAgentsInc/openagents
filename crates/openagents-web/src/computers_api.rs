@@ -650,7 +650,7 @@ pub(crate) fn extend_openapi(document: &mut Value) {
             "idempotency_key":{"type":["string","null"],"description":"Required here or as Idempotency-Key; when both are supplied they must match."},
             "placement":{"type":["string","null"],"enum":[null,"auto","our-cloud","fast-sandbox","enrolled"],"description":"The service uses the kind you choose or refuses the request. You cannot add a computer you already own here yet."},
             "needs": {"anyOf":[reference("ComputerNeeds"),{"type":"null"}]},
-            "egress_profile":{"type":["string","null"],"description":"Use an exact name@sha256:digest selection from capabilities. Unavailable selections are refused."},
+            "egress_profile":{"type":["string","null"],"description":"Use an exact name@sha256:HASH value from capabilities. A value that isn't offered is refused."},
             "enrolled_host":{"type":["string","null"],"description":"Reserved. Non-null host selections are currently refused."}
         }},
         "AppComputerNeeds":{"type":"object","additionalProperties":false,"properties":{

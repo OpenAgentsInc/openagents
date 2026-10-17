@@ -32,6 +32,10 @@ pub struct Collection {
     pub keys: &'static [&'static str],
     /// Columns fixed for this collection (a table shared by several).
     pub fixed: &'static [(&'static str, &'static str)],
+    /// Whether the store leaves this map out when it is empty (a
+    /// `skip_serializing_if` field). Reading then makes no empty map for
+    /// it, so the document comes back in the shape the store wrote.
+    pub omit_empty: bool,
 }
 
 /// A store's layout: its name and its collections, parents first.
@@ -106,10 +110,12 @@ fn take(
 }
 
 /// Put the rows back into the rest, making an empty map for every
-/// collection that has none.
+/// collection that has none, unless the store leaves that map out.
 pub fn assemble(layout: &Layout, mut doc: Value, all: Vec<Rows>) -> Result<Value, Error> {
     for (collection, rows) in layout.collections.iter().zip(all) {
-        ensure(&mut doc, collection.path);
+        if !collection.omit_empty {
+            ensure(&mut doc, collection.path);
+        }
         for (keys, record) in rows {
             put(&mut doc, collection.path, &keys, record)
                 .map_err(|e| Error(format!("{}: {e}", collection.table)))?;
@@ -490,36 +496,42 @@ pub const ACCOUNTS: Layout = Layout {
             path: &[Seg::Field("accounts")],
             keys: &["id"],
             fixed: &[],
+            omit_empty: false,
         },
         Collection {
             table: "workspace.workspaces",
             path: &[Seg::Field("workspaces")],
             keys: &["id"],
             fixed: &[],
+            omit_empty: false,
         },
         Collection {
             table: "workspace.memberships",
             path: &[Seg::Field("workspaces"), Seg::Each, Seg::Field("members")],
             keys: &["workspace_id", "account_id"],
             fixed: &[],
+            omit_empty: false,
         },
         Collection {
             table: "workspace.invitations",
             path: &[Seg::Field("invitations")],
             keys: &["id"],
             fixed: &[],
+            omit_empty: false,
         },
         Collection {
             table: "identity.linked_identities",
             path: &[Seg::Field("identities"), Seg::Field("github")],
             keys: &["provider_id"],
             fixed: &[("provider", "github")],
+            omit_empty: true,
         },
         Collection {
             table: "identity.linked_identities",
             path: &[Seg::Field("identities"), Seg::Field("apple")],
             keys: &["provider_id"],
             fixed: &[("provider", "apple")],
+            omit_empty: true,
         },
     ],
 };
@@ -534,30 +546,35 @@ pub const SESSIONS: Layout = Layout {
             path: &[Seg::Field("book"), Seg::Field("sessions")],
             keys: &["id"],
             fixed: &[],
+            omit_empty: false,
         },
         Collection {
             table: "identity.device_sign_ins",
             path: &[Seg::Field("book"), Seg::Field("devices")],
             keys: &["id"],
             fixed: &[],
+            omit_empty: false,
         },
         Collection {
             table: "identity.recoveries",
             path: &[Seg::Field("book"), Seg::Field("recoveries")],
             keys: &["id"],
             fixed: &[],
+            omit_empty: false,
         },
         Collection {
             table: "identity.credentials",
             path: &[Seg::Field("book"), Seg::Field("credentials")],
             keys: &["account_id"],
             fixed: &[],
+            omit_empty: false,
         },
         Collection {
             table: "identity.onboarding_budgets",
             path: &[Seg::Field("book"), Seg::Field("onboarding")],
             keys: &["id"],
             fixed: &[],
+            omit_empty: false,
         },
     ],
 };
@@ -571,6 +588,7 @@ pub const KEYS: Layout = Layout {
         path: &[Seg::Field("keys")],
         keys: &["id"],
         fixed: &[],
+        omit_empty: false,
     }],
 };
 
