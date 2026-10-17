@@ -42,6 +42,7 @@ use crate::{EngineError, new_id, now_ms};
 mod keepers;
 pub use keepers::{HANDOFF_LEASE, HANDOFF_REFUSAL, set_keeper_launch};
 pub mod move_cloud;
+mod saved_agent;
 
 /// One journaled event: the durable seq plus the event, as broadcast to subscribers.
 #[derive(Debug, Clone)]
@@ -588,14 +589,19 @@ impl SessionsEngine {
         request
             .model_options
             .remove(openagents_proto::FORK_SESSION_OPTION);
-        if request.model_options.contains_key("openagentsAssignment") {
+        // A saved agent's turn runs on the runtime its settings resolve to (#11966).
+        let harness_id = if request.model_options.contains_key("openagentsAssignment") {
             let host = self.inner.doc_host().ok_or_else(|| {
                 EngineError::Other("This computer is not ready for custom agents.".into())
             })?;
-            request = host
+            let (resolved, prepared) = host
                 .prepare_custom_agent(chat_id, harness_id, request)
                 .await?;
-        }
+            request = prepared;
+            resolved
+        } else {
+            harness_id
+        };
         // Project-less chats store a home-relative cwd (the creating device
         // can't know the host's home); expand it here, on the host, where the
         // run spawns, creating a new chat's scratch folder.
@@ -1826,8 +1832,9 @@ impl Inner {
             .into_iter()
             .filter(|entry| Some(entry.id.as_str()) != current)
             .collect();
-        // Only a fork owes copied history: its transcript has the seam.
-        if !entries.iter().any(|entry| {
+        // Only a fork owes copied history: its transcript has the seam. A
+        // saved agent whose runtime changed owes it too (#11966).
+        if !saved_agent::carries_history(doc) && !entries.iter().any(|entry| {
             entry
                 .parts
                 .iter()
@@ -1874,7 +1881,7 @@ impl Inner {
             .collect();
         (!history.is_empty()).then(|| {
             format!(
-                "Continue this side conversation using the following prior conversation as context.\n<conversation>\n{}\n</conversation>\n\n{}",
+                "Continue this conversation using the following prior conversation as context.\n<conversation>\n{}\n</conversation>\n\n{}",
                 serde_json::to_string(&history).unwrap_or_default(),
                 prompt
             )

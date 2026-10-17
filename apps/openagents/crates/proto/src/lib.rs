@@ -15,6 +15,8 @@ pub mod invocation;
 pub mod motion;
 pub mod preview;
 pub mod projectless;
+/// OpenAgents: saved-agent chat identity (#11966).
+pub mod saved_agent;
 pub mod sidebar_pins;
 pub mod view;
 pub mod voice;

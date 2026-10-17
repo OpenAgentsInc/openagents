@@ -5,15 +5,19 @@ use openagents_account::{
     Lease,
     openagents::agents::{Access, assignments::*},
 };
+use openagents_proto::saved_agent::AGENT_NAME;
 use openagents_proto::{AgentEvent, DoneStatus, SandboxLevel};
 use std::sync::Arc;
+
+mod runtime;
 
 pub(super) struct AgentHost {
     auth: Auth,
     registry: Arc<HarnessRegistry>,
     lab_root: std::path::PathBuf,
+    sign_ins: runtime::SignIns,
 }
-pub(super) const ASSIGNMENT: &str = "openagentsAssignment";
+pub(super) const ASSIGNMENT: &str = openagents_proto::saved_agent::ASSIGNMENT;
 const INSTRUCTIONS: &str = "openagentsInstructions";
 fn error(message: &str) -> EngineError {
     EngineError::Other(message.into())
@@ -75,6 +79,7 @@ impl DocHost {
                     auth,
                     registry,
                     lab_root,
+                    sign_ins: runtime::SignIns::detect(),
                 })
                 .is_err()
         {
@@ -110,19 +115,22 @@ impl DocHost {
             }
         });
     }
+    /// Check a saved agent's turn and choose the runtime it runs on: the
+    /// first ready runtime in the agent's current order (#11966). Returns
+    /// that runtime with the request to send it.
     pub(crate) async fn prepare_custom_agent(
         &self,
         chat_id: &str,
         harness: HarnessId,
         mut request: openagents_proto::RunRequest,
-    ) -> Result<openagents_proto::RunRequest, EngineError> {
+    ) -> Result<(HarnessId, openagents_proto::RunRequest), EngineError> {
         let Some(id) = request
             .model_options
             .get(ASSIGNMENT)
             .and_then(|v| v.as_str())
             .map(str::to_owned)
         else {
-            return Ok(request);
+            return Ok((harness, request));
         };
         if !openagents_account::openagents::agents::valid_id(&id) {
             return Err(error("Choose the agent again."));
@@ -162,10 +170,20 @@ impl DocHost {
             &self.inner.config.device_id,
             chat_id,
             chat.space_id.as_deref(),
-            harness,
-            &request,
         )?;
-        admit_runtime(&host.registry, harness, &a.definition.spec).await?;
+        let spec = current_settings(&a, &latest);
+        spec.validate().map_err(error)?;
+        let resolved = runtime::resolve(spec, &runtime::host_order(&host.registry), |h, m| {
+            let (registry, sign_ins) = (host.registry.clone(), host.sign_ins.clone());
+            async move { runtime::check(&registry, &sign_ins, h, m.as_deref()).await }
+        })
+        .await?;
+        self.apply_runtime(&workspace, &chat, spec, &resolved)?;
+        let harness = resolved.harness;
+        if chat.config.as_ref().map(|c| c.harness) != Some(harness) {
+            request.reasoning = None;
+        }
+        request.model = resolved.model.clone();
         if let Some((cwd, deadline)) = super::agent_lab::trial_cwd(&host.lab_root, &a)? {
             let remaining = deadline.saturating_sub(now_ms().max(0) as u64);
             if remaining == 0 {
@@ -222,7 +240,66 @@ impl DocHost {
             Access::ReadOnly => SandboxLevel::ReadOnly,
             Access::WorkspaceWrite => SandboxLevel::WorkspaceWrite,
         };
-        Ok(request)
+        Ok((harness, request))
+    }
+
+    /// Record the resolved runtime on the chat. A change of runtime starts a
+    /// fresh provider session that is given the conversation, and the
+    /// conversation says which runtime runs and why.
+    fn apply_runtime(
+        &self,
+        workspace: &crate::workspace_host::WorkspaceHost,
+        chat: &openagents_proto::Chat,
+        spec: &openagents_account::openagents::agents::AgentSpec,
+        resolved: &runtime::Resolved,
+    ) -> Result<(), EngineError> {
+        let previous = chat.config.as_ref().map(|c| c.harness);
+        let mut config = chat
+            .config
+            .clone()
+            .ok_or_else(|| error("This conversation is not ready."))?;
+        let changed = previous != Some(resolved.harness);
+        if changed {
+            config.reasoning = None;
+        }
+        config.harness = resolved.harness;
+        config.model = resolved.model.clone();
+        config
+            .model_options
+            .insert(AGENT_NAME.into(), spec.name.clone().into());
+        if chat.config.as_ref() != Some(&config) {
+            workspace.set_chat_config(&chat.id, &config)?;
+        }
+        if changed {
+            let handle = self.open(&chat.id)?;
+            let writer = handle.writer();
+            self.sessions()
+                .ok_or_else(|| error("This computer is not ready."))?
+                .start_fresh_runtime(&chat.id, &writer)?;
+        }
+        if let Some(text) = runtime::note(&spec.name, resolved, previous) {
+            self.runtime_note(&chat.id, text)?;
+        }
+        Ok(())
+    }
+
+    fn runtime_note(&self, chat_id: &str, text: String) -> Result<(), EngineError> {
+        let handle = self.open(chat_id)?;
+        let writer = handle.writer();
+        writer.push_message(&openagents_doc::SessionMessageEntry {
+            id: format!("runtime:{}", crate::new_id()),
+            role: openagents_doc::MessageRole::System,
+            parts: vec![openagents_doc::MessagePart::Text {
+                id: "runtime".into(),
+                text,
+            }],
+            created_at: now_ms(),
+            device_id: self.inner.config.device_id.clone(),
+            status: Some(openagents_doc::MessageStatus::Complete),
+            continuation_of: None,
+            duration_ms: None,
+        })?;
+        Ok(())
     }
     async fn custom_agent_tick(&self, lease: &Lease) -> Result<(), EngineError> {
         let agents = lease
@@ -362,6 +439,16 @@ impl DocHost {
         let sessions = self
             .sessions()
             .ok_or_else(|| error("This computer is not ready."))?;
+        // Chats from before #11966 learn their agent's name for display.
+        if let Some(mut config) = workspace.chat(&a.chat)?.and_then(|c| c.config).filter(|c| {
+            c.model_options.get(ASSIGNMENT).and_then(|v| v.as_str()) == Some(a.id.as_str())
+                && !c.model_options.contains_key(AGENT_NAME)
+        }) {
+            config
+                .model_options
+                .insert(AGENT_NAME.into(), a.definition.spec.name.clone().into());
+            workspace.set_chat_config(&a.chat, &config)?;
+        }
         let pending: Vec<_> = a
             .commands
             .iter()
@@ -439,16 +526,7 @@ impl DocHost {
         if !lease.is_current() {
             return Ok(());
         }
-        let harness: HarnessId =
-            serde_json::from_value(a.definition.spec.runtime.clone().into())
-                .map_err(|_| error("This runtime is not supported on this computer."))?;
-        let config = openagents_proto::ChatConfig {
-            harness,
-            model: a.definition.spec.model.clone(),
-            reasoning: None,
-            model_options: serde_json::Map::from_iter([(ASSIGNMENT.into(), a.id.clone().into())]),
-            sandbox: SandboxLevel::DangerFullAccess,
-        };
+        let spec = current_settings(a, &latest);
         if let Some(project) = &a.spec.project {
             let space = workspace
                 .space(project)?
@@ -475,10 +553,26 @@ impl DocHost {
                 .custom_agents
                 .get()
                 .ok_or_else(|| error("Sign in on this computer."))?;
-            admit_runtime(&binding.registry, harness, &a.definition.spec).await?;
+            spec.validate().map_err(error)?;
+            let resolved =
+                runtime::resolve(spec, &runtime::host_order(&binding.registry), |h, m| {
+                    let (registry, sign_ins) = (binding.registry.clone(), binding.sign_ins.clone());
+                    async move { runtime::check(&registry, &sign_ins, h, m.as_deref()).await }
+                })
+                .await?;
             if !lease.is_current() {
                 return Ok(());
             }
+            let config = openagents_proto::ChatConfig {
+                harness: resolved.harness,
+                model: resolved.model.clone(),
+                reasoning: None,
+                model_options: serde_json::Map::from_iter([
+                    (ASSIGNMENT.into(), a.id.clone().into()),
+                    (AGENT_NAME.into(), a.definition.spec.name.clone().into()),
+                ]),
+                sandbox: SandboxLevel::DangerFullAccess,
+            };
             workspace.create_chat(
                 &a.chat,
                 a.spec.project.as_deref(),
@@ -487,6 +581,9 @@ impl DocHost {
                 a.spec.project.is_none().then(|| "~".into()),
             )?;
             workspace.rename_chat(&a.chat, &a.definition.spec.name)?;
+            if let Some(text) = runtime::note(&spec.name, &resolved, None) {
+                self.runtime_note(&a.chat, text)?;
+            }
         }
         let Some((_, command)) = pending.first() else {
             return Ok(());
@@ -516,7 +613,12 @@ impl DocHost {
             let request = self
                 .request_from_chat_row(&a.chat, text)
                 .ok_or_else(|| error("This conversation is not ready."))?;
-            let request = self.prepare_custom_agent(&a.chat, harness, request).await?;
+            let harness = workspace
+                .chat(&a.chat)?
+                .and_then(|c| c.config)
+                .map(|c| c.harness)
+                .ok_or_else(|| error("This conversation is not ready."))?;
+            let (_, request) = self.prepare_custom_agent(&a.chat, harness, request).await?;
             // The existing ledger marks the fixed command ID before dispatch. A crash is observed, never replayed as fresh work.
             self.ingest_relayed_command(
                 &a.chat,
@@ -606,13 +708,23 @@ fn entry(
         resolution: None,
     }
 }
+/// The settings this turn uses: the latest definition's runtime choices when
+/// it is still the same agent (#11966), else the pinned revision.
+fn current_settings<'a>(
+    a: &'a Assignment,
+    latest: &'a openagents_account::openagents::agents::AgentDefinition,
+) -> &'a openagents_account::openagents::agents::AgentSpec {
+    if !latest.deleted && latest.spec.same_identity(&a.definition.spec) {
+        &latest.spec
+    } else {
+        &a.definition.spec
+    }
+}
 fn validate_binding(
     a: &Assignment,
     host: &str,
     chat: &str,
     project: Option<&str>,
-    harness: HarnessId,
-    request: &openagents_proto::RunRequest,
 ) -> Result<(), EngineError> {
     a.definition.spec.validate().map_err(error)?;
     if a.spec.host != host
@@ -625,15 +737,7 @@ fn validate_binding(
             "This assignment does not match the selected computer and project.",
         ));
     }
-    let runtime = serde_json::to_value(harness)
-        .ok()
-        .and_then(|v| v.as_str().map(str::to_owned));
-    if runtime.as_deref() != Some(a.definition.spec.runtime.as_str())
-        || request.model != a.definition.spec.model
-    {
-        return Err(error("This agent uses a different runtime or model."));
-    }
-    validate_runtime_access(harness, a.definition.spec.access)
+    Ok(())
 }
 fn terminal_result(
     sessions: &crate::sessions::SessionsEngine,
@@ -731,6 +835,7 @@ mod tests {
                     runtime: "codex".into(),
                     model: None,
                     access: Access::ReadOnly,
+                    fallbacks: vec![],
                 },
             },
             chat: "chat".into(),
@@ -744,109 +849,41 @@ mod tests {
         (a, request)
     }
     #[test]
-    fn exact_assignment_binding_and_permission_support() {
-        let (mut a, request) = fixture();
-        assert!(
-            validate_binding(
-                &a,
-                "host",
-                "chat",
-                Some("project"),
-                HarnessId::Codex,
-                &request
-            )
-            .is_ok()
-        );
+    fn exact_assignment_binding() {
+        let (mut a, _) = fixture();
+        assert!(validate_binding(&a, "host", "chat", Some("project")).is_ok());
         for (host, chat, project) in [
             ("other", "chat", Some("project")),
             ("host", "other", Some("project")),
             ("host", "chat", None),
         ] {
-            assert!(validate_binding(&a, host, chat, project, HarnessId::Codex, &request).is_err());
+            assert!(validate_binding(&a, host, chat, project).is_err());
         }
         a.definition.revision = 2;
-        assert!(
-            validate_binding(
-                &a,
-                "host",
-                "chat",
-                Some("project"),
-                HarnessId::Codex,
-                &request
-            )
-            .is_err()
-        );
-        a.definition.revision = 1;
-        a.definition.spec.runtime = "claude-code".into();
-        assert!(
-            validate_binding(
-                &a,
-                "host",
-                "chat",
-                Some("project"),
-                HarnessId::ClaudeCode,
-                &request
-            )
-            .is_err()
-        );
-        a.definition.spec.access = Access::HostDefault;
-        assert!(
-            validate_binding(
-                &a,
-                "host",
-                "chat",
-                Some("project"),
-                HarnessId::ClaudeCode,
-                &request
-            )
-            .is_ok()
-        );
+        assert!(validate_binding(&a, "host", "chat", Some("project")).is_err());
     }
     #[test]
-    fn opencode_assignment_preserves_its_model_and_host_access() {
-        let (mut assignment, mut request) = fixture();
-        assignment.definition.spec.runtime = "opencode".into();
-        assignment.definition.spec.model = Some("openagents/openagents/fast".into());
-        assignment.definition.spec.access = Access::HostDefault;
-        request.model = assignment.definition.spec.model.clone();
-        assert!(
-            validate_binding(
-                &assignment,
-                "host",
-                "chat",
-                Some("project"),
-                HarnessId::Opencode,
-                &request
-            )
-            .is_ok()
-        );
-        for access in [Access::ReadOnly, Access::WorkspaceWrite] {
-            assignment.definition.spec.access = access;
-            assert!(
-                validate_binding(
-                    &assignment,
-                    "host",
-                    "chat",
-                    Some("project"),
-                    HarnessId::Opencode,
-                    &request
-                )
-                .is_err()
-            );
+    fn a_runtime_change_applies_to_the_same_agent_only() {
+        let (a, _) = fixture();
+        let mut latest = a.definition.clone();
+        latest.revision = 2;
+        latest.spec.runtime = "claude-code".into();
+        latest.spec.access = Access::ReadOnly;
+        assert_eq!(current_settings(&a, &latest).runtime, "claude-code");
+        latest.spec.instructions = "Something else".into();
+        assert_eq!(current_settings(&a, &latest).runtime, "codex");
+        latest.spec.instructions = a.definition.spec.instructions.clone();
+        latest.deleted = true;
+        assert_eq!(current_settings(&a, &latest).runtime, "codex");
+    }
+    #[test]
+    fn runtimes_enforce_the_agents_access() {
+        assert!(validate_runtime_access(HarnessId::Codex, Access::ReadOnly).is_ok());
+        for h in [HarnessId::ClaudeCode, HarnessId::Opencode] {
+            assert!(validate_runtime_access(h, Access::ReadOnly).is_err());
+            assert!(validate_runtime_access(h, Access::HostDefault).is_ok());
         }
-        assignment.definition.spec.access = Access::HostDefault;
-        request.model = Some("foreign-model".into());
-        assert!(
-            validate_binding(
-                &assignment,
-                "host",
-                "chat",
-                Some("project"),
-                HarnessId::Opencode,
-                &request
-            )
-            .is_err()
-        );
+        assert!(validate_runtime_access(HarnessId::Cursor, Access::HostDefault).is_err());
     }
 
     struct RuntimeFixture {
