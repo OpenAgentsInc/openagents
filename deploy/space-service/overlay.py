@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Apply maintained deployment settings to pinned upstream chart output."""
 import argparse
+import json
 from pathlib import Path
 import yaml
+
+PINS = json.loads(Path(__file__).with_name("image-pins.json").read_text())
+IMAGE_ROOT = "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/"
 
 LABELS = {"openagents-service": "space", "openagents-issue": "11814"}
 
@@ -28,6 +32,14 @@ def transform(documents):
         pod["imagePullSecrets"] = [{"name": "space-image-reader"}]
         database = False
         for container in pod.get("containers", []) + pod.get("initContainers", []):
+            image = container.get("image", "")
+            if image.startswith(IMAGE_ROOT):
+                component = image.removeprefix(IMAGE_ROOT).split(":", 1)[0]
+                if component not in PINS["native"]:
+                    raise ValueError("An unqualified native component was selected.")
+                container["image"] = IMAGE_ROOT + component + "@sha256:" + PINS["native"][component]
+            if document["kind"] == "Job" and metadata["name"] == "space-db-migrate":
+                container["image"] = PINS["migrator"]["image"]
             entries = container.get("env", [])
             if any(entry["name"] == "SPACE_K8S_CONTROL_PLANE" and entry.get("value") != "true" for entry in entries):
                 raise ValueError("The maintained controller requires the Kubernetes substrate.")

@@ -1,0 +1,19 @@
+{
+  "upstream_source": "de87b436c35dac056564bdd5b2a113c9046e189b",
+  "native": {
+    "worker": "b03fac6e4f70ff5a34d07023a1ae251d20820d32a788b83529a5461f5f1fafe6",
+    "api": "6c621a723c91746475b7844be817638b29df13eb7ae04ac06e00d7d3254ea09d",
+    "data-plane": "abe42ae6e11d25631b406d1f4555ddaf9d65620a4a46a6adb6ebb118d1b05c43",
+    "cluster-controller": "9c99c7ee2bfe78c528dc285dba7b05053c22b88779ee259154b1606185246e9e"
+  },
+  "migrator": {
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/migrator@sha256:6b6f7ccf540d5daad8583e3ad6177baabce59f2ac269085f450dfdca9008c79a",
+    "source": "3bf8dd7ccd0aa8fc496828782d816b26fa26ff6a",
+    "build": "c780750c-47f4-40f8-a66e-ffee5c528cd6"
+  },
+  "edge": {
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/edge@sha256:e43938f09ba25e260a0829fa536871b9f35745278ce4a35abde5895a522a5c2e",
+    "source": "d03aacb66fb8d8ca867bed8644be9a91ff2143c4",
+    "build": "7a7cd7b2-1e91-4ea4-b52a-3f719f7d9bf0"
+  }
+}
