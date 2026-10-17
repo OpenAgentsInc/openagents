@@ -25,6 +25,18 @@ final class SessionFlowTests: XCTestCase {
         add(shot)
     }
 
+    func testDefaultModelsIncludeOpus55() {
+        let app = launch()
+        app.buttons["new-session"].tap()
+        XCTAssertTrue(app.buttons["composer-chip-model"].waitForExistence(timeout: 10))
+        app.buttons["composer-chip-model"].tap()
+        let opus = app.collectionViews.buttons["Opus 5.5"].firstMatch
+        XCTAssertTrue(opus.waitForExistence(timeout: 10))
+        snapshot(app, "opus-5-5-model-choice")
+        opus.tap()
+        XCTAssertEqual(app.buttons["composer-chip-model"].label, "Opus 5.5")
+    }
+
     func testFrontPageShowsFoldersAndRecents() {
         let app = launch()
         XCTAssertTrue(app.staticTexts["Sessions"].waitForExistence(timeout: 10))

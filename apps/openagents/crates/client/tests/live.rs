@@ -677,6 +677,13 @@ async fn host_rpcs_ride_the_device_relay() {
             .unwrap();
     assert_eq!(models.len(), 1, "[1m] variant folded: {models:?}");
     assert_eq!(models[0].label, "Opus 5");
+    assert_eq!(client.cached_models(HOST, "claude-code"), models);
+    assert!(
+        client
+            .cached_models("another-computer", "claude-code")
+            .iter()
+            .any(|model| model.id == "claude-opus-5-5")
+    );
 
     let c = client.clone();
     let refs =

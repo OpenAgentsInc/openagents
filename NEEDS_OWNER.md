@@ -1,3 +1,11 @@
+## Check custom-agent model choices on iPhone (#11924)
+
+Install TestFlight build 1008. With a connected computer, create or edit an
+agent and check that its model choices match that computer, including Opus 5.5
+when offered. Switch computers, try offline choices, and reopen a saved agent.
+The automated checks use fixture model replies and do not run Claude on the
+owner's computers.
+
 ## Check the refreshed Home on iPhone (#11923)
 
 Install TestFlight build 1007. Check Coder Noir and Coder Light, large text, and

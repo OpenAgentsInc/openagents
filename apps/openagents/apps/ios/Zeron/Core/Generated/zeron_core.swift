@@ -869,6 +869,201 @@ public func FfiConverterTypeAccountListener_lower(_ value: AccountListener) -> U
 
 
 
+public protocol AgentLabListener: AnyObject, Sendable {
+    
+    func onAgentLabChanged() 
+    
+}
+open class AgentLabListenerImpl: AgentLabListener, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_zeron_mobile_fn_clone_agentlablistener(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_zeron_mobile_fn_free_agentlablistener(handle, $0) }
+    }
+
+    
+
+    
+open func onAgentLabChanged()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_agentlablistener_on_agent_lab_changed(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceAgentLabListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceAgentLabListener = UniffiVTableCallbackInterfaceAgentLabListener(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeAgentLabListener.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface AgentLabListener: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeAgentLabListener.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface AgentLabListener: handle missing in uniffiClone")
+            }
+        },
+        onAgentLabChanged: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeAgentLabListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onAgentLabChanged(
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceAgentLabListener> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceAgentLabListener>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitAgentLabListener() {
+    uniffi_zeron_mobile_fn_init_callback_vtable_agentlablistener(UniffiCallbackInterfaceAgentLabListener.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAgentLabListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<AgentLabListener>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = AgentLabListener
+
+    public static func lift(_ handle: UInt64) throws -> AgentLabListener {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return AgentLabListenerImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: AgentLabListener) -> UInt64 {
+         if let rustImpl = value as? AgentLabListenerImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AgentLabListener {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: AgentLabListener, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAgentLabListener_lift(_ handle: UInt64) throws -> AgentLabListener {
+    return try FfiConverterTypeAgentLabListener.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAgentLabListener_lower(_ value: AgentLabListener) -> UInt64 {
+    return FfiConverterTypeAgentLabListener.lower(value)
+}
+
+
+
+
+
+
 /**
  * One call's caption. Advance it whenever the caption changes and on every
  * display frame while the last frame was `animating`.
@@ -1214,6 +1409,8 @@ public func FfiConverterTypeClientListener_lower(_ value: ClientListener) -> UIn
 
 public protocol CoreAccountProtocol: AnyObject, Sendable {
     
+    func agentLab(listener: AgentLabListener)  -> CoreAgentLab
+    
     func cancel() 
     
     /**
@@ -1323,6 +1520,16 @@ public convenience init(dataDir: String, apiUrl: String, websiteUrl: String, lis
 
     
 
+    
+open func agentLab(listener: AgentLabListener) -> CoreAgentLab  {
+    return try!  FfiConverterTypeCoreAgentLab_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreaccount_agent_lab(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAgentLabListener_lower(listener),uniffiCallStatus
+    )
+})
+}
     
 open func cancel()  {try! rustCall() {
         uniffiCallStatus in
@@ -1509,6 +1716,166 @@ public func FfiConverterTypeCoreAccount_lower(_ value: CoreAccount) -> UInt64 {
 
 
 
+public protocol CoreAgentLabProtocol: AnyObject, Sendable {
+    
+    func activate(instance: String, revision: UInt64, key: String) async throws  -> String
+    
+    func changeField(instance: String, revision: UInt64, key: String, value: String) throws 
+    
+    func setVisible(visible: Bool) 
+    
+    func snapshot() throws  -> String
+    
+}
+open class CoreAgentLab: CoreAgentLabProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_zeron_mobile_fn_clone_coreagentlab(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_zeron_mobile_fn_free_coreagentlab(handle, $0) }
+    }
+
+    
+
+    
+open func activate(instance: String, revision: UInt64, key: String)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_zeron_mobile_fn_method_coreagentlab_activate(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(instance),FfiConverterUInt64.lower(revision),FfiConverterString.lower(key)
+                )
+            },
+            pollFunc: ffi_zeron_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_zeron_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_zeron_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+open func changeField(instance: String, revision: UInt64, key: String, value: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreagentlab_change_field(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(value),uniffiCallStatus
+    )
+}
+}
+    
+open func setVisible(visible: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreagentlab_set_visible(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(visible),uniffiCallStatus
+    )
+}
+}
+    
+open func snapshot()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreagentlab_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreAgentLab: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreAgentLab
+
+    public static func lift(_ handle: UInt64) throws -> CoreAgentLab {
+        return CoreAgentLab(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreAgentLab) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreAgentLab {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreAgentLab, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAgentLab_lift(_ handle: UInt64) throws -> CoreAgentLab {
+    return try FfiConverterTypeCoreAgentLab.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAgentLab_lower(_ value: CoreAgentLab) -> UInt64 {
+    return FfiConverterTypeCoreAgentLab.lower(value)
+}
+
+
+
+
+
+
 public protocol CoreAgentsProtocol: AnyObject, Sendable {
     
     func activate(instance: String, revision: UInt64, key: String) throws 
@@ -1522,6 +1889,11 @@ public protocol CoreAgentsProtocol: AnyObject, Sendable {
     func createForm() throws 
     
     func editForm(id: String) throws 
+    
+    /**
+     * Use this computer's cached choices immediately, then refresh from its runtimes.
+     */
+    func loadModels(core: CoreClient, deviceId: String) throws 
     
     func refresh() 
     
@@ -1641,6 +2013,19 @@ open func editForm(id: String)throws   {try rustCallWithError(FfiConverterTypeCo
     uniffi_zeron_mobile_fn_method_coreagents_edit_form(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Use this computer's cached choices immediately, then refresh from its runtimes.
+     */
+open func loadModels(core: CoreClient, deviceId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_zeron_mobile_fn_method_coreagents_load_models(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCoreClient_lower(core),
+        FfiConverterString.lower(deviceId),uniffiCallStatus
     )
 }
 }
@@ -20355,6 +20740,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_zeron_mobile_checksum_method_accountlistener_on_account_changed() != 55279) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_zeron_mobile_checksum_method_coreaccount_agent_lab() != 31471) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_zeron_mobile_checksum_method_coreaccount_cancel() != 18106) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -20394,6 +20782,21 @@ private let initializationResult: InitializationResult = {
     if (uniffi_zeron_mobile_checksum_method_coreaccount_stored_login_present() != 30984) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_zeron_mobile_checksum_method_agentlablistener_on_agent_lab_changed() != 11440) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreagentlab_activate() != 30280) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreagentlab_change_field() != 49519) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreagentlab_set_visible() != 57953) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreagentlab_snapshot() != 42578) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_zeron_mobile_checksum_method_coreagents_activate() != 29136) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -20410,6 +20813,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_method_coreagents_edit_form() != 40492) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_zeron_mobile_checksum_method_coreagents_load_models() != 3096) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_zeron_mobile_checksum_method_coreagents_refresh() != 51429) {
@@ -20717,6 +21123,7 @@ private let initializationResult: InitializationResult = {
     }
 
     uniffiCallbackInitAccountListener()
+    uniffiCallbackInitAgentLabListener()
     uniffiCallbackInitClientListener()
     uniffiCallbackInitCustomAgentsListener()
     uniffiCallbackInitHomeListener()

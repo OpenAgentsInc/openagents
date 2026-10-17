@@ -1094,11 +1094,9 @@ impl Client {
         // the transcript waits forever.
         if !hydrated
             && let Some(live) = self.inner.live()
-            && self
-                .inner
-                .workspace
-                .chat(chat_id)
-                .is_some_and(|row| !row.device_id.is_empty() && row.device_id != self.inner.config.device_id)
+            && self.inner.workspace.chat(chat_id).is_some_and(|row| {
+                !row.device_id.is_empty() && row.device_id != self.inner.config.device_id
+            })
             && live
                 .store
                 .sync_job_version(chat_id, crate::live::delivery::JOB)
@@ -1176,6 +1174,19 @@ impl Client {
         list
     }
 
+    /// Last known model choices for a computer, or the bundled list before discovery.
+    pub fn cached_models(&self, device_id: &str, harness: &str) -> Vec<ModelInfo> {
+        if device_id.is_empty() {
+            return catalog::fallback_models(harness);
+        }
+        let list = catalog::DiskCatalog::new(&self.inner.config.data_dir)
+            .models(device_id, harness)
+            .filter(|list| !list.is_empty())
+            .unwrap_or_else(|| catalog::fallback_models(harness));
+        catalog::learn_labels(harness, &list);
+        list
+    }
+
     /// Model catalog for `harness` on `device_id` (normalized live reply,
     /// else the cached one, else the curated static list).
     pub async fn list_models(&self, device_id: &str, harness: &str) -> Vec<ModelInfo> {
@@ -1203,13 +1214,7 @@ impl Client {
                         self.inner.recompute_workspace();
                         list
                     }
-                    _ => match cache.models(device_id, harness) {
-                        Some(list) => {
-                            catalog::learn_labels(harness, &list);
-                            list
-                        }
-                        None => catalog::fallback_models(harness),
-                    },
+                    _ => self.cached_models(device_id, harness),
                 }
             }
         }

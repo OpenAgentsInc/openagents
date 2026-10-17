@@ -1,4 +1,14 @@
-# OpenAgents 1.0.0 (1007)
+# OpenAgents 1.0.0 (1008)
+
+Custom agents now use the selected computer's saved model choices and refresh
+from that computer. Opus 5.5 also appears in the default Claude choices.
+Saved model selections stay selected while the list refreshes.
+
+Create or edit an agent, choose Claude Code, and select Opus 5.5. Check the model
+choices with an online computer and while offline. Switching computers should
+show the new computer's choices. Existing agents keep their saved model.
+
+OpenAgents 1.0.0 (1007)
 
 Home now uses Coder Noir and Coder Light, with compact issue totals and current
 agent tasks. Edit widgets from the toolbar; manage saved dashboards and shared
