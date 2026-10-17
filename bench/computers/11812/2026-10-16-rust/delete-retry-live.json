@@ -1,0 +1,303 @@
+{
+  "schema": "openagents.space.memory_computers.v1",
+  "commit": "0ef037a3bedefb838ac60d546b3e54ee751b1fba",
+  "binary_sha256": "9ba425e52584d0ce4fd459b4e9c88a2b0da4615f4f43e5283925fa0639b8717d",
+  "upstream_commit": "de87b436c35dac056564bdd5b2a113c9046e189b",
+  "buffer_bytes": 1073741824,
+  "samples": [
+    {
+      "size": "medium",
+      "memory_mib": 4096,
+      "cycles": [
+        {
+          "cycle": 0,
+          "wake_ready_ms": 3578.868718999729,
+          "wake_to_answer_ms": 12795.977907999259,
+          "same_computer_process_memory": true,
+          "after": {
+            "pid": 323,
+            "start_ticks": 349,
+            "bytes": 1073741824,
+            "sha256": "5d2c4f492717bc7d181d99f24e8d46b4c93ed1b62af348c88c29c1fcee393a37",
+            "boot_id": "0face397-1571-4529-9333-671cc2495e0a",
+            "workspace": "/home/user/.oa-memory-11812-0e2a048c1db93da3",
+            "workspace_inode": 15009,
+            "workspace_marker_sha256": "1b455a6ab00ad64336890d9a6c7d0b50e5182835e0c64185f21a02956cb0b36b"
+          },
+          "guest_clock_skew_ms": 63.1806640625,
+          "api_process_restarted": true,
+          "stopped_policy_survived_restart": true,
+          "reconciled_after_restart": true,
+          "next_attempt_before": 1792201138.417366,
+          "next_attempt_after": 1792201152.802799
+        }
+      ],
+      "passed": true,
+      "computer": "cmp_acbfd3e286ec906599a0",
+      "resource": "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5",
+      "boot_evidence": {
+        "sandbox_id": "01a14782-8b8d-7743-aa34-19552d9d2fe5",
+        "boot_mode": "cold",
+        "actual_shape": {
+          "vcpu": 4,
+          "memory_mib": 4096
+        }
+      },
+      "before": {
+        "pid": 323,
+        "start_ticks": 349,
+        "bytes": 1073741824,
+        "sha256": "5d2c4f492717bc7d181d99f24e8d46b4c93ed1b62af348c88c29c1fcee393a37",
+        "boot_id": "0face397-1571-4529-9333-671cc2495e0a",
+        "workspace": "/home/user/.oa-memory-11812-0e2a048c1db93da3",
+        "workspace_inode": 15009,
+        "workspace_marker_sha256": "1b455a6ab00ad64336890d9a6c7d0b50e5182835e0c64185f21a02956cb0b36b"
+      },
+      "before_clock_skew_ms": 122.005126953125,
+      "stopped_after_turn": true,
+      "private_storage_observed_while_stopped": true,
+      "deleted": true,
+      "provider_absent_after_delete": true,
+      "private_storage_absent_after_delete": true
+    }
+  ],
+  "cleanup_errors": [],
+  "revisit_seconds": 1,
+  "lease_seconds": 6,
+  "stopped_observation_seconds": 15,
+  "conditions": "Isolated loopback Computers API, one guest at a time; no model or customer data",
+  "capabilities": {
+    "schema": "openagents.computer_driver.capabilities.v1",
+    "driver": "space",
+    "profiles": [
+      "core",
+      "suspend"
+    ],
+    "sizes": [
+      "small",
+      "medium",
+      "large"
+    ],
+    "memory_suspend": true,
+    "default_artifact": {
+      "kind": "space-template",
+      "reference": "seed@sha256:df2b6e21d72b7a5f74208f4b15cc62a3efc4c6ff53c687825aa3b059b5d87bcc"
+    },
+    "shapes": {
+      "large": {
+        "vcpus": 8,
+        "memory_mib": 8192
+      },
+      "medium": {
+        "vcpus": 4,
+        "memory_mib": 4096
+      }
+    },
+    "placements": [
+      {
+        "placement": "fast-sandbox",
+        "offers": [
+          {
+            "profiles": [
+              "core",
+              "suspend"
+            ],
+            "sizes": [
+              "small",
+              "medium",
+              "large"
+            ],
+            "shapes": {
+              "large": {
+                "vcpus": 8,
+                "memory_mib": 8192
+              },
+              "medium": {
+                "vcpus": 4,
+                "memory_mib": 4096
+              }
+            },
+            "memory_suspend": true,
+            "command_sessions": false,
+            "workspace_file_bytes": null,
+            "default_environment_available": true,
+            "environment_artifacts": false
+          }
+        ]
+      }
+    ],
+    "default_placement": "fast-sandbox"
+  },
+  "passed": true,
+  "lifecycle_requests": [
+    {
+      "operation": "35581174c7d3a94d63ca5d6adb88ed4ec2435cf215802065c960f419f1b28a6e",
+      "resource": "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5",
+      "action": "suspend",
+      "disposition": "accepted",
+      "provider_operation": "op_01a14782-f1c5-75b6-b4ac-41620db56182",
+      "created_at": "2026-10-17T01:38:46.33101+00:00",
+      "provider_observation": {
+        "http_status": 200,
+        "state": "succeeded",
+        "retry_safe_upload_conflict": false
+      }
+    },
+    {
+      "operation": "01c702791ada499c2aa85af55fd1afa4e6cacdf7dda3498960e73ececbc79d00",
+      "resource": "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5",
+      "action": "wake",
+      "disposition": "accepted",
+      "provider_operation": "op_01a14783-592c-7368-b156-582d08f2cbff",
+      "created_at": "2026-10-17T01:39:12.802216+00:00",
+      "provider_observation": {
+        "http_status": 200,
+        "state": "succeeded",
+        "retry_safe_upload_conflict": false
+      }
+    },
+    {
+      "operation": "851ad41364fd0b90dd4795fcec5fa4d0a1045ce04ea1525937314cb9aa124474",
+      "resource": "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5",
+      "action": "suspend",
+      "disposition": "accepted",
+      "provider_operation": "op_01a14783-8ac5-7329-a2a4-599fb2f3413b",
+      "created_at": "2026-10-17T01:39:25.502745+00:00",
+      "provider_observation": {
+        "http_status": 200,
+        "state": "succeeded",
+        "retry_safe_upload_conflict": false
+      }
+    },
+    {
+      "operation": "delete:25ab7b243b065a770fd01dbeecadce6f2537e6e4e38993b4975a138317ea0772",
+      "resource": "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5",
+      "action": "delete",
+      "disposition": "accepted",
+      "provider_operation": "op_01a14783-940f-74f2-ae40-8a060fc698e9",
+      "created_at": "2026-10-17T01:39:27.87892+00:00",
+      "provider_observation": {
+        "http_status": 200,
+        "state": "failed",
+        "retry_safe_upload_conflict": true
+      }
+    },
+    {
+      "operation": "delete-retry:70f4fbd449c29206dca028e29118b0d170b7e2384dbf1175823dd2715c12a87e",
+      "resource": "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5",
+      "action": "delete",
+      "disposition": "accepted",
+      "provider_operation": "op_01a14783-9879-7508-800d-137dff54274c",
+      "created_at": "2026-10-17T01:39:29.009456+00:00",
+      "provider_observation": {
+        "http_status": 200,
+        "state": "failed",
+        "retry_safe_upload_conflict": true
+      }
+    },
+    {
+      "operation": "delete-retry:7abecf993a93d8dd13b197440bdff9129bccdad0f2b63204b5ba1dcf9174baef",
+      "resource": "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5",
+      "action": "delete",
+      "disposition": "accepted",
+      "provider_operation": "op_01a14783-9cad-778d-8a95-95fa74d0f06f",
+      "created_at": "2026-10-17T01:39:30.086719+00:00",
+      "provider_observation": {
+        "http_status": 200,
+        "state": "failed",
+        "retry_safe_upload_conflict": true
+      }
+    },
+    {
+      "operation": "delete-retry:f3f965fd38f50c8040ffc3d37122d1b570f72c2d9dd1762c30580adbe2882e86",
+      "resource": "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5",
+      "action": "delete",
+      "disposition": "accepted",
+      "provider_operation": "op_01a14783-a115-73a7-9ce4-451c4539ccd8",
+      "created_at": "2026-10-17T01:39:31.213297+00:00",
+      "provider_observation": {
+        "http_status": 200,
+        "state": "failed",
+        "retry_safe_upload_conflict": true
+      }
+    },
+    {
+      "operation": "delete-retry:7f3de56d47f9c8954d58318e5fbe46a61b547c84a67970d40934fc8186cb8b8c",
+      "resource": "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5",
+      "action": "delete",
+      "disposition": "accepted",
+      "provider_operation": "op_01a14783-a57e-75d6-ac42-cf040fb153f0",
+      "created_at": "2026-10-17T01:39:32.344513+00:00",
+      "provider_observation": {
+        "http_status": 200,
+        "state": "failed",
+        "retry_safe_upload_conflict": true
+      }
+    },
+    {
+      "operation": "delete-retry:2f168efe4e451fb9f64bda6f2675872091e05492001e5f1fe5d6874d5869f281",
+      "resource": "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5",
+      "action": "delete",
+      "disposition": "accepted",
+      "provider_operation": "op_01a14783-a9e7-772f-a4e8-8a5d50a97988",
+      "created_at": "2026-10-17T01:39:33.468852+00:00",
+      "provider_observation": {
+        "http_status": 200,
+        "state": "failed",
+        "retry_safe_upload_conflict": true
+      }
+    },
+    {
+      "operation": "delete-retry:c1a09e2596c119fe0a87404797c73153ffb2c3fcf2ef226c95045e9b289567c0",
+      "resource": "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5",
+      "action": "delete",
+      "disposition": "accepted",
+      "provider_operation": "op_01a14783-ae64-73b0-8926-22568f89fb36",
+      "created_at": "2026-10-17T01:39:34.604515+00:00",
+      "provider_observation": {
+        "http_status": 200,
+        "state": "failed",
+        "retry_safe_upload_conflict": true
+      }
+    },
+    {
+      "operation": "delete-retry:45f11ac760441a40940c95c2233911d209b8d39c43aacaf11fae3321cf716096",
+      "resource": "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5",
+      "action": "delete",
+      "disposition": "accepted",
+      "provider_operation": "op_01a14783-b66c-75bc-ba85-2c2644860029",
+      "created_at": "2026-10-17T01:39:36.018554+00:00",
+      "provider_observation": {
+        "http_status": 200,
+        "state": "failed",
+        "retry_safe_upload_conflict": true
+      }
+    },
+    {
+      "operation": "delete-retry:6fd9d4749280aaa536c460e7f21544af6671f76a7298bdcae685bf6a80efd8ee",
+      "resource": "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5",
+      "action": "delete",
+      "disposition": "accepted",
+      "provider_operation": "op_01a14783-bada-7227-808c-aa8b8e79f5dc",
+      "created_at": "2026-10-17T01:39:37.812181+00:00",
+      "provider_observation": {
+        "http_status": 200,
+        "state": "failed",
+        "retry_safe_upload_conflict": true
+      }
+    },
+    {
+      "operation": "delete-retry:94919164315edc432a6acd98e3045cb7b54d1ca419af50091097c0847037f2fc",
+      "resource": "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5",
+      "action": "delete",
+      "disposition": "accepted",
+      "provider_operation": "op_01a14783-bfcc-727b-bb3a-9964001229c9",
+      "created_at": "2026-10-17T01:39:39.044227+00:00",
+      "provider_observation": {
+        "http_status": 200,
+        "state": "succeeded",
+        "retry_safe_upload_conflict": false
+      }
+    }
+  ]
+}
