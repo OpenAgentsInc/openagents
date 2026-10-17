@@ -20,9 +20,11 @@ pub use cloud_chat::*;
 mod cloud_host;
 pub use agent_lab::*;
 mod custom_agents;
-mod labs;
 mod identity;
+mod labs;
 pub use identity::*;
+mod web_login;
+pub use web_login::*;
 mod onboarding;
 pub use onboarding::*;
 mod own_computer;
@@ -43,6 +45,20 @@ use openagents_client as zc;
 
 pub use session::*;
 pub use types::*;
+
+/// A computer the phone just connected to by its code.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ConnectedComputer {
+    pub device_id: String,
+    pub label: String,
+}
+
+/// The scanner's quick check: `None` when `text` is a computer's code to
+/// connect with, else the sentence to show. Dials nothing.
+#[uniffi::export]
+pub fn computer_code_problem(text: String) -> Option<String> {
+    zc::code_problem(&text)
+}
 
 /// Default sync server for the OpenAgents mobile app.
 #[uniffi::export]
@@ -117,6 +133,20 @@ impl CoreClient {
             Arc::new(ListenerBridge(listener)),
         )?;
         Ok(Arc::new(Self { client }))
+    }
+
+    /// Connect a computer by the code it shows (scanned QR, opened connect
+    /// link, or pasted text), with no prior entry in this account's list
+    /// (#12000). Then call `CoreAccount::link_computer` so the computer signs
+    /// in as this person.
+    pub async fn connect_computer(&self, code: String) -> CoreResult<ConnectedComputer> {
+        let client = self.client.clone();
+        on_runtime(async move { client.connect_computer(&code).await })
+            .await
+            .map(|c| ConnectedComputer {
+                device_id: c.device_id,
+                label: c.label,
+            })
     }
 
     pub async fn pair_device_channel(&self, device_id: String, code: String) -> CoreResult<()> {
