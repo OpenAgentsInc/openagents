@@ -522,6 +522,9 @@ pub struct Client {
     inner: Arc<ClientInner>,
 }
 
+#[path = "chat_homes.rs"]
+mod chat_homes;
+
 impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
@@ -804,8 +807,16 @@ impl Client {
     /// Mint a chat row (born on chat2: `roomGen: 2`). The row is written
     /// before any session doc opens, so the host never reads it as legacy.
     pub fn create_session(&self, new: NewSession) -> Result<String> {
+        self.create_session_at(crate::new_id(), new)
+    }
+
+    fn create_session_at(&self, id: String, new: NewSession) -> Result<String> {
         let (state, _) = self.inner.workspace.state();
-        let id = crate::new_id();
+        if !chat_home::valid_id(&id) {
+            return Err(ClientError::InvalidArgument(
+                "Start a new conversation.".into(),
+            ));
+        }
         let now = Utc::now();
         let (device_id, space_id, cwd) = match &new.target {
             SessionTarget::Project { space_id } => {
@@ -833,7 +844,9 @@ impl Client {
                 }
                 // Its own folder on the host, created when the first run
                 // spawns; a host that predates scratch folders runs it in `~`.
-                let cwd = if host
+                let cwd = if let Some(previous) = state.chats.iter().find(|chat| chat.id == id) {
+                    previous.cwd.clone().unwrap_or_else(|| "~".into())
+                } else if host
                     .capabilities
                     .iter()
                     .any(|c| c == crate::rpc::capability::PROJECTLESS_SCRATCH_V1)
@@ -867,6 +880,19 @@ impl Client {
             parent_chat_id: None,
         };
         let id = chat.id.clone();
+        if let Some(previous) = state.chats.iter().find(|old| old.id == id) {
+            return if previous.device_id == chat.device_id
+                && previous.config == chat.config
+                && previous.space_id == chat.space_id
+                && previous.cwd == chat.cwd
+            {
+                Ok(id)
+            } else {
+                Err(ClientError::InvalidArgument(
+                    "Choose a new conversation.".into(),
+                ))
+            };
+        }
         self.inner.registry_write(|doc| doc.upsert_chat(&chat))?;
         Ok(id)
     }

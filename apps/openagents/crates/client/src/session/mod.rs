@@ -988,6 +988,11 @@ impl SessionHandle {
             .workspace
             .chat(&self.core.chat_id)
             .ok_or_else(|| ClientError::NotFound(self.core.chat_id.clone()))?;
+        if chat.links.continued_by.is_some() {
+            return Err(ClientError::InvalidArgument(
+                "Open the latest part of this chat to reply.".into(),
+            ));
+        }
         if request.text.trim().is_empty() && request.attachments.is_empty() {
             return Err(ClientError::InvalidArgument("empty message".into()));
         }

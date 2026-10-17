@@ -469,11 +469,14 @@ fn build_row(chat: &Chat, rc: &RowContext<'_>, cx: &DeriveContext<'_>) -> Arc<Se
         revision: 0,
         title: title.unwrap_or("New session").to_owned(),
         has_title: title.is_some(),
-        preview: chat
-            .last_message_preview
-            .as_deref()
-            .map(openagents_proto::view::single_line)
-            .filter(|p| !p.is_empty()),
+        preview: if chat.links.continues.is_some() {
+            Some("Continued chat".into())
+        } else {
+            chat.last_message_preview
+                .as_deref()
+                .map(openagents_proto::view::single_line)
+                .filter(|p| !p.is_empty())
+        },
         project,
         device_id: chat.device_id.clone(),
         device_name: device.and_then(|d| device_display_name(d)),
@@ -558,7 +561,8 @@ pub(crate) fn derive(
     let mut active: Vec<&Chat> = state
         .chats
         .iter()
-        .filter(|c| !c.archived && c.is_top_level() && c.links.continued_by.is_none())
+        .filter(|c| !c.archived && c.is_top_level() && c.links.continued_by.is_none()
+            && !c.config.as_ref().is_some_and(|config| config.model_options.contains_key(chat_home::REQUEST_OPTION)))
         .filter(|c| {
             c.space_id
                 .as_deref()
@@ -665,7 +669,8 @@ pub(crate) fn derive(
     let mut archived_chats: Vec<&Chat> = state
         .chats
         .iter()
-        .filter(|c| c.archived && c.is_top_level())
+        .filter(|c| c.archived && c.is_top_level() && c.links.continued_by.is_none()
+            && !c.config.as_ref().is_some_and(|config| config.model_options.contains_key(chat_home::REQUEST_OPTION)))
         .collect();
     sort_recency(&mut archived_chats);
     let archived: Vec<Arc<SessionRow>> = archived_chats.iter().map(|c| row(c)).collect();

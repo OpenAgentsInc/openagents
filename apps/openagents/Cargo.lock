@@ -8681,6 +8681,7 @@ name = "openagents-client"
 version = "0.2.113"
 dependencies = [
  "async-trait",
+ "chat-home",
  "chrono",
  "futures",
  "loro",
@@ -8883,6 +8884,7 @@ name = "openagents-mobile"
 version = "0.2.113"
 dependencies = [
  "async-trait",
+ "chat-home",
  "coder-access",
  "coder-sharing",
  "computer-driver",
@@ -8915,6 +8917,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "uniffi",
+ "uuid",
 ]
 
 [[package]]

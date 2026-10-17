@@ -64,6 +64,7 @@ pub struct SavedMessagePart {
 }
 #[derive(Clone, uniffi::Record)]
 pub struct SavedTranscript {
+    pub chat_id: Option<String>,
     pub can_reply: bool,
     pub answering: bool,
     pub stopping: bool,
@@ -137,10 +138,10 @@ pub trait SavedHistoryListener: Send + Sync {
 
 #[derive(uniffi::Object)]
 pub struct CoreSavedHistory {
-    lease: Lease,
+    pub(super) lease: Lease,
     history: Arc<History>,
     reader: Arc<Reader>,
-    turns: Arc<Turns>,
+    pub(super) turns: Arc<Turns>,
     archived: AtomicBool,
     visible: AtomicBool,
     foreground: AtomicBool,
@@ -401,7 +402,15 @@ impl CoreSavedHistory {
                 SavedChatRow {
                     id: row.chat.id().into(),
                     title: row.title,
-                    subtitle: format!("{source} · {} messages", row.messages),
+                    subtitle: format!(
+                        "{}{source} · {} messages",
+                        if row.links.continues.is_some() {
+                            "Continued chat · "
+                        } else {
+                            ""
+                        },
+                        row.messages
+                    ),
                     group,
                 }
             })
@@ -426,6 +435,7 @@ impl CoreSavedHistory {
             state: h.state.into(),
             projects_state: h.projects_state.into(),
             transcript: SavedTranscript {
+                chat_id: r.summary.as_ref().map(|s| s.chat.id().to_owned()),
                 can_reply: active
                     && r.summary.as_ref().is_some_and(|s| {
                         s.source == ChatSource::Web && s.links.continued_by.is_none()

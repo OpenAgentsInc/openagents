@@ -16,6 +16,7 @@ publish.workspace = true
 upstream-workos = []
 
 [dependencies]
+chat-home = { path = "../../../../crates/chat-home" }
 openagents-brand.workspace = true
 openagents-voice-session.workspace = true
 openagents-proto.workspace = true

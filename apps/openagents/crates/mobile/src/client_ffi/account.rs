@@ -570,7 +570,34 @@ mod tests {
             .unwrap();
         let first = coder_sharing::Recipient::parse(&copied).unwrap();
         assert_eq!(first.account, "acct_a");
+        struct ClientChanges;
+        impl super::super::ClientListener for ClientChanges {
+            fn on_event(&self, _: super::super::ClientEvent) {}
+        }
+        let core = account
+            .connect(
+                CoreConfig {
+                    edge_url: origin.clone(),
+                    data_dir: String::new(),
+                    device_id: "fixture-phone".into(),
+                    device_name: "Fixture phone".into(),
+                    platform: "ios".into(),
+                    app_version: "fixture".into(),
+                },
+                Arc::new(ClientChanges),
+            )
+            .unwrap();
+        let homes = account
+            .chat_homes(core.clone(), "a1000000-0000-4000-8000-000000000001".into())
+            .unwrap();
         account.controller.invalidate();
+        assert!(matches!(homes.choices(), Err(CoreError::Auth { .. })));
+        assert!(matches!(
+            homes
+                .activate("old-view".into(), 1, "home-choice-1".into())
+                .await,
+            Err(CoreError::Auth { .. })
+        ));
         assert!(matches!(sharing.snapshot(), Err(CoreError::Auth { .. })));
         assert!(matches!(
             sharing
@@ -588,6 +615,10 @@ mod tests {
             account.controller.lease().unwrap().session().account().id,
             "acct_b"
         );
+        assert!(matches!(
+            account.chat_homes(core, "a1000000-0000-4000-8000-000000000001".into()),
+            Err(CoreError::Auth { .. })
+        ));
         let other = account.project_sharing(Arc::new(Changes)).unwrap();
         let view: serde_json::Value = serde_json::from_str(&other.snapshot().unwrap()).unwrap();
         let copied = other
