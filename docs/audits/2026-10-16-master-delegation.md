@@ -134,7 +134,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 7: host authority
 
-**Taken 2026-10-16 23:06 CDT** by Codex working #11911 in `~/work/openagents-host-finish`. #11817 is closed; its code is on main through `52ecf579fe`, with deploy checks queued below.
+**Released 2026-10-17 00:06 CDT** by Codex; #11817 and #11911 are closed. No issues remain in lane 7. Source is on main through `f2b101f35b`; deploy and device checks are queued below. Worktree: `~/work/openagents-host-finish` (removed after completion).
 
 **Released 2026-10-16 22:23 CDT** by Codex; #11817 and #11911 remain. #11817 prerequisites landed in `226ebf63a3` and `1dde3bd99a`; the enrolled adapter and project sharing are unfinished. Worktree: `~/work/openagents-bang-lanes` (removed after handoff).
 
@@ -322,9 +322,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Status:** the foundations are in `cca7f94ebe`.
 - **Remains:** the "Runs on" control, computer-to-cloud continuation through the #11893 path, paired and cloud computer choice, one conversation row across web, terminal, desktop, and phone, and the web, Mac, then cloud round trip on a test account. The cloud computer choice needs #11852.
 
-**#11911 Computer sharing: owner-approved project-scoped access over NIP-HOST.** Lane 7, code complete.
-- **Status:** `72a0bc730c` adds device-pinned project invitations, absolute expiry, separate scopes, and scoped revocation. `28994246be` requires `project.redeem` and `project-sharing-v2` so an older host cannot accept a project invitation as broad enrollment. `0d5bca7a54` adds the account-bound client and shared Rust Native form. The mobile integration mounts that form in Settings, cancels work on account changes, and stores device keys and grants separately for each account. It offers only implemented project files and commands; broad HOST tasks, raw terminals, and general app RPC remain unavailable to guests.
-- **Checks:** access library 124, host library 118, sharing crate 12 (including a real signed local relay and two synthetic accounts), mobile library 58 with one benchmark ignored, and regenerated Swift bindings. The mobile account-switch check rejects callbacks from the earlier account after another account signs in. Unsupported files cannot be saved as empty text without an explicit edit.
+**#11911 Computer sharing: owner-approved project-scoped access over NIP-HOST.** Lane 7, closed.
+- **Status:** `72a0bc730c` adds device-pinned project invitations, absolute expiry, separate scopes, and scoped revocation. `28994246be` requires `project.redeem` and `project-sharing-v2` so an older host cannot accept a project invitation as broad enrollment. `0d5bca7a54` adds the account-bound client and shared Rust Native form. `f2b101f35b` mounts that form in Settings, cancels work on account changes, and stores device keys and grants separately for each account. It offers only implemented project files and commands; broad HOST tasks, raw terminals, and general app RPC remain unavailable to guests.
+- **Checks:** access library 124, host library 118, sharing crate 12 (including a real signed local relay and two synthetic accounts), mobile library 58 with one benchmark ignored, regenerated Swift bindings, and Swift typechecking for all 54 app/shared sources. The mobile account-switch check rejects callbacks from the earlier account after another account signs in. Unsupported files cannot be saved as empty text without an explicit edit.
 - **After-close:** deploy and dedicated-account/device checks are listed below. Physical iPhone and accessibility checks are in `NEEDS_OWNER.md`. No owner account or running host was used for these checks.
 
 **#11929 Agent Lab: run tests for agents that don't need a project copy.** Lane 9. Closed on code.
