@@ -11,6 +11,7 @@ pub mod api;
 pub mod command_credentials;
 pub mod commands;
 pub mod db;
+pub mod economics;
 pub mod files;
 #[cfg(feature = "space")]
 pub mod lifecycle_operations;

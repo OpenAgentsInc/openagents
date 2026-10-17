@@ -1,7 +1,7 @@
 //! Database-authorized operations for computer allocation limits and usage.
 use oa_computers::{Db, Store, usage::Limits};
 
-const USAGE: &str = "Use read ACCOUNT [AFTER], account-limits ACCOUNT FILE, service-limits FILE, or resolve ACCOUNT COMPUTER BOOT MAXIMUM_CPU_MS USED_CPU_MS REASON.";
+const USAGE: &str = "Use read ACCOUNT [AFTER], account-limits ACCOUNT FILE, service-limits FILE, economics FILE, or resolve ACCOUNT COMPUTER BOOT MAXIMUM_CPU_MS USED_CPU_MS REASON.";
 
 fn argument(args: &mut impl Iterator<Item = String>) -> Result<String, String> {
     args.next()
@@ -13,6 +13,31 @@ async fn run() -> Result<(), String> {
     let command = args.next().ok_or_else(|| USAGE.to_owned())?;
     if matches!(command.as_str(), "--help" | "-h" | "help") {
         println!("{USAGE}");
+        return Ok(());
+    }
+    if command == "economics" {
+        use std::io::Read;
+        let path = argument(&mut args)?;
+        if args.next().is_some() {
+            return Err("Too many arguments.".into());
+        }
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)
+            .map_err(|_| "The cost report input could not be opened.".to_owned())?
+            .take(1024 * 1024 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| "The cost report input could not be read.".to_owned())?;
+        if bytes.len() > 1024 * 1024 {
+            return Err("The cost report input exceeds 1 MiB.".into());
+        }
+        let window: oa_computers::economics::Window = serde_json::from_slice(&bytes)
+            .map_err(|_| "The cost report input is invalid.".to_owned())?;
+        let report = window.report().map_err(str::to_owned)?;
+        println!(
+            "{}",
+            serde_json::to_string(&report)
+                .map_err(|_| "The cost report could not be written.".to_owned())?
+        );
         return Ok(());
     }
     if !matches!(

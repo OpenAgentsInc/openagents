@@ -436,5 +436,27 @@
     "customer_charge": null,
     "scope": "Read-only dedicated test-account check; no resource, entitlement, or pricing change.",
     "earlier_403": "The earlier check used acct_c76f469572ad3446. The current route and its tests gate usage on the Computers rollout account list. This successful read uses the configured dedicated account, not that earlier account."
+  },
+  "service_economics_increment": {
+    "module": "crates/oa-computers/src/economics.rs",
+    "module_sha256": "04a82fc9f1dd320c477c76b99ea35bf5cc41cee087fcfd0ea7ec6a1d24551962",
+    "operator_command": "oa-computers-usage economics FILE",
+    "scope": "Service capacity and complete provider cost per verified useful task; customer pricing is disabled.",
+    "checks": {
+      "focused_rust_tests_passed": 5,
+      "offline_cli_without_database_credentials": "passed",
+      "unknown_measurements_preserved_as_null": "passed",
+      "unknown_input_fields_refused": "passed",
+      "input_values_omitted_from_errors": "passed",
+      "format": "passed"
+    },
+    "fixture": "Synthetic values only; this does not establish measured production cost per task.",
+    "customer_charge": null,
+    "pricing": "not_enabled",
+    "remaining": [
+      "complete provider storage inventory and byte/count admission limits",
+      "private-object and account-deletion cleanup",
+      "real measured useful-task economics and owner-approved customer pricing/entitlement"
+    ]
   }
 }

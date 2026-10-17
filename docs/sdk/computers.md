@@ -106,6 +106,16 @@ including unresolved allowances. `customer_charge` is `null` and `pricing` is
 `not_enabled`. The app OpenAPI documents this read; it is separate from the
 generated Computers SDK subset below.
 
+Operators can run `oa-computers-usage economics FILE` on measured service
+windows without database access. The input records worker vCPUs and duration,
+observed guest capacity and command wall time, task attempts and verified useful
+results, and complete provider cost in currency micro-units. Use `null` for
+incomplete measurements or costs. The report keeps shared costs at service scope,
+rounds average cost per useful task up to the next micro-unit, and leaves the
+average unknown when no useful task completed. Unallocated capacity counts worker
+time without assigned guests; CPU utilization needs its own measurement.
+Customer pricing remains disabled.
+
 For an empty `POST` request, send `Content-Length: 0`. Cloud Run refuses a
 lengthless `POST` before it reaches the API. The server's internal transport
 sets this header for stop and wake; public SDK transports must do the same.
