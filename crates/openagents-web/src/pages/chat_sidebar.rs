@@ -441,10 +441,20 @@ fn session_row(session: &crate::session_index::Row, online: bool, view: View<'_>
     } else if let Some(label) = session.status.label() {
         detail.push(label.into());
     }
-    NavItem::new(session.title.clone(), super::sessions::href(&session.id))
+    let item = NavItem::new(session.title.clone(), super::sessions::href(&session.id))
         .current(view.current == Some(session.id.as_str()))
-        .row_id(format!("chat-session-row-{}", session.id))
-        .detail(detail.join(" · "))
+        .row_id(format!("chat-session-row-{}", session.id));
+    // A saved agent's session wears the OpenAgents mark and its name (#11966).
+    match &session.agent {
+        Some(agent) => {
+            if session.title != *agent {
+                detail.insert(0, agent.clone());
+            }
+            item.icon(super::sessions::agent_mark())
+        }
+        None => item,
+    }
+    .detail(detail.join(" · "))
 }
 
 /// A chat someone else started in a shared project: who started it, and

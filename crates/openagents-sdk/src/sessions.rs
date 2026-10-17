@@ -86,6 +86,9 @@ pub struct SessionSummary {
     pub continued_by: Option<PartRef>,
     #[serde(default)]
     pub home_transfer: bool,
+    /// The saved agent the chat runs (#11966).
+    #[serde(default)]
+    pub agent: Option<String>,
 }
 impl SessionSummary {
     pub(crate) fn valid(&self) -> bool {
@@ -119,6 +122,9 @@ pub struct PublishedSession {
     /// The app's 16-character workspace locator, so the web can link back.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,
+    /// The saved agent the chat runs (#11966); lists show it by name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
 }
 
 fn is_false(value: &bool) -> bool {

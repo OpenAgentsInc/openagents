@@ -183,6 +183,42 @@ async fn continuation_session_parent_requires_the_sources_destination_and_surviv
 }
 
 #[tokio::test]
+async fn a_saved_agents_session_is_listed_by_the_agent_with_the_openagents_mark() {
+    let world = world().await;
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    let api = Api::of(&browser);
+    let now = crate::chat_store::now_unix();
+    let mut foreman = row(ONE, "Foreman", now, None);
+    foreman["agent"] = json!("Foreman");
+    let publish =
+        json!({"name": "Test Mac", "sessions": [foreman, row(TWO, "Older work", now - 600, None)]});
+    let (status, body) = api
+        .json(
+            &world,
+            "PUT",
+            "/v1/history/sessions/computers/test-mac",
+            publish,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (_, list) = api
+        .json(&world, "GET", "/v1/history/sessions", Value::Null)
+        .await;
+    let rows = list["data"].as_array().unwrap();
+    assert_eq!(rows[0]["agent"], "Foreman");
+    assert!(rows[1]["agent"].is_null());
+    let page = browser.get(&world, &format!("/chat/sessions/{ONE}")).await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    assert!(page.body.contains("oa-session-agent"), "{}", page.body);
+    assert_eq!(
+        page.body.matches("oa-agent-mark").count(),
+        2,
+        "page and its sidebar row"
+    );
+}
+
+#[tokio::test]
 async fn history_session_continuation_waits_for_the_computer_and_transcript_is_opt_in() {
     let world = world().await;
     let mut browser = Browser::default();

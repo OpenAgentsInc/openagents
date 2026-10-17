@@ -30664,6 +30664,14 @@
               }
             ]
           },
+          "agent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 80,
+            "description": "The saved agent the session runs; lists show its name with the OpenAgents mark."
+          },
           "home_transfer": {
             "type": "boolean",
             "description": "This computer can move a chat through its normal continuation path."
@@ -30801,6 +30809,14 @@
                 },
                 "continues": {
                   "$ref": "#/components/schemas/ChatPartRef"
+                },
+                "agent": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 80,
+                  "description": "The saved agent the session runs."
                 },
                 "home_transfer": {
                   "type": "boolean"

@@ -136,6 +136,9 @@ pub(crate) struct Row {
     /// The web chat that continues this session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub continued_by: Option<PartRef>,
+    /// The saved agent the session runs (#11966).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
 }
 
 impl Row {
@@ -230,6 +233,7 @@ pub(crate) fn view(index: &Index, row: &Row, now: u64, shared: bool) -> Value {
         "updated_unix": row.last_activity_unix, "recap": row.recap,
         "online": index.online(row, now), "transcript": shared,
         "app_link": row.app_link(), "continues": row.continues, "continued_by": row.continued_by, "home_transfer": row.home_transfer,
+        "agent": row.agent,
     })
 }
 
@@ -381,6 +385,8 @@ struct Published {
     recap: String,
     #[serde(default)]
     workspace: Option<String>,
+    #[serde(default)]
+    agent: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -398,6 +404,9 @@ fn clean(text: &str, bytes: usize) -> String {
     }
     text
 }
+
+/// A saved agent's name, as `AgentSpec` bounds it.
+const MAX_AGENT: usize = 80;
 
 fn valid_device(device: &str) -> bool {
     Home::computer(device).is_some()
@@ -471,6 +480,10 @@ fn checked(device: &str, body: &[u8]) -> Result<(String, Vec<Row>), &'static str
             recap: clean(&s.recap, MAX_RECAP),
             workspace: s.workspace,
             continued_by: None,
+            agent: s
+                .agent
+                .map(|a| clean(&a, MAX_AGENT))
+                .filter(|a| !a.is_empty()),
         });
     }
     Ok((name, rows))
@@ -1030,7 +1043,8 @@ pub(crate) fn openapi(doc: &mut Value) {
         "recap":{"type":"string","maxLength":MAX_RECAP},"online":{"type":"boolean"},"transcript":{"type":"boolean","description":"The transcript is on for this caller, so a copy may be read."},
         "app_link":{"type":["string","null"],"description":"Opens the chat in the OpenAgents app."},
         "continues":{"oneOf":[{"type":"null"},s("ChatPartRef")]},
-        "continued_by":{"oneOf":[{"type":"null"},s("ChatPartRef")]}},
+        "continued_by":{"oneOf":[{"type":"null"},s("ChatPartRef")]},
+        "agent":{"type":["string","null"],"maxLength":80,"description":"The saved agent the session runs; lists show its name with the OpenAgents mark."}},
         "description":"A computer session's summary. It holds no transcript."}));
     schemas.insert("HistorySessions".into(), json!({"type":"object","required":["data"],"properties":{"data":{"type":"array","maxItems":MAX_ROWS,"items":s("HistorySession")}}}));
     schemas.insert("HistorySessionMessage".into(), json!({"type":"object","additionalProperties":false,"required":["role","text"],"properties":{"role":{"enum":["user","assistant","tool"]},"text":{"type":"string","maxLength":MAX_TEXT}}}));
@@ -1038,7 +1052,8 @@ pub(crate) fn openapi(doc: &mut Value) {
     schemas.insert("HistorySessionPublish".into(), json!({"type":"object","additionalProperties":false,"required":["name","sessions"],"properties":{"name":{"type":"string","maxLength":MAX_NAME},"sessions":{"type":"array","maxItems":MAX_PER_COMPUTER,"items":{"type":"object","additionalProperties":false,"required":["id","title","status","last_activity_unix"],"properties":{
         "id":{"type":"string","format":"uuid"},"title":{"type":"string"},"project":{"type":["string","null"]},"folder":{"type":["string","null"]},
         "status":{"enum":["idle","working","awaiting_input","errored"]},"last_activity_unix":{"type":"integer","minimum":0},"recap":{"type":"string"},
-        "workspace":{"type":["string","null"],"pattern":"^[0-9a-f]{16}$"},"continues":s("ChatPartRef")}}}}}));
+        "workspace":{"type":["string","null"],"pattern":"^[0-9a-f]{16}$"},"continues":s("ChatPartRef"),
+        "agent":{"type":["string","null"],"maxLength":80,"description":"The saved agent the session runs."}}}}}}));
     schemas.insert("HistorySessionChoice".into(), json!({"type":"object","additionalProperties":false,"required":["on"],"properties":{"on":{"type":"boolean"}}}));
     schemas.insert("HistorySessionUpload".into(), json!({"type":"object","additionalProperties":false,"required":["messages"],"properties":{"messages":{"type":"array","items":s("HistorySessionMessage")}}}));
     schemas.get_mut("HistorySession").unwrap()["properties"]["home_transfer"] = json!({"type":"boolean","description":"This computer can move a chat through its normal continuation path."});

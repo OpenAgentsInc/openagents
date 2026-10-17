@@ -35,6 +35,7 @@ async fn sessions_publish_list_and_share_transcripts_through_the_account() {
             assert_eq!(body["name"], "Test Mac");
             assert_eq!(body["sessions"][0]["status"], "awaiting_input");
             assert_eq!(body["sessions"][0]["home_transfer"], true);
+            assert_eq!(body["sessions"][0]["agent"], "Foreman");
             Json(json!({"transcripts":[body["sessions"][0]["id"]]}))
         }).delete(|| async { Json(json!({"removed":true})) }))
         .route("/v1/history/sessions/computers/{device}/moves", get(|| async {
@@ -88,6 +89,7 @@ async fn sessions_publish_list_and_share_transcripts_through_the_account() {
         last_activity_unix: 5,
         recap: String::new(),
         workspace: None,
+        agent: Some("Foreman".into()),
     };
     let on = sessions::publish(
         &client,

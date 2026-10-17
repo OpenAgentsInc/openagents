@@ -121,6 +121,10 @@ pub(crate) fn rows(
                 last_activity_unix: active(chat).max(0) as u64,
                 recap: String::new(),
                 workspace: workspace.map(str::to_owned),
+                agent: openagents_proto::saved_agent::agent_name(
+                    chat.config.as_ref(),
+                    chat.title.as_deref(),
+                ),
             }
         })
         .collect()

@@ -30,6 +30,15 @@ pub(crate) fn href(id: &str) -> String {
     format!("/chat/sessions/{id}")
 }
 
+/// The OpenAgents mark a saved agent's session wears in lists (#11966).
+pub(crate) fn agent_mark() -> Markup {
+    html! {
+        svg.oa-agent-mark viewBox="0 0 820 940" width="12" height="14" fill="currentColor" aria-hidden="true" {
+            path d="M0 600h100v100h-100ZM0 720h100v100h-100ZM240 840h100v100h-100ZM240 720h100v100h-100ZM120 840h100v100h-100ZM120 600h100v100h-100ZM240 600h100v100h-100ZM0 480h100v100h-100ZM0 360h100v100h-100ZM480 840h100v100h-100ZM480 720h100v100h-100ZM120 360h100v100h-100ZM120 240h100v100h-100ZM240 360h100v100h-100ZM600 720h100v100h-100ZM480 600h100v100h-100ZM360 360h100v100h-100ZM240 240h100v100h-100ZM600 600h100v100h-100ZM720 600h100v100h-100ZM720 480h100v100h-100ZM240 120h100v100h-100ZM600 380h100v100h-100ZM720 240h100v100h-100ZM720 0h100v100h-100ZM480 240h100v100h-100ZM480 0h100v100h-100ZM120 480h100v100h-100ZM240 480h100v100h-100ZM360 840h100v100h-100ZM360 720h100v100h-100ZM360 600h100v100h-100ZM360 480h100v100h-100ZM120 720h100v100h-100Z" {}
+        }
+    }
+}
+
 #[derive(Default, Deserialize)]
 struct Scope {
     project: Option<String>,
@@ -112,6 +121,9 @@ async fn page(
     let token = csrf(&app, &owner);
     let content = html! {
         h1 { (row.title) }
+        @if let Some(agent) = &row.agent {
+            p.oa-session-agent { (agent_mark()) " " (agent) }
+        }
         p.oa-session-where { (where_.join(" · ")) }
         p.oa-session-state { (state.join(" · ")) }
         @if !online {
