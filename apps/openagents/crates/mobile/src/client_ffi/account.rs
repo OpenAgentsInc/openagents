@@ -150,6 +150,16 @@ impl CoreAccount {
 }
 #[uniffi::export]
 impl CoreAccount {
+    pub fn project_sharing(
+        &self,
+        listener: Arc<dyn super::SharingListener>,
+    ) -> CoreResult<Arc<super::CoreSharing>> {
+        let lease = self.controller.lease().ok_or_else(auth_error)?;
+        let directory = self
+            .profile(&lease.session().account().id, "project-sharing")
+            .join("sharing");
+        super::CoreSharing::new(lease, &directory, listener)
+    }
     pub fn agent_lab(
         &self,
         listener: Arc<dyn super::AgentLabListener>,
@@ -494,5 +504,111 @@ mod tests {
                 .next()
                 .is_some()
         );
+    }
+    #[tokio::test]
+    async fn project_sharing_rejects_old_callbacks_after_logout_and_another_login() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        struct Changes;
+        impl super::super::SharingListener for Changes {
+            fn on_sharing_changed(&self) {}
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let second = Arc::new(AtomicBool::new(false));
+        let signed_in = second.clone();
+        let server = tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let signed_in = signed_in.clone();
+                tokio::spawn(async move {
+                    let mut request = Vec::new();
+                    let mut buffer = [0; 1024];
+                    while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                        let n = socket.read(&mut buffer).await.unwrap();
+                        if n == 0 {
+                            return;
+                        }
+                        request.extend_from_slice(&buffer[..n]);
+                    }
+                    let id = if signed_in.load(Ordering::Relaxed) {
+                        "acct_b"
+                    } else {
+                        "acct_a"
+                    };
+                    let body =
+                        serde_json::json!({"account":{"id":id,"label":"Fixture"},"workspaces":[]})
+                            .to_string();
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = socket.write_all(response.as_bytes()).await;
+                });
+            }
+        });
+        let root = tempfile::tempdir().unwrap();
+        let account = CoreAccount::from_store(
+            Client::new(Deployment::new(&format!("{origin}/v1"), &origin).unwrap()).unwrap(),
+            Arc::new(Memory),
+            root.path().into(),
+            Arc::new(Silent),
+        );
+        account
+            .controller
+            .clone()
+            .import_credential(format!("oa_sk_{}", "1".repeat(64)))
+            .await;
+        let sharing = account.project_sharing(Arc::new(Changes)).unwrap();
+        let view: serde_json::Value = serde_json::from_str(&sharing.snapshot().unwrap()).unwrap();
+        let instance = view["instance"].as_str().unwrap().to_owned();
+        let revision = view["revision"].as_u64().unwrap();
+        let copied = sharing
+            .activate(instance.clone(), revision, "recipient".into())
+            .await
+            .unwrap()
+            .unwrap();
+        let first = coder_sharing::Recipient::parse(&copied).unwrap();
+        assert_eq!(first.account, "acct_a");
+        account.controller.invalidate();
+        assert!(matches!(sharing.snapshot(), Err(CoreError::Auth { .. })));
+        assert!(matches!(
+            sharing
+                .activate(instance.clone(), revision, "recipient".into())
+                .await,
+            Err(CoreError::Auth { .. })
+        ));
+        second.store(true, Ordering::Relaxed);
+        account
+            .controller
+            .clone()
+            .import_credential(format!("oa_sk_{}", "2".repeat(64)))
+            .await;
+        assert_eq!(
+            account.controller.lease().unwrap().session().account().id,
+            "acct_b"
+        );
+        let other = account.project_sharing(Arc::new(Changes)).unwrap();
+        let view: serde_json::Value = serde_json::from_str(&other.snapshot().unwrap()).unwrap();
+        let copied = other
+            .activate(
+                view["instance"].as_str().unwrap().into(),
+                view["revision"].as_u64().unwrap(),
+                "recipient".into(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        let recipient = coder_sharing::Recipient::parse(&copied).unwrap();
+        assert_eq!(recipient.account, "acct_b");
+        assert_ne!(recipient.device, first.device);
+        assert!(sharing.snapshot().is_err());
+        assert!(
+            sharing
+                .activate(instance, revision, "recipient".into())
+                .await
+                .is_err()
+        );
+        server.abort();
     }
 }

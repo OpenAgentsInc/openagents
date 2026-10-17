@@ -1975,6 +1975,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-sharing"
+version = "1.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "coder-access",
+ "coder-host",
+ "computer-driver",
+ "computer-enrolled",
+ "computer-files",
+ "fs2",
+ "libc",
+ "rust-native",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "codespan-reporting"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2049,6 +2068,40 @@ name = "compression-core"
 version = "0.4.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cc14f565cf027a105f7a44ccf9e5b424348421a1d8952a8fc9d499d313107789"
+
+[[package]]
+name = "computer-driver"
+version = "1.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "computer-files",
+ "serde",
+ "serde_json",
+ "tokio",
+ "zeroize",
+]
+
+[[package]]
+name = "computer-enrolled"
+version = "1.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "coder-access",
+ "coder-host",
+ "computer-driver",
+ "computer-files",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "computer-files"
+version = "1.0.0"
+dependencies = [
+ "libc",
+ "serde",
+ "sha2 0.10.9",
+]
 
 [[package]]
 name = "concurrent-queue"
@@ -8582,6 +8635,9 @@ name = "openagents-mobile"
 version = "0.2.113"
 dependencies = [
  "async-trait",
+ "coder-access",
+ "coder-sharing",
+ "computer-driver",
  "oa-copy",
  "openagents-account",
  "openagents-client",

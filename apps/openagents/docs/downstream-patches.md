@@ -195,3 +195,10 @@ links remain readable. Upstream fixes now require manual ports.
   - `crates/account/src/desktop.rs`: `has_saved_sign_in`.
   - `crates/brand/src/lib.rs`: the service label and unit prefixes.
   Move all to a cloud computer is commented out until #11933.
+
+- [OpenAgents #11911](https://github.com/OpenAgentsInc/openagents/issues/11911):
+  project-sharing controls use `coder-sharing` for account-bound device keys,
+  owner-approved invitations, shared files, and commands through NIP-HOST.
+  `client_ffi::sharing` binds callbacks and polling to the current account lease.
+  Settings opens the shared Rust Native form in `AgentFormController`; UIKit
+  forwards versioned actions and copies codes only after an explicit action.

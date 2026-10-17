@@ -331,7 +331,6 @@ fall back to `enroll.redeem`; an old host cannot turn a project acceptance into
 broad enrollment. Hosts retain `project-sharing-v1` for existing invite/revoke
 clients, while new owner controls require v2 before creating invitations.
 
-
 Scoped guests cannot create invitations, administer accounts, use host-wide
 reads or tasks, open raw terminals, or call the general app RPC surface.
 Project membership alone admits none of these operations. An unsupported host

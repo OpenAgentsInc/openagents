@@ -38,6 +38,8 @@ final class AppModel {
     }
 
     @MainActor lazy var voice = RemoteVoiceController(app: self)
+    private(set) var projectSharing: CoreSharing?
+    private lazy var sharingBridge = ProjectSharingBridge(app: self)
     private(set) var agentLab: CoreAgentLab?
     private lazy var labBridge = LabBridge(app: self)
     private(set) var customAgents: CoreAgents?
@@ -168,6 +170,13 @@ final class AppModel {
         #endif
         return "https://openagents.com"
     }
+    func openProjectSharing() throws -> CoreSharing {
+        if let projectSharing { return projectSharing }
+        guard let account else { throw NSError(domain: "OpenAgents", code: 1, userInfo: [NSLocalizedDescriptionKey: "Log in again to continue."]) }
+        let sharing = try account.projectSharing(listener: sharingBridge)
+        projectSharing = sharing
+        return sharing
+    }
     func openProjectInvitations() {
         guard let site = URL(string: Self.accountWebsite), let url = URL(string: "projects", relativeTo: site)?.absoluteURL else { return }
         UIApplication.shared.open(url)
@@ -182,6 +191,7 @@ final class AppModel {
     fileprivate func handleAccount(_ snapshot: AccountSnapshot) {
         guard snapshot.generation >= accountGeneration else { return }
         if snapshot.generation != accountGeneration {
+            projectSharing = nil
             cloudHost = nil
             cloudHostBusy = false
             cloudHostRequest &+= 1
@@ -966,4 +976,10 @@ private final class LabBridge: AgentLabListener {
     weak var app: AppModel?
     init(app: AppModel) { self.app = app }
     func onAgentLabChanged() { DispatchQueue.main.async { [weak self] in self?.app?.homeDidChange() } }
+}
+
+private final class ProjectSharingBridge: SharingListener {
+    weak var app: AppModel?
+    init(app: AppModel) { self.app = app }
+    func onSharingChanged() { DispatchQueue.main.async { [weak self] in self?.app?.homeDidChange() } }
 }

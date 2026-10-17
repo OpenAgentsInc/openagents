@@ -117,6 +117,7 @@ pub struct Model {
     invite_expiry: Option<u64>,
     path: String,
     contents: String,
+    contents_ready: bool,
     script: String,
     pub output: String,
     pub active_job: Option<String>,
@@ -150,6 +151,7 @@ impl Model {
             invite_expiry: None,
             path: "README.md".into(),
             contents: String::new(),
+            contents_ready: false,
             script: String::new(),
             output: String::new(),
             active_job: None,
@@ -217,10 +219,12 @@ impl Model {
                         .chars()
                         .any(|ch| ch.is_control() && !matches!(ch, '\n' | '\r' | '\t')) =>
             {
-                self.contents = text.into()
+                self.contents = text.into();
+                self.contents_ready = true;
             }
             _ => {
                 self.contents.clear();
+                self.contents_ready = false;
                 self.notice = Some("Open this file on a computer to read or edit it.".into());
             }
         }
@@ -598,7 +602,7 @@ impl Model {
                     children.push(button(
                         "write-file",
                         "Save file",
-                        editable && !self.path.is_empty(),
+                        editable && self.contents_ready && !self.path.is_empty(),
                         Intent::WriteFile,
                     ));
                     children.push(field(
@@ -673,8 +677,15 @@ impl Model {
             Intent::Code => self.code = event.value,
             Intent::Name => self.label = event.value,
             Intent::Recipient => self.recipient_code = event.value,
-            Intent::Path => self.path = event.value,
-            Intent::Contents => self.contents = event.value,
+            Intent::Path => {
+                self.path = event.value;
+                self.contents.clear();
+                self.contents_ready = false;
+            }
+            Intent::Contents => {
+                self.contents = event.value;
+                self.contents_ready = true;
+            }
             Intent::Script => self.script = event.value,
             _ => return Err(stale(rust_native::ViewError::NotInteractive)),
         }
@@ -715,6 +726,7 @@ impl Model {
             Intent::Open(id, project) => {
                 self.screen = Screen::Project { id, project };
                 self.contents.clear();
+                self.contents_ready = false;
                 self.output.clear();
                 self.active_job = None;
                 None
@@ -806,6 +818,8 @@ impl Model {
                         project: record.project.clone(),
                     };
                     self.output.clear();
+                    self.contents.clear();
+                    self.contents_ready = false;
                     self.script = record.spec.command.clone();
                     self.operation = record.id.clone();
                     self.active_job = Some(job.clone());
@@ -1054,6 +1068,50 @@ mod tests {
         assert!(model.selected.contains("project-69"));
     }
     #[test]
+    fn unsupported_files_cannot_be_saved_as_empty_text_without_an_explicit_edit() {
+        let mut model = model(true);
+        activate(&mut model, "open-0-0", 100).unwrap();
+        assert!(activate(&mut model, "write-file", 100).is_err());
+        model.file(b"text");
+        assert!(
+            matches!(activate(&mut model, "write-file", 100).unwrap(), Some(Effect::WriteFile {bytes,..}) if bytes==b"text")
+        );
+        model.file(&[0xff]);
+        assert!(activate(&mut model, "write-file", 100).is_err());
+        model
+            .change(
+                FieldChange {
+                    activation: Activation {
+                        instance: model.instance.clone(),
+                        revision: model.revision,
+                        node: "contents".into(),
+                    },
+                    value: "replacement".into(),
+                },
+                100,
+            )
+            .unwrap();
+        assert!(
+            matches!(activate(&mut model, "write-file", 100).unwrap(), Some(Effect::WriteFile {bytes,..}) if bytes==b"replacement")
+        );
+        model.idle();
+        model
+            .change(
+                FieldChange {
+                    activation: Activation {
+                        instance: model.instance.clone(),
+                        revision: model.revision,
+                        node: "path".into(),
+                    },
+                    value: "different-file".into(),
+                },
+                100,
+            )
+            .unwrap();
+        assert!(model.contents.is_empty());
+        assert!(activate(&mut model, "write-file", 100).is_err());
+    }
+    #[test]
     fn reopening_an_unconfirmed_command_reuses_its_saved_identity() {
         let mut model = model(true);
         let id = "b".repeat(64);
@@ -1073,9 +1131,13 @@ mod tests {
                 digest: "c".repeat(64),
             },
         });
+        model.contents = "another project's file".into();
+        model.contents_ready = true;
         assert!(
             matches!(activate(&mut model, "job-0", 100).unwrap(), Some(Effect::Job(job)) if job==id)
         );
+        assert!(model.contents.is_empty());
+        assert!(!model.contents_ready);
         model.idle();
         model.running = false; // The host reports that this start is absent.
         let Some(Effect::Run { job, script, .. }) = activate(&mut model, "run", 100).unwrap()

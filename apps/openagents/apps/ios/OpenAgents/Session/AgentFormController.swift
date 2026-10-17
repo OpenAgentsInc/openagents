@@ -5,6 +5,8 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
     private let app: AppModel
     private let agents: CoreAgents?
     private let lab: CoreAgentLab?
+    private let sharing: CoreSharing?
+    private var prefix: String { sharing != nil ? "sharing" : (lab == nil ? "agent" : "lab") }
     private let stack = UIStackView()
     private var observation: AnyObject?
     private var instance = ""
@@ -16,23 +18,32 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
         self.app = app
         self.agents = agents
         self.lab = nil
+        self.sharing = nil
         super.init(nibName: nil, bundle: nil)
     }
     init(app: AppModel, lab: CoreAgentLab) {
         self.app = app
         self.agents = nil
         self.lab = lab
+        self.sharing = nil
+        super.init(nibName: nil, bundle: nil)
+    }
+    init(app: AppModel, sharing: CoreSharing) {
+        self.app = app
+        self.agents = nil
+        self.lab = nil
+        self.sharing = sharing
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError() }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = lab == nil ? "Agent" : "Agent Lab"
+        title = sharing != nil ? "Project sharing" : (lab == nil ? "Agent" : "Agent Lab")
         view.backgroundColor = .systemBackground
         navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
         let scroll = UIScrollView()
-        scroll.accessibilityIdentifier = lab == nil ? "agent-form-scroll" : "lab-form-scroll"
+        scroll.accessibilityIdentifier = "\(prefix)-form-scroll"
         scroll.keyboardDismissMode = .interactive
         scroll.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .vertical
@@ -57,15 +68,17 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         lab?.setVisible(visible: true)
+        sharing?.setVisible(visible: true)
     }
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         lab?.setVisible(visible: false)
+        sharing?.setVisible(visible: false)
         if lab != nil { app.customAgents?.refresh() }
     }
     private func render() {
         let snapshot = agents?.snapshot()
-        guard let json = lab.flatMap({ try? $0.snapshot() }) ?? snapshot?.formJson else { dismiss(animated: true); return }
+        guard let json = sharing.flatMap({ try? $0.snapshot() }) ?? lab.flatMap({ try? $0.snapshot() }) ?? snapshot?.formJson else { dismiss(animated: true); return }
         guard let data = json.data(using: .utf8), let form = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let root = form["root"] as? [String: Any] else { return }
         instance = form["instance"] as? String ?? ""
         revision = (form["revision"] as? NSNumber)?.uint64Value ?? 0
@@ -105,7 +118,7 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
                     field.inputAccessoryView = toolbar
                 }
                 field.accessibilityLabel = label
-                field.accessibilityIdentifier = "\(lab == nil ? "agent" : "lab")-\(key)"
+                field.accessibilityIdentifier = "\(prefix)-\(key)"
                 if field.constraints.isEmpty { field.heightAnchor.constraint(greaterThanOrEqualToConstant: (props["multiline"] as? Bool == true) ? 140 : 44).isActive = true }
                 fieldKeys[ObjectIdentifier(field)] = key
                 control = field
@@ -117,7 +130,7 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
                 if props["selected"] as? Bool == true { config.image = UIImage(systemName: "checkmark.circle.fill"); config.imagePadding = 8 }
                 button.configuration = config
                 button.isEnabled = enabled
-                button.accessibilityIdentifier = "\(lab == nil ? "agent" : "lab")-\(key)"
+                button.accessibilityIdentifier = "\(prefix)-\(key)"
                 if existing == nil { button.addAction(UIAction { [weak self] _ in self?.activate(key) }, for: .touchUpInside) }
                 control = button
             } else if kind == "text" {
@@ -160,12 +173,26 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
     }
     func textViewDidChange(_ textView: UITextView) {
         guard let key = fieldKeys[ObjectIdentifier(textView)] else { return }
-        do { if let lab { try lab.changeField(instance: instance, revision: revision, key: key, value: textView.text) }
+        do { if let sharing { try sharing.changeField(instance: instance, revision: revision, key: key, value: textView.text) }
+            else if let lab { try lab.changeField(instance: instance, revision: revision, key: key, value: textView.text) }
             else { try agents?.changeField(instance: instance, revision: revision, key: key, value: textView.text) } }
         catch { /* Restore the Rust-owned value after a rejected edit. */ }
         render()
     }
     private func activate(_ key: String) {
+        if let sharing {
+            let currentInstance = instance
+            let currentRevision = revision
+            Task { @MainActor [weak self] in
+                do {
+                    if let text = try await sharing.activate(instance: currentInstance, revision: currentRevision, key: key) {
+                        UIPasteboard.general.string = text
+                    }
+                    self?.render()
+                } catch { self?.showError(error) }
+            }
+            return
+        }
         if let lab {
             let currentInstance = instance
             let currentRevision = revision

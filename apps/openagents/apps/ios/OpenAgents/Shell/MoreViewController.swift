@@ -187,6 +187,9 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
         s.appendItems([
             Row(id: "account", title: app.accountName, subtitle: app.accountDetail, symbol: "person.crop.circle", accessory: .none),
         ])
+        if case .signedIn? = app.accountSnapshot?.state {
+            s.appendItems([Row(id: "project-sharing", title: "Project sharing", symbol: "person.2")])
+        }
         s.appendSections(["Devices"])
         s.appendItems(app.hostOptions.map { Row(id: "device:\($0.id)", title: $0.name, subtitle: $0.online ? "Online" : "Offline", symbol: "desktopcomputer", accessory: .dot($0.online)) })
         if app.offersCloudHost {
@@ -229,6 +232,15 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
         collectionView.deselectItem(at: path, animated: true)
         guard let row = dataSource.itemIdentifier(for: path) else { return }
         switch row.id {
+        case "project-sharing":
+            do {
+                let sharing = try app.openProjectSharing()
+                present(UINavigationController(rootViewController: AgentFormController(app: app, sharing: sharing)), animated: true)
+            } catch {
+                let alert = UIAlertController(title: "Couldn't open project sharing", message: error.localizedDescription, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                present(alert, animated: true)
+            }
         case "about":
             let about = UIAlertController(title: "OpenAgents", message: Bundle.main.url(forResource: "OpenAgents-MIT", withExtension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) }, preferredStyle: .alert)
             about.addAction(UIAlertAction(title: "Done", style: .default))

@@ -23,6 +23,9 @@ account-fixture = ["dep:reqwest"]
 bindgen = ["uniffi/cli"]
 
 [dependencies]
+coder-sharing = { path = "../../../../crates/coder-sharing" }
+coder-access = { path = "../../../../crates/coder-access", default-features = false }
+computer-driver = { path = "../../../../crates/computer-driver" }
 openagents-dashboard = { path = "../../../../crates/openagents-dashboard", features = ["views"] }
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
 openagents-account.workspace = true

@@ -1427,6 +1427,8 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
     
     func home(listener: HomeListener) throws  -> CoreHome
     
+    func projectSharing(listener: SharingListener) throws  -> CoreSharing
+    
     func restore() 
     
     /**
@@ -1595,6 +1597,16 @@ open func home(listener: HomeListener)throws  -> CoreHome  {
     uniffi_openagents_mobile_fn_method_coreaccount_home(
             self.uniffiCloneHandle(),
         FfiConverterTypeHomeListener_lower(listener),uniffiCallStatus
+    )
+})
+}
+    
+open func projectSharing(listener: SharingListener)throws  -> CoreSharing  {
+    return try  FfiConverterTypeCoreSharing_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_project_sharing(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeSharingListener_lower(listener),uniffiCallStatus
     )
 })
 }
@@ -3801,6 +3813,172 @@ public func FfiConverterTypeCoreSavedHistory_lower(_ value: CoreSavedHistory) ->
 
 
 
+public protocol CoreSharingProtocol: AnyObject, Sendable {
+    
+    /**
+     * Return clipboard text only for an explicit copy action.
+     */
+    func activate(instance: String, revision: UInt64, key: String) async throws  -> String?
+    
+    func changeField(instance: String, revision: UInt64, key: String, value: String) throws 
+    
+    func setVisible(visible: Bool) 
+    
+    func snapshot() throws  -> String
+    
+}
+open class CoreSharing: CoreSharingProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_coresharing(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_coresharing(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Return clipboard text only for an explicit copy action.
+     */
+open func activate(instance: String, revision: UInt64, key: String)async throws  -> String?  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coresharing_activate(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(instance),FfiConverterUInt64.lower(revision),FfiConverterString.lower(key)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionString.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+open func changeField(instance: String, revision: UInt64, key: String, value: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coresharing_change_field(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(value),uniffiCallStatus
+    )
+}
+}
+    
+open func setVisible(visible: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coresharing_set_visible(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(visible),uniffiCallStatus
+    )
+}
+}
+    
+open func snapshot()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coresharing_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreSharing: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreSharing
+
+    public static func lift(_ handle: UInt64) throws -> CoreSharing {
+        return CoreSharing(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreSharing) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreSharing {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreSharing, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreSharing_lift(_ handle: UInt64) throws -> CoreSharing {
+    return try FfiConverterTypeCoreSharing.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreSharing_lower(_ value: CoreSharing) -> UInt64 {
+    return FfiConverterTypeCoreSharing.lower(value)
+}
+
+
+
+
+
+
 public protocol CustomAgentsListener: AnyObject, Sendable {
     
     func onCustomAgentsChanged(snapshot: CustomAgentsSnapshot) 
@@ -5803,6 +5981,201 @@ public func FfiConverterTypeSessionHandle_lift(_ handle: UInt64) throws -> Sessi
 #endif
 public func FfiConverterTypeSessionHandle_lower(_ value: SessionHandle) -> UInt64 {
     return FfiConverterTypeSessionHandle.lower(value)
+}
+
+
+
+
+
+
+public protocol SharingListener: AnyObject, Sendable {
+    
+    func onSharingChanged() 
+    
+}
+open class SharingListenerImpl: SharingListener, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_sharinglistener(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_sharinglistener(handle, $0) }
+    }
+
+    
+
+    
+open func onSharingChanged()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_sharinglistener_on_sharing_changed(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceSharingListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceSharingListener = UniffiVTableCallbackInterfaceSharingListener(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeSharingListener.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface SharingListener: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeSharingListener.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface SharingListener: handle missing in uniffiClone")
+            }
+        },
+        onSharingChanged: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeSharingListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onSharingChanged(
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceSharingListener> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceSharingListener>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitSharingListener() {
+    uniffi_openagents_mobile_fn_init_callback_vtable_sharinglistener(UniffiCallbackInterfaceSharingListener.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSharingListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<SharingListener>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = SharingListener
+
+    public static func lift(_ handle: UInt64) throws -> SharingListener {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return SharingListenerImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: SharingListener) -> UInt64 {
+         if let rustImpl = value as? SharingListenerImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SharingListener {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: SharingListener, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSharingListener_lift(_ handle: UInt64) throws -> SharingListener {
+    return try FfiConverterTypeSharingListener.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSharingListener_lower(_ value: SharingListener) -> UInt64 {
+    return FfiConverterTypeSharingListener.lower(value)
 }
 
 
@@ -20916,6 +21289,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreaccount_home() != 44132) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_project_sharing() != 8843) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_restore() != 29093) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -21129,6 +21505,21 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_sessionhandle_transcript_status() != 24478) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coresharing_activate() != 63786) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresharing_change_field() != 29281) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresharing_set_visible() != 63539) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresharing_snapshot() != 56769) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_sharinglistener_on_sharing_changed() != 62009) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_voicecall_complete_media() != 40162) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -21297,6 +21688,7 @@ private let initializationResult: InitializationResult = {
     uniffiCallbackInitLayoutListener()
     uniffiCallbackInitPlatformMeasurer()
     uniffiCallbackInitSavedHistoryListener()
+    uniffiCallbackInitSharingListener()
     uniffiCallbackInitUploadProgress()
     uniffiCallbackInitVisualListener()
     uniffiCallbackInitVoiceMediaListener()

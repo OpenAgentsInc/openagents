@@ -110,6 +110,18 @@ Its native instruction binding is tested. With your normal computer's Claude
 Code login, create a Claude-backed agent and verify its instructions and reply.
 Do not use the owner's account as an automated fixture.
 
+## Check computer sharing on iPhone (#11911)
+
+Install the next mobile build that includes #11911 after lane 0 deploys a host
+advertising `project-sharing-v2`. Use two dedicated test accounts and disposable
+projects. In **Settings > Project sharing**, copy the recipient's device code,
+choose that code on the owner's connected computer, select projects and rights,
+and copy the invitation back to the recipient. Check read-only access, editing
+and commands, reopening the app, removing access, large text, and VoiceOver.
+Unrelated files, chats, terminals, credentials, and account controls must remain
+unavailable. Switching accounts must close the previous account's form. Record
+a device defect as a new issue; do not use your normal account as a fixture.
+
 ## Check shared projects on iPhone (#11910)
 
 Install OpenAgents TestFlight build 62. With the invited account, accept the
