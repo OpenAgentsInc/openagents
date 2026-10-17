@@ -95,7 +95,9 @@ async fn page(app: &App, headers: &HeaderMap, back: Back, signup: bool) -> Respo
 
 /// The sign-in page (`/login`, or `/signup` when `signup`): shadcn's
 /// login block on its own, without the app shell. Our mark and name, a
-/// card that leads with the app (which needs no sign-in), then GitHub
+/// card that leads with the app (which needs no sign-in), then the code
+/// the phone app scans and the browser-extension button
+/// ([`crate::web_sign_in`]), then GitHub
 /// sign-in for accounts made with it before, and the terms line under it.
 /// GitHub sign-in is deprecated and makes no new accounts (#12005), so
 /// the two pages differ only in their heading.
@@ -122,6 +124,8 @@ pub(crate) fn sign_in_page(
         Some(html! { "The OpenAgents app needs no sign-in. Open it and start." }),
         html! {
             div.oa-auth-login-form data-slot="login-form" {
+                // A key from the phone app or a browser extension (#12001).
+                (crate::web_sign_in::sign_in_block(return_to))
                 @if invite_only {
                     (Alert::new()
                         .color(Color::Info)

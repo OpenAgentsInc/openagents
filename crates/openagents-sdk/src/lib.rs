@@ -22,7 +22,7 @@ pub mod visitor;
 
 pub use auth::nostr::{
     EventTemplate, HTTP_AUTH_KIND, KEY_BODY_MAX, KeySignIn, LinkedKey, NostrSigner, POW_BITS,
-    SignerError, solve_pow,
+    ScannedLogin, ScannedLoginAbout, ScannedLoginApproved, SignerError, solve_pow,
 };
 pub use auth::{
     Account, AccountView, CredentialRecord, CredentialStore, DELETE_ACCOUNT_CONFIRM, Login, Poll,
