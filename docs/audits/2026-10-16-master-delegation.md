@@ -99,6 +99,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 3: keepers and moving agents
 
+**Taken 2026-10-17 00:45 CDT** by a Claude Code subagent working #11932 in ~/work/openagents-11932.
+
 **Taken 2026-10-17 00:23 CDT** by a Claude Code subagent finishing #11930 (Claude Code and Codex under keepers) in ~/work/openagents-lane3c.
 
 **Released 2026-10-17 00:19 CDT** by a Claude Code subagent. #11931 is closed on code (`c85eb539b7`): the background engine service, attach-or-start, the macOS menu-bar item, and Move to background. Its live turn checks are in After-close checks. #11932 and #11933 remain. Target `~/work/openagents-target-lane3b-app` stays warm.
