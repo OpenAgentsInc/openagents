@@ -1421,6 +1421,12 @@
       "public_front_pattern": false
     },
     {
+      "path": "/v1/account/referrers/{referrer}/handle",
+      "audience": "FirstParty",
+      "domain": "Referrals",
+      "public_front_pattern": false
+    },
+    {
       "path": "/v1/account/referrers/{referrer}/migration",
       "audience": "FirstParty",
       "domain": "Referrals",
