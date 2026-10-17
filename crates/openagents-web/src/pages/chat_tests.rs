@@ -2399,3 +2399,34 @@ fn no_answer_offers_run_in_coder() {
         assert!(!html.contains(absent), "{absent}: {html}");
     }
 }
+
+#[test]
+fn saved_reply_keeps_registered_lab_cards_and_their_project_binding() {
+    use openagents_chat::router::Meta;
+    let card = serde_json::json!({
+        "schema": lab_kit::card::SCHEMA, "kind": "cad", "document": "plate",
+        "version": 1, "view": "model3d", "space": "project:fixture",
+        "_lab": {"space": "project:fixture", "owner": OWNER}
+    });
+    let old_card = serde_json::json!({"card": crate::cad_lab::CARD, "doc": "old-plate"});
+    let reply = Meta {
+        tier: Some("model".into()),
+        route: Some(lab_kit::card::SCHEMA.into()),
+        cards: vec![
+            serde_json::json!({"card":"tool"}),
+            card.clone(),
+            old_card.clone(),
+        ],
+        ..Default::default()
+    };
+    let saved = saved_reply_meta(&reply);
+    let encoded = serde_json::to_vec(&saved).unwrap();
+    let loaded: Meta = serde_json::from_slice(&encoded).unwrap();
+    assert_eq!(loaded.tier, reply.tier);
+    assert_eq!(loaded.route, reply.route);
+    assert_eq!(loaded.cards, vec![old_card, card]);
+    let current = crate::labs::current([&loaded].into_iter()).unwrap();
+    assert_eq!(current.kind, crate::labs::Kind::Registered("cad".into()));
+    assert_eq!(current.doc, "plate");
+    assert_eq!(current.version, Some(1));
+}

@@ -2446,6 +2446,31 @@ pub(crate) async fn stop_answer(
     Err(Error::Conflict)
 }
 
+/// Keep the answer metadata that the web chat and saved history display.
+fn saved_reply_meta(source: &openagents_chat::router::Meta) -> openagents_chat::router::Meta {
+    let mut meta = openagents_chat::suggestions::chip_meta(source);
+    meta.tier = source.tier.clone();
+    meta.route = source.route.clone();
+    meta.switched = source.switched.clone();
+    // A Video Lab answer's card (the video under it).
+    meta.cards = crate::lab::cards(source);
+    // A Game Lab answer's card (the game under it).
+    meta.cards.extend(crate::game_lab::cards(source));
+    meta.cards.extend(crate::robot_lab::cards(source));
+    // A CAD Lab answer's card (the model under it).
+    meta.cards.extend(crate::cad_lab::cards(source));
+    // A Ship Lab answer's card (the ship's numbers).
+    meta.cards.extend(crate::ship_lab::cards(source));
+    meta.cards.extend(
+        source
+            .cards
+            .iter()
+            .filter(|card| card["schema"] == lab_kit::card::SCHEMA)
+            .cloned(),
+    );
+    meta
+}
+
 async fn answer(
     app: App,
     mut loaded: Loaded,
@@ -2788,22 +2813,7 @@ async fn answer(
                 // reply's marker carries for the chat goldens
                 // (docs/web/chat-goldens.md).
                 r.done
-                    .then(|| {
-                        let mut meta = openagents_chat::suggestions::chip_meta(&r.meta);
-                        meta.tier = r.meta.tier.clone();
-                        meta.route = r.meta.route.clone();
-                        meta.switched = r.meta.switched.clone();
-                        // A Video Lab answer's card (the video under it).
-                        meta.cards = crate::lab::cards(&r.meta);
-                        // A Game Lab answer's card (the game under it).
-                        meta.cards.extend(crate::game_lab::cards(&r.meta));
-                        meta.cards.extend(crate::robot_lab::cards(&r.meta));
-                        // A CAD Lab answer's card (the model under it).
-                        meta.cards.extend(crate::cad_lab::cards(&r.meta));
-                        // A Ship Lab answer's card (the ship's numbers).
-                        meta.cards.extend(crate::ship_lab::cards(&r.meta));
-                        meta
-                    })
+                    .then(|| saved_reply_meta(&r.meta))
                     .filter(|meta| !meta.is_empty()),
                 r.failure
                     .as_ref()
