@@ -825,7 +825,9 @@ pub(crate) async fn remove_computer_named(
         (changed, had)
     })
     .await?;
-    Ok(found || boards)
+    // Its sessions leave the account's chat list too (#11897).
+    let sessions = crate::session_index::forget_computer(store, owner, &name).await?;
+    Ok(found || boards || sessions)
 }
 
 async fn remove_computer(

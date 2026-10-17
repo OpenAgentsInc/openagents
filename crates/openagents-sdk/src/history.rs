@@ -182,6 +182,10 @@ pub struct SavedMessage {
 pub struct HistoryPage<T> {
     pub data: Vec<T>,
     pub has_more: bool,
+    /// Computer sessions (#11897), newest first, on the first page of the
+    /// account's or a shared project's chats. They are not chats in the
+    /// account's store, so they never join `data` or its paging.
+    pub sessions: Vec<crate::sessions::SessionSummary>,
 }
 #[derive(Clone, Debug)]
 pub struct TranscriptPage {
@@ -271,6 +275,8 @@ impl Identity for WireProject {
 struct WireList<T> {
     data: Vec<T>,
     next: Option<String>,
+    #[serde(default)]
+    sessions: Vec<Value>,
 }
 #[derive(Deserialize)]
 struct WireFile {
@@ -488,9 +494,20 @@ impl ChatReader {
             .into_iter()
             .map(|s| s.convert(&self.0.context))
             .collect::<Result<_, _>>()?;
+        // A row this client can't read is left out rather than failing the list.
+        let sessions = page
+            .sessions
+            .iter()
+            .filter_map(|row| {
+                crate::sessions::rows(&Value::Array(vec![row.clone()]))
+                    .ok()?
+                    .pop()
+            })
+            .collect();
         Ok(Some(HistoryPage {
             data,
             has_more: page.next.is_some(),
+            sessions,
         }))
     }
 }
@@ -522,6 +539,7 @@ impl ProjectReader {
                 })
                 .collect(),
             has_more: page.next.is_some(),
+            sessions: Vec::new(),
         }))
     }
 }

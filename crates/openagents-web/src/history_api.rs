@@ -80,6 +80,16 @@ async fn list(State(app): State<App>, headers: HeaderMap, Query(page): Query<Pag
     {
         return invalid();
     }
+    // Computer sessions (#11897) ride beside the first page: their rows
+    // aren't chats in this store, so they never join `data` or its cursor.
+    let sessions = if page.after.is_none() {
+        match crate::session_index::listed(&app, &headers, &owner, page.project.as_deref()).await {
+            Ok(rows) => rows,
+            Err(r) => return r,
+        }
+    } else {
+        Vec::new()
+    };
     let result = if let Some(project) = &page.project {
         let access = match api::access(&app, &headers, project).await {
             Ok(a) => a,
@@ -108,7 +118,10 @@ async fn list(State(app): State<App>, headers: HeaderMap, Query(page): Query<Pag
             .await
     };
     match result {
-        Ok((chats, next)) => answer(StatusCode::OK, json!({"data": chats, "next": next})),
+        Ok((chats, next)) => answer(
+            StatusCode::OK,
+            json!({"data": chats, "next": next, "sessions": sessions}),
+        ),
         Err(e) => stored(&e),
     }
 }

@@ -61,6 +61,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(approval::routes())
         .merge(computer::routes())
         .merge(share::routes())
+        .merge(sessions::routes())
         .layer(DefaultBodyLimit::max(64 * 1024))
 }
 
@@ -3846,6 +3847,8 @@ pub(crate) mod continued;
 pub(crate) mod delete_all;
 #[path = "chat_live.rs"]
 mod live;
+#[path = "chat_sessions.rs"]
+pub(crate) mod sessions;
 #[path = "chat_share.rs"]
 pub(crate) mod share;
 #[path = "chat_work.rs"]

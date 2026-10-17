@@ -12709,6 +12709,770 @@
         "description": "Owner-only transition of an idle source to a new computer part. The host first creates its normal session, then calls with that session ID and its device home. A changed source refuses; the same destination is retry-safe, while another destination refuses. The source becomes read-only and records continued_by before execution starts. The host records continues in its document and registry and passes the bounded seed through its existing harness path. This endpoint never starts a harness or creates execution authority. Computer targets only in this version. Older terminal sources use stable legacy-{chat-id} computer references until their original computer can be identified."
       }
     },
+    "/v1/history/sessions": {
+      "get": {
+        "operationId": "listComputerSessions",
+        "tags": [
+          "Saved history"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "query",
+            "description": "A project the caller is in. A shared project lists every member's rows in it.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session rows",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistorySessions"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "description": "The caller's computer sessions, newest first, or a project's."
+      }
+    },
+    "/v1/history/sessions/{id}": {
+      "get": {
+        "operationId": "readComputerSession",
+        "tags": [
+          "Saved history"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "project",
+            "in": "query",
+            "description": "A project the caller is in. A shared project lists every member's rows in it.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistorySessionDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "description": "One session row, and its transcript copy when the transcript is on for the caller."
+      }
+    },
+    "/v1/history/sessions/computers/{device}": {
+      "put": {
+        "operationId": "publishComputerSessions",
+        "tags": [
+          "Saved history"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The sessions whose transcript is on",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "transcripts"
+                  ],
+                  "properties": {
+                    "transcripts": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "description": "A host's current rows for this computer, replacing the ones it published before. Publishing also marks the computer online for 90 seconds.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HistorySessionPublish"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "forgetComputerSessions",
+        "tags": [
+          "Saved history"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "removed"
+                  ],
+                  "properties": {
+                    "removed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Remove this computer's rows and transcript copies."
+      }
+    },
+    "/v1/history/sessions/{id}/transcript": {
+      "put": {
+        "operationId": "setSessionTranscript",
+        "tags": [
+          "Saved history"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The choice",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "on",
+                    "transcript"
+                  ],
+                  "properties": {
+                    "on": {
+                      "type": "boolean"
+                    },
+                    "transcript": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Turn one chat's transcript on or off on the web. Off by default; off deletes the copy.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HistorySessionChoice"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/history/sessions/projects/{project}/transcript": {
+      "put": {
+        "operationId": "setProjectSessionTranscripts",
+        "tags": [
+          "Saved history"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The choice",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistorySessionChoice"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Turn the transcripts of every session in a project on or off. Shared project members read a copy only by this choice.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HistorySessionChoice"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/history/sessions/{id}/messages": {
+      "put": {
+        "operationId": "uploadSessionTranscript",
+        "tags": [
+          "Saved history"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "saved"
+                  ],
+                  "properties": {
+                    "saved": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Replace the read-only transcript copy. Refused with transcript_off while the transcript is off. Text is bounded and screened.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HistorySessionUpload"
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/keys": {
       "get": {
         "operationId": "listAccountKeys",
@@ -21971,6 +22735,14 @@
               "string",
               "null"
             ]
+          },
+          "sessions": {
+            "type": "array",
+            "maxItems": 400,
+            "items": {
+              "$ref": "#/components/schemas/HistorySession"
+            },
+            "description": "Computer sessions, newest first, on the first page only. They never join data or its paging."
           }
         }
       },
@@ -28878,6 +29650,263 @@
           },
           "seed": {
             "$ref": "#/components/schemas/ChatContext"
+          }
+        }
+      },
+      "HistorySession": {
+        "type": "object",
+        "required": [
+          "id",
+          "source",
+          "home",
+          "title",
+          "computer",
+          "project",
+          "folder",
+          "status",
+          "last_activity_unix",
+          "updated_unix",
+          "recap",
+          "online",
+          "transcript",
+          "app_link",
+          "continued_by"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "source": {
+            "const": "session"
+          },
+          "home": {
+            "$ref": "#/components/schemas/ChatHome"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "computer": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "folder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "idle",
+              "working",
+              "awaiting_input",
+              "errored"
+            ]
+          },
+          "last_activity_unix": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "updated_unix": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "recap": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "online": {
+            "type": "boolean"
+          },
+          "transcript": {
+            "type": "boolean",
+            "description": "The transcript is on for this caller, so a copy may be read."
+          },
+          "app_link": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opens the chat in the OpenAgents app."
+          },
+          "continued_by": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChatPartRef"
+              }
+            ]
+          }
+        },
+        "description": "A computer session's summary. It holds no transcript."
+      },
+      "HistorySessions": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "maxItems": 400,
+            "items": {
+              "$ref": "#/components/schemas/HistorySession"
+            }
+          }
+        }
+      },
+      "HistorySessionMessage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "text"
+        ],
+        "properties": {
+          "role": {
+            "enum": [
+              "user",
+              "assistant",
+              "tool"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 16384
+          }
+        }
+      },
+      "HistorySessionDetail": {
+        "type": "object",
+        "required": [
+          "session",
+          "messages"
+        ],
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/HistorySession"
+          },
+          "messages": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "maxItems": 400,
+                "items": {
+                  "$ref": "#/components/schemas/HistorySessionMessage"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "HistorySessionPublish": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "sessions"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "sessions": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "title",
+                "status",
+                "last_activity_unix"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "project": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "folder": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "idle",
+                    "working",
+                    "awaiting_input",
+                    "errored"
+                  ]
+                },
+                "last_activity_unix": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "recap": {
+                  "type": "string"
+                },
+                "workspace": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^[0-9a-f]{16}$"
+                }
+              }
+            }
+          }
+        }
+      },
+      "HistorySessionChoice": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "on"
+        ],
+        "properties": {
+          "on": {
+            "type": "boolean"
+          }
+        }
+      },
+      "HistorySessionUpload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "messages"
+        ],
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistorySessionMessage"
+            }
           }
         }
       },

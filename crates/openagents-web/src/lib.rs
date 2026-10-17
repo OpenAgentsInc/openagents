@@ -77,6 +77,7 @@ mod game_lab;
 mod github_refs;
 mod github_tools;
 mod history_api;
+mod session_index;
 mod history_openapi;
 mod key_openapi;
 mod lab;
@@ -617,6 +618,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(coder_sync::routes())
         .merge(phone_api::routes())
         .merge(history_api::routes())
+        .merge(session_index::routes())
         .merge(labs_api::routes(&app))
         .merge(lab_card_view::routes())
         .merge(custom_agents::routes())

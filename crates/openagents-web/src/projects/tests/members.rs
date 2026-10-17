@@ -1200,3 +1200,5 @@ async fn browser_acceptance_removes_joined_project_invitations() {
 
 #[path = "history.rs"]
 mod history;
+#[path = "history_sessions.rs"]
+mod history_sessions;

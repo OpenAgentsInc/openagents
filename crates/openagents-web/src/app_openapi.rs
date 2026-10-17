@@ -123,6 +123,7 @@ pub fn document() -> Value {
     crate::agent_assignments_openapi::extend(&mut document);
     crate::chat_api_openapi::extend(&mut document);
     crate::continuations_openapi::extend(&mut document);
+    crate::session_index::openapi(&mut document);
     crate::key_openapi::extend(&mut document);
     crate::computers_api::extend_openapi(&mut document);
     crate::project_openapi::extend(&mut document);

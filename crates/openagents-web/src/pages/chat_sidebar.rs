@@ -57,6 +57,9 @@ pub(crate) struct View<'a> {
     /// Chats other people started in shared projects (#11586), listed in
     /// those projects' groups, and who started each by chat id.
     pub others: &'a [(Conversation, String)],
+    /// The account's computer sessions (#11897), newest first, and whether
+    /// each one's computer is online. They list under Chats with the chats.
+    pub sessions: &'a [(crate::session_index::Row, bool)],
 }
 
 /// The list for `owner`; see [`super::chat_list`].
@@ -94,12 +97,35 @@ pub(super) async fn render_working(
         }
         _ => Vec::new(),
     };
+    let sessions = sessions(app, owner).await;
     let view = View {
         projects: projects.as_deref(),
         others: &others,
+        sessions: &sessions,
         ..view
     };
     (build(list, &rows, &csrf(app, owner), view), working)
+}
+
+/// The signed-in account's computer sessions, newest first; none when
+/// they can't be read.
+async fn sessions(app: &App, owner: &str) -> Vec<(crate::session_index::Row, bool)> {
+    if !crate::chat_store::is_account_owner(owner) {
+        return Vec::new();
+    }
+    let index = match crate::session_index::load(&app.config.chat_store, owner).await {
+        Ok(index) => index,
+        Err(error) => {
+            eprintln!("openagents-web: session list: {error}");
+            return Vec::new();
+        }
+    };
+    let now = crate::chat_store::now_unix();
+    index
+        .newest()
+        .into_iter()
+        .map(|row| (row.clone(), index.online(row, now)))
+        .collect()
 }
 
 /// Chats other people started in the shared projects `owner` is in, with
@@ -220,7 +246,31 @@ pub(crate) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: Vie
     // Every chat lists under Chats, newest first, project chats too, each
     // naming its project (#11598): a chat filed under a closed project
     // group is never out of sight.
-    list = list.items(unpinned.iter().map(|chat| row(chat, csrf, view, false)));
+    // Computer sessions mix in by last activity (#11897).
+    let mut sessions = view
+        .sessions
+        .iter()
+        .filter(|(session, _)| {
+            q.is_empty() || session.title.to_lowercase().contains(&q.to_lowercase())
+        })
+        .peekable();
+    let mut chats = unpinned.iter().copied().peekable();
+    let mut items = Vec::new();
+    loop {
+        let session_first = match (chats.peek(), sessions.peek()) {
+            (None, None) => break,
+            (Some(_), None) => false,
+            (None, Some(_)) => true,
+            (Some(chat), Some((session, _))) => session.last_activity_unix > chat.updated_unix,
+        };
+        if session_first {
+            let (session, online) = sessions.next().unwrap();
+            items.push(session_row(session, *online, view));
+        } else {
+            items.push(row(chats.next().unwrap(), csrf, view, false));
+        }
+    }
+    list = list.items(items);
     let open = rows.iter().any(|chat| chat.archived_unix.is_none());
     // The search box waits until people have more chats (owner,
     // 2026-10-09); `/chat/list?q=` and its keyboard shortcuts stay.
@@ -365,6 +415,29 @@ fn row(chat: &Conversation, csrf: &str, view: View<'_>, grouped: bool) -> NavIte
         menu.action(archive)
             .action(RowAction::open("Delete", format!("/chat/{id}/delete")).icon(Icon::Trash)),
     )
+}
+
+/// A computer session (#11897): "On <computer>" on line two, its status,
+/// and no menu (its computer pins, renames, and deletes it).
+fn session_row(session: &crate::session_index::Row, online: bool, view: View<'_>) -> NavItem {
+    let mut detail = Vec::new();
+    if let Some(project) = session
+        .project
+        .as_deref()
+        .and_then(|id| view.projects?.project(id))
+    {
+        detail.push(project.name.clone());
+    }
+    detail.push(format!("On {}", session.computer));
+    if !online {
+        detail.push("Offline".into());
+    } else if let Some(label) = session.status.label() {
+        detail.push(label.into());
+    }
+    NavItem::new(session.title.clone(), super::sessions::href(&session.id))
+        .current(view.current == Some(session.id.as_str()))
+        .row_id(format!("chat-session-row-{}", session.id))
+        .detail(detail.join(" · "))
 }
 
 /// A chat someone else started in a shared project: who started it, and
@@ -514,6 +587,7 @@ async fn changed(
             archived,
             projects: None,
             others: &[],
+            sessions: &[],
         };
         let list = render(app, owner, view, false).await;
         return crate::chat_html::protect(html! { (list) (extra) }.into_response());
@@ -731,6 +805,7 @@ async fn list(
         archived: None,
         projects: projects.as_deref(),
         others: &[],
+        sessions: &[],
     };
     if hx(&headers) {
         return crate::chat_html::protect(

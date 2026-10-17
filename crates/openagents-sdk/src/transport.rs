@@ -448,6 +448,7 @@ impl Client {
                 Some("needs_claude") => Some("needs_claude"),
                 Some("invite_only") => Some("invite_only"),
                 Some("key_refused") => Some("key_refused"),
+                Some("transcript_off") => Some("transcript_off"),
                 _ => None,
             };
             return Err(Error::Refused {

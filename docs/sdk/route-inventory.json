@@ -568,6 +568,36 @@
       "line": 49
     },
     {
+      "path": "/v1/history/sessions",
+      "source": "crates/openagents-web/src/session_index.rs",
+      "line": 68
+    },
+    {
+      "path": "/v1/history/sessions/{id}",
+      "source": "crates/openagents-web/src/session_index.rs",
+      "line": 69
+    },
+    {
+      "path": "/v1/history/sessions/computers/{device}",
+      "source": "crates/openagents-web/src/session_index.rs",
+      "line": 70
+    },
+    {
+      "path": "/v1/history/sessions/{id}/transcript",
+      "source": "crates/openagents-web/src/session_index.rs",
+      "line": 74
+    },
+    {
+      "path": "/v1/history/sessions/projects/{project}/transcript",
+      "source": "crates/openagents-web/src/session_index.rs",
+      "line": 75
+    },
+    {
+      "path": "/v1/history/sessions/{id}/messages",
+      "source": "crates/openagents-web/src/session_index.rs",
+      "line": 79
+    },
+    {
       "path": "/v1/work/computer-session",
       "source": "crates/openagents-web/src/work_runs.rs",
       "line": 123

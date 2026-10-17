@@ -13,6 +13,7 @@ pub mod generated;
 pub mod history;
 pub mod labs;
 mod payment;
+pub mod sessions;
 mod transport;
 
 pub use auth::{
