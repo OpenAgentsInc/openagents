@@ -23,7 +23,12 @@ RUSTUP_TOOLCHAIN=1.98.1 CARGO_TARGET_DIR="$HOME/work/coder-desktop-target-agent1
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-The signed-out screen offers **Sign in with OpenAgents** and **Try the demo**.
+Signed out, the first screen is a chat answered by OpenAgents
+(`Session/CloudChatViewController.swift`, #11978): a few messages work with no
+account, then a sheet asks the person to sign in, and after sign-in the chat
+moves to the account. **Sign in** sits in the top bar and **See a demo** under
+the composer. Signed in with no computer online, **New session** runs on
+OpenAgents by default (#11979); **Run on** offers the computers.
 Sign-in uses the shared `openagents-account` public SDK flow: approve the code on
 `openagents.com`, then return to the app. Rust stores the session in Keychain
 and opens only that account’s sync cache. **Settings > Sign Out** removes the

@@ -258,7 +258,7 @@ final class DrawerShellController: UIViewController, AppRouter, UINavigationCont
     /// Hidden over a session or a saved chat (they have their own composer).
     func syncAccessory(animated: Bool = false) {
         let top = content.topViewController
-        setAccessoryVisible(!(top is SessionViewController || top is SavedTranscriptController), animated: animated)
+        setAccessoryVisible(!(top is SessionViewController || top is SavedTranscriptController || top is CloudChatViewController), animated: animated)
     }
 
     /// Kept for screens that fade it with their own transitions.

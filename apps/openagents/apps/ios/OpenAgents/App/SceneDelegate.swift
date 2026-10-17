@@ -91,8 +91,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // iPad gets the split shell (it collapses to the drawer shell
         // at compact widths); iPhone the drawer shell directly.
         let root: UIViewController = !app.isSignedIn
-            ? SignInViewController(app: app)
+            ? CloudChatViewController.signedOutRoot(app: app) ?? SignInViewController(app: app)
             : UIDevice.current.userInterfaceIdiom == .pad ? SplitRootController(app: app) : DrawerShellController(app: app)
+        if app.isSignedIn, !app.isDemo { CloudChatViewController.continueAfterSignIn(in: root, app: app) }
         // Sheets (new session, Settings) belong to the old root: they'd
         // stay on top of the new one.
         if let old = window.rootViewController, old.presentedViewController != nil {

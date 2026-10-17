@@ -141,6 +141,9 @@ impl CoreAccount {
     pub(crate) fn controller(&self) -> &Arc<Controller> {
         &self.controller
     }
+    pub(crate) fn data_dir(&self) -> &std::path::Path {
+        &self.data_dir
+    }
     fn profile(&self, account: &str, edge: &str) -> PathBuf {
         self.data_dir.join(format!(
             "account-{}",

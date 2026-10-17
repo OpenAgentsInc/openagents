@@ -69,6 +69,8 @@ final class AppModel {
     private var account: CoreAccount?
     private lazy var accountBridge = AccountBridge(app: self)
     private(set) var accountSnapshot: AccountSnapshot?
+    /// The chat answered by OpenAgents, signed in or not (#11978).
+    private(set) lazy var cloudChat: CloudChatModel? = account.map(CloudChatModel.init)
     private var accountGeneration: UInt64 = 0
     private var openedAccountGeneration: UInt64?
     #if DEBUG

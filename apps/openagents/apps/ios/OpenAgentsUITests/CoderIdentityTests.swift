@@ -10,7 +10,7 @@ final class CoderIdentityTests: XCTestCase {
         app.launchArguments = ["-signedout"]
         app.launch()
         XCTAssertTrue(app.staticTexts["OpenAgents"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["signed-out"].exists)
+        XCTAssertTrue(app.staticTexts["cloud-chat-empty"].exists)
         XCTAssertTrue(app.buttons["account-sign-in"].exists)
         app.buttons["open-demo"].tap()
         openSessions(app)

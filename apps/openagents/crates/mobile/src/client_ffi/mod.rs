@@ -14,6 +14,8 @@
 mod account;
 mod agent_lab;
 mod chat_homes;
+mod cloud_chat;
+pub use cloud_chat::*;
 mod cloud_host;
 pub use agent_lab::*;
 mod custom_agents;

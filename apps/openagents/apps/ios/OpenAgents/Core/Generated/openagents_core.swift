@@ -1407,6 +1407,212 @@ public func FfiConverterTypeClientListener_lower(_ value: ClientListener) -> UIn
 
 
 
+/**
+ * Called on a background thread with each new snapshot: hop to the main
+ * thread before touching the interface.
+ */
+public protocol CloudChatListener: AnyObject, Sendable {
+    
+    func onCloudChatChanged(snapshot: CloudChatSnapshot) 
+    
+}
+/**
+ * Called on a background thread with each new snapshot: hop to the main
+ * thread before touching the interface.
+ */
+open class CloudChatListenerImpl: CloudChatListener, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_cloudchatlistener(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_cloudchatlistener(handle, $0) }
+    }
+
+    
+
+    
+open func onCloudChatChanged(snapshot: CloudChatSnapshot)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_cloudchatlistener_on_cloud_chat_changed(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCloudChatSnapshot_lower(snapshot),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceCloudChatListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceCloudChatListener = UniffiVTableCallbackInterfaceCloudChatListener(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeCloudChatListener.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface CloudChatListener: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeCloudChatListener.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface CloudChatListener: handle missing in uniffiClone")
+            }
+        },
+        onCloudChatChanged: { (
+            uniffiHandle: UInt64,
+            snapshot: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeCloudChatListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onCloudChatChanged(
+                     snapshot: try FfiConverterTypeCloudChatSnapshot_lift(snapshot)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceCloudChatListener> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceCloudChatListener>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitCloudChatListener() {
+    uniffi_openagents_mobile_fn_init_callback_vtable_cloudchatlistener(UniffiCallbackInterfaceCloudChatListener.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudChatListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<CloudChatListener>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = CloudChatListener
+
+    public static func lift(_ handle: UInt64) throws -> CloudChatListener {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return CloudChatListenerImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: CloudChatListener) -> UInt64 {
+         if let rustImpl = value as? CloudChatListenerImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudChatListener {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CloudChatListener, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudChatListener_lift(_ handle: UInt64) throws -> CloudChatListener {
+    return try FfiConverterTypeCloudChatListener.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudChatListener_lower(_ value: CloudChatListener) -> UInt64 {
+    return FfiConverterTypeCloudChatListener.lower(value)
+}
+
+
+
+
+
+
 public protocol CoreAccountProtocol: AnyObject, Sendable {
     
     func agentLab(listener: AgentLabListener)  -> CoreAgentLab
@@ -1458,6 +1664,11 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
     func storedLoginPresent() throws  -> Bool
     
     func chatHomes(client: CoreClient, chat: String) throws  -> CoreChatHomes
+    
+    /**
+     * The chat answered by OpenAgents, signed in or not.
+     */
+    func cloudChat(listener: CloudChatListener)  -> CoreCloudChat
     
     /**
      * Our cloud's current state.
@@ -1702,6 +1913,19 @@ open func chatHomes(client: CoreClient, chat: String)throws  -> CoreChatHomes  {
             self.uniffiCloneHandle(),
         FfiConverterTypeCoreClient_lower(client),
         FfiConverterString.lower(chat),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The chat answered by OpenAgents, signed in or not.
+     */
+open func cloudChat(listener: CloudChatListener) -> CoreCloudChat  {
+    return try!  FfiConverterTypeCoreCloudChat_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_cloud_chat(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCloudChatListener_lower(listener),uniffiCallStatus
     )
 })
 }
@@ -3539,6 +3763,174 @@ public func FfiConverterTypeCoreClient_lift(_ handle: UInt64) throws -> CoreClie
 #endif
 public func FfiConverterTypeCoreClient_lower(_ value: CoreClient) -> UInt64 {
     return FfiConverterTypeCoreClient.lower(value)
+}
+
+
+
+
+
+
+public protocol CoreCloudChatProtocol: AnyObject, Sendable {
+    
+    /**
+     * Start over with an empty chat.
+     */
+    func newChat() 
+    
+    /**
+     * Send `text` in the open chat, or start one. Progress arrives through
+     * the listener.
+     */
+    func send(text: String) 
+    
+    func snapshot()  -> CloudChatSnapshot
+    
+    /**
+     * Stop the answer being written.
+     */
+    func stop() 
+    
+}
+open class CoreCloudChat: CoreCloudChatProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_corecloudchat(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_corecloudchat(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Start over with an empty chat.
+     */
+open func newChat()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corecloudchat_new_chat(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Send `text` in the open chat, or start one. Progress arrives through
+     * the listener.
+     */
+open func send(text: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corecloudchat_send(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(text),uniffiCallStatus
+    )
+}
+}
+    
+open func snapshot() -> CloudChatSnapshot  {
+    return try!  FfiConverterTypeCloudChatSnapshot_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corecloudchat_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Stop the answer being written.
+     */
+open func stop()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corecloudchat_stop(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreCloudChat: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreCloudChat
+
+    public static func lift(_ handle: UInt64) throws -> CoreCloudChat {
+        return CoreCloudChat(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreCloudChat) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreCloudChat {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreCloudChat, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreCloudChat_lift(_ handle: UInt64) throws -> CoreCloudChat {
+    return try FfiConverterTypeCoreCloudChat.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreCloudChat_lower(_ value: CoreCloudChat) -> UInt64 {
+    return FfiConverterTypeCoreCloudChat.lower(value)
 }
 
 
@@ -9157,6 +9549,174 @@ public func FfiConverterTypeChatConfig_lift(_ buf: RustBuffer) throws -> ChatCon
 #endif
 public func FfiConverterTypeChatConfig_lower(_ value: ChatConfig) -> RustBuffer {
     return FfiConverterTypeChatConfig.lower(value)
+}
+
+
+public struct CloudChatLine: Equatable, Hashable {
+    public var role: CloudChatRole
+    public var text: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(role: CloudChatRole, text: String) {
+        self.role = role
+        self.text = text
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CloudChatLine: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudChatLine: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudChatLine {
+        return
+            try CloudChatLine(
+                role: FfiConverterTypeCloudChatRole.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CloudChatLine, into buf: inout [UInt8]) {
+        FfiConverterTypeCloudChatRole.write(value.role, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudChatLine_lift(_ buf: RustBuffer) throws -> CloudChatLine {
+    return try FfiConverterTypeCloudChatLine.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudChatLine_lower(_ value: CloudChatLine) -> RustBuffer {
+    return FfiConverterTypeCloudChatLine.lower(value)
+}
+
+
+public struct CloudChatSnapshot: Equatable, Hashable {
+    /**
+     * The open chat's id, once its first message was sent.
+     */
+    public var chat: String?
+    public var lines: [CloudChatLine]
+    /**
+     * An answer is being written.
+     */
+    public var answering: Bool
+    /**
+     * Signed out: messages left before a sign-in is needed.
+     */
+    public var left: UInt32?
+    /**
+     * Signed out and out of messages: ask the person to sign in.
+     */
+    public var signInRequired: Bool
+    /**
+     * Text that wasn't sent, to put back in the composer.
+     */
+    public var unsent: String?
+    public var error: String?
+    /**
+     * The open chat is the account's (it shows in the account's chats).
+     */
+    public var accountChat: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The open chat's id, once its first message was sent.
+         */chat: String?, lines: [CloudChatLine], 
+        /**
+         * An answer is being written.
+         */answering: Bool, 
+        /**
+         * Signed out: messages left before a sign-in is needed.
+         */left: UInt32?, 
+        /**
+         * Signed out and out of messages: ask the person to sign in.
+         */signInRequired: Bool, 
+        /**
+         * Text that wasn't sent, to put back in the composer.
+         */unsent: String?, error: String?, 
+        /**
+         * The open chat is the account's (it shows in the account's chats).
+         */accountChat: Bool) {
+        self.chat = chat
+        self.lines = lines
+        self.answering = answering
+        self.left = left
+        self.signInRequired = signInRequired
+        self.unsent = unsent
+        self.error = error
+        self.accountChat = accountChat
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CloudChatSnapshot: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudChatSnapshot: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudChatSnapshot {
+        return
+            try CloudChatSnapshot(
+                chat: FfiConverterOptionString.read(from: &buf), 
+                lines: FfiConverterSequenceTypeCloudChatLine.read(from: &buf), 
+                answering: FfiConverterBool.read(from: &buf), 
+                left: FfiConverterOptionUInt32.read(from: &buf), 
+                signInRequired: FfiConverterBool.read(from: &buf), 
+                unsent: FfiConverterOptionString.read(from: &buf), 
+                error: FfiConverterOptionString.read(from: &buf), 
+                accountChat: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CloudChatSnapshot, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.chat, into: &buf)
+        FfiConverterSequenceTypeCloudChatLine.write(value.lines, into: &buf)
+        FfiConverterBool.write(value.answering, into: &buf)
+        FfiConverterOptionUInt32.write(value.left, into: &buf)
+        FfiConverterBool.write(value.signInRequired, into: &buf)
+        FfiConverterOptionString.write(value.unsent, into: &buf)
+        FfiConverterOptionString.write(value.error, into: &buf)
+        FfiConverterBool.write(value.accountChat, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudChatSnapshot_lift(_ buf: RustBuffer) throws -> CloudChatSnapshot {
+    return try FfiConverterTypeCloudChatSnapshot.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudChatSnapshot_lower(_ value: CloudChatSnapshot) -> RustBuffer {
+    return FfiConverterTypeCloudChatSnapshot.lower(value)
 }
 
 
@@ -15786,6 +16346,79 @@ public func FfiConverterTypeClientEvent_lower(_ value: ClientEvent) -> RustBuffe
 
 
 
+
+public enum CloudChatRole: Equatable, Hashable {
+    
+    case user
+    case assistant
+    case tool
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension CloudChatRole: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudChatRole: FfiConverterRustBuffer {
+    typealias SwiftType = CloudChatRole
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudChatRole {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .user
+        
+        case 2: return .assistant
+        
+        case 3: return .tool
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: CloudChatRole, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .user:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .assistant:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .tool:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudChatRole_lift(_ buf: RustBuffer) throws -> CloudChatRole {
+    return try FfiConverterTypeCloudChatRole.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudChatRole_lower(_ value: CloudChatRole) -> RustBuffer {
+    return FfiConverterTypeCloudChatRole.lower(value)
+}
+
+
+
 /**
  * Paint roles. The painter maps these to its palette (light/dark).
  */
@@ -20990,6 +21623,31 @@ fileprivate struct FfiConverterSequenceTypeCaptionSpan: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeCloudChatLine: FfiConverterRustBuffer {
+    typealias SwiftType = [CloudChatLine]
+
+    public static func write(_ value: [CloudChatLine], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCloudChatLine.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CloudChatLine] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CloudChatLine]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCloudChatLine.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeCustomAgentRow: FfiConverterRustBuffer {
     typealias SwiftType = [CustomAgentRow]
 
@@ -22658,6 +23316,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreaccount_chat_homes() != 42622) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_cloud_chat() != 33813) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_cloud_host() != 19804) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -22698,6 +23359,21 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_corecontinuationdraft_start() != 37618) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_cloudchatlistener_on_cloud_chat_changed() != 606) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corecloudchat_new_chat() != 53526) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corecloudchat_send() != 29543) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corecloudchat_snapshot() != 41654) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corecloudchat_stop() != 12415) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreagents_activate() != 20375) {
@@ -23079,6 +23755,7 @@ private let initializationResult: InitializationResult = {
     uniffiCallbackInitAccountListener()
     uniffiCallbackInitAgentLabListener()
     uniffiCallbackInitClientListener()
+    uniffiCallbackInitCloudChatListener()
     uniffiCallbackInitCustomAgentsListener()
     uniffiCallbackInitHomeListener()
     uniffiCallbackInitLayoutListener()

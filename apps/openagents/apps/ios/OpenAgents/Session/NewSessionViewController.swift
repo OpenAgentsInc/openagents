@@ -59,6 +59,9 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     private var waitingForAgent = false
     private let continuation: CoreContinuationDraft?
     private var creatingContinuation = false
+    /// No computer online: the chat runs on OpenAgents (#11979).
+    private var onOpenAgents = false
+    private var offersOpenAgents: Bool { continuation == nil && app.cloudChat != nil && !app.isDemo }
 
     /// Embedded in the iPad split's main column (no sheet chrome).
     private let embedded: Bool
@@ -189,6 +192,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
             // No projects yet: run on the first reachable host.
             draft.hostId = app.hostOptions.first(where: \.online)?.id ?? app.hostOptions.first?.id
         }
+        onOpenAgents = offersOpenAgents && !app.projectOptions.contains(where: \.online) && !app.hostOptions.contains(where: \.online)
         agentsObservation = app.observe { [weak self] in self?.agentsChanged() }
         app.customAgents?.refresh()
         loadModels()
@@ -257,6 +261,12 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     }
 
     private func refreshChips() {
+        if onOpenAgents {
+            composer.chips = [ComposerChip(id: "host", title: "OpenAgents", symbol: "cloud")]
+            installChipMenus()
+            mark.image = BrandMarks.image(for: "openagents", side: 34)
+            return
+        }
         var chips: [ComposerChip] = []
         if let p = project {
             // The project, then the host it runs on.
@@ -280,6 +290,11 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
             chips.append(ComposerChip(id: "effort", title: (draft.effort ?? efforts[efforts.count / 2]).capitalized, symbol: "gauge.with.dots.needle.67percent"))
         }
         composer.chips = chips
+        installChipMenus()
+        mark.image = BrandMarks.image(for: custom != nil ? "openagents" : draft.harness, side: 34)
+    }
+
+    private func installChipMenus() {
         if composer.chipMenus.isEmpty { composer.chipMenus = [
             "project": { [weak self] in self?.projectMenu() },
             "host": { [weak self] in self?.hostMenu() },
@@ -287,7 +302,15 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
             "model": { [weak self] in self?.modelMenu() },
             "effort": { [weak self] in self?.effortMenu() },
         ] }
-        mark.image = BrandMarks.image(for: custom != nil ? "openagents" : draft.harness, side: 34)
+    }
+
+    /// Run on OpenAgents: we answer here, with no computer.
+    private func openAgentsChoice() -> [UIMenuElement] {
+        guard offersOpenAgents else { return [] }
+        return [UIAction(title: "OpenAgents", subtitle: "We answer here, no computer needed", image: UIImage(systemName: "cloud"), state: onOpenAgents ? .on : .off) { [weak self] _ in
+            self?.onOpenAgents = true
+            self?.refreshChips()
+        }]
     }
 
     /// One entry per project — checkouts of one repository, on any device,
@@ -356,15 +379,17 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     private func hostMenu() -> UIMenu {
         let checkouts = self.checkouts
         if !checkouts.isEmpty {
-            return UIMenu(title: "Run on", children: checkouts.map { p in
+            return UIMenu(title: "Run on", children: openAgentsChoice() + checkouts.map { p in
                 let shared = checkouts.filter { $0.device == p.device }.count > 1
-                return UIAction(title: p.deviceName, subtitle: shared ? p.path : (p.online ? "Online" : "Offline"), image: UIImage(systemName: "desktopcomputer"), state: p.id == draft.projectId ? .on : .off) { [weak self] _ in
+                return UIAction(title: p.deviceName, subtitle: shared ? p.path : (p.online ? "Online" : "Offline"), image: UIImage(systemName: "desktopcomputer"), state: !onOpenAgents && p.id == draft.projectId ? .on : .off) { [weak self] _ in
+                    self?.onOpenAgents = false
                     self?.pickCheckout(p)
                 }
             })
         }
-        var hosts: [UIMenuElement] = app.hostOptions.filter { continuation == nil || $0.id == continuation?.deviceId() }.map { h in
-            UIAction(title: h.name, subtitle: h.online ? "Online" : "Offline", image: UIImage(systemName: h.name == AppModel.cloudHostName ? "cloud" : "desktopcomputer"), state: h.id == draft.hostId ? .on : .off) { [weak self] _ in
+        var hosts: [UIMenuElement] = openAgentsChoice() + app.hostOptions.filter { continuation == nil || $0.id == continuation?.deviceId() }.map { h in
+            UIAction(title: h.name, subtitle: h.online ? "Online" : "Offline", image: UIImage(systemName: h.name == AppModel.cloudHostName ? "cloud" : "desktopcomputer"), state: !onOpenAgents && h.id == draft.hostId ? .on : .off) { [weak self] _ in
+                self?.onOpenAgents = false
                 self?.draft.hostId = h.id
                 self?.loadModels()
             }
@@ -492,6 +517,16 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     /// False when the session couldn't be created (the prompt stays put).
     private func create(text: String, images: [StagedImage]) -> Bool {
         app.lastDraft = draft
+        if onOpenAgents {
+            guard images.isEmpty else {
+                showAgentError("We can't read images here yet. Send the text, or pick a computer under Run on.")
+                return false
+            }
+            created = true
+            app.newSessionText = ""
+            app.newSessionImages = []
+            return CloudChatViewController.start(text, from: self, app: app)
+        }
         if let continuation {
             guard !creatingContinuation else { return false }
             creatingContinuation = true
