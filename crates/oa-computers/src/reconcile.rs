@@ -252,7 +252,10 @@ impl<D: Drivers + 'static> Reconciler<D> {
         } else {
             None
         };
-        let result = if e.desired == Desired::Deleted
+        let result = if (e.desired == Desired::Deleted
+            || e.record
+                .boot()
+                .is_some_and(|boot| now >= boot.absolute_deadline_ms))
             && matches!(e.record.phase, Phase::Unknown { .. })
             && p.driver.capabilities().memory_suspend
         {

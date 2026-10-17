@@ -40,7 +40,8 @@ that ID is saved remains unknown; the service never sends another mutation for
 that request, even after the provider's retry mapping expires. Memory restore checks existing services
 without rerunning startup hooks. An uncertain command on a memory-preserving
 computer blocks follow-ups and checkpoints; explicit deletion removes that
-computer without saving its possibly live command. Legacy SPACE command
+computer without saving its possibly live command. The saved absolute deadline
+also deletes an uncertain resource instead of saving its memory. Legacy SPACE command
 attachments cannot prove cancellation after a disconnect. Public identified
 commands remain unsupported on SPACE; Boat keeps its existing process-group
 cancellation behavior. Same-worker memory restore does not promise recovery
