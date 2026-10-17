@@ -188,5 +188,64 @@
     "drain, upgrade, compatibility refusal, rollback and placement disable checks",
     "guest metadata and private service denial",
     "metrics, alerts, retention and orphan inventory"
-  ]
+  ],
+  "native_service_progress": {
+    "recorded_at": "2026-10-17T01:55:03.276517+00:00",
+    "configuration_commit": "3bb1d1e014a0f95bf301d51b39b608a1c08fc7ec",
+    "image_pins": "deploy/space-service/image-pins.json",
+    "all_native_worker_daemonsets_ready": 8,
+    "all_native_builder_daemonsets_ready": 9,
+    "migration_job_complete": true,
+    "migration_build": "c780750c-47f4-40f8-a66e-ffee5c528cd6",
+    "existing_database_logins_verified": 5,
+    "database_login_tls_verified": true,
+    "runtime_roles_have_cloudsqlsuperuser": false,
+    "passwords_configured_through_sql_admin_api": true,
+    "api_endpoint": "https://oa-space-service-api-ezxz4mgdsq-uc.a.run.app",
+    "data_endpoint": "https://oa-space-service-data-ezxz4mgdsq-uc.a.run.app",
+    "private_readiness_status": [
+      200,
+      200
+    ],
+    "external_readiness_status": [
+      404,
+      404
+    ],
+    "unauthenticated_native_routes_status": [
+      401,
+      401
+    ],
+    "synthetic_native_read_authenticated": true,
+    "synthetic_admin_read_authenticated": true,
+    "customer_lifecycle_and_recovery_proven": false,
+    "temporary_builder": {
+      "name": "oa-space-service-builder",
+      "zone": "us-central1-a",
+      "machine": "n2-standard-8",
+      "maximum_hours": 4,
+      "termination_action": "DELETE",
+      "google_identity": null,
+      "public_ip": null
+    },
+    "guest_cgroup": {
+      "cpu_max": "400000 100000",
+      "memory_max_bytes": 8589934592,
+      "pids_max": 4096,
+      "read_and_write_bps_each": 67108864,
+      "read_and_write_iops_each": 2000
+    },
+    "seed_builds": [
+      {
+        "id": "01a1478f-d7b7-715d-b2c0-b0bf9b680e71",
+        "state": "publish_failed",
+        "bytes": 0,
+        "duplicate_not_submitted_after_500": true,
+        "failure": "Builder inventory row missing; internal API database CA mount missing. Deployment corrections are being qualified."
+      }
+    ],
+    "pending_builds": {
+      "public_seed_kernel_api": "91d9ba7a-d06e-4adc-80fa-6e4ddbbc340d",
+      "isolated_computers_candidate": "45d18c74-74e1-4925-8f2e-f8dbdef4cbbb"
+    }
+  }
 }
