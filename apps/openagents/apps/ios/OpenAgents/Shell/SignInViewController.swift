@@ -9,6 +9,7 @@ final class SignInViewController: UIViewController {
     private let website = UIButton(type: .system)
     private let cancel = UIButton(type: .system)
     private let demo = UIButton(type: .system)
+    private var apple = UIControl()
 
     init(app: AppModel) {
         self.app = app
@@ -45,7 +46,8 @@ final class SignInViewController: UIViewController {
         demo.setTitle("Try the demo", for: .normal)
         demo.accessibilityIdentifier = "open-demo"
         demo.addAction(UIAction { [weak self] _ in self?.app.openDemo() }, for: .touchUpInside)
-        let stack = UIStackView(arrangedSubviews: [title, status, code, signIn, website, cancel, demo])
+        apple = SignInSheet.appleButton(app: app, traits: traitCollection)
+        let stack = UIStackView(arrangedSubviews: [title, status, code, apple, signIn, website, cancel, demo])
         stack.axis = .vertical
         stack.alignment = .center
         stack.spacing = 20
@@ -70,6 +72,8 @@ final class SignInViewController: UIViewController {
         cancel.isHidden = true
         signIn.isHidden = false
         signIn.isEnabled = true
+        apple.isHidden = false
+        apple.isEnabled = true
         demo.isHidden = false
         signIn.configuration?.title = "Sign in with OpenAgents"
         switch app.accountSnapshot?.state {
@@ -77,6 +81,7 @@ final class SignInViewController: UIViewController {
         case .restoring, .starting:
             status.text = "Signing in…"
             signIn.isEnabled = false
+            apple.isEnabled = false
         case let .waiting(value, _):
             status.text = "Approve this code on the website."
             code.text = value
@@ -88,7 +93,9 @@ final class SignInViewController: UIViewController {
         case let .failed(message, _):
             status.text = message
             signIn.configuration?.title = "Try again"
-        case .signedIn: status.text = "You're signed in."
+        case .signedIn:
+            status.text = "You're signed in."
+            apple.isHidden = true
         case nil: status.text = "You're signed out."
         }
     }

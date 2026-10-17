@@ -234,7 +234,8 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
 
     // MARK: Sign-in
 
-    /// The account sign-in (#11980 replaces how it looks, not where it starts).
+    /// The account sign-in: the code's approval page opens in the in-app
+    /// sheet, with Sign in with Apple beside it (#11980).
     func signIn() {
         if presentedViewController != nil { dismiss(animated: false) }
         app.beginAccountSignIn()
@@ -249,9 +250,9 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
     private func promptSignIn() {
         guard presentedViewController == nil else { return }
         view.endEditing(true)
-        let prompt = SignInPromptController { [weak self] in self?.signIn() }
+        let prompt = SignInPromptController(app: app) { [weak self] in self?.signIn() }
         if let sheet = prompt.sheetPresentationController {
-            sheet.detents = [.custom { _ in 220 }]
+            sheet.detents = [.custom { _ in 290 }]
             sheet.prefersGrabberVisible = true
         }
         present(prompt, animated: true)
@@ -396,8 +397,10 @@ private final class CloudChatCell: UITableViewCell {
 /// "Sign in to keep chatting. It's free." with Sign in and Not now.
 private final class SignInPromptController: UIViewController {
     private let onSignIn: () -> Void
+    private let app: AppModel
 
-    init(onSignIn: @escaping () -> Void) {
+    init(app: AppModel, onSignIn: @escaping () -> Void) {
+        self.app = app
         self.onSignIn = onSignIn
         super.init(nibName: nil, bundle: nil)
     }
@@ -431,7 +434,8 @@ private final class SignInPromptController: UIViewController {
         later.tintColor = Palette.secondary
         later.accessibilityIdentifier = "sign-in-prompt-later"
         later.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside)
-        let stack = UIStackView(arrangedSubviews: [message, signIn, later])
+        let apple = SignInSheet.appleButton(app: app, traits: traitCollection)
+        let stack = UIStackView(arrangedSubviews: [message, apple, signIn, later])
         stack.axis = .vertical
         stack.alignment = .center
         stack.spacing = 16

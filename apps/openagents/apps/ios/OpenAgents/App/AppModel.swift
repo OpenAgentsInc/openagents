@@ -184,10 +184,15 @@ final class AppModel {
         UIApplication.shared.open(url)
     }
     func beginAccountSignIn() { account?.signIn(deviceName: UIDevice.current.name) }
+    /// Sign in with Apple (#11980): the token from Apple's sheet goes to the Rust core.
+    func signInWithApple(identityToken: String, nonce: String, name: String?) {
+        account?.signInWithApple(identityToken: identityToken, nonce: nonce, name: name, deviceName: UIDevice.current.name)
+    }
     func restoreAccount() { account?.restore() }
     func cancelAccountSignIn() { account?.cancel() }
     func openAccountWebsite() {
         guard case let .waiting(_, url)? = accountSnapshot?.state, let url = URL(string: url) else { return }
+        if SignInSheet.shared.open(url.absoluteString) { return }
         UIApplication.shared.open(url)
     }
     fileprivate func handleAccount(_ snapshot: AccountSnapshot) {
@@ -200,6 +205,7 @@ final class AppModel {
         }
         accountGeneration = snapshot.generation
         accountSnapshot = snapshot
+        if case .waiting = snapshot.state {} else { SignInSheet.shared.close() }
         if isDemo { return }
         switch snapshot.state {
         case let .signedIn(_, name):

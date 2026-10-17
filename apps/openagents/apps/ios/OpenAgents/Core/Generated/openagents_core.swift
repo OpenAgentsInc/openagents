@@ -1663,6 +1663,14 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
      */
     func storedLoginPresent() throws  -> Bool
     
+    /**
+     * Sign in with the identity token from Apple's sheet and the raw
+     * nonce from [`apple_sign_in_nonce`]. `name` is the name the sheet
+     * returned (only on the first sign-in). Progress arrives as account
+     * snapshots, like [`CoreAccount::sign_in`].
+     */
+    func signInWithApple(identityToken: String, nonce: String, name: String?, deviceName: String) 
+    
     func chatHomes(client: CoreClient, chat: String) throws  -> CoreChatHomes
     
     /**
@@ -1904,6 +1912,24 @@ open func storedLoginPresent()throws  -> Bool  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Sign in with the identity token from Apple's sheet and the raw
+     * nonce from [`apple_sign_in_nonce`]. `name` is the name the sheet
+     * returned (only on the first sign-in). Progress arrives as account
+     * snapshots, like [`CoreAccount::sign_in`].
+     */
+open func signInWithApple(identityToken: String, nonce: String, name: String?, deviceName: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_sign_in_with_apple(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(identityToken),
+        FfiConverterString.lower(nonce),
+        FfiConverterOptionString.lower(name),
+        FfiConverterString.lower(deviceName),uniffiCallStatus
+    )
+}
 }
     
 open func chatHomes(client: CoreClient, chat: String)throws  -> CoreChatHomes  {
@@ -8951,6 +8977,64 @@ public func FfiConverterTypeAccountSnapshot_lift(_ buf: RustBuffer) throws -> Ac
 #endif
 public func FfiConverterTypeAccountSnapshot_lower(_ value: AccountSnapshot) -> RustBuffer {
     return FfiConverterTypeAccountSnapshot.lower(value)
+}
+
+
+/**
+ * A Sign in with Apple nonce: `hashed` goes into Apple's request,
+ * `raw` comes back to us with the identity token.
+ */
+public struct AppleNonce: Equatable, Hashable {
+    public var raw: String
+    public var hashed: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(raw: String, hashed: String) {
+        self.raw = raw
+        self.hashed = hashed
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AppleNonce: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAppleNonce: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AppleNonce {
+        return
+            try AppleNonce(
+                raw: FfiConverterString.read(from: &buf), 
+                hashed: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AppleNonce, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.raw, into: &buf)
+        FfiConverterString.write(value.hashed, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAppleNonce_lift(_ buf: RustBuffer) throws -> AppleNonce {
+    return try FfiConverterTypeAppleNonce.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAppleNonce_lower(_ value: AppleNonce) -> RustBuffer {
+    return FfiConverterTypeAppleNonce.lower(value)
 }
 
 
@@ -22868,6 +22952,38 @@ public func workosAuthorizeUrl(state: String) -> String  {
 })
 }
 /**
+ * A fresh random nonce for one Sign in with Apple request.
+ */
+public func appleSignInNonce() -> AppleNonce  {
+    return try!  FfiConverterTypeAppleNonce_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_func_apple_sign_in_nonce(uniffiCallStatus
+    )
+})
+}
+/**
+ * The scheme [`sign_in_sheet_url`]'s page returns to.
+ */
+public func signInSheetScheme() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_func_sign_in_sheet_scheme(uniffiCallStatus
+    )
+})
+}
+/**
+ * The approval page to open in the in-app sign-in sheet: the code's page
+ * with `return=app`, so Approve sends the sheet back and it closes.
+ */
+public func signInSheetUrl(verificationUrl: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_func_sign_in_sheet_url(
+        FfiConverterString.lower(verificationUrl),uniffiCallStatus
+    )
+})
+}
+/**
  * The canonical mention link the host understands (`[name](openagents-file:path)`).
  */
 public func fileMentionLink(path: String, isDir: Bool) -> String  {
@@ -23038,6 +23154,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_func_workos_authorize_url() != 58769) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_func_apple_sign_in_nonce() != 2829) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_func_sign_in_sheet_scheme() != 43668) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_func_sign_in_sheet_url() != 7922) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_func_file_mention_link() != 21705) {
@@ -23311,6 +23436,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_stored_login_present() != 54303) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_sign_in_with_apple() != 22779) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_chat_homes() != 42622) {
