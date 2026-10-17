@@ -216,3 +216,12 @@ links remain readable. Upstream fixes now require manual ports.
   `client_ffi::sharing` binds callbacks and polling to the current account lease.
   Settings opens the shared Rust Native form in `AgentFormController`; UIKit
   forwards versioned actions and copies codes only after an explicit action.
+
+- [OpenAgents #11940](https://github.com/OpenAgentsInc/openagents/issues/11940):
+  Saved agents accept an enabled OpenCode runtime and its advertised model.
+  Admission and assignment checks share the runtime/access rule. OpenCode keeps
+  the host's permission settings; read-only and workspace-write agent settings
+  are refused. OpenCode receives instructions through a per-run inline native
+  agent (`prompt` on v1, `system` under `agents` on v2), selected explicitly on
+  the session or prompt. Shared configuration files stay unchanged. The existing
+  harness owns launch and event handling.

@@ -304,6 +304,7 @@ impl OpencodeHarness {
         self.server_with_broker(
             cwd,
             mcp,
+            None,
             #[cfg(unix)]
             None,
         )
@@ -314,9 +315,15 @@ impl OpencodeHarness {
         &self,
         cwd: Option<&str>,
         mcp: Option<&openagents_proto::McpServer>,
+        inline_agent: Option<(&str, &str)>,
         #[cfg(unix)] broker: Option<&crate::process::LaunchBroker>,
     ) -> Result<Server, HarnessError> {
         if let Some(base) = &self.base_url {
+            if inline_agent.is_some() {
+                return Err(HarnessError::Protocol(
+                    "Use OpenCode installed on this computer for this agent.".into(),
+                ));
+            }
             return Ok(Server::attached(base.clone()));
         }
         let exe = self.resolve_executable()?;
@@ -325,6 +332,7 @@ impl OpencodeHarness {
             cwd,
             self.startup_timeout,
             mcp,
+            inline_agent,
             #[cfg(unix)]
             broker,
         )
@@ -501,10 +509,23 @@ impl Harness for OpencodeHarness {
         let initial_native_command_selected = selected_native_command(&request.prompt, self.id());
         request.prompt = openagents_proto::invocation::harness_prompt(&request.prompt, self.id());
         let cwd = (!request.cwd.is_empty()).then(|| request.cwd.clone());
+        let instructions = request
+            .model_options
+            .get("openagentsInstructions")
+            .and_then(Value::as_str)
+            .filter(|s| !s.trim().is_empty())
+            .map(str::to_owned);
+        let agent_name = instructions
+            .as_ref()
+            .map(|_| format!("openagents-saved-{}", uuid::Uuid::new_v4().simple()));
+        if let Some(name) = &agent_name {
+            request.model_options.insert("agent".into(), json!(name));
+        }
         let server = self
             .server_with_broker(
                 cwd.as_deref(),
                 request.mcp.as_ref(),
+                agent_name.as_deref().zip(instructions.as_deref()),
                 #[cfg(unix)]
                 self.launch_broker.as_ref(),
             )
@@ -664,6 +685,7 @@ impl Server {
             cwd,
             startup,
             mcp,
+            None,
             #[cfg(unix)]
             None,
         )
@@ -675,6 +697,7 @@ impl Server {
         cwd: Option<&str>,
         startup: Duration,
         mcp: Option<&openagents_proto::McpServer>,
+        inline_agent: Option<(&str, &str)>,
         #[cfg(unix)] broker: Option<&crate::process::LaunchBroker>,
     ) -> Result<Self, HarnessError> {
         let port = free_localhost_port().ok_or_else(|| {
@@ -692,9 +715,7 @@ impl Server {
             .env("OPENCODE_PASSWORD", &password)
             .env("OPENCODE_SERVER_PASSWORD", &password)
             .env("OPENCODE_CLIENT", "openagents");
-        if let Some(mcp) = mcp {
-            // The config shape differs by generation. If even the cold probe
-            // can't tell, run without the OpenAgents MCP server rather than fail.
+        if mcp.is_some() || inline_agent.is_some() {
             match opencode_version(
                 exe,
                 #[cfg(unix)]
@@ -708,21 +729,23 @@ impl Server {
                     } else {
                         Protocol::V1
                     };
-                    cmd.env(
-                        "OPENCODE_CONFIG_CONTENT",
-                        mcp_config(
-                            openagents_brand::env_var("OPENCODE_CONFIG_CONTENT")
-                                .ok()
-                                .as_deref(),
-                            mcp,
-                            protocol,
-                        )?,
-                    );
+                    let inherited = openagents_brand::env_var("OPENCODE_CONFIG_CONTENT").ok();
+                    let mut config = match mcp {
+                        Some(mcp) => mcp_config(inherited.as_deref(), mcp, protocol)?,
+                        None => inherited.unwrap_or_else(|| "{}".into()),
+                    };
+                    if let Some((name, instructions)) = inline_agent {
+                        config = agent_config(Some(&config), name, instructions, protocol)?;
+                    }
+                    cmd.env("OPENCODE_CONFIG_CONTENT", config);
                 }
-                None => tracing::warn!(
-                    binary_path = %exe.display(),
-                    "opencode version unknown; starting without the OpenAgents MCP server"
-                ),
+                None if inline_agent.is_some() => {
+                    return Err(HarnessError::Protocol(
+                        "OpenCode's version could not be checked. Update it and try again.".into(),
+                    ));
+                }
+                None => tracing::warn!(binary_path=%exe.display(),
+                    "opencode version unknown; starting without the OpenAgents MCP server"),
             }
         }
         crate::compose_child_path(&mut cmd, exe);
@@ -1788,6 +1811,7 @@ async fn run_session(session: Session) {
         turn_generation,
         &command_failure_tx,
         TurnSpec {
+            agent,
             model: model.as_ref(),
             variant: variant.as_deref(),
             attachments: &request.attachments,
@@ -1927,6 +1951,7 @@ async fn run_session(session: Session) {
                         turn_generation,
                         &command_failure_tx,
                         TurnSpec {
+                            agent,
                             model: model.as_ref(),
                             variant: variant.as_deref(),
                             attachments: &attachments,
@@ -2183,6 +2208,7 @@ async fn run_session(session: Session) {
                                     turn_generation,
                                     &command_failure_tx,
                                     TurnSpec {
+                                        agent,
                                         model: model.as_ref(),
                                         variant: variant.as_deref(),
                                         attachments: &steer.attachments,
@@ -2649,6 +2675,7 @@ fn mime_for(path: &str) -> &'static str {
 /// What a posted turn carries besides its text (1.x folds model/variant
 /// into the prompt body; 2.x ignores them there — set on the session).
 struct TurnSpec<'a> {
+    agent: Option<&'a str>,
     model: Option<&'a (String, String)>,
     variant: Option<&'a str>,
     attachments: &'a [String],
@@ -2693,6 +2720,7 @@ async fn post_prompt(
     spec: TurnSpec<'_>,
 ) -> Result<(), HarnessError> {
     let TurnSpec {
+        agent,
         model,
         variant,
         attachments,
@@ -2708,7 +2736,7 @@ async fn post_prompt(
             ));
         }
         // 1.x names the args `arguments`; 2.x `text`.
-        let (path, cmd_body) = match protocol {
+        let (path, mut cmd_body) = match protocol {
             Protocol::V1 => (
                 format!("/session/{session_id}/command"),
                 json!({ "command": name, "arguments": arguments }),
@@ -2718,6 +2746,11 @@ async fn post_prompt(
                 command_body_v2(server.version.get(), name, &arguments, attachments),
             ),
         };
+        if protocol == Protocol::V1
+            && let Some(agent) = agent
+        {
+            cmd_body["agent"] = json!(agent);
+        }
         let server_base = server.base.clone();
         let auth = server.auth.clone();
         let dir_owned = dir.map(str::to_owned);
@@ -2759,7 +2792,7 @@ async fn post_prompt(
         });
         return Ok(());
     }
-    let (path, body) = match protocol {
+    let (path, mut body) = match protocol {
         Protocol::V1 => (
             format!("/session/{session_id}/prompt_async"),
             prompt_body(
@@ -2774,6 +2807,11 @@ async fn post_prompt(
             prompt_body_v2(prompt, attachments),
         ),
     };
+    if protocol == Protocol::V1
+        && let Some(agent) = agent
+    {
+        body["agent"] = json!(agent);
+    }
     let server = Server {
         child: None,
         base: server.base.clone(),
@@ -4689,6 +4727,43 @@ async fn opencode_version(
     Ok(version)
 }
 
+/// A saved agent lives only in this run's inline configuration. OpenCode v2
+/// takes its system prompt from configured agents, not from prompt bodies.
+fn agent_config(
+    inherited: Option<&str>,
+    name: &str,
+    instructions: &str,
+    protocol: Protocol,
+) -> Result<String, HarnessError> {
+    let invalid =
+        || HarnessError::Protocol("Check OpenCode's agent settings and try again.".into());
+    let mut config: Value = match inherited.filter(|s| !s.trim().is_empty()) {
+        Some(raw) => deser_hjson::from_str(raw).map_err(|_| invalid())?,
+        None => json!({}),
+    };
+    let object = config.as_object_mut().ok_or_else(invalid)?;
+    let agents = object
+        .entry(if protocol == Protocol::V2 {
+            "agents"
+        } else {
+            "agent"
+        })
+        .or_insert_with(|| json!({}))
+        .as_object_mut()
+        .ok_or_else(invalid)?;
+    if agents.contains_key(name) {
+        return Err(invalid());
+    }
+    let mut agent = json!({"description":"OpenAgents saved agent","mode":"primary","hidden":true});
+    agent[if protocol == Protocol::V2 {
+        "system"
+    } else {
+        "prompt"
+    }] = json!(instructions);
+    agents.insert(name.into(), agent);
+    Ok(config.to_string())
+}
+
 /// Inline config is the final user config layer. Preserve inherited overrides
 /// and other MCP servers; never write chat identity into a shared config file.
 fn mcp_config(
@@ -4733,6 +4808,66 @@ fn mcp_config(
 }
 
 #[cfg(test)]
+mod saved_agent_tests {
+    use super::*;
+    #[test]
+    fn inline_agents_preserve_settings_and_refuse_collisions_or_invalid_config() {
+        for protocol in [Protocol::V1, Protocol::V2] {
+            let inherited = json!({
+                "provider":{"fixture":{"options":{"baseURL":"http://127.0.0.1:1"}}},
+                "permission":{"bash":"ask"},
+                "default_agent":"existing"
+            });
+            let output = agent_config(
+                Some(&inherited.to_string()),
+                "saved-fixture",
+                "Find defects",
+                protocol,
+            )
+            .unwrap();
+            let config: Value = serde_json::from_str(&output).unwrap();
+            assert_eq!(config["provider"], inherited["provider"]);
+            assert_eq!(config["permission"], inherited["permission"]);
+            assert_eq!(config["default_agent"], "existing");
+            let key = if protocol == Protocol::V1 {
+                "agent"
+            } else {
+                "agents"
+            };
+            let field = if protocol == Protocol::V1 {
+                "prompt"
+            } else {
+                "system"
+            };
+            assert_eq!(config[key]["saved-fixture"][field], "Find defects");
+            assert_eq!(config[key]["saved-fixture"]["mode"], "primary");
+            assert!(config[key]["saved-fixture"].get("permissions").is_none());
+            assert!(config[key]["saved-fixture"].get("permission").is_none());
+            assert!(agent_config(Some(&output), "saved-fixture", "Changed", protocol).is_err());
+            for invalid in ["[]", "invalid-input-canary"] {
+                let error = agent_config(Some(invalid), "saved-fixture", "Find defects", protocol)
+                    .unwrap_err();
+                assert!(!error.to_string().contains("invalid-input-canary"));
+            }
+        }
+    }
+    #[tokio::test]
+    async fn attached_servers_cannot_silently_ignore_saved_instructions() {
+        let harness = OpencodeHarness::new().with_base_url("http://127.0.0.1:1");
+        let result = harness
+            .server_with_broker(
+                None,
+                None,
+                Some(("saved-fixture", "Find defects")),
+                #[cfg(unix)]
+                None,
+            )
+            .await;
+        assert!(matches!(result, Err(HarnessError::Protocol(_))));
+    }
+}
+
+#[cfg(test)]
 mod mcp_injection_tests {
     use super::*;
 
@@ -4755,6 +4890,12 @@ const port = Number(process.argv[process.argv.indexOf('--port') + 1]);
 http.createServer((req, res) => {{
   res.setHeader('content-type', 'application/json');
   if (req.url === '/config-probe') {{ res.end(JSON.stringify(server)); return; }}
+  if (req.url === '/agent-probe') {{
+    const agents = {major} === 1 ? config.agent : config.agents;
+    const agent = agents[server.environment.OPENAGENTS_CHAT_ID + '-agent'];
+    if (process.argv.some(arg => arg.includes('Find defects') || arg.includes('Write tests'))) throw new Error('instructions in argv');
+    res.end(JSON.stringify(agent)); return;
+  }}
   if (req.url === ({major} === 1 ? '/global/health' : '/api/info')) {{
     res.end(JSON.stringify({{version}})); return;
   }}
@@ -4771,25 +4912,37 @@ http.createServer((req, res) => {{
                 env: [("OPENAGENTS_CHAT_ID".into(), "first".into())].into(),
             };
             let mut second = first.clone();
-            second.env.insert("OPENAGENTS_CHAT_ID".into(), "second".into());
-            let mut a = Server::spawn(
+            second
+                .env
+                .insert("OPENAGENTS_CHAT_ID".into(), "second".into());
+            let mut a = Server::spawn_with_broker(
                 &exe,
                 fixture.path().to_str(),
                 Duration::from_secs(5),
                 Some(&first),
+                Some(("first-agent", "Find defects")),
+                None,
             )
             .await
             .unwrap();
-            let mut b = Server::spawn(
+            let mut b = Server::spawn_with_broker(
                 &exe,
                 fixture.path().to_str(),
                 Duration::from_secs(5),
                 Some(&second),
+                Some(("second-agent", "Write tests")),
+                None,
             )
             .await
             .unwrap();
             let a_config = a.get_json("/config-probe", None).await.unwrap();
             let b_config = b.get_json("/config-probe", None).await.unwrap();
+            let a_agent = a.get_json("/agent-probe", None).await.unwrap();
+            let b_agent = b.get_json("/agent-probe", None).await.unwrap();
+            let field = if major == 1 { "prompt" } else { "system" };
+            assert_eq!(a_agent[field], "Find defects");
+            assert_eq!(b_agent[field], "Write tests");
+
             a.shutdown(Duration::from_millis(100)).await;
             b.shutdown(Duration::from_millis(100)).await;
             assert_eq!(a_config["environment"]["OPENAGENTS_CHAT_ID"], "first");
@@ -4939,7 +5092,10 @@ if (process.argv.includes('--version')) {{
                 servers["openagents"]["command"],
                 json!(["/path with spaces/openagents", "mcp"])
             );
-            assert_eq!(servers["openagents"]["environment"]["OPENAGENTS_CHAT_ID"], "first");
+            assert_eq!(
+                servers["openagents"]["environment"]["OPENAGENTS_CHAT_ID"],
+                "first"
+            );
             assert_eq!(
                 second.pointer(pointer).unwrap()["openagents"]["environment"]["OPENAGENTS_CHAT_ID"],
                 "second"

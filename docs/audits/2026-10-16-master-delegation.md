@@ -206,20 +206,18 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **After-close:** lane 0 deploys the exact checked adapter and private broker, then completes the supported clients, bypass, expiry, outage, and revocation checks listed below. The full live client workflow has not passed.
 - **Owner-only:** none.
 
-**#11814 SPACE: deploy a private maintained GCloud service with durable storage and bounded capacity.** Lane 6, claimed by `codex:01a14140`.
-- **Status:** private native SPACE is deployed. Eight workers are healthy on pinned images. Private TLS frontends return 404 externally. The Cloud SQL candidate is isolated with least-privilege logins. The seed and runtime were published, and a backup restore was checked. Guest quota now bounds pod count. Commits run through `916a8a838c`.
-- **Remains:** guest lifecycle, memory and checkpoint recovery, worker replacement, saturation and concurrent wake, drain, upgrade and rollback, placement disable, guest denial, monitoring, retention, and fixture cleanup. Also fix the native `deleted`-row DELETE path (`begin_delete_against_active_fork` rejects it) and bound snapshot collection, both found in #11812.
-- **Owner-only:** none.
+**#11814 SPACE: deploy a private maintained GCloud service with durable storage and bounded capacity.** Lane 6, closed on code.
+- **Status:** cleanup and bounded snapshot collection are on `main` (`3e612ba4`), with 50 checks passed. The private capacity-2 fixture passed same-worker memory continuity and seven guest endpoint denials (`c8980129cb`).
+- **After-close:** lane 0 owns cleanup-image promotion, worker replacement, concurrent wakes, drain/rollback/placement disable, complete storage inventory, and fixture cleanup; see the table below.
 
-**#11936 SPACE: frame bodyless lifecycle requests for Cloud Run.** Lane 6, claimed at 21:45 CDT.
-- **Status:** Cloud Run returns 411 for a bodyless POST without `Content-Length: 0`, so suspend fails permanently.
-- **Remains:** send explicit zero-length framing on bodyless mutations, add a wire-level regression test, redeploy the candidate, and verify suspend and wake.
-- **Owner-only:** none.
+**#11936 SPACE: frame bodyless lifecycle requests for Cloud Run.** Lane 6, closed on code.
+- **Status:** the framing fix is on `main`. Capacity-2 passed through Cloud Run, and lane 0 recovered the primary fixture with #11939 (`f83f2538f836`) on private revision `00003-ffl`. Encrypted checkpoint/resume preserved its process and memory witness; all seven endpoint denials passed.
+- **After-close:** both fixtures ended stopped. Worker replacement and complete cleanup remain under #11814 below.
 
-**#11815 Computers: persist usage, quotas, and uncertain reservations across backends.** Lane 6, unclaimed.
-- **Status:** two increments are in production: usage events, allowances, stopped retention, `GET /v1/computer-usage`, explicit unknown usage, storage observations, and a deleted-allocation observer. Computers runs `c50225e11b` and Boat runs `76d096ef26`. The dedicated production account got 403 on its usage read, so production usage fields aren't verified.
-- **Remains:** a complete storage inventory with byte and count quotas, private-object and account-deletion cleanup, useful-task versus idle economics, and customer units, rates, rounding, and settlement rules (pricing stays off). Also investigate the production 403.
-- **Owner-only:** customer pricing and entitlement.
+**#11815 Computers: persist usage, quotas, and uncertain reservations across backends.** Lane 6, closed on code.
+- **Status:** storage allowances and account cleanup are on `main` (`1654ee4da7`), with 71 checks passed. The dedicated production account's usage read passed with pricing off. Deleting a VM does not release its storage reservation; complete cleanup evidence is required.
+- **After-close:** lane 0 deploys the allowances and qualifies complete private storage inventory, limits, and account cleanup on synthetic fixtures.
+- **Owner-only:** customer pricing and entitlement remain in `NEEDS_OWNER.md`.
 
 **#11816 SPACE: qualify the public SDK and web-chat path, recovery, and staged rollout.** Lane 6, not started.
 - **Depends on:** #11813, #11814, #11815.
@@ -433,6 +431,7 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 | #11817 | Deploy the new host and computer service. Configure a disposable Unix host, scoped test-account grant, and explicit enrolled target. Run the public attach, command retry/reconnect/cancel, relative-file, revocation, unsupported-control, and detach flow; verify files and unrelated grants survive. Repeat the Linux-specific command checks on Linux. | source checks passed; deploy and dedicated-account run to do |
 | #11911 | Deploy a host advertising `project-sharing-v2` and the matching mobile build. With two dedicated test accounts and disposable projects, check owner approval, read-only and edit/command permissions, wrong-device and cross-project denial, retry/reconnect, expiry, scoped revocation, and account switching. Confirm unrelated chats, files, terminals, credentials, and account controls remain unavailable. Physical device and accessibility steps are in `NEEDS_OWNER.md`. | Source checks passed: access 124, host 118, sharing 12, mobile 58; deploy, live, and device checks to do |
 | #11934 | Deploy the agents door from `1708f44f49` or newer. Run `ask_foreman_cli.py` and `openagents agents ask Foreman …` with test account `acct_500d3e1d125b7782`. The web door's switch to `place` is on `main` (`1708f44f49`). | Native list/status passed. A scratch-host OpenCode assignment was accepted but refused by the engine as unsupported (#11940); the agent and assignment were cleaned up and the host stopped. Deployed in source `0b74ec8f79`, production smoke 66/0/2. The original Claude Code Foreman workflow remains to do. |
+| #11940 | Rebuild the headless engine with the OpenCode saved-agent fix. On a disposable host and dedicated account, ask Foreman with the advertised OpenCode model and host-default access; confirm its saved instructions are followed, then remove the agent, assignment, chat, and host. Repeat the original Claude Code flow under #11934. | Source checks passed: saved-agent admission 5, Agent Lab consumer 4, OpenCode harness 73, and the terminal consumer build on Rust 1.97.1. Deploy and dedicated-account run to do. |
 | #11925 | Deploy `534ecb5c67` or newer. With a synthetic account, confirm an account-backed computer read either succeeds or returns 503 with `Retry-After` during a traffic shift, and a delete during that gap is not applied. | to do |
 | #11727 | Deploy `ed4c8d05c4` or newer. After Stripe test mode is set up (owner, 2026-10-17), a named sale through a short link records the introduction. | to do |
 | #11936 | Redeploy the SPACE candidate with explicit zero-length framing and verify suspend and wake through Cloud Run. | Capacity-2 checks passed on `00002-pch`. The first fixture also passed after #11939 recovery on `oa-space-service-computers-00003-ffl`: encrypted checkpoint/resume preserved boot ID, PID, start time, and memory canary; seven protected endpoints were denied. Both fixtures ended stopped. [Earlier evidence](../cloud/evidence/2026-10-16-space-private-foundation.json); new recovery evidence is in `docs/sdk/computers-usage-evidence.json`. |

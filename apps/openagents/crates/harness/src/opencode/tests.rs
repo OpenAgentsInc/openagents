@@ -2663,3 +2663,31 @@ fn native_skill_catalog_rejects_unrepresentable_commands() {
         assert_eq!(invocation_links(&invocation.link())[0].1, invocation);
     }
 }
+
+#[tokio::test]
+async fn saved_agent_selection_uses_each_native_wire_without_a_prompt_system_override() {
+    for v2 in [false, true] {
+        let mut wire = TurnWire::start_config(
+            false,
+            v2,
+            true,
+            None,
+            "2.0.24",
+            json!({"modelOptions":{"agent":"saved-fixture"}}),
+            false,
+        )
+        .await;
+        if v2 {
+            wire.request("/api/model").await;
+        }
+        let suffix = if v2 { "/prompt" } else { "/prompt_async" };
+        wire.request(suffix).await;
+        let body = wire.posted(suffix).await;
+        assert!(body.get("system").is_none());
+        if v2 {
+            assert_eq!(wire.posted("/api/session").await["agent"], "saved-fixture");
+        } else {
+            assert_eq!(body["agent"], "saved-fixture");
+        }
+    }
+}

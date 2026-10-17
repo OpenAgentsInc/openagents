@@ -5,8 +5,8 @@ use openagents_account::{
     Lease,
     openagents::agents::{Access, assignments::*},
 };
-use std::sync::Arc;
 use openagents_proto::{AgentEvent, DoneStatus, SandboxLevel};
+use std::sync::Arc;
 
 pub(super) struct AgentHost {
     auth: Auth,
@@ -488,25 +488,37 @@ impl DocHost {
         Ok(())
     }
 }
+fn validate_runtime_access(harness: HarnessId, access: Access) -> Result<(), EngineError> {
+    if !matches!(
+        harness,
+        HarnessId::ClaudeCode
+            | HarnessId::Codex
+            | HarnessId::Opencode
+            | HarnessId::Sdk
+            | HarnessId::Mock
+    ) {
+        return Err(error("Choose a supported runtime for this agent."));
+    }
+    // These adapters use the host's permission settings.
+    if matches!(
+        harness,
+        HarnessId::ClaudeCode | HarnessId::Opencode | HarnessId::Sdk
+    ) && access != Access::HostDefault
+    {
+        return Err(error(
+            "This runtime uses this computer's access settings. Choose that access option.",
+        ));
+    }
+    Ok(())
+}
+
 pub(super) async fn admit_runtime(
     registry: &HarnessRegistry,
     harness: HarnessId,
     spec: &openagents_account::openagents::agents::AgentSpec,
 ) -> Result<(), EngineError> {
     spec.validate().map_err(error)?;
-    if !matches!(
-        harness,
-        HarnessId::ClaudeCode | HarnessId::Codex | HarnessId::Sdk | HarnessId::Mock
-    ) {
-        return Err(error("Choose a supported runtime for this agent."));
-    }
-    if matches!(harness, HarnessId::ClaudeCode | HarnessId::Sdk)
-        && spec.access != Access::HostDefault
-    {
-        return Err(error(
-            "This runtime uses this computer's access settings. Choose that access option.",
-        ));
-    }
+    validate_runtime_access(harness, spec.access)?;
     let descriptor = registry
         .descriptors()
         .into_iter()
@@ -573,20 +585,7 @@ fn validate_binding(
     {
         return Err(error("This agent uses a different runtime or model."));
     }
-    if matches!(harness, HarnessId::ClaudeCode | HarnessId::Sdk)
-        && a.definition.spec.access != Access::HostDefault
-    {
-        return Err(error(
-            "This runtime uses this computer's access settings. Choose that access option.",
-        ));
-    }
-    if !matches!(
-        harness,
-        HarnessId::ClaudeCode | HarnessId::Codex | HarnessId::Mock | HarnessId::Sdk
-    ) {
-        return Err(error("Custom agents do not support this runtime yet."));
-    }
-    Ok(())
+    validate_runtime_access(harness, a.definition.spec.access)
 }
 fn terminal_result(
     sessions: &crate::sessions::SessionsEngine,
@@ -741,6 +740,155 @@ mod tests {
             .is_ok()
         );
     }
+    #[test]
+    fn opencode_assignment_preserves_its_model_and_host_access() {
+        let (mut assignment, mut request) = fixture();
+        assignment.definition.spec.runtime = "opencode".into();
+        assignment.definition.spec.model = Some("openagents/openagents/fast".into());
+        assignment.definition.spec.access = Access::HostDefault;
+        request.model = assignment.definition.spec.model.clone();
+        assert!(
+            validate_binding(
+                &assignment,
+                "host",
+                "chat",
+                Some("project"),
+                HarnessId::Opencode,
+                &request
+            )
+            .is_ok()
+        );
+        for access in [Access::ReadOnly, Access::WorkspaceWrite] {
+            assignment.definition.spec.access = access;
+            assert!(
+                validate_binding(
+                    &assignment,
+                    "host",
+                    "chat",
+                    Some("project"),
+                    HarnessId::Opencode,
+                    &request
+                )
+                .is_err()
+            );
+        }
+        assignment.definition.spec.access = Access::HostDefault;
+        request.model = Some("foreign-model".into());
+        assert!(
+            validate_binding(
+                &assignment,
+                "host",
+                "chat",
+                Some("project"),
+                HarnessId::Opencode,
+                &request
+            )
+            .is_err()
+        );
+    }
+
+    struct RuntimeFixture {
+        id: HarnessId,
+        probes: Arc<std::sync::atomic::AtomicUsize>,
+    }
+    #[async_trait::async_trait]
+    impl openagents_harness::Harness for RuntimeFixture {
+        fn id(&self) -> HarnessId {
+            self.id
+        }
+        fn display_name(&self) -> &str {
+            "Runtime fixture"
+        }
+        fn supports_steering(&self) -> bool {
+            false
+        }
+        fn steering_mode(&self) -> openagents_proto::SteeringMode {
+            openagents_proto::SteeringMode::TurnBoundary
+        }
+        fn reasoning_levels(&self) -> &[openagents_proto::ReasoningLevel] {
+            &[]
+        }
+        async fn models(
+            &self,
+        ) -> Result<Vec<openagents_proto::Model>, openagents_harness::HarnessError> {
+            self.probes
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(vec![openagents_proto::Model {
+                id: "openagents/openagents/fast".into(),
+                label: "Fixture".into(),
+                description: None,
+                reasoning_levels: vec![],
+                options: vec![],
+            }])
+        }
+        async fn run(
+            &self,
+            _request: openagents_proto::RunRequest,
+            _controls: openagents_harness::RunControls,
+        ) -> Result<
+            futures::stream::BoxStream<
+                'static,
+                Result<AgentEvent, openagents_harness::HarnessError>,
+            >,
+            openagents_harness::HarnessError,
+        > {
+            panic!("Admission must not launch a runtime.");
+        }
+    }
+
+    #[tokio::test]
+    async fn opencode_admission_checks_access_enablement_and_the_advertised_model() {
+        let registry = HarnessRegistry::new();
+        let probes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        registry.register(Arc::new(RuntimeFixture {
+            id: HarnessId::Opencode,
+            probes: probes.clone(),
+        }));
+        let (assignment, _) = fixture();
+        let mut spec = assignment.definition.spec;
+        spec.runtime = "opencode".into();
+        spec.access = Access::HostDefault;
+        spec.model = Some("openagents/openagents/fast".into());
+        admit_runtime(&registry, HarnessId::Opencode, &spec)
+            .await
+            .unwrap();
+        assert_eq!(probes.load(std::sync::atomic::Ordering::SeqCst), 1);
+        for access in [Access::ReadOnly, Access::WorkspaceWrite] {
+            spec.access = access;
+            assert!(
+                admit_runtime(&registry, HarnessId::Opencode, &spec)
+                    .await
+                    .is_err()
+            );
+        }
+        assert_eq!(probes.load(std::sync::atomic::Ordering::SeqCst), 1);
+        spec.access = Access::HostDefault;
+        spec.model = Some("foreign-model".into());
+        assert!(
+            admit_runtime(&registry, HarnessId::Opencode, &spec)
+                .await
+                .is_err()
+        );
+        spec.model = Some("openagents/openagents/fast".into());
+        assert!(
+            admit_runtime(&HarnessRegistry::new(), HarnessId::Opencode, &spec)
+                .await
+                .is_err()
+        );
+        registry.register(Arc::new(RuntimeFixture {
+            id: HarnessId::Codex,
+            probes: probes.clone(),
+        }));
+        registry.set_enabled(HarnessId::Opencode, false).unwrap();
+        let before = probes.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(
+            admit_runtime(&registry, HarnessId::Opencode, &spec)
+                .await
+                .is_err()
+        );
+        assert_eq!(probes.load(std::sync::atomic::Ordering::SeqCst), before);
+    }
+
     #[test]
     fn native_streamed_answers_supply_the_summary_without_reusing_an_earlier_turn() {
         let done = || AgentEvent::Done {
