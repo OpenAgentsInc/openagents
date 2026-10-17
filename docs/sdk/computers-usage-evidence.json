@@ -538,6 +538,16 @@
         "crates/oa-computers/src/lifecycle_operations/recovery.rs": "380e5f62e316296d935005ab1afffbd2ebc18c8754f573ef56beaacb59b7e682",
         "crates/oa-computers/migrations/0016_lifecycle_retries.sql": "93454a74ac52cd8d30175ee509c5f3c01cb233f3a20dc6eb3935ae366248c192",
         "deploy/oa-computers/Dockerfile": "2830e994d4bba7a11f9e8c2bb0fc1d9073ed40bfcb6a9820597e9898418e6635"
+      },
+      "packaged_image": {
+        "image": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/computers@sha256:a58dc392c6623358490e32ccb0dbe8467652d78e099e4e6b48ceb4e77634c8db",
+        "packaged_operator_help": "passed",
+        "space_recovery_command_present": true,
+        "network": "none",
+        "filesystem": "read-only",
+        "credentials_loaded_in_container": false,
+        "registry_credential_directory_removed": true,
+        "bash_and_head_present": true
       }
     },
     "after_close": {
@@ -563,9 +573,11 @@
       "source": "f83f2538f8368169c4005fe94cd2e6bbda420ccd",
       "project": "openagentsgemini",
       "region": "us-central1",
-      "status": "WORKING",
+      "status": "SUCCESS",
       "explicit_existing_builder_identity": true,
-      "first_submission": "Refused before a build was created because org policy requires an explicit service account. Resubmission uses the previous successful candidate builder and log bucket."
+      "first_submission": "Refused before a build was created because org policy requires an explicit service account. Resubmission uses the previous successful candidate builder and log bucket.",
+      "finished_utc": "2026-10-17T04:57:04.434498Z",
+      "digest": "sha256:a58dc392c6623358490e32ccb0dbe8467652d78e099e4e6b48ceb4e77634c8db"
     },
     "operator_job": {
       "renderer": "deploy/space-service/recovery_job.py",
@@ -601,7 +613,7 @@
         "job": "oa-space-retry-11939",
         "deployed": false,
         "executed": false,
-        "validation_image": "previous published candidate; not an operator qualification",
+        "validation_image": "checked recovery candidate; not executed",
         "job_absence_http_status": 404
       }
     },
