@@ -247,5 +247,70 @@
       "public_seed_kernel_api": "91d9ba7a-d06e-4adc-80fa-6e4ddbbc340d",
       "isolated_computers_candidate": "45d18c74-74e1-4925-8f2e-f8dbdef4cbbb"
     }
-  }
+  },
+  "maintained_templates": {
+    "seed": {
+      "job": "01a14794-1817-7539-82ce-1c11c99648ab",
+      "state": "succeeded",
+      "hash": "sha256:f04ea327e945df73d7d85a4c346d03b9b2a5d80446212486da6173da67ba8ec2"
+    },
+    "code_runtime": {
+      "job": "01a1479b-f37a-735e-9c4b-30359cc3d10e",
+      "state": "succeeded",
+      "hash": "sha256:e2db8e6f2e96c6c61bea066c03a1d675a2afa1915dd6f6a1e2bd298ab2344149",
+      "vcpu": 2,
+      "memory_mib": 2048,
+      "disk_size_mb": 4096
+    },
+    "native_object_store_protocol": "Real native multipart publication to private GCS and worker artifact reads; private checkpoint recovery still pending.",
+    "builder": {
+      "deleted": true,
+      "boot_disk_deleted": true,
+      "data_disk_deleted": true,
+      "kubernetes_node_deleted": true,
+      "cpu_platform": "Intel Cascade Lake",
+      "active_kvm_vm_fds_after_build": 0
+    }
+  },
+  "database_recovery": {
+    "backup_id": "1792202484784",
+    "backup_state": "SUCCESSFUL",
+    "clone": "oa-space-service-restore-11814",
+    "clone_operation": "9f2aaecf-84f6-43eb-add4-226b00000032",
+    "restore_operation": "c600a9d5-3a48-4563-ae87-dbe600000032",
+    "restored_private_tls": true,
+    "successful_migrations": 13,
+    "published_seed_present": true,
+    "qualification_org_present": true,
+    "instance_ca_sha256": "6b7a37a34bdfcf62d9beb4d064c59462b77644974530341657982b3f70984dba",
+    "source_untouched": true,
+    "copy_cleanup": "deletion requested; confirmation pending"
+  },
+  "computers_candidate": {
+    "service": "oa-space-service-computers",
+    "image": "sha256:edb36f1a0369547493ca8b42e68d750c8b2663f34ec42b28f6bec457fe4bc483",
+    "image_source": "81005e3d45295c5949b809b2007bdf5783f2eb68",
+    "deployment_source": "d6e376fd0b85aee6bdce94e178e64fe7d44455e5",
+    "external_http_status": 404,
+    "proxy_version": "2.26.0",
+    "proxy_digest": "sha256:86e4f3cc266020e7ee07740df78d7511e2c340c274b56f84d80b7251913af9ad",
+    "proxy_private_ip": true,
+    "proxy_iam_condition": "only projects/openagentsgemini/instances/oa-space-service",
+    "database_role": "space_computers",
+    "database_role_privileges": {
+      "superuser": false,
+      "cloudsqlsuperuser": false,
+      "createdb": false,
+      "createrole": false
+    },
+    "cross_database_connection_refusals": 2,
+    "computer_count_limit": 2,
+    "running_vcpus_limit": 4,
+    "running_memory_mib_limit": 8192,
+    "turn_seconds_limit": 60,
+    "stopped_retention_seconds_limit": 3600,
+    "synthetic_owner": "space-qualification-11814",
+    "first_create": "accepted; lifecycle qualification pending"
+  },
+  "progress_updated_at": "2026-10-17T02:21:31.312495+00:00"
 }
