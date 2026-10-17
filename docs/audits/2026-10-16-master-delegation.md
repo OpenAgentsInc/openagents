@@ -6,6 +6,8 @@ This document governs how the remaining work is split. Read it with the [big-ban
 
 **Goal:** close every open issue by **Saturday 2026-10-17, 21:00 CDT** (2026-10-18 02:00 UTC). Then the release gate runs through Sunday, and Coder 1.0.0 ships on **Monday 2026-10-19**.
 
+> **2026-10-17 07:45 CDT:** the coordinator handed off. Start with the [handoff](2026-10-17-handoff.md).
+
 ## How to use this document
 
 1. Pick a lane in [Lanes](#lanes). Each lane is one agent, with the issues, files, and order it owns.
