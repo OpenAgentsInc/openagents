@@ -310,6 +310,8 @@ async fn response_loss_restart_and_uncertain_delete_keep_one_worker_and_cleanup_
     let state = server.fixture.0.lock().unwrap();
     assert_eq!(state.creates.len(), 2);
     assert_eq!(state.creates[0], state.creates[1]);
+    assert_eq!(state.creates[0].1["needs"]["min_vcpus"], 1);
+    assert_eq!(state.creates[0].1["needs"]["min_memory_mib"], 64);
     assert_eq!(state.commands.len(), 2);
     assert_eq!(state.commands[0], state.commands[1]);
     assert_eq!(state.effects, 1);
@@ -392,7 +394,7 @@ async fn private_input_wrong_account_revocation_and_unscoped_keys_fail_before_ef
     let server = server().await;
     let root = tempfile::tempdir().unwrap();
     let guest = tempfile::tempdir().unwrap();
-    for case in 0..7 {
+    for case in 0..10 {
         let mut key = enrolled();
         let mut requirements = requirements();
         match case {
@@ -405,6 +407,12 @@ async fn private_input_wrong_account_revocation_and_unscoped_keys_fail_before_ef
             4 => key.worker.issuer_session = None,
             5 => key.worker.expires_unix_ms = NOW + 86_400_001,
             6 => key.token = account_token(),
+            7 => requirements.max_seconds = 0,
+            8 => {
+                requirements.gpu = true;
+                key.worker.capabilities.gpu = true;
+            }
+            9 => key.worker.capabilities.worker = "another_worker".into(),
             _ => unreachable!(),
         }
         assert!(

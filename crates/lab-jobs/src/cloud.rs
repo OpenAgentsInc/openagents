@@ -208,8 +208,12 @@ impl Launcher {
             || !enrolled
                 .token
                 .starts_with(&format!("labw_{}.", enrolled.worker.id))
+            || caps.worker != enrolled.worker.id
             || caps.placement != Placement::Cloud
             || !requirements.eligible(caps)
+            || !(1..=86_400).contains(&requirements.max_seconds)
+            || requirements.gpu
+            || caps.gpu
             || requirements.private_local
             || !requirements.local_assets.is_empty()
             || !caps.local_assets.is_empty()
@@ -271,6 +275,15 @@ impl Launcher {
             size: Some(settings.size),
             placement: Some("cloud".into()),
             idempotency_key: Some(stable(run, "create")),
+            needs: Some(
+                openagents_sdk::generated::computers::AppCreateComputerNeeds::Variant0(
+                    openagents_sdk::generated::computers::AppComputerNeeds {
+                        min_vcpus: Some(requirements.cpu_millis.div_ceil(1000)),
+                        min_memory_mib: Some(requirements.memory_bytes.div_ceil(1024 * 1024)),
+                        ..Default::default()
+                    },
+                ),
+            ),
             ..Default::default()
         })?;
         let saved = Saved {
