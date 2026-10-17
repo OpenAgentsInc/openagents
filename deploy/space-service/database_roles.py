@@ -37,7 +37,26 @@ def main(activate):
     print(json.dumps({"verified": metadata, "passwords_in_sql_or_argv": False}))
 
 
+def candidate():
+    from cluster_secrets import identity, secret
+    value=credential(); candidate=secret('computers-database',identity())
+    environment={**os.environ,'PGHOST':value['private_ip'],'PGDATABASE':'space_computers','PGUSER':'space_computers',
+        'PGPASSWORD':candidate['password'],'PGSSLMODE':'verify-ca','PGSSLROOTCERT':'/space/config/postgres-ca.crt','PGCONNECT_TIMEOUT':'5','PSQL_HISTORY':'/dev/null'}
+    command=['psql','--no-psqlrc','--no-password','--tuples-only','--no-align','--set=ON_ERROR_STOP=1']
+    query="SELECT current_user,ssl,rolsuper,rolcreatedb,rolcreaterole,pg_has_role(current_user,'cloudsqlsuperuser','MEMBER') FROM pg_stat_ssl,pg_roles WHERE pid=pg_backend_pid() AND rolname=current_user;"
+    checked=subprocess.run(command+['--command',query],env=environment,capture_output=True,timeout=15)
+    if checked.returncode or checked.stdout.decode().strip()!='space_computers|t|f|f|f|f': raise RuntimeError('Candidate database TLS or privilege check failed.')
+    negative=subprocess.run(command+['--command','SELECT 1'],env={**environment,'PGDATABASE':'space'},capture_output=True,timeout=15)
+    if not negative.returncode: raise RuntimeError('The candidate role can connect to native SPACE data.')
+    reverse=subprocess.run(command+['--command','SELECT 1'],env={**environment,'PGUSER':'space_user','PGPASSWORD':value['role_passwords']['USER']},capture_output=True,timeout=15)
+    if not reverse.returncode: raise RuntimeError('The native role can connect to the candidate database.')
+    print(json.dumps({'candidate_role':'space_computers','tls':True,'superuser':False,'cloudsqlsuperuser':False,'createdb':False,'createrole':False,'cross_database_connections_refused':2}))
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--activate", action="store_true")
-    main(parser.parse_args().activate)
+    parser.add_argument("--candidate",action="store_true")
+    args=parser.parse_args()
+    if args.candidate: candidate()
+    else: main(args.activate)
