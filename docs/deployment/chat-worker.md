@@ -42,7 +42,13 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
      gateway is not deployed yet (staging's runs on loopback inside the
      staging service), so the production worker has no gateway door today;
      when production's gateway is deployed and its env file gets a service
-     key, the gateway goes first and every door below stays behind it.
+     key, the gateway goes first. With the gateway on, the worker uses it
+     alone, and only the backups `CODER_WORKER_BACKUPS` lists go behind it
+     (never the default list): the gateway fails over across its own
+     upstreams on its route's timing, and a default direct door behind it
+     took every turn its Gemini on Vertex had not started in four seconds,
+     so an empty Vercel account answered 402 to signed-out chats on staging
+     (#11991).
   2. Gemini on Vertex AI (since 2026-10-10, #11219): the same
      `google/gemini-3.8-flash` (Vertex id `gemini-3.8-flash`, global
      endpoint) on Google's own API in project `openagentsgemini`, billed to

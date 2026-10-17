@@ -581,6 +581,47 @@ pub fn worker_backups_from_env() -> Result<Vec<ResponsesDoor>, String> {
     )
 }
 
+/// The backup doors behind the inference gateway's door: only the ones
+/// [`WORKER_BACKUPS_VAR`] lists (`asked`), never [`DEFAULT_BACKUPS`].
+///
+/// The gateway fails over across its own upstreams on its own route's
+/// timing (Gemini on Vertex thinks for seconds before its first token), so
+/// a provider key that is here for something else must not put a direct
+/// door behind it. With the default backups, every turn the gateway had
+/// not started within [`PRIMARY_FIRST_WORD`] went straight to the Vercel AI
+/// Gateway, and an empty Vercel account answered 402 to the signed-out
+/// chats on staging (#11991).
+///
+/// # Errors
+///
+/// As [`worker_backups`], for a list that is asked for.
+pub fn gateway_backups(
+    asked: Option<&str>,
+    openrouter: Option<&str>,
+    vercel: Option<&str>,
+) -> Result<Vec<ResponsesDoor>, String> {
+    match asked.map(str::trim).filter(|asked| !asked.is_empty()) {
+        None => Ok(Vec::new()),
+        Some(asked) => worker_backups(Some(asked), openrouter, vercel),
+    }
+}
+
+/// [`gateway_backups`] from the environment.
+///
+/// # Errors
+///
+/// As [`gateway_backups`].
+pub fn gateway_backups_from_env() -> Result<Vec<ResponsesDoor>, String> {
+    let vercel = VERCEL_KEY_VARS
+        .iter()
+        .find_map(|name| env::var(name).ok().filter(|key| !key.trim().is_empty()));
+    gateway_backups(
+        env::var(WORKER_BACKUPS_VAR).ok().as_deref(),
+        env::var(OPENROUTER_KEY_VAR).ok().as_deref(),
+        vercel.as_deref(),
+    )
+}
+
 /// The model `asked` names: the lane's model when it names a lane, and
 /// `asked` itself otherwise.
 ///

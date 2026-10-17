@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use coder::generate::{
-    FallbackDoor, Generate, GenerateError, Lane, Message, Meta, Patience, ResponsesDoor, Role,
+    Door, FallbackDoor, Generate, GenerateError, Lane, Message, Meta, Patience, ResponsesDoor, Role,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
@@ -61,6 +61,10 @@ enum Stub {
     /// Send reasoning events through this wait, then GLM's recorded
     /// answer: a model thinking before it answers.
     Thinking(Duration),
+    /// Send response headers, then nothing through this wait, then
+    /// Gemini's recorded answer: the inference gateway while its route's
+    /// Gemini on Vertex thinks before its first token.
+    Late(Duration),
     /// Answer with this HTTP error status and a short JSON body, as
     /// OpenRouter does for a model it no longer serves (404) or a rate
     /// limit (429).
@@ -204,6 +208,12 @@ async fn answer(mut socket: TcpStream, stub: Stub) {
                 tokio::time::sleep(wait / 2).await;
             }
             let _ = socket.write_all(GLM.as_bytes()).await;
+            let _ = socket.shutdown().await;
+        }
+        Stub::Late(wait) => {
+            let _ = socket.flush().await;
+            tokio::time::sleep(wait).await;
+            let _ = socket.write_all(GEMINI.as_bytes()).await;
             let _ = socket.shutdown().await;
         }
         Stub::Mute | Stub::Deaf => forever(socket).await,
@@ -1015,4 +1025,60 @@ async fn live_vertex_door_answers() {
         started.elapsed()
     );
     assert!(text.contains("Paris"), "{text}");
+}
+
+/// A signed-out chat on staging (#11991): the chat worker's door is the
+/// inference gateway on the house service key, and the gateway's Gemini on
+/// Vertex thinks past the worker's first-word wait before its first token.
+/// A direct Vercel AI Gateway door behind it (the default backups, picked
+/// up from a key the worker holds for something else) took that turn, and
+/// the empty Vercel account's 402 was the chat's "We couldn't answer".
+#[tokio::test]
+async fn a_direct_backup_behind_the_gateway_took_the_turn_and_answered_402() {
+    let gateway = Server::start(Stub::Late(Duration::from_millis(300))).await;
+    let vercel = Server::start(Stub::Status(402)).await;
+    let door = FallbackDoor::new(
+        gateway.door("openagents/chat").through_gateway(),
+        vercel.door(Lane::Gemini.model()),
+    )
+    .first_word(Duration::from_millis(100), Duration::from_millis(150));
+    let (_, outcome, _) = ask_ordered(&door).await;
+    assert!(
+        matches!(outcome, Err(GenerateError::Status(402, _))),
+        "{outcome:?}"
+    );
+    assert_eq!((gateway.asked(), vercel.asked()), (1, 1));
+}
+
+/// The fix: behind the gateway the worker keeps only the backups
+/// `CODER_WORKER_BACKUPS` lists, so with a Vercel key here and no list the
+/// door the worker builds is the gateway alone, and the visitor's turn is
+/// answered by the gateway's Gemini however long it thinks within the
+/// door's own bounds. The upstream model is the stub; the gateway door,
+/// the backups rule, and the chain are the worker's own.
+#[tokio::test]
+async fn a_visitor_turn_through_the_gateway_is_answered_by_the_gateway() {
+    let gateway = Server::start(Stub::Late(Duration::from_millis(300))).await;
+    let backups = coder::generate::gateway_backups(None, None, Some("a-vercel-key"))
+        .expect("no list is no backups");
+    assert!(backups.is_empty());
+    let door = Door::Live(gateway.door("openagents/chat").through_gateway()).with_backups(backups);
+    assert!(matches!(door, Door::Live(_)), "the gateway alone");
+    let mut seen = String::new();
+    let (text, _) = door
+        .generate(
+            "you are terse",
+            &turn(),
+            &mut |delta| seen.push_str(delta),
+            &mut |_| {},
+        )
+        .await
+        .expect("the gateway answers");
+    assert_eq!(text, "One\nTwo\nThree\nFour\nFive");
+    assert_eq!(seen, text);
+    assert_eq!(gateway.asked(), 1);
+    // A list asked for is still kept behind the gateway.
+    let listed = coder::generate::gateway_backups(Some("vercel:glm"), None, Some("v"))
+        .expect("a keyed list");
+    assert_eq!(listed.len(), 1);
 }

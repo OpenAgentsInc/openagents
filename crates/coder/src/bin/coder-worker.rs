@@ -613,6 +613,7 @@ async fn serve(options: &Options) -> Result<(), String> {
     // upstream, so no provider key is needed. `CODER_WORKER_INFERENCE=direct`
     // keeps the provider doors below.
     let gateway = coder::generate::inference_door_from_env()?;
+    let through_gateway = gateway.is_some();
     let door = match gateway {
         Some(gateway) => {
             eprintln!(
@@ -654,8 +655,16 @@ async fn serve(options: &Options) -> Result<(), String> {
     // door before them failed before its first words goes to each in turn,
     // so one provider's outage, empty account, or retired model never
     // reaches the person while another can answer (2026-10-09: a 404 on
-    // the primary and a 402 on the one fallback failed every chat).
-    let door = Arc::new(door.with_backups(coder::generate::worker_backups_from_env()?));
+    // the primary and a 402 on the one fallback failed every chat). Behind
+    // the gateway, only the backups that variable lists: the gateway fails
+    // over on its own upstreams, and a default direct door behind it took
+    // every turn its Gemini had not started in four seconds (#11991).
+    let backups = if through_gateway {
+        coder::generate::gateway_backups_from_env()?
+    } else {
+        coder::generate::worker_backups_from_env()?
+    };
+    let door = Arc::new(door.with_backups(backups));
     let jobs = jobs_bound(&door)?;
     // The judge that answers first: one System One call per admitted
     // conversation turn, run beside the model call (see `coder::first`).
