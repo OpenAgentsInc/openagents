@@ -2,6 +2,8 @@
 //! Settings, attaching a Drive folder to a project, and the chat's Drive
 //! door answering from it with a fake Gemini, citing what it read.
 
+mod schema;
+
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -497,10 +499,9 @@ async fn api(
     let response = world.site.clone().oneshot(request).await.unwrap();
     let status = response.status();
     let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
-    (
-        status,
-        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
-    )
+    let answer = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    schema::assert_response(method, path, status, &answer);
+    (status, answer)
 }
 
 /// Connect Google for a signed-in browser through the fake Google.
