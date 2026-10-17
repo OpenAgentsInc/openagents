@@ -12,7 +12,7 @@ This document governs how the remaining work is split. Read it with the [big-ban
 2. Read every issue in your lane in [Every open issue](#every-open-issue). Then open the issue's latest handoff comment on GitHub. The comments hold exact commits, check counts, and paths.
 3. Claim before you start: `openagents issue claim N`, then `scripts/dev/issue-board.sh claim N`.
 4. Stay inside your lane's files. If you need a file another lane owns, ask that lane, or make an additive change and say so in both issues.
-5. Close the issue when its code is on `main`, its own checks pass, and any deploy it needs is done. Put owner-only steps in `NEEDS_OWNER.md` and in the closing comment, then close with `scripts/dev/issue-board.sh close N "..."`.
+5. **Close the issue when its code is on `main` and its own checks pass** (owner, 2026-10-16). Don't wait for a deploy, a live check, or a test-account run: add it to [After-close checks](#after-close-checks), say so in the closing comment, and close with `scripts/dev/issue-board.sh close N "..."`. Owner-only steps still go in `NEEDS_OWNER.md`. Where an issue below says "Remains: … live run …" or "deploy", that part moves to After-close checks.
 
 ## Where everything stands
 
@@ -146,7 +146,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 9: CLI, Agent Lab, and web fixes
 
-**Taken 2026-10-16 22:05 CDT** by a Claude Code subagent working #11935, #11934 (code only; lane 0 deploys it), and #11929 if time allows. It works in `~/work/openagents-lane9`. #11925, #11928, and #11727 are still free.
+**Released 2026-10-16 22:40 CDT** by a Claude Code subagent. #11935 is closed (`264642e0a6`). #11934's `openagents agents` command is on `main` in the same commit; its web-door switch to the shared `place` is still in the issue's patch, and the deploy and live check are in After-close checks. #11929, #11925, and #11727 are free. #11928 was claimed by another agent at 22:27.
 
 - **Owns:** `crates/openagents-cli`, `crates/openagents-login`, `crates/openagents-sdk/src/agents*`, `crates/openagents-web/src/{agents_door,attribution,pages/contact,pages/affiliates}.rs`, the web main and gateway startup paths for #11925 and #11928, and `apps/openagents/crates/engine/src/doc_host/agent_lab.rs` for #11929.
 - **Order:** #11935, then #11934 (one patch covers both), then #11929, #11925, #11928, and #11727.
@@ -390,6 +390,22 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Remains (code):** carry consented attribution on `/contact` requests, owned short `/r/{handle}` handles, and a self-serve link page under the existing auth.
 - **Remains (needs Stripe):** the named-sale end-to-end check. There's no Stripe yet; the owner sets it up on 2026-10-17. Run the check after that, or close with it recorded in `NEEDS_OWNER.md`.
 - **Owner-only:** publishing the terms (`tenant-referrals publish-affiliate`), setting `inference.sats_rate`, linking `/affiliates`, and sending payouts.
+
+## After-close checks
+
+Deploys and live checks that no longer hold an issue open. Lane 0 works through them in order, after each production deploy. Add a row when you close an issue with a check still to run. When a check passes, mark it done with the evidence. When it fails, open a new issue and link it.
+
+| Issue (closed or closing) | Check | Status |
+| --- | --- | --- |
+| #11934 | Deploy the agents door. Run `ask_foreman_cli.py` and `openagents agents ask Foreman …` with test account `acct_500d3e1d125b7782`. Land the web door's switch to `place` (in the issue's patch). | to do |
+| #11936 | Redeploy the SPACE candidate with explicit zero-length framing and verify suspend and wake through Cloud Run. | to do |
+| #11875 | The dedicated-account CAD run on staging and then production: fan bracket, picked face, 5 mm thicker, project versions, STEP download, cleanup. | to do |
+| #11876 | The Git-pinned `examples/sdk-labs` build and the live CAD flow against production. | to do |
+| #11877 | A CAD chat's card through `/v1/history`, re-rendered in a second browser session. | to do |
+| #11878 | Live echo on server, enrolled, and cloud placements. Cloud computer deleted afterward. | to do |
+| #11852 | Deploy `4a796e8ff8`, run `OurCloudLiveTests`, check `GET /v1/computer-usage`, and `DELETE /v1/cloud-host`. TestFlight 1011. | to do |
+| #11894 | A test account's terminal chat continued on the desktop: the first turn knows the history, and the phone steers it. | to do |
+| #11815 | The dedicated production account's usage read (it returned 403). | to do |
 
 ## Shared rules
 

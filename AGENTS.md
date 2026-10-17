@@ -229,7 +229,13 @@ run by hand with `scripts/dev/stop-agent-burn.sh --run ID` (`--runs` lists
 them). Something that must outlive the session needs the owner's say-so.
 
 Close an issue as soon as its work is code-complete: merged to `main`, with its
-own checks passing and any host deploy it needs done. Never hold an issue open
+own checks passing (owner, 2026-10-16). A deploy, a live or production check,
+or an end-to-end run with a test account never holds an issue open. Add it to
+"After-close checks" in
+[`docs/audits/2026-10-16-master-delegation.md`](docs/audits/2026-10-16-master-delegation.md),
+which the deploy lane works through, say in the closing comment that it's
+listed there, and close. If that check later finds a defect, open a new issue.
+Never hold an issue open
 waiting on the owner — a real-money payment, a device run, a key only the owner
 can create, a store release, or any other owner-only verification. Put those
 steps in the workspace `NEEDS_OWNER.md`, say in the closing comment what the
