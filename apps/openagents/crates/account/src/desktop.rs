@@ -1,4 +1,5 @@
 //! One app account shared by the desktop controls and their embedded engine.
+pub mod identity;
 use crate::{Controller, PlatformStore};
 use openagents::{Client, CredentialRecord, CredentialStore, Deployment, Error, StorageError};
 use sha2::{Digest, Sha256};
@@ -114,6 +115,23 @@ pub fn identities(data: &Path) -> crate::identity::Identities {
         Arc::new(crate::identity::NoWallet),
         &data.join("openagents-account/identity"),
     )
+}
+
+/// This computer's identity for the welcome and the identity row (#11997):
+/// the words in [`identities`] and the key sign-in in `controller`.
+/// `computer` names this computer to the account.
+pub fn identity(
+    data: &Path,
+    controller: Arc<Controller>,
+    computer: String,
+) -> Arc<dyn identity::DesktopIdentity> {
+    Arc::new(identity::KeyIdentity::new(
+        data,
+        identities(data),
+        controller,
+        computer,
+        has_saved_sign_in(data),
+    ))
 }
 
 fn deployment() -> Result<Deployment, Error> {

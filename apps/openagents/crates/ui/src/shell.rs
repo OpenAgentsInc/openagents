@@ -6119,6 +6119,8 @@ impl Shell {
             || self.section_dialog.is_some()
             || self.move_sheet_open()
             || self.connect_phone_open()
+            || crate::openagents_account::AppAccount::global(cx)
+                .is_some_and(|account| account.read(cx).identity_overlay_open())
             || self.section_menu.is_some()
             || self.add_space.is_some()
             || self.composer.read(cx).pickers().read(cx).is_open()
@@ -10665,6 +10667,13 @@ impl Shell {
         overlays.extend(self.render_space_overlays(viewport, window, cx));
         overlays.extend(self.render_section_overlays(viewport, window, cx));
         overlays.extend(self.render_move_overlays(viewport, cx));
+        // The first-launch welcome and Back up your account (#11997), under
+        // the Connect your phone sheet the welcome can open.
+        if let Some(account) = crate::openagents_account::AppAccount::global(cx) {
+            overlays.extend(account.update(cx, |account, cx| {
+                account.render_identity_overlays(viewport, window, cx)
+            }));
+        }
         overlays.extend(self.render_connect_phone_overlays(viewport, cx));
         if let Some(overlay) = self.render_command_palette(viewport, window, cx) {
             overlays.push(overlay);

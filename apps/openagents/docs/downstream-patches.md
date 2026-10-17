@@ -513,3 +513,24 @@ links remain readable. Upstream fixes now require manual ports.
   deactivation pause in `crates/ui/src/shell.rs`; a menu row and a signed-out
   button in `crates/ui/src/openagents_account.rs`; the Phone row in
   `crates/ui/src/settings/devices.rs`.
+
+## Desktop identity (#11997)
+
+- Our module `crates/account/src/desktop/identity.rs` holds the desktop's
+  side of the identity: the `DesktopIdentity` trait the shared identity
+  (#11995) answers, `KeyIdentity` (that trait over `Identities` and the
+  controller's key sign-in), the first-launch welcome rules, and their
+  words. A fresh computer makes no key and signs in with none until the
+  person picks Start here or Restore from 12 words.
+  Connect your phone makes the key without signing in and offers it in
+  `desktop::identity::link` (a waiting marker on disk keeps a relaunch from
+  signing in with it); the key signs in once the device connection reports
+  the phone's link proof signed (`link::signed`).
+- Our module `crates/ui/src/openagents_account/identity.rs` draws the
+  welcome (Connect your phone, Start here, Restore from 12 words), the
+  identity row's menu, and Back up your account. Hooks: the `id` field,
+  `attach_identity` in `init`, `identity_changed` in the snapshot watch, and
+  the identity branches in `signed_in_row` and `render` in
+  `crates/ui/src/openagents_account.rs`, which no longer has the browser
+  sign-in (its `sign_in` opens the welcome); the overlay and keyboard check in
+  `crates/ui/src/shell.rs`. `examples/identity-capture.rs` draws it offscreen.
