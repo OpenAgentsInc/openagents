@@ -151,6 +151,23 @@ pub struct Authority {
     grants: Mutex<BTreeMap<Uuid, Arc<Grant>>>,
 }
 impl Authority {
+    /// Add a host-configured CA for the private account/native proof services.
+    /// This never changes hostname verification or accepts guest trust settings.
+    pub fn with_root_certificate(mut self, pem: &[u8]) -> Result<Self, Failure> {
+        if pem.is_empty() || pem.len() > 65536 {
+            return Err(Failure::Invalid);
+        }
+        let certificate = reqwest::Certificate::from_pem(pem).map_err(|_| Failure::Invalid)?;
+        self.http = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(Duration::from_secs(5))
+            .add_root_certificate(certificate)
+            .build()
+            .map_err(|_| Failure::Unavailable)?;
+        Ok(self)
+    }
+
     pub fn new(
         repository: Arc<Repository>,
         computers: Store,

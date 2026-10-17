@@ -22,6 +22,8 @@ struct Configuration {
     native_token: PathBuf,
     public_origin: String,
     native_origin: String,
+    #[serde(default)]
+    root_ca: Option<PathBuf>,
     deployment: String,
     nodes: BTreeMap<String, String>,
 }
@@ -95,18 +97,22 @@ async fn run() -> Result<(), String> {
         .revoke_after_restart(&config.deployment)
         .await
         .map_err(|_| "Old credential references couldn't be disabled.")?;
-    let authority = Arc::new(
-        Authority::new(
-            repository.clone(),
-            Store::new(db),
-            config.sources,
-            &config.public_origin,
-            &config.native_origin,
-            secret(&config.native_token)?,
-            &config.deployment,
-        )
-        .map_err(|_| "The broker configuration is invalid.")?,
-    );
+    let mut authority = Authority::new(
+        repository.clone(),
+        Store::new(db),
+        config.sources,
+        &config.public_origin,
+        &config.native_origin,
+        secret(&config.native_token)?,
+        &config.deployment,
+    )
+    .map_err(|_| "The broker configuration is invalid.")?;
+    if let Some(path) = config.root_ca {
+        authority = authority
+            .with_root_certificate(&private(&path, 65536)?)
+            .map_err(|_| "The private service CA is invalid.")?;
+    }
+    let authority = Arc::new(authority);
     let sources = authority
         .sources()
         .map_err(|_| "The source connections couldn't be read.")?;

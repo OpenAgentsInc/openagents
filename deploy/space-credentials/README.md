@@ -32,6 +32,13 @@ The authenticated native proof binds the resource, node, execution generation,
 and installed full policy. A caller-supplied resource or cloud path is never
 accepted as that proof.
 
+A computer is one guest trust boundary. While its command grant is active,
+processes in that computer can make matching requests. This does not isolate
+mutually untrusted processes inside one guest or protect data sent to an allowed
+destination. Register trusted destinations that do not echo authentication
+headers in responses. The proxy controls credential use; it cannot control what
+an authorized remote service returns.
+
 ## Native build
 
 Check out public SPACE commit
@@ -68,6 +75,7 @@ The file contains these fields:
 | `native_token` | Private regular file containing the native tenant credential |
 | `public_origin` | HTTPS origin serving the account, workspace, and public Computers API |
 | `native_origin` | Private HTTPS native API origin with the credential-context extension |
+| `root_ca` | Optional private regular PEM file for a private service CA; hostname verification remains enabled |
 | `deployment` | Exact lifecycle registry deployment identity |
 | `nodes` | Map from SHA-256 of each random node token to its native node UUID |
 

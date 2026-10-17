@@ -1,3 +1,334 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index dff36d5..ac9a578 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -989,6 +989,15 @@ dependencies = [
+  "bit-vec 0.8.0",
+ ]
+
++[[package]]
++name = "bit-set"
++version = "0.11.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "56d87354e4229f54a44f7bf2435906a4656dba36026ab6eaca629a2c436a691c"
++dependencies = [
++ "bit-vec 0.10.1",
++]
++
+ [[package]]
+ name = "bit-vec"
+ version = "0.8.0"
+@@ -1004,6 +1013,16 @@ dependencies = [
+  "serde",
+ ]
+
++[[package]]
++name = "bit-vec"
++version = "0.10.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "5727b15fa97d4f4fee0a3b7c3d550ed0269f54329207b86388de918604e31269"
++dependencies = [
++ "borsh",
++ "serde",
++]
++
+ [[package]]
+ name = "bitflags"
+ version = "1.3.2"
+@@ -1127,6 +1146,30 @@ version = "0.2.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "dc0b364ead1874514c8c2855ab558056ebfeb775653e7ae45ff72f28f8f3166c"
+
++[[package]]
++name = "borsh"
++version = "1.8.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "553c5d846a6ba5150c65e3b1b8ec073bcf1abc20f9b7220de384a4443ea4e20a"
++dependencies = [
++ "borsh-derive",
++ "bytes",
++ "cfg_aliases",
++]
++
++[[package]]
++name = "borsh-derive"
++version = "1.8.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "12cdfe656708a01f89b451a7d36466e6fe6c414de0aa18fc54f864f6f9ca9f56"
++dependencies = [
++ "once_cell",
++ "proc-macro-crate",
++ "proc-macro2",
++ "quote",
++ "syn 3.0.5",
++]
++
+ [[package]]
+ name = "bs58"
+ version = "0.5.1"
+@@ -1350,6 +1393,29 @@ dependencies = [
+  "unicode-width",
+ ]
+
++[[package]]
++name = "computer-credentials"
++version = "1.0.0"
++dependencies = [
++ "async-trait",
++ "axum",
++ "base64 0.22.1",
++ "crc32c",
++ "hmac 0.12.1",
++ "http 1.5.0",
++ "libc",
++ "proptest",
++ "reqwest 0.12.28",
++ "serde",
++ "serde_json",
++ "sha2 0.10.9",
++ "subtle",
++ "tokio",
++ "url",
++ "uuid",
++ "zeroize",
++]
++
+ [[package]]
+ name = "console"
+ version = "0.16.6"
+@@ -1471,6 +1537,15 @@ version = "0.4.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "338089f42c427b86394a5ee60ff321da23a5c89c9d89514c829687b26359fcff"
+
++[[package]]
++name = "crc32c"
++version = "0.6.8"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3a47af21622d091a8f0fb295b88bc886ac74efcc613efc19f5d0b21de5c89e47"
++dependencies = [
++ "rustc_version",
++]
++
+ [[package]]
+ name = "crc32fast"
+ version = "1.5.2"
+@@ -2213,7 +2288,7 @@ version = "0.19.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "d301f5bf187b3c295fce6468d3875037a0bccc5f6b151c63cac2f85babf21912"
+ dependencies = [
+- "bit-set",
++ "bit-set 0.8.0",
+  "regex-automata",
+  "regex-syntax",
+ ]
+@@ -5959,6 +6034,7 @@ dependencies = [
+  "aws-lc-rs",
+  "base64 0.23.1",
+  "bytes",
++ "computer-credentials",
+  "futures-util",
+  "h2",
+  "hickory-resolver",
+@@ -5989,6 +6065,7 @@ dependencies = [
+  "rand 0.10.2",
+  "rcgen",
+  "rustls",
++ "serde_json",
+  "socket2",
+  "tempfile",
+  "thiserror 2.0.20",
+@@ -7349,6 +7426,15 @@ dependencies = [
+  "elliptic-curve",
+ ]
+
++[[package]]
++name = "proc-macro-crate"
++version = "3.5.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e67ba7e9b2b56446f1d419b1d807906278ffa1a658a8a5d8a39dcb1f5a78614f"
++dependencies = [
++ "toml_edit",
++]
++
+ [[package]]
+ name = "proc-macro2"
+ version = "1.0.107"
+@@ -7358,6 +7444,26 @@ dependencies = [
+  "unicode-ident",
+ ]
+
++[[package]]
++name = "proptest"
++version = "1.12.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b8530004ccb15eae51c7e40009fbe317f341f804db54dc033eec1c50be28cfa0"
++dependencies = [
++ "bit-set 0.11.1",
++ "bit-vec 0.10.1",
++ "bitflags 2.13.2",
++ "chacha20",
++ "core_detect",
++ "num-traits",
++ "rand 0.10.2",
++ "rand_xorshift",
++ "regex-syntax",
++ "rusty-fork",
++ "tempfile",
++ "unarray",
++]
++
+ [[package]]
+ name = "prost"
+ version = "0.14.4"
+@@ -7451,6 +7557,12 @@ dependencies = [
+  "pulldown-cmark",
+ ]
+
++[[package]]
++name = "quick-error"
++version = "1.2.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
++
+ [[package]]
+ name = "quinn"
+ version = "0.11.12"
+@@ -7623,6 +7735,15 @@ dependencies = [
+  "rand_core 0.10.1",
+ ]
+
++[[package]]
++name = "rand_xorshift"
++version = "0.5.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "60aa6af80be32871323012e02e6e65f8a7cc7890931ae421d217ad8fe0df2ccf"
++dependencies = [
++ "rand_core 0.10.1",
++]
++
+ [[package]]
+ name = "rapidhash"
+ version = "4.5.1"
+@@ -7780,6 +7901,7 @@ dependencies = [
+  "base64 0.22.1",
+  "bytes",
+  "futures-core",
++ "futures-util",
+  "http 1.5.0",
+  "http-body 1.1.0",
+  "http-body-util",
+@@ -7799,12 +7921,14 @@ dependencies = [
+  "sync_wrapper",
+  "tokio",
+  "tokio-rustls",
++ "tokio-util",
+  "tower",
+  "tower-http 0.6.11",
+  "tower-service",
+  "url",
+  "wasm-bindgen",
+  "wasm-bindgen-futures",
++ "wasm-streams",
+  "web-sys",
+  "webpki-roots",
+ ]
+@@ -8127,6 +8251,18 @@ version = "1.0.23"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
+
++[[package]]
++name = "rusty-fork"
++version = "0.3.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cc6bf79ff24e648f6da1f8d1f011e9cac26491b619e6b9280f2b47f1774e6ee2"
++dependencies = [
++ "fnv",
++ "quick-error",
++ "tempfile",
++ "wait-timeout",
++]
++
+ [[package]]
+ name = "ryu"
+ version = "1.0.23"
+@@ -9382,6 +9518,18 @@ dependencies = [
+  "serde_core",
+ ]
+
++[[package]]
++name = "toml_edit"
++version = "0.25.15+spec-1.1.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1340ea94a5856333492c9064b02c778b191dd2c853778d9609debdcdfea3a614"
++dependencies = [
++ "indexmap 2.14.2",
++ "toml_datetime",
++ "toml_parser",
++ "winnow",
++]
++
+ [[package]]
+ name = "toml_parser"
+ version = "1.1.3+spec-1.1.0"
+@@ -9726,6 +9874,12 @@ version = "0.1.7"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "2896d95c02a80c6d6a5d6e953d479f5ddf2dfdb6a244441010e373ac0fb88971"
+
++[[package]]
++name = "unarray"
++version = "0.1.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "eaea85b334db583fe3274d12b4cd1880032beab409c0d774be044d4480ab9a94"
++
+ [[package]]
+ name = "unicase"
+ version = "2.9.0"
+@@ -9968,6 +10122,15 @@ dependencies = [
+  "nix 0.31.3",
+ ]
+
++[[package]]
++name = "wait-timeout"
++version = "0.2.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "09ac3b126d3914f9849036f826e054cbabdc8519970b8998ddaf3b5bd3c65f11"
++dependencies = [
++ "libc",
++]
++
+ [[package]]
+ name = "walkdir"
+ version = "2.5.0"
+@@ -10057,6 +10220,19 @@ dependencies = [
+  "unicode-ident",
+ ]
+
++[[package]]
++name = "wasm-streams"
++version = "0.4.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "15053d8d85c7eccdbefef60f06769760a563c7f0a9d6902a13d35c7800b0ad65"
++dependencies = [
++ "futures-util",
++ "js-sys",
++ "wasm-bindgen",
++ "wasm-bindgen-futures",
++ "web-sys",
++]
++
+ [[package]]
+ name = "wasmtimer"
+ version = "0.4.3"
+@@ -10432,6 +10608,9 @@ name = "winnow"
+ version = "1.0.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
++dependencies = [
++ "memchr",
++]
+
+ [[package]]
+ name = "winver"
 diff --git a/crates/libs/api/src/routes/public/mod.rs b/crates/libs/api/src/routes/public/mod.rs
 index ac4e5e5..4520f7e 100644
 --- a/crates/libs/api/src/routes/public/mod.rs
@@ -20,7 +351,7 @@ index e9b748a..660375c 100644
 @@ -37,6 +37,35 @@ pub async fn get_sandbox_network_policy(
          .ok_or_else(|| PublicApiError::not_found("sandbox has no network policy"))
  }
- 
+
 +/// Private deployment extension: current native authority for the host broker.
 +/// The normal native tenant and sandbox-owner middleware applies to this read.
 +pub async fn credential_context(
@@ -59,7 +390,7 @@ index 22cb010..ae2fe9e 100644
 +++ b/crates/libs/net/gateway/server/Cargo.toml
 @@ -19,6 +19,7 @@ datadog = ["otel", "pplx-space-common-svc/datadog"]
  datadog-otel = ["otel", "datadog"]
- 
+
  [dependencies]
 +computer-credentials = { path = "../../../../openagents-credentials" }
  zeroize = { workspace = true }
@@ -67,7 +398,7 @@ index 22cb010..ae2fe9e 100644
  aws-lc-rs = { workspace = true }
 @@ -65,6 +66,8 @@ pplx-space-net-gateway-client = { workspace = true }
  pplx-space-spaced-common = { workspace = true }
- 
+
  [dev-dependencies]
 +pplx-space-net-common = { workspace = true, features = ["serde"] }
 +serde_json = { workspace = true }
@@ -84,7 +415,7 @@ index ead3fa4..b7a22c6 100644
      fence: Fence,
 +    broker_scope: tokio::sync::OnceCell<String>,
  }
- 
+
  impl fmt::Debug for CertificateLease {
 @@ -100,6 +101,7 @@ impl CertificateLease {
              not_after: Timestamp::from_second(material.not_after)
@@ -97,7 +428,7 @@ index ead3fa4..b7a22c6 100644
 @@ -107,6 +109,38 @@ impl CertificateLease {
          Ok(value)
      }
- 
+
 +    /// Certificate signing material can be shared; a stream's grant cannot.
 +    pub(crate) fn for_connection(&self) -> Self {
 +        Self {
@@ -153,7 +484,7 @@ index ead3fa4..b7a22c6 100644
 @@ -149,11 +193,59 @@ impl CertificateLease {
          Ok(self.key.clone())
      }
- 
+
 -    pub(crate) fn network_credential_headers(
 +    pub(crate) async fn broker_network_credential_headers(
 +        &self,
@@ -252,7 +583,7 @@ index 7dd2441..6c784aa 100644
 --- a/crates/libs/net/gateway/server/src/state.rs
 +++ b/crates/libs/net/gateway/server/src/state.rs
 @@ -150,6 +150,7 @@ impl PolicyNotReady {
- 
+
  #[derive(Clone)]
  pub struct GatewayNetworkState {
 +    credential_broker: Option<Arc<computer_credentials::gateway::Client>>,
@@ -270,7 +601,7 @@ index 7dd2441..6c784aa 100644
 @@ -317,6 +319,18 @@ impl GatewayNetworkState {
          self.owner_contacted.subscribe()
      }
- 
+
 +    pub fn with_credential_broker(
 +        mut self,
 +        broker: Arc<computer_credentials::gateway::Client>,
@@ -336,7 +667,7 @@ index 62fb37b..c8f0d34 100644
 @@ -26,17 +26,37 @@ impl NetworkCredentialAccessError {
      }
  }
- 
+
 -pub(super) fn credential_headers<B>(
 +pub(super) async fn credential_headers<B>(
      lease: &CertificateLease,
@@ -371,7 +702,7 @@ index 62fb37b..c8f0d34 100644
 +        .network_credential_headers(request.uri().path(), method)
 +        .await
  }
- 
+
  pub(super) fn inject<B>(request: &mut SanitizedRequest<B>, headers: CredentialHeaders) {
 diff --git a/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/forward.rs b/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/forward.rs
 index f091fc9..fd7d984 100644
@@ -390,7 +721,7 @@ index f091fc9..fd7d984 100644
 +            }
              return self.connect_request(request).await;
          }
- 
+
 @@ -35,11 +42,15 @@ where
              authorization.finish(Outcome::Denied, reason.as_str());
              return self.refuse(protocol, reason.as_str(), reason.refusal_status());
@@ -431,7 +762,7 @@ index 3794908..e7fb339 100644
  use super::forward::authorize_authority;
  use super::*;
 @@ -195,7 +196,7 @@ async fn network_credentials_replace_only_the_configured_header_and_are_sensitiv
- 
+
      let mut request =
          SanitizedRequest::try_from(credential_request(http::Method::GET, "/v1/items")).unwrap();
 -    let headers = credential_headers(&lease, &request).unwrap();
@@ -696,7 +1027,7 @@ index 5846fe5..19a40e3 100644
 --- a/crates/libs/node/mgr/server/src/service/gateway_isolation.rs
 +++ b/crates/libs/node/mgr/server/src/service/gateway_isolation.rs
 @@ -248,3 +248,93 @@ fn require_inactive_gateway_socket(path: &Path) -> Result<(), Status> {
- 
+
  #[cfg(test)]
  mod tests;
 +
@@ -794,7 +1125,7 @@ index c7abda4..0748828 100644
 --- a/crates/libs/node/mgr/server/src/service/runtime.rs
 +++ b/crates/libs/node/mgr/server/src/service/runtime.rs
 @@ -681,6 +681,15 @@ impl NodeManagerService {
- 
+
          let grant_cap =
              req.program == pplx_space_common_core::host::linux::paths::NET_GATEWAY_SVC_BIN;
 +        let mut launch_env = req.env.clone();
