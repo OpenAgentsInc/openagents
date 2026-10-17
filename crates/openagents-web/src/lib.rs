@@ -66,6 +66,7 @@ mod dashboard;
 mod dashboard_openapi;
 mod demo;
 mod device;
+mod device_nostr;
 mod docs_mcp;
 mod door_route;
 mod environments;

@@ -73,6 +73,7 @@ pub mod inference_x402;
 pub mod jobs;
 mod lab_workers;
 pub mod money;
+mod nostr_sign_in;
 pub mod open_quota;
 #[allow(clippy::result_large_err)]
 pub mod playground;

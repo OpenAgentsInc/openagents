@@ -59,6 +59,7 @@ use crate::workspaces::{Membership, UserId, Workspace, WorkspaceId};
 
 mod device;
 mod keys;
+mod nostr;
 pub use device::{
     APP_SESSION_TTL, AppLabel, DEVICE_CODE_TTL, DEVICE_POLL_INTERVAL, DeviceGrant, DeviceIssued,
     DevicePoll, DeviceRefusal, DeviceState, Paired, normalize_user_code, valid_pair,
@@ -67,6 +68,7 @@ pub use keys::{
     KEY_LAST_USED_EVERY, KEY_NAME_MAX, KEY_NEVER, KEYS_PER_ACCOUNT, KeyLabel, SIGN_IN_KEY_PREFIX,
     is_session_bearer, is_session_token,
 };
+pub use nostr::NOSTR_PROOFS_LIVE_MAX;
 
 /// The session token's wire prefix, so a pasted token announces its
 /// shape: `sess_<hex>`.
@@ -448,6 +450,8 @@ pub enum Refusal {
     KeyName,
     /// The account already holds as many working sign-in keys as it may.
     KeyLimit,
+    /// A signed Nostr proof or its challenge was already used.
+    ProofUsed,
 }
 
 impl std::fmt::Display for Refusal {
@@ -520,6 +524,7 @@ impl std::fmt::Display for Refusal {
                 "you have {} sign-in keys; revoke one to make another",
                 keys::KEYS_PER_ACCOUNT
             ),
+            Self::ProofUsed => write!(f, "that sign-in was already used; sign in again"),
         }
     }
 }
@@ -565,6 +570,11 @@ pub struct SessionBook {
     /// digest.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub devices: BTreeMap<String, DeviceGrant>,
+    /// Signed Nostr proofs already spent (#11993): an event id or a
+    /// challenge nonce to the Unix time it may be forgotten, when its
+    /// challenge has expired. Left out of the document while empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub nostr_proofs: BTreeMap<String, u64>,
 }
 
 impl SessionBook {
@@ -1034,6 +1044,13 @@ impl Store {
                     "{name}: a device sign-in is filed under a digest that is not its own"
                 ));
             }
+        }
+        if self.book.nostr_proofs.len() > NOSTR_PROOFS_LIVE_MAX
+            || !self.book.nostr_proofs.keys().all(|id| is_digest(id))
+        {
+            return Err(format!(
+                "{name}: a spent Nostr proof is not 64 hex characters, or there are too many"
+            ));
         }
         for digest in self.book.recoveries.keys() {
             if !is_digest(digest) {

@@ -126,7 +126,7 @@ names exactly one account, enforced by the store's validation
 
 | Kind | Reference | Proof | Role | State |
 | --- | --- | --- | --- | --- |
-| Nostr key | `nostr:<64 hex pubkey>` | NIP-98 event over a server challenge | How the apps sign in; one per device, several per account | The store accepts it; the route is planned (#11993) |
+| Nostr key | `nostr:<64 hex pubkey>` | NIP-98 event over a server challenge | How the apps sign in; one per device, several per account | Built (#11993) |
 | API key | `key:<16 hex>` | `oak_` bearer key | Scripts and the decision API | Built |
 | Enterprise SSO | `sso:<64 hex>` | OIDC token (REV-50) | Organizations | Built |
 | GitHub | `github:<numeric user id>` | OAuth code + PKCE | A connection (repositories, issues, pull requests); still signs in existing accounts on the website | Built; becomes connection-only for new apps (#12005) |
@@ -633,3 +633,23 @@ in-app sheet (`ASWebAuthenticationSession`) with `return=app`: the page
 then lets its form land on `openagents:`, and Approve or Deny sends the
 sheet to `openagents://signed-in` (`?denied=1`), which closes it. Without
 `return=app` the page is unchanged.
+
+## Sign in with a Nostr key (#11993)
+
+The app gets a challenge from `GET /v1/device/nostr/challenge`, then sends
+`POST /v1/device/nostr` with `{"app", "computer"}` and
+`Authorization: Nostr <base64 event>`. The event is NIP-98 (kind 27235)
+over that URL and `POST`, signed within 60 seconds, with a `challenge` tag
+and a `payload` tag holding the SHA-256 of the exact body. The website
+forwards both, byte for byte, to the account service's
+`POST /v1/sessions/nostr` (`oa_auth::nostr`), which checks the event,
+burns its id and the challenge in the session store, finds or creates the
+account holding `nostr:<hex>` (a new one gets a personal workspace on
+`signup_tenant`), and answers the same 30-day app session a device sign-in
+issues. No invite list applies: the key is the account.
+
+A signed-in app manages its keys at `/v1/device/keys`: `GET` lists them,
+`POST {"proof"}` adds the key that signed `proof` (kind 27235 over
+`POST /v1/device/keys` with a challenge from
+`GET /v1/device/keys/challenge`, which is bound to this account), and
+`DELETE /v1/device/keys/{pubkey}` removes one, never the last.
