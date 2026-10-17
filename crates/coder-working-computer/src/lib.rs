@@ -191,7 +191,7 @@ pub enum Health {
     Command { command: String },
 }
 
-/// One process restarted on every boot (fresh or restored).
+/// A service started on a fresh boot and probed after memory restore.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ServiceDecl {

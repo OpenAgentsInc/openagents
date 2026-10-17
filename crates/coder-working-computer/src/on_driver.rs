@@ -4,8 +4,9 @@
 //! contract, so every conformant driver (oa-boat, the in-memory fake, and
 //! later a person's own Mac or a Pylon) runs chat computers through the
 //! same decide/apply core. It needs Core for everything and Suspend for
-//! turn checkpoints, stop and restore: a turn checkpoint is the stopped
-//! disk, as with [`crate::boat::BoatProvider`]. A driver without Suspend is
+//! turn checkpoints, stop, and restore. A turn checkpoint keeps the disk;
+//! drivers declaring `memory_suspend` also keep running programs and probe
+//! restored services without starting another copy. A driver without Suspend is
 //! refused before any state is written ([`OnDriver::admit`]).
 //!
 //! Credentials: a chat computer carries no per-boot credential values
@@ -13,7 +14,7 @@
 //! with one command ([`computer_driver::Exec::secret_env`]).
 
 use crate::provider::{CheckpointEvidence, Inspection, Meter, Outcome, Provider};
-use crate::{Checkpoint, Computer, Health, ServiceDecl};
+use crate::{BootOrigin, Checkpoint, Computer, Fact, Health, ServiceDecl};
 use computer_driver::{CreateRequest, Driver, Exec, Profile, State, Unsupported, admit};
 use std::time::Duration;
 
@@ -78,6 +79,16 @@ impl<D: Driver> OnDriver<D> {
     }
 }
 
+// Boot numbers and turn generations are saved before any lifecycle effect.
+// They survive API restart and are never replaced by a fresh retry identity.
+fn operation(c: &Computer, action: &str) -> String {
+    format!(
+        "{}-boot-{}-{action}",
+        c.id,
+        c.boot().expect("resource has a boot").number
+    )
+}
+
 fn quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
@@ -100,10 +111,25 @@ impl<D: Driver> Provider for OnDriver<D> {
 
     async fn restore(
         &self,
-        _c: &Computer,
+        c: &Computer,
         resource: &str,
         _checkpoint: Option<&Checkpoint>,
     ) -> Outcome<String> {
+        if self.driver.capabilities().memory_suspend {
+            // State can change before teardown or wake finishes. Repeating the
+            // saved operation waits for the original provider operation too.
+            if let other @ (Outcome::Failed { .. } | Outcome::Unknown { .. }) = self
+                .driver
+                .resume_operation(resource, &operation(c, "resume"))
+                .await
+            {
+                return other;
+            }
+            return self
+                .reach(resource, State::Running)
+                .await
+                .map(|()| format!("resumed:{resource}"));
+        }
         match self.driver.observe(resource).await {
             Outcome::Done { value } if value.state == State::Gone => {
                 return Outcome::failed("the computer is gone");
@@ -116,8 +142,10 @@ impl<D: Driver> Provider for OnDriver<D> {
                         return o.map(|()| String::new());
                     }
                 }
-                if let o @ (Outcome::Failed { .. } | Outcome::Unknown { .. }) =
-                    self.driver.resume(resource).await
+                if let o @ (Outcome::Failed { .. } | Outcome::Unknown { .. }) = self
+                    .driver
+                    .resume_operation(resource, &operation(c, "resume"))
+                    .await
                 {
                     return o;
                 }
@@ -134,14 +162,23 @@ impl<D: Driver> Provider for OnDriver<D> {
 
     async fn apply_credentials(&self, _c: &Computer, resource: &str) -> Outcome<String> {
         // Nothing to apply per boot; this is where a fresh boot is awaited.
-        self.reach(resource, State::Running)
-            .await
-            .map(|()| "applied:".into())
+        if let other @ (Outcome::Failed { .. } | Outcome::Unknown { .. }) =
+            self.reach(resource, State::Running).await
+        {
+            return other.map(|()| String::new());
+        }
+        if !self.driver.capabilities().memory_suspend {
+            return Outcome::done("applied:".into());
+        }
+        match self.sh(resource, ":".into(), 30).await {
+            Outcome::Done { value: 0 } => Outcome::done("command service ready".into()),
+            _ => Outcome::unknown("The computer is running, but commands aren't ready yet."),
+        }
     }
 
     async fn start_service(
         &self,
-        _c: &Computer,
+        c: &Computer,
         resource: &str,
         s: &ServiceDecl,
     ) -> Outcome<String> {
@@ -151,10 +188,15 @@ impl<D: Driver> Provider for OnDriver<D> {
             quote(&s.command),
             s.name
         );
-        match self.sh(resource, start, 60).await {
-            Outcome::Done { value: 0 } => {}
-            Outcome::Done { value } => return Outcome::failed(format!("start exited {value}")),
-            other => return other.map(|_| String::new()),
+        let restored = self.driver.capabilities().memory_suspend
+            && c.boot()
+                .is_some_and(|boot| matches!(boot.origin, BootOrigin::Restored { .. }));
+        if !restored {
+            match self.sh(resource, start, 60).await {
+                Outcome::Done { value: 0 } => {}
+                Outcome::Done { value } => return Outcome::failed(format!("start exited {value}")),
+                other => return other.map(|_| String::new()),
+            }
         }
         let probe = match &s.health {
             Health::Http { port, path } => {
@@ -180,11 +222,15 @@ impl<D: Driver> Provider for OnDriver<D> {
 
     async fn checkpoint(
         &self,
-        _c: &Computer,
+        c: &Computer,
         resource: &str,
         generation: u64,
     ) -> Outcome<CheckpointEvidence> {
-        let stop = match self.driver.suspend(resource).await {
+        let stop = match self
+            .driver
+            .suspend_operation(resource, &operation(c, &format!("checkpoint-{generation}")))
+            .await
+        {
             Outcome::Done { value } => value,
             other => return other.map(|_| unreachable!()),
         };
@@ -197,6 +243,11 @@ impl<D: Driver> Provider for OnDriver<D> {
     }
 
     async fn shutdown_processes(&self, _c: &Computer, resource: &str) -> Outcome<String> {
+        if self.driver.capabilities().memory_suspend {
+            // Stop preserves ordinary services. The command owner must finish
+            // explicit cancellation before allowing this suspension.
+            return Outcome::done("programs kept for suspension".into());
+        }
         match self.driver.observe(resource).await {
             Outcome::Done { value } if value.state == State::Running => {
                 let _ = self
@@ -213,13 +264,23 @@ impl<D: Driver> Provider for OnDriver<D> {
         }
     }
 
-    async fn stop(&self, _c: &Computer, resource: &str) -> Outcome<String> {
+    async fn stop(&self, c: &Computer, resource: &str) -> Outcome<String> {
         if let Outcome::Done { value } = self.driver.observe(resource).await
+            && value.state == State::Gone
+        {
+            return Outcome::done(format!("gone:{resource}"));
+        }
+        if !self.driver.capabilities().memory_suspend
+            && let Outcome::Done { value } = self.driver.observe(resource).await
             && matches!(value.state, State::Stopped | State::Gone)
         {
             return Outcome::done(format!("stopped:{resource}"));
         }
-        let op = match self.driver.suspend(resource).await {
+        let op = match self
+            .driver
+            .suspend_operation(resource, &operation(c, "stop"))
+            .await
+        {
             Outcome::Done { value } => value,
             other => return other,
         };
@@ -240,15 +301,44 @@ impl<D: Driver> Provider for OnDriver<D> {
         }
     }
 
-    async fn inspect(&self, _c: &Computer, resource: &str) -> Outcome<Inspection> {
+    async fn inspect(&self, c: &Computer, resource: &str) -> Outcome<Inspection> {
+        let mut stop = None;
+        let mut latest_snapshot = None;
+        if self.driver.capabilities().memory_suspend {
+            if c.boot()
+                .is_some_and(|b| b.restore.as_ref().is_some_and(Fact::is_unknown))
+            {
+                if let other @ (Outcome::Failed { .. } | Outcome::Unknown { .. }) =
+                    self.restore(c, resource, None).await
+                {
+                    return other.map(|_| unreachable!());
+                }
+            } else if let Some(k) = c.checkpoints.last().filter(|k| k.fact.is_unknown()) {
+                match self.checkpoint(c, resource, k.turn_generation).await {
+                    Outcome::Done { value } => {
+                        stop = value.stopped;
+                        latest_snapshot = Some(value.snapshot);
+                    }
+                    other => return other.map(|_| unreachable!()),
+                }
+            } else if c
+                .boot()
+                .is_some_and(|b| b.resource_stop.as_ref().is_some_and(Fact::is_unknown))
+            {
+                match self.stop(c, resource).await {
+                    Outcome::Done { value } => stop = Some(value),
+                    other => return other.map(|_| unreachable!()),
+                }
+            }
+        }
         self.driver.observe(resource).await.map(|o| Inspection {
             running: match o.state {
                 State::Gone => None,
                 State::Running | State::Starting => Some(true),
                 _ => Some(false),
             },
-            stop: None,
-            latest_snapshot: None,
+            stop,
+            latest_snapshot,
         })
     }
 }

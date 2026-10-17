@@ -174,6 +174,35 @@ turn starts forgets its values: that turn fails asking to be sent again,
 and nothing runs without the credentials it was sent with. Stop ends a
 queued turn at once and abandons a running one's command.
 
+Resource reads include `capabilities` from the computer's saved deployment,
+including `memory_suspend`, rather than the current default. A missing deployment
+returns `null` for these capabilities. The additive `lifecycle_policy` reports
+suspend-after-turn, admitted idle/observation bounds, and the absolute bound for
+each boot. Observation cannot extend the absolute deadline. Stop and wake remain
+explicit intents; idle and absolute stops update the saved intent and survive
+API restart.
+
+Memory-preserving drivers repeat suspend and resume with identities derived from
+the saved boot and turn generation. SPACE returns the original provider operation
+for a repeated identity. The service waits for operation completion and observed
+state before dispatch, including after an accepted operation's lookup fails.
+A restored guest must also answer a harmless command before becoming ready.
+Existing service processes are checked without running their startup commands.
+
+An unknown command result on a memory-preserving computer keeps the active turn
+fenced. Follow-ups and stop cannot snapshot that possibly live command or claim
+it ended. A legacy command interrupted by API loss reports the same uncertainty
+without starting it again. Explicit deletion removes the provider resource first,
+without taking a memory checkpoint, then completes lifecycle cleanup. Identified
+commands on supported backends still observe process-group exit after cancellation.
+SPACE's public identified-command capability remains unsupported.
+
+API restart preserves the computer and lifecycle request identities. Worker loss
+does not authorize creating a replacement computer or restoring a second copy.
+Durable cross-worker checkpoint recovery, credential-reference renewal, and full
+private-checkpoint cleanup still need their separate SPACE qualification; memory
+preservation currently describes same-worker suspend and resume only.
+
 A computer stopped for `OA_COMPUTERS_KEEP_STOPPED_DAYS` (7) with nothing
 asked of it is deleted (its disk bills while stopped: about $0.027 an hour
 for a 200 GB `oa-coder-host` disk).
