@@ -240,6 +240,8 @@ mod tests {
                     unix: 1,
                     width: 1206,
                     height: 2622,
+                    dark: None,
+                    dark_sha256: None,
                 }],
             }],
         };

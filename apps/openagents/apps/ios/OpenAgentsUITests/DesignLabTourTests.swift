@@ -3,8 +3,10 @@ import XCTest
 /// Captures every screen of the current app for Design Lab
 /// (`crates/design-lab`), on the offline demo so nothing signs in. Each shot
 /// is `<area>--<screen>.png` in the folder in `DESIGN_LAB_DIR` (pass it as
-/// `TEST_RUNNER_DESIGN_LAB_DIR`); `scripts/design-lab-capture.sh` runs this
-/// and files the folder under the commit it was taken from.
+/// `TEST_RUNNER_DESIGN_LAB_DIR`), or `<area>--<screen>@dark.png` when
+/// `DESIGN_LAB_APPEARANCE` is `dark`; `scripts/design-lab-capture.sh` runs
+/// this once per appearance and files the folder under the commit it was
+/// taken from.
 final class DesignLabTourTests: XCTestCase {
     override func setUp() {
         // One missing screen shouldn't lose the rest of the tour.
@@ -28,8 +30,10 @@ final class DesignLabTourTests: XCTestCase {
         add(attachment)
         guard let dir = ProcessInfo.processInfo.environment["DESIGN_LAB_DIR"], !dir.isEmpty else { return }
         let folder = URL(fileURLWithPath: dir, isDirectory: true)
+        let dark = ProcessInfo.processInfo.environment["DESIGN_LAB_APPEARANCE"] == "dark"
+        let file = "\(area)--\(screen)\(dark ? "@dark" : "").png"
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        try? screenshot.pngRepresentation.write(to: folder.appendingPathComponent("\(area)--\(screen).png"))
+        try? screenshot.pngRepresentation.write(to: folder.appendingPathComponent(file))
     }
 
     func testSignedOut() {

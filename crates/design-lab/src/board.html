@@ -37,6 +37,7 @@
   #areas { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 6px 8px;
     color: inherit; font: inherit; max-width: 220px; }
   .spacer { flex: 1; }
+  button.on { background: #3d3d3d; border-color: #5a5a5a; }
   button { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 7px 11px;
     color: inherit; font: inherit; cursor: pointer; }
   button:hover { border-color: #0d99ff; }
@@ -68,8 +69,9 @@
   <span id="zoom" class="chip">100%</span>
   <button id="in" title="Zoom in (+)">+</button>
   <button id="fit" title="Show everything (Shift+1)">Fit</button>
+  <button id="mode" title="Show screens in light or dark mode (D)">Light</button>
 </div>
-<div id="help">Drag or scroll to move · Pinch or ⌘/Ctrl + scroll to zoom · Click a screen to open it</div>
+<div id="help">Drag or scroll to move · Pinch or ⌘/Ctrl + scroll to zoom · Click a screen to open it · D switches light and dark</div>
 <div id="empty">No screens match.</div>
 <div id="view">
   <div class="stage"><img id="big" alt=""></div>
@@ -97,6 +99,21 @@ let bounds = { w: 1, h: 1 };
 // Run times are the capturing Mac's wall clock, stored as if UTC.
 const when = (unix) => new Date(unix * 1000).toLocaleString(undefined,
   { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+
+// Light or dark screens. A version without a dark capture shows its light one.
+let mode = "light";
+try { if (localStorage.getItem("design-lab-mode") === "dark") mode = "dark"; } catch (e) {}
+function picUrl(v) { return "img/" + (mode === "dark" && v.dark ? v.dark : v.image); }
+function setMode(next) {
+  mode = next;
+  try { localStorage.setItem("design-lab-mode", mode); } catch (e) {}
+  const b = document.getElementById("mode");
+  b.textContent = mode === "dark" ? "Dark" : "Light";
+  b.classList.toggle("on", mode === "dark");
+  if (board.screens.length) layout();
+  if (current) show();
+}
+document.getElementById("mode").onclick = () => setMode(mode === "dark" ? "light" : "dark");
 
 function aspect(v) {
   return v.width && v.height ? v.width / v.height : 0.46;
@@ -172,7 +189,7 @@ function layout() {
         pic.addEventListener("click", () => { if (!moved) open(it.screen, i); });
         f.appendChild(pic);
         box.appendChild(f);
-        frames.push({ el: pic, src: "img/" + v.image, x: x + fx, y: y + fy, w: fw, h: PIC, loaded: false });
+        frames.push({ el: pic, src: picUrl(v), x: x + fx, y: y + fy, w: fw, h: PIC, loaded: false });
         fx += fw + GAP;
       });
     }
@@ -309,7 +326,7 @@ function open(screen, i) {
 function show() {
   const { screen, i } = current;
   const v = screen.versions[i];
-  document.getElementById("big").src = "img/" + v.image;
+  document.getElementById("big").src = picUrl(v);
   document.getElementById("vtitle").textContent = screen.title + " · v" + (i + 1) + " of " + screen.versions.length;
   document.getElementById("vwhen").textContent = when(v.unix) + " · commit " + v.commit +
     (v.width ? " · " + v.width + "×" + v.height : "");
@@ -319,7 +336,7 @@ function show() {
   strip.textContent = "";
   screen.versions.forEach((s, j) => {
     const img = document.createElement("img");
-    img.src = "img/" + s.image;
+    img.src = picUrl(s);
     img.loading = "lazy";
     img.title = "v" + (j + 1) + " · " + when(s.unix);
     if (j === i) img.className = "on";
@@ -347,6 +364,7 @@ addEventListener("keydown", (e) => {
   if (e.key === "-") zoomAt(innerWidth / 2, innerHeight / 2, 0.8);
   if (e.key === "!" || (e.shiftKey && e.key === "1") || e.key === "0") fit();
   if (e.key === "/") { e.preventDefault(); document.getElementById("search").focus(); }
+  if (e.key === "d" || e.key === "D") setMode(mode === "dark" ? "light" : "dark");
 });
 
 fetch("board.json").then((r) => r.json()).then((b) => {
@@ -357,6 +375,7 @@ fetch("board.json").then((r) => r.json()).then((b) => {
   const hash = new URLSearchParams(location.hash.slice(1));
   if (hash.get("q")) document.getElementById("search").value = hash.get("q");
   areas();
+  setMode(mode);
   layout();
   fit();
 });

@@ -3,9 +3,10 @@
 //! The screens are captured from the app in `apps/openagents/` by
 //! `apps/openagents/scripts/design-lab-capture.sh`, which drives the offline
 //! demo through every screen. Each capture run is a folder named
-//! `<YYYYmmdd-HHMMSS>-<commit>[-dirty]` of `<area>--<screen>.png` files; a
-//! run is one version of every screen it holds, and a screen that looks the
-//! same as in the run before keeps its earlier version.
+//! `<YYYYmmdd-HHMMSS>-<commit>[-dirty]` of `<area>--<screen>.png` files, plus
+//! `<area>--<screen>@dark.png` for the same screen in dark mode; a run is one
+//! version of every screen it holds, and a screen that looks the same as in
+//! the run before (in both modes) keeps its earlier version.
 //!
 //! The board is a `board.v1` document, so it is also a Lab kind
 //! ([`kind::Design`]): renames and areas are checked changes, and the card
@@ -54,6 +55,12 @@ pub struct ScreenVersion {
     pub width: u32,
     #[serde(default)]
     pub height: u32,
+    /// The same screen in dark mode, `<run>/<area>--<screen>@dark.png`, when
+    /// the run captured it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dark: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dark_sha256: Option<String>,
 }
 
 impl Board {
@@ -98,11 +105,18 @@ fn days_from_civil(y: u64, m: u64, d: u64) -> u64 {
     era * 146_097 + doe - 719_468
 }
 
-/// A capture's area and screen: `drawer--sessions.png`.
+/// A capture's area and screen: `drawer--sessions.png`. A dark-mode capture,
+/// `drawer--sessions@dark.png`, names the same screen.
 pub fn screen_of(file: &str) -> Option<(String, String)> {
     let stem = file.strip_suffix(".png")?;
+    let stem = stem.strip_suffix("@dark").unwrap_or(stem);
     let (area, screen) = stem.split_once("--")?;
     (!area.is_empty() && !screen.is_empty()).then(|| (area.to_string(), screen.to_string()))
+}
+
+/// Whether a capture is the dark-mode picture of its screen.
+pub fn is_dark(file: &str) -> bool {
+    file.ends_with("@dark.png")
 }
 
 fn title(id: &str) -> String {
@@ -149,23 +163,58 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
             .map(|e| e.file_name().to_string_lossy().to_string())
             .collect();
         files.sort();
+        // Each screen's light and dark pictures in this run.
+        let mut shots: BTreeMap<String, (String, String, Option<String>, Option<String>)> =
+            BTreeMap::new();
         for file in files {
             let Some((area, name)) = screen_of(&file) else {
+                continue;
+            };
+            let shot = shots
+                .entry(format!("{area}--{name}"))
+                .or_insert_with(|| (area, name, None, None));
+            if is_dark(&file) {
+                shot.3 = Some(file);
+            } else {
+                shot.2 = Some(file);
+            }
+        }
+        for (id, (area, name, light, dark)) in shots {
+            // A screen needs its light picture; dark is extra.
+            let Some(file) = light else {
                 continue;
             };
             let bytes =
                 std::fs::read(captures.join(&run).join(&file)).map_err(|e| e.to_string())?;
             let sha256 = format!("{:x}", Sha256::digest(&bytes));
-            let id = format!("{area}--{name}");
+            let dark_sha256 = match &dark {
+                Some(dark) => {
+                    let bytes =
+                        std::fs::read(captures.join(&run).join(dark)).map_err(|e| e.to_string())?;
+                    Some(format!("{:x}", Sha256::digest(&bytes)))
+                }
+                None => None,
+            };
             let screen = screens.entry(id.clone()).or_insert_with(|| Screen {
                 title: title(&name),
                 area,
                 id,
                 versions: Vec::new(),
             });
-            // Unchanged since the last run: still the same version.
-            if screen.versions.last().is_some_and(|v| v.sha256 == sha256) {
-                continue;
+            // Unchanged since the last run: still the same version. A run
+            // without a dark picture doesn't count as a change by itself.
+            if let Some(last) = screen.versions.last_mut() {
+                if last.sha256 == sha256
+                    && (dark_sha256.is_none() || last.dark_sha256 == dark_sha256)
+                {
+                    continue;
+                }
+                if last.sha256 == sha256 && last.dark.is_none() {
+                    // The first dark picture of an unchanged screen.
+                    last.dark = dark.map(|d| format!("{run}/{d}"));
+                    last.dark_sha256 = dark_sha256;
+                    continue;
+                }
             }
             let (width, height) = png_size(&bytes);
             screen.versions.push(ScreenVersion {
@@ -176,6 +225,8 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
                 unix,
                 width,
                 height,
+                dark: dark.map(|d| format!("{run}/{d}")),
+                dark_sha256,
             });
         }
     }
@@ -194,7 +245,7 @@ pub fn image(captures: &Path, board: &Board, image: &str) -> Option<Vec<u8>> {
         .screens
         .iter()
         .flat_map(|s| &s.versions)
-        .any(|v| v.image == image);
+        .any(|v| v.image == image || v.dark.as_deref() == Some(image));
     if !known {
         return None;
     }
@@ -227,6 +278,42 @@ mod tests {
         assert_eq!(unix, 1_792_246_500);
         assert_eq!(commit, "cb54dccbc2-dirty");
         assert_eq!(run_info("notes"), None);
+    }
+
+    #[test]
+    fn dark_captures_pair_with_their_screen() {
+        assert_eq!(
+            screen_of("drawer--sessions@dark.png"),
+            Some(("drawer".into(), "sessions".into()))
+        );
+        assert!(is_dark("drawer--sessions@dark.png"));
+        assert!(!is_dark("drawer--sessions.png"));
+        let dir = std::env::temp_dir().join(format!("design-lab-dark-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01\0\0\0\x01".to_vec();
+        // Run 1: light only. Run 2: the same light picture, now with dark.
+        // Run 3: unchanged in both modes.
+        for (run, dark) in [
+            ("20261017-100000-aaaa", None),
+            ("20261017-110000-bbbb", Some(1u8)),
+            ("20261017-120000-cccc", Some(1)),
+        ] {
+            std::fs::create_dir_all(dir.join(run)).unwrap();
+            std::fs::write(dir.join(run).join("home--home.png"), &png).unwrap();
+            if let Some(extra) = dark {
+                let mut bytes = png.clone();
+                bytes.push(extra);
+                std::fs::write(dir.join(run).join("home--home@dark.png"), bytes).unwrap();
+            }
+        }
+        let board = scan(&dir).unwrap();
+        assert_eq!(board.screens.len(), 1);
+        let versions = &board.screens[0].versions;
+        assert_eq!(versions.len(), 1);
+        let dark = versions[0].dark.as_deref().unwrap();
+        assert_eq!(dark, "20261017-110000-bbbb/home--home@dark.png");
+        assert!(image(&dir, &board, dark).is_some());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
