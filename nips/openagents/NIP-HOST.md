@@ -1740,7 +1740,7 @@ existing WebSocket path until the production latency comparison passes.
 ### Local latency comparison
 
 The engine's isolated relay test sends 30 warm `ListModels` calls per route to
-the same fixed one-model reply. On 2026-10-17, the NIP-HOST relay measured
+the same fixed one-model reply. On 2026-10-17, source `6fab37f48c` measured the NIP-HOST relay at
 4.283 ms p50 and 4.517 ms p95; direct RPC WebSocket measured 0.171 ms p50 and
 0.210 ms p95. Both routes completed all 30 calls. The test includes NIP-42,
 NIP-HOST encryption, grant checks, and the app adapter on a loopback relay.

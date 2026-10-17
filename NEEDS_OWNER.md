@@ -33,6 +33,17 @@ No package, outside provider, additional repository, or funded transaction was
 activated by these policy issues. Open a scoped implementation issue when an
 activation decision is made; report defects in the completed baseline separately.
 
+## Check the optional paired phone connection (#11854)
+
+After lane 0 deploys the matching sync server and provides a signed app build,
+use the dedicated test account on an iPhone and a disposable computer. In
+**Settings**, select that computer and choose **Paste connect code**. Check a
+reply, a command, reconnect, **Use usual connection**, **Forget pairing**, and
+sign-out. Confirm that existing chats remain available. The simulator build
+and isolated protocol checks passed; the physical-device check remains.
+Report a device defect as a new issue. Lane 0's remaining deployed checks are
+in [After-close checks](docs/audits/2026-10-16-master-delegation.md#after-close-checks).
+
 ## Check Agent Lab on iPhone (#11914–#11921)
 
 Install OpenAgents TestFlight build 1010 over the existing app. Open **Agent
