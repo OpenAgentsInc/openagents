@@ -1693,6 +1693,12 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
      */
     func stopCloudHost() async throws  -> CloudHostView
     
+    /**
+     * The own-computer card's record for whoever is signed in, or this
+     * install while signed out.
+     */
+    func ownComputerOffer()  -> CoreOwnComputerOffer
+    
 }
 open class CoreAccount: CoreAccountProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -2011,6 +2017,19 @@ open func stopCloudHost()async throws  -> CloudHostView  {
             liftFunc: FfiConverterTypeCloudHostView_lift,
             errorHandler: FfiConverterTypeCoreError_lift
         )
+}
+    
+    /**
+     * The own-computer card's record for whoever is signed in, or this
+     * install while signed out.
+     */
+open func ownComputerOffer() -> CoreOwnComputerOffer  {
+    return try!  FfiConverterTypeCoreOwnComputerOffer_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_own_computer_offer(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
 
@@ -3868,6 +3887,18 @@ open class CoreCloudChat: CoreCloudChatProtocol, @unchecked Sendable {
     }
 
     
+    /**
+     * The offline demo's chat: fixed replies, streamed, with no server.
+     */
+public static func demo(listener: CloudChatListener) -> CoreCloudChat  {
+    return try!  FfiConverterTypeCoreCloudChat_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_corecloudchat_demo(
+        FfiConverterTypeCloudChatListener_lower(listener),uniffiCallStatus
+    )
+})
+}
+    
 
     
     /**
@@ -4381,6 +4412,174 @@ public func FfiConverterTypeCoreHome_lift(_ handle: UInt64) throws -> CoreHome {
 #endif
 public func FfiConverterTypeCoreHome_lower(_ value: CoreHome) -> UInt64 {
     return FfiConverterTypeCoreHome.lower(value)
+}
+
+
+
+
+
+
+public protocol CoreOwnComputerOfferProtocol: AnyObject, Sendable {
+    
+    func card()  -> OwnComputerCard
+    
+    /**
+     * The person closed the card; it doesn't come back.
+     */
+    func close() 
+    
+    /**
+     * Whether the card shows under `chat`'s open chat now. `computers` is
+     * how many of the person's own computers have joined (Our cloud
+     * doesn't count); one joining ends the card for good.
+     */
+    func shows(chat: CoreCloudChat, computers: UInt32)  -> Bool
+    
+}
+open class CoreOwnComputerOffer: CoreOwnComputerOfferProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_coreowncomputeroffer(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_coreowncomputeroffer(handle, $0) }
+    }
+
+    
+    /**
+     * The offline demo's record, kept apart from any account's.
+     */
+public static func demo(dataDir: String) -> CoreOwnComputerOffer  {
+    return try!  FfiConverterTypeCoreOwnComputerOffer_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_coreowncomputeroffer_demo(
+        FfiConverterString.lower(dataDir),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+open func card() -> OwnComputerCard  {
+    return try!  FfiConverterTypeOwnComputerCard_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreowncomputeroffer_card(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The person closed the card; it doesn't come back.
+     */
+open func close()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreowncomputeroffer_close(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Whether the card shows under `chat`'s open chat now. `computers` is
+     * how many of the person's own computers have joined (Our cloud
+     * doesn't count); one joining ends the card for good.
+     */
+open func shows(chat: CoreCloudChat, computers: UInt32) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreowncomputeroffer_shows(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCoreCloudChat_lower(chat),
+        FfiConverterUInt32.lower(computers),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreOwnComputerOffer: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreOwnComputerOffer
+
+    public static func lift(_ handle: UInt64) throws -> CoreOwnComputerOffer {
+        return CoreOwnComputerOffer(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreOwnComputerOffer) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreOwnComputerOffer {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreOwnComputerOffer, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreOwnComputerOffer_lift(_ handle: UInt64) throws -> CoreOwnComputerOffer {
+    return try FfiConverterTypeCoreOwnComputerOffer.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreOwnComputerOffer_lower(_ value: CoreOwnComputerOffer) -> UInt64 {
+    return FfiConverterTypeCoreOwnComputerOffer.lower(value)
 }
 
 
@@ -12171,6 +12370,95 @@ public func FfiConverterTypeOutgoingAttachment_lift(_ buf: RustBuffer) throws ->
 #endif
 public func FfiConverterTypeOutgoingAttachment_lower(_ value: OutgoingAttachment) -> RustBuffer {
     return FfiConverterTypeOutgoingAttachment.lower(value)
+}
+
+
+/**
+ * What the card says. Every instruction has its command or link.
+ */
+public struct OwnComputerCard: Equatable, Hashable {
+    public var title: String
+    public var body: String
+    /**
+     * The install command, copied on a tap.
+     */
+    public var command: String
+    public var downloadLabel: String
+    public var downloadUrl: String
+    public var connect: String
+    /**
+     * The page `coder login` codes are approved on; linked in `connect`.
+     */
+    public var approveUrl: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(title: String, body: String, 
+        /**
+         * The install command, copied on a tap.
+         */command: String, downloadLabel: String, downloadUrl: String, connect: String, 
+        /**
+         * The page `coder login` codes are approved on; linked in `connect`.
+         */approveUrl: String) {
+        self.title = title
+        self.body = body
+        self.command = command
+        self.downloadLabel = downloadLabel
+        self.downloadUrl = downloadUrl
+        self.connect = connect
+        self.approveUrl = approveUrl
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension OwnComputerCard: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOwnComputerCard: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OwnComputerCard {
+        return
+            try OwnComputerCard(
+                title: FfiConverterString.read(from: &buf), 
+                body: FfiConverterString.read(from: &buf), 
+                command: FfiConverterString.read(from: &buf), 
+                downloadLabel: FfiConverterString.read(from: &buf), 
+                downloadUrl: FfiConverterString.read(from: &buf), 
+                connect: FfiConverterString.read(from: &buf), 
+                approveUrl: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: OwnComputerCard, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.body, into: &buf)
+        FfiConverterString.write(value.command, into: &buf)
+        FfiConverterString.write(value.downloadLabel, into: &buf)
+        FfiConverterString.write(value.downloadUrl, into: &buf)
+        FfiConverterString.write(value.connect, into: &buf)
+        FfiConverterString.write(value.approveUrl, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOwnComputerCard_lift(_ buf: RustBuffer) throws -> OwnComputerCard {
+    return try FfiConverterTypeOwnComputerCard.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOwnComputerCard_lower(_ value: OwnComputerCard) -> RustBuffer {
+    return FfiConverterTypeOwnComputerCard.lower(value)
 }
 
 
@@ -23456,6 +23744,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreaccount_stop_cloud_host() != 55892) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_own_computer_offer() != 46210) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_agentlablistener_on_agent_lab_changed() != 41969) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -23571,6 +23862,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_homelistener_on_home_changed() != 46399) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreowncomputeroffer_card() != 36943) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreowncomputeroffer_close() != 60706) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreowncomputeroffer_shows() != 20949) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coresavedhistory_chat_homes() != 64078) {
@@ -23867,7 +24167,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_constructor_coreaccount_new() != 30316) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_constructor_corecloudchat_demo() != 48106) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_constructor_corehome_demo() != 2243) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_coreowncomputeroffer_demo() != 291) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_constructor_textsystem_new() != 39900) {

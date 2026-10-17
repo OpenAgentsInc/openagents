@@ -5,10 +5,13 @@
 //! sign-in. When the account signs in, the visitor's chats move to it
 //! (`claim`), and the open chat keeps going as the account's. When it signs
 //! out, the open chat is closed so an account chat never shows signed out.
+//! The offline demo has one too ([`CoreCloudChat::demo`]), answered from
+//! fixed replies with no server (#11984).
 use super::CoreAccount;
 use openagents_account::{
     Controller, Phase,
     cloud_chat::{CloudChat, Line, Role, Snapshot},
+    cloud_chat_demo::DemoChat,
 };
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
@@ -79,8 +82,14 @@ pub trait CloudChatListener: Send + Sync {
 
 #[derive(uniffi::Object)]
 pub struct CoreCloudChat {
-    chat: Arc<CloudChat>,
+    chat: Chat,
     cancel: CancellationToken,
+}
+
+/// The live chat, or the offline demo's.
+enum Chat {
+    Live(Arc<CloudChat>),
+    Demo(Arc<DemoChat>),
 }
 
 /// What to do when the account's phase changes.
@@ -144,7 +153,17 @@ impl CoreCloudChat {
                 }
             }
         });
-        Arc::new(Self { chat, cancel })
+        Arc::new(Self {
+            chat: Chat::Live(chat),
+            cancel,
+        })
+    }
+
+    pub(crate) fn raw_snapshot(&self) -> Snapshot {
+        match &self.chat {
+            Chat::Live(chat) => chat.snapshot(),
+            Chat::Demo(chat) => chat.snapshot(),
+        }
     }
 }
 
@@ -156,21 +175,56 @@ impl Drop for CoreCloudChat {
 
 #[uniffi::export]
 impl CoreCloudChat {
+    /// The offline demo's chat: fixed replies, streamed, with no server.
+    #[uniffi::constructor]
+    pub fn demo(listener: Arc<dyn CloudChatListener>) -> Arc<Self> {
+        let chat = DemoChat::new(std::time::Duration::from_millis(60));
+        let cancel = CancellationToken::new();
+        let stop = cancel.clone();
+        let mut updates = chat.watch();
+        openagents_client::runtime::shared().spawn(async move {
+            loop {
+                tokio::select! {
+                    biased;
+                    _ = stop.cancelled() => break,
+                    changed = updates.changed() => {
+                        if changed.is_err() { break; }
+                        let snapshot = updates.borrow_and_update().clone();
+                        listener.on_cloud_chat_changed(snapshot.into());
+                    }
+                }
+            }
+        });
+        Arc::new(Self {
+            chat: Chat::Demo(chat),
+            cancel,
+        })
+    }
     pub fn snapshot(&self) -> CloudChatSnapshot {
-        self.chat.snapshot().into()
+        self.raw_snapshot().into()
     }
     /// Send `text` in the open chat, or start one. Progress arrives through
     /// the listener.
     pub fn send(&self, text: String) {
-        openagents_client::runtime::shared().spawn(self.chat.send(text));
+        let runtime = openagents_client::runtime::shared();
+        match &self.chat {
+            Chat::Live(chat) => drop(runtime.spawn(chat.send(text))),
+            Chat::Demo(chat) => drop(runtime.spawn(chat.send(text))),
+        }
     }
     /// Stop the answer being written.
     pub fn stop(&self) {
-        openagents_client::runtime::shared().spawn(self.chat.stop());
+        match &self.chat {
+            Chat::Live(chat) => drop(openagents_client::runtime::shared().spawn(chat.stop())),
+            Chat::Demo(chat) => chat.stop(),
+        }
     }
     /// Start over with an empty chat.
     pub fn new_chat(&self) {
-        self.chat.new_chat();
+        match &self.chat {
+            Chat::Live(chat) => chat.new_chat(),
+            Chat::Demo(chat) => chat.new_chat(),
+        }
     }
 }
 

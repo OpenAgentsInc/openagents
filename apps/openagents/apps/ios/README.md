@@ -103,6 +103,7 @@ OpenAgentsShared/   Compiled into the app and the extension: the activity's
 | `-fast` / `-longreply` | Demo stream speed / reply length |
 | `-big` / `-huge` | Demo transcripts with 120 / 600 turns |
 | `-route chat:<id>` / `new` / `more` / `search` | Open a screen at launch |
+| `-demo -route welcome` / `-demo -route cloud` | The demo's chat answered by OpenAgents (fixed replies, no server): as the signed-out first screen, or in the shell |
 | `-signedout` | Debug only: sign out and clear this app’s account credential |
 | `-dev <userId> <orgId> [-edge <url>]` | Debug only: dev bearer against local coder-sync with explicit dev auth; not persisted |
 | `-harness <id>` | Default harness for new sessions (`mock` for live-stack tests) |
@@ -121,6 +122,22 @@ cargo test --release -p openagents-mobile --lib bench_layout -- --ignored --noca
 xcodebuild … -only-testing:OpenAgentsTests/LineBreakAccuracyTests test
 xcodebuild … -only-testing:OpenAgentsUITests/SessionFlowTests test
 xcodebuild … -only-testing:OpenAgentsUITests/ScrollPerformanceTests test
+```
+
+### Marketing screenshots
+
+`MarketingShotsTests` retakes the store and launch screenshots on the offline
+demo: the signed-out first screen and its first answer, the "Run this on your
+own computer" card, a longer chat, Home, and the session list. Nothing signs
+in, and every file is named `demo-*.png`. Shots go to the folder in
+`TEST_RUNNER_MARKETING_SHOTS_DIR` (and into the test result); they aren't
+committed.
+
+```sh
+RUSTUP_TOOLCHAIN=1.98.1 TEST_RUNNER_MARKETING_SHOTS_DIR="$HOME/work/film-out/shots" \
+  xcodebuild -project apps/ios/OpenAgents.xcodeproj -scheme OpenAgents \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+  CODE_SIGNING_ALLOWED=NO -only-testing:OpenAgentsUITests/MarketingShotsTests test
 ```
 
 For deployed Rust sync checks, use the [live desktop sync check](#live-desktop-sync-check).

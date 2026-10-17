@@ -83,6 +83,13 @@ impl CoreOwnComputerOffer {
         })
     }
 
+    /// Whether the card shows under `chat`'s open chat now. `computers` is
+    /// how many of the person's own computers have joined (Our cloud
+    /// doesn't count); one joining ends the card for good.
+    pub fn shows(&self, chat: Arc<super::CoreCloudChat>, computers: u32) -> bool {
+        self.shows_for(&chat.raw_snapshot(), computers)
+    }
+
     pub fn card(&self) -> OwnComputerCard {
         Card::new().into()
     }

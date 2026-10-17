@@ -11,12 +11,24 @@ final class CloudChatModel {
     private(set) var snapshot: CloudChatSnapshot
     private var observers: [UUID: () -> Void] = [:]
 
-    init(account: CoreAccount) {
+    convenience init(account: CoreAccount) {
+        self.init { account.cloudChat(listener: $0) }
+    }
+
+    /// The offline demo's chat: fixed replies, no server (#11984).
+    static func demo() -> CloudChatModel { CloudChatModel { CoreCloudChat.demo(listener: $0) } }
+
+    private init(_ make: (CloudChatBridge) -> CoreCloudChat) {
         let bridge = CloudChatBridge()
         self.bridge = bridge
-        core = account.cloudChat(listener: bridge)
+        core = make(bridge)
         snapshot = core.snapshot()
         bridge.model = self
+    }
+
+    /// Whether the own-computer card shows under the open chat (#11982).
+    func ownComputerCardShows(_ offer: CoreOwnComputerOffer, computers: Int) -> Bool {
+        offer.shows(chat: core, computers: UInt32(computers))
     }
 
     fileprivate func changed(_ snapshot: CloudChatSnapshot) {
@@ -73,10 +85,14 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
     private var appObservation: AnyObject?
     private var rows: [CloudChatLine] = []
     private var promptedForSignIn = false
+    private var ownComputerCard: OwnComputerCardView?
+    /// The demo's copy of the signed-out first screen (`-demo -route welcome`).
+    private let signedOutLook: Bool
 
-    init(app: AppModel, chat: CloudChatModel) {
+    init(app: AppModel, chat: CloudChatModel, signedOutLook: Bool = false) {
         self.app = app
         self.chat = chat
+        self.signedOutLook = signedOutLook
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -169,7 +185,28 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
         if rows.isEmpty { _ = composer.becomeFirstResponder() }
     }
 
-    private var signedIn: Bool { app.isSignedIn }
+    private var signedIn: Bool { app.isSignedIn && !signedOutLook }
+
+    /// "Run this on your own computer" (#11982): Rust decides; it goes away
+    /// once closed or when one of the person's computers joins.
+    private func renderOwnComputerCard() {
+        guard let offer = app.ownComputerOffer else { return }
+        let computers = signedIn ? app.hostOptions.filter { $0.name != AppModel.cloudHostName }.count : 0
+        let shows = chat.ownComputerCardShows(offer, computers: computers)
+        if shows, ownComputerCard == nil {
+            let card = OwnComputerCardView(card: offer.card())
+            card.onClose = { [weak self] in
+                offer.close()
+                self?.renderOwnComputerCard()
+            }
+            ownComputerCard = card
+            addCard(card)
+        } else if !shows, let card = ownComputerCard {
+            card.removeFromSuperview()
+            ownComputerCard = nil
+            cardSlot.isHidden = cardSlot.arrangedSubviews.isEmpty
+        }
+    }
 
     private func renderBar() {
         var items: [UIBarButtonItem] = []
@@ -188,6 +225,7 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
         }
         navigationItem.rightBarButtonItems = items
         demo.isHidden = signedIn
+        renderOwnComputerCard()
     }
 
     private func render() {
@@ -276,6 +314,19 @@ extension CloudChatViewController {
     static func signedOutRoot(app: AppModel) -> UIViewController? {
         guard let chat = app.cloudChat else { return nil }
         return DrawerShellController.nav(CloudChatViewController(app: app, chat: chat))
+    }
+
+    /// The offline demo (#11984): `-route welcome` is the signed-out first
+    /// screen, `-route cloud` the chat in the shell.
+    static func demoRoot(app: AppModel) -> UIViewController? {
+        let args = ProcessInfo.processInfo.arguments
+        guard app.isDemo, let i = args.firstIndex(of: "-route"), i + 1 < args.count, args[i + 1] == "welcome", let chat = app.cloudChat else { return nil }
+        return DrawerShellController.nav(CloudChatViewController(app: app, chat: chat, signedOutLook: true))
+    }
+
+    static func openDemo(in root: UIViewController?, app: AppModel) {
+        guard app.isDemo, let root, let chat = app.cloudChat else { return }
+        show(CloudChatViewController(app: app, chat: chat), in: root)
     }
 
     /// Just signed in from the cloud chat: keep the conversation open in the

@@ -70,6 +70,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 if route == "new" { router.presentNewSession(prompt: nil) }
                 if route == "more" { router.showSettings() }
                 if route == "search" { router.showSearch() }
+                if route == "cloud" { CloudChatViewController.openDemo(in: window.rootViewController, app: self.app) }
             }
         }
     }
@@ -90,9 +91,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let window else { return }
         // iPad gets the split shell (it collapses to the drawer shell
         // at compact widths); iPhone the drawer shell directly.
-        let root: UIViewController = !app.isSignedIn
+        let root: UIViewController = CloudChatViewController.demoRoot(app: app) ?? (!app.isSignedIn
             ? CloudChatViewController.signedOutRoot(app: app) ?? SignInViewController(app: app)
-            : UIDevice.current.userInterfaceIdiom == .pad ? SplitRootController(app: app) : DrawerShellController(app: app)
+            : UIDevice.current.userInterfaceIdiom == .pad ? SplitRootController(app: app) : DrawerShellController(app: app))
         if app.isSignedIn, !app.isDemo { CloudChatViewController.continueAfterSignIn(in: root, app: app) }
         // Sheets (new session, Settings) belong to the old root: they'd
         // stay on top of the new one.

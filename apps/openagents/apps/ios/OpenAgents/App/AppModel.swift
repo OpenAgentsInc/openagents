@@ -70,7 +70,10 @@ final class AppModel {
     private lazy var accountBridge = AccountBridge(app: self)
     private(set) var accountSnapshot: AccountSnapshot?
     /// The chat answered by OpenAgents, signed in or not (#11978).
-    private(set) lazy var cloudChat: CloudChatModel? = account.map(CloudChatModel.init)
+    private(set) lazy var cloudChat: CloudChatModel? = account.map(CloudChatModel.init) ?? (isDemo ? CloudChatModel.demo() : nil)
+    /// The own-computer card's record (#11982); the demo's starts fresh each launch.
+    private(set) lazy var ownComputerOffer: CoreOwnComputerOffer? = account?.ownComputerOffer()
+        ?? (isDemo ? CoreOwnComputerOffer.demo(dataDir: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path) : nil)
     private var accountGeneration: UInt64 = 0
     private var openedAccountGeneration: UInt64?
     #if DEBUG
