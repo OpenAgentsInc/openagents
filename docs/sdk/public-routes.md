@@ -53,8 +53,8 @@ key have interchangeable authority.
 | `/v1/history*` | Web account-owned saved history | Account-bound app credential; owner or current shared-project membership for each read | Qualified [complete history](chat-history.md), including file/capture reads, unknown saved content and source-bound pagination. |
 | `/v1/threads*`, `/computers/check-in`, `/computers/{name}/sync` | Web chat/phone APIs, computer sync, and sharing | App account, owner or current shared-project access; replies check role and use the sender’s allowance | Qualified [thread contracts](threads.md) cover lists, messages, move/delete, attachments, replies, sharing, sync and destructive reply delivery. The [cloud chat client](chats.md) adds public JSON events and request-specific stop; browser HTML routes remain compatible. |
 | `/v1/agents`, `/agents/actions` | Web activity and supervision | App account and account-owned computer work | Activity/action schemas remain a separate qualification scope. |
-| `/v1/projects*`, `/files*` | Web projects, membership, files, sources, and uploads | App session/sign-in key plus current project role and file protection; these web handlers reject `oak_` credentials | Project lifecycle, repositories, membership and invitations have source-backed schemas. Files, documents, and resumable uploads also have source-backed schemas (#11866). Connected sources remain #11868. |
-| `/v1/connections*`, project Drive sources | Web connected-service handlers and gateway account integration | Account credential plus connected-service grant; Google availability gate | Gated, not universally available. Preserve unavailable/permission outcomes. Schema coverage remains incomplete. |
+| `/v1/projects*`, `/files*` | Web projects, membership, files, sources, and uploads | App session/sign-in key plus current project role and file protection; these web handlers reject `oak_` credentials | Project lifecycle, repositories, membership and invitations have source-backed schemas. Files, documents, and resumable uploads also have source-backed schemas (#11866). Connected sources have a separate gated schema (#11868). |
+| `/v1/connections*`, project Drive sources | Web connected-service handlers and gateway account integration | Account credential plus connected-service grant; Google availability gate | Eight account connection/Drive/source operations have qualified schemas (#11868). Google admission and each person’s grant remain required. Gmail, Calendar, and admin access-list schemas remain separate gaps. |
 | `/v1/computers*` | Web computer lifecycle over Computers service; existing device/sync handlers share the family | App account; lifecycle owner and idempotency checks; device activity has separate rights | Lifecycle, capabilities, Boat command sessions, and bounded binary workspace files are in the app schema. Commands use authenticated byte-offset polling. The [Computers subset](openapi.computers.json) and [generated operation index](computers-operations.json) cover the contract; the ergonomic client remains #11805; existing device sync remains a separate contract. |
 | `/v1/mac-jobs*`, `/own-runs*`, `/work*`, `/work-hosts*` | Web job/run handlers | Account ownership plus host/job authorization and deployment gates | Implemented app-used surfaces; no guessed client operations. Contracts and schema coverage need owning-consumer qualification. |
 | `/v1/schedules*` | Web account schedule and sync handlers | App account and account-owned schedule store | Implemented app-used routes; payload, bounded sync/tombstones, and execution authority need separate schema qualification. |
@@ -268,3 +268,43 @@ The [file contract evidence](files-evidence.json) records authorization tests,
 the frozen 1.0.0 client's staging file workflow, cleanup, and deployments.
 `python3 scripts/api/check_files_public.py` checks the reference and signed-out
 routes without creating data; set both origins to staging to check it there.
+
+
+## Connected project sources
+
+The reference describes eight existing connection and Drive/source operations
+([qualification evidence](connected-sources-evidence.json)). They accept current
+`sess_` sessions or `oa_sk_` sign-in keys, with a separate `connectionBearer`
+security scheme. Cookies and `oak_` API keys are refused. Connections must be
+enabled for the account; other accounts receive `404 not_found`. Google must
+also allow the person to connect while app verification is pending.
+
+Source routes accept the account's own projects. A shared-project member,
+including an editor, receives `403 project_role`; a nonmember receives `404`.
+Project membership does not supply another person's Google credentials.
+Listing stored sources does not check Drive access and has no pagination.
+It can succeed after disconnect or grant revocation. Attaching checks the
+caller's live Drive access, returns `201` for a new source, and returns `200`
+with the original metadata for a duplicate. Limits are 20 sources per project
+and 50 per account. A duplicate retry still checks Drive and can fail after
+an earlier successful write. Disconnect keeps source metadata; detaching
+removes that metadata without deleting the Drive file and needs no live grant.
+
+Drive folder browsing passes Google's opaque `next` token back through `page`.
+Keep the same folder between pages. Search ignores `page` and returns
+`next: null`; an empty or over-512-byte page value is ignored. These lists
+are not snapshots. Google revocation returns `409 google_reconnect`; absent
+grants return `409 google_not_connected`, forbidden files return `403 drive_forbidden`, and downstream failures can return `502 google_unavailable`.
+Tool failures use `422 tool_failed`, including missing scopes. Photo/video
+reads can call a model and return usage and cost; the qualification uses only
+synthetic text and Sheets data, with no inference. All eight operations return
+JSON results; framework request refusals can use plain text. This surface offers
+no event stream. Gmail, Calendar, browser OAuth,
+and admin access-list operations retain their separate contracts.
+
+Run `cargo test -p openagents-web connections::tests --lib`, regenerate the
+app fixture with the `app_openapi` example, and run the public-reference checks
+to verify these shapes without Google credentials or live account resources.
+After deployment, `python3 scripts/api/check_connected_sources_public.py` checks
+the public reference and signed-out routing. Pass `--api
+https://staging.openagents.com` to check staging.

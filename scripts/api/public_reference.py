@@ -88,6 +88,30 @@ def check(document, expected_origin=None, complete=True):
         for path, item in thread_paths.items():
             if path.startswith('/v1/history'):
                 assert set(item) == {'get'}, 'Saved history must remain read-only'
+    # Account connection metadata does not grant Google access. Keep its
+    # separate credential, availability gate, and source shapes qualified.
+    connected = {
+        ('/v1/connections', 'get'),
+        ('/v1/connections/google', 'delete'),
+        ('/v1/connections/google/connect', 'post'),
+        ('/v1/connections/google/drive', 'get'),
+        ('/v1/connections/google/tools/{tool}', 'post'),
+        ('/v1/projects/{id}/sources', 'get'),
+        ('/v1/projects/{id}/sources', 'post'),
+        ('/v1/projects/{id}/sources/{source}', 'delete'),
+    }
+    for path, method in connected:
+        operation = app['paths'][path][method]
+        assert operation['security'] == [{'connectionBearer': []}], 'Connected-source authority drift'
+        assert set(operation['responses']) >= {'200', '401', '403', '404', '409', '422', '502', '503'}
+        assert all(set(response.get('content', {})) <= {'application/json', 'text/plain'}
+                   for response in operation['responses'].values()), 'Connected sources have no event stream'
+    source_schemas = slices[0]['components']['schemas']
+    assert source_schemas['AppConnectionSources']['properties']['data']['maxItems'] == 20
+    assert 'next' not in source_schemas['AppConnectionSources']['properties'], 'Stored source lists are not paginated'
+    assert source_schemas['AppConnectionDrivePage']['properties']['next']['type'] == ['string', 'null']
+    assert source_schemas['AppConnectionDeleted']['properties']['sources_kept']['maximum'] == 50
+    assert set(source_schemas['AppConnectionState']['enum']) == {'connected', 'not_connected', 'reconnect', 'unavailable'}
     ids = set()
     operations = 0
     paths = document['paths']

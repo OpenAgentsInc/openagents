@@ -26,6 +26,7 @@ pub(crate) mod access;
 pub(crate) mod chat;
 pub(crate) mod mail;
 pub(crate) mod media;
+pub(crate) mod openapi;
 pub(crate) mod sources;
 #[cfg(test)]
 mod tests;
