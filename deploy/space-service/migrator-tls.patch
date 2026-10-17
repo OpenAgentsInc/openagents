@@ -1,0 +1,14 @@
+diff --git a/crates/apps/db/migrator/Cargo.toml b/crates/apps/db/migrator/Cargo.toml
+--- a/crates/apps/db/migrator/Cargo.toml
++++ b/crates/apps/db/migrator/Cargo.toml
+@@ -28,2 +28,3 @@
+ pplx-space-common-cli = { workspace = true }
++pplx-space-common-svc = { workspace = true }
+ pplx-space-db-migrate = { workspace = true }
+diff --git a/crates/apps/db/migrator/src/main.rs b/crates/apps/db/migrator/src/main.rs
+--- a/crates/apps/db/migrator/src/main.rs
++++ b/crates/apps/db/migrator/src/main.rs
+@@ -29,2 +29,3 @@
+ async fn main() -> anyhow::Result<()> {
++    pplx_space_common_svc::install_default_rustls_crypto_provider();
+     pplx_space_common_cli::init_logging_with_startup_banner(SERVICE_NAME);

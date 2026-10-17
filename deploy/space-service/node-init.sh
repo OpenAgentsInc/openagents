@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Prepare an owned node. Join credentials are supplied separately as root files.
 set -euo pipefail
-space_role=${1:?Choose control or worker.}
-case "$space_role" in control|worker) ;; *) exit 2 ;; esac
+space_role=${1:?Choose control, worker, or builder.}
+case "$space_role" in control|worker|builder) ;; *) exit 2 ;; esac
 [[ $(id -u) == 0 ]] || { echo 'Run node setup as root.' >&2; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
@@ -41,7 +41,7 @@ if ! printf '%s  /usr/local/bin/k3s\n' "$space_k3s_sha" | sha256sum --check --st
   install -m 0755 /space/config/k3s.new /usr/local/bin/k3s
   rm /space/config/k3s.new
 fi
-if [[ $space_role == worker ]]; then
+if [[ $space_role != control ]]; then
   # Replacement keeps the node password and client state with the durable
   # disk. A running agent must be drained before changing its storage layout.
   install -d -m 0700 /space/k3s-node
@@ -75,7 +75,14 @@ with open('/dev/kvm', 'r+b', buffering=0) as kvm:
     os.close(vm)
 print('KVM API and VM creation passed.')
 PY
-  space_start='agent --data-dir=/space/k3s --server=https://10.219.14.10:6443 --token-file=/space/config/k3s-join --node-ip=10.219.14.11 --node-name=oa-space-service-worker --node-label=space.pplx.net/node-pool=sandbox'
+  if [[ $space_role == builder ]]; then
+    space_address=10.219.14.12
+    space_pool=builder
+  else
+    space_address=10.219.14.11
+    space_pool=sandbox
+  fi
+  space_start="agent --data-dir=/space/k3s --server=https://10.219.14.10:6443 --token-file=/space/config/k3s-join --node-ip=$space_address --node-name=oa-space-service-$space_role --node-label=space.pplx.net/node-pool=$space_pool"
 else
   space_start='server --data-dir=/space/k3s --advertise-address=10.219.14.10 --node-ip=10.219.14.10 --node-name=oa-space-service-control --tls-san=10.219.14.10 --cluster-cidr=10.220.0.0/16 --service-cidr=10.221.0.0/16 --flannel-backend=wireguard-native --disable=traefik,servicelb,local-storage --secrets-encryption --node-label=space.pplx.net/infra=true --write-kubeconfig-mode=600'
 fi

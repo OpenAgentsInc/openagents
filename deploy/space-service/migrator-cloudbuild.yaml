@@ -1,0 +1,38 @@
+substitutions:
+  _COMMIT: ''
+steps:
+  - name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        git init -q config
+        git -C config fetch -q --depth 1 https://github.com/OpenAgentsInc/openagents.git '${_COMMIT}'
+        git -C config checkout -q FETCH_HEAD
+        test "$$(git -C config rev-parse HEAD)" = '${_COMMIT}'
+        git init -q space
+        git -C space fetch -q --depth 1 https://github.com/perplexityai/SPACE.git de87b436c35dac056564bdd5b2a113c9046e189b
+        git -C space checkout -q FETCH_HEAD
+        git -C space apply ../config/deploy/space-service/migrator-tls.patch
+        # This adds only an existing workspace dependency; no version resolves.
+        python3 - <<'PY'
+        from pathlib import Path
+        p=Path('space/Cargo.lock'); s=p.read_text()
+        start=s.index('name = "pplx-space-db-migrator"'); end=s.index('[[package]]',start)
+        part=s[start:end]
+        assert '"pplx-space-common-cli",' in part and '"pplx-space-common-svc",' not in part
+        part=part.replace('"pplx-space-common-cli",','"pplx-space-common-cli",\n "pplx-space-common-svc",')
+        p.write_text(s[:start]+part+s[end:])
+        PY
+        sha256sum config/deploy/space-service/migrator-tls.patch space/Cargo.lock
+        cp config/deploy/space-service/migrator.Dockerfile space/
+  - name: gcr.io/cloud-builders/docker
+    dir: space
+    env: ['DOCKER_BUILDKIT=1']
+    args: ['build', '-f', 'migrator.Dockerfile', '--build-arg', 'OA_COMMIT=${_COMMIT}', '-t', 'us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/migrator:${_COMMIT}', '.']
+images: ['us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/migrator:${_COMMIT}']
+options:
+  machineType: E2_HIGHCPU_8
+  diskSizeGb: 80
+timeout: 1200s

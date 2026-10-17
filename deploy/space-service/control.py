@@ -109,8 +109,39 @@ def nodes():
         print(json.dumps({"node": instance["name"], "role": role, "zone": zone, "state": instance["status"], "disk_gib": size}))
 
 
+def builder():
+    """Create one credential-free builder that deletes itself after four hours."""
+    named_resource(
+        ["compute", "firewall-rules", "describe", f"{PREFIX}-builder-cluster"],
+        ["compute", "firewall-rules", "create", f"{PREFIX}-builder-cluster", f"--network={PREFIX}",
+         "--direction=INGRESS", "--action=ALLOW", "--rules=tcp:6443,tcp:10250,tcp:9800,udp:51820",
+         "--source-ranges=10.219.14.10/31,10.219.14.12/32",
+         f"--target-tags={PREFIX}-control,{PREFIX}-worker,{PREFIX}-builder",
+         f"--description={MARKER}", "--enable-logging"],
+    )
+    instance = named_resource(
+        ["compute", "instances", "describe", f"{PREFIX}-builder", "--zone=us-central1-b"],
+        ["compute", "instances", "create", f"{PREFIX}-builder", "--zone=us-central1-b",
+         "--machine-type=n2-standard-8", f"--subnet={PREFIX}-nodes", "--private-network-ip=10.219.14.12",
+         "--no-address", "--no-service-account", "--no-scopes", "--enable-nested-virtualization",
+         "--min-cpu-platform=Intel Cascade Lake", "--maintenance-policy=TERMINATE",
+         "--image-project=ubuntu-os-cloud", "--image=ubuntu-2404-noble-amd64-v20261016",
+         "--boot-disk-size=40GB", "--boot-disk-type=pd-balanced",
+         "--create-disk=name=oa-space-service-builder-data,size=200GB,type=pd-balanced,device-name=space-data,auto-delete=yes",
+         f"--tags={PREFIX}-operator,{PREFIX}-builder", f"--labels={LABELS},openagents-role=builder",
+         f"--description={MARKER}", "--metadata=enable-oslogin=TRUE,block-project-ssh-keys=TRUE",
+         "--shielded-secure-boot", "--max-run-duration=14400s", "--instance-termination-action=DELETE"], label=True,
+    )
+    if instance.get("serviceAccounts") or any(nic.get("accessConfigs") for nic in instance["networkInterfaces"]):
+        raise RuntimeError("The builder has an unexpected identity or public address.")
+    schedule = instance.get("scheduling", {})
+    if schedule.get("maxRunDuration", {}).get("seconds") not in (14400, "14400") or schedule.get("instanceTerminationAction") != "DELETE":
+        raise RuntimeError("The builder has no four-hour deletion limit.")
+    print(json.dumps({"builder": instance["name"], "state": instance["status"], "maximum_hours": 4}))
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["images", "database", "nodes"])
+    parser.add_argument("command", choices=["images", "database", "nodes", "builder"])
     args = parser.parse_args()
-    {"images": images, "database": database, "nodes": nodes}[args.command]()
+    {"images": images, "database": database, "nodes": nodes, "builder": builder}[args.command]()

@@ -32,11 +32,11 @@ def initialize(role):
         subprocess.run(["git", "merge-base", "--is-ancestor", previous, commit], check=True)
     subprocess.run(["gcloud", "compute", "scp", str(script), f"{PREFIX}-{role}:~/node-init-11814.sh",
         f"--project={PROJECT}", f"--zone={zone}", "--tunnel-through-iap", "--quiet"], check=True)
-    if role == "worker":
+    if role != "control":
         token = ssh("control", "sudo cat /space/k3s/server/node-token")
         if not token.startswith(b"K10") or not 50 < len(token) < 1024:
             raise RuntimeError("The cluster join credential is unavailable.")
-        ssh("worker", "sudo install -d -m 0700 /run/oa-space && sudo sh -c 'umask 077; cat >/run/oa-space/k3s-join'", token)
+        ssh(role, "sudo install -d -m 0700 /run/oa-space && sudo sh -c 'umask 077; cat >/run/oa-space/k3s-join'", token)
         del token
     output = ssh(role, "sudo bash ~/node-init-11814.sh " + role + " > ~/node-init-11814.log 2>&1 && sha256sum ~/node-init-11814.sh")
     cloud("compute", "instances", "add-labels", f"{PREFIX}-{role}", f"--zone={zone}", f"--labels=openagents-commit={commit}")
@@ -45,5 +45,5 @@ def initialize(role):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("role", choices=["control", "worker"])
+    parser.add_argument("role", choices=["control", "worker", "builder"])
     initialize(parser.parse_args().role)
