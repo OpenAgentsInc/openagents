@@ -138,6 +138,9 @@ impl CoreAccount {
         });
         this
     }
+    pub(crate) fn controller(&self) -> &Arc<Controller> {
+        &self.controller
+    }
     fn profile(&self, account: &str, edge: &str) -> PathBuf {
         self.data_dir.join(format!(
             "account-{}",
@@ -384,6 +387,72 @@ mod tests {
     struct Silent;
     impl AccountListener for Silent {
         fn on_account_changed(&self, _: AccountSnapshot) {}
+    }
+    #[tokio::test]
+    async fn signing_out_cancels_a_pending_cloud_start() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let server_entered = entered.clone();
+        let server_release = release.clone();
+        let server = tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let entered = server_entered.clone();
+                let release = server_release.clone();
+                tokio::spawn(async move {
+                    let mut request = Vec::new();
+                    let mut buf = [0; 1024];
+                    while !request.windows(4).any(|v| v == b"\r\n\r\n") {
+                        let n = socket.read(&mut buf).await.unwrap();
+                        if n == 0 {
+                            return;
+                        }
+                        request.extend_from_slice(&buf[..n]);
+                    }
+                    let body = if request.starts_with(b"POST /v1/cloud-host ") {
+                        entered.notify_one();
+                        release.notified().await;
+                        r#"{"computer":null,"engine":"running","device_name":"Our cloud","until_unix":null,"started_unix":null}"#
+                    } else {
+                        r#"{"account":{"id":"acct_fixture","label":"Fixture"},"workspaces":[]}"#
+                    };
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = socket.write_all(response.as_bytes()).await;
+                });
+            }
+        });
+        let root = tempfile::tempdir().unwrap();
+        let account = CoreAccount::from_store(
+            Client::new(Deployment::new(&format!("{origin}/v1"), &origin).unwrap()).unwrap(),
+            Arc::new(Memory),
+            root.path().into(),
+            Arc::new(Silent),
+        );
+        account
+            .controller
+            .clone()
+            .import_credential(format!("oa_sk_{}", "1".repeat(64)))
+            .await;
+        assert!(account.controller.lease().is_some());
+        let calling = account.clone();
+        let start = tokio::spawn(async move { calling.start_cloud_host().await });
+        tokio::time::timeout(Duration::from_secs(5), entered.notified())
+            .await
+            .unwrap();
+        account.controller.invalidate();
+        let result = tokio::time::timeout(Duration::from_secs(2), start).await;
+        release.notify_one();
+        server.abort();
+        assert!(matches!(
+            result.unwrap().unwrap(),
+            Err(CoreError::Auth { .. })
+        ));
     }
     #[tokio::test]
     async fn caches_are_scoped_and_logout_keeps_the_restore_fence() {

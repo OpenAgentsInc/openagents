@@ -95,6 +95,11 @@ feature keeps forms independent of the app's separate syntax-engine version.
   --target x86_64-unknown-linux-gnu.2.36` builds the headless engine alone,
   linking only libc and libm, for the cloud computers that run Our cloud.
 
+- Our cloud phone controls (#11852): the mobile Rust facade calls the shared
+  SDK with the current account's cancellation token and rejects replies after
+  sign-out. UIKit displays its status in Settings and adds Start Our cloud to
+  the new-session computer menu. The live phone check uses a dedicated account.
+
 - [OpenAgents #11894](https://github.com/OpenAgentsInc/openagents/issues/11894):
   `openagents_continuation.rs` carries a saved-chat reference through the normal
   folder, harness, and composer flow. `doc_host::continuations` links the new

@@ -1455,6 +1455,21 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
      */
     func storedLoginPresent() throws  -> Bool
     
+    /**
+     * Our cloud's current state.
+     */
+    func cloudHost() async throws  -> CloudHostView
+    
+    /**
+     * Start Our cloud (or return the run already going).
+     */
+    func startCloudHost() async throws  -> CloudHostView
+    
+    /**
+     * End Our cloud's engine and stop its computer.
+     */
+    func stopCloudHost() async throws  -> CloudHostView
+    
 }
 open class CoreAccount: CoreAccountProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -1664,6 +1679,63 @@ open func storedLoginPresent()throws  -> Bool  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Our cloud's current state.
+     */
+open func cloudHost()async throws  -> CloudHostView  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreaccount_cloud_host(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeCloudHostView_lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
+     * Start Our cloud (or return the run already going).
+     */
+open func startCloudHost()async throws  -> CloudHostView  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreaccount_start_cloud_host(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeCloudHostView_lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
+     * End Our cloud's engine and stop its computer.
+     */
+open func stopCloudHost()async throws  -> CloudHostView  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreaccount_stop_cloud_host(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeCloudHostView_lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
 }
     
 
@@ -8050,6 +8122,92 @@ public func FfiConverterTypeChatConfig_lift(_ buf: RustBuffer) throws -> ChatCon
 #endif
 public func FfiConverterTypeChatConfig_lower(_ value: ChatConfig) -> RustBuffer {
     return FfiConverterTypeChatConfig.lower(value)
+}
+
+
+public struct CloudHostView: Equatable, Hashable {
+    /**
+     * The engine's run is going (it may still be connecting).
+     */
+    public var running: Bool
+    /**
+     * The cloud computer's state, when there is one.
+     */
+    public var computerState: String?
+    /**
+     * The name the engine's device shows under.
+     */
+    public var deviceName: String
+    /**
+     * When the current run ends on its own.
+     */
+    public var untilUnix: UInt64?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The engine's run is going (it may still be connecting).
+         */running: Bool, 
+        /**
+         * The cloud computer's state, when there is one.
+         */computerState: String?, 
+        /**
+         * The name the engine's device shows under.
+         */deviceName: String, 
+        /**
+         * When the current run ends on its own.
+         */untilUnix: UInt64?) {
+        self.running = running
+        self.computerState = computerState
+        self.deviceName = deviceName
+        self.untilUnix = untilUnix
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CloudHostView: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudHostView: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudHostView {
+        return
+            try CloudHostView(
+                running: FfiConverterBool.read(from: &buf), 
+                computerState: FfiConverterOptionString.read(from: &buf), 
+                deviceName: FfiConverterString.read(from: &buf), 
+                untilUnix: FfiConverterOptionUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CloudHostView, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.running, into: &buf)
+        FfiConverterOptionString.write(value.computerState, into: &buf)
+        FfiConverterString.write(value.deviceName, into: &buf)
+        FfiConverterOptionUInt64.write(value.untilUnix, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudHostView_lift(_ buf: RustBuffer) throws -> CloudHostView {
+    return try FfiConverterTypeCloudHostView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudHostView_lower(_ value: CloudHostView) -> RustBuffer {
+    return FfiConverterTypeCloudHostView.lower(value)
 }
 
 
@@ -20780,6 +20938,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_stored_login_present() != 54303) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_cloud_host() != 19804) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_start_cloud_host() != 40867) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_stop_cloud_host() != 55892) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_agentlablistener_on_agent_lab_changed() != 41969) {

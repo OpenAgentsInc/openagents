@@ -181,6 +181,11 @@ final class AppModel {
     }
     fileprivate func handleAccount(_ snapshot: AccountSnapshot) {
         guard snapshot.generation >= accountGeneration else { return }
+        if snapshot.generation != accountGeneration {
+            cloudHost = nil
+            cloudHostBusy = false
+            cloudHostRequest &+= 1
+        }
         accountGeneration = snapshot.generation
         accountSnapshot = snapshot
         if isDemo { return }
@@ -708,6 +713,66 @@ final class AppModel {
 
     var projectOptions: [ProjectOption] {
         rawProjects.map { ProjectOption(id: $0.id, name: $0.name, path: $0.path, device: $0.deviceId, deviceName: $0.deviceName ?? deviceName($0.deviceId), online: $0.deviceOnline, git: $0.gitDetected, groupKey: $0.groupKey, groupName: $0.groupName, colorIndex: Int($0.colorIndex)) }
+    }
+
+    // MARK: Our cloud (#11852)
+
+    /// The device name Our cloud's engine shows under.
+    static let cloudHostName = "Our cloud"
+    /// Our cloud's last known state; nil until read or when it isn't offered.
+    private(set) var cloudHost: CloudHostView?
+    private(set) var cloudHostBusy = false
+    private var cloudHostRequest: UInt64 = 0
+    var offersCloudHost: Bool { account != nil && client != nil && !isDemo }
+    /// Our cloud's engine, once it has connected as a device.
+    var cloudHostDevice: HostOption? { hostOptions.first { $0.name == Self.cloudHostName } }
+
+    @MainActor func refreshCloudHost() async {
+        guard offersCloudHost, !cloudHostBusy, let account else { return }
+        let generation = accountGeneration
+        let request = cloudHostRequest
+        if let host = try? await account.cloudHost(), generation == accountGeneration, request == cloudHostRequest { cloudHost = host }
+        observers.values.forEach { $0() }
+    }
+
+    /// Start or stop Our cloud. Returns what to tell the person when it can't.
+    @MainActor func setCloudHost(running: Bool) async -> String? {
+        guard offersCloudHost, let account else { return "Log in to use Our cloud." }
+        guard !cloudHostBusy else { return nil }
+        cloudHostRequest &+= 1
+        let generation = accountGeneration
+        cloudHostBusy = true
+        observers.values.forEach { $0() }
+        defer {
+            if generation == accountGeneration {
+                cloudHostBusy = false
+                observers.values.forEach { $0() }
+            }
+        }
+        do {
+            let host = running ? try await account.startCloudHost() : try await account.stopCloudHost()
+            guard generation == accountGeneration else { return nil }
+            cloudHost = host
+            return nil
+        } catch let error as CoreError {
+            guard generation == accountGeneration else { return nil }
+            switch error {
+            case let .HostError(message), let .Auth(message), let .Network(message): return message
+            default: return "Our cloud isn't available right now. Try again later."
+            }
+        } catch {
+            return "Our cloud isn't available right now. Try again later."
+        }
+    }
+
+    /// One line on Our cloud's state, for its row.
+    var cloudHostDetail: String {
+        if cloudHostBusy { return "Working…" }
+        guard let host = cloudHost, host.running else { return "Run sessions on our computer, no desktop needed" }
+        if cloudHostDevice?.online != true { return "Starting… it appears under Devices when ready" }
+        guard let until = host.untilUnix else { return "Running" }
+        let time = DateFormatter.localizedString(from: Date(timeIntervalSince1970: TimeInterval(until)), dateStyle: .none, timeStyle: .short)
+        return "Running until \(time)"
     }
 
     var hostOptions: [HostOption] {

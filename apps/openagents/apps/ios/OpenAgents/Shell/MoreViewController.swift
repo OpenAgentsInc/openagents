@@ -108,6 +108,7 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
         super.viewWillAppear(animated)
         if dataSource != nil { reload() }
         refreshNotificationStatus()
+        Task { @MainActor [weak self] in await self?.app.refreshCloudHost() }
     }
 
     // MARK: Notifications
@@ -188,6 +189,10 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
         ])
         s.appendSections(["Devices"])
         s.appendItems(app.hostOptions.map { Row(id: "device:\($0.id)", title: $0.name, subtitle: $0.online ? "Online" : "Offline", symbol: "desktopcomputer", accessory: .dot($0.online)) })
+        if app.offersCloudHost {
+            let on = app.cloudHost?.running == true
+            s.appendItems([Row(id: "cloudhost", title: on ? "Stop Our cloud" : "Start Our cloud", subtitle: app.cloudHostDetail, symbol: "cloud", accessory: .none, destructive: on)])
+        }
         if app.voice.available {
             s.appendSections(["Voice"])
             s.appendItems([Row(id: "voice", title: "Voice", subtitle: app.voice.selectedStyle.map { "Codex voice · \($0.capitalized)" } ?? "Codex voice device and style", symbol: "waveform")])
@@ -229,6 +234,18 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             about.addAction(UIAlertAction(title: "Done", style: .default))
             present(about, animated: true)
         case "voice": navigationController?.pushViewController(VoiceViewController(app: app), animated: true)
+        case "cloudhost":
+            guard !app.cloudHostBusy else { return }
+            let start = app.cloudHost?.running != true
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if let message = await self.app.setCloudHost(running: start) {
+                    let alert = UIAlertController(title: start ? "Couldn't start Our cloud" : "Couldn't stop Our cloud", message: message, preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self.present(alert, animated: true)
+                }
+                self.reload()
+            }
         case let id where id.hasPrefix("appearance:"):
             let style = Int(id.dropFirst(11)) ?? 0
             UserDefaults.standard.set(style, forKey: "appearance")

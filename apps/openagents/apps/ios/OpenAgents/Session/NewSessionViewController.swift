@@ -102,6 +102,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        Task { @MainActor [weak self] in await self?.app.refreshCloudHost() }
         // The app can be killed in the background: keep the draft first.
         backgroundObserver = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
             self?.rememberDraft()
@@ -355,12 +356,28 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
                 }
             })
         }
-        return UIMenu(title: "Run on", children: app.hostOptions.map { h in
-            UIAction(title: h.name, subtitle: h.online ? "Online" : "Offline", image: UIImage(systemName: "desktopcomputer"), state: h.id == draft.hostId ? .on : .off) { [weak self] _ in
+        var hosts: [UIMenuElement] = app.hostOptions.map { h in
+            UIAction(title: h.name, subtitle: h.online ? "Online" : "Offline", image: UIImage(systemName: h.name == AppModel.cloudHostName ? "cloud" : "desktopcomputer"), state: h.id == draft.hostId ? .on : .off) { [weak self] _ in
                 self?.draft.hostId = h.id
                 self?.loadModels()
             }
-        })
+        }
+        if app.offersCloudHost, app.cloudHostDevice?.online != true {
+            let starting = app.cloudHost?.running == true
+            hosts.append(UIAction(title: starting ? "Our cloud is starting…" : "Start Our cloud", subtitle: "Runs on our computer, no desktop needed", image: UIImage(systemName: "cloud"), attributes: starting || app.cloudHostBusy ? .disabled : []) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if let message = await self.app.setCloudHost(running: true) {
+                        let alert = UIAlertController(title: "Couldn't start Our cloud", message: message, preferredStyle: .alert)
+                        alert.addAction(UIAlertAction(title: "OK", style: .default))
+                        self.present(alert, animated: true)
+                    } else {
+                        Toast.show("Starting Our cloud. Choose it under Run on when it's ready.", in: self.view.window)
+                    }
+                }
+            })
+        }
+        return UIMenu(title: "Run on", children: hosts)
     }
 
     private func branchMenu() -> UIMenu {
