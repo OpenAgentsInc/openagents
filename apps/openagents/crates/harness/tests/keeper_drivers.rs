@@ -1,4 +1,4 @@
-//! Claude Code, Codex, ACP agents, Pi, and Cursor under keepers (#11930), against the
+//! Claude Code, Codex, ACP agents, Pi, Cursor, and OpenCode under keepers (#11930), against the
 //! fake CLIs in `tests/fixtures`: an engine dies mid-turn, and a new engine
 //! picks the run up with no gap or duplicate, asks a pending question again,
 //! and steers the same process. No real agent binary is involved.
@@ -14,7 +14,7 @@ use futures::stream::BoxStream;
 use openagents_harness::keeper::{self, Detach, KeeperScope};
 use openagents_harness::{
     AcpHarness, CancellationToken, ClaudeHarness, CodexHarness, CursorHarness, Harness,
-    HarnessError, PiHarness, RunControls, SteerMessage, TurnControl,
+    HarnessError, OpencodeHarness, PiHarness, RunControls, SteerMessage, TurnControl,
 };
 use openagents_proto::{
     AgentEvent, DoneStatus, RunRequest, SandboxLevel, UserInputAnswer, UserInputQuestion,
@@ -39,6 +39,8 @@ enum Agent {
     Pi,
     /// The Cursor SDK shim, which never asks a question.
     Cursor,
+    /// OpenCode's HTTP server, picked up over the network.
+    Opencode,
 }
 
 fn fixture(name: &str) -> PathBuf {
@@ -66,6 +68,11 @@ fn harness(agent: Agent, keepers: bool) -> Arc<dyn Harness> {
             AcpHarness::grok()
                 .with_executable(fixture("fake-kept-acp.py"))
                 .with_sessions_root(std::env::temp_dir().join("openagents-kept-acp-none"))
+                .with_keepers(keepers),
+        ),
+        Agent::Opencode => Arc::new(
+            OpencodeHarness::new()
+                .with_executable(fixture("fake-kept-opencode.py"))
                 .with_keepers(keepers),
         ),
         Agent::Cursor => Arc::new(
@@ -206,12 +213,29 @@ async fn wait_for(what: &str, mut check: impl FnMut() -> bool) {
     panic!("timed out waiting for {what}");
 }
 
+/// What the engine lends a driver of the turn engine A handed over
+/// (`sessions/keepers.rs`): the events since the last turn boundary.
+fn handed(before: &[AgentEvent]) -> serde_json::Value {
+    let turn = before
+        .iter()
+        .rposition(|e| matches!(e, AgentEvent::Done { .. } | AgentEvent::Steered { .. }))
+        .map_or(0, |at| at + 1);
+    let mut text = String::new();
+    for event in &before[turn..] {
+        if let AgentEvent::TextDelta { text: delta } = event {
+            text.push_str(delta);
+        }
+    }
+    serde_json::json!({ "text": text, "betweenTurns": false })
+}
+
 /// Engine B: pick up the one kept run.
 async fn adopt(
     agent: Agent,
     root: &Path,
     request: RunRequest,
     asked: Option<Asked>,
+    before: &[AgentEvent],
 ) -> (
     BoxStream<'static, Result<AgentEvent, HarnessError>>,
     mpsc::Sender<SteerMessage>,
@@ -221,13 +245,12 @@ async fn adopt(
     assert_eq!(found.len(), 1);
     let link = keeper::client::connect(&found[0].dir, None).await.unwrap();
     let (controls, steer) = controls(asked);
-    let stream = keeper::scope(
-        scope(root),
-        harness(agent, true).attach(request, controls, link),
-    )
-    .await
-    .expect("the driver picks up runs")
-    .unwrap();
+    let mut scope = scope(root);
+    scope.meta["handed"] = handed(before);
+    let stream = keeper::scope(scope, harness(agent, true).attach(request, controls, link))
+        .await
+        .expect("the driver picks up runs")
+        .unwrap();
     (stream, steer, found[0].dir.clone())
 }
 
@@ -278,7 +301,7 @@ async fn picks_up_mid_turn_and_steers(agent: Agent) {
     })
     .await;
 
-    let (mut stream, steer, run) = adopt(agent, &root, run, None).await;
+    let (mut stream, steer, run) = adopt(agent, &root, run, None, &before).await;
     let after = until_done(&mut stream).await;
     let all: Vec<AgentEvent> = before.iter().chain(&after).cloned().collect();
     assert_eq!(
@@ -328,7 +351,7 @@ async fn a_pending_question_comes_back(agent: Agent) {
         Agent::Codex => "requestApproval",
         Agent::Acp => "request_permission",
         Agent::Pi => "extension_ui_request",
-        Agent::Cursor => unreachable!("Cursor's shim never asks"),
+        Agent::Cursor | Agent::Opencode => unreachable!("not asked here"),
     };
     wait_for("the question", || {
         std::fs::read_to_string(&journal).is_ok_and(|j| j.contains(ask))
@@ -338,7 +361,7 @@ async fn a_pending_question_comes_back(agent: Agent) {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let (asked_tx, mut asked) = mpsc::unbounded_channel();
-    let (mut stream, _steer, _) = adopt(agent, &root, run, Some(asked_tx)).await;
+    let (mut stream, _steer, _) = adopt(agent, &root, run, Some(asked_tx), &before).await;
     let collect = tokio::spawn(async move { until_done(&mut stream).await });
     let (questions, answer) = tokio::time::timeout(Duration::from_secs(5), asked.recv())
         .await
@@ -348,7 +371,7 @@ async fn a_pending_question_comes_back(agent: Agent) {
         Agent::Claude => ("B", "answered B"),
         Agent::Codex => ("Yes", "accepted"),
         Agent::Acp | Agent::Pi => ("B", "answered B"),
-        Agent::Cursor => unreachable!(),
+        Agent::Cursor | Agent::Opencode => unreachable!(),
     };
     answer
         .send(vec![UserInputAnswer {
@@ -462,7 +485,7 @@ async fn an_acp_agent_is_picked_up_during_a_later_turn() {
     .join()
     .unwrap();
 
-    let (mut stream, _steer, _) = adopt(Agent::Acp, &root, run, None).await;
+    let (mut stream, _steer, _) = adopt(Agent::Acp, &root, run, None, &before).await;
     let after = until_done(&mut stream).await;
     let all: Vec<AgentEvent> = before.iter().chain(&after).cloned().collect();
     assert_eq!(
@@ -502,4 +525,14 @@ async fn cursor_is_picked_up_mid_turn_and_steered() {
 #[tokio::test]
 async fn cursor_starts_without_a_keeper_when_turned_off() {
     the_escape_hatch_starts_without_a_keeper(Agent::Cursor).await;
+}
+
+#[tokio::test]
+async fn opencode_is_picked_up_mid_turn_and_steered() {
+    picks_up_mid_turn_and_steers(Agent::Opencode).await;
+}
+
+#[tokio::test]
+async fn opencode_starts_without_a_keeper_when_turned_off() {
+    the_escape_hatch_starts_without_a_keeper(Agent::Opencode).await;
 }

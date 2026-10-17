@@ -85,7 +85,14 @@ pub(crate) enum Wire {
     /// The Cursor SDK shim's JSONL: `{"op"}` lines in, `{"ev"}` frames out,
     /// and nothing the shim waits on an answer to.
     Cursor,
+    /// A server the driver talks to over the network (OpenCode): its stdio
+    /// is only logs.
+    Server,
 }
+
+/// The file in a run folder where a driver keeps what the next engine needs
+/// to reach its agent ([`Kept::note`]).
+const NOTE: &str = "driver.json";
 
 /// The prefix of Pi request ids; the number after it counts up.
 const PI_ID: &str = "openagents-";
@@ -97,7 +104,7 @@ impl Wire {
 
     /// Adopting replays the driver's handshake against the journal.
     fn replays(self) -> bool {
-        !matches!(self, Wire::Claude | Wire::Cursor)
+        !matches!(self, Wire::Claude | Wire::Cursor | Wire::Server)
     }
 
     /// A stdout line the agent waits on an answer to.
@@ -109,7 +116,7 @@ impl Wire {
             Wire::Codex | Wire::Acp => {
                 (line["method"].is_string() && is_id(&line["id"])).then(|| line["id"].to_string())
             }
-            Wire::Cursor => None,
+            Wire::Cursor | Wire::Server => None,
             Wire::Pi => (line["type"] == "extension_ui_request"
                 && matches!(
                     line["method"].as_str(),
@@ -132,14 +139,14 @@ impl Wire {
             .then(|| line["id"].to_string()),
             Wire::Pi => (line["type"] == "extension_ui_response" && is_id(&line["id"]))
                 .then(|| line["id"].to_string()),
-            Wire::Cursor => None,
+            Wire::Cursor | Wire::Server => None,
         }
     }
 
     /// A request the driver sends (Codex, ACP, Pi), by its number.
     fn request_id(self, line: &Value) -> Option<i64> {
         match self {
-            Wire::Claude | Wire::Cursor => None,
+            Wire::Claude | Wire::Cursor | Wire::Server => None,
             Wire::Codex | Wire::Acp => line["method"]
                 .is_string()
                 .then(|| line["id"].as_i64())
@@ -153,7 +160,7 @@ impl Wire {
     /// A response to one of the driver's requests (Codex, ACP, Pi), by its id.
     fn response_id(self, line: &Value) -> Option<i64> {
         match self {
-            Wire::Claude | Wire::Cursor => None,
+            Wire::Claude | Wire::Cursor | Wire::Server => None,
             Wire::Codex | Wire::Acp => (line.get("method").is_none()
                 && (line.get("result").is_some() || line.get("error").is_some()))
             .then(|| response_id(&line["id"]))
@@ -371,6 +378,8 @@ struct State {
 /// The engine's end of an agent under a keeper.
 pub(crate) struct Kept {
     wire: Wire,
+    /// The run folder.
+    dir: std::path::PathBuf,
     sender: LinkSender,
     detach: Detach,
     pid: u32,
@@ -396,6 +405,7 @@ impl Kept {
         adopting: Option<(u64, Scan)>,
     ) -> RuntimeChild {
         let pid = link.pid;
+        let dir = link.dir.clone();
         let (sender, frames) = link.into_parts();
         let mut state = State::default();
         let mut journaled = HashMap::new();
@@ -412,6 +422,7 @@ impl Kept {
         let (exit_tx, exit) = watch::channel(None);
         let kept = Arc::new(Kept {
             wire,
+            dir,
             sender,
             detach,
             pid,
@@ -550,6 +561,25 @@ impl Kept {
             }
             written.await;
         }
+    }
+
+    /// Keep `note` in the run folder for the next engine, replacing the last.
+    pub(crate) fn note(&self, note: &Value) -> io::Result<()> {
+        let path = self.dir.join(NOTE);
+        let partial = self.dir.join(format!("{NOTE}.partial"));
+        let mut file = std::fs::OpenOptions::new();
+        file.write(true).create(true).truncate(true);
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            file.mode(0o600);
+        }
+        std::io::Write::write_all(&mut file.open(&partial)?, &serde_json::to_vec(note)?)?;
+        std::fs::rename(partial, path)
+    }
+
+    /// What the driver of an earlier engine noted ([`Self::note`]).
+    pub(crate) fn noted(&self) -> Option<Value> {
+        serde_json::from_slice(&std::fs::read(self.dir.join(NOTE)).ok()?).ok()
     }
 
     /// Adopting: the first line the earlier engine wrote to the agent.

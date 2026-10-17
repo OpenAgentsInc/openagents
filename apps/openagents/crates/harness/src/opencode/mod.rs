@@ -52,6 +52,12 @@
 //! A prompt that produces NO session-scoped event within
 //! [`default_stall_bound`] (`OPENAGENTS_OPENCODE_STALL_MS`, 0 disables) errors
 //! out instead of spinning "Working" forever.
+//!
+//! Keepers (#11930): a run's server starts under a keeper when the engine
+//! lends one, and the driver notes its port, password, and session in the
+//! run folder. The next engine reconnects HTTP and the bus, and catches the
+//! turn up from the session's messages (1.x), emitting only what the
+//! earlier engine had not handed over ([`Handed`]).
 
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
@@ -238,6 +244,10 @@ pub struct OpencodeHarness {
     /// Coalesce concurrent picker/title probes: several cold opencode boots
     /// at once are slower than one.
     probe_lock: tokio::sync::Mutex<()>,
+    /// Run under a keeper when the engine lends one (#11930); `None` reads
+    /// [`crate::keeper::ENV`].
+    #[cfg(unix)]
+    keepers: Option<bool>,
 }
 
 impl Default for OpencodeHarness {
@@ -253,6 +263,8 @@ impl Default for OpencodeHarness {
             models_cache: crate::catalog::Catalog::default(),
             commands_cache: tokio::sync::OnceCell::new(),
             probe_lock: tokio::sync::Mutex::new(()),
+            #[cfg(unix)]
+            keepers: None,
         }
     }
 }
@@ -272,6 +284,13 @@ impl OpencodeHarness {
     #[cfg(unix)]
     pub fn with_launch_broker(mut self, broker: crate::process::LaunchBroker) -> Self {
         self.launch_broker = Some(broker);
+        self
+    }
+
+    /// Run under a keeper when the engine lends one, or never.
+    #[cfg(unix)]
+    pub fn with_keepers(mut self, keepers: bool) -> Self {
+        self.keepers = Some(keepers);
         self
     }
 
@@ -335,6 +354,39 @@ impl OpencodeHarness {
             inline_agent,
             #[cfg(unix)]
             broker,
+        )
+        .await
+    }
+
+    /// The run's server: under a keeper when the engine lends one, the
+    /// earlier engine's for `adopt`, else a child of this process.
+    #[cfg(unix)]
+    async fn run_server(
+        &self,
+        cwd: Option<&str>,
+        mcp: Option<&openagents_proto::McpServer>,
+        inline_agent: Option<(&str, &str)>,
+        adopt: Option<crate::keeper::Link>,
+    ) -> Result<Server, HarnessError> {
+        if let Some(link) = adopt {
+            return Server::adopt(&self.resolve_executable()?, link).await;
+        }
+        let keep = self.base_url.is_none()
+            && self.launch_broker.is_none()
+            && self.keepers.unwrap_or_else(crate::keeper::allowed_by_env);
+        if !keep {
+            return self
+                .server_with_broker(cwd, mcp, inline_agent, self.launch_broker.as_ref())
+                .await;
+        }
+        Server::launch(
+            &self.resolve_executable()?,
+            cwd,
+            self.startup_timeout,
+            mcp,
+            inline_agent,
+            None,
+            true,
         )
         .await
     }
@@ -500,8 +552,35 @@ impl Harness for OpencodeHarness {
 
     async fn run(
         &self,
+        request: RunRequest,
+        controls: RunControls,
+    ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
+        self.run_agent(
+            request,
+            controls,
+            #[cfg(unix)]
+            None,
+        )
+        .await
+    }
+
+    #[cfg(unix)]
+    async fn attach(
+        &self,
+        request: RunRequest,
+        controls: RunControls,
+        link: crate::keeper::Link,
+    ) -> Option<Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError>> {
+        Some(self.run_agent(request, controls, Some(link)).await)
+    }
+}
+
+impl OpencodeHarness {
+    async fn run_agent(
+        &self,
         mut request: RunRequest,
         controls: RunControls,
+        #[cfg(unix)] adopt: Option<crate::keeper::Link>,
     ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
         // The engine intentionally leaves OpenCode's canonical invocation
         // intact. Capture the selected identity before converting it to the
@@ -521,19 +600,32 @@ impl Harness for OpencodeHarness {
         if let Some(name) = &agent_name {
             request.model_options.insert("agent".into(), json!(name));
         }
+        #[cfg(unix)]
+        let adopted = adopt.is_some().then(Handed::from_scope);
+        #[cfg(not(unix))]
+        let adopted: Option<Handed> = None;
+        #[cfg(unix)]
+        let server = self
+            .run_server(
+                cwd.as_deref(),
+                request.mcp.as_ref(),
+                agent_name.as_deref().zip(instructions.as_deref()),
+                adopt,
+            )
+            .await?;
+        #[cfg(not(unix))]
         let server = self
             .server_with_broker(
                 cwd.as_deref(),
                 request.mcp.as_ref(),
                 agent_name.as_deref().zip(instructions.as_deref()),
-                #[cfg(unix)]
-                self.launch_broker.as_ref(),
             )
             .await?;
         let (event_tx, event_rx) = mpsc::channel::<Result<AgentEvent, HarnessError>>(256);
         tokio::spawn(run_session(Session {
             #[cfg(unix)]
             broker: self.launch_broker.clone(),
+            adopted,
             server,
             event_tx,
             controls,
@@ -564,6 +656,9 @@ struct Server {
     /// Wire generation, resolved once via the health endpoints.
     protocol: tokio::sync::OnceCell<Protocol>,
     version: tokio::sync::OnceCell<ServerVersion>,
+    /// Under a keeper: what the next engine needs to reach this server.
+    #[cfg(unix)]
+    note: Option<Value>,
 }
 
 /// The attached server's wire generation: the 1.x "v1" global namespace
@@ -652,6 +747,80 @@ impl Server {
             stderr_tail: crate::StderrTail::default(),
             protocol: tokio::sync::OnceCell::new(),
             version: tokio::sync::OnceCell::new(),
+            #[cfg(unix)]
+            note: None,
+        }
+    }
+
+    /// The server a keeper still holds for an earlier engine's run, from
+    /// what that engine noted in the run folder.
+    #[cfg(unix)]
+    async fn adopt(exe: &std::path::Path, link: crate::keeper::Link) -> Result<Self, HarnessError> {
+        let command = Command::new(exe);
+        let Some(mut child) = crate::keeper::kept::child(
+            &command,
+            crate::keeper::kept::Wire::Server,
+            true,
+            false,
+            Some(link),
+        )
+        .await?
+        else {
+            return Err(HarnessError::Protocol("the opencode keeper is gone".into()));
+        };
+        let note = child
+            .keeper()
+            .and_then(|kept| kept.noted())
+            .ok_or_else(|| {
+                HarnessError::Protocol("the opencode keeper has no server note".into())
+            })?;
+        let (Some(port), Some(password)) = (note["port"].as_u64(), note["password"].as_str())
+        else {
+            return Err(HarnessError::Protocol(
+                "the opencode server note is incomplete".into(),
+            ));
+        };
+        let stderr_tail = drain_output(&mut child);
+        let mut server = Self {
+            child: Some(child),
+            base: format!("http://127.0.0.1:{port}"),
+            auth: Some(basic_auth(password)),
+            client: http_client(),
+            stderr_tail,
+            protocol: tokio::sync::OnceCell::new(),
+            version: tokio::sync::OnceCell::new(),
+            note: Some(note),
+        };
+        match Protocol::detect(&server).await {
+            Ok(Some(protocol)) => {
+                let _ = server.protocol.set(protocol);
+                Ok(server)
+            }
+            Ok(None) => {
+                server.shutdown(Duration::from_secs(1)).await;
+                Err(HarnessError::Protocol(
+                    "the kept opencode server did not answer".into(),
+                ))
+            }
+            Err(error) => {
+                server.shutdown(Duration::from_secs(1)).await;
+                Err(error)
+            }
+        }
+    }
+
+    /// Under a keeper: note the run's session for the next engine.
+    #[cfg(unix)]
+    fn note_session(&self, session_id: &str) {
+        let (Some(child), Some(note)) = (&self.child, &self.note) else {
+            return;
+        };
+        if let Some(kept) = child.keeper() {
+            let mut note = note.clone();
+            note["session"] = json!(session_id);
+            if let Err(error) = kept.note(&note) {
+                tracing::warn!(target: "openagents_harness::opencode", %error, "could not note the session for the next engine");
+            }
         }
     }
 
@@ -699,6 +868,31 @@ impl Server {
         mcp: Option<&openagents_proto::McpServer>,
         inline_agent: Option<(&str, &str)>,
         #[cfg(unix)] broker: Option<&crate::process::LaunchBroker>,
+    ) -> Result<Self, HarnessError> {
+        Self::launch(
+            exe,
+            cwd,
+            startup,
+            mcp,
+            inline_agent,
+            #[cfg(unix)]
+            broker,
+            #[cfg(unix)]
+            false,
+        )
+        .await
+    }
+
+    /// [`Self::spawn_with_broker`], under a keeper when `keep` and the
+    /// engine lent a scope.
+    async fn launch(
+        exe: &std::path::Path,
+        cwd: Option<&str>,
+        startup: Duration,
+        mcp: Option<&openagents_proto::McpServer>,
+        inline_agent: Option<(&str, &str)>,
+        #[cfg(unix)] broker: Option<&crate::process::LaunchBroker>,
+        #[cfg(unix)] keep: bool,
     ) -> Result<Self, HarnessError> {
         let port = free_localhost_port().ok_or_else(|| {
             HarnessError::Protocol("no free localhost port for opencode serve".into())
@@ -756,45 +950,45 @@ impl Server {
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        let mut child = crate::process::RuntimeChild::launch(
-            cmd,
-            #[cfg(unix)]
-            broker,
-            crate::process::RuntimePipes::Server,
-        )
-        .await
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                HarnessError::NotInstalled(crate::executable::binary_hint(exe))
-            } else {
-                HarnessError::Io(e)
-            }
-        })?;
-        let stderr_tail = crate::StderrTail::default();
-        if let Some(stderr) = child.stderr.take() {
-            let tail = stderr_tail.clone();
-            tokio::spawn(async move {
-                let mut lines = tokio::io::BufReader::new(stderr).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    tracing::debug!(target: "openagents_harness::opencode", "stderr: {line}");
-                    tail.push(&line);
+        #[cfg(unix)]
+        let kept =
+            crate::keeper::kept::child(&cmd, crate::keeper::kept::Wire::Server, keep, false, None)
+                .await?;
+        #[cfg(not(unix))]
+        let kept: Option<crate::process::RuntimeChild> = None;
+        let mut child = match kept {
+            Some(child) => child,
+            None => crate::process::RuntimeChild::launch(
+                cmd,
+                #[cfg(unix)]
+                broker,
+                crate::process::RuntimePipes::Server,
+            )
+            .await
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    HarnessError::NotInstalled(crate::executable::binary_hint(exe))
+                } else {
+                    HarnessError::Io(e)
                 }
-            });
-        }
-
-        use base64::Engine as _;
-        let auth = format!(
-            "Basic {}",
-            base64::engine::general_purpose::STANDARD.encode(format!("opencode:{password}"))
-        );
+            })?,
+        };
+        let stderr_tail = drain_output(&mut child);
+        // What the next engine needs to reach a kept server.
+        #[cfg(unix)]
+        let note = child
+            .keeper()
+            .map(|_| json!({ "port": port, "password": password }));
         let mut server = Self {
             child: Some(child),
             base: format!("http://127.0.0.1:{port}"),
-            auth: Some(auth),
+            auth: Some(basic_auth(&password)),
             client: http_client(),
             stderr_tail,
             protocol: tokio::sync::OnceCell::new(),
             version: tokio::sync::OnceCell::new(),
+            #[cfg(unix)]
+            note,
         };
 
         // Readiness: the server binds a few seconds into the process's life
@@ -1070,6 +1264,37 @@ impl Server {
             .await
             .map(|_| ())
     }
+}
+
+/// Tail the server's stderr. A kept server's stdout is piped through its
+/// keeper too: read it so the keeper's frames are acknowledged.
+fn drain_output(child: &mut crate::process::RuntimeChild) -> crate::StderrTail {
+    let stderr_tail = crate::StderrTail::default();
+    if let Some(stderr) = child.stderr.take() {
+        let tail = stderr_tail.clone();
+        tokio::spawn(async move {
+            let mut lines = tokio::io::BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                tracing::debug!(target: "openagents_harness::opencode", "stderr: {line}");
+                tail.push(&line);
+            }
+        });
+    }
+    if let Some(mut stdout) = child.stdout.take() {
+        tokio::spawn(async move {
+            let _ = tokio::io::copy(&mut stdout, &mut tokio::io::sink()).await;
+        });
+    }
+    stderr_tail
+}
+
+/// The `Authorization` value for a server's per-run password.
+fn basic_auth(password: &str) -> String {
+    use base64::Engine as _;
+    format!(
+        "Basic {}",
+        base64::engine::general_purpose::STANDARD.encode(format!("opencode:{password}"))
+    )
 }
 
 fn http_client() -> reqwest::Client {
@@ -1425,6 +1650,9 @@ fn unwrap_data(value: Value) -> Value {
 struct Session {
     #[cfg(unix)]
     broker: Option<crate::process::LaunchBroker>,
+    /// Picking up an earlier engine's run from its keeper: what that engine
+    /// handed over of the turn.
+    adopted: Option<Handed>,
     server: Server,
     event_tx: mpsc::Sender<Result<AgentEvent, HarnessError>>,
     controls: RunControls,
@@ -1597,6 +1825,7 @@ async fn run_session(session: Session) {
     let Session {
         #[cfg(unix)]
         broker,
+        adopted,
         mut server,
         event_tx,
         controls,
@@ -1626,6 +1855,24 @@ async fn run_session(session: Session) {
 
     // ---- session create/resume -------------------------------------------
     let setup = async {
+        // A picked-up run's server already runs its session.
+        #[cfg(unix)]
+        let noted = server
+            .note
+            .as_ref()
+            .and_then(|note| note["session"].as_str())
+            .map(str::to_owned);
+        #[cfg(not(unix))]
+        let noted: Option<String> = None;
+        if adopted.is_some() {
+            let session_id = noted.ok_or_else(|| {
+                HarnessError::Protocol(
+                    "the earlier engine did not note its opencode session".into(),
+                )
+            })?;
+            let providers = server.provider_catalog(dir).await.unwrap_or_default();
+            return Ok((session_id, providers));
+        }
         let session_id = match &request.resume {
             Some(resume) => {
                 // Sessions are durable server-side: resume = reuse the id.
@@ -1679,6 +1926,8 @@ async fn run_session(session: Session) {
                 .set_model(&session_id, &provider, &model_id, variant.as_deref(), dir)
                 .await?;
         }
+        #[cfg(unix)]
+        server.note_session(&session_id);
         Ok::<(String, ProviderCatalog), HarnessError>((session_id, providers))
     };
     let (session_id, providers) = tokio::select! {
@@ -1728,18 +1977,20 @@ async fn run_session(session: Session) {
     drop(providers);
 
     let mut assistant_message_id = new_message_id();
-    if !send(
-        &event_tx,
-        AgentEvent::SessionStarted {
-            harness: HarnessId::Opencode,
-            model: request.model.clone().unwrap_or_default(),
-            tools: Vec::new(),
-            cwd: request.cwd.clone(),
-            session_id: session_id.clone(),
-            assistant_message_id: assistant_message_id.clone(),
-        },
-    )
-    .await
+    // The earlier engine announced a picked-up run.
+    if adopted.is_none()
+        && !send(
+            &event_tx,
+            AgentEvent::SessionStarted {
+                harness: HarnessId::Opencode,
+                model: request.model.clone().unwrap_or_default(),
+                tools: Vec::new(),
+                cwd: request.cwd.clone(),
+                session_id: session_id.clone(),
+                assistant_message_id: assistant_message_id.clone(),
+            },
+        )
+        .await
     {
         server.shutdown(kill_grace).await;
         return;
@@ -1755,6 +2006,7 @@ async fn run_session(session: Session) {
             .unwrap_or_default(),
     };
     if !commands.is_empty()
+        && adopted.is_none()
         && !send(
             &event_tx,
             AgentEvent::AvailableCommands {
@@ -1800,24 +2052,25 @@ async fn run_session(session: Session) {
     let stall = stall_bound();
     let (command_failure_tx, mut command_failure_rx) = mpsc::unbounded_channel();
     let mut turn_generation = 0_u64;
-    if let Err(e) = post_prompt(
-        &server,
-        &bus_tx,
-        &session_id,
-        dir,
-        &commands,
-        &request.prompt,
-        initial_native_command_selected,
-        turn_generation,
-        &command_failure_tx,
-        TurnSpec {
-            agent,
-            model: model.as_ref(),
-            variant: variant.as_deref(),
-            attachments: &request.attachments,
-        },
-    )
-    .await
+    if adopted.is_none()
+        && let Err(e) = post_prompt(
+            &server,
+            &bus_tx,
+            &session_id,
+            dir,
+            &commands,
+            &request.prompt,
+            initial_native_command_selected,
+            turn_generation,
+            &command_failure_tx,
+            TurnSpec {
+                agent,
+                model: model.as_ref(),
+                variant: variant.as_deref(),
+                attachments: &request.attachments,
+            },
+        )
+        .await
     {
         let _ = send(
             &event_tx,
@@ -1842,8 +2095,73 @@ async fn run_session(session: Session) {
     }
     let mut turn = TurnState::begin(stall);
 
-    // ---- main loop --------------------------------------------------------
+    // ---- picked up from a keeper -------------------------------------------
+    // The turn goes on where it is: catch up on what the earlier engine
+    // never handed over, then follow the bus.
     let mut main_feed = SessionFeed::default();
+    if let Some(handed) = &adopted {
+        let running = server
+            .session_running(&session_id, dir)
+            .await
+            .unwrap_or(true);
+        turn.stall_deadline = None;
+        turn.idle_ready = true;
+        if handed.between_turns && !running {
+            turn.active = false;
+        }
+        let mut prefix: Vec<BusMsg> = Vec::new();
+        let mut history_text = HashMap::new();
+        if turn.active {
+            match server.protocol().await {
+                Protocol::V1 => {
+                    match server
+                        .get_json(&format!("/session/{session_id}/message"), dir)
+                        .await
+                    {
+                        Ok(history) => {
+                            (prefix, history_text) = catch_up(&mut main_feed, &history, handed);
+                        }
+                        Err(error) => tracing::warn!(
+                            target: "openagents_harness::opencode", %error,
+                            "could not read the session to catch up a picked-up run"
+                        ),
+                    }
+                }
+                // 2.x projects its messages differently; the bus carries
+                // the turn from here.
+                Protocol::V2 => {}
+            }
+            // Not running: the turn ended with no engine. The re-sync on
+            // `Connected` settles it after the catch-up.
+            if !running {
+                prefix.push(BusMsg::Connected);
+            }
+        }
+        // The bus delivered some of what the history holds: let what was in
+        // flight arrive, then pass on only the text the history lacks.
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        let mut queued = Vec::new();
+        while let Ok(msg) = bus_rx.try_recv() {
+            queued.push(msg);
+        }
+        prefix.extend(beyond_history(queued, &history_text));
+        let (tx, rx) = mpsc::channel(256);
+        let mut live = std::mem::replace(&mut bus_rx, rx);
+        tokio::spawn(async move {
+            for msg in prefix {
+                if tx.send(msg).await.is_err() {
+                    return;
+                }
+            }
+            while let Some(msg) = live.recv().await {
+                if tx.send(msg).await.is_err() {
+                    return;
+                }
+            }
+        });
+    }
+
+    // ---- main loop --------------------------------------------------------
     let mut children: HashMap<String, ChildRun> = HashMap::new();
     let mut pending_spawns: VecDeque<PendingSpawn> = VecDeque::new();
     // Child sessions created before their spawn chip was seen (id → title).
@@ -2766,6 +3084,8 @@ async fn post_prompt(
                 stderr_tail: crate::StderrTail::default(),
                 protocol,
                 version: tokio::sync::OnceCell::new(),
+                #[cfg(unix)]
+                note: None,
             };
             // The command endpoint blocks for the whole turn; the bus
             // carries the real events, so this response is ignored —
@@ -2820,6 +3140,8 @@ async fn post_prompt(
         stderr_tail: crate::StderrTail::default(),
         protocol: server.protocol.clone(),
         version: tokio::sync::OnceCell::new(),
+        #[cfg(unix)]
+        note: None,
     };
     let bus_tx = bus_tx.clone();
     let dir = dir.map(str::to_owned);
@@ -3300,6 +3622,8 @@ async fn handle_bus_event(ctx: BusCtx<'_>) -> BusOutcome {
                     stderr_tail: crate::StderrTail::default(),
                     protocol: protocol_cell,
                     version: tokio::sync::OnceCell::new(),
+                    #[cfg(unix)]
+                    note: None,
                 };
                 // Like Claude and Codex, normal OpenAgents sessions run unattended,
                 // regardless of RunRequest.auto_approve. Approve each owned
@@ -3372,6 +3696,8 @@ async fn handle_bus_event(ctx: BusCtx<'_>) -> BusOutcome {
                     stderr_tail: crate::StderrTail::default(),
                     protocol: protocol_cell,
                     version: tokio::sync::OnceCell::new(),
+                    #[cfg(unix)]
+                    note: None,
                 };
                 let reply = match rx.await {
                     Ok(answers) if is_form => {
@@ -3720,6 +4046,193 @@ fn part_snapshot_events(
         // transcript.
         _ => Vec::new(),
     }
+}
+
+/// What an earlier engine handed over of the turn a run picked up from a
+/// keeper is in (#11930). The engine folds it from its run journal and lends
+/// it in the keeper scope as `meta.handed`.
+#[derive(Debug, Default, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct Handed {
+    /// The turn's reply text, and its reasoning, in order.
+    text: String,
+    reasoning: String,
+    /// Tool calls announced, and those whose results were handed over.
+    tools: Vec<String>,
+    results: Vec<String>,
+    /// The turn had ended: the run was waiting for its next prompt.
+    between_turns: bool,
+}
+
+impl Handed {
+    #[cfg(unix)]
+    fn from_scope() -> Self {
+        crate::keeper::current()
+            .and_then(|scope| serde_json::from_value(scope.meta["handed"].clone()).ok())
+            .unwrap_or_default()
+    }
+}
+
+/// Catch a picked-up run up from its session's messages (1.x
+/// `GET /session/{id}/message`, `[{info, parts}]`): the turn's messages
+/// since its last user message come back as bus frames, with the feed's
+/// parts seeded so they emit only what `handed` lacks.
+fn catch_up(
+    feed: &mut SessionFeed,
+    history: &Value,
+    handed: &Handed,
+) -> (Vec<BusMsg>, HashMap<String, String>) {
+    let messages = unwrap_data(history.clone())
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let start = messages
+        .iter()
+        .rposition(|message| message["info"]["role"] == "user")
+        .map_or(0, |at| at + 1);
+    let mut text = handed.text.as_str();
+    let mut reasoning = handed.reasoning.as_str();
+    let mut frames = Vec::new();
+    let mut bodies = HashMap::new();
+    for message in &messages[start..] {
+        frames.push(BusMsg::Event(json!({
+            "type": "message.updated",
+            "properties": { "info": message["info"] },
+        })));
+        for part in message["parts"].as_array().into_iter().flatten() {
+            let Some(id) = part["id"].as_str() else {
+                continue;
+            };
+            let kind = part["type"].as_str().unwrap_or_default();
+            let state = match kind {
+                "text" | "reasoning" => {
+                    let rest = if kind == "text" {
+                        &mut text
+                    } else {
+                        &mut reasoning
+                    };
+                    let body = part["text"].as_str().unwrap_or_default();
+                    bodies.insert(id.to_owned(), body.to_owned());
+                    PartState {
+                        kind: kind.to_owned(),
+                        emitted: handed_prefix(rest, body),
+                        ..PartState::default()
+                    }
+                }
+                "tool" => {
+                    let call = tool_call_id(part);
+                    PartState {
+                        kind: "tool".to_owned(),
+                        tool_started: handed.tools.contains(&call),
+                        tool_done: handed.results.contains(&call),
+                        ..PartState::default()
+                    }
+                }
+                _ => continue,
+            };
+            feed.parts.insert(id.to_owned(), state);
+            frames.push(BusMsg::Event(json!({
+                "type": "message.part.updated",
+                "properties": { "part": part },
+            })));
+        }
+    }
+    (frames, bodies)
+}
+
+/// Bus messages that arrived while a picked-up run caught up, with the
+/// streamed text the history already holds taken out. Text deltas carry no
+/// offsets: a part's deltas overlap the end of its history text by the
+/// longest stretch they agree on.
+fn beyond_history(queued: Vec<BusMsg>, history: &HashMap<String, String>) -> Vec<BusMsg> {
+    let part_of = |event: &Value| {
+        is_part_delta(event)
+            .then(|| event.get("payload").unwrap_or(event)["properties"].clone())
+            .filter(|props| props["field"] == "text")
+            .and_then(|props| {
+                let part = props["partID"].as_str()?.to_owned();
+                history.contains_key(&part).then_some((part, props))
+            })
+    };
+    let mut streamed: HashMap<String, String> = HashMap::new();
+    for msg in &queued {
+        if let BusMsg::Event(event) = msg
+            && let Some((part, props)) = part_of(event)
+        {
+            streamed
+                .entry(part)
+                .or_default()
+                .push_str(props["delta"].as_str().unwrap_or_default());
+        }
+    }
+    let mut out = Vec::new();
+    for msg in queued {
+        let BusMsg::Event(event) = &msg else {
+            out.push(msg);
+            continue;
+        };
+        let Some((part, mut props)) = part_of(event) else {
+            out.push(msg);
+            continue;
+        };
+        // The part's deltas go out once, as what follows its history.
+        let Some(deltas) = streamed.remove(&part) else {
+            continue;
+        };
+        let body = &history[&part];
+        let overlap = (0..=deltas.len().min(body.len()))
+            .rev()
+            .find(|&k| deltas.is_char_boundary(k) && body.ends_with(&deltas[..k]))
+            .unwrap_or(0);
+        if overlap < deltas.len() {
+            props["delta"] = json!(deltas[overlap..]);
+            out.push(BusMsg::Event(json!({
+                "type": "message.part.delta",
+                "properties": props,
+            })));
+        }
+    }
+    out
+}
+
+/// How much of `body` was handed over, taking it off the front of `rest`
+/// (what was handed, in part order).
+fn handed_prefix(rest: &mut &str, body: &str) -> usize {
+    if let Some(after) = rest.strip_prefix(body) {
+        *rest = after;
+        body.len()
+    } else if body.starts_with(*rest) {
+        let handed = rest.len();
+        *rest = "";
+        handed
+    } else {
+        // The history disagrees with what was handed over: count the part as
+        // handed rather than repeat it.
+        tracing::warn!(
+            target: "openagents_harness::opencode",
+            "a picked-up turn's history differs from what was shown"
+        );
+        *rest = "";
+        body.len()
+    }
+}
+
+/// A main-session tool part's call id, as [`part_snapshot_events`] keys it.
+fn tool_call_id(part: &Value) -> String {
+    let part_id = part["id"].as_str().unwrap_or_default();
+    if matches!(part["tool"].as_str(), Some("task" | "subagent")) {
+        return part_id.to_owned();
+    }
+    part["callID"]
+        .as_str()
+        .filter(|id| !id.is_empty())
+        .unwrap_or(part_id)
+        .to_owned()
+}
+
+/// A streamed text delta, which a history snapshot may already hold.
+fn is_part_delta(event: &Value) -> bool {
+    event.get("payload").unwrap_or(event)["type"] == "message.part.delta"
 }
 
 /// Register a `task` spawn chip and bind it eagerly when the tool's own
