@@ -96,6 +96,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 4: Labs platform
 
+**Taken 2026-10-16 22:03 CDT** by Codex working #11878, #11876, #11877, #11875, #11885 in `~/work/openagents-bang-codex`.
+
 - **Owns:** `crates/lab-kit`, `crates/lab-jobs`, `crates/lab-store`, `crates/lab-api`, `crates/lab-ui`, `crates/openagents-sdk/src/labs*`, `crates/openagents-web/src/{labs,lab,cad_web,history_api}.rs` and the cards, `examples/sdk-labs/`, and the Labs tools in Coder for #11885.
 - **Order:**
   1. #11878: rebase `codex/11878-jobs-placement` (`0021970e87`) onto `main`. It already contains the SDK worker and cloud launcher slices, so don't cherry-pick them twice. Regenerate the lock, rerun the combined checks, fix the `Uncertain` finish fix's test, and deploy through lane 0.
