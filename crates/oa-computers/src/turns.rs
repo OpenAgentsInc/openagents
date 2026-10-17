@@ -253,6 +253,25 @@ impl Store {
         Ok(())
     }
 
+    async fn turn_partial(
+        &self,
+        id: &str,
+        stdout: &str,
+        stderr: &str,
+    ) -> Result<(), crate::db::DbError> {
+        let client = self.db.client().await?;
+        client
+            .execute(
+                "UPDATE computers.turns SET stdout=$2,stderr=$3
+             WHERE id=$1 AND state='running'
+                 AND octet_length(COALESCE(stdout,'')) <= octet_length($2::text)
+                 AND octet_length(COALESCE(stderr,'')) <= octet_length($3::text)",
+                &[&id, &cap(stdout), &cap(stderr)],
+            )
+            .await?;
+        Ok(())
+    }
+
     pub(crate) async fn turn_ended(
         &self,
         id: &str,
@@ -266,7 +285,7 @@ impl Store {
         let state = if ok { "done" } else { "failed" };
         c.execute(
             "UPDATE computers.turns
-             SET state = $2, exit_code = $3, stdout = $4, stderr = $5, error = $6, finished_at = now()
+             SET state = $2, exit_code = $3, stdout = COALESCE($4,stdout), stderr = COALESCE($5,stderr), error = $6, finished_at = now()
              WHERE id = $1 AND state IN ('queued', 'running', 'command_queued', 'command_running')",
             &[&id, &state, &exit, &stdout.map(cap), &stderr.map(cap), &error],
         )
@@ -663,6 +682,7 @@ pub async fn run_next<D: Driver + Clone + 'static>(
     exec.cwd = t.cwd.clone();
     exec.timeout_seconds = t.timeout_seconds.max(1) as u64;
     exec.secret_env = env;
+    let capture = exec.output.clone();
     let resource = computer.resource().unwrap_or_default().to_owned();
     // The turn's owner says it is alive while the command runs.
     let beat = {
@@ -697,6 +717,12 @@ pub async fn run_next<D: Driver + Clone + 'static>(
             tokio::select! {
                 o = &mut run => break o,
                 () = tokio::time::sleep(Duration::from_millis(500)) => {
+                    if p.driver.capabilities().memory_suspend {
+                        let (stdout, stderr) = capture.read();
+                        if !stdout.is_empty() || !stderr.is_empty() {
+                            let _ = store.turn_partial(&t.id, &String::from_utf8_lossy(&stdout), &String::from_utf8_lossy(&stderr)).await;
+                        }
+                    }
                     let stop_requested = secrets.stopping(&t.id)
                         || store.get(&e.owner, &e.id).await
                             .map_or(true, |entry| entry.is_none_or(|current| current.desired != Desired::Running));
@@ -735,8 +761,16 @@ pub async fn run_next<D: Driver + Clone + 'static>(
                 .map_err(io)?;
         }
         Outcome::Unknown { .. } if p.driver.capabilities().memory_suspend => {
+            let (stdout, stderr) = capture.read();
             store
-                .turn_ended(&t.id, false, None, None, None, Some(UNCERTAIN_MEMORY_TURN))
+                .turn_ended(
+                    &t.id,
+                    false,
+                    None,
+                    Some(&String::from_utf8_lossy(&stdout)),
+                    Some(&String::from_utf8_lossy(&stderr)),
+                    Some(UNCERTAIN_MEMORY_TURN),
+                )
                 .await
                 .map_err(io)?;
         }
@@ -773,4 +807,82 @@ pub async fn run_next<D: Driver + Clone + 'static>(
         let _ = store.poke(&e.id).await;
     }
     Ok(finished)
+}
+
+#[cfg(test)]
+mod output_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn uncertain_completion_keeps_partial_output_and_late_reads_cannot_rewind_it() {
+        let Ok(admin) = std::env::var("OA_COMPUTERS_TEST_DATABASE_URL") else {
+            return;
+        };
+        let (db, _) = crate::Db::scratch(&admin).await.unwrap();
+        let store = Store::new(db);
+        let caps =
+            computer_driver::Capabilities::new("fake", computer_driver::Profile::ALL, &["small"]);
+        let record = crate::api::admit_create(
+            &caps,
+            "output-test",
+            &crate::registry::CreateIntent::default(),
+        )
+        .unwrap();
+        let (entry, _) = store
+            .create(&crate::store::NewComputer {
+                owner: "output-test",
+                chat: None,
+                idempotency_key: Some("partial-output"),
+                driver: "fake",
+                image: None,
+                record: &record,
+            })
+            .await
+            .unwrap();
+        store
+            .add_turn(
+                "partial-turn",
+                &entry.id,
+                "output-test",
+                "printf early",
+                None,
+                30,
+                &[],
+            )
+            .await
+            .unwrap();
+        store.turn_running("partial-turn", 1).await.unwrap();
+        store
+            .turn_partial("partial-turn", "early output", "early error")
+            .await
+            .unwrap();
+        store
+            .turn_partial("partial-turn", "early", "early")
+            .await
+            .unwrap();
+        store
+            .turn_ended(
+                "partial-turn",
+                false,
+                None,
+                None,
+                None,
+                Some(UNCERTAIN_MEMORY_TURN),
+            )
+            .await
+            .unwrap();
+        store
+            .turn_partial("partial-turn", "late replacement", "late replacement")
+            .await
+            .unwrap();
+        let saved = store
+            .turn("output-test", &entry.id, "partial-turn")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(saved.stdout.as_deref(), Some("early output"));
+        assert_eq!(saved.stderr.as_deref(), Some("early error"));
+        assert_eq!(saved.exit_code, None);
+        assert_eq!(saved.state, "failed");
+    }
 }

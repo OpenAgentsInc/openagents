@@ -513,6 +513,37 @@ impl fmt::Debug for Secret {
     }
 }
 
+/// Bounded output observed before a command finishes or its connection is lost.
+#[derive(Clone, Default)]
+pub struct OutputCapture(std::sync::Arc<std::sync::Mutex<(Vec<u8>, Vec<u8>)>>);
+
+impl fmt::Debug for OutputCapture {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("OutputCapture(…)")
+    }
+}
+impl OutputCapture {
+    pub fn append(&self, stderr: bool, bytes: &[u8]) {
+        let mut streams = self.0.lock().unwrap_or_else(|error| error.into_inner());
+        let stream = if stderr {
+            &mut streams.1
+        } else {
+            &mut streams.0
+        };
+        stream.extend(
+            bytes
+                .iter()
+                .take((256 * 1024usize).saturating_sub(stream.len())),
+        );
+    }
+    pub fn read(&self) -> (Vec<u8>, Vec<u8>) {
+        self.0
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()
+    }
+}
+
 /// One synchronous command.
 #[derive(Clone, Debug, Default)]
 pub struct Exec {
@@ -522,6 +553,7 @@ pub struct Exec {
     pub timeout_seconds: u64,
     /// Environment for this command only. Never written to a file.
     pub secret_env: BTreeMap<String, Secret>,
+    pub output: OutputCapture,
 }
 impl Exec {
     pub fn new(command: impl Into<String>) -> Self {
@@ -530,6 +562,7 @@ impl Exec {
             cwd: None,
             timeout_seconds: 120,
             secret_env: BTreeMap::new(),
+            output: OutputCapture::default(),
         }
     }
     pub fn secret(mut self, name: &str, value: &str) -> Self {
