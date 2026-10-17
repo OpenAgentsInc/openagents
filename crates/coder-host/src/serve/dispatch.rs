@@ -271,6 +271,25 @@ impl Dispatch for Dispatcher {
         }
     }
 
+    fn app_rpc_admitted(
+        &mut self,
+        request: &str,
+        device: &str,
+        grant: Option<(&str, u64)>,
+        app: &coder_access::app_rpc::Request,
+        admission: &coder_access::app_rpc::Admission<'_>,
+    ) -> Result<coder_access::app_rpc::Answer, Code> {
+        let handler = self
+            .shared
+            .app_rpc
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        handler
+            .ok_or(Code::Unsupported)?
+            .call_admitted(request, device, grant, app, admission)
+    }
+
     fn app_rpc(
         &mut self,
         request: &str,

@@ -70,6 +70,17 @@ pub trait Dispatch: Send {
         Err(Code::Unsupported)
     }
 
+    fn app_rpc_admitted(
+        &mut self,
+        request: &str,
+        device: &str,
+        grant: Option<(&str, u64)>,
+        app: &crate::app_rpc::Request,
+        _admission: &crate::app_rpc::Admission<'_>,
+    ) -> std::result::Result<crate::app_rpc::Answer, Code> {
+        self.app_rpc(request, device, grant, app)
+    }
+
     fn app_rpc(
         &mut self,
         _request: &str,
@@ -1769,7 +1780,16 @@ impl Host {
             Operation::AppRpc { app } => {
                 let grant = p.grant.as_deref().zip(request.epoch);
                 let answer = dispatch
-                    .app_rpc(&request.request, &p.key, grant, app)
+                    .app_rpc_admitted(
+                        &request.request,
+                        &p.key,
+                        grant,
+                        app,
+                        &crate::app_rpc::Admission {
+                            rights: &p.rights,
+                            expires_at: p.expires_at,
+                        },
+                    )
                     .map_err(|code| {
                         Error::new(code, "The computer couldn't answer this request")
                     })?;

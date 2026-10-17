@@ -15,6 +15,7 @@ name = "coder-access"
 required-features = ["host"]
 
 [dependencies]
+url = "2"
 robot-lab = { path = "../robot-lab" }
 user-home = { path = "../user-home" }
 base64 = "0.22"

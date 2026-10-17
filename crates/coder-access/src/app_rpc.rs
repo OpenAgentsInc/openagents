@@ -7,9 +7,26 @@ pub const CAPABILITY: &str = "app-rpc-v1";
 /// Leave room for the host envelope within NIP-44's plaintext bound.
 pub const MAX_BYTES: usize = 60 * 1024;
 
+/// Current grant bounds, captured while the host holds its access lock.
+pub struct Admission<'a> {
+    pub rights: &'a crate::Rights,
+    pub expires_at: u64,
+}
+
 /// The app's unary dispatcher, called on a blocking worker after host admission.
 /// Effects use the app's existing command ledger and the original command ID.
 pub trait Handler: Send + Sync {
+    fn call_admitted(
+        &self,
+        request: &str,
+        device: &str,
+        grant: Option<(&str, u64)>,
+        app: &Request,
+        _admission: &Admission<'_>,
+    ) -> std::result::Result<Answer, Code> {
+        self.call(request, device, grant, app)
+    }
+
     fn call(
         &self,
         request: &str,
@@ -22,6 +39,8 @@ pub trait Handler: Send + Sync {
 /// Methods whose access requirements are known before app dispatch.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Method {
+    EngineInfo,
+    AuthorizeSync,
     ListHarnesses,
     ListModels,
     ListSkills,
@@ -31,6 +50,8 @@ pub enum Method {
 impl Method {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::EngineInfo => "EngineInfo",
+            Self::AuthorizeSync => "AuthorizeSync",
             Self::ListHarnesses => "ListHarnesses",
             Self::ListModels => "ListModels",
             Self::ListSkills => "ListSkills",
@@ -40,7 +61,7 @@ impl Method {
     }
     pub fn right(self) -> Right {
         match self {
-            Self::RelayCommand => Right::Operate,
+            Self::RelayCommand | Self::AuthorizeSync => Right::Operate,
             _ => Right::Observe,
         }
     }
@@ -62,6 +83,12 @@ impl Request {
             return Err(Error::new(
                 Code::Malformed,
                 "app parameters must be an object",
+            ));
+        }
+        if self.params.get("targetDeviceId").is_some() {
+            return Err(Error::new(
+                Code::Forbidden,
+                "Choose this computer directly.",
             ));
         }
         if self.method == Method::RelayCommand {
@@ -128,6 +155,13 @@ mod tests {
         assert!(request.validate().is_err());
         request.params["entry"] = json!({"id":"command"});
         request.validate().unwrap();
+        request.params["targetDeviceId"] = json!("another-computer");
+        assert_eq!(request.validate().unwrap_err().code, Code::Forbidden);
+        request
+            .params
+            .as_object_mut()
+            .unwrap()
+            .remove("targetDeviceId");
         request.params["padding"] = json!("x".repeat(MAX_BYTES));
         assert_eq!(request.validate().unwrap_err().code, Code::Bounds);
     }

@@ -19,6 +19,7 @@ pub mod enrolled;
 pub mod environment;
 #[cfg(feature = "host")]
 pub mod host;
+pub mod http_proof;
 pub mod media;
 pub mod project;
 pub mod protocol;
