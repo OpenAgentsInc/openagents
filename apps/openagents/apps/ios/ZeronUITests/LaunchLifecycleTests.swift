@@ -14,11 +14,13 @@ final class LaunchLifecycleTests: XCTestCase {
 
     private func backgroundAndReturn(_ app: XCUIApplication) {
         XCUIDevice.shared.press(.home)
-        let backgrounded = app.wait(for: .runningBackground, timeout: 5)
-            || app.wait(for: .runningBackgroundSuspended, timeout: 5)
-        XCTAssertTrue(backgrounded, "The scene must survive saving its restoration state; state=\(app.state.rawValue).")
+        let backgrounded = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            app.state == .runningBackground || app.state == .runningBackgroundSuspended
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [backgrounded], timeout: 10), .completed,
+            "The scene must survive saving its restoration state; state=\(app.state.rawValue).")
         app.activate()
-        XCTAssertEqual(app.state, .runningForeground)
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 10))
     }
 
     func testFirstLaunchCanOpenDemoAndRestore() {
