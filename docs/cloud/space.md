@@ -89,8 +89,9 @@ records two API-restart stop/wake cycles at each of 4096 and 8192 MiB. Both gues
 kept the same workspace, process, PID, and full random 1 GiB buffer hash.
 A short-lease restart check also proves a reconciliation visit before wake.
 Its final deletion passed after nine explicit snapshot-upload conflicts, each
-with a separate saved child operation. Every test guest and private checkpoint
-was removed. Timings include lease expiry, readiness, dispatch, and a fresh hash;
+with a separate saved child operation. Every test guest and worker-side checkpoint directory
+was removed. Uploaded snapshot cleanup uses SPACE's separate storage sweeper;
+its verification is tracked in the evidence. Timings include lease expiry, readiness, dispatch, and a fresh hash;
 the raw reports preserve each measurement. The shared disposable build host
 stays up for ongoing Labs and chat checks until the root agent tears it down.
 

@@ -82,7 +82,8 @@
     "all_private_checkpoint_directories_absent": true,
     "isolated_api_processes_stopped": true,
     "isolated_postgres_containers_removed": true,
-    "host": "Shared oa-space-spike-11812 is temporarily reused by active #11876, #11878, and #11894 checks. Root will delete the host and dedicated network resources when those checks end; six-hour automatic expiry remains enabled."
+    "host": "Shared oa-space-spike-11812 is temporarily reused by active #11876, #11878, and #11894 checks. Root will delete the host and dedicated network resources when those checks end; six-hour automatic expiry remains enabled.",
+    "uploaded_snapshot_objects": "Pending native sweeper/grace inventory. Successful DELETE detaches uploaded snapshots; worker directory absence does not prove external blob deletion."
   },
   "artifacts": {
     "archive": "2026-10-16-space-memory.tar.gz",
