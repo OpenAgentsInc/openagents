@@ -89,8 +89,8 @@
   "external_example": {
     "git_pin": "1b55b50ae17dcd47315f803a8238ab7c3c3afe82",
     "build": "passed",
-    "production_cad_workflow": "pending deployment of the CAD kind",
-    "cleanup": "pending workflow",
+    "production_cad_workflow": "passed",
+    "cleanup": "passed: design and artifact return 404",
     "example_commit": "025d55ed63a63e8f524ce2986d9747771d7ba367",
     "checked_at": "2026-10-17T03:31:41.072103+00:00",
     "external_workspace": true,
@@ -99,7 +99,38 @@
     "lock_sha256": "67aa6703570b09fa2afbc6a9e6aedf181cee742c593ff9316f51421a4dd157e6",
     "source_sha256": "8f7cdfcd33b2ccd6624b88826e1d768f67c3e34401d9142d160edbc29461730c",
     "build_log_sha256": "86bf245de618e282d11b29772a0bef9cf5a257032899dd8dcd04b11568d705d1",
-    "binary_sha256": "96dd89f4ad642e241ba2b36825a465cc6a1b471c30070fbae3638d06fb3f6afe"
+    "binary_sha256": "96dd89f4ad642e241ba2b36825a465cc6a1b471c30070fbae3638d06fb3f6afe",
+    "production_run": {
+      "checked_at": "2026-10-17T04:40:25.327028+00:00",
+      "deployment_source_commit": "646d5fb6bd87a0e6c9feb0c5974dad9a59154be8c",
+      "deployment_image": "sha256:51e2d77b5a4ffc8df0b33aac965b569a7f4a4b8d15237a327baa1b1b682202a7",
+      "account": "acct_83d16a35955ef908",
+      "test_header": true,
+      "binary_sha256": "96dd89f4ad642e241ba2b36825a465cc6a1b471c30070fbae3638d06fb3f6afe",
+      "run_log_sha256": "60b59a416a2f9ad1004559add6ed3fac5583aea888d968f1186bb79f01bb705d",
+      "result": {
+        "artifact_not_found": true,
+        "artifact_sha256": "8c77d63fc0898dec4bd3f28929f13f74b2fd5cbaad5506c8ee6cbdebe3c42539",
+        "artifact_size": 2456,
+        "cleanup": {
+          "deleted": true,
+          "document_not_found": true
+        },
+        "created_version": 1,
+        "edited_version": 2,
+        "events": 14,
+        "glb_header": true,
+        "idempotent_retry_same_job": true,
+        "job_done": true,
+        "job_request_restored": true,
+        "local_preview_checked": true,
+        "notes": 1,
+        "range_bytes": 4,
+        "refusal_code": "cad_check",
+        "schema": "openagents.sdk.labs-client-run.v1",
+        "signed_url": true
+      }
+    }
   },
   "platforms": {
     "linux": "passed",
