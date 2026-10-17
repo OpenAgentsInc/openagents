@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 pub mod api;
 pub mod components;
 pub mod kind;
+pub mod templates;
 #[cfg(feature = "views")]
 pub mod view;
 pub use kind::AgentLab;

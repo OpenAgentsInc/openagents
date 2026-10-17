@@ -265,6 +265,9 @@ and its children: [documents #11915](https://github.com/OpenAgentsInc/openagents
 The first provider implements Agent Lab on the common `/v1/labs/agent` route family;
 the broader shared-platform migrations remain separate issues.
 
+[Foreman](foreman.md) is the first ready-made experiment: **Start from Foreman**
+loads an agent that reasons over every open issue and active agent.
+
 Open **Agent Lab** from the mobile agent picker, or visit
 [/labs/agent](https://openagents.com/labs/agent) from a browser or the desktop
 account panel. Save an experiment, choose a connected computer and project,

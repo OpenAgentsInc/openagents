@@ -331,3 +331,41 @@ fn forms_validate_the_submitted_values_after_the_edit() {
     s.field("expected:0", "{".into()).unwrap();
     assert!(s.action("save").is_err());
 }
+#[test]
+fn foreman_template_is_a_valid_claude_code_experiment() {
+    let mut e = agent_lab::templates::foreman();
+    assert_eq!(e.draft.spec.runtime, "claude-code");
+    // Claude Code runs with the host's own access; the host refuses any other setting.
+    assert_eq!(e.draft.spec.access, agent_contract::Access::HostDefault);
+    e.draft.agent_spec().unwrap();
+    e.host = "host-1".into();
+    e.project = "project-1".into();
+    e.validate().unwrap();
+    // The automatic cases check reach; the reviewed ones never pass on their own.
+    let automatic = e
+        .suite
+        .cases
+        .iter()
+        .filter(|c| c.check.evaluate("").is_some())
+        .count();
+    assert_eq!(automatic, 3);
+    assert_eq!(e.suite.cases[0].check.evaluate("It is #11840."), Some(true));
+}
+#[cfg(feature = "views")]
+#[test]
+fn workbench_starts_from_foreman() {
+    use agent_lab::view::Workbench;
+    let mut s = Workbench::new("fixture".into());
+    s.view()
+        .validate()
+        .unwrap()
+        .activate(&rust_native::Activation {
+            instance: s.instance.clone(),
+            revision: s.revision,
+            node: "template:foreman".into(),
+        })
+        .unwrap();
+    s.action("template:foreman").unwrap();
+    assert_eq!(s.draft.draft.spec.name, "Foreman");
+    assert!(s.document.is_none());
+}
