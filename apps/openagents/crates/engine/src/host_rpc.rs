@@ -6,6 +6,93 @@ use coder_access::{
 use openagents_rpc::{RpcError, RpcReply, RpcService};
 use std::{sync::Arc, time::Duration};
 
+/// A running app host. Dropping it closes admission before asynchronous cleanup.
+pub struct Hosted {
+    host: Option<coder_host::Running>,
+    runtime: tokio::runtime::Handle,
+}
+impl Hosted {
+    pub async fn start(
+        service: Arc<dyn RpcService>,
+        config: coder_host::Config,
+    ) -> anyhow::Result<Self> {
+        let runtime = tokio::runtime::Handle::current();
+        let handler = AppRpc::new(service, runtime.clone())
+            .map_err(|_| anyhow::anyhow!("This runtime can't serve the device connection."))?;
+        let host = coder_host::start(config, Arc::new(coder_host::NoTasks)).await?;
+        host.set_app_rpc(Some(Arc::new(handler)));
+        host.publish_reach().await;
+        Ok(Self {
+            host: Some(host),
+            runtime,
+        })
+    }
+    pub fn host(&self) -> &coder_host::Running {
+        self.host.as_ref().unwrap()
+    }
+}
+impl Drop for Hosted {
+    fn drop(&mut self) {
+        if let Some(host) = self.host.take() {
+            host.set_app_rpc(None);
+            host.stop_taking_requests();
+            self.runtime.spawn(host.shutdown());
+        }
+    }
+}
+
+struct ProfileKeys {
+    keys: Arc<dyn coder_host::serve::keys::AccountKeys>,
+    scope: String,
+}
+impl ProfileKeys {
+    fn name(&self, key: coder_host::serve::keys::KeyName) -> String {
+        format!("app-device:{}:{}", self.scope, key.as_str())
+    }
+}
+impl coder_host::serve::keys::KeySource for ProfileKeys {
+    fn load(
+        &self,
+        key: coder_host::serve::keys::KeyName,
+    ) -> openagents_connect::Result<Option<coder_host::serve::keys::Secret>> {
+        self.keys.load_account(&self.name(key))
+    }
+    fn store(
+        &self,
+        key: coder_host::serve::keys::KeyName,
+        secret: &coder_host::serve::keys::Secret,
+    ) -> openagents_connect::Result<()> {
+        self.keys.store_account(&self.name(key), secret)
+    }
+    fn delete(&self, key: coder_host::serve::keys::KeyName) -> openagents_connect::Result<()> {
+        self.keys.delete_account(&self.name(key))
+    }
+}
+
+pub(crate) fn configuration(
+    root: &std::path::Path,
+    label: String,
+) -> anyhow::Result<coder_host::Config> {
+    #[cfg(test)]
+    anyhow::bail!("Tests must supply an isolated key source and host configuration.");
+    #[cfg(not(test))]
+    {
+        use sha2::{Digest, Sha256};
+        let generation = coder_service::generation::advance(root)?;
+        let relay = openagents_brand::env_var("OPENAGENTS_NIP_HOST_RELAY")
+            .unwrap_or_else(|_| "wss://relay.openagents.com".into());
+        let mut config = coder_host::Config::new(root.join("access"), vec![relay], generation);
+        config.label = label;
+        config.telemetry = false;
+        config.advertise_listener = false;
+        config.keys = Some(coder_host::serve::keys::Keys(Arc::new(ProfileKeys {
+            keys: coder_host::serve::keys::platform_accounts()?,
+            scope: format!("{:x}", Sha256::digest(root.to_string_lossy().as_bytes())),
+        })));
+        Ok(config)
+    }
+}
+
 /// Install this on a Coder host with `Running::set_app_rpc`.
 /// The host calls it on its blocking request worker after checking the grant.
 pub struct AppRpc {

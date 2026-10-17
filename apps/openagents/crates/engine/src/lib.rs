@@ -577,6 +577,7 @@ pub struct Engine {
 pub struct EngineRuntime {
     core: EngineCore,
     host_relay: std::sync::Mutex<Option<openagents_rpc::HostRelay>>,
+    nip_host: std::sync::Mutex<Option<host_rpc::Hosted>>,
 }
 
 /// IPC-only lifecycle control owned by `openagents headless`. The regular
@@ -606,6 +607,13 @@ impl RpcService for HeadlessRpc {
 }
 
 impl EngineRuntime {
+    /// Enable the optional device channel using an explicit host configuration.
+    pub async fn enable_nip_host(&mut self, config: coder_host::Config) -> anyhow::Result<()> {
+        let host = host_rpc::Hosted::start(self.core.rpc_service(), config).await?;
+        *self.nip_host.get_mut().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(host);
+        Ok(())
+    }
+
     pub fn core(&self) -> &EngineCore {
         &self.core
     }
@@ -615,6 +623,7 @@ impl EngineRuntime {
     }
 
     pub fn disconnect_edge(&self) {
+        self.nip_host.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
         // Revoke remote reachability before graceful draining. Sessions may
         // need time to settle; no authenticated relay RPC may enter during
         // that window after sign-out.
@@ -633,6 +642,7 @@ impl EngineRuntime {
 
 impl Drop for EngineRuntime {
     fn drop(&mut self) {
+        self.nip_host.get_mut().unwrap_or_else(std::sync::PoisonError::into_inner).take();
         self.host_relay
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -857,6 +867,7 @@ impl Engine {
         });
 
         let preview_org = profile.org_id().to_string();
+        let nip_host_root = profile.device_root().join("device-channel");
         let core = match lock {
             Some(lock) => EngineCore::assemble_with_profile_locked(
                 profile,
@@ -938,10 +949,16 @@ impl Engine {
             core.start_host_relay(&edge.url)
         });
 
-        Ok(EngineRuntime {
+        let mut runtime = EngineRuntime {
             core,
             host_relay: std::sync::Mutex::new(host_relay),
-        })
+            nip_host: std::sync::Mutex::new(None),
+        };
+        if openagents_brand::env_var("OPENAGENTS_NIP_HOST").as_deref() == Ok("1") {
+            let host = host_rpc::configuration(&nip_host_root, local_device_name(&runtime.core.device_id))?;
+            runtime.enable_nip_host(host).await?;
+        }
+        Ok(runtime)
     }
 
     /// Run until ctrl-c: auth (dev or WorkOS), sessions engine + doc host + command
