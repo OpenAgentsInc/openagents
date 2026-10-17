@@ -1,0 +1,36 @@
+{
+  "schema": "openagents.labs-cad-evidence.v1",
+  "checked_at": "2026-10-17T06:06:36.178718+00:00",
+  "source_commit": "79f8c18f712b0559e590ec9ad9c45c44875b7d48",
+  "api": "https://api.openagents.com",
+  "test_accounts": [
+    "acct_83d16a35955ef908",
+    "acct_c76f469572ad3446"
+  ],
+  "checks": [
+    "dedicated browser session",
+    "dedicated project",
+    "checked fan bracket",
+    "isolated browser picked the top face",
+    "picked face five millimeters thicker",
+    "stale face pull refused",
+    "current Pro plan checked",
+    "both versions in the project",
+    "3D card with poster and project link",
+    "existing CAD page and versions",
+    "STEP job admitted",
+    "STEP retry shares its job",
+    "STEP job completed",
+    "STEP artifact recorded",
+    "STEP range download",
+    "second account cannot read the project design",
+    "second account cannot change the project design",
+    "reading a card starts no work"
+  ],
+  "version_sha256": [
+    "f3a60c2092a503918628d5430159177f961cc1af73068f9daa88eb9c8e819301",
+    "c29fcfae012b65e485c6645d9eaa861b721a4228c4c896888316f58b5a9e73dd"
+  ],
+  "cleanup_verified": true,
+  "browser_capture_sha256": "a6caeb9462a55e6c2e6ba3e1a218d47c38e187bb8db68f5356bce2994653d54f"
+}
