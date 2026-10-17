@@ -56,6 +56,7 @@ dependencies. No application code is copied into that package.
 | `CODER_SYNC_AUTH` | `openagents` by default. Each request checks an OpenAgents app session with the public account API. `disabled` refuses every room request. Local `dev` requires `--allow-dev-auth` and a local or staging environment. |
 | `CODER_SYNC_LISTEN` | Listen address; defaults to `0.0.0.0:$PORT`, or port 8080. |
 | `CODER_SYNC_REVISION` | The full deployed Git commit, returned by `/health`. |
+| `CODER_SYNC_PUBLIC_ORIGIN` | The exact HTTPS origin clients use for device proofs, such as `https://sync.openagents.com`. |
 
 Dev bearers use `user` or `user@workspace`, matching the reference clients.
 Do not use personal accounts. Production refuses dev auth even when the
@@ -114,6 +115,13 @@ commit-specific tags, preserving Artifact Registry tag immutability. It refuses
 a dirty checkout or one behind `origin/main`. Each Cloud Run
 service has `max-instances=1`, a 3,600-second timeout, and its own database
 secret and bucket. Staging and production use OpenAgents accounts. Neither deployment enables dev auth.
+
+The deploy helper updates the named environment variables and database secret
+binding. It preserves other configured values, including optional push settings
+and signing-key bindings. To set the device-proof origin in the same deployment,
+set `CODER_SYNC_PUBLIC_ORIGIN` when running the helper. Use
+`https://sync.openagents.com` for production and the staging service's public
+origin for staging.
 
 Read `/health` at each returned `run.app` URL. Confirm `revision` equals the
 pushed commit and production's `auth` is `openagents`. A room request with a dev

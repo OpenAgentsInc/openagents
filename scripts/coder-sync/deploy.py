@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 
 PROJECT = "openagentsgemini"
@@ -178,11 +179,25 @@ def deploy(staging):
     commit = revision()
     suffix = "-staging" if staging else ""
     service = f"coder-sync{suffix}"
+    environment = {
+        "CODER_SYNC_ENV": "staging" if staging else "production",
+        "CODER_SYNC_AUTH": "openagents",
+        "CODER_SYNC_BUCKET": f"{PROJECT}-coder-sync{suffix}",
+        "CODER_SYNC_REVISION": commit,
+    }
+    public_origin = os.environ.get("CODER_SYNC_PUBLIC_ORIGIN", "").strip().rstrip("/")
+    if public_origin:
+        parsed = urllib.parse.urlsplit(public_origin)
+        if (parsed.scheme != "https" or not parsed.hostname or parsed.username is not None
+                or parsed.password is not None or parsed.path or parsed.query or parsed.fragment
+                or "," in public_origin):
+            raise RuntimeError("Set CODER_SYNC_PUBLIC_ORIGIN to an HTTPS origin without a path.")
+        environment["CODER_SYNC_PUBLIC_ORIGIN"] = public_origin
     args = ["run", "deploy", service, f"--region={REGION}", f"--image=us-central1-docker.pkg.dev/{PROJECT}/openagents/coder-sync:{commit}",
             f"--service-account={ACCOUNT}", "--max=1", "--min=0", "--max-instances=1", "--min-instances=0", "--timeout=3600", "--concurrency=80", "--cpu=1", "--memory=512Mi", "--allow-unauthenticated",
             f"--add-cloudsql-instances={PROJECT}:{REGION}:{INSTANCE}",
-            f"--set-secrets=CODER_SYNC_DATABASE_URL=coder-sync{suffix}-database-url:latest",
-            f"--set-env-vars=CODER_SYNC_ENV={'staging' if staging else 'production'},CODER_SYNC_AUTH=openagents,CODER_SYNC_BUCKET={PROJECT}-coder-sync{suffix},CODER_SYNC_REVISION={commit}",
+            f"--update-secrets=CODER_SYNC_DATABASE_URL=coder-sync{suffix}-database-url:latest",
+            "--update-env-vars=" + ",".join(f"{key}={value}" for key, value in environment.items()),
             "--args="]
     g(*args)
     print(g("run", "services", "describe", service, f"--region={REGION}", "--format=value(status.url)"))
