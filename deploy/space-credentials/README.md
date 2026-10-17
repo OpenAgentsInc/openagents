@@ -78,6 +78,7 @@ The file contains these fields:
 | `root_ca` | Optional private regular PEM file for a private service CA; hostname verification remains enabled |
 | `deployment` | Exact lifecycle registry deployment identity |
 | `nodes` | Map from SHA-256 of each random node token to its native node UUID |
+| `certificate_authority` | Optional Google CA signing settings described below; only the native central authority receives its separate caller token |
 
 Files must be regular, mode `0600` or stricter, and not symlinks. Copy projected
 Kubernetes secrets into private regular files in an init container, rather than

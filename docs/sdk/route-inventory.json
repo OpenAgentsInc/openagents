@@ -100,52 +100,52 @@
     {
       "path": "/v1/labs/agent/kinds",
       "source": "crates/openagents-web/src/agent_lab.rs",
-      "line": 140
+      "line": 146
     },
     {
       "path": "/v1/labs/agent/hosts",
       "source": "crates/openagents-web/src/agent_lab.rs",
-      "line": 141
+      "line": 147
     },
     {
       "path": "/v1/labs/agent/documents",
       "source": "crates/openagents-web/src/agent_lab.rs",
-      "line": 142
+      "line": 148
     },
     {
       "path": "/v1/labs/agent/documents/{id}",
       "source": "crates/openagents-web/src/agent_lab.rs",
-      "line": 143
+      "line": 149
     },
     {
       "path": "/v1/labs/agent/documents/{id}/jobs",
       "source": "crates/openagents-web/src/agent_lab.rs",
-      "line": 147
+      "line": 153
     },
     {
       "path": "/v1/labs/agent/documents/{id}/promote",
       "source": "crates/openagents-web/src/agent_lab.rs",
-      "line": 148
+      "line": 154
     },
     {
       "path": "/v1/labs/agent/jobs",
       "source": "crates/openagents-web/src/agent_lab.rs",
-      "line": 149
+      "line": 155
     },
     {
       "path": "/v1/labs/agent/jobs/{id}",
       "source": "crates/openagents-web/src/agent_lab.rs",
-      "line": 150
+      "line": 156
     },
     {
       "path": "/v1/labs/agent/jobs/{id}/actions",
       "source": "crates/openagents-web/src/agent_lab.rs",
-      "line": 151
+      "line": 157
     },
     {
       "path": "/v1/labs/agent/jobs/{id}/host",
       "source": "crates/openagents-web/src/agent_lab.rs",
-      "line": 152
+      "line": 158
     },
     {
       "path": "/v1/openapi.json",
@@ -155,12 +155,12 @@
     {
       "path": "/v1/threads/{id}/events",
       "source": "crates/openagents-web/src/chat_api.rs",
-      "line": 76
+      "line": 88
     },
     {
       "path": "/v1/threads/{id}/stop",
       "source": "crates/openagents-web/src/chat_api.rs",
-      "line": 77
+      "line": 89
     },
     {
       "path": "/v1/connections/google/gmail/drafts/{id}",
@@ -270,27 +270,27 @@
     {
       "path": "/v1/history",
       "source": "crates/openagents-web/src/history_api.rs",
-      "line": 21
+      "line": 24
     },
     {
       "path": "/v1/history/projects",
       "source": "crates/openagents-web/src/history_api.rs",
-      "line": 22
+      "line": 25
     },
     {
       "path": "/v1/history/{id}/messages",
       "source": "crates/openagents-web/src/history_api.rs",
-      "line": 23
+      "line": 26
     },
     {
       "path": "/v1/history/{id}/files/{file}",
       "source": "crates/openagents-web/src/history_api.rs",
-      "line": 24
+      "line": 27
     },
     {
       "path": "/v1/history/{id}/captures/{capture}",
       "source": "crates/openagents-web/src/history_api.rs",
-      "line": 25
+      "line": 28
     },
     {
       "path": "/v1/computers/{name}/mac-jobs",
@@ -1572,6 +1572,24 @@
     },
     {
       "path": "/v1/sessions/device/lookup",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/lab-workers",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/lab-workers/{id}",
+      "audience": "Internal",
+      "domain": "",
+      "public_front_pattern": false
+    },
+    {
+      "path": "/v1/account/lab-worker-access",
       "audience": "Internal",
       "domain": "",
       "public_front_pattern": false
