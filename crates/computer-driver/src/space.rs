@@ -176,12 +176,16 @@ impl SpaceDriver {
             .api
             .join(path)
             .map_err(|_| Error::unknown("invalid API path"))?;
+        let mutation = method == Method::POST || method == Method::DELETE;
         let mut request = self
             .http
             .request(method, url)
             .bearer_auth(self.token.expose());
         if let Some(body) = body {
             request = request.json(&body);
+        } else if mutation {
+            // Cloud Run rejects bodyless mutations without explicit framing.
+            request = request.header(reqwest::header::CONTENT_LENGTH, "0");
         }
         if let Some(key) = key {
             request = request.header("Idempotency-Key", key);
@@ -941,6 +945,30 @@ mod tests {
                     request.extend_from_slice(&buffer[..count]);
                     if let Some(end) = request.windows(4).position(|v| v == b"\r\n\r\n") {
                         let headers = std::str::from_utf8(&request[..end]).unwrap();
+                        let method = headers
+                            .lines()
+                            .next()
+                            .unwrap()
+                            .split_whitespace()
+                            .next()
+                            .unwrap();
+                        if (method == "POST" && path != "/v1/sandboxes") || method == "DELETE" {
+                            assert!(
+                                headers.lines().any(|line| line
+                                    .split_once(':')
+                                    .is_some_and(|(name, value)| name
+                                        .eq_ignore_ascii_case("content-length")
+                                        && value.trim() == "0")),
+                                "bodyless mutations need explicit framing"
+                            );
+                        }
+                        if method == "GET" {
+                            assert!(
+                                !headers.lines().any(|line| line.split_once(':').is_some_and(
+                                    |(name, _)| name.eq_ignore_ascii_case("content-length")
+                                ))
+                            );
+                        }
                         let length = headers
                             .lines()
                             .find_map(|line| {
@@ -971,6 +999,49 @@ mod tests {
             }
         });
         (driver, server)
+    }
+
+    #[tokio::test]
+    async fn bodyless_lifecycle_requests_have_explicit_length() {
+        let (driver, server) = create_server(vec![
+            (
+                "/v1/sandboxes/sbx_test:suspend",
+                202,
+                json!({"operation_id":"op_suspend"}),
+            ),
+            (
+                "/v1/operations/op_suspend",
+                200,
+                json!({"state":"succeeded"}),
+            ),
+            (
+                "/v1/sandboxes/sbx_test:wake",
+                202,
+                json!({"operation_id":"op_wake"}),
+            ),
+            ("/v1/operations/op_wake", 200, json!({"state":"succeeded"})),
+            (
+                "/v1/sandboxes/sbx_test",
+                202,
+                json!({"operation_id":"op_delete"}),
+            ),
+            (
+                "/v1/operations/op_delete",
+                200,
+                json!({"state":"succeeded"}),
+            ),
+        ]);
+        for (action, key) in [
+            ("suspend", "stop-1"),
+            ("wake", "wake-1"),
+            ("delete", "delete-1"),
+        ] {
+            assert!(matches!(
+                driver.action("sbx_test", action, key).await,
+                Outcome::Done { .. }
+            ));
+        }
+        server.join().unwrap();
     }
 
     fn create_request() -> CreateRequest {
