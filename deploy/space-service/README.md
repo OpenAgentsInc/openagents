@@ -89,3 +89,28 @@ qualification ends. The production Boat deployment remains separate.
 The deployment is still under qualification. A healthy process and successful
 database migration do not prove checkpoint recovery, capacity admission,
 upgrades, or customer readiness. Retain that distinction in published evidence.
+
+
+The separate `oa-space-service-computers` candidate uses Cloud SQL Auth Proxy
+2.26.0, pinned by digest, on loopback beside the Rust service. The proxy verifies
+Cloud SQL TLS over the private IP; its service identity has Cloud SQL Client
+access only to the native instance through an IAM condition. It accepts at most
+32 database connections. The application uses the limited `space_computers`
+login in a separate database; the two application roles cannot connect to each
+other's database. See Google's [proxy documentation](https://docs.cloud.google.com/sql/docs/postgres/connect-auth-proxy)
+and [instance-scoped IAM conditions](https://docs.cloud.google.com/sql/docs/postgres/iam-conditions).
+
+Before creating qualification computers, run `database_roles.py --candidate-limits`
+on the control node after the empty candidate has applied its migrations. It
+bounds both the service and its synthetic account to two computers, four running
+vCPUs, 8 GiB RAM, 60-second commands, and one hour of stopped retention. Later
+limit changes use `oa-computers-usage` so committed allocations are checked.
+The sandbox namespace separately limits pods and requested CPU and memory.
+Object transfers use two 8 MiB upload parts, two 8 MiB download readers, and a
+256 MiB process-wide download-buffer budget.
+
+`database-recovery.py` creates and restores only the separate
+`oa-space-service-restore-11814` copy. Export its public connection settings after
+the restore operation completes, verify them with `database_restore.py` on the
+control node, and delete the copy immediately afterward. It never restores a
+backup over the maintained instance.
