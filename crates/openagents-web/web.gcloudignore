@@ -32,6 +32,11 @@
 !/scripts/build-cad-web.sh
 !/scripts/build-robot-web.sh
 !/scripts/build-sand-garden.sh
+!/scripts/film/
+/scripts/film/*
+!/scripts/film/lab_words.json
+!/scripts/film/lab_private.json
+!/scripts/film/lab_player.html
 !/scripts/install/
 /scripts/install/*
 !/scripts/install/coder.sh
@@ -57,6 +62,9 @@
 !/docs/sdk/
 !/docs/terminal-bench/
 !/docs/transcripts/
+!/docs/video-lab/
+/docs/video-lab/*
+!/docs/video-lab/schemas/
 !/bench/
 /bench/*
 !/bench/coder/
