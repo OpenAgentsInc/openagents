@@ -1,4 +1,4 @@
-//! Durable requests routed to an authorized app host's existing session ledger.
+//! Requests to an app on a person's computer, carried by that computer's signed-in session.
 use super::{AgentDefinition, AgentRequest, Agents, request_id, valid_id};
 use crate::{CancellationToken, Error};
 use reqwest::Method;

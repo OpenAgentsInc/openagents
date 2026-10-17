@@ -1,4 +1,4 @@
-//! Account-authorized enrollment and a separate job-only worker client.
+//! Signing a computer up to run Lab jobs for an account, and a client that can only run jobs.
 //! Requests send once. Retain attempts and finish requests after response loss;
 //! observing a started assignment does not grant permission to spawn it again.
 use super::{CancellationToken, Error, JobRef, Request, WorkerRef, valid_id, valid_space, wire};

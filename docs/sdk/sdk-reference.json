@@ -781,7 +781,7 @@
     },
     {
       "path": "agents::assignments",
-      "doc": "Durable requests routed to an authorized app host's existing session ledger.",
+      "doc": "Requests to an app on a person's computer, carried by that computer's signed-in session.",
       "items": [
         {
           "kind": "struct",
@@ -3221,7 +3221,7 @@
     },
     {
       "path": "labs::worker",
-      "doc": "Account-authorized enrollment and a separate job-only worker client.\nRequests send once. Retain attempts and finish requests after response loss;\nobserving a started assignment does not grant permission to spawn it again.",
+      "doc": "Signing a computer up to run Lab jobs for an account, and a client that can only run jobs.\nRequests send once. Retain attempts and finish requests after response loss;\nobserving a started assignment does not grant permission to spawn it again.",
       "items": [
         {
           "kind": "struct",

@@ -126,11 +126,34 @@ fn every_public_sdk_item_is_described_and_its_calls_resolve() {
         }
     }
     assert!(resolved > 60, "{resolved} SDK calls link to an operation");
-    // A call to a route no contract describes shows as plain text; keep
-    // the list short and known.
+    // A call to a route no contract describes shows as plain text. These are
+    // the known ones; a new undocumented route fails here until it gets a
+    // contract or joins this list on purpose.
+    const KNOWN: &[&str] = &[
+        "DELETE /v1/*",
+        "DELETE /v1/account",
+        "DELETE /v1/cloud-host",
+        "DELETE /v1/device/keys/*",
+        "GET /v1/cloud-host",
+        "GET /v1/device/keys",
+        "GET /v1/schedules",
+        "GET /v1/web-sign-in/*",
+        "POST /v1/cloud-host",
+        "POST /v1/cloud-host/stop",
+        "POST /v1/device/keys",
+        "POST /v1/finish",
+        "POST /v1/inputs",
+        "POST /v1/inputs/file",
+        "POST /v1/poll",
+        "POST /v1/schedules/sync",
+    ];
+    let unknown: Vec<&String> = unresolved
+        .iter()
+        .filter(|call| !KNOWN.contains(&call.as_str()))
+        .collect();
     assert!(
-        unresolved.len() <= 12,
-        "SDK calls with no operation: {unresolved:#?}"
+        unknown.is_empty(),
+        "SDK calls with no operation: {unknown:#?}"
     );
 }
 
