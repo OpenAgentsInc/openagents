@@ -582,9 +582,10 @@ mod tests {
                 check(&headers);assert_eq!(headers["last-event-id"],"7");
                 Response::builder().header("content-type","text/event-stream").body(Body::from("id: 8\nevent: changes\ndata: {\"data\":[{\"cursor\":8,\"document\":\"film\",\"at_unix_ms\":1,\"change\":{\"version\":2}}]}\n\n")).unwrap()
             }))
-            .route("/v1/labs/artifacts/still",get(||async {Json(json!({"artifact":{"id":"still","version":{"document":"film","version":2},"role":"poster","media_type":"image/png","sha256":"fffd393d3b070ac223254a9cfd582f8c58273059d8e4f1096a3e3a6940bbfb2d","size":13,"class":"public","no_training":false},"url":"/preview"}))}))
-            .route("/preview",get(||async {"synthetic PNG"}))
-            .route("/v1/labs/artifacts/corrupt",get(||async {Json(json!({"artifact":{"id":"corrupt","version":{"document":"film","version":2},"role":"poster","media_type":"image/png","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size":13,"class":"public","no_training":false},"url":"/preview"}))}))
+            .route("/v1/labs/artifacts/still",get(||async {Json(json!({"artifact":{"id":"still","version":{"document":"film","version":2},"role":"poster","media_type":"image/png","sha256":"fffd393d3b070ac223254a9cfd582f8c58273059d8e4f1096a3e3a6940bbfb2d","size":13,"class":"public","no_training":false},"url":"/v1/labs/artifacts/still/content?space=project%3Ateam"}))}))
+            .route("/v1/labs/artifacts/still/content",get(|headers:HeaderMap|async move {check(&headers);"synthetic PNG"}))
+            .route("/v1/labs/artifacts/corrupt/content",get(|headers:HeaderMap|async move {check(&headers);"synthetic PNG"}))
+            .route("/v1/labs/artifacts/corrupt",get(||async {Json(json!({"artifact":{"id":"corrupt","version":{"document":"film","version":2},"role":"poster","media_type":"image/png","sha256":"0000000000000000000000000000000000000000000000000000000000000000","size":13,"class":"public","no_training":false},"url":"/v1/labs/artifacts/corrupt/content?space=project%3Ateam"}))}))
             .with_state(seen.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
