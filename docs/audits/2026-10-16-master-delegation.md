@@ -154,7 +154,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 **Taken 2026-10-16 22:47 CDT** by Codex (Grok 4.7) working #11934, #11929, #11925, #11727 in `~/work/openagents-lane9b`.
 
-The website agents door uses the shared `place` (`1708f44f49`). Deploy and the Foreman live check stay in After-close checks. #11929 is in progress.
+The website agents door uses the shared `place` (`1708f44f49`). Deploy and the Foreman live check stay in After-close checks. #11929 is closed on code (`7fb459a5a5`). #11925 is next.
 
 **Released 2026-10-16 22:40 CDT** by a Claude Code subagent. #11935 is closed (`264642e0a6`). #11934's `openagents agents` command is on `main` in the same commit. #11928 is closed; the no-traffic production check is in After-close checks.
 
@@ -320,8 +320,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Status:** `72a0bc730c` adds owner-approved project invitations pinned to the recipient account/device, roots resolved from host configuration, absolute expiry, and revocation of one share without advancing the device epoch or revoking unrelated scopes. Scoped guests still cannot use broad task/read/terminal/app RPC paths. Host sharing advertises `project-sharing-v1`; old hosts refuse. Checks: access library 123, host library 118, and signed direct/relay adapter checks 3.
 - **Remains:** the native owner sharing controls and recipient account view, with account-isolated device keys and saved grants. Map only implemented project operations into that view; project membership alone grants no host permission. Coordinate with lane 8's app device-channel integration. The issue stays open while that code remains.
 
-**#11929 Agent Lab: run tests for agents that don't need a project copy.** Lane 9, not started.
+**#11929 Agent Lab: run tests for agents that don't need a project copy.** Lane 9. Closed on code.
 - **Decided (owner, 2026-10-16):** option 1, an experiment-level "no project files" choice that runs the trial in an empty folder. The report says the agent had no project files.
+- **Status:** on `main` (`7fb459a5a5`). The website accepts a host report only when it matches that choice. `cargo test -p agent-lab --features views project_files` passed (2). `cargo test -p openagents-web --lib agent_lab::tests` passed (2). `cargo test -p openagents-engine --lib no_project_files` passed (1).
 
 **#11930 Move running agents: keepers.** Lane 3, spec only.
 - **Remains:** a keeper subcommand that owns each harness run's stdio and process group, journals frames, and serves a 0600 socket. The engine adopts keepers and replays on boot, the MCP bridge reconnects, and an update becomes a handoff.
