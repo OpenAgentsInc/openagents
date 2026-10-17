@@ -32,8 +32,8 @@ install -d -m 0755 -o space-sbxmgr -g space-sbxmgr /space/run/sandbox-host-contr
 install -d -m 0750 -o space-sbxmgr -g space-sbxclients /space/run/sandbox-manager /space/run/credential-manager
 install -d -m 0750 -o space-tmplmgr -g space-tmplclients /space/run/template-manager
 install -d -m 0750 -o space-rtmgr -g space-rtmgrclients /space/run/runtime-manager
-install -d -m 1775 -o root -g space-cache-rw /space/cache /space/cache/firecracker
-install -d -m 0775 -o root -g space-cache-rw /space/cache/firecracker/templates /space/cache/firecracker/sandboxes /space/cache/firecracker/builds
+install -d -m 3775 -o root -g space-cache-rw /space/cache /space/cache/firecracker
+install -d -m 2775 -o root -g space-cache-rw /space/cache/firecracker/templates /space/cache/firecracker/sandboxes /space/cache/firecracker/builds
 for gate in capability-v1.lock admission-v1.lock work-v1.lock; do
   path=/space/run/dependency-drain/sandbox-manager/$gate
   [[ -e $path ]] || install -m 0660 -o root -g space-sbxclients /dev/null "$path"
