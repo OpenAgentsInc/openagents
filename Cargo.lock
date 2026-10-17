@@ -4185,6 +4185,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "coder-sharing"
+version = "1.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "coder-access",
+ "coder-host",
+ "computer-driver",
+ "computer-enrolled",
+ "computer-files",
+ "fs2",
+ "futures-util",
+ "libc",
+ "nostr",
+ "oa-copy",
+ "rust-native",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+]
+
+[[package]]
 name = "coder-ssh"
 version = "1.0.0"
 dependencies = [

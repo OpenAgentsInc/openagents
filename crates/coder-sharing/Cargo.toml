@@ -1,0 +1,34 @@
+[package]
+name = "coder-sharing"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Account-bound project sharing and shared Rust Native controls."
+
+[dependencies]
+base64 = "0.22"
+coder-access = { path = "../coder-access", default-features = false }
+coder-host = { path = "../coder-host", default-features = false }
+computer-enrolled = { path = "../computer-enrolled" }
+computer-driver = { path = "../computer-driver" }
+computer-files = { path = "../computer-files" }
+rust-native = { path = "../rust-native", default-features = false }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["time", "sync"] }
+fs2 = "0.4"
+libc = "0.2"
+
+[dev-dependencies]
+coder-host = { path = "../coder-host", features = ["host"] }
+nostr = { path = "../nostr" }
+futures-util = "0.3"
+tokio-tungstenite = "0.30"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tempfile = "3"
+oa-copy = { path = "../oa-copy" }
+
+[lints]
+workspace = true
