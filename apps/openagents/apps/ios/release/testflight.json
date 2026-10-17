@@ -1,0 +1,17 @@
+{
+  "description": "OpenAgents on your phone: ask anything and get an answer in seconds, start coding tasks that run in our cloud, and connect your own computer when you want to. No computer is needed.",
+  "feedbackEmail": "chris@openagents.com",
+  "marketingUrl": "https://openagents.com",
+  "privacyPolicyUrl": "https://openagents.com/privacy",
+  "externalGroup": "OpenAgents Beta Testers",
+  "whatToTest": "Welcome to the OpenAgents beta. You don't need a computer.\n\n1. The app opens on a chat. Type a question and send it. The answer streams in, with no sign-in for your first few messages.\n2. When it asks you to sign in, use Sign in with Apple or the sign-in sheet. Your chats come with you.\n3. Signed in, start a new chat, or ask for a coding task. It runs in our cloud, with free cloud time to try it.\n4. After a good answer, the \"Run this on your own computer\" card shows the command and the download link.\n\nSomething wrong? Take a screenshot and send it as TestFlight feedback.",
+  "review": {
+    "contactFirstName": "Christopher",
+    "contactLastName": "David",
+    "contactEmail": "chris@openagents.com",
+    "demoAccountRequired": false,
+    "demoAccountName": null,
+    "demoAccountPassword": null,
+    "notes": "No account, demo login, or computer is needed to review the app.\n\n1. On first launch the app opens on a chat. Type a question such as \"What is OpenAgents?\" and send it. The answer comes from our hosted assistant and streams in, with no sign-in.\n2. After a few messages the app asks you to sign in. Sign in with Apple creates an account in one step. The chats you already had move into it.\n3. Signed in, new chats run on our servers. A coding request starts a cloud computer for it, covered by a free allowance.\n4. Connecting your own computer is optional: the \"Run this on your own computer\" card links to https://openagents.com/download. Nothing else in the app needs a computer.\n\nContact: chris@openagents.com"
+  }
+}

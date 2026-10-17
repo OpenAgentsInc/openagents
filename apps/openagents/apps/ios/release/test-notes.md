@@ -1,4 +1,21 @@
-# OpenAgents 1.0.0 (1011)
+# OpenAgents 1.0.0 (1012)
+
+The phone works with no computer. It opens on a chat: type a question and send
+it, and the answer streams in, with no sign-in for your first few messages.
+When it asks you to sign in, use Sign in with Apple or the sign-in sheet; the
+chats you had move into your account.
+
+Signed in, new chats run on our servers. Ask for a coding task and it starts a
+cloud computer for it, covered by free cloud time. After a good answer, the
+"Run this on your own computer" card shows the install command and the
+download link, and goes away once a computer joins. Saved agents and the app
+show the OpenAgents power mark.
+
+Check the first message signed out, reaching the message limit, Sign in with
+Apple, the sign-in sheet closing by itself, a cloud chat on a new account, the
+own-computer card's copy and link, and running out of free cloud time.
+
+OpenAgents 1.0.0 (1011)
 
 The tab bar is gone. Tap the menu button at the top left, or swipe in from the
 left edge, to open the drawer: your sessions with search, plus Home, Settings
