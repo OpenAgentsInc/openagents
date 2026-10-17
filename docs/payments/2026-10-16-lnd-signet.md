@@ -109,9 +109,23 @@ The [resume evidence](evidence/lnd-signet-resume-2026-10-16.tar.gz) contains
 13 JSON records and a checked SHA-256 manifest. Archive SHA-256:
 `3810743fc848be8e331adc57b08845bd71f8f377420742e1b0f803630e2d2631`.
 The 24 SDK unit tests, research binary build/check, formatting, and Python
-syntax checks passed. The original writers remain stopped. The recovery
-controller keeps its original October 19, 2026, 12:02 UTC deadline; the peer
-sweep, remaining returns, and final node shutdown still need actual blocks.
+syntax checks passed. The original writers remain stopped.
+
+The peer's output matured at 326754, and the recovery controller finished at
+height **326755** (2026-10-17 12:20 UTC), well before its October 19 deadline.
+Both restored nodes swept everything they held to the research return address
+`tb1q8huxwfzrjldz03lfgjjsvm9ckcyz4wdjf4prud`:
+
+| Return | Confirmed height | Transaction | Returned (sat) | Fee (sat) |
+| --- | ---: | --- | ---: | ---: |
+| Watcher | 326755 | `5f5d892c5d5c032e360d2a391430638d509b38b73f9a89c84dd89569ba2eadca` | 12,205 | 198 |
+| Peer | 326755 | `8e6954fc8fd93a1f129e9a2a6931c02c73fe9b6dc3953651796e019b4232f4e7` | 20,323 | 314 |
+
+The signer, watcher, and peer containers are stopped. With the 14,316-sat anchor
+return above, the recovery returned 46,844 sats. On chain it cost 312 sats
+for the closure, 124 for the commitment sweep, 400 for the anchor repair, and
+512 for the two final returns. No channel database was copied, no older state
+was restarted, and no funding was added.
 
 ## Synthetic Taproot Assets (#11863)
 
@@ -153,3 +167,19 @@ the pinned CLI's `wallet pendingsweeps`; the live read passed. The corrected
 cleanup controller keeps the original state, action markers, and October 19,
 2026, 12:14 UTC deadline. Channel funding, RFQ payments, closure, returns, and
 shutdown remain pending.
+
+**Read 2026-10-17 12:55 UTC, height 326758.** The LDK delayed output swept at
+326699, and the observer then funded both research nodes from the scratch
+wallet within its 150,000-sat cap. Node A's 120,000 sats arrived
+(`433f5cea76093ca187cbb018cf9fc5378d1202fa87da09fb7480b8158b8a2f05`, confirmed
+326699; it holds 121,999). Node B's 20,000-sat transaction
+`ed91ae57a9bb6ce629c39aef791ebc7b59aeff80bdbffc2162303bd3c453b7fe` was created
+by the scratch wallet one second later but never reached the network: public
+signet Esplora has no record of it, and node B still holds 1,000 sats. The
+observer marked that send done and waits in `wait_channel_funds` for a balance
+that will not arrive, and cleanup waits on it in turn. Under the no-new-funding
+rule nobody re-sends it by hand. Unless a fresh run is approved, both controllers
+reach their October 19 12:14 UTC limit without the channel or RFQ. The lesson for the next run:
+confirm each funding send on chain before the next one, because two quick sends
+from the LDK wallet can lose the second. The live channel and RFQ run is in the
+master delegation's After-close checks.

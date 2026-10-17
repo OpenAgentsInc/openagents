@@ -390,6 +390,26 @@ its controller and the resume, exit, provider, and node helpers. Preserve
 the original uncertain payment records, private upgraded copies, and both
 wallets. Inspect `force-exit-started.json` rather than starting another exit.
 
+**The unilateral exit is complete (read 2026-10-17 12:55 UTC).** The CSV
+matured at 326721, and sweep
+`e86d3d677c03905716c6f1ddf2c94a3af92415129f4053a252d71dfbeaa41656`
+confirmed at **326722**. It spends the 79,970-sat exit output and pays
+**79,770 sats** to the backing wallet for a **200-sat** miner fee (137.5 vB).
+The whole exit cost **1,402 sats** (1,202 CPFP plus 200 sweep), 1.75% of the
+VTXO. The wallet briefly reported the actual 200-sat fee. Its final
+"exit complete" status went back to the 400-sat estimate (net 79,570), so read
+fees from the chain, not from the wallet's final status. The backing wallet
+then showed 40,030 confirmed sats. In the LDK comparison wallet,
+the 379,062-sat delayed channel output swept at 326699
+(`7b878359b3e070143835ec9b7a7fbf5626ea3140cb6451406570f9fe68eb1dfa`, 122-sat
+fee).
+
+At the exit, the observer stopped only `waved` (height 326722), as planned. The 20,000-sat
+VTXO stays live with batch expiry 327559. The stopped-daemon refresh window
+(327055–327067, about two days after the exit) is after the issue closes. The
+observer keeps running and resumes the wallet at 327067; reading that result
+is in the workspace `NEEDS_OWNER.md`.
+
 ### Verdict
 
 **Keep LDK for P4.** Wavelength's small-payment credit path works, but the
