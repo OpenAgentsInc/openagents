@@ -1,0 +1,159 @@
+{
+  "issue": 11899,
+  "date": "2026-10-16",
+  "result": "passed with the additional engine unit-test build limitation recorded below",
+  "sources": {
+    "native_and_full_conformance": "1965ddaccb319e90c5551911fe034d8900dcdd67",
+    "ios_core_bindings_and_nine_tests": "24df6c16af25238b405bf6d06816f5e8acc3e5e6",
+    "serialization_regressions": "89b4934f925a3abb1c1157b536101f60981b4650",
+    "headless_feature_integration_metadata": "bff0389e5861bb0dd3ef139223400b46de798677"
+  },
+  "checks": [
+    {
+      "name": "Full coder-sync conformance",
+      "source_commit": "1965ddaccb319e90c5551911fe034d8900dcdd67",
+      "command": "CARGO_TARGET_DIR=$HOME/work/openagents-target-agent1 CODER_SYNC_APPS_TARGET_DIR=$HOME/work/coder-desktop-target-agent1 CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 scripts/coder-sync/conformance.sh",
+      "result": "passed",
+      "protocol_tests": 69,
+      "failed": 0,
+      "ignored": 0,
+      "includes": [
+        "Native app/headless-engine build with final generated Computer SDK fields; openagents-account and openagents-harness SDK consumers compile.",
+        "Server formatting, all protocol tests including headless-engine cases, and the server executable build."
+      ],
+      "minimum_free_disk_gib": 8
+    },
+    {
+      "name": "iOS simulator",
+      "source_commit": "24df6c16af25238b405bf6d06816f5e8acc3e5e6",
+      "core_command": "IPHONEOS_DEPLOYMENT_TARGET=26.0 CARGO_TARGET_DIR=$HOME/work/coder-desktop-target-agent1 CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 cargo build --locked -p openagents-mobile --lib --profile mobile --target aarch64-apple-ios-sim",
+      "bindings": "Generated Swift and headers from that static library with UniFFI 0.32.2; preserved the current load_models API.",
+      "command": "OPENAGENTS_SKIP_CORE=1 xcodebuild -project apps/ios/OpenAgents.xcodeproj -scheme OpenAgents -configuration Debug -destination \"platform=iOS Simulator,id=93F6A433-F4D7-492C-BDDE-225BD1E94B9E\" -derivedDataPath \"$SCRATCH/11899-ios-derived\" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES -parallel-testing-enabled NO -only-testing:OpenAgentsTests/CoderIdentityTests -only-testing:OpenAgentsTests/SceneStateMigrationTests -only-testing:OpenAgentsUITests/CoderIdentityTests -only-testing:OpenAgentsUITests/LaunchLifecycleTests test",
+      "working_directory": "apps/openagents",
+      "result": "passed",
+      "tests": 9,
+      "groups": {
+        "native_identity": 3,
+        "scene_migration": 2,
+        "ui_identity": 2,
+        "launch_lifecycle": 2
+      },
+      "identity_command": "python3 scripts/ios/verify-identity.py \"$SCRATCH/11899-ios-derived/Build/Products/Debug-iphonesimulator/OpenAgents.app\"",
+      "identity_result": "passed; bundle, executable, attribution, extension, assets, and endpoint checks",
+      "isolation": "Used a task-owned simulator and removed it after the run. Demo and signed-out tests used no production account."
+    },
+    {
+      "name": "Desktop launch and existing profile",
+      "source_commit": "1965ddaccb319e90c5551911fe034d8900dcdd67",
+      "result": "passed",
+      "bundle_identifier": "com.openagents.desktop.dev.rename11899",
+      "executable": "openagents",
+      "method": "Ad-hoc signed a task-owned bundle, launched it with an empty environment plus a task-owned HOME and OPENAGENTS_DATA_DIR, waited for its random local IPC port, checked it stayed alive without a panic, and stopped its process group. Relaunch preserved the task-owned existing device ID.",
+      "owner_data_used": false
+    },
+    {
+      "name": "Focused Cargo tests",
+      "commands": [
+        {
+          "source_commit": "89b4934f925a3abb1c1157b536101f60981b4650",
+          "command": "cargo test --locked --profile mobile -p openagents-proto -p openagents-theme --lib",
+          "passed": {
+            "openagents-proto": 83,
+            "openagents-theme": 27
+          }
+        },
+        {
+          "source_commit": "24df6c16af25238b405bf6d06816f5e8acc3e5e6",
+          "command": "cargo test --locked --profile mobile -p openagents-sync --lib",
+          "passed": 71
+        },
+        {
+          "source_commit": "1965ddaccb319e90c5551911fe034d8900dcdd67",
+          "command": "cargo test --locked --profile mobile -p openagents-harness --lib pi::normalize::",
+          "passed": 3
+        },
+        {
+          "source_commit": "1965ddaccb319e90c5551911fe034d8900dcdd67",
+          "command": "cargo test --locked --profile mobile -p openagents-harness --lib cursor::state::",
+          "passed": 1
+        },
+        {
+          "source_commit": "1965ddaccb319e90c5551911fe034d8900dcdd67",
+          "command": "cargo test --locked --profile mobile -p openagents-harness --test shell_env_resolution",
+          "passed": 1
+        },
+        {
+          "source_commit": "24df6c16af25238b405bf6d06816f5e8acc3e5e6",
+          "command": "cargo test --locked --profile mobile -p openagents-harness --lib sessions::",
+          "passed": 3
+        }
+      ],
+      "note": "Earlier source hashes identify the checked files; later integrations preserve those files except the separately checked serialization and tool-name changes."
+    },
+    {
+      "name": "Additional focused compatibility checks",
+      "result": "passed",
+      "coverage": [
+        "Preview transport: 1 Cargo test.",
+        "Desktop paths: 5 tests compiled directly from the actual source.",
+        "Audio codec/DSP: 2 tests compiled directly from source without native audio dependencies.",
+        "Actual UI AccentColor legacy alias, Pi tool-prefix normalization, and delegated-message display: 1 direct-source regression test each.",
+        "Source archive Python tests: 7; archive check-only passed.",
+        "Bash 3.2 environment precedence: canonical value, legacy fallback, and explicit empty canonical value; shell/Python/JavaScript adapter syntax checks passed."
+      ],
+      "earlier_cargo_baseline": {
+        "passed": 153,
+        "packages": {
+          "openagents-account": 19,
+          "openagents-brand": 3,
+          "openagents-client": 23,
+          "openagents-proto": 82,
+          "openagents-theme": 26
+        },
+        "note": "Before final integrations; exact intermediate worktree snapshot was not retained. Later checks above cover changed compatibility behavior."
+      }
+    },
+    {
+      "name": "Headless cloud-build integration",
+      "source_commit": "bff0389e5861bb0dd3ef139223400b46de798677",
+      "commands": [
+        "cargo metadata --locked --offline --manifest-path apps/openagents/Cargo.toml --no-default-features --format-version 1 --no-deps",
+        "cargo tree --locked --offline --manifest-path apps/openagents/Cargo.toml -p openagents --no-default-features --edges normal --prefix none"
+      ],
+      "result": "passed",
+      "assertions": [
+        "ui remains the default feature.",
+        "The openagents-ui dependency is optional.",
+        "The normal dependency tree with --no-default-features contains neither openagents-ui nor GPUI."
+      ],
+      "compile_check": "Not run after integration because of disk pressure; the earlier full native build and full conformance passed."
+    }
+  ],
+  "limits": [
+    {
+      "command": "cargo test --locked --profile mobile -p openagents-engine --lib project_actions::",
+      "result": "Build stopped with ENOSPC while creating the openagents-harness archive during concurrent disk use; no test assertion ran.",
+      "not_run_afterward": [
+        "openagents-engine project_action_commands integration test",
+        "openagents-audio default-native Cargo unit tests"
+      ],
+      "coverage": "The engine compiled in the successful native/full conformance build. The audio codec/DSP direct-source tests passed."
+    },
+    "Native and iOS builds compile their app dependencies. This record does not claim every app crate unit suite ran."
+  ],
+  "owner_only": {
+    "action": "Publish a renamed TestFlight build numbered 1010 or later, then verify upgrade, existing data, and sign-in on the owner device.",
+    "status": "Not performed; tracked in workspace NEEDS_OWNER.md. Build 1009 belongs to the separate release."
+  },
+  "artifacts": {
+    "selected_log": "11899-rename-selected.log.gz",
+    "selected_log_sha256": "18de5ed59e6393e76218d0967e796ef44d1dcaf2fbc4803e030faee8d930fffa",
+    "full_logs": "Task scratch directory; selected log headings include the full original log hashes.",
+    "full_log_sha256": {
+      "11899-conformance-qualified.log": "57d618974f884a2949ef98490bf27e77996e9b587510130cffab86b87c589182",
+      "coder-sync-conformance/run-protocol-conformance.log": "f2d4ba61d1bc337ebcd4e9ff0bd13deef74ee1b89df9136c2de607afa8e641f5",
+      "coder-sync-conformance/build-the-headless-engine.log": "12d2dbdcf3e5c99fafe76e152169952c36e33d757f0b1589cc60ede62999e8c9",
+      "11899-ios-tests-combined.log": "dcf70aa0620f4c4c832fdd9d9c33669865a9f6b99447b4977d2dbeabeb653e09"
+    }
+  }
+}
