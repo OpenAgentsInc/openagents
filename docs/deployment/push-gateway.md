@@ -184,6 +184,21 @@ Back up `state.json` with the state key kept separately. Without the state
 file, devices lose their grants and wake only after their next renewal
 registers again.
 
+## Session notifications from coder-sync
+
+`coder-sync` sends a phone a wake when a session finishes a run, asks for
+input, or fails (#11853). It is a delivery caller like a relay, so add the
+public key of its `CODER_SYNC_PUSH_KEY_FILE` to `PUSH_GATEWAY_RELAY_PUBKEYS`.
+Then set `CODER_SYNC_PUSH_GATEWAY` (the delivery listener),
+`CODER_SYNC_PUSH_REGISTRATION` (the public registration address),
+`CODER_SYNC_PUSH_KEY_FILE`, and `CODER_SYNC_PUSH_APNS_PROFILE` or
+`CODER_SYNC_PUSH_FCM_PROFILE` in its environment. With these unset, push is off.
+
+The phone reads these settings from `GET /registry/{org}/push-config`,
+registers its token with the gateway, delegates a grant to the `coder-sync`
+key, and stores only that grant through `POST /registry/{org}/push-grant`.
+The iOS app turns this on only in builds with `CODER_IOS_PUSH` set.
+
 ## Limits
 
 - One process owns one state file; there is no shared store for several

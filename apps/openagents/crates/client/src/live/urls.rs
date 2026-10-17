@@ -70,6 +70,22 @@ pub(crate) fn registry_push_target(edge: &str, org_id: &str, device_id: &str) ->
     )
 }
 
+/// A registry push route: `push-config` (GET) or `push-grant` (POST,
+/// DELETE) for this device.
+pub(crate) fn registry_push_route(
+    edge: &str,
+    org_id: &str,
+    route: &str,
+    device_id: &str,
+) -> String {
+    format!(
+        "{}/registry/{}/{route}?device={}",
+        edge.trim_end_matches('/'),
+        encode(org_id),
+        encode(device_id)
+    )
+}
+
 pub(crate) fn chat_ws(edge: &str, chat_id: &str, token: &str, device_id: &str) -> String {
     format!(
         "{}/chat2/{}/ws?token={}&device={}",

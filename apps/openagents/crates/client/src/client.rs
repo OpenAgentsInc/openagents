@@ -1379,6 +1379,80 @@ impl Client {
         Ok(())
     }
 
+    /// Send one push route request with this device's bearer token. `None`
+    /// in Demo mode.
+    async fn push_route(
+        &self,
+        method: reqwest::Method,
+        route: &str,
+        body: Option<serde_json::Value>,
+    ) -> Result<Option<serde_json::Value>> {
+        let Some(live) = self.inner.live() else {
+            return Ok(None);
+        };
+        let url = crate::live::urls::registry_push_route(
+            &live.edge,
+            self.inner.credentials.org_id(),
+            route,
+            &self.inner.config.device_id,
+        );
+        let token_value = self.inner.tokens.bearer().await?;
+        let mut request = crate::auth::http()
+            .request(method, url)
+            .bearer_auth(token_value);
+        if let Some(body) = body {
+            request = request.json(&body);
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|e| ClientError::Network(e.to_string()))?;
+        if !response.status().is_success() {
+            return Err(ClientError::HostError(format!(
+                "push setup http {}",
+                response.status()
+            )));
+        }
+        Ok(Some(response.json().await.unwrap_or_default()))
+    }
+
+    /// Where this account's phones register for notifications: the push
+    /// gateway's registration URL, the key to delegate to, and the app
+    /// profiles. `None` in Demo mode or when the server has push off.
+    pub async fn push_config(&self) -> Result<Option<serde_json::Value>> {
+        Ok(self
+            .push_route(reqwest::Method::GET, "push-config", None)
+            .await?
+            .filter(|config| config["configured"] == true))
+    }
+
+    /// Hand the sync server this device's push gateway delivery grant and
+    /// which kinds to send. The native token never leaves the gateway.
+    pub async fn store_push_grant(
+        &self,
+        transport: &str,
+        grant: &str,
+        expires_at: u64,
+        prefs: PushPrefs,
+    ) -> Result<()> {
+        let body = serde_json::json!({
+            "transport": transport,
+            "grant": grant,
+            "expiresAt": expires_at,
+            "prefs": { "done": prefs.done, "input": prefs.input, "failed": prefs.failed },
+        });
+        self.push_route(reqwest::Method::POST, "push-grant", Some(body))
+            .await
+            .map(|_| ())
+    }
+
+    /// Stop notifications to this device through the push gateway.
+    pub async fn remove_push_grant(&self) -> Result<()> {
+        self.push_route(reqwest::Method::DELETE, "push-grant", None)
+            .await
+            .map(|_| ())
+    }
+
     pub async fn list_refs(&self, device_id: &str, repo_path: &str) -> Result<Vec<RepoRef>> {
         match self.inner.backend() {
             Backend::Demo(demo) => demo.list_refs(repo_path).await,

@@ -396,27 +396,29 @@ impl CoreClient {
             .collect()
     }
 
-    /// Ask for session notifications on this device (APNs token as hex,
-    /// "production" | "sandbox", and which kinds).
+    /// Ask for session notifications on this device. `token` is the native
+    /// push token (APNs as hex). Rust registers it with the push gateway and
+    /// gives the sync server only the delivery grant. `environment` is kept
+    /// for the Swift call; the gateway decides which APNs it uses.
     pub async fn register_push_target(
         &self,
         token: String,
         environment: String,
         prefs: PushPrefs,
     ) -> CoreResult<()> {
+        let _ = environment;
         let client = self.client.clone();
         on_runtime(async move {
-            client
-                .register_push_target(
-                    &token,
-                    &environment,
-                    zc::PushPrefs {
-                        done: prefs.done,
-                        input: prefs.input,
-                        failed: prefs.failed,
-                    },
-                )
-                .await
+            crate::push::register(
+                &client,
+                &token,
+                zc::PushPrefs {
+                    done: prefs.done,
+                    input: prefs.input,
+                    failed: prefs.failed,
+                },
+            )
+            .await
         })
         .await
     }
@@ -424,7 +426,7 @@ impl CoreClient {
     /// Stop session notifications to this device.
     pub async fn unregister_push_target(&self) -> CoreResult<()> {
         let client = self.client.clone();
-        on_runtime(async move { client.unregister_push_target().await }).await
+        on_runtime(async move { crate::push::unregister(&client).await }).await
     }
 
     pub async fn list_refs(

@@ -15,6 +15,7 @@ pub mod caption;
 mod client_ffi;
 pub mod layout;
 pub mod orb;
+mod push;
 pub mod visual;
 pub mod wallpaper;
 
