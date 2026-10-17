@@ -106,6 +106,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 3: keepers and moving agents
 
+**Still free:** #11958, the desktop UI fixture repair listed below. Its scope is stale test expectations and fixture setup; leave #11933 and #11951 with their owners.
+
 **Taken 2026-10-17 01:26 CDT** by a Claude Code subagent working #11951 in ~/work/openagents-11951.
 
 **Taken 2026-10-17 01:20 CDT** by a Claude Code subagent working #11933 in ~/work/openagents-11933.
@@ -196,9 +198,9 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 9: CLI, Agent Lab, and web fixes
 
-**Taken 2026-10-17 04:07 CDT** by Codex working #11952 in `~/work/openagents-labs-finish`, while keeping the #11871 claim pending #11948.
+**Done 2026-10-17 04:13 CDT** by Codex in `~/work/openagents-labs-finish`: #11952 is source-complete in `2a796565b7` and closing. The #11871 claim stays held pending #11948; target `~/work/openagents-target-9` stays warm.
 
-**Claimed above:** #11952, the Computers provider-fixture isolation follow-up reported under #11925. It changes only `crates/openagents-web/src/computers_api/tests.rs` or the fixture injection it uses.
+**#11952 source complete:** both provider fixtures run in separate test processes through the normal library test target. No production code changed.
 
 **Released 2026-10-17 00:13 CDT** by Codex (Grok 4.7). #11934, #11929, #11925, and #11727 are closed on code. After-close checks remain for the #11934 deploy and Foreman live check, the #11925 controlled deploy, and the #11727 named-sale test-mode check. The `~/work/openagents-lane9b` worktree is removed.
 
@@ -274,6 +276,8 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Checks:** `cargo test -p openagents-web --lib account_handoff_retries_a_read_and_does_not_replay_a_delete` passed (1).
 - **After-close:** the controlled deploy check is in [After-close checks](#after-close-checks).
 
+**#11952 Computers provider-fixture isolation.** Lane 9, code-complete in `2a796565b7`. All three `computers_api::tests` cases passed together with default parallel scheduling and one test thread. The two provider fixtures each own a child test process, so the process-wide production configuration cannot cross fixtures. No deploy or live check is needed for this test-only change.
+
 **#11928 Deployments: fence Environment work before a candidate receives traffic.** Lane 9, not started.
 - **Status:** a held candidate opens `Studio` and requeues unfinished setups before it gets traffic. Its guards are process-local, so it can fail a shared setup or sweep homes.
 - **Remains:** a two-process fixture proving a zero-traffic candidate makes no setup change, model call, computer cancel, or home deletion, plus a cross-process execution lease. Keep the candidate hold and the eight WAIT checks.
@@ -284,31 +288,21 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Status:** all 15 original children (#11872–#11886) are closed, with their source checks recorded on the child issues. The remaining source work is #11948 (typed Lab rows in live sessions, version lists, and Model3d orbit), held by its existing lane 5 agent. #11871 stays claimed and blocked on that source; deploy and device checks are in After-close checks.
 - **Decided (owner, 2026-10-16):** renders that show MetaHuman or Fab content are never committed to GitHub. They live in the space's private platform storage and stream to users. The plan's other decisions stand as recommended: new hosted Labs start with owner and test accounts, and AVPlayer comes first on Apple platforms. The 1.0 bridge decision is moot.
 
-**#11875 Labs L4: CAD Lab as the first kind on the Labs platform.** Lane 4, with lane 0 for the deploy.
-- **Status:** source is on `main` (`2f3465b291`, `218a67f92f`, `5bdf74bba6`). Focused checks passed: CAD 57, 22 CAD web cases, store and API with PostgreSQL and fake GCS, and the cookie-revocation regression. The combined image is on staging and passed 99/0/2.
-- **Remains:** the dedicated-account live run (fan bracket, pick a face, make it 5 mm thicker, project versions, STEP download, cleanup) with `scripts/smoke/sdk-labs-cad.py` and `run-labs-cad-live.py`, on staging and then production. Browser checks go through `openagents browser run`.
-- **Owner-only:** approve the production CAD copy (1 document, 2 versions, 11 files, checksum `16445f2f…93ae`). It's already in `NEEDS_OWNER.md` and doesn't block closing.
+**#11875 Labs L4: CAD Lab as the first kind on the Labs platform.** Lane 4, closed.
+- **Status:** `2f3465b291`, `218a67f92f`, and `5bdf74bba6` are on `main`. CAD 57, CAD web 22, PostgreSQL/fake-GCS store/API, account authority, cookie/project revocation, formatting, schemas, and route inventory passed.
+- **After-close:** lane 0 completed the staging and production CAD workflows, browser checks, and cleanup on source `79f8c18f71`; the evidence is linked below. Production history-copy approval remains in `NEEDS_OWNER.md` (1 document, 2 versions, 11 files; checksum `16445f2f…93ae`).
 
-**#11876 Labs L5: `openagents::labs` in openagents-sdk.** Lane 4.
-- **Status:** the client is on `main` (`1b55b50ae1`). SDK 59, Labs 10, and CAD preview 1 passed. The draft example is on `codex/11876-labs-sdk` (`6281e709f3`).
-- **Remains:**
-  1. Fix the external CAD build: 18 `solidcraft-kernel` errors, because root Truck patches don't reach a consuming workspace. Either pin the patched crates as Git dependencies or document the external `[patch]`.
-  2. Build the Git-pinned example, then run the live CAD flow against production with the dedicated account.
-  3. Run the macOS and iOS consumer check, and update the README pin.
-- **Note:** a 02:35 UTC read showed production didn't list CAD yet, which waits on #11875's production deploy.
+**#11876 Labs L5: `openagents::labs` in openagents-sdk.** Lane 4, closed.
+- **Status:** the SDK is on `main` in `1b55b50ae1`; the standalone Git-pinned example, public CAD patches, README pin, and qualification evidence landed in `d5270e882e`, `87ec5faf82`, and `69e4e79f1c`. The outside build, SDK/CAD/Video tests, macOS Engine security regression, and iOS account check passed.
+- **After-close:** lane 0 completed the production example, ranged artifacts, notes/events, retry, and cleanup with the qualified binary; see the evidence below.
 
 **#11877 Labs L6: Lab cards in saved history, and the web Labs door on the registry.** Lane 4.
 - **Status:** integrated history cards, typed SDK cards, `lab-ui`, generic document/media pages, and registry dispatch. Hosted kinds replace their loopback adapters; app requests carry the current sender's credentials. Source checks pass: API/UI 11, SDK history 5, app account 53, and 17 focused web tests. The OpenAPI export is updated and the saved patch file is removed.
 - **After-close:** the production history-card and second-browser check is listed in [After-close checks](#after-close-checks).
 
-**#11878 Labs L7: jobs and placement.** Lane 4.
-- **Status:** the combined branch `codex/11878-jobs-placement` (`0021970e87`) has `lab-jobs`, placement, scoped worker keys, worker routes, `labs-worker`, the SDK worker, the cloud launcher, and the Agent Lab source policy. `ModelUse` alone is on `main` (`6c8df90ee9`). In the last combined run, `restart_after_execution_marker_never_replays_the_effect` failed. Its fix is committed in `8bffde9fbb` but hasn't been rerun. The gateway, SDK worker, web consumer, and app engine tests haven't run. PostgreSQL and GCS sections were skipped.
-- **Remains:**
-  1. Rebase and regenerate the lock.
-  2. Rerun everything, including an explicit SDK `Uncertain` regression.
-  3. Deploy through lane 0.
-  4. Run live echo on server, enrolled, and cloud placements. The enrolled host is a disposable VM. The cloud worker needs either a registered image with the pinned `labs-worker` or the proposed chunked-upload path. Boat's workspace is `$HOME/workspace`.
-- **Owner-only:** installing `labs-worker` on the owner's Mac. Add the steps to `NEEDS_OWNER.md`.
+**#11878 Labs L7: jobs and placement.** Lane 4, closed.
+- **Status:** scoped jobs, durable worker authority, worker SDK, outbound worker, cloud launcher, server/CAD hooks, and source-policy checks landed in `ccd60bee7e`; `7736ea1b36` fixes the policy fixture and `0b6204c6a3` records evidence. Core checks passed 72, SDK/CAD/Video 140 (1 ignored), Gateway 461 (8 ignored), focused web 3, and the native Engine policy regression. PostgreSQL and fake GCS were included.
+- **After-close:** lane 0 owns deployment, server/enrolled/cloud Echo, private-input proof, scoped-key retirement, and observed cloud deletion. The owner Mac worker installation is in `NEEDS_OWNER.md`; evidence is in `docs/sdk/labs-worker-evidence.json`.
 
 **#11880 Labs V2: Video Lab on the platform.** Lane 5, closed.
 - **Done:** the kind's job requirements and tests, the `render`, `frames` and `measure` worker handlers (`video_lab::runner`; `video-lab render-job|frames-job|measure-job --ffmpeg PATH --ffprobe PATH`), and `lab_private.json` as asset classes (`video_lab::private`), on `main` in `a8e27eb97c`. The rest of the code is #11942; registration and the live run are in [After-close checks](#after-close-checks).
