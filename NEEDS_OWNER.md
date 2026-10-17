@@ -33,6 +33,18 @@ No package, outside provider, additional repository, or funded transaction was
 activated by these policy issues. Open a scoped implementation issue when an
 activation decision is made; report defects in the completed baseline separately.
 
+## Enable iPhone push notifications (#11853)
+
+Enable Push Notifications for `com.openagents.app` in Apple Developer. Keep
+`CODER_IOS_PUSH` unset until that change is complete. After lane 0 deploys the
+sync server and push gateway configuration, install a signed build with push
+enabled. With the dedicated test account on an iPhone, check that a finished
+run, a question, and a failed run each wake the phone once. An open app stays
+quiet. Report a device defect as a new issue.
+
+The server, test-account, and cleanup checks remain in
+[After-close checks](docs/audits/2026-10-16-master-delegation.md#after-close-checks).
+
 ## Check the optional paired phone connection (#11854)
 
 After lane 0 deploys the matching sync server and provides a signed app build,
