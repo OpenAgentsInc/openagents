@@ -68,6 +68,10 @@ parameters. The SDK runner harness resolves names only through the operator's
 `sdk-runners.json`; no definition supplies a command. `HarnessId::Sdk` is an
 additive wire value; older app hosts cannot run it.
 
+- [OpenAgents #12018](https://github.com/OpenAgentsInc/openagents/issues/12018):
+  SDK runner turns receive the current runtime and model settings selected by
+  the host, while instructions and access stay bound to the assigned identity.
+
 `client_ffi::custom_agents` owns account isolation, saved retry requests, agent
 selection, and the Rust Native form. UIKit's `AgentFormController` renders that
 form and forwards versioned field and activation events. The new-session menu
