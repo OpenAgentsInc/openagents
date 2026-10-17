@@ -65,6 +65,7 @@ use crate::transcript::{self, Transcript, TranscriptEvent};
 mod account_chats;
 #[cfg(feature = "account-fixture")]
 pub use account_chats::capture_sidebar;
+pub(crate) use connect_phone::TITLE as CONNECT_PHONE_TITLE;
 mod actions_ui;
 mod chat_dropzone;
 mod chat_homes;
@@ -74,6 +75,7 @@ mod chat_pull_requests;
 #[cfg(test)]
 mod chat_rename_tests;
 mod command_palette;
+mod connect_phone;
 mod file_mutations;
 mod files_panel;
 mod harness_updates;
@@ -126,6 +128,7 @@ actions!(
         OpenModelPicker,
         NewSession,
         OpenSettings,
+        ConnectPhone,
         NextSession,
         PrevSession,
         ArchiveSession
@@ -2089,6 +2092,8 @@ pub struct Shell {
     section_dialog: Option<sidebar_sections::SectionDialog>,
     /// Moving running chats to a cloud computer (#11933).
     moves: move_sheet::Moves,
+    /// Connect your phone: the QR code sheet (#11998).
+    connect_phone: Option<connect_phone::ConnectPhoneSheet>,
     section_menu: Option<(String, Point<Pixels>)>,
     section_header_hover: Option<String>,
     section_menu_focus: FocusHandle,
@@ -2620,6 +2625,7 @@ impl Shell {
             sidebar_section_migration: None,
             section_dialog: None,
             moves: Default::default(),
+            connect_phone: None,
             section_menu: None,
             section_header_hover: None,
             section_menu_focus: cx.focus_handle(),
@@ -6112,6 +6118,7 @@ impl Shell {
             || self.voice.read(cx).stage_open
             || self.section_dialog.is_some()
             || self.move_sheet_open()
+            || self.connect_phone_open()
             || self.section_menu.is_some()
             || self.add_space.is_some()
             || self.composer.read(cx).pickers().read(cx).is_open()
@@ -10658,6 +10665,7 @@ impl Shell {
         overlays.extend(self.render_space_overlays(viewport, window, cx));
         overlays.extend(self.render_section_overlays(viewport, window, cx));
         overlays.extend(self.render_move_overlays(viewport, cx));
+        overlays.extend(self.render_connect_phone_overlays(viewport, cx));
         if let Some(overlay) = self.render_command_palette(viewport, window, cx) {
             overlays.push(overlay);
         }
@@ -13264,6 +13272,8 @@ impl Render for Shell {
                         this.check_voice_codex(true, cx);
                     }
                     if !window.is_window_active() {
+                        // A connect code shows only in a window in front.
+                        this.pause_connect_phone(cx);
                         this.reset_command_palette_key_state();
                         this.set_jump_hints(false, cx);
                         this.composer.update(cx, |composer, cx| {
@@ -13458,6 +13468,7 @@ impl Render for Shell {
             // Native Settings menu item and the platform convention (Cmd+, on
             // macOS, Ctrl+, elsewhere) toggle the modal from any section.
             .on_action(cx.listener(|this, _: &OpenSettings, _, cx| this.toggle_settings(cx)))
+            .on_action(cx.listener(|this, _: &ConnectPhone, _, cx| this.open_connect_phone(cx)))
             .on_action(cx.listener(|this, _: &NextSession, window, cx| {
                 this.cycle_navigation(true, window, cx)
             }))

@@ -131,6 +131,9 @@ pub(crate) fn configuration(
         config.label = label;
         config.telemetry = false;
         config.advertise_listener = false;
+        // The iroh endpoint serves enrollment, so a connect code can pair a
+        // phone without an account.
+        config.iroh = Some(coder_host::config::Iroh::openagents());
         config.keys = Some(coder_host::serve::keys::Keys(
             if openagents_brand::env_var("OPENAGENTS_NIP_HOST_KEY_STORE").as_deref() == Ok("file") {
                 Arc::new(coder_host::serve::keys::FileKeySource::new(

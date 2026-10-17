@@ -43,6 +43,10 @@ name = "agent-identity-fixture"
 required-features = ["account-fixture"]
 
 [[example]]
+name = "connect-phone-capture"
+required-features = ["account-fixture"]
+
+[[example]]
 name = "macos-resource-profile"
 required-features = ["resource-profile"]
 
@@ -123,6 +127,8 @@ serde_json.workspace = true
 pulldown-cmark.workspace = true
 openagents-markdown.workspace = true
 html5ever = "0.39"
+# Connect your phone: the QR code is drawn on this computer (#11998).
+qrcodegen = "1.8"
 alacritty_terminal.workspace = true
 base64 = "0.22"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff", "ico"] }

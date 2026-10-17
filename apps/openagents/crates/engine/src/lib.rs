@@ -22,6 +22,7 @@ pub mod change_requests;
 pub mod chat2_host;
 mod chat_fork;
 mod chat_persistence;
+pub mod connect_phone;
 pub mod diff_sync;
 pub mod doc_host;
 mod foreman;
@@ -586,6 +587,9 @@ pub struct EngineRuntime {
     core: EngineCore,
     host_relay: std::sync::Mutex<Option<openagents_rpc::HostRelay>>,
     nip_host: std::sync::Mutex<Option<host_rpc::Hosted>>,
+    /// The running device connection's connect codes, for the Connect your
+    /// phone window.
+    connect_codes: connect_phone::Slot,
 }
 
 /// IPC-only lifecycle control owned by `openagents headless`. The regular
@@ -618,8 +622,22 @@ impl EngineRuntime {
     /// Enable the optional device channel using an explicit host configuration.
     pub async fn enable_nip_host(&mut self, config: coder_host::Config) -> anyhow::Result<()> {
         let host = host_rpc::Hosted::start(self.core.rpc_service(), config).await?;
+        *self
+            .connect_codes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(host.host().connect_codes());
         *self.nip_host.get_mut().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(host);
         Ok(())
+    }
+
+    /// The engine service for this computer's own app, in process or on
+    /// localhost: the plain service plus the Connect your phone methods.
+    /// Never hand it to the relay host or the device connection.
+    pub fn local_rpc_service(&self) -> Arc<dyn RpcService> {
+        Arc::new(connect_phone::LocalRpc {
+            inner: self.core.rpc_service(),
+            slot: self.connect_codes.clone(),
+        })
     }
 
     /// Create a single-use invitation on this computer only.
@@ -651,6 +669,10 @@ impl EngineRuntime {
     }
 
     pub fn disconnect_edge(&self) {
+        self.connect_codes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
         self.nip_host.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
         // Revoke remote reachability before graceful draining. Sessions may
         // need time to settle; no authenticated relay RPC may enter during
@@ -670,6 +692,10 @@ impl EngineRuntime {
 
 impl Drop for EngineRuntime {
     fn drop(&mut self) {
+        self.connect_codes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
         self.nip_host.get_mut().unwrap_or_else(std::sync::PoisonError::into_inner).take();
         self.host_relay
             .lock()
@@ -979,17 +1005,46 @@ impl Engine {
             core,
             host_relay: std::sync::Mutex::new(host_relay),
             nip_host: std::sync::Mutex::new(None),
+            connect_codes: Default::default(),
         };
-        if openagents_brand::env_var("OPENAGENTS_NIP_HOST").as_deref() == Ok("1") {
-            let host = host_rpc::configuration(
+        // The device connection runs by default, signed in or not, so a
+        // phone can pair by QR code. `OPENAGENTS_NIP_HOST=0` turns it off. A
+        // failure here leaves the rest of the app running.
+        let nip_host_on = connect_phone::nip_host_on(
+            openagents_brand::env_var(connect_phone::NIP_HOST_VAR)
+                .ok()
+                .as_deref(),
+        );
+        let started = if nip_host_on {
+            match host_rpc::configuration(
                 &nip_host_root,
                 local_device_name(&runtime.core.device_id),
-            )?;
-            runtime.enable_nip_host(host).await?;
-            if edge_enabled {
-                let bearer = auth.access_token().await.map_err(|_| {
-                    anyhow::anyhow!("Sign in before turning on the device connection.")
-                })?;
+            ) {
+                Ok(host) => match runtime.enable_nip_host(host).await {
+                    Ok(()) => true,
+                    Err(error) => {
+                        tracing::warn!(error = %error, "device connection didn't start");
+                        false
+                    }
+                },
+                Err(error) => {
+                    tracing::warn!(error = %error, "device connection isn't configured");
+                    false
+                }
+            }
+        } else {
+            false
+        };
+        if started {
+            // With an account, register this computer's device key so a
+            // paired phone can also reach it through sync. Without one, the
+            // host still pairs phones over the device connection.
+            let bearer = if edge_enabled {
+                auth.access_token().await.ok()
+            } else {
+                None
+            };
+            if let Some(bearer) = bearer {
                 // No other task changes this optional host during assembly.
                 let hosted = runtime
                     .nip_host
@@ -997,7 +1052,7 @@ impl Engine {
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
                     .as_ref()
                     .unwrap();
-                hosted
+                if let Err(error) = hosted
                     .configure_sync(
                         runtime.core.rpc_service(),
                         preview_org.clone(),
@@ -1005,7 +1060,10 @@ impl Engine {
                         config.edge_url.clone(),
                         bearer,
                     )
-                    .await?;
+                    .await
+                {
+                    tracing::warn!(error = %error, "device key registration failed");
+                }
             }
             if let Ok(path) = openagents_brand::env_var("OPENAGENTS_NIP_HOST_INVITE_FILE") {
                 use std::io::Write;
@@ -1061,7 +1119,7 @@ impl Engine {
         // transport (see `serve_ipc`).
         let (stop_tx, mut stop_rx) = tokio::sync::mpsc::unbounded_channel();
         let service: Arc<dyn RpcService> = Arc::new(HeadlessRpc {
-            inner: runtime.core().rpc_service(),
+            inner: runtime.local_rpc_service(),
             stop_tx,
         });
         let server = serve_ipc(config.ipc_port, service).await?;

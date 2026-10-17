@@ -413,7 +413,7 @@ impl EngineHandle {
 
             match Engine::assemble_runtime_with_lock(&engine_config, auth, profile, lock).await {
                 Ok(engine_runtime) => {
-                    let service: Arc<dyn RpcService> = engine_runtime.core().rpc_service();
+                    let service: Arc<dyn RpcService> = engine_runtime.local_rpc_service();
                     if let Some(port) = served_ipc_port {
                         engine_runtime.core().sessions.set_ipc_port(port);
                     }
