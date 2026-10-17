@@ -9,7 +9,7 @@ owner's computers.
 ## Check the renamed OpenAgents apps across updates (#11899)
 
 After the renamed project passes simulator checks, choose the next unused
-`com.openagents.app` build and follow
+`com.openagents.app` build, 1010 or later, and follow
 [the iOS release steps](apps/openagents/apps/ios/release/README.md) to sign
 and upload it. Install it over the existing TestFlight app and confirm that
 sign-in and chats remain available. Check the existing OpenAgents Dev profile
