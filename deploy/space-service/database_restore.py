@@ -22,7 +22,7 @@ def main(path):
     query="""SELECT json_build_object(
 'private_tls',(SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()),
 'migrations',(SELECT count(*) FROM _sqlx_migrations WHERE success),
-'published_seed',EXISTS(SELECT 1 FROM template_releases r JOIN templates t ON r.template_id=t.id WHERE t.name='seed' AND to_jsonb(r)->>'content_hash'='sha256:f04ea327e945df73d7d85a4c346d03b9b2a5d80446212486da6173da67ba8ec2'),
+'published_seed',EXISTS(SELECT 1 FROM template_releases r WHERE r.template_name='seed' AND r.hash='sha256:f04ea327e945df73d7d85a4c346d03b9b2a5d80446212486da6173da67ba8ec2'),
 'qualification_org',EXISTS(SELECT 1 FROM organizations WHERE id='00000000-0000-4000-8000-000000011814'));
 """
     result=subprocess.run(['psql','--no-psqlrc','--no-password','--tuples-only','--no-align','--set=ON_ERROR_STOP=1','--command',query],env=environment,capture_output=True,timeout=20)
