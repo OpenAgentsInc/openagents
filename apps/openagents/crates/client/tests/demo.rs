@@ -109,8 +109,14 @@ fn front_page_mirrors_the_desktop_sidebar() {
     assert_eq!(clone.group_name, "openagents");
     assert_eq!(clone.color_index, openagents.color_index);
     let cjk = ws.session("chat-cjk").unwrap();
-    assert_eq!(cjk.project.as_ref().unwrap().color_index, openagents.color_index);
-    assert_ne!(ws.project("space-edge").unwrap().group_key, openagents.group_key);
+    assert_eq!(
+        cjk.project.as_ref().unwrap().color_index,
+        openagents.color_index
+    );
+    assert_ne!(
+        ws.project("space-edge").unwrap().group_key,
+        openagents.group_key
+    );
     assert_eq!(ids(&ws.projectless), ["chat-visuals", "chat-home"]);
     assert!(ws.devices.iter().any(|d| d.is_self && d.id == "ios-test"));
     assert!(!ws.device("dev-studio").unwrap().online);
@@ -165,6 +171,32 @@ fn sidebar_writes_reorder_the_front_page() {
     assert!(!client.workspace().session("chat-tabs").unwrap().unseen);
     client.delete_session("chat-blog").unwrap();
     assert!(client.workspace().session("chat-blog").is_none());
+}
+
+#[test]
+fn device_nicknames_reach_every_list() {
+    let (client, _dir) = demo(fast());
+    let ws = client.workspace();
+    let mac = ws
+        .devices
+        .iter()
+        .find(|d| d.name == "MacBook Pro")
+        .unwrap()
+        .id
+        .clone();
+    drop(ws);
+    client.rename_device(&mac, "  Studio Mac  ").unwrap();
+    let ws = client.workspace();
+    assert_eq!(
+        ws.devices.iter().find(|d| d.id == mac).unwrap().name,
+        "Studio Mac"
+    );
+    assert!(ws.projects.iter().any(|p| p.device_id == mac));
+    for project in ws.projects.iter().filter(|p| p.device_id == mac) {
+        assert_eq!(project.device_name.as_deref(), Some("Studio Mac"));
+    }
+    assert!(client.rename_device(&mac, "   ").is_err());
+    assert!(client.rename_device("no-such-device", "x").is_err());
 }
 
 #[test]
@@ -396,7 +428,10 @@ fn warm_sessions_are_capped_and_preload_follows_the_front_page() {
         client.close_session(id);
     }
     let open = client.open_session_ids();
-    assert!(open.len() <= openagents_client::WARM_SESSION_CAP + 2, "{open:?}");
+    assert!(
+        open.len() <= openagents_client::WARM_SESSION_CAP + 2,
+        "{open:?}"
+    );
     assert!(
         open.iter().any(|o| o == "chat-home"),
         "attached sessions stay"
@@ -422,7 +457,10 @@ fn offline_sends_queue_durably_and_deliver_on_recovery() {
     };
     std::thread::sleep(Duration::from_millis(400));
     let composer = session.composer();
-    assert_eq!(composer.send_state, Some(openagents_client::SendState::Queued));
+    assert_eq!(
+        composer.send_state,
+        Some(openagents_client::SendState::Queued)
+    );
     assert!(composer.delivery_degraded);
     assert_eq!(
         client

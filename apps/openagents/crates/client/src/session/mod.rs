@@ -16,7 +16,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock, Weak};
 
-use tokio::sync::watch;
 use openagents_doc::{
     CommandBasedOn, MessagePart, MessageRole, MessageStatus, QueueDeliveryGate, QueuedMessage,
     SessionCommandEntry, SessionCommandPayload, SessionCommandStatus, SessionDoc,
@@ -25,6 +24,7 @@ use openagents_doc::{
 use openagents_proto::{
     ChatIndicator, ContextUsage, RunRequest, SandboxLevel, UserInputAnswer, WorktreeSpec,
 };
+use tokio::sync::watch;
 
 pub use snapshot::{
     AppendHint, ComposerState, Entry, HostCapabilities, HostInfo, InputRequest, LiveStatus,

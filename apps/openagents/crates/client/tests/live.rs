@@ -11,7 +11,6 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use loro::{ExportMode, LoroDoc};
-use support::mock_edge::MockEdge;
 use openagents_client::events::NullListener;
 use openagents_client::{
     ChatIndicator, Client, ClientConfig, ConnectivityState, Credentials, MessageRole, SendOutcome,
@@ -23,6 +22,7 @@ use openagents_doc::{
 };
 use openagents_proto::{Chat, ChatConfig, Device, HarnessId, SandboxLevel, Space};
 use openagents_sync::RegistryClient;
+use support::mock_edge::MockEdge;
 
 const HOST: &str = "dev-mac";
 const CHAT: &str = "chat-live";
@@ -554,8 +554,8 @@ impl openagents_rpc::RpcService for HostService {
         method: &str,
         params: serde_json::Value,
     ) -> Result<openagents_rpc::RpcReply, openagents_rpc::RpcError> {
-        use serde_json::json;
         use openagents_rpc::{RpcReply, methods as m};
+        use serde_json::json;
         let value = match method {
             m::LIST_HARNESSES => json!([
                 {"id": "claude-code", "name": "Claude Code", "supportsSteering": true,
@@ -673,9 +673,11 @@ async fn host_rpcs_ride_the_device_relay() {
 
     let c = client.clone();
     let models =
-        openagents_client::runtime::run(async move { Ok(c.list_models(HOST, "claude-code").await) })
-            .await
-            .unwrap();
+        openagents_client::runtime::run(
+            async move { Ok(c.list_models(HOST, "claude-code").await) },
+        )
+        .await
+        .unwrap();
     assert_eq!(models.len(), 1, "[1m] variant folded: {models:?}");
     assert_eq!(models[0].label, "Opus 5");
     assert_eq!(client.cached_models(HOST, "claude-code"), models);
@@ -794,12 +796,11 @@ async fn host_rpcs_ride_the_device_relay() {
 
     // New project: asked of the owning host (Mutate createSpace).
     let c = client.clone();
-    let space_id =
-        openagents_client::runtime::run(
-            async move { c.create_project(HOST, "/Users/dev/new", true).await },
-        )
-        .await
-        .unwrap();
+    let space_id = openagents_client::runtime::run(async move {
+        c.create_project(HOST, "/Users/dev/new", true).await
+    })
+    .await
+    .unwrap();
     assert!(service.spaces.lock().unwrap().contains(&space_id));
     client.shutdown();
 }

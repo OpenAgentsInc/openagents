@@ -2508,6 +2508,11 @@ public protocol CoreClientProtocol: AnyObject, Sendable {
      */
     func registerPushTarget(token: String, environment: String, prefs: PushPrefs) async throws 
     
+    /**
+     * Nickname a device; synced to every signed-in surface.
+     */
+    func renameDevice(deviceId: String, name: String) throws 
+    
     func renameProject(spaceId: String, name: String?) throws 
     
     func renameSection(sectionId: String, name: String) throws 
@@ -3170,6 +3175,19 @@ open func registerPushTarget(token: String, environment: String, prefs: PushPref
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeCoreError_lift
         )
+}
+    
+    /**
+     * Nickname a device; synced to every signed-in surface.
+     */
+open func renameDevice(deviceId: String, name: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreclient_rename_device(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deviceId),
+        FfiConverterString.lower(name),uniffiCallStatus
+    )
+}
 }
     
 open func renameProject(spaceId: String, name: String?)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
@@ -22509,6 +22527,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreclient_register_push_target() != 22399) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreclient_rename_device() != 45099) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreclient_rename_project() != 5792) {

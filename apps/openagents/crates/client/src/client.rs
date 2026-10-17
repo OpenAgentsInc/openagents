@@ -6,9 +6,9 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
 use chrono::{TimeZone, Utc};
-use tokio_util::sync::CancellationToken;
 use openagents_doc::RegistryDoc;
 use openagents_proto::{Chat, ChatConfig, SidebarPinChange, SidebarSectionChange};
+use tokio_util::sync::CancellationToken;
 
 use crate::attachments::{self, AttachmentCache};
 use crate::auth::TokenProvider;
@@ -1147,6 +1147,23 @@ impl Client {
             Ok(())
         } else {
             Err(ClientError::NotFound(space_id.to_owned()))
+        }
+    }
+
+    /// Give a device a nickname. The name is a synced row field, so every
+    /// signed-in surface (desktop, phone, web) shows it; last write wins.
+    pub fn rename_device(&self, device_id: &str, name: &str) -> Result<()> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(ClientError::InvalidArgument("device name is empty".into()));
+        }
+        if self
+            .inner
+            .registry_write(|doc| doc.rename_device(device_id, name))?
+        {
+            Ok(())
+        } else {
+            Err(ClientError::NotFound(device_id.to_owned()))
         }
     }
 

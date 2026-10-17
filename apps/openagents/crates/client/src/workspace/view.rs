@@ -535,7 +535,8 @@ pub(crate) fn derive(
 ) -> WorkspaceSnapshot {
     let now_ms = cx.now.timestamp_millis();
     let pinned_order: &[String] = prefs.map_or(&[], |p| p.pinned_session_ids.as_slice());
-    let sections: &[openagents_proto::SidebarSection] = prefs.map_or(&[], |p| p.sections.as_slice());
+    let sections: &[openagents_proto::SidebarSection] =
+        prefs.map_or(&[], |p| p.sections.as_slice());
     let mut section_of: HashMap<&str, &str> = HashMap::new();
     for section in sections {
         for id in &section.session_ids {
@@ -565,8 +566,14 @@ pub(crate) fn derive(
     let mut active: Vec<&Chat> = state
         .chats
         .iter()
-        .filter(|c| !c.archived && c.is_top_level() && c.links.continued_by.is_none()
-            && !c.config.as_ref().is_some_and(|config| config.model_options.contains_key(chat_home::REQUEST_OPTION)))
+        .filter(|c| {
+            !c.archived
+                && c.is_top_level()
+                && c.links.continued_by.is_none()
+                && !c.config.as_ref().is_some_and(|config| {
+                    config.model_options.contains_key(chat_home::REQUEST_OPTION)
+                })
+        })
         .filter(|c| {
             c.space_id
                 .as_deref()
@@ -673,8 +680,14 @@ pub(crate) fn derive(
     let mut archived_chats: Vec<&Chat> = state
         .chats
         .iter()
-        .filter(|c| c.archived && c.is_top_level() && c.links.continued_by.is_none()
-            && !c.config.as_ref().is_some_and(|config| config.model_options.contains_key(chat_home::REQUEST_OPTION)))
+        .filter(|c| {
+            c.archived
+                && c.is_top_level()
+                && c.links.continued_by.is_none()
+                && !c.config.as_ref().is_some_and(|config| {
+                    config.model_options.contains_key(chat_home::REQUEST_OPTION)
+                })
+        })
         .collect();
     sort_recency(&mut archived_chats);
     let archived: Vec<Arc<SessionRow>> = archived_chats.iter().map(|c| row(c)).collect();

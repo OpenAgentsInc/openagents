@@ -259,10 +259,17 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
                 self.reload()
             }
         case let id where id.hasPrefix("device:"):
-            guard !app.isDemo, let client = app.client else { return }
+            guard let client = app.client else { return }
             let device = String(id.dropFirst("device:".count))
-            if client.deviceChannelEnabled(deviceId: device) {
+            let rename = UIAlertAction(title: "Rename…", style: .default) { [weak self] _ in self?.renameDevice(device, current: row.title) }
+            if app.isDemo {
+                let alert = UIAlertController(title: row.title, message: nil, preferredStyle: .alert)
+                alert.addAction(rename)
+                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                present(alert, animated: true)
+            } else if client.deviceChannelEnabled(deviceId: device) {
                 let alert = UIAlertController(title: "Device connection", message: "Use the usual connection for this computer?", preferredStyle: .alert)
+                alert.addAction(rename)
                 alert.addAction(UIAlertAction(title: "Use usual connection", style: .default) { [weak self] _ in
                     client.disableDeviceChannel(deviceId: device)
                     self?.reload()
@@ -283,6 +290,7 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
                 present(alert, animated: true)
             } else {
                 let alert = UIAlertController(title: "Pair this computer", message: "Copy the connect code from this computer, then paste it here. This connection lasts until you sign out or close the app.", preferredStyle: .alert)
+                alert.addAction(rename)
                 alert.addAction(UIAlertAction(title: "Paste connect code", style: .default) { [weak self] _ in
                     let code = UIPasteboard.general.string ?? ""
                     Task { @MainActor [weak self] in
@@ -329,5 +337,32 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
         default:
             break
         }
+    }
+
+    /// A nickname is a synced device field: every signed-in surface shows it.
+    private func renameDevice(_ device: String, current: String) {
+        let alert = UIAlertController(title: "Rename device", message: "Everywhere you're signed in shows this name.", preferredStyle: .alert)
+        alert.addTextField { field in
+            field.text = current
+            field.placeholder = "Device name"
+            field.autocapitalizationType = .words
+            field.clearButtonMode = .whileEditing
+            field.accessibilityIdentifier = "device-name-field"
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak self, weak alert] _ in
+            guard let self, let client = self.app.client else { return }
+            let name = alert?.textFields?.first?.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !name.isEmpty, name != current else { return }
+            do {
+                try client.renameDevice(deviceId: device, name: name)
+            } catch {
+                let failure = UIAlertController(title: "Couldn't rename this device", message: "Try again in a moment.", preferredStyle: .alert)
+                failure.addAction(UIAlertAction(title: "OK", style: .default))
+                self.present(failure, animated: true)
+            }
+            self.reload()
+        })
+        present(alert, animated: true)
     }
 }

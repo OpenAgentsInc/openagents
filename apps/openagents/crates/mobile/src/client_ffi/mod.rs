@@ -339,6 +339,11 @@ impl CoreClient {
         Ok(self.client.rename_project(&space_id, name.as_deref())?)
     }
 
+    /// Nickname a device; synced to every signed-in surface.
+    pub fn rename_device(&self, device_id: String, name: String) -> CoreResult<()> {
+        Ok(self.client.rename_device(&device_id, &name)?)
+    }
+
     pub fn delete_project(&self, space_id: String) -> CoreResult<()> {
         Ok(self.client.delete_project(&space_id)?)
     }

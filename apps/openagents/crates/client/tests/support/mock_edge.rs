@@ -22,13 +22,13 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use futures::{SinkExt, StreamExt};
+use openagents_sync::chat_frames::{self, frame_type};
+use openagents_sync::registry::mock_server::MockRegistryServer;
 use serde_json::json;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
-use openagents_sync::chat_frames::{self, frame_type};
-use openagents_sync::registry::mock_server::MockRegistryServer;
 
 #[derive(Clone, Debug)]
 pub struct Row {

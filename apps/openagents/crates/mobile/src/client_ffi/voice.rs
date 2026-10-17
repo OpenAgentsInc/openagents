@@ -3,6 +3,8 @@
 //! platform renders typed snapshots exactly as the desktop reads them.
 use super::*;
 use crate::orb::VoiceOrb;
+use openagents_proto::voice::{VoicePhase, VoiceRejection, VoiceRole, VoiceWork, remote::Sdp};
+use openagents_voice_session::{VoiceMediaEndpoint, VoiceView};
 use std::collections::HashMap;
 use std::sync::{
     Mutex,
@@ -10,8 +12,6 @@ use std::sync::{
 };
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
-use openagents_proto::voice::{VoicePhase, VoiceRejection, VoiceRole, VoiceWork, remote::Sdp};
-use openagents_voice_session::{VoiceMediaEndpoint, VoiceView};
 
 #[derive(Clone, Copy, uniffi::Enum)]
 pub enum VoiceMediaOperation {
