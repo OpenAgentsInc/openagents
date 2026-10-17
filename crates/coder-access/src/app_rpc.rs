@@ -46,6 +46,7 @@ pub enum Method {
     ListSkills,
     ListCommands,
     RelayCommand,
+    ContinueChat,
 }
 impl Method {
     pub fn as_str(self) -> &'static str {
@@ -57,16 +58,23 @@ impl Method {
             Self::ListSkills => "ListSkills",
             Self::ListCommands => "ListCommands",
             Self::RelayCommand => "RelayCommand",
+            Self::ContinueChat => "ContinueChat",
         }
     }
     pub fn right(self) -> Right {
         match self {
-            Self::RelayCommand | Self::AuthorizeSync => Right::Operate,
+            Self::RelayCommand | Self::AuthorizeSync | Self::ContinueChat => Right::Operate,
             _ => Right::Observe,
         }
     }
     pub fn reads_only(self) -> bool {
-        self != Self::RelayCommand
+        !matches!(self, Self::RelayCommand | Self::ContinueChat)
+    }
+    pub fn first_missing(self, rights: &crate::Rights) -> Option<Right> {
+        if !rights.contains(self.right()) {
+            return Some(self.right());
+        }
+        (self == Self::ContinueChat && !rights.contains(Right::Observe)).then_some(Right::Observe)
     }
 }
 
@@ -99,6 +107,23 @@ impl Request {
                     return Err(Error::new(
                         Code::Malformed,
                         "app command needs its chat and command IDs",
+                    ));
+                }
+            }
+        }
+        if self.method == Method::ContinueChat {
+            for value in [
+                &self.params["chatId"],
+                &self.params["account"],
+                &self.params["target"]["id"],
+                &self.params["target"]["home"],
+            ] {
+                if !value.as_str().is_some_and(|s| {
+                    !s.is_empty() && s.len() <= 256 && !s.chars().any(char::is_control)
+                }) {
+                    return Err(Error::new(
+                        Code::Malformed,
+                        "continuation needs its account, source, and destination",
                     ));
                 }
             }

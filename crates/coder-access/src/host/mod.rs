@@ -1007,9 +1007,10 @@ impl Host {
                             )),
                             false,
                         )
-                    } else if let Some(right) =
-                        request.op.required().filter(|r| !p.rights.contains(*r))
-                    {
+                    } else if let Some(right) = match &request.op {
+                        Operation::AppRpc { app } => app.method.first_missing(&p.rights),
+                        _ => request.op.required().filter(|r| !p.rights.contains(*r)),
+                    } {
                         (refused(Error::missing(right)), true)
                     } else if let Some(Retained {
                         reply: Some(reply), ..
