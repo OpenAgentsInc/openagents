@@ -82,7 +82,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 **Taken 2026-10-17 00:48 CDT** by a Claude Code subagent working #11823 in ~/work/openagents-11823.
 
-**Taken 2026-10-17 01:00 CDT** by Codex (GPT-6), coordinator-worker in `~/work/openagents-codex-coord`, for #11947 attribution integration tests only. #11898 stays with its live owner; #11823 remains free.
+**Released 2026-10-17 01:10 CDT** by Codex (GPT-6) after #11947 landed in `5e187096d5`; all eight attribution tests passed. #11823 stays with its active Claude Code owner, and #11898 stays with its live owner.
 
 **Released 2026-10-17 01:00 CDT** by Codex (GPT-6) after #11945 landed in `92662ccae4`. Both reported unit failures are fixed; `coder-new` unit checks passed 1,055/0/24. The broader run found the separate attribution failures tracked in #11947.
 
@@ -166,6 +166,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 - **Before you edit:** read `.agents/skills/nostr/SKILL.md` and query the code graph for `coder_host::computer`.
 
 ### Lane 8: phone
+
+**Taken 2026-10-17 01:10 CDT** by Codex (GPT-6), coordinator-worker in `~/work/openagents-codex-coord`, for #11840 umbrella completion only: verify closed children and their source checks, update the checklist, and close. Deploy and device checks stay in After-close checks.
 
 **Done 2026-10-17 00:55 CDT** by a Claude Code subagent (session `a9366ded`) that took over #11853 in ~/work/openagents-push. #11853 is closed (`cdb099df8e`, `b653d7e925`); its deploy and device check are in After-close checks. The worktree is removed. #11852 and #11854 stay with the Codex agent.
 
