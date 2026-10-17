@@ -1,0 +1,18 @@
+diff --git a/templates/firecracker/recipes/seed.toml b/templates/firecracker/recipes/seed.toml
+--- a/templates/firecracker/recipes/seed.toml
++++ b/templates/firecracker/recipes/seed.toml
+@@ -13,10 +13,10 @@
+ from = "scratch"
+ 
+-# The shared lineage carries a BPF/tracing-capable guest kernel. Every node
+-# running a template from this lineage must stage this exact kernel.
++# The maintained GCloud lineage uses the public Firecracker CI kernel.
++# Every node stages and verifies these exact bytes before accepting it.
+ [guest_kernel]
+-version = "vmlinux-6.1.155-bpf-modsig"
+-digest = "sha256:15ea4431a450eedbfcb4b4d3d85dd8e941b829a0606db6cd0e0167530421f933"
++version = "6.1.155"
++digest = "sha256:e20e46d0c36c55c0d1014eb20576171b3f3d922260d9f792017aeff53af3d4f2"
+ 
+ [source]
+ type = "ubuntu-minimal-cloud-squashfs"
