@@ -192,8 +192,21 @@ fn manager(frame: &mut Frame, area: Rect, app: &App) {
             vec!["Up/Down Select", "Space Turn on/off", enter, "Esc Back"]
         }
     };
-    let list_height =
-        (rows.len() as u16).min(area.height.saturating_sub(hints.len() as u16 + 1).max(1));
+    let mut lines = vec![Line::default()];
+    lines.extend(
+        hints
+            .into_iter()
+            .map(|hint| Line::from(span(truncate(hint, area.width), t::GRAY_BRIGHT))),
+    );
+    lines.push(Line::default());
+    lines.extend(plugin_details(app, area.width));
+    let footer = Paragraph::new(Text::from(lines)).wrap(ratatui::widgets::Wrap { trim: false });
+    // Leave room for the wrapped details, including update instructions.
+    // Keep at least two list rows for the selected plugin and its status.
+    let footer_height = footer
+        .line_count(area.width)
+        .min(usize::from(area.height.saturating_sub(2))) as u16;
+    let list_height = (rows.len() as u16).min(area.height.saturating_sub(footer_height));
     let selected = p.selected.min(definition_count - 1) as u16;
     let selected_row = if wide { 1 + selected } else { selected * 2 };
     let selected_bottom = selected_row + u16::from(!wide);
@@ -205,16 +218,8 @@ fn manager(frame: &mut Frame, area: Rect, app: &App) {
             ..area
         },
     );
-    let mut lines = vec![Line::default()];
-    lines.extend(
-        hints
-            .into_iter()
-            .map(|hint| Line::from(span(truncate(hint, area.width), t::GRAY_BRIGHT))),
-    );
-    lines.push(Line::default());
-    lines.extend(plugin_details(app, area.width));
     frame.render_widget(
-        Paragraph::new(Text::from(lines)).wrap(ratatui::widgets::Wrap { trim: false }),
+        footer,
         Rect {
             y: area.y + list_height,
             height: area.height.saturating_sub(list_height),
@@ -1457,9 +1462,13 @@ mod tests {
         );
         app.screen = Screen::Plugins;
         select(&mut app, "acp-subagents");
-        let list = draw(&app, 100, 30).rows.join("\n");
-        assert!(list.contains("Update required"), "{list}");
-        assert!(list.contains("cursor-agent update"), "{list}");
+        for (width, height) in [(100, 30), (80, 24)] {
+            let canvas = draw(&app, width, height);
+            let list = canvas.rows.join("\n");
+            assert!(list.contains("❯ ACP Subagents"), "{list}");
+            assert!(list.contains("Update required"), "{list}");
+            assert!(list.contains("cursor-agent update"), "{list}");
+        }
         app.screen = Screen::PluginSettings;
         let text = draw(&app, 100, 30).rows.join("\n");
         // How far Coder's checks reach on it, said before delegating

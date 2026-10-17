@@ -2229,7 +2229,8 @@ mod tests {
 
     /// #11526: signed in, `models list` offers the gateway's models (one
     /// fetch, then the kept list), `models set` picks one for the Coder
-    /// loop's turns, and `auto` clears it. Signed out, none are listed.
+    /// loop's turns, and `auto` clears it. Signed out, no gateway models
+    /// are listed. Local harness choices can appear in either state.
     #[test]
     fn a_headless_chat_lists_and_picks_the_gateways_models() {
         use std::io::{Read as _, Write as _};
@@ -2257,15 +2258,16 @@ mod tests {
         let context = context(&temp);
         std::fs::create_dir_all(&context.root).unwrap();
         let mut app = bootstrap(&context).unwrap();
-        let ids = |listed: &Value| {
+        let model_ids = |listed: &Value| {
             listed["models"]
                 .as_array()
                 .unwrap()
                 .iter()
+                .filter(|model| model["harness"].as_bool() != Some(true))
                 .map(|model| model["id"].as_str().unwrap().to_owned())
                 .collect::<Vec<_>>()
         };
-        assert_eq!(ids(&model_command(&mut app, &[]).unwrap()), ["auto"]);
+        assert_eq!(model_ids(&model_command(&mut app, &[]).unwrap()), ["auto"]);
         std::fs::write(
             context.root.join("account.json"),
             json!({
@@ -2277,7 +2279,7 @@ mod tests {
         .unwrap();
         let mut app = bootstrap(&context).unwrap();
         let listed = model_command(&mut app, &["list".into()]).unwrap();
-        assert_eq!(ids(&listed), ["auto", "zai/glm-5.3-flash"]);
+        assert_eq!(model_ids(&listed), ["auto", "zai/glm-5.3-flash"]);
         let request = server.join().unwrap();
         assert!(request.starts_with("GET /api/v1/models "), "{request}");
         assert!(request.contains("Bearer fixture-models-token"));
