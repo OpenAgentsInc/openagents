@@ -1,4 +1,23 @@
-# OpenAgents 1.0.0 (1009)
+# OpenAgents 1.0.0 (1010)
+
+Open Agent Lab from the agent picker in a new conversation. Choose a connected
+computer and project, edit an agent and a small set of tests, then save and run.
+Inspect the results, open a trial's conversation, stop a run, and try a saved
+agent as a comparison. Use agent saves your chosen instructions to the picker.
+Try the Foreman template to create an agent for coordinating issue work.
+
+The computer needs this update too. Tests run in separate project copies with
+the selected runtime's normal access. Codex, Claude Code, and installed Rust
+runners use the same conversations and assignment service as other agents.
+
+Try reopening an experiment on another device, opening an earlier saved
+version, explicit human review, missing computers, and a connection loss during
+save. Check large text, VoiceOver, sign-out, and switching accounts. The login
+persistence fixes from build 1006 and dashboards from build 1005 are included.
+
+When editing an agent, use Done above the keyboard to return to the form.
+
+OpenAgents 1.0.0 (1009)
 
 Foreman is a ready-made agent that keeps track of every open issue and every
 agent working on them. Open Agent Lab from the agent picker and choose Start from

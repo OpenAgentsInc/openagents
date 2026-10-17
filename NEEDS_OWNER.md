@@ -1,3 +1,21 @@
+## Check Agent Lab on iPhone (#11914–#11921)
+
+Install OpenAgents TestFlight build 1010 over the existing app. Open **Agent
+Lab…** from the agent picker in a new conversation, choose a connected computer
+and project, save a small experiment, and run it. Open its trial conversation,
+compare saved versions, and choose **Use agent**. Check large text, VoiceOver,
+and switching accounts on your phone.
+
+The desktop needs this update too. After its active work finishes, quit
+OpenAgents Dev, update the regular desktop checkout to current `main`, and
+rebuild with `scripts/run-macos-dev.sh` from `apps/openagents`. Keep its existing
+OpenAgents Dev data directory as described in `apps/openagents/OPENAGENTS.md`.
+
+Use your normal Codex and Claude Code logins to check a Lab trial with each
+and inspect its instructions and reply. Automated qualification uses a
+dedicated account, separate projects, and an installed Rust runner. Report any
+device or provider defect as a new issue.
+
 ## Check custom-agent model choices on iPhone (#11924)
 
 Install TestFlight build 1008. With a connected computer, create or edit an
