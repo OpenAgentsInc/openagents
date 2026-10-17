@@ -126,6 +126,7 @@ impl Fixture {
             auth: AuthMode::Dev,
             accounts: None,
             revision: "push-test".into(),
+            proof_origin: None,
             push: Some(Arc::new(Push::new(settings))),
         });
         let server_task = tokio::spawn(async move {
