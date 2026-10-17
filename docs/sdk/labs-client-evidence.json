@@ -1,0 +1,101 @@
+{
+  "schema": "openagents.sdk.labs-client-evidence.v1",
+  "issue": 11876,
+  "source_commit": "017733a4fe00f7e9509861e698ebe08330315a23",
+  "landed_commit": "1b55b50ae17dcd47315f803a8238ab7c3c3afe82",
+  "qualification": {
+    "schema": "openagents.sdk.labs-source-qualification.v1",
+    "checked_at": "2026-10-17T02:13:57.231353+00:00",
+    "source_commit": "017733a4fe00f7e9509861e698ebe08330315a23",
+    "remote_checkout_base": "29620a0e233ef0e72f4724ffa6841676c849bd62",
+    "runtime_files_match_source_commit": true,
+    "runtime_files": {
+      "Cargo.lock": "53c1b22478dfd63909bf5e88862571ad48abf5f562bf7f514f1a7806d41ff266",
+      "apps/openagents/Cargo.lock": "4dc25f38e9b1e0e5987940d05d8c66ca29bff06a40ead49428bc337749c22732",
+      "crates/openagents-sdk/Cargo.toml": "11f626f3f2422797385dc528bab84f16f3eecb9695c017f7e94befd064100c35",
+      "crates/openagents-sdk/src/lib.rs": "ae73bcd8433134f9ff23ec93c62470f43fb93e2da037ddb8956b36ba6e7735e4",
+      "crates/openagents-sdk/src/labs.rs": "28f4a33180cd8c769ed5ccf2b3f77d1056ff81e87689634e82e9844e43a90d43",
+      "crates/openagents-sdk/src/labs/artifacts.rs": "8a166d5a3af84e0147ad8ffc13149e5d8afa947bf7e9d17e3be3a23303cf18fb",
+      "crates/openagents-sdk/src/labs/cad.rs": "51a3f10b04be6437e527fd5c99c3075663edcf7f1e29f9d5e77bc23cb0d14ac3",
+      "crates/openagents-sdk/src/labs/events.rs": "a675734d09b82a6030809986377c6b9fdd2a69597330fde7184b598a142f5372",
+      "crates/openagents-sdk/src/labs/wire.rs": "2995bac43bc2c60dedd0cd679ad8bd7b4233e9a4429529c7950b9c34d1d79885",
+      "crates/openagents-sdk/tests/labs.rs": "f0c0bf1c60fe2c30640be60a6f179f268f8f6211d95bda34136804fa7b7378ae",
+      "crates/openagents-sdk/tests/labs/streams.rs": "a0e45d2534e346b12c474f731f8c460946a1c1bebc4507824370f65a6be1b35f"
+    },
+    "source_patch_sha256": "e99c040516e004cdd93434f86006073c14cb3b2210acc06a8513904104574674",
+    "checks": {
+      "fixture-final.log": {
+        "passed": 10,
+        "failed": 0,
+        "ignored": 0,
+        "sha256": "5783adf7a76011fd6e7c40a11858a16f43dbe080c6438086fad6c3d45a548c64"
+      },
+      "cad-preview.log": {
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0,
+        "sha256": "61e21e545289107028999dd4eed4611f5501e6b24b132ea7eb7f832b08aa9f95"
+      },
+      "sdk-full.log": {
+        "passed": 59,
+        "failed": 0,
+        "ignored": 0,
+        "sha256": "e9e0663c795475c322c5f5ff234d7a51afe0fdaeacd9255319431992822c6748"
+      }
+    },
+    "test_binaries": {
+      "labs-ec148a7a889b6a14": "1e77183471f2a9e36abc126aaa11e0f777a33bb060b770312e98536b92adfa96",
+      "openagents_sdk-a37e56b0a3e43eb3": "c31fdc2748640c562aa79c4b27a195c70e8fe97dafc1324be628827102577bcb",
+      "openagents_sdk-599cc96e477f5e58": "8a05b58e879296209494a50f041293b240c2b8f4a4a01fbd1a93b36f5b4ba7fe",
+      "auth-6f00b6b5b6810d3a": "b2af0c5f170aefc0e88cc48328aff40f9b3e0ba7834a2f37591bb81e175b5cf9",
+      "chats-899bb64e1604cea6": "68691809505c6eca0a336bf7de9ae157fc28e978ac08a29a8446af51375b9395",
+      "computers-40680f33bd091471": "fc99e5db6849b5e6445473b16f8e316dc2499c2a163aa75e59adf67b562462cf",
+      "computers_contract-65baac377cf6607a": "16b6ac729df8f9d15584f0a238c100acb6870d8987726bad13c75ee776b843a9",
+      "copy-f31f5f4e55c23588": "18ef8aa534e517bc7b176009d93c30657d2c6243ec2e304a0c667b26291935cb",
+      "dashboard-7666894ecd34b396": "e8c6b42ebddc3985adf5b92df9d2d1025930e6129568ce8ba9b70c6881d918b9",
+      "history-bf411ea3b619d4e1": "bb7d4fa33e770cfa4655e521aea21de4ad7fd2a181232c0335dd883f470f3b83",
+      "payment_required-aebab6e91353f594": "aaee3b78ab8f1d9c8a8619b9f2ec7dfde8ca8ca8a7603a5f4f50691583c4d71d"
+    },
+    "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "environment": {
+      "jobs": 2,
+      "incremental": false,
+      "dev_debug": 0,
+      "test_debug": 0,
+      "private_tmpdir": true,
+      "umask": "077"
+    },
+    "external_git_build": "pending",
+    "production_cad_workflow": "pending",
+    "macos_ios_consumer": "pending root coordination"
+  },
+  "archive": {
+    "path": "docs/sdk/evidence/labs-client-source-2026-10-17.tar.gz",
+    "sha256": "05d8ddfc433710e9d26de490915cff62bd349ae4595efd173c9b0dd84052f83b",
+    "contains": "Exact tested source, source patch, runtime file hashes, test binary hashes, and test logs."
+  },
+  "static_checks": {
+    "format": "passed",
+    "documentation_links": "passed",
+    "default_normal_dependency_audit": "passed: no lab-api, lab-store, openagents-web, tenancy, CAD engine, database, or harness dependency"
+  },
+  "production_account_preflight": {
+    "expected_account": "acct_83d16a35955ef908",
+    "account_matches": true,
+    "owner_account": false,
+    "read_only": true,
+    "test_header": true
+  },
+  "external_example": {
+    "git_pin": "1b55b50ae17dcd47315f803a8238ab7c3c3afe82",
+    "build": "pending",
+    "production_cad_workflow": "pending deployment of the CAD kind",
+    "cleanup": "pending workflow"
+  },
+  "platforms": {
+    "linux": "passed",
+    "macos_ios_consumer": "pending root-coordinated warm app check",
+    "wasm": "not qualified; existing SDK transport is not a browser transport"
+  },
+  "publication": "No package published."
+}
