@@ -158,7 +158,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 **Taken 2026-10-16 22:47 CDT** by Codex (Grok 4.7) working #11934, #11929, #11925, #11727 in `~/work/openagents-lane9b`.
 
-The website agents door uses the shared `place` (`1708f44f49`). Deploy and the Foreman live check stay in After-close checks. #11929 is closed on code (`7fb459a5a5`). #11925 is next.
+The website agents door uses the shared `place` (`1708f44f49`). Deploy and the Foreman live check stay in After-close checks. #11929 is closed on code (`7fb459a5a5`). #11925 is closed on code (`534ecb5c67`). The controlled deploy check stays in After-close checks. #11727 is next.
 
 **Released 2026-10-16 22:40 CDT** by a Claude Code subagent. #11935 is closed (`264642e0a6`). #11934's `openagents agents` command is on `main` in the same commit. #11928 is closed; the no-traffic production check is in After-close checks.
 
@@ -227,9 +227,10 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Status:** the freeze no longer applies. Its prerequisite #11806 is done.
 - **Remains:** replace direct allocation, launch, file, and command transport in `coder remote delegate` with `openagents::computers`. Keep `--on boat`'s meaning, logical retry handles, and the separation of detach from cancel. Add computer tools only for implemented capabilities. Run a dedicated-account staging task.
 
-**#11925 Accounts: keep authenticated reads predictable during gateway handoff.** Lane 9, not started.
-- **Status:** during a traffic shift, the outgoing web revision returns 503 on account-backed reads after its account service hands over the store. Trace `ed19af0410b5b236d6ccb7d3cd5d0676`.
-- **Remains:** an outgoing and incoming handoff fixture, bounded safe-read recovery or deploy coordination, accurate retryable errors, mutations never replayed, and a controlled deploy with a synthetic account.
+**#11925 Accounts: keep authenticated reads predictable during gateway handoff.** Lane 9. Closed on code.
+- **Status:** on `main` (`534ecb5c67`). An account lookup that fails for transport or a 5xx is tried once more. A refused session is not tried again, and a result is not remembered for a later call. Computer 503 responses include `Retry-After`. A delete that cannot be checked is not sent to the computer service. Trace `ed19af0410b5b236d6ccb7d3cd5d0676`.
+- **Checks:** `cargo test -p openagents-web --lib account_handoff_retries_a_read_and_does_not_replay_a_delete` passed (1).
+- **After-close:** the controlled deploy check is in [After-close checks](#after-close-checks).
 
 **#11928 Deployments: fence Environment work before a candidate receives traffic.** Lane 9, not started.
 - **Status:** a held candidate opens `Studio` and requeues unfinished setups before it gets traffic. Its guards are process-local, so it can fail a shared setup or sweep homes.
@@ -420,6 +421,7 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 | --- | --- | --- |
 | #11817 | Deploy the new host and computer service. Configure a disposable Unix host, scoped test-account grant, and explicit enrolled target. Run the public attach, command retry/reconnect/cancel, relative-file, revocation, unsupported-control, and detach flow; verify files and unrelated grants survive. Repeat the Linux-specific command checks on Linux. | source checks passed; deploy and dedicated-account run to do |
 | #11934 | Deploy the agents door from `1708f44f49` or newer. Run `ask_foreman_cli.py` and `openagents agents ask Foreman …` with test account `acct_500d3e1d125b7782`. The web door's switch to `place` is on `main` (`1708f44f49`). | to do |
+| #11925 | Deploy `534ecb5c67` or newer. With a synthetic account, confirm an account-backed computer read either succeeds or returns 503 with `Retry-After` during a traffic shift, and a delete during that gap is not applied. | to do |
 | #11936 | Redeploy the SPACE candidate with explicit zero-length framing and verify suspend and wake through Cloud Run. | Candidate deployed as `oa-space-service-computers-00002-pch`; the saved pre-deploy rejection blocks the existing fixture. Recovery defect: #11939. Suspend/wake remains unqualified. |
 | #11939 | Deploy the checked private candidate, run the explicit operator retry for the saved rejected suspend, then qualify encrypted checkpoint and resume. The [usage evidence](../sdk/computers-usage-evidence.json) has the exact request and expected child. | 31 final focused checks and the default build passed; image build/deploy and live recovery remain to do |
 | #11814 | Promote the checked cleanup images, install eleven measurements and nine alert policies, then run encrypted lifecycle, worker replacement, concurrent wakes, drain/rollback/placement disable, guest denial, retention, and fixture cleanup. Use the [private service runbook](../../deploy/space-service/README.md) and [receipt](../cloud/evidence/2026-10-16-space-private-foundation.json). | to do; source checks passed 50/0 |
