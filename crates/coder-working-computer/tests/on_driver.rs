@@ -130,6 +130,7 @@ fn a_driver_without_suspend_is_refused_up_front() {
 struct MemoryDriver {
     inner: FakeDriver,
     complete: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    delete_complete: std::sync::Arc<std::sync::atomic::AtomicBool>,
     operations: std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, String>>>,
     clock: std::sync::Arc<std::sync::Mutex<Option<String>>>,
 }
@@ -172,7 +173,15 @@ impl computer_driver::Driver for MemoryDriver {
         self.inner.meter(c).await
     }
     async fn delete(&self, c: &str) -> computer_driver::Outcome<()> {
-        self.inner.delete(c).await
+        let result = self.inner.delete(c).await;
+        if self
+            .delete_complete
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            result
+        } else {
+            computer_driver::Outcome::unknown("accepted deletion is still pending")
+        }
     }
     async fn suspend_operation(&self, c: &str, key: &str) -> computer_driver::Outcome<String> {
         self.lifecycle(c, key, false).await
@@ -212,6 +221,7 @@ async fn memory_lifecycle_waits_for_original_operations_across_restart_and_keeps
     let memory = MemoryDriver {
         inner: FakeDriver::new(dir.path().join("machines")).boot_observations(0),
         complete: Arc::new(AtomicBool::new(true)),
+        delete_complete: Arc::new(AtomicBool::new(true)),
         operations: Arc::new(Mutex::new(Default::default())),
         clock: Arc::new(Mutex::new(None)),
     };
@@ -296,6 +306,7 @@ async fn observed_deletion_settles_a_memory_operation_whose_result_cannot_be_rea
     let memory = MemoryDriver {
         inner: FakeDriver::new(dir.path().join("machines")).boot_observations(0),
         complete: Arc::new(AtomicBool::new(true)),
+        delete_complete: Arc::new(AtomicBool::new(true)),
         operations: Arc::new(Mutex::new(Default::default())),
         clock: Arc::new(Mutex::new(None)),
     };
@@ -322,6 +333,7 @@ async fn memory_idle_and_absolute_bounds_survive_restart_without_an_automatic_wa
         let memory = MemoryDriver {
             inner: FakeDriver::new(dir.path().join("machines")).boot_observations(0),
             complete: Arc::new(AtomicBool::new(true)),
+            delete_complete: Arc::new(AtomicBool::new(true)),
             operations: Arc::new(Mutex::new(Default::default())),
             clock: Arc::new(Mutex::new(None)),
         };
@@ -403,6 +415,7 @@ async fn a_restored_service_must_answer_before_dispatch_without_rerunning_startu
     let memory = MemoryDriver {
         inner: FakeDriver::new(dir.path().join("machines")).boot_observations(0),
         complete: Arc::new(AtomicBool::new(true)),
+        delete_complete: Arc::new(AtomicBool::new(true)),
         operations: Arc::new(Mutex::new(Default::default())),
         clock: Arc::new(Mutex::new(None)),
     };
@@ -456,4 +469,39 @@ async fn a_restored_service_must_answer_before_dispatch_without_rerunning_startu
     driver.turn_finished("computer-1", 2, 40).await.unwrap();
     driver.delete("computer-1", 50).await.unwrap();
     assert!(memory.inner.live().is_empty());
+}
+
+#[tokio::test]
+async fn missing_resource_does_not_complete_a_pending_delete_after_restart() {
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let memory = MemoryDriver {
+        inner: FakeDriver::new(dir.path().join("machines")).boot_observations(0),
+        complete: Arc::new(AtomicBool::new(true)),
+        delete_complete: Arc::new(AtomicBool::new(false)),
+        operations: Arc::new(Mutex::new(Default::default())),
+        clock: Arc::new(Mutex::new(None)),
+    };
+    let records = dir.path().join("records");
+    let store = Store::under(&records);
+    store.create(&Computer::new(spec(), 1).unwrap()).unwrap();
+    let driver = Driver::new(store, fast(memory.clone()));
+    let first = driver.prompt("computer-1", 10).await.unwrap();
+    let resource = first.computer().resource().unwrap().to_owned();
+    let pending = driver.delete("computer-1", 20).await.unwrap();
+    assert!(pending.computer().deletion.as_ref().unwrap().is_unknown());
+    assert_ne!(pending.computer().phase, Phase::Deleted);
+    assert_eq!(
+        memory.inner.observe(&resource).await.value().unwrap().state,
+        State::Gone
+    );
+    let restarted = Driver::new(Store::under(records), fast(memory.clone()));
+    let pending = restarted.tick("computer-1", false, 30).await.unwrap();
+    assert_ne!(pending.computer().phase, Phase::Deleted);
+    memory.delete_complete.store(true, Ordering::SeqCst);
+    let done = restarted.tick("computer-1", false, 40).await.unwrap();
+    assert_eq!(done.computer().phase, Phase::Deleted);
 }
