@@ -103,6 +103,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 3: keepers and moving agents
 
+**Taken 2026-10-17 01:20 CDT** by a Claude Code subagent working #11933 in ~/work/openagents-11933.
+
 **Taken 2026-10-17 01:00 CDT** by a Claude Code subagent working #11946 in ~/work/openagents-11946.
 
 **Released 2026-10-17 01:10 CDT** by a Claude Code subagent. #11932 is closed on code (`a76ba6ab21`): `crates/engine/src/sessions/move_cloud.rs` captures, uploads, restores, and resumes one chat on a cloud computer. Its dedicated-account run is in After-close checks. #11933 remains. Target `~/work/openagents-target-11932-app` stays warm.
