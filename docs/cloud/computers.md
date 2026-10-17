@@ -185,8 +185,10 @@ API restart.
 Memory-preserving drivers name suspend and resume with identities derived from
 the saved boot and turn generation. The service records each SPACE request in
 PostgreSQL before sending it, then saves its accepted provider operation ID
-before waiting. Recovery only reads that saved operation; it does not depend on
-how long SPACE keeps retry keys. A lost response before the ID is saved remains
+before waiting. Recovery reads that saved operation; it does not depend on
+how long SPACE keeps retry keys. Only SPACE's precise terminal snapshot-upload
+delete conflict permits a new, separately saved retry; each accepted operation
+ID remains available. A lost response before the ID is saved remains
 unknown and is never sent again. The service waits for operation completion and
 observed state before dispatch, including after an accepted operation's lookup
 fails.
