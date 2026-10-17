@@ -18,7 +18,7 @@ This document governs how the remaining work is split. Read it with the [big-ban
 
 ### At the stop
 
-- **48 issues are open.** 27 closed since 2026-10-16 18:00 CDT, including all of Agent Lab (#11914–#11921), Foreman (#11926, #11927), the app rename (#11899), the iPhone crash (#11889), memory suspension (#11812), Labs L2 and L3 (#11873, #11874), and the SDK policy issues (#11819–#11822).
+- **48 issues were open at the stop** (47 after #11788 closed). 27 closed since 2026-10-16 18:00 CDT, including all of Agent Lab (#11914–#11921), Foreman (#11926, #11927), the app rename (#11899), the iPhone crash (#11889), memory suspension (#11812), Labs L2 and L3 (#11873, #11874), and the SDK policy issues (#11819–#11822).
 - **Every handoff is on `main`.** The stopped agents pushed their work, posted a handoff on each issue, and released their claims. Unfinished code is saved in three ways:
   - **Checkpoint branches on GitHub:** `codex/11878-jobs-placement`, `codex/11878-sdk-worker`, `codex/11878-cloud-launcher`, `codex/11876-labs-sdk`, `codex/agent-lab-model-use-20261017`, `codex/11817-enrolled-adapter` (empty, starts at `e6f468c332`), and `codex/11812-11817-computers`. Don't delete them.
   - **Unapplied patches on `main`:** `docs/audits/2026-10-16-labs-11877-wip.patch` (#11877) and `docs/sdk/evidence/grid-stop-checkpoints-2026-10-17.tar.gz` with its JSON index (five overlapping snapshots; don't apply them blindly).
@@ -62,7 +62,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 | 7. Host authority | #11817, then #11911 | yes |
 | 8. Phone | #11852, #11854, #11853, then #11840 | no |
 | 9. CLI, Agent Lab, web fixes | #11935, #11934, #11929, #11925, #11928, #11727 | yes (#11934, #11935) |
-| 10. Signet and LayerTree | #11863, #11770, #11862, #11762, #11793, #11794, #11799, #11788, #11779 | no |
+| 10. Signet and LayerTree | #11863, #11770, #11862, #11762, #11793, #11794, #11799, #11779 | no |
 
 ### Lane 0: release and deploys (one agent, the only one that deploys or releases)
 
@@ -206,7 +206,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 **#11871 Epic: Labs platform.** Lane 4.
 - **Status:** #11872, #11873, #11874, and #11879 are done. The rest is open.
-- **Owner decisions in the plan:** whether renders showing MetaHuman or Fab content may be stored and streamed, access for new hosted Labs (owner and test accounts first), and AVPlayer first on Apple platforms. The fourth decision (the 1.0 bridge) is moot now.
+- **Decided (owner, 2026-10-16):** renders that show MetaHuman or Fab content are never committed to GitHub. They live in the space's private platform storage and stream to users. The plan's other decisions stand as recommended: new hosted Labs start with owner and test accounts, and AVPlayer comes first on Apple platforms. The 1.0 bridge decision is moot.
 
 **#11875 Labs L4: CAD Lab as the first kind on the Labs platform.** Lane 4, with lane 0 for the deploy.
 - **Status:** source is on `main` (`2f3465b291`, `218a67f92f`, `5bdf74bba6`). Focused checks passed: CAD 57, 22 CAD web cases, store and API with PostgreSQL and fake GCS, and the cookie-revocation regression. The combined image is on staging and passed 99/0/2.
@@ -288,7 +288,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Remains:** a host-verified project scope (recipient device and account, roots, rights, expiry, revocation) enforced on list, read, file, task, terminal, and sync paths. Refuse old hosts. Then the sharing controls on mobile and the recipient's view.
 
 **#11929 Agent Lab: run tests for agents that don't need a project copy.** Lane 9, not started.
-- **Recommendation:** option 1 (an experiment-level "no project files" choice that runs in an empty folder). It's small, honest, and covers Foreman. Option 2 can follow later.
+- **Decided (owner, 2026-10-16):** option 1, an experiment-level "no project files" choice that runs the trial in an empty folder. The report says the agent had no project files.
 
 **#11930 Move running agents: keepers.** Lane 3, spec only.
 - **Remains:** a keeper subcommand that owns each harness run's stdio and process group, journals frames, and serves a 0600 socket. The engine adopts keepers and replays on boot, the MCP bridge reconnects, and an update becomes a handoff.
@@ -353,9 +353,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 **#11779 LayerTree PoC: P0 regtest and P1 signet.** Lane 10.
 - **Status:** P0 is done. P1 is done except #11788, #11793, and #11794. Visualizations are done except #11799.
 
-**#11788 LayerTree: run the enclave on an SEV-SNP Confidential VM.** Lane 10.
-- **Status:** blocked on technology. GCP Confidential Space rejects SNP (`UNSUPPORTED_CC_TECHNOLOGY`), and raw SNP firmware reports don't prove the application image. The TDX route already satisfies P1.
-- **Recommendation:** close as not achievable on GCP today, with the evidence archive linked. Record "requalify SNP when Confidential Space supports it" in `NEEDS_OWNER.md`. Owner decision required.
+**#11788 LayerTree: run the enclave on an SEV-SNP Confidential VM.** Closed 2026-10-16 on the owner's decision: GCP Confidential Space rejects SNP, and TDX satisfies P1.
 
 **#11793 LayerTree: public signet tree, enclave kill, and timed unroll.** Lane 10.
 - **Status:** the HALT run is done and paid (`cc6388ca3e`). The primary tree's clean 24-hour window qualifies at 13:34:53 UTC Saturday.
@@ -363,7 +361,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 **#11794 LayerTree: light-client alarms on signet.** Lane 10.
 - **Status:** the follower code is on `main` (`be91753d34`). Three followers are running. The staged theft, withheld-record, and mismatch alarms fired on every follower (`371e538ac2`). The opencode session that claimed it at 16:39 UTC has no live claim.
-- **Remains:** "three followers in sync for a week" still says a week, but the owner cut #11793's soak to 24 hours. **Recommendation:** apply the same 24-hour rule, close after the primary run ends, and record the full week as an optional observation. Owner decision required.
+- **Remains:** three followers in sync for 24 hours (owner decision, 2026-10-16), following the primary tree through #11793's deletion and unroll. Then record the results and close.
 
 **#11799 LayerTree: headless captures for docs and film.** Lane 10.
 - **Status:** regtest, normal signet, HALT, and alarm captures are done.
@@ -374,7 +372,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 **#11727 Affiliate attribution, part 2.** Lane 9, last.
 - **Status:** audited only.
 - **Remains (code):** carry consented attribution on `/contact` requests, owned short `/r/{handle}` handles, and a self-serve link page under the existing auth.
-- **Remains (needs live billing):** the named-sale end-to-end check needs Pro billing on Stripe test mode. Run it if billing is live, or else record it.
+- **Remains (needs Stripe):** the named-sale end-to-end check. There's no Stripe yet; the owner sets it up on 2026-10-17. Run the check after that, or close with it recorded in `NEEDS_OWNER.md`.
 - **Owner-only:** publishing the terms (`tenant-referrals publish-affiliate`), setting `inference.sats_rate`, linking `/affiliates`, and sending payouts.
 
 ## Shared rules
@@ -389,16 +387,14 @@ These add to AGENTS.md and the brief.
 - **Label machines** you create with `python3 scripts/dev/agent-run.py labels`, and delete them before you close.
 - **Patches in comments aren't proof.** A handoff's check counts apply to the exact commit it names. Rerun on your rebased source before you claim a pass.
 
-## Owner decisions this plan needs
+## Owner decisions (answered 2026-10-16)
 
-The owner can answer these in one pass. Each one has a recommendation.
-
-1. **#11788 SNP:** close as unavailable on GCP, with TDX satisfying P1? Recommended: yes.
-2. **#11794:** accept 24 hours of follower sync instead of a week, matching #11793? Recommended: yes.
-3. **#11929:** start with option 1 (empty folder)? Recommended: yes.
-4. **#11871 Labs:** may renders (never raw assets) that show MetaHuman or Fab content be stored and streamed? This one isn't urgent. Without an answer, keep them on the enrolled host.
-5. **#11727:** is Pro billing on Stripe test mode available for the named-sale check?
-6. **Lane 6:** is the Codex session on #11813, #11814, and #11936 meant to keep running after the STOP? This plan assumes yes.
+1. **#11788 SNP:** closed as unavailable on GCP. TDX satisfies LayerTree P1. If Confidential Space adds SNP, open a new issue.
+2. **#11794:** 24 hours of follower sync, not a week, matching #11793.
+3. **#11929:** option 1. Add a "no project files" choice that runs the trial in an empty folder.
+4. **#11871 Labs renders with MetaHuman or Fab content:** never commit them to a GitHub repository. Store them in the Lab space's private platform storage and stream them to users through `/v1/labs/artifacts`. Raw assets never leave the owner's machines.
+5. **#11727:** there's no Stripe yet. The owner sets it up on Saturday 2026-10-17 (reminder in `NEEDS_OWNER.md`). Build the code parts now, and run the named-sale check after Stripe exists.
+6. **Lane 6:** the Codex session on #11813, #11814, and #11936 keeps running. Don't take those issues.
 
 Already in `NEEDS_OWNER.md`, and they don't block closing: the CAD history copy (#11875), the LND and Taproot mainnet steps, the push capability and device check (#11853), the `labs-worker` Mac install (#11878, to be added), and customer pricing (#11815).
 

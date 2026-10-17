@@ -1,3 +1,10 @@
+## Reminder for Saturday 2026-10-17: set up Stripe (#11727)
+
+You said on 2026-10-16 that Stripe isn't set up yet and that you'd do it on
+2026-10-17. Once it exists, #11727's named-sale check can run: one test-mode
+Pro purchase from a `/go/` affiliate click, shown on the scoreboard. Tell an
+agent when Stripe test mode is ready.
+
 ## SDK publication and commercial activation
 
 Review the completed [SDK policy](docs/sdk/release-policy.md). The Coder
