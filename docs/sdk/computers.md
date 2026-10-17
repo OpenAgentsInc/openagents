@@ -116,6 +116,38 @@ average unknown when no useful task completed. Unallocated capacity counts worke
 time without assigned guests; CPU utilization needs its own measurement.
 Customer pricing remains disabled.
 
+The database-authorized operator command also accepts `account-limits ACCOUNT
+FILE` and `service-limits FILE`. Storage policies use `private_storage_bytes`
+and `private_checkpoint_count`, with paired positive `storage_bytes_per_boot`
+and `checkpoints_per_boot` bounds. Qualify these upper bounds for every eligible
+backend, shape, and artifact, including temporary and retained copies, before
+setting them. They reserve capacity, not measured bytes or a price. Each boot
+and create attempt keeps its original allowance. Missing bounds and legacy
+allocations stay unknown and refuse admission under an applicable storage cap.
+The operator `read` response includes `storage_allowance`; the public usage
+response keeps its existing fields. These settings do not enable paid access.
+
+Run `account-cleanup ACCOUNT` to permanently stop new work and enqueue deletion
+of that account's Computers resources. The storage observer advances bounded
+batches after restart; `account-cleanup-status ACCOUNT` reports progress.
+This is the operator handoff for Computers cleanup, not a self-service account
+deletion endpoint. Cleanup waits for deleted resources, finished commands, and
+resolved private storage. It then removes stored command contents and output
+while keeping request identities and accounting evidence.
+
+Run `storage-cleanup ACCOUNT FILE` only after collecting a complete empty
+inventory for one deleted computer. The JSON schema
+`openagents.computers.storage-cleanup.v1` requires `owner`, `computer`, exact
+`resources` and `create_operations` lists, `observed_ms`, a lower-case SHA-256
+`inventory_receipt_sha256`, and zero `live_resources`, `retained_objects`,
+`unfinished_uploads`, and `unresolved_operations`. Count recoverable object
+versions and local copies. Partial provider lists, VM deletion, elapsed time,
+and active-object lists that omit soft-deleted objects cannot establish cleanup.
+The command checks ownership, allocation identities, deletion, and observation
+time, saves an immutable receipt, and releases held capacity once. This is an
+operator inventory assertion, not remote attestation or automatic provider
+cleanup. Preserve unknown holds until that inventory is complete.
+
 For an empty `POST` request, send `Content-Length: 0`. Cloud Run refuses a
 lengthless `POST` before it reaches the API. The server's internal transport
 sets this header for stop and wake; public SDK transports must do the same.

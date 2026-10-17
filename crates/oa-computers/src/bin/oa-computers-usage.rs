@@ -1,7 +1,21 @@
 //! Database-authorized operations for computer allocation limits and usage.
 use oa_computers::{Db, Store, usage::Limits};
 
-const USAGE: &str = "Use read ACCOUNT [AFTER], account-limits ACCOUNT FILE, service-limits FILE, economics FILE, or resolve ACCOUNT COMPUTER BOOT MAXIMUM_CPU_MS USED_CPU_MS REASON.";
+const USAGE: &str = "Use read ACCOUNT [AFTER], account-limits ACCOUNT FILE, service-limits FILE, economics FILE, account-cleanup ACCOUNT, account-cleanup-status ACCOUNT, storage-cleanup ACCOUNT FILE, or resolve ACCOUNT COMPUTER BOOT MAXIMUM_CPU_MS USED_CPU_MS REASON.";
+
+fn read_json<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, String> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .map_err(|_| "The input file could not be opened.".to_owned())?
+        .take(1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "The input file could not be read.".to_owned())?;
+    if bytes.len() > 1024 * 1024 {
+        return Err("The input file exceeds 1 MiB.".into());
+    }
+    serde_json::from_slice(&bytes).map_err(|_| "The input file is invalid.".into())
+}
 
 fn argument(args: &mut impl Iterator<Item = String>) -> Result<String, String> {
     args.next()
@@ -42,7 +56,13 @@ async fn run() -> Result<(), String> {
     }
     if !matches!(
         command.as_str(),
-        "read" | "account-limits" | "service-limits" | "resolve"
+        "read"
+            | "account-limits"
+            | "service-limits"
+            | "resolve"
+            | "account-cleanup"
+            | "account-cleanup-status"
+            | "storage-cleanup"
     ) {
         return Err(USAGE.into());
     }
@@ -51,6 +71,36 @@ async fn run() -> Result<(), String> {
         .map_err(|_| "Set OA_COMPUTERS_DATABASE_URL.".to_owned())?;
     let store = Store::new(Db::connect(&dsn).await.map_err(|e| e.to_string())?);
     match command.as_str() {
+        "account-cleanup" | "account-cleanup-status" => {
+            if args.next().is_some() {
+                return Err("Too many arguments.".into());
+            }
+            if command == "account-cleanup" {
+                store
+                    .request_account_cleanup(&subject)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+            println!(
+                "{}",
+                store
+                    .account_cleanup_status(&subject)
+                    .await
+                    .map_err(|e| e.to_string())?
+            );
+        }
+        "storage-cleanup" => {
+            let path = argument(&mut args)?;
+            if args.next().is_some() {
+                return Err("Too many arguments.".into());
+            }
+            let proof = read_json(&path)?;
+            let changed = store
+                .resolve_storage_cleanup(&subject, &proof)
+                .await
+                .map_err(|e| e.to_string())?;
+            println!("{{\"resolved\":true,\"changed\":{changed}}}");
+        }
         "read" => {
             let after = args
                 .next()
@@ -84,9 +134,7 @@ async fn run() -> Result<(), String> {
             if args.next().is_some() {
                 return Err("Too many arguments.".into());
             }
-            let limits: Limits =
-                serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
-                    .map_err(|e| e.to_string())?;
+            let limits: Limits = read_json(&path)?;
             store
                 .set_usage_limits(owner, &limits)
                 .await

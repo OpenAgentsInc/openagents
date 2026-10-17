@@ -195,6 +195,8 @@ impl Driver for Simulated {
     }
 }
 
+#[path = "registry/storage_allowance.rs"]
+mod storage_allowance;
 #[path = "registry/usage.rs"]
 mod usage;
 

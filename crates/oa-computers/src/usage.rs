@@ -28,6 +28,13 @@ pub struct Limits {
     pub turn_seconds: Option<i32>,
     /// Time to keep an observed stopped computer, capped by the service setting.
     pub stopped_retention_seconds: Option<i64>,
+    /// Maximum held private storage allowances, including unresolved allocations.
+    pub private_storage_bytes: Option<i64>,
+    pub private_checkpoint_count: Option<i64>,
+    /// Verified upper bounds for the eligible backend, shape, and artifact.
+    /// These include retained and temporary copies; they are not a customer price.
+    pub storage_bytes_per_boot: Option<i64>,
+    pub checkpoints_per_boot: Option<i64>,
 }
 
 /// All accounting mutations use the same lock, including service-wide limits.
@@ -86,11 +93,16 @@ pub(crate) async fn admit(tx: &Transaction<'_>, owner: &str) -> Result<(), DbErr
             }
         }
     }
-    Ok(())
+    crate::storage::allowance::admit(tx, owner).await
 }
 
 /// Reserve once for this boot before create or resume can reach the provider.
 pub(crate) async fn reserve(tx: &Transaction<'_>, e: &Entry, c: &Computer) -> Result<(), DbError> {
+    // Deletion can still discover a previously allocated resource. Record its
+    // uncertainty even when the account has closed or its limit is exhausted.
+    if e.desired != crate::store::Desired::Deleted {
+        crate::storage::allowance::account_open(tx, &e.owner).await?;
+    }
     let boot = if matches!(c.phase, Phase::New | Phase::Creating | Phase::Stopped) {
         c.boots.len() + 1
     } else {
@@ -108,7 +120,12 @@ pub(crate) async fn reserve(tx: &Transaction<'_>, e: &Entry, c: &Computer) -> Re
         &[&e.id, &e.owner, &(boot as i32), &maximum],
     )
     .await?;
-    admit(tx, &e.owner).await
+    crate::storage::allowance::reserve(tx, e, c).await?;
+    if e.desired == crate::store::Desired::Deleted {
+        Ok(())
+    } else {
+        admit(tx, &e.owner).await
+    }
 }
 
 pub(crate) async fn record(
@@ -167,6 +184,7 @@ pub(crate) async fn check_turn(
     owner: &str,
     seconds: i32,
 ) -> Result<(), DbError> {
+    crate::storage::allowance::account_open(tx, owner).await?;
     let limit: i32 = tx
         .query_one(
             "SELECT LEAST(3600,COALESCE(min(turn_seconds),3600)) FROM computers.usage_limits
@@ -347,9 +365,12 @@ impl Store {
                 'unresolved_allowances',count(*) FILTER(WHERE state<>'settled'))
              FROM computers.usage_reservations WHERE owner=$1", &[&owner],
         ).await?.get::<_,Value>(0);
+        let client = self.db.client().await?;
+        let storage = crate::storage::allowance::summary(client.as_ref(), owner).await?;
         Ok(
             json!({"schema":"openagents.computers.usage.v1","events":events,"after":cursor,
-            "allocation_allowance":reservations,"customer_charge":null,"pricing":"not_enabled"}),
+            "allocation_allowance":reservations,"storage_allowance":storage,
+            "customer_charge":null,"pricing":"not_enabled"}),
         )
     }
 
@@ -366,6 +387,8 @@ impl Store {
             limits.running_memory_mib,
             limits.boot_cpu_ms,
             limits.stopped_retention_seconds,
+            limits.private_storage_bytes,
+            limits.private_checkpoint_count,
         ]
         .iter()
         .flatten()
@@ -373,6 +396,9 @@ impl Store {
             || limits
                 .turn_seconds
                 .is_some_and(|n| !(1..=3600).contains(&n))
+            || limits.storage_bytes_per_boot.is_some() != limits.checkpoints_per_boot.is_some()
+            || limits.storage_bytes_per_boot.is_some_and(|n| n <= 0)
+            || limits.checkpoints_per_boot.is_some_and(|n| n <= 0)
         {
             return Err(DbError("The computer limits are invalid.".into()));
         }
@@ -385,11 +411,14 @@ impl Store {
             "service"
         };
         tx.execute(
-            "INSERT INTO computers.usage_limits(scope,subject,computer_count,running_vcpus,running_memory_mib,boot_cpu_ms,turn_seconds,stopped_retention_seconds)
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(scope,subject) DO UPDATE SET
-             computer_count=$3,running_vcpus=$4,running_memory_mib=$5,boot_cpu_ms=$6,turn_seconds=$7,stopped_retention_seconds=$8",
+            "INSERT INTO computers.usage_limits(scope,subject,computer_count,running_vcpus,running_memory_mib,boot_cpu_ms,turn_seconds,stopped_retention_seconds,
+                 private_storage_bytes,private_checkpoint_count,storage_bytes_per_boot,checkpoints_per_boot)
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(scope,subject) DO UPDATE SET
+             computer_count=$3,running_vcpus=$4,running_memory_mib=$5,boot_cpu_ms=$6,turn_seconds=$7,stopped_retention_seconds=$8,
+             private_storage_bytes=$9,private_checkpoint_count=$10,storage_bytes_per_boot=$11,checkpoints_per_boot=$12",
             &[&scope,&owner.unwrap_or(""),&limits.computer_count,&limits.running_vcpus,&limits.running_memory_mib,
-              &limits.boot_cpu_ms,&limits.turn_seconds.unwrap_or(3600),&limits.stopped_retention_seconds],
+              &limits.boot_cpu_ms,&limits.turn_seconds.unwrap_or(3600),&limits.stopped_retention_seconds,
+              &limits.private_storage_bytes,&limits.private_checkpoint_count,&limits.storage_bytes_per_boot,&limits.checkpoints_per_boot],
         ).await?;
         admit(&tx, owner.unwrap_or("")).await?;
         let unfinished: bool = tx.query_one(

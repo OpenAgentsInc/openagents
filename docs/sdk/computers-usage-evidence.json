@@ -162,10 +162,9 @@
     "missing_provider_measurements": "unknown"
   },
   "remaining_scope": [
-    "complete provider storage inventory and byte/count quotas",
-    "observed private object cleanup and account-deletion handoff",
-    "useful-task and shared idle service economics",
-    "customer unit, rate, rounding, total spend, and retry-safe priced ledger settlement"
+    "After-close deployment and complete provider storage cleanup qualification.",
+    "Measured production useful-task economics.",
+    "Owner-approved customer unit, rate, rounding, total-spend contract, and retry-safe priced settlement; paid access remains disabled."
   ],
   "snapshot_scope": "The original lifecycle, website, Boat, checks, and cycle records describe the earlier accounting increment. The storage_observation_increment and current_deployments records describe the later storage changes and their verification.",
   "current_deployments": {
@@ -454,9 +453,40 @@
     "customer_charge": null,
     "pricing": "not_enabled",
     "remaining": [
-      "complete provider storage inventory and byte/count admission limits",
-      "private-object and account-deletion cleanup",
-      "real measured useful-task economics and owner-approved customer pricing/entitlement"
+      "Measured production useful-task economics and owner-approved customer pricing/entitlement."
+    ]
+  },
+  "storage_allowance_increment": {
+    "migration": "crates/oa-computers/migrations/0015_storage_allowances.sql",
+    "scope": "Operator byte and checkpoint admission, retained uncertainty, complete-inventory resolution, and durable Computers account cleanup.",
+    "customer_charge": null,
+    "pricing": "not_enabled",
+    "deployed": false,
+    "checks": {
+      "disposable_postgresql": "16-alpine",
+      "new_storage_cases_passed": 5,
+      "format": "passed",
+      "full_crate": {
+        "passed": 71,
+        "failed": 0,
+        "database_configured": true,
+        "test_threads": 1,
+        "note": "Passed on rebased source. The command recovery fixtures passed serially after timing-sensitive parallel failures."
+      },
+      "operator_cli": {
+        "account_cleanup_request": "passed",
+        "account_cleanup_status": "passed",
+        "usage_read": "passed",
+        "invalid_cleanup_input_refused_without_echo": "passed"
+      },
+      "local_postgresql_container_removed": true
+    },
+    "account_cleanup": "Permanently fences new work, requests resource deletion in bounded batches after restart, and removes stored command contents only after commands and complete storage cleanup finish. This is an operator handoff, not a self-service account-deletion endpoint.",
+    "inventory_boundary": "VM absence, partial provider inventories, active-only object lists, and retention expiry do not release storage. An authenticated operator must provide exact allocation identities and a complete empty inventory, including recoverable versions, local copies, and unfinished uploads.",
+    "legacy_compatibility": "Uncapped v2 writers remain compatible and leave unknown storage holds. Capped or closing accounts require storage_writer v1, including deferred commit checks.",
+    "remaining_live_checks": [
+      "Deploy through lane 0.",
+      "Collect complete private storage inventory on the maintained deployment, including soft-deleted versions, then exercise quota and account cleanup with synthetic fixtures."
     ]
   }
 }

@@ -23,6 +23,10 @@ const MIGRATIONS: &[(i32, &str)] = &[
     ),
     (12, include_str!("../migrations/0012_stopped_retention.sql")),
     (13, include_str!("../migrations/0013_delete_operations.sql")),
+    (
+        15,
+        include_str!("../migrations/0015_storage_allowances.sql"),
+    ),
 ];
 
 #[derive(Debug)]
@@ -56,7 +60,7 @@ async fn open(config: &Config) -> Result<Client, DbError> {
         let _ = connection.await;
     });
     client
-        .batch_execute("SET openagents.usage_writer = 'v2'")
+        .batch_execute("SET openagents.usage_writer = 'v2'; SET openagents.storage_writer = 'v1'")
         .await?;
     Ok(client)
 }

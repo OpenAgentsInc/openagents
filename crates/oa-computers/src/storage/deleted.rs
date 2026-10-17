@@ -388,6 +388,9 @@ impl<D: Drivers> DeletedStorageObserver<D> {
         let mut scanned = tokio::time::Instant::now() - Duration::from_secs(30);
         loop {
             if scanned.elapsed() >= Duration::from_secs(30) {
+                if self.store.advance_account_cleanup(8).await.is_err() {
+                    eprintln!("oa-computers: account cleanup could not advance");
+                }
                 if self.store.seed_deleted_storage(100).await.is_err() {
                     eprintln!("oa-computers: storage observer could not scan allocations");
                 }

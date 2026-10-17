@@ -7,6 +7,8 @@ use computer_driver::{Outcome, StorageObservation};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+mod account_cleanup;
+pub mod allowance;
 mod deleted;
 pub use deleted::{DeletedStorageJob, DeletedStorageObserver};
 
