@@ -271,14 +271,24 @@ async fn a_visitor_chats_until_the_limit_and_its_chats_move_to_the_account() {
 
     // Replies count toward the limit, then sending is refused.
     for n in 2..=MESSAGES {
-        let (status, sent) = call(
-            &world,
-            Some(&token),
-            "POST",
-            &format!("/v1/threads/{chat}/messages"),
-            Some(json!({"request_id": id(100 + n), "text": format!("m{n}")})),
-        )
-        .await;
+        // The answer is readable a moment before its task lets go of the
+        // chat; under load a send in that moment is refused as busy.
+        let mut tries = 0;
+        let (status, sent) = loop {
+            let reply = call(
+                &world,
+                Some(&token),
+                "POST",
+                &format!("/v1/threads/{chat}/messages"),
+                Some(json!({"request_id": id(100 + n), "text": format!("m{n}")})),
+            )
+            .await;
+            tries += 1;
+            if reply.0 != 409 || tries > 50 {
+                break reply;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        };
         assert_eq!(status, 202, "{sent}");
         assert_eq!(sent["left"], MESSAGES - n);
         answered_after(&world, &token, &chat, n).await;
