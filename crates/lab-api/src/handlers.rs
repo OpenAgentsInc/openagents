@@ -286,7 +286,15 @@ async fn enqueue(api: &Api, headers: &HeaderMap, r: CreateJob) -> Result<JobStat
     if specs.len() != 1 {
         return Err(ApiError::invalid("Choose one job this lab supports."));
     }
-    let spec = specs.into_iter().next().ok_or_else(ApiError::missing)?;
+    let mut spec = specs.into_iter().next().ok_or_else(ApiError::missing)?;
+    // Work that reads a private referenced file stays on an enrolled host.
+    if crate::workers::referenced(api, &access, &s, &v)
+        .await?
+        .iter()
+        .any(Version::has_private_local)
+    {
+        spec.requirements.private_local = true;
+    }
     s.reserve_request(
         key(headers)?,
         &json!({"operation":"job","request":r,"spec":spec}),

@@ -7,7 +7,7 @@ pub use lab_kit::worker::{
     Assignment, Capabilities, EffectiveRequirements, Enrolled, Lease, Placement, Usage, Worker,
     protocol,
 };
-use protocol::{Attempt, Available, Enroll, Finish, Poll, Work};
+use protocol::{Attempt, Available, Enroll, Finish, InputFile, Inputs, Poll, Work};
 use reqwest::{Method, header};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{fmt, future::Future, time::Duration};
@@ -15,6 +15,9 @@ use std::{fmt, future::Future, time::Duration};
 const MAX_ENROLL: usize = 64 * 1024;
 const MAX_WORK: usize = 12 * 1024 * 1024;
 const MAX_OUTPUT: usize = 8 * 1024 * 1024;
+const MAX_INPUTS: usize = 32 * 1024 * 1024;
+/// The largest input file the service returns in one read.
+pub const MAX_INPUT_FILE: usize = 64 * 1024 * 1024;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CredentialRecord {
@@ -244,6 +247,19 @@ impl Client {
         body: Option<Vec<u8>>,
         cancel: &CancellationToken,
     ) -> Result<T, Error> {
+        let bytes = self
+            .send_raw(method, segments, body, MAX_WORK, cancel)
+            .await?;
+        serde_json::from_slice(&bytes).map_err(|_| Error::InvalidResponse)
+    }
+    async fn send_raw(
+        &self,
+        method: Method,
+        segments: &[&str],
+        body: Option<Vec<u8>>,
+        limit: usize,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<u8>, Error> {
         let mut url = self.record.deployment.api_base().clone();
         {
             let mut path = url.path_segments_mut().map_err(|_| Error::InvalidInput)?;
@@ -266,11 +282,82 @@ impl Client {
         }
         self.guarded(cancel, async {
             let response = request.send().await.map_err(network)?;
-            let bytes =
-                crate::Client::read_limited(wire::checked(response).await?, MAX_WORK).await?;
-            serde_json::from_slice(&bytes).map_err(|_| Error::InvalidResponse)
+            Ok(crate::Client::read_limited(wire::checked(response).await?, limit).await?)
         })
         .await
+    }
+    /// What started work may read: its version, the versions it references
+    /// in its space, and their stored source files. The service checks the
+    /// key, the space, and the lease again on every call.
+    pub async fn inputs(&self, work: &Work, cancel: &CancellationToken) -> Result<Inputs, Error> {
+        let request = Attempt {
+            job: work.assignment.lease.job.id.clone(),
+            attempt: work.assignment.lease.attempt,
+        };
+        attempt(&request)?;
+        let bytes = self
+            .send_raw(
+                Method::POST,
+                &["inputs"],
+                Some(body(&request, MAX_ENROLL)?),
+                MAX_INPUTS,
+                cancel,
+            )
+            .await?;
+        let inputs: Inputs = serde_json::from_slice(&bytes).map_err(|_| Error::InvalidResponse)?;
+        let first = inputs.versions.first().ok_or(Error::InvalidResponse)?;
+        let references: std::collections::BTreeSet<_> = inputs
+            .versions
+            .iter()
+            .map(lab_kit::Version::reference)
+            .collect();
+        if first.reference() != work.version.reference()
+            || first.content_sha256 != work.version.content_sha256
+            || references.len() != inputs.versions.len()
+            || inputs
+                .versions
+                .iter()
+                .any(|v| v.content_sha256 != lab_kit::digest(&v.content))
+            || inputs.files.iter().any(|a| {
+                valid_id(&a.id).is_err()
+                    || !references.contains(&a.version)
+                    || a.class == lab_kit::AssetClass::PrivateLocal
+                    || a.size > MAX_INPUT_FILE as u64
+            })
+        {
+            return Err(Error::InvalidResponse);
+        }
+        Ok(inputs)
+    }
+    /// Read one file `inputs` listed, checked against its size and checksum.
+    pub async fn input_file(
+        &self,
+        work: &Work,
+        file: &lab_kit::Artifact,
+        cancel: &CancellationToken,
+    ) -> Result<Vec<u8>, Error> {
+        valid_id(&file.id)?;
+        let request = InputFile {
+            job: work.assignment.lease.job.id.clone(),
+            attempt: work.assignment.lease.attempt,
+            artifact: file.id.clone(),
+        };
+        let bytes = self
+            .send_raw(
+                Method::POST,
+                &["inputs", "file"],
+                Some(body(&request, MAX_ENROLL)?),
+                MAX_INPUT_FILE,
+                cancel,
+            )
+            .await?;
+        use sha2::Digest;
+        if bytes.len() as u64 != file.size
+            || format!("{:x}", sha2::Sha256::digest(&bytes)) != file.sha256
+        {
+            return Err(Error::InvalidResponse);
+        }
+        Ok(bytes)
     }
     pub async fn poll(
         &self,

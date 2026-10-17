@@ -54,6 +54,20 @@ pub const OPERATIONS: &[(&str, &str, &str, Option<&str>, &str)] = &[
         "JobState",
     ),
     (
+        "/v1/labs/workers/inputs",
+        "post",
+        "listLabWorkerInputs",
+        Some("WorkerAttempt"),
+        "WorkerInputs",
+    ),
+    (
+        "/v1/labs/workers/inputs/file",
+        "post",
+        "readLabWorkerInput",
+        Some("WorkerInputFile"),
+        "Bytes",
+    ),
+    (
         "/v1/labs/jobs/{id}/usage",
         "get",
         "getLabJobUsage",
@@ -209,6 +223,8 @@ pub fn extend(doc: &mut Value) {
         ("WorkerAttempt", schema::<lab_jobs::protocol::Attempt>()),
         ("WorkerWork", schema::<lab_jobs::protocol::Work>()),
         ("WorkerFinish", schema::<lab_jobs::protocol::Finish>()),
+        ("WorkerInputs", schema::<lab_jobs::protocol::Inputs>()),
+        ("WorkerInputFile", schema::<lab_jobs::protocol::InputFile>()),
         ("WorkerUsage", schema::<Vec<lab_jobs::authority::Usage>>()),
         ("CreateDocument", schema::<CreateDocument>()),
         ("EditDocument", schema::<EditDocument>()),
@@ -288,6 +304,8 @@ pub fn extend(doc: &mut Value) {
             "startLabWorkerJob",
             "heartbeatLabWorkerJob",
             "finishLabWorkerJob",
+            "listLabWorkerInputs",
+            "readLabWorkerInput",
         ]
         .contains(&operation);
         let status = if method == "post"

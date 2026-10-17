@@ -3287,6 +3287,254 @@
         "title": "Finish",
         "type": "object"
       },
+      "LabWorkerInputFile": {
+        "additionalProperties": false,
+        "description": "Read one listed input file while the lease is current.",
+        "properties": {
+          "artifact": {
+            "type": "string"
+          },
+          "attempt": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "job": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "job",
+          "attempt",
+          "artifact"
+        ],
+        "title": "InputFile",
+        "type": "object"
+      },
+      "LabWorkerInputs": {
+        "additionalProperties": false,
+        "description": "What a started job may read: its own version, the versions it references\nin the same space (directly or through another referenced version), and\ntheir stored source files. Private local files are never listed.",
+        "properties": {
+          "files": {
+            "items": {
+              "additionalProperties": false,
+              "description": "A file made from (or attached to) a version.",
+              "properties": {
+                "class": {
+                  "description": "How a file may travel.",
+                  "oneOf": [
+                    {
+                      "const": "public",
+                      "description": "May be stored and rendered anywhere the space allows.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "private_local",
+                      "description": "Never leaves the host that has it (licensed or personal media:\nMetaHuman, Fab packs, fonts). Only an enrolled host renders it.",
+                      "type": "string"
+                    },
+                    {
+                      "const": "no_training",
+                      "description": "May be stored and shown, never used to train or evaluate a model.",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "id": {
+                  "type": "string"
+                },
+                "media_type": {
+                  "type": "string"
+                },
+                "no_training": {
+                  "description": "Inherited by everything made from a marked input.",
+                  "type": "boolean"
+                },
+                "role": {
+                  "enum": [
+                    "render",
+                    "poster",
+                    "frame",
+                    "strip",
+                    "export",
+                    "build",
+                    "replay",
+                    "source"
+                  ],
+                  "type": "string"
+                },
+                "sha256": {
+                  "type": "string"
+                },
+                "size": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "version": {
+                  "additionalProperties": false,
+                  "description": "An immutable version, possibly of another kind's document (a CAD part\nplaced in a Robot Lab scene). Reading through it checks access to both.",
+                  "properties": {
+                    "document": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "format": "uint64",
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "document",
+                    "version"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "id",
+                "version",
+                "role",
+                "media_type",
+                "sha256",
+                "size",
+                "class",
+                "no_training"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "versions": {
+            "description": "The job's version first, then each referenced version once.",
+            "items": {
+              "additionalProperties": false,
+              "description": "One immutable version. Made only by a kind's `apply` (through the store),\nnever written directly.",
+              "properties": {
+                "assets": {
+                  "default": [],
+                  "description": "Every file the content uses.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "class": {
+                        "description": "How a file may travel.",
+                        "oneOf": [
+                          {
+                            "const": "public",
+                            "description": "May be stored and rendered anywhere the space allows.",
+                            "type": "string"
+                          },
+                          {
+                            "const": "private_local",
+                            "description": "Never leaves the host that has it (licensed or personal media:\nMetaHuman, Fab packs, fonts). Only an enrolled host renders it.",
+                            "type": "string"
+                          },
+                          {
+                            "const": "no_training",
+                            "description": "May be stored and shown, never used to train or evaluate a model.",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "location": {
+                        "description": "A path on the host or an object in the space's storage.",
+                        "type": "string"
+                      },
+                      "sha256": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "location",
+                      "sha256",
+                      "class"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "author": {
+                  "description": "A person, or a chat turn (`chat:<id>`).",
+                  "type": "string"
+                },
+                "content": true,
+                "content_sha256": {
+                  "description": "[`crate::digest`] of `content`.",
+                  "type": "string"
+                },
+                "created_unix_ms": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "document": {
+                  "type": "string"
+                },
+                "number": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "parent": {
+                  "format": "uint64",
+                  "minimum": 0,
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "report": {
+                  "additionalProperties": false,
+                  "default": {
+                    "facts": null,
+                    "warnings": []
+                  },
+                  "description": "The kind's check report for this content.",
+                  "properties": {
+                    "facts": {
+                      "default": null,
+                      "description": "Kind-specific facts (mass, duration, sketch freedom, ...)."
+                    },
+                    "warnings": {
+                      "default": [],
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                },
+                "schema": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "document",
+                "number",
+                "author",
+                "summary",
+                "created_unix_ms",
+                "schema",
+                "content",
+                "content_sha256"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "versions",
+          "files"
+        ],
+        "title": "Inputs",
+        "type": "object"
+      },
       "LabWorkerPoll": {
         "additionalProperties": false,
         "properties": {
@@ -7953,6 +8201,316 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LabWorkerWork"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "labWorkerBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/workers/inputs": {
+      "post": {
+        "description": "Outbound job-worker operation. Checks current sign-in, account, project membership, kind access and lease before each operation. Requests cannot select another space or executable.",
+        "operationId": "listLabWorkerInputs",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabWorkerAttempt"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabWorkerInputs"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "labWorkerBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/workers/inputs/file": {
+      "post": {
+        "description": "Outbound job-worker operation. Checks current sign-in, account, project membership, kind access and lease before each operation. Requests cannot select another space or executable.",
+        "operationId": "readLabWorkerInput",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabWorkerInputFile"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabBytes"
                 }
               }
             },

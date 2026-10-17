@@ -128,6 +128,59 @@ async fn finish(
     }
     Ok(Json(result))
 }
+async fn leased(
+    s: &Server,
+    h: &HeaderMap,
+    r: &protocol::Attempt,
+) -> Result<protocol::Inputs, StatusCode> {
+    let w = auth(s, h).await?;
+    let work = s
+        .coordinator
+        .leased(&w, &s.store, &s.kinds, r, now())
+        .await
+        .map_err(|_| StatusCode::CONFLICT)?;
+    let files = s
+        .store
+        .version_artifacts(&work.version.reference())
+        .await
+        .map_err(|_| StatusCode::CONFLICT)?
+        .into_iter()
+        .filter(|a| a.role == lab_kit::ArtifactRole::Source)
+        .collect();
+    Ok(protocol::Inputs {
+        versions: vec![work.version],
+        files,
+    })
+}
+async fn inputs(
+    State(s): S,
+    h: HeaderMap,
+    Json(r): Json<protocol::Attempt>,
+) -> Result<Json<protocol::Inputs>, StatusCode> {
+    record(&s, &r);
+    Ok(Json(leased(&s, &h, &r).await?))
+}
+async fn input_file(
+    State(s): S,
+    h: HeaderMap,
+    Json(r): Json<protocol::InputFile>,
+) -> Result<Vec<u8>, StatusCode> {
+    record(&s, &r);
+    let attempt = protocol::Attempt {
+        job: r.job,
+        attempt: r.attempt,
+    };
+    let inputs = leased(&s, &h, &attempt).await?;
+    let file = inputs
+        .files
+        .iter()
+        .find(|a| a.id == r.artifact)
+        .ok_or(StatusCode::NOT_FOUND)?;
+    s.store
+        .artifact_bytes(&file.id, None)
+        .await
+        .map_err(|_| StatusCode::CONFLICT)
+}
 
 fn private_json(path: &Path, value: &impl serde::Serialize) {
     use std::os::unix::fs::PermissionsExt;
@@ -165,6 +218,7 @@ impl LabKind for PrivateEcho {
         Echo::card(v, j, a)
     }
 }
+const PUBLIC: &[u8] = b"PUBLIC-SOURCE-11882";
 struct Fixture {
     tmp: tempfile::TempDir,
     s: Arc<Server>,
@@ -216,6 +270,23 @@ impl Fixture {
                 .await
                 .unwrap();
         }
+        if !private {
+            store
+                .put_artifact(
+                    lab_store::ArtifactInput {
+                        version: version.reference(),
+                        role: lab_kit::ArtifactRole::Source,
+                        media_type: "text/plain".into(),
+                        class: AssetClass::Public,
+                        no_training: false,
+                    },
+                    PUBLIC.to_vec(),
+                    1024,
+                    now(),
+                )
+                .await
+                .unwrap();
+        }
         let manifest = Echo::manifest();
         let mut spec = Echo::jobs_for(&version, &Want::Card).remove(0);
         spec.requirements.private_local = private;
@@ -258,6 +329,8 @@ impl Fixture {
             .route("/v1/labs/workers/start", post(start))
             .route("/v1/labs/workers/heartbeat", post(heartbeat))
             .route("/v1/labs/workers/finish", post(finish))
+            .route("/v1/labs/workers/inputs", post(inputs))
+            .route("/v1/labs/workers/inputs/file", post(input_file))
             .with_state(s.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
@@ -358,6 +431,12 @@ async fn real_child_on_each_placement_and_private_input_stays_local() {
             );
             assert_eq!(output["input_checksums"][0], *hash);
             assert!(!String::from_utf8_lossy(&wire).contains(path.to_str().unwrap()));
+        } else {
+            // A public source file reaches the handler through the leased read.
+            assert_eq!(
+                output["file_checksums"][0],
+                format!("{:x}", Sha256::digest(PUBLIC))
+            );
         }
     }
 }

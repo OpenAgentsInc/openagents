@@ -22,6 +22,8 @@ pub(crate) fn routes() -> Router<Arc<Api>> {
         .route("/v1/labs/workers/start", post(start))
         .route("/v1/labs/workers/heartbeat", post(heartbeat))
         .route("/v1/labs/workers/finish", post(finish))
+        .route("/v1/labs/workers/inputs", post(inputs))
+        .route("/v1/labs/workers/inputs/file", post(input_file))
         .route("/v1/labs/jobs/{id}/usage", get(usage))
         .layer(DefaultBodyLimit::max(12 * 1024 * 1024))
         .layer(axum::middleware::map_response(worker_no_store))
@@ -56,6 +58,22 @@ async fn current(
     api: &Api,
     headers: &HeaderMap,
 ) -> Result<(protocol::Access, Store, BTreeMap<String, KindManifest>), ApiError> {
+    current_access(api, headers)
+        .await
+        .map(|(worker, _, store, kinds)| (worker, store, kinds))
+}
+async fn current_access(
+    api: &Api,
+    headers: &HeaderMap,
+) -> Result<
+    (
+        protocol::Access,
+        Access,
+        Store,
+        BTreeMap<String, KindManifest>,
+    ),
+    ApiError,
+> {
     if headers.get_all("Authorization").iter().count() != 1
         || !headers
             .get("Authorization")
@@ -101,7 +119,7 @@ async fn current(
         })
         .collect();
     let store = Store::new(api.backend.clone(), &worker.worker.space)?;
-    Ok((worker, store, kinds))
+    Ok((worker, access, store, kinds))
 }
 async fn enroll(
     State(api): State<Arc<Api>>,
@@ -222,4 +240,162 @@ async fn usage(
         .observe_losses(&access.space, &store, now())
         .await?;
     Ok(Json(coordinator.authority.usage(&access.space, &id).await?))
+}
+
+/// At most this many versions are readable for one job.
+const MAX_INPUT_VERSIONS: usize = 64;
+/// A pinned reference scans at most this many versions of its document.
+const MAX_PIN_SCAN: u64 = 1000;
+/// The largest input file a worker reads in one response.
+pub const MAX_INPUT_FILE: u64 = 64 * 1024 * 1024;
+
+fn same_space(access: &Access, space: &str) -> bool {
+    let target = if space == "me" {
+        SpaceRef::Personal {
+            account: access.account.clone(),
+        }
+    } else if let Some(project) = space.strip_prefix("project:") {
+        SpaceRef::Project {
+            project: project.into(),
+        }
+    } else {
+        return false;
+    };
+    target == access.space
+}
+
+async fn pinned(store: &Store, pin: &crate::Pin) -> Result<Version, ApiError> {
+    let mut after = 0;
+    while after < MAX_PIN_SCAN {
+        let page = store.versions(&pin.document, after, 100).await?;
+        if let Some(v) = page
+            .items
+            .into_iter()
+            .find(|v| v.content_sha256 == pin.content_sha256)
+        {
+            return Ok(v);
+        }
+        match page.next {
+            Some(next) => after = next,
+            None => break,
+        }
+    }
+    Err(ApiError::missing())
+}
+
+/// `root` and every version it references in its own space, each once,
+/// with every kind checked against `access`. References to other spaces
+/// aren't followed: a job's computer reads only its own space.
+pub(crate) async fn referenced(
+    api: &Api,
+    access: &Access,
+    store: &Store,
+    root: &Version,
+) -> Result<Vec<Version>, ApiError> {
+    let mut queue = std::collections::VecDeque::from([root.clone()]);
+    let mut seen = std::collections::BTreeSet::new();
+    let mut out = Vec::new();
+    while let Some(v) = queue.pop_front() {
+        if !seen.insert((v.document.clone(), v.number)) {
+            continue;
+        }
+        if out.len() >= MAX_INPUT_VERSIONS {
+            return Err(ApiError::invalid("This work uses too many saved items."));
+        }
+        let doc = store.document(&v.document).await?;
+        let kind = api.registry.get(&doc.kind, access)?;
+        for r in kind
+            .references(&v.content)
+            .map_err(lab_store::Error::from)?
+        {
+            if same_space(access, &r.space) {
+                queue.push_back(
+                    store
+                        .version(&r.version.document, r.version.version)
+                        .await?,
+                );
+            }
+        }
+        for pin in kind.pins(&v.content).map_err(lab_store::Error::from)? {
+            queue.push_back(pinned(store, &pin).await?);
+        }
+        out.push(v);
+    }
+    Ok(out)
+}
+
+/// The started work for `attempt` and what it may read. The worker key,
+/// the space's rights, and the lease are all checked again on every call.
+async fn leased(
+    api: &Api,
+    headers: &HeaderMap,
+    attempt: &protocol::Attempt,
+) -> Result<(Store, protocol::Inputs), ApiError> {
+    let (worker, access, store, kinds) = current_access(api, headers).await?;
+    let work = coordinator(api)
+        .leased(&worker.worker, &store, &kinds, attempt, now())
+        .await?;
+    let versions = referenced(api, &access, &store, &work.version).await?;
+    if worker.worker.capabilities.placement != lab_jobs::Placement::Enrolled
+        && versions.iter().any(Version::has_private_local)
+    {
+        return Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "private_local",
+            "This work uses private files that stay on their own computer.",
+        ));
+    }
+    let mut files = Vec::new();
+    for v in &versions {
+        for a in store.version_artifacts(&v.reference()).await? {
+            let used = v
+                .assets
+                .iter()
+                .any(|e| e.sha256 == a.sha256 && e.class != AssetClass::PrivateLocal);
+            if a.class != AssetClass::PrivateLocal && (a.role == ArtifactRole::Source || used) {
+                files.push(a);
+            }
+        }
+    }
+    if files.len() > 512 {
+        return Err(ApiError::invalid("This work uses too many files."));
+    }
+    Ok((store, protocol::Inputs { versions, files }))
+}
+async fn inputs(
+    State(api): State<Arc<Api>>,
+    headers: HeaderMap,
+    Json(request): Json<protocol::Attempt>,
+) -> Result<Json<protocol::Inputs>, ApiError> {
+    Ok(Json(leased(&api, &headers, &request).await?.1))
+}
+async fn input_file(
+    State(api): State<Arc<Api>>,
+    headers: HeaderMap,
+    Json(request): Json<protocol::InputFile>,
+) -> Result<axum::response::Response, ApiError> {
+    use axum::response::IntoResponse;
+    let attempt = protocol::Attempt {
+        job: request.job,
+        attempt: request.attempt,
+    };
+    let (store, inputs) = leased(&api, &headers, &attempt).await?;
+    let file = inputs
+        .files
+        .into_iter()
+        .find(|a| a.id == request.artifact)
+        .ok_or_else(ApiError::missing)?;
+    if file.size > MAX_INPUT_FILE {
+        return Err(ApiError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "file_limit",
+            "This file is too large for a Lab computer to read.",
+        ));
+    }
+    let bytes = store.artifact_bytes(&file.id, None).await?;
+    Ok((
+        [(axum::http::header::CONTENT_TYPE, "application/octet-stream")],
+        bytes,
+    )
+        .into_response())
 }

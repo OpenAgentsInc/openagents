@@ -140,6 +140,7 @@ struct Controls {
     corrupt: Arc<AtomicBool>,
     redirect: Arc<AtomicBool>,
     block: Arc<AtomicBool>,
+    tamper: Arc<AtomicBool>,
     entered: Arc<Notify>,
     release: Arc<Notify>,
 }
@@ -242,6 +243,55 @@ async fn finish(
     };
     axum::Json(job).into_response()
 }
+const MESH: &[u8] = b"synthetic mesh";
+fn mesh() -> labs::Artifact {
+    use sha2::Digest;
+    labs::Artifact {
+        id: "mesh".into(),
+        version: Reference {
+            document: "robot".into(),
+            version: 2,
+        },
+        role: labs::ArtifactRole::Source,
+        media_type: "model/gltf-binary".into(),
+        sha256: format!("{:x}", sha2::Sha256::digest(MESH)),
+        size: MESH.len() as u64,
+        class: labs::AssetClass::Public,
+        no_training: false,
+    }
+}
+async fn inputs(
+    State(c): State<Controls>,
+    headers: HeaderMap,
+    axum::Json(request): axum::Json<Attempt>,
+) -> axum::Json<worker::protocol::Inputs> {
+    assert_eq!(auth(&headers), "worker");
+    assert_eq!((request.job.as_str(), request.attempt), ("job", 1));
+    let mut robot = work(true).version;
+    robot.document = "robot".into();
+    robot.number = 2;
+    let mut versions = vec![work(true).version, robot];
+    if c.tamper.load(Ordering::SeqCst) {
+        versions.swap(0, 1);
+    }
+    axum::Json(worker::protocol::Inputs {
+        versions,
+        files: vec![mesh()],
+    })
+}
+async fn input_file(
+    State(c): State<Controls>,
+    headers: HeaderMap,
+    axum::Json(request): axum::Json<worker::protocol::InputFile>,
+) -> Vec<u8> {
+    assert_eq!(auth(&headers), "worker");
+    assert_eq!(request.artifact, "mesh");
+    if c.tamper.load(Ordering::SeqCst) {
+        b"synthetic mesx".to_vec()
+    } else {
+        MESH.to_vec()
+    }
+}
 struct Server {
     client: Client,
     controls: Controls,
@@ -266,6 +316,8 @@ impl Server {
             .route("/v1/labs/workers/start",post(start))
             .route("/v1/labs/workers/heartbeat",post(heartbeat))
             .route("/v1/labs/workers/finish",post(finish))
+            .route("/v1/labs/workers/inputs",post(inputs))
+            .route("/v1/labs/workers/inputs/file",post(input_file))
             .route("/v1/labs/jobs/job/usage",get(|headers:HeaderMap|async move {assert_eq!(auth(&headers),"alice");axum::Json(vec![Usage{job:"job".into(),attempt:1,worker:id(),account:"acct_alice".into(),space:SpaceRef::Personal{account:"acct_alice".into()},placement:Placement::Enrolled,started_unix_ms:Some(1000),observed_until_unix_ms:1500,observed_wall_ms:Some(500),outcome:JobStatus::Done,charge:None}])}))
             .layer(middleware::from_fn_with_state(controls.clone(),capture)).with_state(controls.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -595,4 +647,46 @@ async fn uncertain_and_failed_finishes_preserve_status_without_uploading_outputs
             .mismatch_finish
             .store(false, Ordering::SeqCst);
     }
+}
+
+#[tokio::test]
+async fn inputs_are_bound_to_the_job_and_files_to_their_checksums() {
+    let server = Server::new().await;
+    let scoped = server.client.labs_worker(&key()).unwrap();
+    let cancel = CancellationToken::new();
+    let work = work(true);
+    let inputs = scoped.inputs(&work, &cancel).await.unwrap();
+    assert_eq!(inputs.versions.len(), 2);
+    assert_eq!(inputs.versions[0].reference(), work.version.reference());
+    assert_eq!(
+        scoped
+            .input_file(&work, &inputs.files[0], &cancel)
+            .await
+            .unwrap(),
+        MESH
+    );
+    let mut unlisted = mesh();
+    unlisted.size += 1;
+    assert!(matches!(
+        scoped.input_file(&work, &unlisted, &cancel).await,
+        Err(labs::Error::InvalidResponse)
+    ));
+    server.controls.tamper.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        scoped.inputs(&work, &cancel).await,
+        Err(labs::Error::InvalidResponse)
+    ));
+    assert!(matches!(
+        scoped.input_file(&work, &mesh(), &cancel).await,
+        Err(labs::Error::InvalidResponse)
+    ));
+    assert!(
+        server
+            .controls
+            .seen
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|(_, auth)| auth == "worker")
+    );
 }

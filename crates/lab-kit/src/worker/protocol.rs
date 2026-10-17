@@ -74,3 +74,25 @@ pub struct Finish {
     #[serde(default)]
     pub outputs: Vec<Output>,
 }
+
+/// What a started job may read: its own version, the versions it references
+/// in the same space (directly or through another referenced version), and
+/// their stored source files. Private local files are never listed.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Inputs {
+    /// The job's version first, then each referenced version once.
+    pub versions: Vec<Version>,
+    pub files: Vec<crate::Artifact>,
+}
+
+/// Read one listed input file while the lease is current.
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InputFile {
+    pub job: String,
+    pub attempt: u64,
+    pub artifact: String,
+}

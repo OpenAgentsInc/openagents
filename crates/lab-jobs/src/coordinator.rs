@@ -148,6 +148,23 @@ impl Coordinator {
             .ok_or(Error::LeaseLost)?;
         self.work(worker, store, kinds, a, true).await
     }
+    /// The started work for `attempt`, checked as a heartbeat checks it but
+    /// without extending the lease. Reads made under it end with the lease.
+    pub async fn leased(
+        &self,
+        worker: &Worker,
+        store: &Store,
+        kinds: &BTreeMap<String, KindManifest>,
+        attempt: &Attempt,
+        now: u64,
+    ) -> Result<Work> {
+        self.observe_losses(&worker.space, store, now).await?;
+        let work = self.proof(worker, store, kinds, attempt, now).await?;
+        if !work.assignment.lease.started || work.assignment.lease.expires_unix_ms <= now {
+            return Err(Error::LeaseLost);
+        }
+        Ok(work)
+    }
     pub async fn start(
         &self,
         worker: &Worker,

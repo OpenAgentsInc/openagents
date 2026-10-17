@@ -45,7 +45,15 @@ pub struct Config {
 pub struct HandlerInput {
     pub work: protocol::Work,
     pub local_assets: BTreeMap<String, PathBuf>,
+    /// The job's version first, then each version it references in its space.
+    #[serde(default)]
+    pub versions: Vec<lab_kit::Version>,
+    /// Checksum to a stored source file of those versions, read for this run.
+    #[serde(default)]
+    pub files: BTreeMap<String, PathBuf>,
 }
+/// Stored inputs one run may download in total.
+const MAX_INPUT_BYTES: u64 = 256 * 1024 * 1024;
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HandlerOutput {
@@ -386,6 +394,63 @@ impl Worker {
         self.finish(&mut pending).await?;
         Ok(true)
     }
+    /// Reads the versions the job references and their stored files into
+    /// `cwd/inputs`, each checked against its checksum. A service without
+    /// this read gives the job only its own version.
+    async fn download(
+        &self,
+        work: &protocol::Work,
+        attempt: &protocol::Attempt,
+        cwd: &Path,
+    ) -> Result<(Vec<lab_kit::Version>, BTreeMap<String, PathBuf>, u64)> {
+        let mut lease_until = work.assignment.lease.expires_unix_ms;
+        let cancel = openagents_sdk::CancellationToken::new();
+        let inputs = match self.sdk.inputs(work, &cancel).await {
+            Ok(inputs) => inputs,
+            Err(e) if e.status() == Some(404) => {
+                return Ok((vec![work.version.clone()], BTreeMap::new(), lease_until));
+            }
+            Err(e) => return Err(sdk_error(e)),
+        };
+        let mut files = BTreeMap::new();
+        let mut total = 0u64;
+        let mut beat = Instant::now();
+        for file in &inputs.files {
+            if files.contains_key(&file.sha256) {
+                continue;
+            }
+            total = total.saturating_add(file.size);
+            if total > MAX_INPUT_BYTES {
+                return Err(Error("This job's files are too large for this computer."));
+            }
+            if beat.elapsed() >= Duration::from_secs(5) {
+                let current = self
+                    .sdk
+                    .heartbeat(attempt, &cancel)
+                    .await
+                    .map_err(sdk_error)?;
+                if !self.bound_work(&current, Some(attempt)) {
+                    return Err(Error("Check this worker's job assignment."));
+                }
+                lease_until = current.assignment.lease.expires_unix_ms;
+                beat = Instant::now();
+            }
+            let bytes = self
+                .sdk
+                .input_file(work, file, &cancel)
+                .await
+                .map_err(sdk_error)?;
+            let dir = cwd.join("inputs");
+            if !dir.exists() {
+                fs::create_dir(&dir).map_err(|_| Error("Create this job's directory."))?;
+            }
+            // The SDK checked the bytes against this lowercase hex checksum.
+            let path = dir.join(&file.sha256);
+            fs::write(&path, bytes).map_err(|_| Error("Save this job's files."))?;
+            files.insert(file.sha256.clone(), path);
+        }
+        Ok((inputs.versions, files, lease_until))
+    }
     async fn execute(
         &self,
         work: &protocol::Work,
@@ -409,7 +474,10 @@ impl Worker {
             return Err(Error("Check the job identifier."));
         }
         fs::create_dir(&cwd).map_err(|_| Error("Create this job's directory."))?;
+        let (versions, files, lease_until) = self.download(work, attempt, &cwd).await?;
         let input = HandlerInput {
+            versions,
+            files,
             work: work.clone(),
             local_assets: work
                 .requirements
@@ -454,7 +522,7 @@ impl Worker {
         let output = std::thread::spawn(move || bounded_read(stdout, MAX_FILE));
         let errors = std::thread::spawn(move || bounded_read(stderr, 64 * 1024));
         let deadline = Instant::now() + Duration::from_secs(work.requirements.max_seconds);
-        let mut lease_until = work.assignment.lease.expires_unix_ms;
+        let mut lease_until = lease_until;
         let mut next_heartbeat = Instant::now() + Duration::from_secs(5);
         let status = loop {
             if let Some(status) = child
@@ -671,7 +739,14 @@ pub fn echo_handler() -> Result<()> {
         }
         checksums.push(hash);
     }
-    let content=serde_json::to_vec(&serde_json::json!({"text":input.work.version.content.get("text").and_then(|v|v.as_str()).unwrap_or("").to_uppercase(),"input_checksums":checksums})).map_err(|_|Error("Write the echo result."))?;
+    let mut files = Vec::new();
+    for (expected, path) in &input.files {
+        if &file_hash(path)? != expected {
+            return Err(Error("A stored input changed."));
+        }
+        files.push(expected.clone());
+    }
+    let content=serde_json::to_vec(&serde_json::json!({"text":input.work.version.content.get("text").and_then(|v|v.as_str()).unwrap_or("").to_uppercase(),"input_checksums":checksums,"file_checksums":files})).map_err(|_|Error("Write the echo result."))?;
     let output = HandlerOutput {
         outputs: vec![protocol::Output {
             role: lab_kit::ArtifactRole::Build,

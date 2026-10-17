@@ -179,23 +179,59 @@ pub trait Kind: Send + Sync {
     fn references(&self, _content: &Value) -> Result<Vec<ResourceReference>, Refusal> {
         Ok(vec![])
     }
+    /// Versions in the same space that `content` names by content digest
+    /// rather than number. A job's worker may read these and their files.
+    fn pins(&self, _content: &Value) -> Result<Vec<Pin>, Refusal> {
+        Ok(vec![])
+    }
 }
+/// A same-space version named by its document and `content_sha256`.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Pin {
+    pub document: String,
+    pub content_sha256: String,
+}
+type PinsFn = fn(&Value) -> Result<Vec<Pin>, Refusal>;
 pub struct KindAdapter<K> {
     tool: fn(&str, &Value) -> Result<Tool, ApiError>,
+    tools: Option<&'static [&'static str]>,
+    pins: Option<PinsFn>,
     marker: std::marker::PhantomData<K>,
 }
 impl<K> KindAdapter<K> {
     pub fn new(tool: fn(&str, &Value) -> Result<Tool, ApiError>) -> Self {
         Self {
             tool,
+            tools: None,
+            pins: None,
             marker: Default::default(),
         }
     }
+    /// Offer only these manifest tools, the ones `tool` maps to an operation.
+    #[must_use]
+    pub fn with_tools(mut self, tools: &'static [&'static str]) -> Self {
+        self.tools = Some(tools);
+        self
+    }
+    #[must_use]
+    pub fn with_pins(mut self, pins: PinsFn) -> Self {
+        self.pins = Some(pins);
+        self
+    }
+}
+/// `manifest` with only the named tools, for a host that maps just those.
+#[must_use]
+pub fn offered(mut manifest: KindManifest, tools: &[&str]) -> KindManifest {
+    manifest.tools.retain(|t| tools.contains(&t.name.as_str()));
+    manifest
 }
 #[async_trait]
 impl<K: LabKind + Send + Sync> Kind for KindAdapter<K> {
     fn manifest(&self) -> KindManifest {
-        K::manifest()
+        match self.tools {
+            Some(tools) => offered(K::manifest(), tools),
+            None => K::manifest(),
+        }
     }
     async fn initial(
         &self,
@@ -226,6 +262,9 @@ impl<K: LabKind + Send + Sync> Kind for KindAdapter<K> {
     }
     fn tool(&self, name: &str, args: &Value) -> Result<Tool, ApiError> {
         (self.tool)(name, args)
+    }
+    fn pins(&self, content: &Value) -> Result<Vec<Pin>, Refusal> {
+        self.pins.map_or(Ok(vec![]), |pins| pins(content))
     }
 }
 
