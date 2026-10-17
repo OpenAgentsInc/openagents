@@ -445,3 +445,98 @@ async fn errors_remain_unknown_and_secrets_are_shell_quoted() {
     }
     task.abort();
 }
+
+#[derive(Default)]
+struct JournalFixture(Mutex<BTreeMap<String, (String, String, Option<String>)>>);
+
+impl computer_driver::space::LifecycleJournal for JournalFixture {
+    fn claim<'a>(
+        &'a self,
+        key: &'a str,
+        resource: &'a str,
+        action: &'a str,
+    ) -> computer_driver::space::JournalFuture<'a, computer_driver::space::LifecycleClaim> {
+        use computer_driver::space::LifecycleClaim;
+        Box::pin(async move {
+            let mut rows = self.0.lock().unwrap();
+            if let Some((saved_resource, saved_action, operation)) = rows.get(key) {
+                if saved_resource != resource || saved_action != action {
+                    return Err("conflict".into());
+                }
+                return Ok(operation.as_ref().map_or(LifecycleClaim::Uncertain, |id| {
+                    LifecycleClaim::Accepted(id.clone())
+                }));
+            }
+            rows.insert(key.into(), (resource.into(), action.into(), None));
+            Ok(LifecycleClaim::Fresh)
+        })
+    }
+    fn accepted<'a>(
+        &'a self,
+        key: &'a str,
+        operation: &'a str,
+    ) -> computer_driver::space::JournalFuture<'a, ()> {
+        Box::pin(async move {
+            self.0.lock().unwrap().get_mut(key).unwrap().2 = Some(operation.into());
+            Ok(())
+        })
+    }
+    fn rejected<'a>(&'a self, _key: &'a str) -> computer_driver::space::JournalFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+#[tokio::test]
+async fn saved_provider_operations_survive_mapping_expiry_and_lost_replies_never_send_again() {
+    let (driver, mock, task) = setup().await;
+    let id = driver
+        .create(&CreateRequest {
+            operation: "journal-fixture".into(),
+            ..Default::default()
+        })
+        .await
+        .value()
+        .unwrap();
+    let journal = Arc::new(JournalFixture::default());
+    let driver = driver.with_lifecycle_journal(journal.clone());
+    mock.records.lock().unwrap().operation_error = Some(404);
+    assert!(matches!(
+        driver.suspend_operation(&id, "first-checkpoint").await,
+        Outcome::Unknown { .. }
+    ));
+    assert_eq!(
+        journal.0.lock().unwrap()["first-checkpoint"].2.as_deref(),
+        Some("op_suspend_0")
+    );
+    // Expired provider retry records must not turn recovery into another POST.
+    mock.records.lock().unwrap().lifecycle.clear();
+    let restarted = driver.clone().with_lifecycle_journal(journal.clone());
+    assert!(
+        restarted
+            .suspend_operation(&id, "first-checkpoint")
+            .await
+            .is_done()
+    );
+    assert!(mock.records.lock().unwrap().lifecycle.is_empty());
+    mock.records.lock().unwrap().operation_error = Some(404);
+    assert!(matches!(
+        restarted.suspend_operation(&id, "first-checkpoint").await,
+        Outcome::Unknown { .. }
+    ));
+    assert!(mock.records.lock().unwrap().lifecycle.is_empty());
+
+    // A lost mutation response can hide an accepted operation. Without its ID,
+    // recovery remains unknown even if the provider forgot its retry mapping.
+    mock.records.lock().unwrap().fail_next = Some(500);
+    assert!(matches!(
+        driver.resume_operation(&id, "lost-reply").await,
+        Outcome::Unknown { .. }
+    ));
+    assert!(matches!(
+        restarted.resume_operation(&id, "lost-reply").await,
+        Outcome::Unknown { .. }
+    ));
+    assert!(mock.records.lock().unwrap().lifecycle.is_empty());
+    assert!(driver.delete(&id).await.is_done());
+    task.abort();
+}

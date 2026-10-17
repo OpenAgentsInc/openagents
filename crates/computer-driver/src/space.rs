@@ -36,6 +36,9 @@ struct SnapshotStorage {
     size_bytes: Option<u64>,
 }
 
+mod lifecycle;
+pub use lifecycle::{JournalFuture, LifecycleClaim, LifecycleJournal};
+
 #[derive(Clone)]
 pub struct SpaceDriver {
     http: Client,
@@ -43,6 +46,7 @@ pub struct SpaceDriver {
     data: Url,
     token: Secret,
     template: String,
+    lifecycle_journal: Option<std::sync::Arc<dyn LifecycleJournal>>,
 }
 
 // Never include server bodies, URLs, or websocket frames in errors: an
@@ -141,7 +145,13 @@ impl SpaceDriver {
             data: origin(data)?,
             token,
             template: template.into(),
+            lifecycle_journal: None,
         })
+    }
+
+    pub fn with_lifecycle_journal(mut self, journal: std::sync::Arc<dyn LifecycleJournal>) -> Self {
+        self.lifecycle_journal = Some(journal);
+        self
     }
 
     pub fn from_env() -> std::result::Result<Self, String> {
@@ -334,15 +344,62 @@ impl SpaceDriver {
         // The lifecycle saves this identity before the effect. A restarted
         // caller repeats the same request and waits for the original operation.
         let result = async {
-            let v = self
+            if let Some(journal) = &self.lifecycle_journal {
+                match journal
+                    .claim(operation, computer, action)
+                    .await
+                    .map_err(|_| Error::unknown("couldn't read the saved lifecycle request"))?
+                {
+                    LifecycleClaim::Accepted(id) => {
+                        self.wait_operation(&id).await?;
+                        return Ok(id);
+                    }
+                    LifecycleClaim::Uncertain => {
+                        return Err(Error::unknown(
+                            "the earlier lifecycle reply was lost; no new request was sent",
+                        ));
+                    }
+                    LifecycleClaim::Rejected => {
+                        return Err(Error {
+                            status: Some(409),
+                            message: "the earlier lifecycle request was refused",
+                        });
+                    }
+                    LifecycleClaim::Fresh => {}
+                }
+            }
+            let v = match self
                 .json(
                     Method::POST,
                     &format!("/v1/sandboxes/{computer}:{action}"),
                     None,
                     Some(operation),
                 )
-                .await?;
+                .await
+            {
+                Ok(value) => value,
+                Err(error) => {
+                    if error.status.is_some_and(|status| {
+                        (400..500).contains(&status) && status != 408 && status != 429
+                    }) {
+                        if let Some(journal) = &self.lifecycle_journal {
+                            journal.rejected(operation).await.map_err(|_| {
+                                Error::unknown("couldn't save the lifecycle refusal")
+                            })?;
+                        }
+                    }
+                    return Err(error);
+                }
+            };
             let id = field(&v, "operation_id")?;
+            if !valid_id(id, "op_") {
+                return Err(Error::unknown("invalid lifecycle operation ID"));
+            }
+            if let Some(journal) = &self.lifecycle_journal {
+                journal.accepted(operation, id).await.map_err(|_| {
+                    Error::unknown("couldn't save the accepted lifecycle operation")
+                })?;
+            }
             self.wait_operation(id).await?;
             Ok::<String, Error>(id.to_owned())
         };
