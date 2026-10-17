@@ -103,7 +103,7 @@ def revision():
 
 # The Dockerfile copies these exported source trees. Include the shared host
 # client's dependencies as well as the server and app sync clients.
-BUILD_PATHS = ["Cargo.toml", "Cargo.lock", "deploy/coder-sync", "apps/openagents/Cargo.toml"] + [
+BUILD_PATHS = ["Cargo.toml", "Cargo.lock", "nips/openagents/schemas", "deploy/coder-sync", "apps/openagents/Cargo.toml"] + [
     f"crates/{name}" for name in (
         'agent-contract',
         'agent-lab',
