@@ -1,0 +1,29 @@
+{
+  "schema": "openagents.labs.cad.staging-handoff.v1",
+  "source_commit": "e29e4c9bf62f87cd0615b81091da3193b25b6869",
+  "image_digest": "sha256:8cf73886eda6a8d71dbcfa4489d06b31ba718e85639b6249aeb504fcc50dbd1a",
+  "cloud_build": "d63e37bf-b6ec-4c53-bd3f-608f426b4b11",
+  "staging_traffic": [
+    {
+      "revision": "openagents-web-1-staging-e29e4c9bf6-022727",
+      "percent": 100
+    }
+  ],
+  "production_traffic": [
+    {
+      "revision": "coder-web-7e9a650072-20261017015537",
+      "percent": 100
+    }
+  ],
+  "standard_staging_smoke": {
+    "passed": 99,
+    "failed": 0,
+    "skipped": 2,
+    "seconds": 49,
+    "certificate_bundle": "/etc/ssl/cert.pem"
+  },
+  "cad_live_qualification_performed": false,
+  "production_promotion_performed": false,
+  "production_shift_performed": false,
+  "stopped_by_owner": true
+}
