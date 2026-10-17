@@ -1607,6 +1607,14 @@ impl Store {
             Adapter::Gcs(gcs) => gcs.purge_prefix(&format!("{}/{folder}/", gcs.prefix)).await,
         }
     }
+
+    /// Remove everything `owner` keeps here: its chats and every object
+    /// beside them (files, traces, project files, its computers' records).
+    /// For an account deletion (#12002).
+    pub(crate) async fn remove_owner(&self, owner: &str) -> Result<(), Error> {
+        validate_owner(owner)?;
+        self.remove_folder(&owner_digest(owner)).await
+    }
 }
 
 /// The most objects one folder lists ([`Store::folder_keys`]).

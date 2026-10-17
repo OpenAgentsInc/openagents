@@ -13,6 +13,7 @@
 //! service's site, reimplemented here.
 
 pub mod account;
+mod account_delete;
 mod account_export;
 mod account_memory;
 mod account_schedules;
@@ -651,6 +652,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(agent_accounts::routes())
         .merge(vault::routes())
         .merge(account_export::routes())
+        .merge(account_delete::routes())
         .merge(projects::routes())
         .merge(github_tools::routes())
         .merge(lab::routes())
@@ -899,7 +901,9 @@ async fn host_guard(hosts: Hosts, mut request: Request, next: Next) -> Response 
                 })
             })
         });
-    let owned = upstream::owned(path) || (hosts.api && path.starts_with("/api/v1/"));
+    let owned = upstream::owned(path)
+        || account_delete::owns(request.method(), path)
+        || (hosts.api && path.starts_with("/api/v1/"));
     // A wrongly routed Cloud credential cannot become a legacy credential.
     if cloud_cookie && (!(local || public) || !owned)
         || (native_session || scoped_job) && !(local || public)

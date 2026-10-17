@@ -36,6 +36,7 @@ pub mod apple;
 #[cfg(test)]
 mod apple_tests;
 pub mod commercial;
+pub mod deletion;
 pub mod identities;
 #[cfg(test)]
 mod identities_tests;

@@ -50,6 +50,10 @@ pub struct CredentialRecord {
     credential: String,
 }
 
+/// The words `DELETE /v1/account` asks for, sent after the person confirms
+/// in the app.
+pub const DELETE_ACCOUNT_CONFIRM: &str = "delete my account";
+
 impl fmt::Debug for CredentialRecord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CredentialRecord")
@@ -446,6 +450,38 @@ impl Client {
                 ..record.clone()
             },
         })
+    }
+
+    /// Delete the signed-in account and what it keeps (#12002): chats,
+    /// files, projects, connections, computers, keys, and sessions. The
+    /// wallet's 12 words stay on the device. Refusals come back as
+    /// [`Error::Refused`] with code `balance_remaining` (paid credit is
+    /// left: ask, then call again with `forfeit_balance`),
+    /// `shared_workspace` (the person owns a team with other members), or
+    /// `confirm_required`. Clear local storage after it succeeds.
+    pub async fn delete_account(
+        &self,
+        session: &Session,
+        forfeit_balance: bool,
+    ) -> Result<(), Error> {
+        self.check_session(session)?;
+        let answer: Value = self
+            .request(
+                Method::DELETE,
+                &["account"],
+                &[],
+                Some(json!({
+                    "confirm": DELETE_ACCOUNT_CONFIRM,
+                    "forfeit_balance": forfeit_balance,
+                })),
+                Some(session.token()),
+            )
+            .await?;
+        if answer["account"]["state"] == "deleted" {
+            Ok(())
+        } else {
+            Err(Error::InvalidResponse)
+        }
     }
 
     /// Revoke a saved app session without restoring account authority first.

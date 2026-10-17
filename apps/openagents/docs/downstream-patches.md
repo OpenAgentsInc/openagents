@@ -454,3 +454,9 @@ links remain readable. Upstream fixes now require manual ports.
   `crates/mcp/src/tools.rs` and one sentence in `crates/mcp/src/jsonrpc.rs`
   `INSTRUCTIONS`. `OPENAGENTS_AGENT_BUILD_GATE=0` turns it off;
   `docs/coder/runtime/leases.md` in the root has the details.
+- Delete account (#12002). Our code: `Controller::delete_account` and the
+  deletion strings in `crates/account/src/lib.rs`, the
+  `crates/mobile/src/client_ffi/account_delete.rs` bindings, and the iOS
+  Settings row in `apps/ios/OpenAgents/Shell/MoreViewController.swift`.
+  Hook: the Delete account row and its steps in the desktop account menu,
+  `crates/ui/src/openagents_account.rs`.

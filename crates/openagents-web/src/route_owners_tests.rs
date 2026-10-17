@@ -239,7 +239,9 @@ fn every_mounted_route_is_owned() {
         for route in paths {
             checked += 1;
             let path = sample(&route);
+            // `DELETE /v1/account` is owned by method (#12002).
             if crate::upstream::owned(&path)
+                || crate::account_delete::owns(&axum::http::Method::DELETE, &path)
                 || NOT_OWNED.iter().any(|(prefix, _)| path.starts_with(prefix))
             {
                 continue;

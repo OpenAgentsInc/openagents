@@ -69,7 +69,10 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/v1/account/sign-in-keys/{key}", delete(sign_in_key_revoke)),
         ("/v1/session", get(session_status).delete(logout)),
         ("/v1/accounts", post(sign_up)),
-        ("/v1/account", get(account_view)),
+        (
+            "/v1/account",
+            get(account_view).delete(crate::account_delete::delete),
+        ),
         (
             "/v1/workspaces/{workspace}/commercial/{product}",
             get(crate::commercial::read),

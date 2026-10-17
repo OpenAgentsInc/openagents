@@ -35,6 +35,7 @@
 // response itself, built once and returned to the caller — boxing it on
 // the heap would rename the same shape without changing what it is.
 #[allow(clippy::result_large_err)]
+mod account_delete;
 pub mod accounts;
 pub mod advertise;
 pub mod affiliates;

@@ -51,6 +51,30 @@ struct Ticket {
     cancel: CancellationToken,
     previous: Option<Session>,
 }
+/// What a request to delete the account came to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Deletion {
+    /// The account is gone and this device is signed out.
+    Deleted,
+    /// Paid credit is left. Ask the person, then call again with
+    /// `forfeit_balance`.
+    PaidCredit,
+    /// The person owns a team with other members; someone else must own
+    /// it first.
+    SharedTeam,
+    /// It didn't work; the sentence says what to do.
+    Failed(String),
+}
+/// What the signed-out screen says after a deletion.
+pub const DELETED_NOTICE: &str =
+    "Your account is deleted. Your wallet's 12 words still open your wallet.";
+/// What Settings says before the person deletes the account.
+pub const DELETE_WARNING: &str = "This deletes your chats, projects, files, connections, computers, and sign-ins. It can't be undone. Your wallet isn't deleted: its money stays with your 12 words, so keep them safe.";
+/// What Settings asks when paid credit is left.
+pub const PAID_CREDIT_WARNING: &str =
+    "You still have paid credit. Deleting your account gives it up.";
+/// What Settings says when the person owns a team with other members.
+pub const SHARED_TEAM_NOTICE: &str = "You own a team with other members. Make one of them its owner on the website, then delete your account.";
 /// Serialize credential operations so a late login cannot overwrite a newer login or logout.
 pub struct Controller {
     client: Client,
@@ -595,6 +619,46 @@ impl Controller {
             };
             this.publish(&t, Phase::SignedOut { notice }, None);
         }
+    }
+    /// Delete the signed-in account on the server (#12002), then forget
+    /// this device's login. The wallet's 12 words stay on the device; the
+    /// server never had them.
+    pub async fn delete_account(self: &Arc<Self>, forfeit_balance: bool) -> Deletion {
+        let Some(lease) = self.lease() else {
+            return Deletion::Failed("Sign in first, then delete your account.".into());
+        };
+        match self
+            .client
+            .delete_account(lease.session(), forfeit_balance)
+            .await
+        {
+            Ok(()) => {}
+            Err(Error::Refused {
+                code: Some("balance_remaining"),
+                ..
+            }) => return Deletion::PaidCredit,
+            Err(Error::Refused {
+                code: Some("shared_workspace"),
+                ..
+            }) => return Deletion::SharedTeam,
+            Err(_) => {
+                return Deletion::Failed(
+                    "We couldn't delete your account. Check your connection and try again.".into(),
+                );
+            }
+        }
+        let t = self.begin(Phase::SignedOut {
+            notice: Some(DELETED_NOTICE.into()),
+        });
+        let _ = self.forget(&t).await;
+        self.publish(
+            &t,
+            Phase::SignedOut {
+                notice: Some(DELETED_NOTICE.into()),
+            },
+            None,
+        );
+        Deletion::Deleted
     }
 }
 impl Drop for Controller {

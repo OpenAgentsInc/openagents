@@ -516,6 +516,11 @@ impl Client {
                 Some("key_refused") => Some("key_refused"),
                 Some("transcript_off") => Some("transcript_off"),
                 Some("sign_in_required") => Some("sign_in_required"),
+                // Deleting the account (#12002).
+                Some("confirm_required") => Some("confirm_required"),
+                Some("balance_remaining") => Some("balance_remaining"),
+                Some("shared_workspace") => Some("shared_workspace"),
+                Some("session_required") => Some("session_required"),
                 _ => None,
             };
             return Err(Error::Refused {

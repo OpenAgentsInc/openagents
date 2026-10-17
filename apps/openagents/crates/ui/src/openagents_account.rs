@@ -10,7 +10,7 @@ use gpui::{
     Window, div, prelude::*, px,
 };
 use gpui_tokio::Tokio;
-use openagents_account::{Controller, Phase, Snapshot};
+use openagents_account::{Controller, Deletion, Phase, Snapshot};
 use std::{future::Future, path::PathBuf, sync::Arc};
 
 struct GlobalAccount(Entity<AppAccount>);
@@ -23,6 +23,16 @@ pub struct AppAccount {
     opened_generation: Option<u64>,
     automatic_browser: bool,
     menu: popover::Popup<()>,
+    /// Where Delete account stands (#12002), while its menu is open.
+    deleting: Option<DeleteStep>,
+}
+/// The steps of Delete account in the account menu.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum DeleteStep {
+    Ask,
+    PaidCredit,
+    Working,
+    Notice(String),
 }
 impl AppAccount {
     pub fn init(data: PathBuf, cx: &mut App) {
@@ -47,6 +57,7 @@ impl AppAccount {
                 opened_generation: None,
                 automatic_browser: true,
                 menu: popover::Popup::default(),
+                deleting: None,
             },
         });
         cx.set_global(GlobalAccount(entity.clone()));
@@ -134,6 +145,7 @@ impl AppAccount {
             opened_generation: None,
             automatic_browser: true,
             menu: popover::Popup::default(),
+            deleting: None,
         }
     }
     fn run(&mut self, f: impl Future<Output = ()> + Send + 'static, cx: &mut Context<Self>) {
@@ -174,7 +186,107 @@ impl AppAccount {
             self.run(operation, cx);
         }
     }
+    /// Delete the account on the server, then sign this app out. The
+    /// answer moves [`DeleteStep`] on.
+    fn delete_account(&mut self, forfeit_balance: bool, cx: &mut Context<Self>) {
+        let Some(controller) = self.controller.clone() else {
+            return;
+        };
+        self.deleting = Some(DeleteStep::Working);
+        cx.notify();
+        let job = Tokio::spawn(cx, async move {
+            controller.delete_account(forfeit_balance).await
+        });
+        cx.spawn(async move |this, cx| {
+            let result = job.await;
+            let _ = this.update(cx, |this, cx| {
+                this.deleting = match result {
+                    Ok(Deletion::Deleted) => None,
+                    Ok(Deletion::PaidCredit) => Some(DeleteStep::PaidCredit),
+                    Ok(Deletion::SharedTeam) => Some(DeleteStep::Notice(
+                        openagents_account::SHARED_TEAM_NOTICE.into(),
+                    )),
+                    Ok(Deletion::Failed(message)) => Some(DeleteStep::Notice(message)),
+                    Err(_) => Some(DeleteStep::Notice(
+                        "We couldn't delete your account. Try again.".into(),
+                    )),
+                };
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+    /// The account menu's Delete account steps: the warning, the paid
+    /// credit question, and the answer.
+    fn delete_rows(&self, step: &DeleteStep, cx: &mut Context<Self>) -> gpui::Div {
+        let theme = Theme::of(cx).for_popup();
+        let words = |text: SharedString| {
+            div()
+                .px(px(8.))
+                .py(px(4.))
+                .text_size(px(12.))
+                .text_color(theme.text_muted)
+                .child(text)
+        };
+        let mut rows = div().flex().flex_col().gap(px(2.));
+        match step {
+            DeleteStep::Ask | DeleteStep::PaidCredit => {
+                let (warning, label, forfeit) = if *step == DeleteStep::Ask {
+                    (
+                        openagents_account::DELETE_WARNING,
+                        "Delete my account",
+                        false,
+                    )
+                } else {
+                    (
+                        openagents_account::PAID_CREDIT_WARNING,
+                        "Give up the credit and delete",
+                        true,
+                    )
+                };
+                rows = rows
+                    .child(words(warning.into()))
+                    .child(
+                        popover::menu_row(&theme, false, "openagents-delete-confirm")
+                            .id("openagents-delete-confirm")
+                            .text_color(theme.danger)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.delete_account(forfeit, cx);
+                            }))
+                            .child(label),
+                    )
+                    .child(
+                        popover::menu_row(&theme, false, "openagents-delete-cancel")
+                            .id("openagents-delete-cancel")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.deleting = None;
+                                cx.notify();
+                            }))
+                            .child("Keep my account"),
+                    );
+            }
+            DeleteStep::Working => {
+                rows = rows.child(words("Deleting your account…".into()));
+            }
+            DeleteStep::Notice(message) => {
+                rows = rows.child(words(message.clone().into())).child(
+                    popover::menu_row(&theme, false, "openagents-delete-close")
+                        .id("openagents-delete-close")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.deleting = None;
+                            cx.notify();
+                        }))
+                        .child("OK"),
+                );
+            }
+        }
+        rows
+    }
     fn close_menu(&mut self, cx: &mut Context<Self>) {
+        if self.deleting == Some(DeleteStep::Working) {
+            return;
+        }
+        self.deleting = None;
         if self.menu.begin_close() {
             popover::reap_popup(cx, |this: &mut Self| &mut this.menu);
             cx.notify();
@@ -267,7 +379,21 @@ impl AppAccount {
                 false,
                 div().line_height(px(17.)).child(label),
             ));
-        if self.menu.get().is_some() {
+        if self.menu.get().is_some()
+            && let Some(step) = self.deleting.clone()
+        {
+            let closing = self.menu.closing_since();
+            let menu = popover::popover_card(&theme)
+                .w(px(260.))
+                .on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_menu(cx)))
+                .child(self.delete_rows(&step, cx))
+                .into_any_element();
+            row = row.child(popover::anchored_menu_above(
+                "openagents-account-menu",
+                menu,
+                closing,
+            ));
+        } else if self.menu.get().is_some() {
             let closing = self.menu.closing_since();
             let menu = popover::popover_card(&theme)
                 .w(px(220.))
@@ -303,6 +429,20 @@ impl AppAccount {
                                 .text_color(theme.text_muted),
                         )
                         .child("Sign out"),
+                )
+                .child(
+                    popover::menu_row(&theme, false, "openagents-delete-account")
+                        .id("openagents-delete-account")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.deleting = Some(DeleteStep::Ask);
+                            cx.notify();
+                        }))
+                        .child(
+                            icon(icons::TRASH_BIN_MINIMALISTIC)
+                                .size(px(16.))
+                                .text_color(theme.text_muted),
+                        )
+                        .child("Delete account…"),
                 )
                 .into_any_element();
             row = row.child(popover::anchored_menu_above(

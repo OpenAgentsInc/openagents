@@ -985,6 +985,22 @@ pub fn disconnect(dir: &Path, account: &str) -> Result<Status, RepoError> {
     status(dir, account)
 }
 
+/// Forget everything the account keeps here, for an account deletion
+/// (#12002): the stored tokens and broker tickets, the projects it owns,
+/// and its place in projects shared with it.
+pub fn forget_account(dir: &Path, account: &str) -> Result<(), RepoError> {
+    members::forget_account(dir, account)?;
+    mutate(dir, account, |record| {
+        record.grant = None;
+        record.app = None;
+        record.tickets.clear();
+        record.projects.clear();
+        Ok(())
+    })?;
+    forget(dir, account);
+    Ok(())
+}
+
 /// Repositories listed per page: one quick GitHub call.
 pub const PAGE_SIZE: usize = 30;
 

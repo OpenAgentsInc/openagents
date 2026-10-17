@@ -236,7 +236,10 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
         s.appendItems([Row(id: "about", title: "OpenAgents", subtitle: "Based on Zeron by Wing, MIT", symbol: "info.circle")])
         if app.isSignedIn {
             s.appendSections([" "])
-            s.appendItems([Row(id: "signout", title: "Sign Out", symbol: "rectangle.portrait.and.arrow.right", accessory: .none, destructive: true)])
+            s.appendItems([
+                Row(id: "signout", title: "Sign Out", symbol: "rectangle.portrait.and.arrow.right", accessory: .none, destructive: true),
+                Row(id: "delete-account", title: "Delete Account", symbol: "trash", accessory: .none, destructive: true),
+            ])
         }
         dataSource.apply(s, animatingDifferences: false)
     }
@@ -352,8 +355,44 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
             alert.popoverPresentationController?.sourceView = collectionView.cellForItem(at: path)
             present(alert, animated: true)
+        case "delete-account":
+            confirmDeleteAccount(from: collectionView.cellForItem(at: path))
         default:
             break
+        }
+    }
+
+    /// Delete Account (#12002): the warning says what goes and that the
+    /// 12 words still hold the wallet; the person confirms before anything
+    /// is sent, and again before giving up paid credit.
+    private func confirmDeleteAccount(from source: UIView?) {
+        let alert = UIAlertController(title: "Delete your account?", message: accountDeletionWarning(), preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Delete Account", style: .destructive) { [weak self] _ in
+            self?.deleteAccount(forfeitBalance: false)
+        })
+        present(alert, animated: true)
+    }
+
+    private func deleteAccount(forfeitBalance: Bool) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let result = await self.app.deleteAccount(forfeitBalance: forfeitBalance)
+            switch result {
+            case .deleted:
+                break
+            case .paidCredit(let message):
+                let alert = UIAlertController(title: "Give up your credit?", message: message, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                alert.addAction(UIAlertAction(title: "Give Up and Delete", style: .destructive) { [weak self] _ in
+                    self?.deleteAccount(forfeitBalance: true)
+                })
+                self.present(alert, animated: true)
+            case .sharedTeam(let message), .failed(let message):
+                let alert = UIAlertController(title: "Couldn't delete your account", message: message, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                self.present(alert, animated: true)
+            }
         }
     }
 
