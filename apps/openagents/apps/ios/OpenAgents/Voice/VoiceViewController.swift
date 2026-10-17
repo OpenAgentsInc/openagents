@@ -166,7 +166,7 @@ final class VoiceViewController: UIViewController, UICollectionViewDelegate {
                 )
             }, toSection: .hosts)
         }
-        s.appendItems([Row(id: "style", title: "Voice", symbol: "person.wave.2")], toSection: .voice)
+        s.appendItems([Row(id: "style", title: "Voice", subtitle: voice.selectedStyle?.capitalized ?? "Codex default", symbol: "person.wave.2")], toSection: .voice)
         s.appendItems([
             Row(id: "tip-ear", title: "Hold it to your ear", subtitle: "The screen turns off and Codex plays through the earpiece.", symbol: "ear", enabled: true),
             Row(id: "tip-lock", title: "Lock your iPhone", subtitle: "The call keeps going. An incoming call ends it.", symbol: "lock", enabled: true),

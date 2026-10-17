@@ -482,3 +482,7 @@ links remain readable. Upstream fixes now require manual ports.
   WalletUI hierarchy, typography, and button patterns described in
   `docs/design/` at the repository root. Wallet operations, seed storage, and
   backup authentication are unchanged.
+
+- Voice selection display (#12014). The iOS Talk with Codex voice row shows
+  the saved voice name, or Codex default, beside Voice. Its existing next-call
+  explanation and call behavior stay the same.
