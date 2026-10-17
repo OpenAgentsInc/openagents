@@ -11,14 +11,20 @@
 //! Files come only from the card's own artifacts, read through the signed-in
 //! account. When the account changes or signs out, the row drops its pictures
 //! and stops playing.
+//!
+//! While the row exists it follows its document's `/v1/labs` events (#11943),
+//! so a running job's state and new notes show without waiting for the
+//! chat's history. A note added here is anchored at the video's playing
+//! time.
 
 use std::collections::HashMap;
 use std::rc::Rc;
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, Context, EventEmitter, InteractiveElement, IntoElement, ParentElement, Render,
-    SharedString, StatefulInteractiveElement, Styled, StyledImage as _, Task, Window, div, img, px,
+    AnyElement, App, AppContext as _, Context, EventEmitter, Focusable as _, InteractiveElement,
+    IntoElement, ParentElement, Render, SharedString, StatefulInteractiveElement, Styled,
+    StyledImage as _, Task, Window, div, img, px,
 };
 use lab_kit::Card;
 use lab_ui::Intent;
@@ -32,6 +38,18 @@ use crate::theme::Theme;
 pub type Fetch = Rc<dyn Fn(String, &mut App) -> Task<Option<Media>>>;
 /// Whether the account that read the card is still the signed-in one.
 pub type Current = Rc<dyn Fn() -> bool>;
+/// Adds a note at a playing time; the error is the sentence to show.
+pub type AddNote = Rc<dyn Fn(Option<f64>, String, &mut App) -> Task<Result<(), String>>>;
+
+/// The note being written.
+struct NoteDraft {
+    input: gpui::Entity<crate::composer::ComposerInput>,
+    at: Option<f64>,
+    error: Option<String>,
+    saving: bool,
+    focus: bool,
+    _events: gpui::Subscription,
+}
 
 /// The row's size changed (a picture arrived), so the transcript remeasures it.
 pub struct LabLayoutChanged;
@@ -45,6 +63,8 @@ enum Load {
 
 pub struct LabView {
     id: SharedString,
+    space: String,
+    revision: u64,
     card: Card,
     projection: Option<lab_ui::Projection>,
     pictures: Pictures,
@@ -55,6 +75,10 @@ pub struct LabView {
     #[cfg(target_os = "macos")]
     player: Option<crate::lab_card::player::VideoPlayer>,
     released: bool,
+    add_note: Option<AddNote>,
+    draft: Option<NoteDraft>,
+    /// Stops the row's event follower.
+    stop: Option<tokio_util::sync::CancellationToken>,
 }
 
 impl EventEmitter<LabLayoutChanged> for LabView {}
@@ -73,6 +97,8 @@ impl LabView {
         let projection = lab_ui::card(&card, space, &id, 1).ok();
         let pictures = pictures(&card);
         let mut this = Self {
+            space: space.to_owned(),
+            revision: 1,
             id,
             card,
             projection,
@@ -84,9 +110,130 @@ impl LabView {
             #[cfg(target_os = "macos")]
             player: None,
             released: false,
+            add_note: None,
+            draft: None,
+            stop: None,
         };
         this.load(cx);
         this
+    }
+
+    /// Lets the row add notes.
+    pub fn set_add_note(&mut self, add_note: AddNote) {
+        self.add_note = Some(add_note);
+    }
+
+    /// The follower to stop when the row goes away.
+    pub fn set_follower(&mut self, stop: tokio_util::sync::CancellationToken) {
+        if let Some(old) = self.stop.replace(stop) {
+            old.cancel();
+        }
+    }
+
+    /// Shows a newer copy of the card (a note, a finished job). The pictures
+    /// and a playing video stay when the card's files didn't change.
+    pub fn set_card(&mut self, card: Card, cx: &mut Context<Self>) {
+        if self.released || card == self.card {
+            return;
+        }
+        let pictures = pictures(&card);
+        self.projection = lab_ui::card(&card, &self.space, &self.id, self.revision + 1).ok();
+        self.revision += 1;
+        self.card = card;
+        if pictures != self.pictures {
+            #[cfg(target_os = "macos")]
+            if let Some(player) = self.player.take() {
+                player.pause();
+            }
+            let images = self.files.drain().filter_map(|(_, load)| match load {
+                Load::Image(image) => Some(image),
+                _ => None,
+            });
+            crate::image_media::release_media(images.collect::<Vec<_>>(), cx);
+            self.pictures = pictures;
+            self.load(cx);
+        }
+        cx.emit(LabLayoutChanged);
+        cx.notify();
+    }
+
+    /// The video's playing time, once it has played.
+    fn playing_at(&self) -> Option<f64> {
+        #[cfg(target_os = "macos")]
+        if let Some(player) = &self.player {
+            let at = player.position();
+            return at.is_finite().then_some(at);
+        }
+        None
+    }
+
+    fn start_note(&mut self, cx: &mut Context<Self>) {
+        if self.add_note.is_none() || self.released {
+            return;
+        }
+        let at = self.playing_at();
+        let placeholder = match at {
+            Some(at) => format!("Note at {}", lab_ui::clock(at)),
+            None => "Your note".to_owned(),
+        };
+        let input = cx.new(|cx| {
+            crate::composer::ComposerInput::new(placeholder, cx)
+                .with_single_line()
+                .with_text_metrics(13.0, 17.0)
+                .with_accessibility_role(gpui::Role::TextInput)
+        });
+        let events = cx.subscribe(&input, |this: &mut Self, _, event, cx| {
+            if matches!(event, crate::composer::ComposerInputEvent::Submitted) {
+                this.submit_note(cx);
+            }
+        });
+        self.draft = Some(NoteDraft {
+            input,
+            at,
+            error: None,
+            saving: false,
+            focus: true,
+            _events: events,
+        });
+        cx.emit(LabLayoutChanged);
+        cx.notify();
+    }
+
+    fn submit_note(&mut self, cx: &mut Context<Self>) {
+        let (Some(add_note), Some(draft)) = (self.add_note.clone(), self.draft.as_mut()) else {
+            return;
+        };
+        let text = draft.input.read(cx).text().trim().to_owned();
+        if text.is_empty() || draft.saving {
+            return;
+        }
+        draft.saving = true;
+        draft.error = None;
+        let job = add_note(draft.at, text, cx);
+        cx.spawn(async move |this, cx| {
+            let result = job.await;
+            let _ = this.update(cx, |this, cx| {
+                match result {
+                    Ok(()) => this.draft = None,
+                    Err(message) => {
+                        if let Some(draft) = this.draft.as_mut() {
+                            draft.saving = false;
+                            draft.error = Some(message);
+                        }
+                    }
+                }
+                cx.emit(LabLayoutChanged);
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn cancel_note(&mut self, cx: &mut Context<Self>) {
+        self.draft = None;
+        cx.emit(LabLayoutChanged);
+        cx.notify();
     }
 
     /// The files the picture shows, in the order it draws them.
@@ -149,6 +296,10 @@ impl LabView {
     /// Drops every picture and stops playing.
     fn release(&mut self, cx: &mut App) {
         self.released = true;
+        self.draft = None;
+        if let Some(stop) = self.stop.take() {
+            stop.cancel();
+        }
         #[cfg(target_os = "macos")]
         if let Some(player) = self.player.take() {
             player.pause();
@@ -437,10 +588,96 @@ impl Render for LabView {
             return frame;
         }
         let root = self.projection.as_ref().map(|p| p.view.view().root.clone());
-        match root {
+        let frame = match root {
             Some(root) => frame.child(self.mount(&root, window, cx)),
             None => frame.child(self.card.title.clone()),
+        };
+        frame.when_some(self.notes(window, cx), |d, notes| d.child(notes))
+    }
+}
+
+impl LabView {
+    /// The note control under the card: a button, or the note being written.
+    fn notes(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        self.add_note.as_ref()?;
+        let theme = Theme::of(cx).clone();
+        let small = crate::typography::ui_rems(12.0);
+        let button = |id: &str, label: String| {
+            div()
+                .id(SharedString::from(format!("{}:{id}", self.id)))
+                .px(px(10.))
+                .py(px(4.))
+                .rounded_md()
+                .text_size(small)
+                .text_color(theme.text)
+                .bg(theme.surface)
+                .cursor_pointer()
+                .child(label)
+        };
+        let Some(draft) = self.draft.as_mut() else {
+            let label = match self.playing_at() {
+                Some(at) => format!("Add a note at {}", lab_ui::clock(at)),
+                None => "Add a note".to_owned(),
+            };
+            return Some(
+                div()
+                    .pt(px(8.))
+                    .flex()
+                    .child(
+                        button("note", label)
+                            .on_click(cx.listener(|this, _, _, cx| this.start_note(cx))),
+                    )
+                    .into_any_element(),
+            );
+        };
+        if draft.focus {
+            draft.focus = false;
+            window.focus(&draft.input.focus_handle(cx), cx);
         }
+        let input = draft.input.clone();
+        let error = draft.error.clone();
+        let saving = draft.saving;
+        Some(
+            div()
+                .pt(px(8.))
+                .flex()
+                .flex_col()
+                .gap(px(4.))
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .gap(px(6.))
+                        .items_center()
+                        .child(
+                            div()
+                                .flex_1()
+                                .px(px(8.))
+                                .py(px(4.))
+                                .rounded_md()
+                                .border_1()
+                                .border_color(theme.border)
+                                .child(input),
+                        )
+                        .child(
+                            button("note-add", if saving { "Adding…" } else { "Add" }.into())
+                                .on_click(cx.listener(|this, _, _, cx| this.submit_note(cx))),
+                        )
+                        .child(
+                            button("note-cancel", "Cancel".into())
+                                .on_click(cx.listener(|this, _, _, cx| this.cancel_note(cx))),
+                        ),
+                )
+                .when_some(error, |d, error| {
+                    d.child(
+                        div()
+                            .text_size(small)
+                            .text_color(theme.text_muted)
+                            .child(error),
+                    )
+                })
+                .into_any_element(),
+        )
     }
 }
 
@@ -531,5 +768,60 @@ mod tests {
                 assert_eq!(v.loaded(), 0, "{name}");
             });
         }
+    }
+
+    #[gpui::test]
+    fn a_newer_card_keeps_its_pictures_and_notes_can_be_added(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| cx.set_global(Theme::default()));
+        let card = fixtures()
+            .into_iter()
+            .find(|(n, _)| n == "image")
+            .unwrap()
+            .1;
+        let added: Rc<std::cell::RefCell<Vec<(Option<f64>, String)>>> = Rc::default();
+        let (view, cx) = cx.add_window_view(|_, cx| {
+            let mut view = LabView::new(
+                SharedString::from("lab-image"),
+                card.clone(),
+                "me",
+                None,
+                fetch(),
+                Rc::new(|| true),
+                cx,
+            );
+            let added = added.clone();
+            view.set_add_note(Rc::new(move |at, text, _| {
+                added.borrow_mut().push((at, text));
+                Task::ready(Ok(()))
+            }));
+            view
+        });
+        cx.run_until_parked();
+        let loaded = view.read_with(cx, |v, _| v.loaded());
+        assert!(loaded > 0);
+        let mut newer = card.clone();
+        newer.notes.push(lab_kit::NoteBrief {
+            locator: lab_kit::Locator::Time { seconds: 3.0 },
+            author: "me".into(),
+            text: "Hold this".into(),
+        });
+        view.update(cx, |v, cx| v.set_card(newer.clone(), cx));
+        view.read_with(cx, |v, _| {
+            assert_eq!(v.card(), &newer);
+            assert_eq!(v.loaded(), loaded, "the pictures stay");
+        });
+        view.update(cx, |v, cx| v.start_note(cx));
+        cx.update(|window, cx| {
+            window.refresh();
+            window.draw(cx).clear();
+        });
+        view.update(cx, |v, cx| {
+            let input = v.draft.as_ref().unwrap().input.clone();
+            input.update(cx, |input, cx| input.set_text("Warmer", cx));
+            v.submit_note(cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(&*added.borrow(), &[(None, "Warmer".to_owned())]);
+        view.read_with(cx, |v, _| assert!(v.draft.is_none()));
     }
 }

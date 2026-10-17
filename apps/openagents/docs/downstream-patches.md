@@ -36,8 +36,10 @@ Keep fork-specific changes here so upstream updates can review each integration.
     `openagents-account`: `lab_cards` (row references and the pictures each
     view draws) and `Reader::lab_card`, `lab_page` and `lab_media`, which read
     only a card's own files. `chat_entries::entries_with_lab_rows` turns each
-    card into a `lab-card:` visual part; the phone keeps `entries` until it
-    draws them. Hooks: one early return to `render_lab_row` in
+    card into a `lab-card:` visual part, and the phone's layout draws it too
+    (`crates/mobile/src/layout/lab.rs`). While a row exists it follows its
+    document's `/v1/labs` events through `Reader::follow_lab`, and adds notes
+    at the playing time through `Reader::lab_add_note`. Hooks: one early return to `render_lab_row` in
     `Transcript::render_visual` (`crates/ui/src/transcript.rs`); the row
     itself is in `transcript/account_history.rs`.
 

@@ -2,8 +2,8 @@
 use super::*;
 use crate::attachments::{AttachmentSnapshot, CachedAttachmentImage};
 use crate::image_media::MediaImage;
-use openagents_account::{history::LoadState, reader::Reader};
 use gpui_tokio::Tokio;
+use openagents_account::{history::LoadState, reader::Reader};
 
 pub(super) struct AccountHistory {
     model: Arc<Reader>,
@@ -173,15 +173,18 @@ impl Transcript {
         let Some(source) = self.account_history.as_mut() else {
             return Some(div().into_any_element());
         };
-        // A followed chat's card changes as its job runs: draw the new one.
+        // A followed chat's card changes as its job runs: draw the new one,
+        // keeping its pictures and a playing video when its files didn't change.
         let saved = source.model.lab_card(path);
-        let cached = source.labs.get(row_id).filter(|view| {
-            saved
-                .as_ref()
-                .is_some_and(|saved| view.read(cx).card() == &saved.card)
-        });
+        let cached = source.labs.get(row_id).cloned();
+        if let (Some(view), Some(saved)) = (&cached, &saved)
+            && view.read(cx).card() != &saved.card
+        {
+            let card = saved.card.clone();
+            view.update(cx, |view, cx| view.set_card(card, cx));
+        }
         let view = match cached {
-            Some(view) => view.clone(),
+            Some(view) => view,
             None => {
                 let model = source.model.clone();
                 let Some(saved) = saved else {
@@ -216,6 +219,7 @@ impl Transcript {
                     },
                 )
                 .detach();
+                self.follow_lab_row(&view, &model, path, cx);
                 if let Some(source) = self.account_history.as_mut() {
                     source.labs.insert(row_id.clone(), view.clone());
                 }
@@ -223,5 +227,55 @@ impl Transcript {
             }
         };
         Some(div().w_full().child(view).into_any_element())
+    }
+
+    /// Follows a Lab row's document while the row exists (#11943), redraws
+    /// the row when its card changes, and lets it add notes.
+    fn follow_lab_row(
+        &mut self,
+        view: &Entity<crate::lab_view::LabView>,
+        model: &Arc<Reader>,
+        path: &str,
+        cx: &mut Context<Self>,
+    ) {
+        let stop = tokio_util::sync::CancellationToken::new();
+        {
+            let (model, path, stop) = (model.clone(), path.to_owned(), stop.clone());
+            Tokio::spawn(cx, async move { model.follow_lab(&path, &stop).await }).detach();
+        }
+        let add_note: crate::lab_view::AddNote = {
+            let (model, path) = (model.clone(), path.to_owned());
+            Rc::new(move |at, text: String, cx: &mut gpui::App| {
+                let (model, path) = (model.clone(), path.clone());
+                let job = Tokio::spawn(
+                    cx,
+                    async move { model.lab_add_note(&path, at, &text).await },
+                );
+                cx.spawn(async move |_| match job.await {
+                    Ok(result) => result.map_err(|e| e.message()),
+                    Err(_) => Err(openagents_account::lab_cards::NoteError::Unavailable.message()),
+                })
+            })
+        };
+        view.update(cx, |view, _| {
+            view.set_follower(stop.clone());
+            view.set_add_note(add_note);
+        });
+        let mut updates = model.watch();
+        let (model, path, weak) = (model.clone(), path.to_owned(), view.downgrade());
+        cx.spawn(async move |_, cx| {
+            while updates.changed().await.is_ok() && !stop.is_cancelled() {
+                let Some(saved) = model.lab_card(&path) else {
+                    continue;
+                };
+                if weak
+                    .update(cx, |view, cx| view.set_card(saved.card, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
     }
 }
