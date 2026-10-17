@@ -191,8 +191,9 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
         // Rust core has an identity to show (#11995).
         if let identity = app.identity {
             s.appendItems([Row(id: "your-id", title: "Your ID", subtitle: identity.npub, symbol: "person.text.rectangle", accessory: .none)])
-            // TODO(#11995): show these once the core can back up and restore
-            // the 12 words; they have no screen yet.
+            // TODO(#11996): show these once their screens exist. The core
+            // has them: backupWords, backupCheck, confirmBackup,
+            // restoreFromWords, setIcloudCopy, revealNsec (#11995).
             // s.appendItems([
             //     Row(id: "backup", title: "Back up your account", subtitle: identity.wordsSaved ? "Your 12 words are saved" : nil, symbol: "key", tint: identity.wordsSaved ? Palette.secondary : Palette.warning),
             //     Row(id: "restore", title: "Restore from 12 words", symbol: "arrow.counterclockwise"),

@@ -22,6 +22,8 @@ mod cloud_host;
 pub use agent_lab::*;
 mod custom_agents;
 mod labs;
+mod identity;
+pub use identity::*;
 mod onboarding;
 pub use onboarding::*;
 mod own_computer;

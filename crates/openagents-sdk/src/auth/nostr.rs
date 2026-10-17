@@ -42,7 +42,7 @@ impl fmt::Display for SignerError {
 impl std::error::Error for SignerError {}
 
 /// Signs events with the caller's key. The SDK only asks for signatures.
-pub trait NostrSigner {
+pub trait NostrSigner: Send + Sync {
     /// Sign `template`, answering the complete event as NIP-01 JSON
     /// (`{"id", "pubkey", "created_at", "kind", "tags", "content", "sig"}`).
     fn sign_event(&self, template: &EventTemplate) -> Result<String, SignerError>;

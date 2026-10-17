@@ -101,6 +101,21 @@ pub fn configured(data: &Path) -> Result<(Arc<Controller>, Option<String>), Erro
     Ok((controller, credential))
 }
 
+/// The desktop's identity (#11995, UI in #11997): its own Keychain item
+/// for the 12 words, with no wallet on this computer yet.
+pub fn identities(data: &Path) -> crate::identity::Identities {
+    let bundle = if cfg!(debug_assertions) {
+        openagents_brand::DEV_BUNDLE_ID
+    } else {
+        openagents_brand::BUNDLE_ID
+    };
+    crate::identity::Identities::new(
+        Arc::new(crate::identity::KeychainVault::new(&format!("{bundle}.identity"))),
+        Arc::new(crate::identity::NoWallet),
+        &data.join("openagents-account/identity"),
+    )
+}
+
 fn deployment() -> Result<Deployment, Error> {
     match (
         std::env::var("CODER_DESKTOP_API_URL").ok(),

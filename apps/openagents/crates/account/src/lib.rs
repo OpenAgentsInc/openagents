@@ -18,6 +18,8 @@ pub mod cloud_chat_demo;
 pub mod dashboard;
 pub mod desktop;
 pub mod history;
+pub mod identity;
+mod key_session;
 pub mod lab_cards;
 pub mod lab_row;
 pub mod own_computer;
@@ -25,6 +27,7 @@ mod platform;
 pub mod reader;
 pub mod turns;
 pub mod video_editor;
+pub use key_session::RENEW_WITHIN;
 pub use platform::PlatformStore;
 
 #[derive(Clone, Debug)]
