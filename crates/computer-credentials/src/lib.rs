@@ -2,6 +2,8 @@
 //! Values belong only in the inspected host-side proxy, never in guest metadata.
 pub mod certificate_authority;
 pub mod gateway;
+#[cfg(unix)]
+pub mod host_transport;
 pub mod policy;
 pub mod secret_manager;
 use async_trait::async_trait;

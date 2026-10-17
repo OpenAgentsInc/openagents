@@ -126,7 +126,9 @@ account Certificate Requester on that CA pool only. The service fixes the Google
 API origin and issuing authority, bounds requests and responses, refuses
 redirects, limits signing concurrency to two, and caps node certificates at seven
 days. Retries in the same UTC day reuse a request ID; Google's deduplication
-window is at least 60 minutes. Later renewal uses a new ID. See the
+window is at least 60 minutes. Later renewal uses a new ID. The DevOps canary returned distinct valid
+certificates on consecutive calls, so callers must not depend on identical
+certificate bytes. See the
 [certificate creation API](https://cloud.google.com/certificate-authority-service/docs/reference/rest/v1/projects.locations.caPools.certificates/create).
 The pool must restrict issuance to P-256 node CAs with path length one,
 certificate-signing usage, server authentication, and a seven-day maximum
@@ -148,6 +150,15 @@ Configure the node manager with `OA_SPACE_CREDENTIAL_BROKER` (HTTPS origin),
 The manager removes caller-supplied variables with this prefix and copies its
 token into the isolated gateway directory, mode `0600`, owned by the gateway
 UID. It refuses a gateway that shares the sandbox UID.
+
+The node manager also creates a mode `0600` Unix socket in the root-owned
+`/space/run/openagents-credential-broker` directory. It forwards bytes only to
+the configured broker host and port from the host network. The gateway uses
+`OA_SPACE_CREDENTIAL_BROKER_SOCKET` and retains verified HTTPS and hostname
+checks over that socket. The relay checks the peer UID, permits at most eight
+connections per gateway, and removes its socket and connections when the
+gateway runtime directory is removed. No management host is added to the guest
+profile, and the broker connection does not use guest DNS.
 
 The qualified runtime must provide a real `/workspace` directory owned by its
 unprivileged guest user. Command paths stay beneath that directory.

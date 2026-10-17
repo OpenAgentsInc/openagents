@@ -439,6 +439,25 @@ async fn a_real_http_adapter_checks_node_command_grant_and_each_request() {
         context.clone(),
     )
     .unwrap();
+    // Reach the same broker through the host-network transport, preserving all
+    // request authorization and response checks exercised below.
+    #[cfg(unix)]
+    let (client, relay, relay_directory) = {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = std::env::temp_dir().join(format!("oa-broker-http-{}", Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let socket = directory.join("broker.sock");
+        let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+        std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let relay = crate::host_transport::spawn(
+            listener,
+            &format!("https://{address}"),
+            unsafe { libc::geteuid() },
+            directory.clone(),
+        )
+        .unwrap();
+        (client.with_host_socket(socket).unwrap(), relay, directory)
+    };
     let policy = &context.native_policy_ref;
     let selectors = [("authorization".into(), f.request.reference)].into();
     client.check(policy).await.unwrap();
@@ -570,6 +589,12 @@ async fn a_real_http_adapter_checks_node_command_grant_and_each_request() {
     authority.unavailable.store(true, Ordering::SeqCst);
     assert!(client.check(policy).await.is_err());
     assert_eq!(f.reads(), 1);
+    #[cfg(unix)]
+    {
+        relay.abort();
+        let _ = relay.await;
+        std::fs::remove_dir_all(relay_directory).unwrap();
+    }
     server.abort();
 }
 #[test]

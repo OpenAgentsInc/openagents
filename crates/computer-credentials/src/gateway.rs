@@ -321,13 +321,15 @@ async fn check(
     }
 }
 
-/// Used by the trusted per-sandbox gateway, outside the guest namespaces.
+/// Used by the trusted per-sandbox gateway process on the host.
 /// Every HTTP request makes a fresh broker call; redirects are never followed.
 pub struct Client {
     http: reqwest::Client,
     origin: String,
     token: Secret,
     context: Context,
+    root_certificate: Option<reqwest::Certificate>,
+    socket: Option<std::path::PathBuf>,
 }
 impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -379,7 +381,40 @@ impl Client {
             origin: origin.trim_end_matches('/').into(),
             token,
             context,
+            root_certificate: None,
+            socket: None,
         })
+    }
+    fn rebuild_http(&mut self) -> Result<(), Failure> {
+        let mut builder = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(Duration::from_secs(5));
+        if let Some(certificate) = &self.root_certificate {
+            builder = builder.add_root_certificate(certificate.clone());
+        }
+        #[cfg(unix)]
+        if let Some(socket) = &self.socket {
+            builder = builder.unix_socket(socket.clone());
+        }
+        self.http = builder.build().map_err(|_| Failure::Unavailable)?;
+        Ok(())
+    }
+    /// Keep TLS and hostname checks while reaching the fixed broker through a
+    /// host-network relay. Guest network policy never allows management traffic.
+    #[cfg(unix)]
+    pub fn with_host_socket(mut self, path: std::path::PathBuf) -> Result<Self, Failure> {
+        use std::os::unix::fs::{FileTypeExt, MetadataExt};
+        let metadata = std::fs::symlink_metadata(&path).map_err(|_| Failure::Unavailable)?;
+        if !metadata.file_type().is_socket()
+            || metadata.uid() != unsafe { libc::geteuid() }
+            || metadata.mode() & 0o077 != 0
+        {
+            return Err(Failure::Invalid);
+        }
+        self.socket = Some(path);
+        self.rebuild_http()?;
+        Ok(self)
     }
     /// Trust one explicitly supplied private broker CA. Host configuration owns
     /// this trust; it is never accepted from a guest or a public API request.
@@ -388,13 +423,8 @@ impl Client {
             return Err(Failure::Invalid);
         }
         let certificate = reqwest::Certificate::from_pem(pem).map_err(|_| Failure::Invalid)?;
-        self.http = reqwest::Client::builder()
-            .no_proxy()
-            .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(5))
-            .add_root_certificate(certificate)
-            .build()
-            .map_err(|_| Failure::Unavailable)?;
+        self.root_certificate = Some(certificate);
+        self.rebuild_http()?;
         Ok(self)
     }
     /// Reads only a host-mounted, private token file. The token is not an env value.
@@ -432,11 +462,12 @@ impl Client {
         if bytes.last() == Some(&b'\n') {
             bytes.pop();
         }
-        Ok(Some(Self::new(
-            &origin,
-            Secret::new(std::mem::take(&mut *bytes))?,
-            context,
-        )?))
+        let socket =
+            std::env::var_os("OA_SPACE_CREDENTIAL_BROKER_SOCKET").ok_or(Failure::Invalid)?;
+        Ok(Some(
+            Self::new(&origin, Secret::new(std::mem::take(&mut *bytes))?, context)?
+                .with_host_socket(socket.into())?,
+        ))
     }
     fn context(&self, policy: &str) -> Context {
         let mut c = self.context.clone();

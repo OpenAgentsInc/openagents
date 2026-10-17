@@ -1,5 +1,5 @@
 diff --git a/Cargo.lock b/Cargo.lock
-index dff36d5..f579b0f 100644
+index dff36d5..78699e4 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
 @@ -989,6 +989,15 @@ dependencies = [
@@ -153,7 +153,15 @@ index dff36d5..f579b0f 100644
   "socket2",
   "tempfile",
   "thiserror 2.0.20",
-@@ -7349,6 +7428,15 @@ dependencies = [
+@@ -6275,6 +6354,7 @@ name = "pplx-space-node-mgr"
+ version = "0.8.0"
+ dependencies = [
+  "arc-swap",
++ "computer-credentials",
+  "dashmap",
+  "futures-util",
+  "h2",
+@@ -7349,6 +7429,15 @@ dependencies = [
   "elliptic-curve",
  ]
 
@@ -169,7 +177,7 @@ index dff36d5..f579b0f 100644
  [[package]]
  name = "proc-macro2"
  version = "1.0.107"
-@@ -7358,6 +7446,26 @@ dependencies = [
+@@ -7358,6 +7447,26 @@ dependencies = [
   "unicode-ident",
  ]
 
@@ -196,7 +204,7 @@ index dff36d5..f579b0f 100644
  [[package]]
  name = "prost"
  version = "0.14.4"
-@@ -7451,6 +7559,12 @@ dependencies = [
+@@ -7451,6 +7560,12 @@ dependencies = [
   "pulldown-cmark",
  ]
 
@@ -209,7 +217,7 @@ index dff36d5..f579b0f 100644
  [[package]]
  name = "quinn"
  version = "0.11.12"
-@@ -7623,6 +7737,15 @@ dependencies = [
+@@ -7623,6 +7738,15 @@ dependencies = [
   "rand_core 0.10.1",
  ]
 
@@ -225,7 +233,7 @@ index dff36d5..f579b0f 100644
  [[package]]
  name = "rapidhash"
  version = "4.5.1"
-@@ -7780,6 +7903,7 @@ dependencies = [
+@@ -7780,6 +7904,7 @@ dependencies = [
   "base64 0.22.1",
   "bytes",
   "futures-core",
@@ -233,7 +241,7 @@ index dff36d5..f579b0f 100644
   "http 1.5.0",
   "http-body 1.1.0",
   "http-body-util",
-@@ -7799,12 +7923,14 @@ dependencies = [
+@@ -7799,12 +7924,14 @@ dependencies = [
   "sync_wrapper",
   "tokio",
   "tokio-rustls",
@@ -248,7 +256,7 @@ index dff36d5..f579b0f 100644
   "web-sys",
   "webpki-roots",
  ]
-@@ -8127,6 +8253,18 @@ version = "1.0.23"
+@@ -8127,6 +8254,18 @@ version = "1.0.23"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
@@ -267,7 +275,7 @@ index dff36d5..f579b0f 100644
  [[package]]
  name = "ryu"
  version = "1.0.23"
-@@ -9382,6 +9520,18 @@ dependencies = [
+@@ -9382,6 +9521,18 @@ dependencies = [
   "serde_core",
  ]
 
@@ -286,7 +294,7 @@ index dff36d5..f579b0f 100644
  [[package]]
  name = "toml_parser"
  version = "1.1.3+spec-1.1.0"
-@@ -9726,6 +9876,12 @@ version = "0.1.7"
+@@ -9726,6 +9877,12 @@ version = "0.1.7"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "2896d95c02a80c6d6a5d6e953d479f5ddf2dfdb6a244441010e373ac0fb88971"
 
@@ -299,7 +307,7 @@ index dff36d5..f579b0f 100644
  [[package]]
  name = "unicase"
  version = "2.9.0"
-@@ -9968,6 +10124,15 @@ dependencies = [
+@@ -9968,6 +10125,15 @@ dependencies = [
   "nix 0.31.3",
  ]
 
@@ -315,7 +323,7 @@ index dff36d5..f579b0f 100644
  [[package]]
  name = "walkdir"
  version = "2.5.0"
-@@ -10057,6 +10222,19 @@ dependencies = [
+@@ -10057,6 +10223,19 @@ dependencies = [
   "unicode-ident",
  ]
 
@@ -335,7 +343,7 @@ index dff36d5..f579b0f 100644
  [[package]]
  name = "wasmtimer"
  version = "0.4.3"
-@@ -10432,6 +10610,9 @@ name = "winnow"
+@@ -10432,6 +10611,9 @@ name = "winnow"
  version = "1.0.4"
  source = "registry+https://github.com/rust-lang/crates.io-index"
  checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
@@ -1224,11 +1232,23 @@ index 260bcc5..ef22c13 100644
          let decision = if reserved.is_some() {
              evaluate_reserved_dns_egress(flow.orig_dst, policy.as_ref())
          } else {
+diff --git a/crates/libs/node/mgr/server/Cargo.toml b/crates/libs/node/mgr/server/Cargo.toml
+index 02f5e02..db0fee5 100644
+--- a/crates/libs/node/mgr/server/Cargo.toml
++++ b/crates/libs/node/mgr/server/Cargo.toml
+@@ -20,6 +20,7 @@ datadog-otel = ["otel", "datadog"]
+ test-hooks = ["pplx-space-common-core/test-hooks"]
+
+ [dependencies]
++computer-credentials = { path = "../../../../openagents-credentials" }
+ arc-swap = { workspace = true }
+ dashmap = { workspace = true }
+ h2 = { workspace = true }
 diff --git a/crates/libs/node/mgr/server/src/service/gateway_isolation.rs b/crates/libs/node/mgr/server/src/service/gateway_isolation.rs
-index 5846fe5..19a40e3 100644
+index 5846fe5..9dd64c2 100644
 --- a/crates/libs/node/mgr/server/src/service/gateway_isolation.rs
 +++ b/crates/libs/node/mgr/server/src/service/gateway_isolation.rs
-@@ -248,3 +248,93 @@ fn require_inactive_gateway_socket(path: &Path) -> Result<(), Status> {
+@@ -248,3 +248,172 @@ fn require_inactive_gateway_socket(path: &Path) -> Result<(), Status> {
 
  #[cfg(test)]
  mod tests;
@@ -1314,6 +1334,11 @@ index 5846fe5..19a40e3 100644
 +            "credential node file couldn't be installed",
 +        ));
 +    }
++    let socket = credential_broker_socket(sandbox_id, uid, &origin, directory)?;
++    env.insert(
++        "OA_SPACE_CREDENTIAL_BROKER_SOCKET".into(),
++        socket.display().to_string(),
++    );
 +    env.insert("OA_SPACE_CREDENTIAL_BROKER".into(), origin);
 +    env.insert("OA_SPACE_CREDENTIAL_NODE_ID".into(), node);
 +    env.insert(
@@ -1321,6 +1346,80 @@ index 5846fe5..19a40e3 100644
 +        target.display().to_string(),
 +    );
 +    Ok(env)
++}
++
++/// Bind management transport outside the gateway network namespace. Its TLS
++/// client still verifies the configured broker hostname over this byte stream.
++fn credential_broker_socket(
++    sandbox_id: &str,
++    uid: u32,
++    origin: &str,
++    runtime_directory: PathBuf,
++) -> Result<PathBuf, Status> {
++    use std::{
++        os::unix::fs::{DirBuilderExt, FileTypeExt, MetadataExt, PermissionsExt},
++        sync::{Mutex, OnceLock},
++    };
++    type Relay = (String, u32, tokio::task::JoinHandle<()>);
++    static RELAYS: OnceLock<Mutex<std::collections::BTreeMap<PathBuf, Relay>>> = OnceLock::new();
++    let failure = || Status::unavailable("private credential transport is unavailable");
++    if !computer_credentials::opaque(sandbox_id, 64) {
++        return Err(failure());
++    }
++    let directory = PathBuf::from("/space/run/openagents-credential-broker");
++    let parent = std::fs::symlink_metadata("/space/run").map_err(|_| failure())?;
++    if !parent.file_type().is_dir() || parent.uid() != 0 || parent.mode() & 0o002 != 0 {
++        return Err(failure());
++    }
++    match std::fs::DirBuilder::new().mode(0o755).create(&directory) {
++        Ok(()) => {}
++        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
++        Err(_) => return Err(failure()),
++    }
++    let metadata = std::fs::symlink_metadata(&directory).map_err(|_| failure())?;
++    if !metadata.file_type().is_dir() || metadata.uid() != 0 || metadata.mode() & 0o022 != 0 {
++        return Err(failure());
++    }
++    let socket = directory.join(format!("{sandbox_id}.sock"));
++    let mut relays = RELAYS
++        .get_or_init(Default::default)
++        .lock()
++        .map_err(|_| failure())?;
++    relays.retain(|_, (_, _, task)| !task.is_finished());
++    if let Some((configured, owner, _)) = relays.get(&socket) {
++        return if configured == origin && *owner == uid {
++            Ok(socket)
++        } else {
++            Err(failure())
++        };
++    }
++    if relays.len() >= 128 {
++        return Err(failure());
++    }
++    match std::fs::symlink_metadata(&socket) {
++        Ok(m) if m.file_type().is_socket() && m.uid() == uid => {
++            std::fs::remove_file(&socket).map_err(|_| failure())?;
++        }
++        Ok(_) => return Err(failure()),
++        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
++        Err(_) => return Err(failure()),
++    }
++    let listener = std::os::unix::net::UnixListener::bind(&socket).map_err(|_| failure())?;
++    let prepared = (|| {
++        std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600))?;
++        std::os::unix::fs::chown(&socket, Some(uid), Some(uid))?;
++        listener.set_nonblocking(true)
++    })();
++    if prepared.is_err() {
++        let _ = std::fs::remove_file(&socket);
++        return Err(failure());
++    }
++    let listener = tokio::net::UnixListener::from_std(listener).map_err(|_| failure())?;
++    let relay =
++        computer_credentials::host_transport::spawn(listener, origin, uid, runtime_directory)
++            .map_err(|_| failure())?;
++    relays.insert(socket.clone(), (origin.into(), uid, relay));
++    Ok(socket)
 +}
 diff --git a/crates/libs/node/mgr/server/src/service/runtime.rs b/crates/libs/node/mgr/server/src/service/runtime.rs
 index c7abda4..0748828 100644
