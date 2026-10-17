@@ -61,6 +61,8 @@ mod openagents_composer;
 mod openagents_continuation;
 pub mod openagents_history;
 pub mod openagents_reader;
+/// Saved-agent chat identity (#11966).
+mod openagents_saved_agent;
 pub mod orb;
 pub mod overscroll;
 pub mod pickers;

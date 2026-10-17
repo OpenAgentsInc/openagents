@@ -21,6 +21,9 @@ struct SessionRowVM: Hashable {
     var hasProject: Bool
     var colorIndex: Int
     var harness: String?
+    /// The saved agent this session runs (#11966): the row wears the
+    /// OpenAgents mark instead of the runtime's.
+    var agentName: String? = nil
     var branch: String?
     var pr: PR?
     var prNumber: UInt64?
@@ -105,7 +108,7 @@ final class SessionCell: UICollectionViewListCell {
 
     func configure(_ vm: SessionRowVM) {
         self.vm = vm
-        harness.image = BrandMarks.image(for: vm.harness ?? "claude-code", side: Self.markSide)
+        harness.image = BrandMarks.image(for: vm.agentName != nil ? "openagents" : vm.harness ?? "claude-code", side: Self.markSide)
         title.text = vm.title
         title.font = Fonts.ui(vm.unseen ? .sansSemibold : .sansMedium, TypeScale.size(16.5))
         title.textColor = vm.unseen || vm.status != .idle ? Palette.text : Palette.text.withAlphaComponent(0.88)

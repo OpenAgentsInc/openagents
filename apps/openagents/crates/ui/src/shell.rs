@@ -8425,7 +8425,12 @@ impl Shell {
                     }))
                     .children(compact_status)
                     .when_some(
-                        harness.map(crate::pickers::harness_brand_icon),
+                        // A saved agent's chat wears the OpenAgents mark (#11966).
+                        crate::openagents_saved_agent::Identity::of(
+                            self.state.read(cx).chats.iter().find(|c| c.id == id),
+                            harness,
+                        )
+                        .mark,
                         |el, (path, tint)| {
                             el.child(
                                 icon(path)

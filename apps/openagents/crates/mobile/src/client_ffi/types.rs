@@ -481,6 +481,9 @@ pub struct SessionRow {
     /// Wire harness id (`claude-code`).
     pub harness: Option<String>,
     pub harness_label: Option<String>,
+    /// The saved agent this chat runs; draw the OpenAgents mark and this
+    /// name instead of the runtime (#11966).
+    pub agent_name: Option<String>,
     pub model: Option<String>,
     pub model_label: Option<String>,
     /// Wire effort (`xhigh`).
@@ -527,6 +530,7 @@ impl From<&zc::SessionRow> for SessionRow {
             device_online: r.device_online,
             harness: r.harness.clone(),
             harness_label: r.harness_label.clone(),
+            agent_name: r.agent_name.clone(),
             model: r.model.clone(),
             model_label: r.model_label.clone(),
             reasoning: r.reasoning.clone(),

@@ -74,6 +74,8 @@ pub struct SessionRow {
     pub device_online: bool,
     pub harness: Option<String>,
     pub harness_label: Option<String>,
+    /// The saved agent this chat runs, shown in place of the runtime (#11966).
+    pub agent_name: Option<String>,
     pub model: Option<String>,
     pub model_label: Option<String>,
     pub reasoning: Option<String>,
@@ -390,6 +392,7 @@ fn hash_row(row: &SessionRow) -> u64 {
     row.device_name.hash(&mut h);
     row.device_online.hash(&mut h);
     row.harness.hash(&mut h);
+    row.agent_name.hash(&mut h);
     row.model.hash(&mut h);
     row.reasoning.hash(&mut h);
     row.branch.hash(&mut h);
@@ -482,6 +485,7 @@ fn build_row(chat: &Chat, rc: &RowContext<'_>, cx: &DeriveContext<'_>) -> Arc<Se
         device_name: device.and_then(|d| device_display_name(d)),
         device_online: device_online(&chat.device_id, cx.presence, cx.self_device_id, now_ms),
         harness_label: harness.as_deref().map(catalog::harness_label),
+        agent_name: openagents_proto::saved_agent::agent_name(config, title),
         model_label: match (harness.as_deref(), model.as_deref()) {
             (Some(h), Some(m)) => Some(catalog::model_label(h, m)),
             (None, Some(m)) => Some(m.to_owned()),

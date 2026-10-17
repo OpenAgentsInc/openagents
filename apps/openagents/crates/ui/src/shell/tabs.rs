@@ -392,17 +392,31 @@ impl Shell {
         // header over the empty canvas was noise); the bar keeps its height,
         // drag region, and buttons. Where a session runs, and its side-chat
         // and project actions, live in the session card.
-        let (title, harness, on_canvas): (SharedString, Option<openagents_proto::HarnessId>, bool) = {
+        let (title, identity, on_canvas): (
+            SharedString,
+            crate::openagents_saved_agent::Identity,
+            bool,
+        ) = {
             let state = self.state.read(cx);
-            match state.selected_chat_row() {
+            let chat = state.selected_chat_row();
+            // A saved agent's session is titled with the agent (#11966).
+            let identity = crate::openagents_saved_agent::Identity::of(
+                chat,
+                chat.and_then(|c| c.config.as_ref().map(|c| c.harness)),
+            );
+            match chat {
                 Some(chat) => (
                     SharedString::from(transcript::single_line(
-                        &chat.title.clone().unwrap_or_else(|| "New session".into()),
+                        &identity
+                            .agent
+                            .clone()
+                            .or_else(|| chat.title.clone())
+                            .unwrap_or_else(|| "New session".into()),
                     )),
-                    chat.config.as_ref().map(|c| c.harness),
+                    identity,
                     false,
                 ),
-                None => (SharedString::from(""), None, true),
+                None => (SharedString::from(""), identity, true),
             }
         };
 
@@ -621,17 +635,19 @@ impl Shell {
                         .flex_row()
                         .items_center()
                         .gap(px(6.0))
-                        .when_some(
-                            harness.map(crate::pickers::harness_brand_icon),
-                            |el, (path, tint)| {
-                                el.child(
-                                    icon(path)
-                                        .size(px(14.0))
-                                        .flex_none()
-                                        .text_color(tint.unwrap_or(theme.text_muted)),
-                                )
-                            },
-                        )
+                        .when_some(identity.mark, |el, (path, tint)| {
+                            el.child(
+                                icon(path)
+                                    .h(px(14.0))
+                                    .w(px(if identity.is_agent() {
+                                        crate::openagents_saved_agent::mark_width(14.0)
+                                    } else {
+                                        14.0
+                                    }))
+                                    .flex_none()
+                                    .text_color(tint.unwrap_or(theme.text_muted)),
+                            )
+                        })
                         .child(
                             div()
                                 .min_w_0()
@@ -644,7 +660,14 @@ impl Shell {
                                     theme.text.opacity(0.85)
                                 })
                                 .child(title),
-                        ),
+                        )
+                        .children(identity.runtime.map(|runtime| {
+                            div()
+                                .flex_none()
+                                .text_size(crate::typography::ui_rems(11.0))
+                                .text_color(theme.text_muted)
+                                .child(runtime)
+                        })),
                 )
             })
             .child(div().flex_1())
