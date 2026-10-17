@@ -58,7 +58,7 @@ def deploy(commit, digest):
         result = cloud("run", "deploy", name, f"--region={REGION}",
             f"--image=us-central1-docker.pkg.dev/{PROJECT}/{PREFIX}/edge@{digest}", f"--service-account={identity}",
             "--execution-environment=gen2", "--ingress=internal", "--allow-unauthenticated", "--port=8080",
-            "--cpu=1", "--memory=256Mi", "--min-instances=0", "--max-instances=1", "--concurrency=16", "--timeout=3600",
+            "--cpu=1", "--memory=512Mi", "--min-instances=0", "--max-instances=1", "--concurrency=16", "--timeout=3600",
             f"--network={PREFIX}", f"--subnet={PREFIX}-run", "--vpc-egress=private-ranges-only",
             f"--set-env-vars=SPACE_EDGE_PORT={port}", f"--labels={LABELS},openagents-commit={commit}")
         print(json.dumps({"service": name, "url": result["status"]["url"], "image": digest, "source": commit}))

@@ -49,6 +49,11 @@ def transform(documents):
             database = True
             if document["kind"] == "Job" and metadata["name"] == "space-db-migrate":
                 connection["valueFrom"]["secretKeyRef"]["name"] = "space-postgres-bootstrap"
+                # Cloud SQL cannot mute statement logging per bootstrap session.
+                # Create roles and grants here; the SQL Admin API sets passwords.
+                container["env"] = [entry for entry in container.get("env", []) if not entry["name"].startswith("SPACE_DB_BOOTSTRAP_")]
+                if "bootstrap-roles" in container.get("command", []):
+                    container["command"].append("--allow-missing-passwords")
                 environment(container, "PGPASSWORD", {"valueFrom": {"secretKeyRef": {"name": "space-postgres-bootstrap", "key": "PGPASSWORD"}}})
             elif any(entry["name"] == "PGPASSWORD" for entry in entries):
                 raise ValueError("A runtime service must not receive the bootstrap password.")

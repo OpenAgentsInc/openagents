@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Prepare native database credentials without putting passwords in argv."""
+import argparse
 import hashlib
 import http.client
 import json
@@ -28,7 +29,7 @@ def sql_api(method, path, body=None):
         connection.close()
 
 
-def main():
+def main(set_role_passwords=False):
     instance = cloud("sql", "instances", "describe", PREFIX)
     if instance["settings"].get("userLabels", {}).get("openagents-issue") != "11814":
         raise RuntimeError("The database belongs to another deployment.")
@@ -60,6 +61,22 @@ def main():
     if credential["private_ip"] != address or credential["server_ca_pem"] != certificate:
         raise RuntimeError("The database address or CA changed. Review the saved database references.")
     users = sql_api("GET", f"instances/{PREFIX}/users")
+    if set_role_passwords:
+        names = {user["name"] for user in users.get("items", [])}
+        roles = {"SUPERADMIN": "space_superadmin", "USER": "space_user", "RO": "space_ro", "MIGRATOR": "space_migrator", "CREDS": "space_creds"}
+        if not set(roles.values()).issubset(names):
+            raise RuntimeError("Run the grants-only bootstrap before configuring existing role passwords.")
+        for key, role in roles.items():
+            operation = sql_api("PUT", f"instances/{PREFIX}/users?name={role}",
+                {"name": role, "password": credential["role_passwords"][key], "type": "BUILT_IN"})
+            deadline = time.monotonic() + 40
+            while operation["status"] != "DONE" and time.monotonic() < deadline:
+                time.sleep(1)
+                operation = sql_api("GET", "operations/" + operation["name"])
+            if operation["status"] != "DONE" or operation.get("error"):
+                raise RuntimeError("Role password configuration did not finish. Inspect its operation before retrying.")
+        print(json.dumps({"existing_roles_configured": list(roles.values()), "passwords_in_sql_or_argv": False}))
+        return
     if not any(user["name"] == credential["bootstrap_login"] for user in users.get("items", [])):
         operation = sql_api("POST", f"instances/{PREFIX}/users", {
             "name": credential["bootstrap_login"], "password": credential["bootstrap_password"], "type": "BUILT_IN"})
@@ -77,4 +94,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--set-role-passwords", action="store_true")
+    main(parser.parse_args().set_role_passwords)
