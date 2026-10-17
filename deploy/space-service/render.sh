@@ -40,6 +40,7 @@ for filename in ('worker.yaml','builder.yaml','migrate.yaml'):
         assert pod['imagePullSecrets']==[{'name':'space-image-reader'}]
         for container in pod.get('containers',[])+pod.get('initContainers',[]):
             env={e['name']:e for e in container.get('env',[])}
+            if 'SPACE_INTERNAL_API_ENDPOINT' in env: assert env['SPACE_INTERNAL_API_ENDPOINT']['value']=='https://10.219.14.10:9800'
             if container.get('image','').startswith('us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/'):
                 assert env['SPACE_OBJECT_STORE_DOWNLOAD_READER_CONCURRENCY']['value']=='1'
             if 'SPACE_FIRECRACKER_VENDOR_DIR' in env: assert env['SPACE_FIRECRACKER_VENDOR_DIR']['value']=='/space/vendor/firecracker'

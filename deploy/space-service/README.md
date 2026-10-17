@@ -72,6 +72,9 @@ authenticated proxy needs TCP 9800 to the worker's local bridge, `10.220.1.1`.
 The sandbox network policy permits only that exact hop. Verify the worker's
 bridge address before admitting a replacement with a different Kubernetes pod
 CIDR, and exercise the guest denial check after changing this allowance.
+Node-bound RPCs use the control node's private TLS listener directly; sending
+them through the pod network changes their source address and correctly fails
+the native node-identity check. The single control listener restarts in place.
 
 Run the migration Job in grants-only mode, activate its five existing logins
 with `database_roles.py --activate` on the control node, and run

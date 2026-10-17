@@ -30,6 +30,11 @@ def transform(documents):
         template.setdefault("metadata", {}).setdefault("labels", {})["openagents-native-service"] = "true"
         pod = template["spec"]
         pod["imagePullSecrets"] = [{"name": "space-image-reader"}]
+        if metadata["name"] == "space-internal-api":
+            # Node-bound RPCs must arrive from the registered private node IP.
+            # Flannel masquerades host-to-pod traffic to its tunnel address.
+            pod.update({"hostNetwork": True, "dnsPolicy": "ClusterFirstWithHostNet"})
+            document["spec"]["strategy"] = {"type": "Recreate"}
         database = False
         for container in pod.get("containers", []) + pod.get("initContainers", []):
             image = container.get("image", "")
@@ -56,6 +61,9 @@ def transform(documents):
                 container["image"] = PINS["migrator"]["image"]
             entries = container.get("env", [])
             for entry in entries:
+                if entry["name"] == "SPACE_INTERNAL_API_ENDPOINT":
+                    entry.clear()
+                    entry.update({"name": "SPACE_INTERNAL_API_ENDPOINT", "value": "https://10.219.14.10:9800"})
                 if entry["name"] == "SPACE_FIRECRACKER_VENDOR_DIR":
                     if entry.get("value") != "/space/bin/runtime/firecracker":
                         raise ValueError("Review the upstream runtime layout before changing its vendor root.")
