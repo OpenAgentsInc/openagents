@@ -26,7 +26,13 @@ final class RemoteVoiceController {
     /// Why the last call ended on its own; cleared by the next start.
     private(set) var endReason: VoiceEndReason?
     private(set) var muted = false
-    private(set) var hostName = ""
+    /// Bound when the call starts; next-call preferences cannot change it.
+    private var hostLabel: VoiceHostLabel?
+    var hostName: String {
+        hostLabel?.resolve { [weak app] id in
+            app?.client?.devices().first { $0.id == id }?.name
+        } ?? ""
+    }
     private(set) var activeSince: Date?
     /// Styles the last host offered.
     private(set) var styles: [String] = defaultVoiceStyles()
@@ -96,7 +102,7 @@ final class RemoteVoiceController {
         if host != nil { selectedHost = device.id }
         generation &+= 1
         state = nil; endReason = nil; muted = false; activeSince = nil
-        hostName = device.name
+        hostLabel = VoiceHostLabel(deviceId: device.id, name: device.name)
         let media = NativeVoiceMedia()
         self.media = media
         let generation = self.generation
@@ -265,7 +271,7 @@ final class RemoteVoiceController {
     /// levels. No audio, host or relay is involved.
     func preview() {
         previewing = true
-        hostName = "Fedora"
+        hostLabel = VoiceHostLabel(deviceId: "voice-preview", name: "Fedora")
         activeSince = Date().addingTimeInterval(-83)
         let script: [(VoiceOrb, VoiceCallWork, String, VoiceSpeaker?)] = [
             (.listening, .idle, "Open a chat on the Mac and ask Claude to fix the failing sync test", .user),

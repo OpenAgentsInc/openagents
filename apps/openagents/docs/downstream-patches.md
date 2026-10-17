@@ -486,3 +486,8 @@ links remain readable. Upstream fixes now require manual ports.
 - Voice selection display (#12014). The iOS Talk with Codex voice row shows
   the saved voice name, or Codex default, beside Voice. Its existing next-call
   explanation and call behavior stay the same.
+
+- Active voice host names (#12017). The iOS call header reads the latest
+  name for the device that started the call and refreshes on device updates
+  and screen return. Missing metadata keeps the last available name; choosing
+  another host for a later call does not change the active call’s label.

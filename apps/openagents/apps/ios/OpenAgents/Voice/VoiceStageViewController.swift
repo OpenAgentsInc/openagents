@@ -9,6 +9,7 @@ final class VoiceStageViewController: UIViewController {
     private let app: AppModel
     private var voice: RemoteVoiceController { app.voice }
     private var token: AnyObject?
+    private var appToken: AnyObject?
     private let wallpaper = WallpaperView()
     private let orb = OrbView(preset: .hero, orb: .connecting)
     private let dot = UIView()
@@ -73,6 +74,7 @@ final class VoiceStageViewController: UIViewController {
         clock.textColor = Palette.secondary
         host.font = Fonts.ui(.sansMedium, 13)
         host.textColor = Palette.tertiary
+        host.accessibilityIdentifier = "voice-host"
         let header = UIStackView(arrangedSubviews: [dot, clock, host])
         header.spacing = 7
         header.alignment = .center
@@ -178,10 +180,16 @@ final class VoiceStageViewController: UIViewController {
         view.addGestureRecognizer(swipe)
 
         token = voice.observe { [weak self] in self?.refresh() }
+        appToken = app.observe { [weak self] in self?.refresh() }
         // The veil colors are resolved per appearance.
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: VoiceStageViewController, _) in
             if !self.captionShowsMessage { self.paintCaption() }
         }
+        refresh()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
         refresh()
     }
 
