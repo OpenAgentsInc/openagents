@@ -173,8 +173,13 @@ def main():
                 row['boot_evidence'] = json.loads(observed.stdout)
                 assert row['boot_evidence']['actual_shape']['memory_mib'] == memory_mib
                 sock = '/tmp/oa-memory-11812-' + secrets.token_hex(8) + '.sock'
+                workspace_name = '.oa-memory-11812-' + secrets.token_hex(8)
                 daemon = f'''import hashlib,json,os,socket,time
 data=os.urandom(1024**3)
+workspace=os.path.join(os.path.expanduser('~'),{workspace_name!r})
+os.mkdir(workspace,0o700)
+marker=os.path.join(workspace,'marker')
+with open(marker,'wb') as f: f.write(os.urandom(64))
 s=socket.socket(socket.AF_UNIX)
 s.bind({sock!r})
 os.chmod({sock!r},0o600)
@@ -182,7 +187,7 @@ s.listen(2)
 while True:
  c,_=s.accept()
  c.recv(16)
- value={{'pid':os.getpid(),'start_ticks':int(open('/proc/self/stat').read().split()[21]),'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'boot_id':open('/proc/sys/kernel/random/boot_id').read().strip(),'guest_unix_ms':time.time()*1000}}
+ value={{'pid':os.getpid(),'start_ticks':int(open('/proc/self/stat').read().split()[21]),'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'boot_id':open('/proc/sys/kernel/random/boot_id').read().strip(),'guest_unix_ms':time.time()*1000,'workspace':workspace,'workspace_inode':os.stat(marker).st_ino,'workspace_marker_sha256':hashlib.sha256(open(marker,'rb').read()).hexdigest()}}
  c.sendall(json.dumps(value).encode())
  c.close()
 '''
