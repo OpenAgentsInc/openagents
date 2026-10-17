@@ -491,6 +491,7 @@ async fn missing_resource_does_not_complete_a_pending_delete_after_restart() {
     let driver = Driver::new(store, fast(memory.clone()));
     let first = driver.prompt("computer-1", 10).await.unwrap();
     let resource = first.computer().resource().unwrap().to_owned();
+    driver.turn_finished("computer-1", 1, 15).await.unwrap();
     let pending = driver.delete("computer-1", 20).await.unwrap();
     assert!(
         pending
