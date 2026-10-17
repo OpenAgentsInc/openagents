@@ -82,6 +82,9 @@ pub(crate) enum Wire {
     /// Pi's JSONL RPC: `{"type", "id"}` commands whose responses share one
     /// ordered channel with its events, and `extension_ui_request` dialogs.
     Pi,
+    /// The Cursor SDK shim's JSONL: `{"op"}` lines in, `{"ev"}` frames out,
+    /// and nothing the shim waits on an answer to.
+    Cursor,
 }
 
 /// The prefix of Pi request ids; the number after it counts up.
@@ -94,7 +97,7 @@ impl Wire {
 
     /// Adopting replays the driver's handshake against the journal.
     fn replays(self) -> bool {
-        self != Wire::Claude
+        !matches!(self, Wire::Claude | Wire::Cursor)
     }
 
     /// A stdout line the agent waits on an answer to.
@@ -106,6 +109,7 @@ impl Wire {
             Wire::Codex | Wire::Acp => {
                 (line["method"].is_string() && is_id(&line["id"])).then(|| line["id"].to_string())
             }
+            Wire::Cursor => None,
             Wire::Pi => (line["type"] == "extension_ui_request"
                 && matches!(
                     line["method"].as_str(),
@@ -128,13 +132,14 @@ impl Wire {
             .then(|| line["id"].to_string()),
             Wire::Pi => (line["type"] == "extension_ui_response" && is_id(&line["id"]))
                 .then(|| line["id"].to_string()),
+            Wire::Cursor => None,
         }
     }
 
     /// A request the driver sends (Codex, ACP, Pi), by its number.
     fn request_id(self, line: &Value) -> Option<i64> {
         match self {
-            Wire::Claude => None,
+            Wire::Claude | Wire::Cursor => None,
             Wire::Codex | Wire::Acp => line["method"]
                 .is_string()
                 .then(|| line["id"].as_i64())
@@ -148,7 +153,7 @@ impl Wire {
     /// A response to one of the driver's requests (Codex, ACP, Pi), by its id.
     fn response_id(self, line: &Value) -> Option<i64> {
         match self {
-            Wire::Claude => None,
+            Wire::Claude | Wire::Cursor => None,
             Wire::Codex | Wire::Acp => (line.get("method").is_none()
                 && (line.get("result").is_some() || line.get("error").is_some()))
             .then(|| response_id(&line["id"]))
@@ -276,6 +281,8 @@ struct Scan {
     max_request_id: i64,
     /// The last request of each method, with its id and params.
     requests: HashMap<String, (i64, Value)>,
+    /// The first line the driver wrote.
+    opening: Option<Value>,
 }
 
 impl Scan {
@@ -295,6 +302,9 @@ impl Scan {
             let Ok(value) = serde_json::from_str::<Value>(&line) else {
                 continue;
             };
+            if scan.opening.is_none() {
+                scan.opening = Some(value.clone());
+            }
             if let Some(key) = wire.answer_key(&value) {
                 scan.answered.insert(key);
             }
@@ -374,6 +384,8 @@ pub(crate) struct Kept {
     flush: Notify,
     /// Adopting: the last request of each method the journal has.
     journaled: HashMap<String, (i64, Value)>,
+    /// Adopting: the first line the earlier engine wrote.
+    opening: Option<Value>,
 }
 
 impl Kept {
@@ -387,6 +399,7 @@ impl Kept {
         let (sender, frames) = link.into_parts();
         let mut state = State::default();
         let mut journaled = HashMap::new();
+        let mut opening = None;
         if let Some((acked, scan)) = adopting {
             state.replay_through = (acked > 0).then_some(acked);
             state.answered = scan.answered;
@@ -394,6 +407,7 @@ impl Kept {
                 state.repeat_ids_through = Some(scan.max_request_id);
             }
             journaled = scan.requests;
+            opening = scan.opening;
         }
         let (exit_tx, exit) = watch::channel(None);
         let kept = Arc::new(Kept {
@@ -407,6 +421,7 @@ impl Kept {
             poke: Notify::new(),
             flush: Notify::new(),
             journaled,
+            opening,
         });
         let (out_tx, out_rx) = mpsc::unbounded_channel();
         let (err_tx, err_rx) = mpsc::unbounded_channel();
@@ -535,6 +550,11 @@ impl Kept {
             }
             written.await;
         }
+    }
+
+    /// Adopting: the first line the earlier engine wrote to the agent.
+    pub(crate) fn opening(&self) -> Option<&Value> {
+        self.opening.as_ref()
     }
 
     /// Adopting: the last `method` request an earlier engine sent, with its

@@ -58,12 +58,6 @@ impl Lease {
         let lock_dir = store_dir
             .clone()
             .unwrap_or_else(|| root.join("legacy-locks"));
-        std::fs::create_dir_all(&lock_dir)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&lock_dir, std::fs::Permissions::from_mode(0o700))?;
-        }
         let name = if store_dir.is_some() {
             ".zeron-owner.lock".into()
         } else {
@@ -72,6 +66,26 @@ impl Lease {
                 Sha256::digest(resume.unwrap_or_default().as_bytes())
             )
         };
+        Self::lock(&lock_dir, &name, store_dir).await
+    }
+
+    /// Own the store a kept shim (#11930) already runs on, after the engine
+    /// that started it exited and released it.
+    pub(super) async fn adopt(store_dir: PathBuf) -> Result<Self, HarnessError> {
+        Self::lock(&store_dir.clone(), ".zeron-owner.lock", Some(store_dir)).await
+    }
+
+    async fn lock(
+        lock_dir: &Path,
+        name: &str,
+        store_dir: Option<PathBuf>,
+    ) -> Result<Self, HarnessError> {
+        std::fs::create_dir_all(lock_dir)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(lock_dir, std::fs::Permissions::from_mode(0o700))?;
+        }
         let mut options = OpenOptions::new();
         options.create(true).truncate(false).read(true).write(true);
         #[cfg(unix)]

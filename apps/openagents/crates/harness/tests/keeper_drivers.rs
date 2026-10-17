@@ -1,4 +1,4 @@
-//! Claude Code, Codex, ACP agents, and Pi under keepers (#11930), against the
+//! Claude Code, Codex, ACP agents, Pi, and Cursor under keepers (#11930), against the
 //! fake CLIs in `tests/fixtures`: an engine dies mid-turn, and a new engine
 //! picks the run up with no gap or duplicate, asks a pending question again,
 //! and steers the same process. No real agent binary is involved.
@@ -13,8 +13,8 @@ use futures::StreamExt;
 use futures::stream::BoxStream;
 use openagents_harness::keeper::{self, Detach, KeeperScope};
 use openagents_harness::{
-    AcpHarness, CancellationToken, ClaudeHarness, CodexHarness, Harness, HarnessError, PiHarness,
-    RunControls, SteerMessage, TurnControl,
+    AcpHarness, CancellationToken, ClaudeHarness, CodexHarness, CursorHarness, Harness,
+    HarnessError, PiHarness, RunControls, SteerMessage, TurnControl,
 };
 use openagents_proto::{
     AgentEvent, DoneStatus, RunRequest, SandboxLevel, UserInputAnswer, UserInputQuestion,
@@ -37,6 +37,8 @@ enum Agent {
     /// Grok's spec, the ACP driver's most involved one.
     Acp,
     Pi,
+    /// The Cursor SDK shim, which never asks a question.
+    Cursor,
 }
 
 fn fixture(name: &str) -> PathBuf {
@@ -64,6 +66,11 @@ fn harness(agent: Agent, keepers: bool) -> Arc<dyn Harness> {
             AcpHarness::grok()
                 .with_executable(fixture("fake-kept-acp.py"))
                 .with_sessions_root(std::env::temp_dir().join("openagents-kept-acp-none"))
+                .with_keepers(keepers),
+        ),
+        Agent::Cursor => Arc::new(
+            CursorHarness::new()
+                .with_executable(fixture("fake-kept-cursor.py"))
                 .with_keepers(keepers),
         ),
         Agent::Pi => {
@@ -321,6 +328,7 @@ async fn a_pending_question_comes_back(agent: Agent) {
         Agent::Codex => "requestApproval",
         Agent::Acp => "request_permission",
         Agent::Pi => "extension_ui_request",
+        Agent::Cursor => unreachable!("Cursor's shim never asks"),
     };
     wait_for("the question", || {
         std::fs::read_to_string(&journal).is_ok_and(|j| j.contains(ask))
@@ -340,6 +348,7 @@ async fn a_pending_question_comes_back(agent: Agent) {
         Agent::Claude => ("B", "answered B"),
         Agent::Codex => ("Yes", "accepted"),
         Agent::Acp | Agent::Pi => ("B", "answered B"),
+        Agent::Cursor => unreachable!(),
     };
     answer
         .send(vec![UserInputAnswer {
@@ -483,4 +492,14 @@ async fn a_pending_pi_dialog_comes_back() {
 #[tokio::test]
 async fn pi_starts_without_a_keeper_when_turned_off() {
     the_escape_hatch_starts_without_a_keeper(Agent::Pi).await;
+}
+
+#[tokio::test]
+async fn cursor_is_picked_up_mid_turn_and_steered() {
+    picks_up_mid_turn_and_steers(Agent::Cursor).await;
+}
+
+#[tokio::test]
+async fn cursor_starts_without_a_keeper_when_turned_off() {
+    the_escape_hatch_starts_without_a_keeper(Agent::Cursor).await;
 }

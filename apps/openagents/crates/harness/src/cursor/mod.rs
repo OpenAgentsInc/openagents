@@ -33,6 +33,10 @@
 //!   login); the shim surfaces the exact fix as an error chip otherwise.
 //! - Steering: native SDK input at the next model step, acknowledged only
 //!   when consumed. Inputs that race turn completion become a coalesced follow-up.
+//! - Keepers (#11930): the shim is one process for the whole run, so it runs
+//!   under a keeper when the engine lends one. The next engine replays the
+//!   journal through a fresh session loop, never sends the opening `run`
+//!   again, and takes the store's lease back.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -41,7 +45,6 @@ mod catalog;
 mod state;
 
 use async_trait::async_trait;
-use futures::StreamExt;
 use futures::stream::BoxStream;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -52,8 +55,8 @@ use openagents_proto::{
     RunRequest, SteeringMode, TodoItem, TodoStatus, ToolCall,
 };
 
-use crate::process::{Child, ChildStdin, Command, Stdio};
-use crate::{Harness, HarnessError, RunControls, Signal, send_signal, shutdown_child};
+use crate::process::{Command, RuntimeChild, RuntimeInput, RuntimeOutput, Stdio};
+use crate::{Harness, HarnessError, RunControls, Signal, send_signal};
 
 /// The pinned SDK (public beta 1.0.x line; inspected against 1.0.31's
 /// typings). Bump deliberately — see the module header.
@@ -100,6 +103,10 @@ pub struct CursorHarness {
     /// very variant the catalog marks default (verified live: Grok 4.7's
     /// 500k default fails "Invalid parameters" while the bare id runs).
     max_mode_defaults: std::sync::Mutex<std::collections::HashSet<String>>,
+    /// Run under a keeper when the engine lends one (#11930); `None` reads
+    /// [`crate::keeper::ENV`].
+    #[cfg(unix)]
+    keepers: Option<bool>,
 }
 
 impl Default for CursorHarness {
@@ -110,6 +117,8 @@ impl Default for CursorHarness {
             kill_grace: Duration::from_secs(3),
             models_cache: catalog::Catalog::default(),
             max_mode_defaults: Default::default(),
+            #[cfg(unix)]
+            keepers: None,
         }
     }
 }
@@ -126,6 +135,13 @@ impl CursorHarness {
 
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Run under a keeper when the engine lends one, or never.
+    #[cfg(unix)]
+    pub fn with_keepers(mut self, keepers: bool) -> Self {
+        self.keepers = Some(keepers);
+        self
     }
 
     pub fn with_executable(mut self, path: impl Into<PathBuf>) -> Self {
@@ -338,9 +354,40 @@ impl Harness for CursorHarness {
 
     async fn run(
         &self,
-        mut request: RunRequest,
+        request: RunRequest,
         controls: RunControls,
     ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
+        self.run_shim(
+            request,
+            controls,
+            #[cfg(unix)]
+            None,
+        )
+        .await
+    }
+
+    #[cfg(unix)]
+    async fn attach(
+        &self,
+        request: RunRequest,
+        controls: RunControls,
+        link: crate::keeper::Link,
+    ) -> Option<Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError>> {
+        Some(self.run_shim(request, controls, Some(link)).await)
+    }
+}
+
+impl CursorHarness {
+    async fn run_shim(
+        &self,
+        mut request: RunRequest,
+        controls: RunControls,
+        #[cfg(unix)] adopt: Option<crate::keeper::Link>,
+    ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
+        #[cfg(unix)]
+        let adopting = adopt.is_some();
+        #[cfg(not(unix))]
+        let adopting = false;
         // Plus requires explicit defaults, but catalog outages must not block
         // existing SDK runs. The same snapshot fills mid-session model switches.
         let catalog = self.catalog_for_defaults().await;
@@ -350,7 +397,7 @@ impl Harness for CursorHarness {
             &mut request.model_options,
         );
 
-        let lease = if self.executable.is_none() {
+        let lease = if self.executable.is_none() && !adopting {
             Some(state::Lease::acquire(&state::state_root(), request.resume.as_deref()).await?)
         } else {
             None
@@ -369,13 +416,45 @@ impl Harness for CursorHarness {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        let mut child = cmd.spawn().map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                HarnessError::NotInstalled(exe.display().to_string())
-            } else {
-                HarnessError::Io(e)
+        #[cfg(unix)]
+        let kept = crate::keeper::kept::child(
+            &cmd,
+            crate::keeper::kept::Wire::Cursor,
+            self.keepers.unwrap_or_else(crate::keeper::allowed_by_env),
+            false,
+            adopt,
+        )
+        .await?;
+        #[cfg(not(unix))]
+        let kept: Option<RuntimeChild> = None;
+        // The store the shim runs on is this engine's to hold now.
+        #[cfg(unix)]
+        let lease = match kept.as_ref().and_then(RuntimeChild::keeper) {
+            Some(keeper) if adopting && self.executable.is_none() => {
+                match keeper.opening().and_then(|run| run["storeDir"].as_str()) {
+                    Some(dir) => Some(state::Lease::adopt(PathBuf::from(dir)).await?),
+                    None => None,
+                }
             }
-        })?;
+            _ => lease,
+        };
+        let mut child = match kept {
+            Some(child) => child,
+            None => RuntimeChild::launch(
+                cmd,
+                #[cfg(unix)]
+                None,
+                crate::process::RuntimePipes::Interactive,
+            )
+            .await
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    HarnessError::NotInstalled(exe.display().to_string())
+                } else {
+                    HarnessError::Io(e)
+                }
+            })?,
+        };
 
         let stdin = child
             .stdin
@@ -411,9 +490,13 @@ impl Harness for CursorHarness {
             "mcp": request.mcp,
             "storeDir": lease.as_ref().and_then(|lease| lease.store_dir.as_ref()),
         });
-        let _ = stdin_tx.send(first.to_string());
+        // A picked-up run continues where it is: its run is in flight.
+        if !adopting {
+            let _ = stdin_tx.send(first.to_string());
+        }
 
         let (event_tx, event_rx) = mpsc::channel::<Result<AgentEvent, HarnessError>>(256);
+        let events = child.events(&event_tx, event_rx);
         tokio::spawn(run_session(Session {
             lease,
             child,
@@ -429,10 +512,7 @@ impl Harness for CursorHarness {
             stderr_tail,
         }));
 
-        Ok(futures::stream::unfold(event_rx, |mut rx| async move {
-            rx.recv().await.map(|ev| (ev, rx))
-        })
-        .boxed())
+        Ok(events)
     }
 }
 
@@ -566,7 +646,7 @@ fn map_model_items(items: &Value) -> Vec<Model> {
         .collect()
 }
 
-async fn stdin_writer(mut stdin: ChildStdin, mut rx: mpsc::UnboundedReceiver<String>) {
+async fn stdin_writer(mut stdin: RuntimeInput, mut rx: mpsc::UnboundedReceiver<String>) {
     while let Some(line) = rx.recv().await {
         let write = async {
             stdin.write_all(line.as_bytes()).await?;
@@ -583,8 +663,8 @@ async fn stdin_writer(mut stdin: ChildStdin, mut rx: mpsc::UnboundedReceiver<Str
 
 struct Session {
     lease: Option<state::Lease>,
-    child: Child,
-    stdout_lines: tokio::io::Lines<BufReader<crate::process::ChildStdout>>,
+    child: RuntimeChild,
+    stdout_lines: tokio::io::Lines<BufReader<RuntimeOutput>>,
     stdin_tx: mpsc::UnboundedSender<String>,
     event_tx: mpsc::Sender<Result<AgentEvent, HarnessError>>,
     controls: RunControls,
@@ -653,7 +733,7 @@ async fn run_session(session: Session) {
                 interrupt_sent = true;
                 interrupted = true;
                 let _ = stdin_tx.send(json!({ "op": "interrupt" }).to_string());
-                if let Some(pid) = crate::process::signal_target(&child) {
+                if let Some(pid) = child.signal_target() {
                     escalation = Some(tokio::spawn(async move {
                         tokio::time::sleep(interrupt_grace).await;
                         send_signal(&pid, Signal::Term);
@@ -830,6 +910,17 @@ async fn run_session(session: Session) {
         }
     }
 
+    // Under a keeper, its keeper ends the shim and what it started, unless
+    // the engine is leaving it running for the next engine.
+    #[cfg(unix)]
+    if child.keeper().is_some() {
+        if let Some(handle) = escalation {
+            handle.abort();
+        }
+        drop(stdin_tx);
+        child.shutdown(Vec::new(), kill_grace).await;
+        return;
+    }
     // The SDK runs tools in the shim's process: snapshot them before it
     // goes, so none outlives the runtime (see [`crate::shutdown_agent`]).
     #[cfg(unix)]
@@ -837,6 +928,8 @@ async fn run_session(session: Session) {
         Some(pid) => crate::process::descendants(pid).await,
         None => Vec::new(),
     };
+    #[cfg(not(unix))]
+    let tree = Vec::new();
     drop(stdin_tx);
     // EOF asks the shim to cancel/close the SDK and settle its durable state.
     // Signals remain the bounded fallback when the SDK cannot shut down.
@@ -844,10 +937,11 @@ async fn run_session(session: Session) {
         tokio::time::timeout(interrupt_grace, child.wait()).await,
         Ok(Ok(_))
     ) {
-        shutdown_child(&mut child, kill_grace).await;
+        child.shutdown(tree, kill_grace).await;
+    } else {
+        #[cfg(unix)]
+        crate::process::terminate_tree(&tree, kill_grace).await;
     }
-    #[cfg(unix)]
-    crate::process::terminate_tree(&tree, kill_grace).await;
     if let Some(handle) = escalation {
         handle.abort();
     }
