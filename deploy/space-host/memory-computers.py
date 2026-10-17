@@ -66,9 +66,12 @@ def proof(result):
     # Read the live process's answer, never a hash saved in the guest filesystem.
     lines = result.get('stdout', '').strip().splitlines()
     value = json.loads(lines[-1])
+    guest_unix_ms = value.pop('guest_unix_ms')
+    skew_ms = time.time() * 1000 - guest_unix_ms
+    assert abs(skew_ms) < 10000, f'The restored guest clock differs by {skew_ms}ms'
     assert value['bytes'] == 1024**3 and len(value['sha256']) == 64
     assert value['pid'] > 1 and value['start_ticks'] > 0
-    return value
+    return value, skew_ms
 
 
 def main():
@@ -157,7 +160,7 @@ def main():
                 row['boot_evidence'] = json.loads(observed.stdout)
                 assert row['boot_evidence']['actual_shape']['memory_mib'] == memory_mib
                 sock = '/tmp/oa-memory-11812-' + secrets.token_hex(8) + '.sock'
-                daemon = f'''import hashlib,json,os,socket
+                daemon = f'''import hashlib,json,os,socket,time
 data=os.urandom(1024**3)
 s=socket.socket(socket.AF_UNIX)
 s.bind({sock!r})
@@ -166,7 +169,7 @@ s.listen(2)
 while True:
  c,_=s.accept()
  c.recv(16)
- value={{'pid':os.getpid(),'start_ticks':int(open('/proc/self/stat').read().split()[21]),'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'boot_id':open('/proc/sys/kernel/random/boot_id').read().strip()}}
+ value={{'pid':os.getpid(),'start_ticks':int(open('/proc/self/stat').read().split()[21]),'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'boot_id':open('/proc/sys/kernel/random/boot_id').read().strip(),'guest_unix_ms':time.time()*1000}}
  c.sendall(json.dumps(value).encode())
  c.close()
 '''
@@ -183,7 +186,7 @@ print(s.recv(4096).decode())
                     + ' >/tmp/oa-memory-11812.log 2>&1 </dev/null & '
                     + 'for i in $(seq 1 120); do test -S ' + shlex.quote(sock)
                     + ' && break; sleep 1; done; ' + ask)
-                row['before'] = proof(turn(base, token, path, start))
+                row['before'], row['before_clock_skew_ms'] = proof(turn(base, token, path, start))
                 wait(base, token, path, lambda item: item.get('state') == 'stopped')
                 row['stopped_after_turn'] = True
                 for cycle in range(2):
@@ -192,18 +195,19 @@ print(s.recv(4096).decode())
                     process.kill()
                     process.wait(timeout=15)
                     process = start_service()
-                    time.sleep(1)
+                    time.sleep(15)
                     stopped = call(base, token, path)[1]
                     assert stopped['state'] == 'stopped' and stopped['resource'] == row['resource']
                     started = time.perf_counter()
                     assert call(base, token, path + '/wake', 'POST', {})[0] == 202
                     awake = wait(base, token, path, lambda item: item.get('state') == 'awake')
                     ready_ms = (time.perf_counter() - started) * 1000
-                    after = proof(turn(base, token, path, ask))
+                    after, clock_skew_ms = proof(turn(base, token, path, ask))
                     assert awake['resource'] == row['resource'] and after == row['before']
                     row['cycles'].append({'cycle': cycle, 'wake_ready_ms': ready_ms,
                         'wake_to_answer_ms': (time.perf_counter() - started) * 1000,
                         'same_computer_process_memory': True, 'after': after,
+                        'guest_clock_skew_ms': clock_skew_ms,
                         'api_process_restarted': True, 'stopped_policy_survived_restart': True})
                     wait(base, token, path, lambda item: item.get('state') == 'stopped')
                     save(args.evidence, report)
