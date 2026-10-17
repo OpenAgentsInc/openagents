@@ -83,6 +83,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 1: harness and chats (critical path)
 
+**Still free:** #11896, the completed chats umbrella awaiting its closure audit. #11823 stays with its existing owner.
+
 **Taken 2026-10-17 00:48 CDT** by a Claude Code subagent working #11823 in ~/work/openagents-11823.
 
 **Released 2026-10-17 01:10 CDT** by Codex (GPT-6) after #11947 landed in `5e187096d5`; all eight attribution tests passed. #11823 stays with its active Claude Code owner, and #11898 stays with its live owner.
@@ -106,9 +108,9 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 3: keepers and moving agents
 
-**Taken 2026-10-17 04:14 CDT** by Codex working #11958 in `~/work/openagents-labs-finish`; #11933 and #11951 stay with their owners, and #11871 stays claimed pending #11948.
+**Done 2026-10-17 04:25 CDT** by Codex in `~/work/openagents-labs-finish`: #11958 is source-complete in `761ad950ed` and `c04314b54c`, with all 1,786 UI tests passing serially, and closing. #11933 and #11951 stay with their owners; #11871 stays claimed pending #11948.
 
-**Claimed above:** #11958, the desktop UI fixture repair listed below. Its scope is stale test expectations and fixture setup; leave #11933 and #11951 with their owners.
+**#11958 source complete:** fixtures enter Chat explicitly, popup geometry comparisons disable motion, and the settings key preserves both earlier spellings.
 
 **Taken 2026-10-17 01:26 CDT** by a Claude Code subagent working #11951 in ~/work/openagents-11951.
 
@@ -364,10 +366,10 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 **#11898 "Where it runs" is a property of the chat.** Lane 1, code-complete.
 - **Status:** shared controls, typed links, SDK transfers, and admitted host methods are on `main` in `ac0c9386e1`, `d653d6979a`, `9ddc0a0ec9`, `b6d657fad4`, and `16c0fc6875`. `deb7310289` adds server receipts and acknowledged web moves; `1328a4b617` persists host moves and bounded context; `2e6a3a5e98` binds native moves to the account; `cc9f2bc14c` mounts desktop and phone controls and regenerates Swift bindings. Earlier parts are read-only, and pending destinations stay out of lists.
-- **Checks:** web continuation 4, client 27, document 149, engine 533 (2 ignored), mobile 69 (1 ignored), protocol 83, RPC 18, sync 74, shared controls 4, SDK fixtures 3, and access 126 passed. Five focused UI checks passed, including preservation of an unsent draft on an old part; all 56 app/shared Swift sources typechecked. The broader UI suite's 33 failures are tracked in #11958 (1,751 passed); it is not claimed as passing.
+- **Checks:** web continuation 4, client 27, document 149, engine 533 (2 ignored), mobile 69 (1 ignored), protocol 83, RPC 18, sync 74, shared controls 4, SDK fixtures 3, and access 126 passed. Five focused UI checks passed, including preservation of an unsent draft on an old part; all 56 app/shared Swift sources typechecked. The broader UI suite subsequently passed all 1,786 tests serially under #11958 (`761ad950ed`, `c04314b54c`).
 - **After-close:** lane 0 deploys the server first and runs the dedicated-account web, Mac, and cloud round trip and the paired-computer/device checks below.
 
-**#11958 Desktop UI test failures.** Lane 3, claimed above. Repair the stale assertions and navigation fixtures recorded on the issue; the serial suite had 1,751 passes and 33 failures. No dependency blocks #11898's continuation checks.
+**#11958 Desktop UI test failures.** Lane 3, code-complete in `761ad950ed` and `c04314b54c`. All 1,786 UI library tests passed with one test thread. Chat fixtures keep their assertions with an explicit starting route; copy and theme expectations match the current app, popup geometry is fixed during its scroll check, and the settings key reads both previous spellings.
 
 **#11911 Computer sharing: owner-approved project-scoped access over NIP-HOST.** Lane 7, closed.
 - **Status:** `72a0bc730c` adds device-pinned project invitations, absolute expiry, separate scopes, and scoped revocation. `28994246be` requires `project.redeem` and `project-sharing-v2` so an older host cannot accept a project invitation as broad enrollment. `0d5bca7a54` adds the account-bound client and shared Rust Native form. `f2b101f35b` mounts that form in Settings, cancels work on account changes, and stores device keys and grants separately for each account. It offers only implemented project files and commands; broad HOST tasks, raw terminals, and general app RPC remain unavailable to guests.
@@ -476,7 +478,7 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 
 | Issue (closed or closing) | Check | Status |
 | --- | --- | --- |
-| #11898 | Deploy the server changes before distributing the updated native apps. With the dedicated account and disposable hosts, continue a web chat on a Mac, then back on OpenAgents; check one latest conversation row, ordered links, read-only earlier parts, bounded context, and transcript opt-in on web, desktop, and phone. Repeat with another paired computer and a cloud computer, interrupted requests, host restart, and account switching; delete all fixtures. | Source checks passed; broader UI failures are tracked in #11958. Dedicated-account and device checks: to do. |
+| #11898 | Deploy the server changes before distributing the updated native apps. With the dedicated account and disposable hosts, continue a web chat on a Mac, then back on OpenAgents; check one latest conversation row, ordered links, read-only earlier parts, bounded context, and transcript opt-in on web, desktop, and phone. Repeat with another paired computer and a cloud computer, interrupted requests, host restart, and account switching; delete all fixtures. | Source checks passed; #11958 repaired the broader UI suite (1,786 passed serially). Dedicated-account and device checks: to do. |
 | #11817 | Deploy the new host and computer service. Configure a disposable Unix host, scoped test-account grant, and explicit enrolled target. Run the public attach, command retry/reconnect/cancel, relative-file, revocation, unsupported-control, and detach flow; verify files and unrelated grants survive. Repeat the Linux-specific command checks on Linux. | source checks passed; deploy and dedicated-account run to do |
 | #11911 | Deploy a host advertising `project-sharing-v2` and the matching mobile build. With two dedicated test accounts and disposable projects, check owner approval, read-only and edit/command permissions, wrong-device and cross-project denial, retry/reconnect, expiry, scoped revocation, and account switching. Confirm unrelated chats, files, terminals, credentials, and account controls remain unavailable. Physical device and accessibility steps are in `NEEDS_OWNER.md`. | Source checks passed: access 124, host 118, sharing 12, mobile 58; deploy, live, and device checks to do |
 | #11934 | Deploy the agents door from `1708f44f49` or newer. Run `ask_foreman_cli.py` and `openagents agents ask Foreman …` with test account `acct_500d3e1d125b7782`. The web door's switch to `place` is on `main` (`1708f44f49`). | Deployed in source `0b74ec8f79`, production smoke 66/0/2. Native list/status, native `agents ask`, the website saved-agent request, and an unchanged normal answer passed with an isolated Rust SDK runner; fixtures were removed. [Evidence](../sdk/agents-evidence.json). The earlier OpenCode placement failure has a source fix in #11940; its live recheck remains below. The original Claude Code Foreman workflow remains to do. |

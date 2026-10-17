@@ -123,6 +123,10 @@ feature keeps forms independent of the app's separate syntax-engine version.
   metadata recovery preserve one destination across retries. The account fixture
   attaches an isolated engine through the existing RPC and app-state watchers.
 
+- [OpenAgents #11958](https://github.com/OpenAgentsInc/openagents/issues/11958):
+  the web-link preference writes the OpenAgents key and reads both earlier
+  spellings. Pane fixtures enter Chat explicitly because startup opens Home.
+
 - [OpenAgents #11898](https://github.com/OpenAgentsInc/openagents/issues/11898):
   `chat-home::view` defines **Runs on** and part links for GPUI and UIKit.
   `doc_host::transfer` saves the old part as read-only before calling the SDK;
