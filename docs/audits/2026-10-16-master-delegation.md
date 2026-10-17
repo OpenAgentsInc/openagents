@@ -103,6 +103,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 3: keepers and moving agents
 
+**Taken 2026-10-17 01:00 CDT** by a Claude Code subagent working #11946 in ~/work/openagents-11946.
+
 **Taken 2026-10-17 00:45 CDT** by a Claude Code subagent working #11932 in ~/work/openagents-11932.
 
 **Released 2026-10-17 00:57 CDT** by a Claude Code subagent. #11930 is closed on code (`b49a54a201`): Claude Code and Codex run under keepers by default, with `OPENAGENTS_KEEPERS=0` to turn them off. The update handoff and terminal keepers moved to #11946. The live restart check is in After-close checks. The worktree `~/work/openagents-lane3c` is removed; target `~/work/openagents-target-lane3b-app` stays warm.
