@@ -391,3 +391,39 @@ fn keys_parse_as_hex_or_npub() {
     assert_eq!(parse_pubkey(&npub), Some(hex_key));
     assert_eq!(parse_pubkey("npub1nope"), None);
 }
+
+/// The website's own sign-in paths (#12001) get a browser session, with no
+/// app label, as GitHub sign-in does.
+#[test]
+fn a_website_sign_in_gets_a_browser_session() {
+    let (dir, auth) = world();
+    let key = signer(7);
+    let now = now();
+    for path in WEB_SIGN_IN_PATHS {
+        let (challenge, _) = auth.issue(Purpose::SignIn, now);
+        let url = format!("{ORIGIN}{path}");
+        let body = br#"{"request":"0123"}"#;
+        let header = Request {
+            signer: &key,
+            created_at: now,
+            url: &url,
+            method: "POST",
+            challenge: Some(&challenge),
+            payload: Some(body),
+        }
+        .header();
+        let answer = auth.sign_in(None, "signup", Some(&header), body, now);
+        assert_eq!(answer.status, 200, "{}", answer.body);
+        assert!(
+            answer.body["session"].get("app").is_none(),
+            "{}",
+            answer.body
+        );
+        let token = answer.body["token"].as_str().unwrap();
+        let book = Sessions::open(dir.path()).unwrap().store().unwrap().book;
+        assert!(book.session_of_token(token).unwrap().app.is_none());
+    }
+    // The app's own path still gets an app session.
+    let answer = sign_in(&auth, &key);
+    assert_eq!(answer.body["session"]["app"], "OpenAgents");
+}

@@ -21,7 +21,8 @@ pub mod visitor;
 mod transport;
 
 pub use auth::nostr::{
-    EventTemplate, HTTP_AUTH_KIND, KeySignIn, LinkedKey, NostrSigner, SignerError,
+    EventTemplate, HTTP_AUTH_KIND, KeySignIn, LinkedKey, NostrSigner, ScannedLogin,
+    ScannedLoginAbout, ScannedLoginApproved, SignerError,
 };
 pub use auth::{
     Account, AccountView, AppleSignIn, CredentialRecord, CredentialStore, Login, Poll, Session,

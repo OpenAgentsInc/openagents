@@ -128,6 +128,7 @@ mod traces;
 pub mod ui_page;
 pub mod upstream;
 mod vault;
+mod web_sign_in;
 mod wellknown;
 mod work_runs;
 
@@ -464,6 +465,9 @@ pub struct Config {
     /// links, their signed `oa_ref` cookie, click records and the
     /// scoreboard. Separate from the cookieless [`analytics`].
     pub attribution: Arc<attribution::Attribution>,
+    /// Website sign-ins waiting on a phone's scan (#12001,
+    /// [`web_sign_in`]), in memory for the few minutes each stands.
+    pub(crate) web_sign_in: Arc<web_sign_in::Waiting>,
     /// Accounts that may do agent work on a public host besides site
     /// admins (`OPENAGENTS_WEB_AGENT_ACCOUNTS`, [`agent_work`]): staging's
     /// smoke test account, which has no GitHub identity to invite.
@@ -542,6 +546,7 @@ impl Config {
             plan: None,
             analytics: Arc::new(analytics::Analytics::default()),
             attribution: Arc::new(attribution::Attribution::default()),
+            web_sign_in: Arc::default(),
             agent_accounts: Vec::new(),
             work_host_token: None,
             solver_keys: None,
@@ -625,6 +630,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(auth::routes())
         .merge(link_preview::routes())
         .merge(device::routes())
+        .merge(web_sign_in::routes())
         .merge(coder_sync::routes())
         .merge(phone_api::routes())
         .merge(visitor_api::routes())

@@ -29,6 +29,14 @@ pub(crate) fn allowed(url: &Url) -> bool {
         && url.fragment().is_none()
 }
 
+/// Whether a scanned website address may be trusted as a deployment's:
+/// HTTPS, or HTTP on loopback, with no credentials or query.
+pub(crate) fn allowed_origin(url: &Url) -> bool {
+    let mut bare = url.clone();
+    bare.set_fragment(None);
+    allowed(&bare)
+}
+
 impl Deployment {
     pub fn new(api_base: &str, website: &str) -> Result<Self, Error> {
         let mut api = Url::parse(api_base).map_err(|_| Error::InvalidDeployment)?;
