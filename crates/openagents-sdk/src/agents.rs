@@ -1,5 +1,6 @@
 //! Private, revisioned agent definitions. Saving a definition never starts work.
 pub mod assignments;
+pub mod place;
 pub mod runner;
 use crate::{CancellationToken, Client, Deployment, Error, Session};
 use reqwest::Method;

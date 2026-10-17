@@ -201,6 +201,10 @@ fn the_token_variable_signs_in_with_no_saved_file() {
     assert_eq!(staged.token(), TOKEN);
     assert_eq!(staged.origin, "https://staging.example");
     assert!(Saved::from_env(env(&[(TOKEN_ENV, "nonsense")])).is_none());
+    // A token that isn't a login is still a token the caller must not ignore.
+    assert!(crate::token_env_set(env(&[(TOKEN_ENV, "nonsense")])));
+    assert!(!crate::token_env_set(env(&[(TOKEN_ENV, "  ")])));
+    assert!(!crate::token_env_set(env(&[])));
     assert!(Saved::from_env(env(&[])).is_none());
 }
 

@@ -74,6 +74,17 @@ pub fn is_sign_in_key(token: &str) -> bool {
 /// Whether `token` is one the site takes as a sign-in: a sign-in key or
 /// an app's `sess_` token.
 #[must_use]
+/// Whether the environment names a token at all ([`TOKEN_ENV`] or the
+/// older name, non-blank), login or not. A caller that finds one that
+/// [`Saved::from_env`] refuses must refuse too, never fall back to the
+/// login saved on disk (#11935).
+pub fn token_env_set(get_env: impl Fn(&str) -> Option<String>) -> bool {
+    [TOKEN_ENV, TOKEN_ENV_OLDER]
+        .into_iter()
+        .filter_map(get_env)
+        .any(|value| !value.trim().is_empty())
+}
+
 pub fn is_sign_in_token(token: &str) -> bool {
     is_sign_in_key(token)
         || token
