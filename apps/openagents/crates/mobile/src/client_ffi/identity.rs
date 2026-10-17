@@ -163,7 +163,8 @@ impl CoreAccount {
     /// Three word positions (1-based) to ask for after the person wrote the
     /// words down.
     pub fn backup_check(&self) -> CoreResult<Vec<u32>> {
-        Ok(self.identities.backup_check(&self.loaded()?))
+        let identity = self.loaded()?;
+        Ok(self.identities.backup_check(&identity))
     }
 
     /// Check the backup answers; when every one matches, the words are
@@ -176,7 +177,8 @@ impl CoreAccount {
                 word: a.word,
             })
             .collect();
-        Ok(self.identities.confirm_backup(&self.loaded()?, &answers))
+        let identity = self.loaded()?;
+        Ok(self.identities.confirm_backup(&identity, &answers))
     }
 
     /// Restore from 12 or 24 words, then sign in with their key, which
