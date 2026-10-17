@@ -119,7 +119,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 5: Labs kinds and app views
 
-**Taken 2026-10-16 23:31 CDT** by a Claude Code subagent working #11880, then #11883 in `~/work/openagents-lane5b`.
+**Released 2026-10-17 00:14 CDT** by a Claude Code subagent. #11880 and #11883 are closed on code; their remaining code is #11942 and #11943. #11884 and #11886 are open and free. The worktree `~/work/openagents-lane5b` is removed; targets `~/work/openagents-target-agent2` and `~/work/openagents-target-lane5b-app` stay warm.
 
 **Released 2026-10-16 23:04 CDT** by a Claude Code subagent. #11881 is closed (`e37d66493e`, `ade5341924`). #11882 is open and free: the kind and migration landed in `d08cf1dc58`; the simulate handler, registration, and the live run remain. The worktree `~/work/openagents-lane5` is removed; target `~/work/openagents-target-agent2` stays warm.
 
