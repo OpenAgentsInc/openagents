@@ -1,7 +1,7 @@
 //! Ask for microphone permission in the viewport's macOS process identity
 //! before its engine opens native devices. CoreAudio can otherwise yield silence
 //! without displaying a privacy prompt.
-use zeron_proto::voice::VoiceRejection;
+use openagents_proto::voice::VoiceRejection;
 
 pub(super) async fn microphone() -> Result<(), VoiceRejection> {
     #[cfg(target_os = "macos")]

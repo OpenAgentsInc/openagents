@@ -140,7 +140,9 @@ impl Peers {
                 .await?,
         );
         if initiator {
-            let channel = pc.create_data_channel("zeron-preview-v1", None).await?;
+            let channel = pc
+                .create_data_channel("openagents-preview-v1", None)
+                .await?;
             handler.attach(channel);
         }
         tracing::debug!(initiator, "created preview peer");
@@ -395,13 +397,15 @@ impl Handler {
         let initiator = self.initiator;
         let changed = self.changed.clone();
         tokio::spawn(async move {
-            let valid = channel.label().await.is_ok_and(|s| s == "zeron-preview-v1")
-                && channel.ordered().await.unwrap_or(false)
-                && channel.max_retransmits().await.is_ok_and(|v| v.is_none())
-                && channel
-                    .max_packet_life_time()
-                    .await
-                    .is_ok_and(|v| v.is_none());
+            let valid =
+                channel.label().await.is_ok_and(|s| {
+                    matches!(s.as_str(), "openagents-preview-v1" | "zeron-preview-v1")
+                }) && channel.ordered().await.unwrap_or(false)
+                    && channel.max_retransmits().await.is_ok_and(|v| v.is_none())
+                    && channel
+                        .max_packet_life_time()
+                        .await
+                        .is_ok_and(|v| v.is_none());
             if !valid {
                 let _ = channel.close().await;
                 return;

@@ -9,7 +9,7 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::tungstenite::handshake::server::{
     Request as WsRequest, Response as WsResponse,
 };
-use zeron_rpc::{DeviceFrameHeader, decode_device_frame, encode_device_frame};
+use openagents_rpc::{DeviceFrameHeader, decode_device_frame, encode_device_frame};
 
 #[derive(Default)]
 struct RelayState {

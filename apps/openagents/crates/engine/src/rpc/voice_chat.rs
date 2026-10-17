@@ -5,8 +5,8 @@
 //! the Codex thread: memory continues, the transcript starts small again. The
 //! old segment is removed only once its successor holds a message.
 use super::*;
-use zeron_proto::voice::{ORCHESTRATOR_CHAT_PREFIX, ORCHESTRATOR_CHAT_TITLE, VoiceRejection};
-use zeron_proto::{Chat, SessionStatus};
+use openagents_proto::voice::{ORCHESTRATOR_CHAT_PREFIX, ORCHESTRATOR_CHAT_TITLE, VoiceRejection};
+use openagents_proto::{Chat, SessionStatus};
 
 /// Transcript entries after which the next call starts a new segment.
 pub(super) const ROTATE_AFTER: usize = 1000;
@@ -16,7 +16,7 @@ fn current<'a>(chats: &'a [Chat], device: &str) -> Option<&'a Chat> {
     chats
         .iter()
         .filter(|c| {
-            zeron_proto::voice::is_orchestrator_chat(&c.id) && c.device_id == device && !c.archived
+            openagents_proto::voice::is_orchestrator_chat(&c.id) && c.device_id == device && !c.archived
         })
         .max_by_key(|c| c.created_at)
 }
@@ -94,7 +94,7 @@ impl EngineRpc {
         for old in chats.iter().filter(|c| {
             c.id != current.id
                 && c.device_id == current.device_id
-                && zeron_proto::voice::is_orchestrator_chat(&c.id)
+                && openagents_proto::voice::is_orchestrator_chat(&c.id)
                 && c.harness_session_id.as_deref() == Some(thread)
         }) {
             if self.sessions.turn_in_flight(&old.id) {

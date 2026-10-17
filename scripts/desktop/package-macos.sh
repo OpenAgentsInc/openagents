@@ -307,7 +307,7 @@ PLIST
   if [[ -f "$macos_dir/AppIcon.icns" ]]; then
     cp "$macos_dir/AppIcon.icns" "$app/Contents/Resources/$icon_name.icns"
   else
-    local src="$root/apps/openagents/apps/ios/Zeron/Assets.xcassets/AppIcon.appiconset/AppIcon1024.png"
+    local src="$root/apps/openagents/apps/ios/OpenAgents/Assets.xcassets/AppIcon.appiconset/AppIcon1024.png"
     local iconset="$work/AppIcon.iconset" size
     mkdir -p "$iconset"
     for size in 16 32 128 256 512; do

@@ -17,7 +17,7 @@
 //!    straight alpha, transparent wherever nothing was drawn.
 
 use wgpu::util::DeviceExt;
-use zeron_visual::{Camera, CameraFrame, Color, Scene, V3};
+use openagents_visual::{Camera, CameraFrame, Color, Scene, V3};
 
 use crate::textures::{Loaded, Space};
 use crate::{EDGE_FADE, FORMAT, Frame, gpu};
@@ -1623,7 +1623,7 @@ fn lit_dummy_depth(device: &wgpu::Device) -> wgpu::Texture {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zeron_visual::Token;
+    use openagents_visual::Token;
 
     fn palette(color: Color) -> [f32; 4] {
         let [r, g, b] = match color.token {
@@ -1637,16 +1637,16 @@ mod tests {
     }
 
     fn scene(script: &str) -> Scene {
-        let mut visual = zeron_visual::Visual::load(script, 1).unwrap();
+        let mut visual = openagents_visual::Visual::load(script, 1).unwrap();
         let tree = visual.render().unwrap();
-        let zeron_visual::NodeKind::Scene(node) = tree.kind else {
+        let openagents_visual::NodeKind::Scene(node) = tree.kind else {
             panic!("a scene")
         };
         visual.draw_scene(node.draw, 0.0).unwrap()
     }
 
     fn room() -> Scene {
-        let mut visual = zeron_visual::Visual::load(
+        let mut visual = openagents_visual::Visual::load(
             r#"
             return function()
               return ui.scene { height = 300, draw = function(s)
@@ -1662,7 +1662,7 @@ mod tests {
         )
         .unwrap();
         let tree = visual.render().unwrap();
-        let zeron_visual::NodeKind::Scene(node) = tree.kind else {
+        let openagents_visual::NodeKind::Scene(node) = tree.kind else {
             panic!("a scene")
         };
         visual.draw_scene(node.draw, 0.0).unwrap()
@@ -1679,7 +1679,7 @@ mod tests {
     /// A checkered box, a glass prism, a metal ball under a striped sky
     /// map, and a flare.
     fn gallery() -> Scene {
-        let assets = zeron_visual::Assets::new(
+        let assets = openagents_visual::Assets::new(
             [
                 (
                     "checker.png".to_owned(),
@@ -1707,7 +1707,7 @@ mod tests {
             .into_iter()
             .collect(),
         );
-        let mut visual = zeron_visual::Visual::load(
+        let mut visual = openagents_visual::Visual::load(
             r##"
             return ui.scene { height = 300, draw = function(s)
               s:environment { asset = "sky.png", intensity = 1.2, background = true }
@@ -1724,7 +1724,7 @@ mod tests {
         .unwrap()
         .with_assets(assets);
         let tree = visual.render().unwrap();
-        let zeron_visual::NodeKind::Scene(node) = tree.kind else {
+        let openagents_visual::NodeKind::Scene(node) = tree.kind else {
             panic!("a scene")
         };
         visual.draw_scene(node.draw, 0.0).unwrap()
@@ -1743,7 +1743,7 @@ mod tests {
             zoom: 1.0,
         };
         let frame = render_scene(&scene, camera, 720.0, 360.0, 2.0, &palette, &mut state).unwrap();
-        if let Ok(path) = std::env::var("ZERON_VISUAL_DUMP_ASSETS") {
+        if let Ok(path) = openagents_brand::env_var("OPENAGENTS_VISUAL_DUMP_ASSETS") {
             crate::dump_ppm(&frame, &path);
         }
         // The environment stands behind everything: no clear pixels inside
@@ -1789,7 +1789,7 @@ mod tests {
             frame.height,
             start.elapsed()
         );
-        if let Ok(path) = std::env::var("ZERON_VISUAL_DUMP") {
+        if let Ok(path) = openagents_brand::env_var("OPENAGENTS_VISUAL_DUMP") {
             crate::dump_ppm(&frame, &path);
         }
         assert_eq!((frame.width, frame.height), (1440, 720));

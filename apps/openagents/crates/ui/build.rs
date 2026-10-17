@@ -31,7 +31,7 @@ fn main() {
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("linux") {
         return;
     }
-    let output = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("zeron-webkit");
+    let output = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("openagents-webkit");
     let flags = Command::new("pkg-config")
         .args(["--cflags", "--libs", "webkit2gtk-4.1", "json-glib-1.0"])
         .output()

@@ -1,4 +1,4 @@
-//! zeron-sync — the edge room clients (registry rows + chat2 row protocol over
+//! openagents-sync — the edge room clients (registry rows + chat2 row protocol over
 //! WebSocket against the TS edge) and the local `DocsStore` (SQLite snapshots +
 //! processed-command ledger).
 //!

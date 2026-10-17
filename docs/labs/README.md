@@ -74,7 +74,7 @@ new standard view, and its hosted delivery shares the dependencies below.
   (`crates/openagents-web/src/history_openapi.rs`).
 - **Desktop and phone apps** (`apps/openagents/`, imported from the Zeron
   fork on 2026-10-16): they read saved chats through `openagents-sdk` (by path
-  from `apps/openagents/crates/coder-account`). Since 2026-10-16 the desktop
+  from `apps/openagents/crates/account`). Since 2026-10-16 the desktop
   has the Video Lab tools and a native Video Lab card (inline playback, live
   render state). The phone has neither yet.
   `crates/visual-gpu` has wgpu, and Swift paints the mobile layout.

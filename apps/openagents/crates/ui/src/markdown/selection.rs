@@ -2,7 +2,7 @@
 //!
 //! gpui has no built-in selection for plain text elements. Zed's markdown
 //! selects continuously because its whole document is ONE element over one
-//! text model; zeron renders a TREE of text elements inside a virtualized
+//! text model; openagents renders a TREE of text elements inside a virtualized
 //! list, so this module rebuilds that continuity: every frame the renderer
 //! registers each painted text element in paint order (= document order),
 //! and a drag anchored in one element resolves against that registry into

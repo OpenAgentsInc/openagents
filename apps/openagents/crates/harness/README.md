@@ -36,7 +36,7 @@ methods' prerequisites resolves, or for Mock. The row then keeps a manual hint;
 shell hints on Windows can be used in WSL.
 
 Install processes receive `CI=1`, `NONINTERACTIVE=1`, `TERM=dumb`, no stdin/TTY,
-and no inherited `ZERON_*` or nested Claude environment markers. Output is bounded
+and no inherited `OPENAGENTS_*` or nested Claude environment markers. Output is bounded
 and credentials are redacted before errors reach Settings. Cancel, timeout
 (15 minutes), or dropping the request kills the owned process tree. There is no
 automatic elevation: an installer that needs sudo or an interactive prompt may
@@ -64,5 +64,5 @@ scratch directory before running it with `--ignored --nocapture`.
 
 The iOS app adds no Install action. `HarnessDescriptor.can_install` already has
 `#[serde(default)]` (`crates/engine/src/registry.rs`); iOS's `WireHarness: Decodable`
-in `apps/ios/Zeron/Sync/WorkspaceStore.swift` ignores unrecognized keys, including
+in `apps/ios/OpenAgents/Sync/WorkspaceStore.swift` ignores unrecognized keys, including
 `canInstall`. `HarnessCatalog` continues consuming the existing mapped fields.

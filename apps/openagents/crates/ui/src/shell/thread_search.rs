@@ -1,5 +1,5 @@
 //! Scored thread search for the command palette, modeled on the mobile
-//! workspace view's `score_row` (`zeron_client`): every query word must match
+//! workspace view's `score_row` (`openagents_client`): every query word must match
 //! some field; a match scores its field's weight, plus half again when it
 //! starts a word. Archived threads score half, and ties go to the most
 //! recently active thread.

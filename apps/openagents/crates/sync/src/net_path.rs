@@ -67,7 +67,7 @@ mod imp {
                     crate::wake::notify_online();
                 }
             });
-            let queue = dispatch_queue_create(c"zeron.net-path".as_ptr(), std::ptr::null_mut());
+            let queue = dispatch_queue_create(c"openagents.net-path".as_ptr(), std::ptr::null_mut());
             nw_path_monitor_set_queue(monitor, queue);
             nw_path_monitor_set_update_handler(monitor, &handler);
             nw_path_monitor_start(monitor);

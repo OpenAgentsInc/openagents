@@ -12,12 +12,12 @@ existing animation clocks, scrolling behavior and visual effects.
 ## Repeated CPU comparison
 
 With four software-rendering workers, streaming CPU fell **40.3%
-from old Zeron**, and **33.3% from the previous optimized build**.
+from old OpenAgents**, and **33.3% from the previous optimized build**.
 The six runs were sequential: old, previous, final, final, previous, old. Each
 cell averages two runs. [Raw results](performance/resource-four-workers.json)
 include every executable hash, reply hash, phase and individual measurement.
 
-| Metric | Old Zeron | Previous optimized | Final |
+| Metric | Old OpenAgents | Previous optimized | Final |
 | --- | ---: | ---: | ---: |
 | Idle CPU | 27.41% | 15.75% | 7.49% |
 | Streaming CPU | 265.57% | 237.60% | 158.57% |
@@ -29,7 +29,7 @@ include every executable hash, reply hash, phase and individual measurement.
 The new pipelines add about 1.9 MiB of idle RSS and
 5.6 MiB of streaming RSS compared with the previous optimized build.
 This is a small memory tradeoff for the CPU reduction, with no new image or scene
-cache. Final idle RSS remains 37.7% below old Zeron.
+cache. Final idle RSS remains 37.7% below old OpenAgents.
 
 UI + engine totals, foreground 1280×800 window with a focused composer.
 The short workload is identical captured Haiku output: 51,769 bytes of Markdown,
@@ -43,7 +43,7 @@ The one-worker short comparison also averages two runs per build:
 [baseline](performance/resource-baseline.json),
 [final](performance/resource-candidate.json). It uses the same captured output.
 
-| Metric | Old Zeron | Final |
+| Metric | Old OpenAgents | Final |
 | --- | ---: | ---: |
 | Idle CPU | 25.45% | 6.93% |
 | Streaming CPU | 113.51% | 100.64% |
@@ -56,7 +56,7 @@ producing a 526,258-byte combined reply. Each build ran it once with one worker:
 [baseline](performance/resource-long-baseline.json),
 [final](performance/resource-long-candidate.json).
 
-| Metric | Old Zeron | Final |
+| Metric | Old OpenAgents | Final |
 | --- | ---: | ---: |
 | Streaming CPU | 112.30% | 103.13% |
 | Post-completion CPU, last 10 s | 92.77% | 8.30% |
@@ -183,22 +183,22 @@ integration target ran, or that native Metal performance was measured.
 Requires Node 22+, Rust, Python 3 and Xvfb/xdotool for Linux desktop profiling.
 The [sanitized fixture](../scripts/fixtures/README.md) reproduces the measured
 replay without an API call. Use a dedicated display and fresh output directories;
-the driver requires exactly one Zeron window.
+the driver requires exactly one OpenAgents window.
 
 ```sh
-cargo build --release -p zeron
+cargo build --release -p openagents
 Xvfb :98 -screen 0 1440x900x24 -nolisten tcp
 # In another terminal:
-DISPLAY=:98 WAYLAND_DISPLAY= LP_NUM_THREADS=4 ZERON_FRAME_STATS=0 \
-  ZERON_PROFILE_PSS=1 ZERON_PROFILE_IDLE_MS=45000 \
+DISPLAY=:98 WAYLAND_DISPLAY= LP_NUM_THREADS=4 OPENAGENTS_FRAME_STATS=0 \
+  OPENAGENTS_PROFILE_PSS=1 OPENAGENTS_PROFILE_IDLE_MS=45000 \
   CLAUDE_CODE_EXECUTABLE="$PWD/scripts/replay-claude.py" \
-  ZERON_REPLAY_JOURNAL="$PWD/scripts/fixtures/resource-stream.jsonl" \
-  node scripts/resource-profile.mjs target/release/zeron /tmp/zeron-short claude-code
+  OPENAGENTS_REPLAY_JOURNAL="$PWD/scripts/fixtures/resource-stream.jsonl" \
+  node scripts/resource-profile.mjs target/release/openagents /tmp/openagents-short claude-code
 
 # Use LP_NUM_THREADS=1 for the one-worker check.
-# Add ZERON_REPLAY_REPEAT=10 ZERON_REPLAY_DELAY_MS=8 for the long workload.
+# Add OPENAGENTS_REPLAY_REPEAT=10 OPENAGENTS_REPLAY_DELAY_MS=8 for the long workload.
 # For a live turn, omit replay variables and point CLAUDE_CODE_EXECUTABLE to
-# the authenticated CLI; ZERON_PROFILE_SUBMIT_UI=1 submits through the composer.
+# the authenticated CLI; OPENAGENTS_PROFILE_SUBMIT_UI=1 submits through the composer.
 
 # In the zui checkout, on a host with Vulkan (software Vulkan works):
 LP_NUM_THREADS=4 cargo test --release -p gpui_wgpu --lib -- --include-ignored

@@ -1,14 +1,14 @@
 # Memory plan — bounded RSS without touching feel
 
 Written 2026-08-03 after a full-codebase audit plus empirical benchmarks (below).
-Problem: Activity Monitor shows Zeron at 450–600MB on viewer-only laptops and
+Problem: Activity Monitor shows OpenAgents at 450–600MB on viewer-only laptops and
 >1GB after heavy use. Target: ~150–250MB steady-state, flat over a workday.
 
 ## 1. What we measured
 
-Engine benchmarks ran the real `zeron headless` debug binary (v0.1.12) with the
+Engine benchmarks ran the real `openagents headless` debug binary (v0.1.12) with the
 mock harness, offline, on Linux/glibc; RSS sampled from `/proc`. Scripts:
-`/tmp/zeron-mem-test/{run,bench2,bench3}.sh` (to be promoted to
+`/tmp/openagents-mem-test/{run,bench2,bench3}.sh` (to be promoted to
 `scripts/mem-smoke.sh`, phase 0).
 
 | Measurement | Result |
@@ -58,7 +58,7 @@ verified 2026-08-03).
 
 | Item | Change | Evidence | Expected |
 |---|---|---|---|
-| Allocator | mimalloc (or jemalloc) as global alloc in `apps/zeron` | system malloc watermark; churn sources below | watermark becomes recoverable; biggest single lever on macOS |
+| Allocator | mimalloc (or jemalloc) as global alloc in `apps/openagents` | system malloc watermark; churn sources below | watermark becomes recoverable; biggest single lever on macOS |
 | Image lifecycle | Call gpui `remove_asset` when transcript rows drop / adopt an LRU image cache with byte budget; bound the global encoded-bytes cache `attachments.rs:462` (no eviction today); clear staged attachments on chat delete | decoded RGBA + atlas tile + encoded bytes ≈ 2.5× decoded size per image, permanent; one screenshot ≈ 48MB decoded | 100MB+ on image-heavy use |
 | Doc delete eviction | `DeleteChat`/`DeleteSpace` drop the doc handle, close the room, delete the snapshot row (`doc_host.rs:125` handles map is insert-only; `rpc.rs:636-693` leaks) | audit §1 | correctness + a few MB per deleted chat |
 | Bound channels | `RpcClient::subscribe` unbounded (`client.rs:123`) → conflating/bounded (watch semantics are latest-wins); terminal PTY + subscriber channels (`terminals.rs:211,243`) → bounded with drop policy; offline local-update queue (`room.rs:341`, drains only on connect) → byte cap + full-resync on overflow | leak-shaped under slow consumer / disconnect | removes the balloon modes (dev builds, sleep/wake, firehose terminals) |
@@ -113,7 +113,7 @@ viewer-laptop steady state ≈ gpui baseline + selected chat ≈ 150–250MB, fl
 
 ## 7. Implementation status (2026-08-03)
 
-Phases 1–2 landed on `zeron/zeron-memory-usage-investigation` (phase 3
+Phases 1–2 landed on `openagents/openagents-memory-usage-investigation` (phase 3
 deliberately skipped — terminals get their own pass with the terminal bug
 work). Shipped: mimalloc in both binaries; attachment-image LRU (64MB encoded
 budget) with gpui asset release on eviction + staged-attachment purge on chat
@@ -146,7 +146,7 @@ system allocator. Purge knobs (`MIMALLOC_PURGE_DELAY=0`,
 heap, so threads that come and go — harness readers, the tokio blocking pool —
 leave freed pages resident: the headless engine reached 7.2GB RSS after a day,
 6.6GB of it in 129 anonymous ~64MB mappings. Long-running modes on
-Linux/glibc (`apps/zeron/src/main.rs`) now run a `malloc-trim` thread that calls
+Linux/glibc (`apps/openagents/src/main.rs`) now run a `malloc-trim` thread that calls
 `malloc_trim(0)` once a minute; unlike the automatic top-of-heap trim it
 returns the free pages inside every arena. Capping arenas was measured first
 and rejected. Bench: 8 chats × 6 rounds of a 250KB reply through the

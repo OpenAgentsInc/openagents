@@ -1,12 +1,13 @@
 [package]
-name = "zeron-preview"
+name = "openagents-preview"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [dependencies]
-zeron-proto.workspace = true
+openagents-brand.workspace = true
+openagents-proto.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true, features = ["rt"] }
 futures.workspace = true

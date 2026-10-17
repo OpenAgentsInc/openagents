@@ -15,17 +15,17 @@ crates that already exist in Rust.
 ## Layers
 
 ```
-crates/text      zeron-text      pretext-style text engine: UAX#14 segmentation,
+crates/text      openagents-text      pretext-style text engine: UAX#14 segmentation,
                                  rustybuzz measurement on the bundled Geist faces
                                  (platform fallback for uncovered glyphs), cached
                                  segment widths, pure-arithmetic line layout
-crates/markdown  zeron-markdown  block model + append-incremental reparse
+crates/markdown  openagents-markdown  block model + append-incremental reparse
                                  (extracted from the desktop; desktop re-exports it)
-crates/client    zeron-client    engine-free viewer device: registry + chat2 rooms
-                                 (zeron-sync), docs (zeron-doc), relay RPCs, auth,
+crates/client    openagents-client    engine-free viewer device: registry + chat2 rooms
+                                 (openagents-sync), docs (openagents-doc), relay RPCs, auth,
                                  view models (front page ordering = desktop sidebar:
                                  pins, sections, recency), demo dataset
-crates/mobile    zeron-mobile    UniFFI facade (Swift today, Kotlin later) + the
+crates/mobile    openagents-mobile    UniFFI facade (Swift today, Kotlin later) + the
                                  transcript layout engine: rows → measured display
                                  lists, prefix-sum offsets, visible-range queries
 apps/ios                          UIKit shell: tab bar + glass, virtualized
@@ -35,11 +35,11 @@ apps/ios                          UIKit shell: tab bar + glass, virtualized
 
 ## Transcript pipeline
 
-1. `zeron-client` applies chat2 rows to the session doc and republishes an
+1. `openagents-client` applies chat2 rows to the session doc and republishes an
    immutable snapshot; unchanged entries stay pointer-equal.
 2. The layout engine (background thread) turns changed entries into rows
    (one per top-level markdown block / tool group / user message), parses
-   markdown incrementally, and lays each row out with `zeron-text` at the
+   markdown incrementally, and lays each row out with `openagents-text` at the
    viewport width. A row's output is a **display list**: text runs (UTF-16
    ranges + style id + exact x/baseline), boxes (code/quote/table/bubble),
    link hit rects, horizontal scrollers.
@@ -51,7 +51,7 @@ apps/ios                          UIKit shell: tab bar + glass, virtualized
 ## Data path per streamed token
 
 The session doc's `subscribe_root` observer marks only the touched entry maps;
-`zeron-client` re-decodes those entries and republishes a snapshot in which
+`openagents-client` re-decodes those entries and republishes a snapshot in which
 every other entry is the same `Arc`. The layout thread reuses rows for
 pointer-equal entries, re-parses only the streaming tail block
 (`IncrementalParser`), re-measures only that row, and rebuilds the prefix sums.
@@ -64,13 +64,13 @@ separate layer, split at the exact glyph offset.
 
 | What | Where |
 | --- | --- |
-| Paint/measure agreement at 7 widths, streaming ≡ full parse, prefix reuse, toggles, mentions | `cargo test -p zeron-mobile --lib layout` |
-| Layout timing (3,300 rows) | `cargo test --release -p zeron-mobile --lib bench_layout -- --ignored --nocapture` |
-| Line breaks vs CoreText on the same font bytes | `ZeronTests/LineBreakAccuracyTests`, `crates/text/tests/coretext.rs` |
-| Demo end-to-end (send → echo → reply, questions, queue, offline host) | `crates/client/tests/demo.rs`, `ZeronUITests/SessionFlowTests` |
+| Paint/measure agreement at 7 widths, streaming ≡ full parse, prefix reuse, toggles, mentions | `cargo test -p openagents-mobile --lib layout` |
+| Layout timing (3,300 rows) | `cargo test --release -p openagents-mobile --lib bench_layout -- --ignored --nocapture` |
+| Line breaks vs CoreText on the same font bytes | `OpenAgentsTests/LineBreakAccuracyTests`, `crates/text/tests/coretext.rs` |
+| Demo end-to-end (send → echo → reply, questions, queue, offline host) | `crates/client/tests/demo.rs`, `OpenAgentsUITests/SessionFlowTests` |
 | Live sync against an in-process edge | `crates/client/tests/live.rs` |
-| Real stack (wrangler dev edge + headless engine, mock harness) | `ZeronUITests/LiveStackTests` |
-| Frame pacing (hitch ratio, idle + streaming) | `-lab -bench`, `ZeronUITests/ScrollPerformanceTests` |
+| Real stack (wrangler dev edge + headless engine, mock harness) | `OpenAgentsUITests/LiveStackTests` |
+| Frame pacing (hitch ratio, idle + streaming) | `-lab -bench`, `OpenAgentsUITests/ScrollPerformanceTests` |
 
 Reference numbers (M-series Mac, iPhone 17 Pro simulator): cold layout of
 3,300 rows 30 ms; width change 0.42 ms; display list 0.8 µs/row; streamed
@@ -80,6 +80,6 @@ token 0.19 ms; display-link flings through 3,300 rows — 0 hitches idle
 ## Build
 
 `scripts/ios/build-core.sh` (run by the Xcode "Rust core" phase) builds
-`zeron-mobile` for the active platform with the `mobile` cargo profile (always
+`openagents-mobile` for the active platform with the `mobile` cargo profile (always
 optimized), and regenerates the committed UniFFI bindings in
-`apps/ios/Zeron/Core/Generated/`.
+`apps/ios/OpenAgents/Core/Generated/`.

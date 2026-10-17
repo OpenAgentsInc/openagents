@@ -90,14 +90,14 @@ mod tests {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
         })
     }
 
-    fn chat(id: &str) -> zeron_proto::Chat {
+    fn chat(id: &str) -> openagents_proto::Chat {
         serde_json::from_value(serde_json::json!({
             "id": id, "title": id, "deviceId": "local", "archived": false,
             "createdAt": "2026-09-20T00:00:00Z",
@@ -119,7 +119,7 @@ mod tests {
                 return warms;
             };
             let request: serde_json::Value = serde_json::from_str(&request).unwrap();
-            if request["method"] == zeron_rpc::methods::WARM_WORKSPACE_SEARCH {
+            if request["method"] == openagents_rpc::methods::WARM_WORKSPACE_SEARCH {
                 warms.push(request["params"]["chatId"].as_str().unwrap().to_owned());
             }
             let reply = serde_json::json!({ "id": request["id"], "ok": { "state": "ready" } });
@@ -137,7 +137,7 @@ mod tests {
         let (out, mut requests) = tokio::sync::mpsc::channel(16);
         let (replies, inbound) = tokio::sync::mpsc::channel(16);
         let engine =
-            crate::state::EngineHandle::from_test_client(zeron_rpc::RpcClient::new(out, inbound));
+            crate::state::EngineHandle::from_test_client(openagents_rpc::RpcClient::new(out, inbound));
         let dir = tempfile::tempdir().unwrap();
         let window = test_shell(cx, dir.path());
         window

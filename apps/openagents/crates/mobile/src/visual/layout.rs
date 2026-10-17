@@ -3,7 +3,7 @@
 //! only paints. Controls are drawn here too (one look on every platform);
 //! the platform puts touch targets over them.
 
-use zeron_visual::{Align, Axis, HandlerId, Justify, Node, NodeKind, TextSize, Weight};
+use openagents_visual::{Align, Axis, HandlerId, Justify, Node, NodeKind, TextSize, Weight};
 
 use super::chart;
 use super::paint::{Face, Mark, Paint, Para, TextCtx};
@@ -30,11 +30,11 @@ use metrics::*;
 /// What a surface draws (every frame it changes).
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum SurfaceNode {
-    Canvas(zeron_visual::Canvas),
-    Scene(zeron_visual::SceneNode),
-    Shader(zeron_visual::ShaderNode),
+    Canvas(openagents_visual::Canvas),
+    Scene(openagents_visual::SceneNode),
+    Shader(openagents_visual::ShaderNode),
     Chart {
-        chart: Box<zeron_visual::Chart>,
+        chart: Box<openagents_visual::Chart>,
         /// Height of the legend band above the plot.
         legend: f32,
     },
@@ -164,7 +164,7 @@ enum Basis {
 }
 
 impl Layouter<'_, '_> {
-    fn text_para(&mut self, text: &zeron_visual::Text) -> Para {
+    fn text_para(&mut self, text: &openagents_visual::Text) -> Para {
         let base = text
             .color
             .map(|c| self.palette.color(c))
@@ -451,7 +451,7 @@ impl Layouter<'_, '_> {
 
     fn stack(
         &mut self,
-        stack: &zeron_visual::Stack,
+        stack: &openagents_visual::Stack,
         key: &str,
         path: &str,
         x: f32,
@@ -482,7 +482,7 @@ impl Layouter<'_, '_> {
 
     fn column(
         &mut self,
-        stack: &zeron_visual::Stack,
+        stack: &openagents_visual::Stack,
         path: &str,
         x: f32,
         y: f32,
@@ -518,7 +518,7 @@ impl Layouter<'_, '_> {
         top - y
     }
 
-    fn bases(&mut self, stack: &zeron_visual::Stack) -> Vec<Basis> {
+    fn bases(&mut self, stack: &openagents_visual::Stack) -> Vec<Basis> {
         stack
             .children
             .iter()
@@ -537,7 +537,7 @@ impl Layouter<'_, '_> {
     /// returns the line's height.
     fn line(
         &mut self,
-        stack: &zeron_visual::Stack,
+        stack: &openagents_visual::Stack,
         path: &str,
         items: &[(usize, f32, f32)],
         y: f32,
@@ -561,7 +561,7 @@ impl Layouter<'_, '_> {
     }
 
     /// Lefts for `widths` from x, with justify spreading `leftover`.
-    fn justify(stack: &zeron_visual::Stack, x: f32, widths: &[f32], leftover: f32) -> Vec<f32> {
+    fn justify(stack: &openagents_visual::Stack, x: f32, widths: &[f32], leftover: f32) -> Vec<f32> {
         let n = widths.len();
         let (mut at, between) = match stack.justify {
             Justify::Start => (x, 0.0),
@@ -580,7 +580,7 @@ impl Layouter<'_, '_> {
             .collect()
     }
 
-    fn row(&mut self, stack: &zeron_visual::Stack, path: &str, x: f32, y: f32, width: f32) -> f32 {
+    fn row(&mut self, stack: &openagents_visual::Stack, path: &str, x: f32, y: f32, width: f32) -> f32 {
         let n = stack.children.len();
         if n == 0 {
             return 0.0;
@@ -620,7 +620,7 @@ impl Layouter<'_, '_> {
 
     fn wrapped_row(
         &mut self,
-        stack: &zeron_visual::Stack,
+        stack: &openagents_visual::Stack,
         path: &str,
         x: f32,
         y: f32,
@@ -694,7 +694,7 @@ impl Layouter<'_, '_> {
         value: &str,
         label: &str,
         delta: Option<&str>,
-        tone: Option<zeron_visual::Color>,
+        tone: Option<openagents_visual::Color>,
         x: f32,
         y: f32,
     ) -> f32 {
@@ -755,7 +755,7 @@ impl Layouter<'_, '_> {
     /// between rows, no outer box or fills.
     fn table(
         &mut self,
-        table: &zeron_visual::TableNode,
+        table: &openagents_visual::TableNode,
         path: &str,
         x: f32,
         y: f32,

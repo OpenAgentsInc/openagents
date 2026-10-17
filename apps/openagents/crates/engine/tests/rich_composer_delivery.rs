@@ -9,18 +9,18 @@ use std::time::Duration;
 use async_trait::async_trait;
 use futures::{StreamExt, stream::BoxStream};
 use tokio::sync::mpsc;
-use zeron_doc::{MessagePart, MessageRole};
-use zeron_engine::doc_host::{
+use openagents_doc::{MessagePart, MessageRole};
+use openagents_engine::doc_host::{
     BeginQueueEditOutcome, FinishQueueEditAction, FinishQueueEditOutcome,
 };
-use zeron_engine::{EngineCore, HarnessRegistry, SteerOutcome};
-use zeron_harness::{Harness, HarnessError, RunControls};
-use zeron_proto::invocation::Invocation;
-use zeron_proto::{
+use openagents_engine::{EngineCore, HarnessRegistry, SteerOutcome};
+use openagents_harness::{Harness, HarnessError, RunControls};
+use openagents_proto::invocation::Invocation;
+use openagents_proto::{
     AgentEvent, DoneStatus, HarnessId, Model, ReasoningLevel, RunRequest, SandboxLevel,
     SteeringMode,
 };
-use zeron_rpc::RpcService;
+use openagents_rpc::RpcService;
 
 const CHAT: &str = "rich-delivery";
 const HARNESSES: [HarnessId; 9] = [
@@ -81,9 +81,9 @@ impl Harness for RecordingHarness {
     async fn commands_for(
         &self,
         cwd: &std::path::Path,
-    ) -> Result<Vec<zeron_proto::SlashCommand>, HarnessError> {
+    ) -> Result<Vec<openagents_proto::SlashCommand>, HarnessError> {
         self.discovery(cwd).await;
-        Ok(vec![zeron_proto::SlashCommand {
+        Ok(vec![openagents_proto::SlashCommand {
             name: "probe".into(),
             description: cwd.to_string_lossy().into_owned(),
             input_hint: None,
@@ -92,9 +92,9 @@ impl Harness for RecordingHarness {
     async fn skills(
         &self,
         cwd: &std::path::Path,
-    ) -> Result<Option<Vec<zeron_proto::invocation::Skill>>, HarnessError> {
+    ) -> Result<Option<Vec<openagents_proto::invocation::Skill>>, HarnessError> {
         self.discovery(cwd).await;
-        Ok(Some(vec![zeron_proto::invocation::Skill {
+        Ok(Some(vec![openagents_proto::invocation::Skill {
             name: "probe".into(),
             path: cwd.join("SKILL.md").to_string_lossy().into_owned(),
             description: cwd.to_string_lossy().into_owned(),
@@ -168,7 +168,7 @@ fn rich_text(label: &str) -> (String, String) {
         command: None,
     }
     .link();
-    let file = zeron_proto::file_mentions::local_file_link("src/é file.rs", false);
+    let file = openagents_proto::file_mentions::local_file_link("src/é file.rs", false);
     let raw = format!(
         "{label}: {skill} on {file}\n\n- **keep this markdown**\n- `literal @file $review /compact`"
     );
@@ -180,7 +180,7 @@ fn rich_text(label: &str) -> (String, String) {
 fn expected(raw: &str, readable: &str, id: HarnessId) -> String {
     if id == HarnessId::Codex {
         raw.replace(
-            &zeron_proto::file_mentions::local_file_link("src/é file.rs", false),
+            &openagents_proto::file_mentions::local_file_link("src/é file.rs", false),
             "[é file.rs](src/%C3%A9%20file.rs)",
         )
     } else if id == HarnessId::Opencode {
@@ -235,10 +235,10 @@ async fn setup(
     registry.register(harness.clone());
     let core =
         EngineCore::assemble(&tmp.path().join("data"), Arc::new(registry), id, None).unwrap();
-    let client = zeron_rpc::memory_client(core.rpc_service());
+    let client = openagents_rpc::memory_client(core.rpc_service());
     client
         .call(
-            zeron_rpc::methods::MUTATE,
+            openagents_rpc::methods::MUTATE,
             serde_json::json!({"op":"createChat", "chatId":CHAT, "deviceId":core.device_id}),
         )
         .await
@@ -435,10 +435,10 @@ async fn queue_edits_preserve_reselected_skills_until_delivery_for_every_harness
 #[tokio::test]
 async fn projectless_catalogs_use_the_session_directory_and_reject_unknown_targets() {
     let (tmp, core, _harness, _rx) = setup(HarnessId::Codex).await;
-    let client = zeron_rpc::memory_client(core.rpc_service());
+    let client = openagents_rpc::memory_client(core.rpc_service());
     for method in [
-        zeron_rpc::methods::LIST_COMMANDS,
-        zeron_rpc::methods::LIST_SKILLS,
+        openagents_rpc::methods::LIST_COMMANDS,
+        openagents_rpc::methods::LIST_SKILLS,
     ] {
         let new_chat = client
             .call(method, serde_json::json!({"harness":"codex"}))
@@ -491,8 +491,8 @@ async fn projectless_catalogs_use_the_session_directory_and_reject_unknown_targe
         .set_chat_cwd(CHAT, cwd.to_str().unwrap())
         .unwrap();
     for method in [
-        zeron_rpc::methods::LIST_COMMANDS,
-        zeron_rpc::methods::LIST_SKILLS,
+        openagents_rpc::methods::LIST_COMMANDS,
+        openagents_rpc::methods::LIST_SKILLS,
     ] {
         let result = client
             .call(
@@ -508,8 +508,8 @@ async fn projectless_catalogs_use_the_session_directory_and_reject_unknown_targe
 #[tokio::test]
 async fn project_catalog_rpcs_hold_update_leases_through_cancelled_discovery_cleanup() {
     for method in [
-        zeron_rpc::methods::LIST_COMMANDS,
-        zeron_rpc::methods::LIST_SKILLS,
+        openagents_rpc::methods::LIST_COMMANDS,
+        openagents_rpc::methods::LIST_SKILLS,
     ] {
         let (tmp, core, harness, _rx) = setup(HarnessId::Codex).await;
         let root = tmp.path().join("project-catalog");

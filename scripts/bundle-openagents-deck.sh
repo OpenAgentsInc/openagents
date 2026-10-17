@@ -15,7 +15,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 target="${CARGO_TARGET_DIR:-$root/target}"
 out="${1:-$target/release}"
 app="$out/OpenAgents Deck.app"
-icon_source="$root/apps/openagents/apps/ios/Zeron/Assets.xcassets/AppIcon.appiconset/AppIcon1024.png"
+icon_source="$root/apps/openagents/apps/ios/OpenAgents/Assets.xcassets/AppIcon.appiconset/AppIcon1024.png"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "the app bundle is macOS only; run \`cargo run -p openagents-deck\` elsewhere" >&2

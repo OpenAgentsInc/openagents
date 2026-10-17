@@ -3,7 +3,7 @@
   "build": "release",
   "runs": [
     {
-      "binary": "/tmp/zeron-resource-profile/zeron-release-baseline",
+      "binary": "/tmp/openagents-resource-profile/openagents-release-baseline",
       "binarySha256": "3329082b8e76b4e4dec263c15077f1cf7f30b989ede851a9dde26f2441ab9995",
       "harness": "claude-code",
       "mode": "replay",
@@ -77,7 +77,7 @@
       }
     },
     {
-      "binary": "/tmp/zeron-resource-profile/zeron-release-baseline",
+      "binary": "/tmp/openagents-resource-profile/openagents-release-baseline",
       "binarySha256": "3329082b8e76b4e4dec263c15077f1cf7f30b989ede851a9dde26f2441ab9995",
       "harness": "claude-code",
       "mode": "replay",

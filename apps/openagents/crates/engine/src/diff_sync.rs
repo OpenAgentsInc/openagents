@@ -1,5 +1,5 @@
 //! CheckoutDiffSync — checkout-scoped working-tree diff production (feature-inventory
-//! §3.5; port of zeron's `checkout-diff-sync.ts` + `git-metadata-sync.ts`).
+//! §3.5; port of openagents's `checkout-diff-sync.ts` + `git-metadata-sync.ts`).
 //!
 //! Chats do not own working-tree state: a concrete Git checkout does. This service
 //! groups this device's chats by their canonical checkout identity (`chat.cwd` →
@@ -37,7 +37,7 @@
 //! (vs `merge-base(baseRef, HEAD)`, same capture path with the base overridden)
 //! and *latest turn* (vs a temp-index `write-tree` snapshot taken when a turn
 //! dispatches — see [`CheckoutDiffSync::note_turn_start`]). Those snapshots
-//! live in Zeron's own object store, never the checkout's — see
+//! live in OpenAgents's own object store, never the checkout's — see
 //! [`turn_snapshot`].
 
 use std::collections::{HashMap, HashSet};
@@ -53,7 +53,7 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::{Notify, mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
-use zeron_proto::{Chat, CheckoutDiff, DiffFileSummary};
+use openagents_proto::{Chat, CheckoutDiff, DiffFileSummary};
 
 use crate::EngineError;
 use crate::doc_host::EdgeConfig;
@@ -110,7 +110,7 @@ pub struct DiffSidecar {
 /// One bounded atomic snapshot of a checkout's working tree.
 #[derive(Debug, Clone)]
 pub struct DiffSnapshot {
-    pub git_status: Option<(Vec<zeron_proto::GitFileStatus>, bool)>,
+    pub git_status: Option<(Vec<openagents_proto::GitFileStatus>, bool)>,
     pub branch: String,
     pub head_sha: Option<String>,
     pub patch: String,
@@ -185,7 +185,7 @@ struct DiffSyncInner {
     /// How long an entry may sit chat-less before reconcile removes it.
     orphan_grace: Duration,
     diffs_tx: watch::Sender<Vec<CheckoutDiff>>,
-    statuses_tx: watch::Sender<Vec<zeron_proto::CheckoutGitStatus>>,
+    statuses_tx: watch::Sender<Vec<openagents_proto::CheckoutGitStatus>>,
     /// chat_id → turn-start tree (see [`TurnSnapshot`]).
     turn_trees: Mutex<HashMap<String, TurnSnapshot>>,
     /// The tasks hold `Weak` refs, but an in-flight iteration holds an
@@ -380,7 +380,7 @@ impl CheckoutDiffSync {
     }
 
     /// Consumers filter this shared cache; subscribing never starts another Git scan.
-    pub fn watch_git_statuses(&self) -> watch::Receiver<Vec<zeron_proto::CheckoutGitStatus>> {
+    pub fn watch_git_statuses(&self) -> watch::Receiver<Vec<openagents_proto::CheckoutGitStatus>> {
         self.inner.statuses_tx.subscribe()
     }
 
@@ -1531,7 +1531,7 @@ pub async fn capture_diff_against(
     if tracked.truncated {
         let boundary = patch.rfind('\n').unwrap_or(0);
         patch.truncate(boundary);
-        patch.push_str("\n# Zeron diff truncated\n");
+        patch.push_str("\n# OpenAgents diff truncated\n");
     }
 
     // `?? path` records; rename records (`R  new\0old`) consume their extra field.
@@ -2060,7 +2060,7 @@ pub async fn capture_turn_diff(
     if tracked.truncated {
         let boundary = patch.rfind('\n').unwrap_or(0);
         patch.truncate(boundary);
-        patch.push_str("\n# Zeron diff truncated\n");
+        patch.push_str("\n# OpenAgents diff truncated\n");
     }
 
     let additions: u32 = files.iter().map(|f| f.additions).sum();

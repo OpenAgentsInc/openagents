@@ -3,7 +3,7 @@
 //! paths against one folder.
 //!
 //! ```text
-//! BENCH_ROOT=/path/to/checkout cargo run --release -p zeron-engine \
+//! BENCH_ROOT=/path/to/checkout cargo run --release -p openagents-engine \
 //!     --example workspace_search_bench
 //! ```
 //!
@@ -13,7 +13,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use zeron_engine::Repos;
+use openagents_engine::Repos;
 
 const DEFAULT_QUERIES: &[&str] = &[
     "composer",
@@ -109,12 +109,12 @@ fn tree_search(
     query: &str,
     include_ignored: bool,
 ) -> Result<usize, Box<dyn std::error::Error>> {
-    Ok(zeron_engine::workspace_files::bench_search_root(
+    Ok(openagents_engine::workspace_files::bench_search_root(
         repos.workspace_search(),
         root,
         query,
         include_ignored,
-        zeron_engine::workspace_files::MAX_SEARCH_RESULTS,
+        openagents_engine::workspace_files::MAX_SEARCH_RESULTS,
     )?
     .len())
 }

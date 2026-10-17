@@ -2,7 +2,7 @@ use super::{normalize::string, rpc::Client};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio::{sync::oneshot, task::JoinSet};
-use zeron_proto::{UserInputAnswer, UserInputQuestion};
+use openagents_proto::{UserInputAnswer, UserInputQuestion};
 pub(super) type Input =
     dyn Fn(Vec<UserInputQuestion>) -> oneshot::Receiver<Vec<UserInputAnswer>> + Send + Sync;
 #[derive(Default)]

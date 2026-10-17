@@ -1,0 +1,3 @@
+// GPUI's Windows platform loads the application icon from resource ID 1.
+// Coder Desktop: the Coder icon (dist/openagents/coder.ico); see FORK.md.
+1 ICON "../coder/coder.ico"

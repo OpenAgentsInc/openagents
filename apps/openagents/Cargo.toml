@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/coder-account",
+    "crates/account",
     "crates/voice",
     "crates/voice-media",
     "crates/voice-session",
@@ -27,7 +27,7 @@ members = [
     "crates/visual",
     "crates/visual-gpu",
     "crates/brand",
-    "apps/zeron",
+    "apps/openagents",
 ]
 
 [workspace.package]
@@ -37,31 +37,31 @@ license = "MIT"
 publish = false
 
 [workspace.dependencies]
-coder-brand = { path = "crates/brand" }
-coder-account = { path = "crates/coder-account" }
-zeron-voice-session = { path = "crates/voice-session" }
-zeron-orb = { path = "crates/orb" }
-zeron-veil = { path = "crates/veil" }
-zeron-voice-media = { path = "crates/voice-media" }
-zeron-audio = { path = "crates/audio" }
-zeron-proto = { path = "crates/proto" }
-zeron-preview = { path = "crates/preview" }
-zeron-doc = { path = "crates/doc" }
-zeron-sync = { path = "crates/sync" }
-zeron-harness = { path = "crates/harness" }
-zeron-engine = { path = "crates/engine" }
-zeron-rpc = { path = "crates/rpc" }
-zeron-update = { path = "crates/update" }
-zeron-ui = { path = "crates/ui" }
-zeron-syntax = { path = "crates/syntax" }
-zeron-markdown = { path = "crates/markdown" }
-zeron-mobile = { path = "crates/mobile" }
-zeron-client = { path = "crates/client" }
-zeron-theme = { path = "crates/theme" }
-zeron-mcp = { path = "crates/mcp" }
-zeron-text = { path = "crates/text" }
-zeron-visual = { path = "crates/visual" }
-zeron-visual-gpu = { path = "crates/visual-gpu" }
+openagents-brand = { path = "crates/brand" }
+openagents-account = { path = "crates/account" }
+openagents-voice-session = { path = "crates/voice-session" }
+openagents-orb = { path = "crates/orb" }
+openagents-veil = { path = "crates/veil" }
+openagents-voice-media = { path = "crates/voice-media" }
+openagents-audio = { path = "crates/audio" }
+openagents-proto = { path = "crates/proto" }
+openagents-preview = { path = "crates/preview" }
+openagents-doc = { path = "crates/doc" }
+openagents-sync = { path = "crates/sync" }
+openagents-harness = { path = "crates/harness" }
+openagents-engine = { path = "crates/engine" }
+openagents-rpc = { path = "crates/rpc" }
+openagents-update = { path = "crates/update" }
+openagents-ui = { path = "crates/ui" }
+openagents-syntax = { path = "crates/syntax" }
+openagents-markdown = { path = "crates/markdown" }
+openagents-mobile = { path = "crates/mobile" }
+openagents-client = { path = "crates/client" }
+openagents-theme = { path = "crates/theme" }
+openagents-mcp = { path = "crates/mcp" }
+openagents-text = { path = "crates/text" }
+openagents-visual = { path = "crates/visual" }
+openagents-visual-gpu = { path = "crates/visual-gpu" }
 
 # CRDT
 loro = "1.13"
@@ -82,7 +82,7 @@ loro-protocol = "0.3"
 # sidebar); a6c1ad5 adds BackdropBlur + horizontal EdgeFade + glass fixes;
 # 9b672fa bounds renderer GPU memory (region-sized backdrop blur scratch,
 # idle release of blur/path intermediates, instance pool shrink,
-# ZERON_GPU_STATS=1 diagnostics); b687328 adds ImageSource::evict (frees
+# OPENAGENTS_GPU_STATS=1 diagnostics); b687328 adds ImageSource::evict (frees
 # sprite-atlas tiles — remove_asset alone leaked them, see
 # attachments::flush_evicted); ac135eb adds device memory to the stats line;
 # f596cde fixes destination alpha on transparent windows (Porter-Duff OVER,
@@ -179,10 +179,10 @@ opt-level = 0
 opt-level = 2
 
 # Scenes rasterize in software every frame the camera moves.
-[profile.dev.package.zeron-visual]
+[profile.dev.package.openagents-visual]
 opt-level = 3
 
-[profile.dev.package.zeron-visual-gpu]
+[profile.dev.package.openagents-visual-gpu]
 opt-level = 3
 
 # Mobile core (scripts/ios/build-core.sh). Always optimized — layout and sync

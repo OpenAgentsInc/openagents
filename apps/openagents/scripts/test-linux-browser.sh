@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env-compat.sh"
 # Run the real shell browser fixture with native mouse input on X11 and Wayland.
 # Captures stay outside the repository and can be uploaded as PR attachments.
 set -euo pipefail
@@ -34,7 +35,7 @@ if [[ ! "$display_number" =~ ^[0-9]+$ ]]; then
 fi
 export DISPLAY=":$display_number"
 export XDG_RUNTIME_DIR="$runtime"
-export ZERON_BROWSER_NATIVE_POINTER=1
+export OPENAGENTS_BROWSER_NATIVE_POINTER=1
 openbox >"$output/openbox.log" 2>&1 &
 processes+=("$!")
 record_fixture() {
@@ -76,7 +77,7 @@ record_fixture() {
 }
 export WAYLAND_DISPLAY= GDK_BACKEND=x11
 record_fixture x11
-export WAYLAND_DISPLAY=zeron-browser-test GDK_BACKEND=wayland
+export WAYLAND_DISPLAY=openagents-browser-test GDK_BACKEND=wayland
 weston --backend=x11 --renderer=pixman --shell=kiosk-shell.so --socket="$WAYLAND_DISPLAY" \
   --idle-time=0 --width=1000 --height=680 >"$output/weston.log" 2>&1 &
 processes+=("$!")
@@ -84,5 +85,5 @@ for _ in $(seq 1 100); do
   [ -S "$runtime/$WAYLAND_DISPLAY" ] && break
   sleep .1
 done
-export ZERON_BROWSER_CAPTURE_WINDOW="$(xdotool search --class weston | head -1)"
-record_fixture wayland "$ZERON_BROWSER_CAPTURE_WINDOW"
+export OPENAGENTS_BROWSER_CAPTURE_WINDOW="$(xdotool search --class weston | head -1)"
+record_fixture wayland "$OPENAGENTS_BROWSER_CAPTURE_WINDOW"

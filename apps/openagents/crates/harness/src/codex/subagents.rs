@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 
 use serde_json::Value;
-use zeron_proto::AgentEvent;
+use openagents_proto::AgentEvent;
 
 use super::normalize::{ChildStream, Phase, collab_spawn_child, item_type, map_item};
 
@@ -42,7 +42,7 @@ impl Subagents {
     }
 
     /// thread/resume returns the stored parent items. Rebuild ownership without
-    /// replaying chips or content that already lives in Zeron's documents.
+    /// replaying chips or content that already lives in OpenAgents's documents.
     pub(super) fn restore(&mut self, thread: &Value) {
         for item in thread
             .get("turns")

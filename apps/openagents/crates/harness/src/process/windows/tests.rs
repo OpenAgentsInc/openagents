@@ -37,14 +37,14 @@ fn parked_command() -> Command {
 
 #[test]
 fn parked_child_helper() {
-    if let Ok(handle) = std::env::var("ZERON_TEST_INHERITED_EVENT") {
+    if let Ok(handle) = openagents_brand::env_var("OPENAGENTS_TEST_INHERITED_EVENT") {
         // Signal only if the parent's sentinel handle accidentally survived the
         // launch allow-list. Handle reuse in this child cannot signal that event.
         unsafe {
             windows_sys::Win32::System::Threading::SetEvent(handle.parse::<usize>().unwrap() as _)
         };
     }
-    if std::env::var_os("ZERON_TEST_PARKED_CHILD").is_some() {
+    if openagents_brand::env_var_os("OPENAGENTS_TEST_PARKED_CHILD").is_some() {
         std::thread::sleep(Duration::from_secs(15));
     }
 }
@@ -63,7 +63,7 @@ async fn unrelated_inheritable_handles_are_not_passed_to_agents() {
     let event = unsafe { OwnedHandle::from_raw_handle(event) };
     let mut command = parked_command();
     command.env(
-        "ZERON_TEST_INHERITED_EVENT",
+        "OPENAGENTS_TEST_INHERITED_EVENT",
         (event.as_raw_handle() as usize).to_string(),
     );
     let mut child = command.spawn().unwrap();
@@ -116,7 +116,7 @@ fn ordinary_subprocess_cannot_keep_agent_pipes_open() {
         // A raw std launch deliberately does not participate in our allow-list.
         let foreign = std::process::Command::new(std::env::current_exe()?)
             .args(["--exact", "process::windows::tests::parked_child_helper"])
-            .env("ZERON_TEST_PARKED_CHILD", "1")
+            .env("OPENAGENTS_TEST_PARKED_CHILD", "1")
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -156,11 +156,11 @@ fn ordinary_subprocess_cannot_keep_agent_pipes_open() {
 
 #[test]
 fn crash_interval_owner_helper() {
-    let Some(pid_file) = std::env::var_os("ZERON_TEST_CRASH_PID_FILE") else {
+    let Some(pid_file) = openagents_brand::env_var_os("OPENAGENTS_TEST_CRASH_PID_FILE") else {
         return;
     };
     let mut command = parked_command();
-    command.env("ZERON_TEST_PARKED_CHILD", "1");
+    command.env("OPENAGENTS_TEST_PARKED_CHILD", "1");
     let _ = spawn_prepared(&command, |child| {
         std::fs::write(pid_file, format!("{},{}", child.pid, child.escrow.pid))?;
         // Tell the parent that CreateProcessW returned, without starting the
@@ -181,7 +181,7 @@ fn owner_death_immediately_after_creation_kills_suspended_child() {
             "--exact",
             "process::windows::tests::crash_interval_owner_helper",
         ])
-        .env("ZERON_TEST_CRASH_PID_FILE", &pid_file)
+        .env("OPENAGENTS_TEST_CRASH_PID_FILE", &pid_file)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -237,7 +237,7 @@ fn owner_death_immediately_after_creation_kills_suspended_child() {
 /// role node plays under a real npm shim) actually received.
 #[test]
 fn batch_inner_helper() {
-    let Some(file) = std::env::var_os("ZERON_TEST_BATCH_ARGS_FILE") else {
+    let Some(file) = openagents_brand::env_var_os("OPENAGENTS_TEST_BATCH_ARGS_FILE") else {
         return;
     };
     // argv = [test binary, --exact, helper name, forwarded arguments…]
@@ -251,7 +251,7 @@ async fn batch_scripts_spawn_through_cmd_with_literal_arguments() {
     let received = dir.path().join("received.txt");
     // A real shim shape: forward `%*` to an inner program. What that program's
     // C runtime parses is the contract — exactly what node receives under an
-    // npm `.cmd` shim launched by zeron.
+    // npm `.cmd` shim launched by openagents.
     let script = dir.path().join("forward-args.cmd");
     std::fs::write(
         &script,
@@ -271,7 +271,7 @@ async fn batch_scripts_spawn_through_cmd_with_literal_arguments() {
     let mut command = Command::new(&script);
     command
         .args(arguments)
-        .env("ZERON_TEST_BATCH_ARGS_FILE", &received)
+        .env("OPENAGENTS_TEST_BATCH_ARGS_FILE", &received)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());

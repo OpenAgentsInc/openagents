@@ -412,7 +412,7 @@ fn apply_remote_row(
     }
 }
 
-/// `zeron sync` surface (plan: cursor / headSeq / floorLag / pendingPushes).
+/// `openagents sync` surface (plan: cursor / headSeq / floorLag / pendingPushes).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ChatStatsSnapshot {
     pub connected: bool,

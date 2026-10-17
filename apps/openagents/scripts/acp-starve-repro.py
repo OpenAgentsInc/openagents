@@ -5,13 +5,13 @@ Evidence script for the upstream report: a session/prompt sent while the
 Claude CLI runs a SELF-CONTINUED turn (background-task re-invocation) never
 gets its response from @agentclientprotocol/claude-agent-acp@0.66.0, because
 the adapter does not track turns it did not start (steering answers
-`promptRequired`/`noRunningTurn` while the CLI is visibly busy). Zeron-side
+`promptRequired`/`noRunningTurn` while the CLI is visibly busy). OpenAgents-side
 mitigations: engine turn-quiesce watchdog + harness starved-turn recovery.
 
 Needs an authenticated claude CLI; costs a few small prompts.
 
 Speaks newline-delimited JSON-RPC 2.0 over the adapter's stdio, mirroring
-zeron's harness. Timeline (mirrors the 2026-08-12 incident):
+openagents's harness. Timeline (mirrors the 2026-08-12 incident):
 
   1. initialize + session/new
   2. prompt#1: agent starts a background task (sleep) and ends its turn

@@ -1,7 +1,7 @@
-//! Isolated native sidebar review fixture. ZERON_SIDEBAR_COMPACT / ZERON_SIDEBAR_HIDE_LABEL select layout;
-//! ZERON_SIDEBAR_BY_PROJECT groups by project, with a remote clone of the local repository.
+//! Isolated native sidebar review fixture. OPENAGENTS_SIDEBAR_COMPACT / OPENAGENTS_SIDEBAR_HIDE_LABEL select layout;
+//! OPENAGENTS_SIDEBAR_BY_PROJECT groups by project, with a remote clone of the local repository.
 use gpui::{AppContext, Bounds, WindowBounds, WindowOptions, px, size};
-use zeron_ui::*;
+use openagents_ui::*;
 
 fn main() -> anyhow::Result<()> {
     let runtime = tokio::runtime::Runtime::new()?;
@@ -13,33 +13,33 @@ fn main() -> anyhow::Result<()> {
         gpui_tokio::init(cx); gpui_base::init(cx);
         let mut settings = settings::UiSettings::default();
         settings.sidebar_show_branch = true;
-        settings.sidebar_compact = std::env::var_os("ZERON_SIDEBAR_COMPACT").is_some();
-        settings.sidebar_show_project_label = std::env::var_os("ZERON_SIDEBAR_HIDE_LABEL").is_none();
-        let by_project = std::env::var_os("ZERON_SIDEBAR_BY_PROJECT").is_some();
+        settings.sidebar_compact = openagents_brand::env_var_os("OPENAGENTS_SIDEBAR_COMPACT").is_some();
+        settings.sidebar_show_project_label = openagents_brand::env_var_os("OPENAGENTS_SIDEBAR_HIDE_LABEL").is_none();
+        let by_project = openagents_brand::env_var_os("OPENAGENTS_SIDEBAR_BY_PROJECT").is_some();
         settings.sidebar_organization = if by_project { settings::SidebarOrganization::ByProject } else { settings::SidebarOrganization::InOneList };
         settings.sidebar_width = 310.0;
         settings.sidebar_pins_mut("local".into()).extend(["chat-0".into(), "chat-1".into()]);
         let project_path = data.join("fieldnotes");
         std::fs::create_dir_all(project_path.join("public")).unwrap();
         std::fs::write(project_path.join("public/favicon.svg"), r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" rx="6" fill="#668cf5"/><path d="M7 6h11v3h-8v3h6v3h-6v4H7Z" fill="white"/></svg>"##).unwrap();
-        settings.surface = zeron_theme::SurfacePreference::Frosted;
+        settings.surface = openagents_theme::SurfacePreference::Frosted;
         settings.save(&data).unwrap();
         settings::init(settings.clone(), data.clone(), cx);
         let fonts = typography::register_fonts(cx);
         typography::init(settings.ui_font_family.clone(), settings.ui_font_size, settings.terminal_font_family.clone(), settings.terminal_font_size, settings.code_font_family.clone(), settings.code_font_size, fonts, cx);
         theme_library::init(data.clone(), cx);
-        appearance::init(if std::env::var_os("ZERON_PALETTE_LIGHT").is_some() { appearance::AppearanceMode::Light } else { appearance::AppearanceMode::Dark }, settings.theme_selection, settings.accent, settings.surface, cx);
+        appearance::init(if openagents_brand::env_var_os("OPENAGENTS_PALETTE_LIGHT").is_some() { appearance::AppearanceMode::Light } else { appearance::AppearanceMode::Dark }, settings.theme_selection, settings.accent, settings.surface, cx);
         history::init(settings.git_history_columns, settings.git_history_column_widths,
             settings.git_history_column_order, settings.git_history_author_display, cx);
         composer::init(cx, settings.composer_send_behavior); terminal::panel::init(cx); app_menus::init(cx);
         let state = cx.new(|_| {
             let mut s = state::AppState::new();
-            s.connection = zeron_proto::view::ConnectionStatus::Ready;
-            s.workspace_scope = Some(zeron_proto::WorkspaceScope::Local);
-            if std::env::var_os("ZERON_SIDEBAR_ACCOUNT").is_some() {
-                s.workspace_scope = Some(zeron_proto::WorkspaceScope::Synced);
-                s.auth = Some(zeron_proto::AuthState::SignedIn {
-                    user: zeron_proto::UserProfile { id: "fixture-user".into(), email: "alex@example.test".into(), name: Some("Alex".into()) },
+            s.connection = openagents_proto::view::ConnectionStatus::Ready;
+            s.workspace_scope = Some(openagents_proto::WorkspaceScope::Local);
+            if openagents_brand::env_var_os("OPENAGENTS_SIDEBAR_ACCOUNT").is_some() {
+                s.workspace_scope = Some(openagents_proto::WorkspaceScope::Synced);
+                s.auth = Some(openagents_proto::AuthState::SignedIn {
+                    user: openagents_proto::UserProfile { id: "fixture-user".into(), email: "alex@example.test".into(), name: Some("Alex".into()) },
                     org_id: Some("fixture-org".into()),
                 });
             }
@@ -55,7 +55,7 @@ fn main() -> anyhow::Result<()> {
                 chat.id = format!("chat-{ix}");
                 chat.title = Some((*title).into());
                 chat.branch = Some(format!("fieldnotes/{}", title.to_lowercase().replace(' ', "-")));
-                chat.source_context = Some(zeron_proto::ConversationSourceContext {
+                chat.source_context = Some(openagents_proto::ConversationSourceContext {
                     checkout_id: "fixture-checkout".into(), repo_root: "/tmp/fieldnotes".into(),
                     cwd: "/tmp/fieldnotes".into(), branch: chat.branch.clone().unwrap(),
                     head_sha: None, observed_at: chrono::Utc::now(),
@@ -72,9 +72,9 @@ fn main() -> anyhow::Result<()> {
             for ix in [1, 2, 4, 8] {
                 let chat = s.chats[ix].clone();
                 let source = chat.source_context.as_ref().unwrap();
-                s.fixture_sidebar_change_request(zeron_proto::CheckoutChangeRequestStatus {
+                s.fixture_sidebar_change_request(openagents_proto::CheckoutChangeRequestStatus {
                     checkout_id: source.checkout_id.clone(), device_id: chat.device_id.clone(), cwd: source.repo_root.clone(), branch: source.branch.clone(), updated_at: chrono::Utc::now(),
-                    change_request: Some(zeron_proto::ChangeRequestSummary { provider: "github".into(), number: 412 + ix as u64, title: chat.title.clone().unwrap(), url: "https://github.com/zeronsh/zeron/pull/412".into(), state: zeron_proto::ChangeRequestState::Open, base_ref: "main".into(), head_ref: source.branch.clone() }),
+                    change_request: Some(openagents_proto::ChangeRequestSummary { provider: "github".into(), number: 412 + ix as u64, title: chat.title.clone().unwrap(), url: "https://github.com/zeronsh/zeron/pull/412".into(), state: openagents_proto::ChangeRequestState::Open, base_ref: "main".into(), head_ref: source.branch.clone() }),
                 });
             }
             if by_project {

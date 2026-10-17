@@ -839,7 +839,7 @@ mod tests {
             "digest [redacted]"
         );
         // Paths stay readable.
-        let path = "/tmp/zeron/data/agent-accounts/.login-0123456789abcdef/auth.json";
+        let path = "/tmp/openagents/data/agent-accounts/.login-0123456789abcdef/auth.json";
         assert_eq!(redact_output(path), path);
     }
 

@@ -572,7 +572,7 @@ fn parse_started_block(cur: &mut Cursor) -> Vec<Block> {
             vec![parse_table(cur, align)]
         }
         Tag::HtmlBlock => {
-            // Render raw HTML blocks as plain text (zeron's markdown does the same).
+            // Render raw HTML blocks as plain text (openagents's markdown does the same).
             let mut text = String::new();
             loop {
                 match cur.next_event() {

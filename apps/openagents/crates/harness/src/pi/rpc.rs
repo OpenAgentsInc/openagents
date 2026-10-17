@@ -26,7 +26,7 @@ impl Client {
             .map_err(|_| HarnessError::Protocol("Pi stdin closed".into()))
     }
     pub fn request(&self, mut frame: Value) -> Result<String, HarnessError> {
-        let id = format!("zeron-{}", self.next_id.fetch_add(1, Ordering::Relaxed));
+        let id = format!("openagents-{}", self.next_id.fetch_add(1, Ordering::Relaxed));
         frame["id"] = Value::String(id.clone());
         self.send(frame)?;
         Ok(id)

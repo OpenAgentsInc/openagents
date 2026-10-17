@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 
-use zeron_harness::{CancellationToken, RunControls, SteerMessage};
-use zeron_proto::{
+use openagents_harness::{CancellationToken, RunControls, SteerMessage};
+use openagents_proto::{
     AgentEvent, DoneStatus, HarnessId, Model, ReasoningLevel, RunRequest, SandboxLevel,
     UserInputAnswer, UserInputQuestion,
 };
@@ -19,7 +19,7 @@ use crate::repos::Repos;
 use crate::workspace_host::WorkspaceHost;
 
 /// Throwaway title runs are cheap but still cross a process boundary — retry a
-/// couple of times with a short backoff before falling back (zeron's ladder).
+/// couple of times with a short backoff before falling back (openagents's ladder).
 const RETRY_DELAYS_MS: &[u64] = &[250, 1_000];
 
 struct Inner {
@@ -117,9 +117,9 @@ impl TitleGenerator {
         }
 
         // Rename the worktree branch when the chat still sits on its original
-        // zeron/<name> branch (guards live inside rename_worktree_branch).
+        // openagents/<name> branch (guards live inside rename_worktree_branch).
         if let (Some(chat_cwd), Some(branch)) = (&latest.cwd, &latest.branch)
-            && branch.starts_with("zeron/")
+            && branch.starts_with("openagents/")
         {
             match self
                 .inner
@@ -154,16 +154,16 @@ impl TitleGenerator {
         let settings = self.inner.registry.title_settings();
         let enabled = self.inner.registry.enabled_set();
         let harness_id = settings.harness.or_else(|| {
-            if zeron_harness::supports_titles(harness_id) {
+            if openagents_harness::supports_titles(harness_id) {
                 Some(harness_id)
             } else {
                 enabled
                     .iter()
                     .copied()
-                    .find(|id| zeron_harness::supports_titles(*id))
+                    .find(|id| openagents_harness::supports_titles(*id))
             }
         })?;
-        if !zeron_harness::supports_titles(harness_id) {
+        if !openagents_harness::supports_titles(harness_id) {
             return None;
         }
         // Order this entire isolated subprocess against a queued update for
@@ -195,7 +195,7 @@ impl TitleGenerator {
         };
         let title_prompt = format!(
             "{}\n\nSession request (JSON string):\n{}",
-            zeron_harness::TITLE_INSTRUCTIONS,
+            openagents_harness::TITLE_INSTRUCTIONS,
             serde_json::to_string(prompt).ok()?
         );
         for attempt in 0..=RETRY_DELAYS_MS.len() {
@@ -239,7 +239,7 @@ impl TitleGenerator {
     }
 }
 
-/// The cheapest model a harness offers (zeron's `cheapestModel` heuristic):
+/// The cheapest model a harness offers (openagents's `cheapestModel` heuristic):
 /// prefer a small-tier name (haiku/mini/nano/flash/small/lite), else the last
 /// listed model; `None` when the catalog is empty (harness picks its default).
 fn cheapest_model(models: &[Model]) -> Option<String> {
@@ -269,7 +269,7 @@ fn clean_title(raw: &str) -> String {
 /// Drive one titling run through the harness: no steering, questions resolved
 /// empty immediately (a titling prompt must never block on input).
 async fn collect_text(
-    harness: &dyn zeron_harness::Harness,
+    harness: &dyn openagents_harness::Harness,
     request: RunRequest,
     execution_lease: Option<Arc<tokio::sync::OwnedRwLockReadGuard<()>>>,
 ) -> Result<String, EngineError> {
@@ -328,7 +328,7 @@ async fn collect_text(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zeron_proto::Model;
+    use openagents_proto::Model;
 
     fn model(id: &str, label: &str) -> Model {
         Model {
@@ -355,14 +355,14 @@ mod tests {
 
     #[tokio::test]
     async fn tool_use_rejects_the_title_instead_of_accepting_coding_output() {
-        let harness = zeron_harness::mock::MockHarness {
+        let harness = openagents_harness::mock::MockHarness {
             script: vec![
                 AgentEvent::TextDelta {
                     text: "I will change your code".into(),
                 },
                 AgentEvent::ToolCall {
                     id: "tool".into(),
-                    call: zeron_proto::ToolCall::Unknown {
+                    call: openagents_proto::ToolCall::Unknown {
                         name: "write".into(),
                         input: None,
                     },
@@ -395,7 +395,7 @@ mod tests {
     struct RecordingTitleHarness(std::sync::Mutex<Vec<RunRequest>>);
 
     #[async_trait::async_trait]
-    impl zeron_harness::Harness for RecordingTitleHarness {
+    impl openagents_harness::Harness for RecordingTitleHarness {
         fn id(&self) -> HarnessId {
             HarnessId::ClaudeCode
         }
@@ -405,13 +405,13 @@ mod tests {
         fn supports_steering(&self) -> bool {
             false
         }
-        fn steering_mode(&self) -> zeron_proto::SteeringMode {
-            zeron_proto::SteeringMode::TurnBoundary
+        fn steering_mode(&self) -> openagents_proto::SteeringMode {
+            openagents_proto::SteeringMode::TurnBoundary
         }
         fn reasoning_levels(&self) -> &[ReasoningLevel] {
             &[]
         }
-        async fn models(&self) -> Result<Vec<Model>, zeron_harness::HarnessError> {
+        async fn models(&self) -> Result<Vec<Model>, openagents_harness::HarnessError> {
             panic!("an explicit title model should bypass catalog discovery")
         }
         async fn run(
@@ -419,8 +419,8 @@ mod tests {
             _: RunRequest,
             _: RunControls,
         ) -> Result<
-            futures::stream::BoxStream<'static, Result<AgentEvent, zeron_harness::HarnessError>>,
-            zeron_harness::HarnessError,
+            futures::stream::BoxStream<'static, Result<AgentEvent, openagents_harness::HarnessError>>,
+            openagents_harness::HarnessError,
         > {
             panic!("title generation must never call the coding entry point")
         }
@@ -429,8 +429,8 @@ mod tests {
             request: RunRequest,
             _: RunControls,
         ) -> Result<
-            futures::stream::BoxStream<'static, Result<AgentEvent, zeron_harness::HarnessError>>,
-            zeron_harness::HarnessError,
+            futures::stream::BoxStream<'static, Result<AgentEvent, openagents_harness::HarnessError>>,
+            openagents_harness::HarnessError,
         > {
             assert!(std::path::Path::new(&request.cwd).is_dir());
             self.0.lock().unwrap().push(request);

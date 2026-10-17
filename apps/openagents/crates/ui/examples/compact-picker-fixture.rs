@@ -4,7 +4,7 @@ use gpui::{
     div, prelude::*, px, size,
 };
 use std::{path::Path, path::PathBuf, time::Duration};
-use zeron_ui::*;
+use openagents_ui::*;
 
 struct Fixture {
     pickers: Entity<pickers::Pickers>,
@@ -203,7 +203,7 @@ fn main() -> anyhow::Result<()> {
                     pause(cx).await;
                     window.update(cx, |view, _, cx| {
                         let state = view.pickers.read(cx).fixture_compact_state(cx);
-                        assert_eq!(state.reasoning, Some(zeron_proto::ReasoningLevel::XHigh));
+                        assert_eq!(state.reasoning, Some(openagents_proto::ReasoningLevel::XHigh));
                     })?;
                     capture(
                         window.into(),
@@ -278,7 +278,7 @@ fn main() -> anyhow::Result<()> {
                     window.update(cx, |view, _, cx| {
                         let state = view.pickers.read(cx).fixture_compact_state(cx);
                         assert!(!state.fast);
-                        assert_eq!(state.reasoning, Some(zeron_proto::ReasoningLevel::Low));
+                        assert_eq!(state.reasoning, Some(openagents_proto::ReasoningLevel::Low));
                     })?;
                     capture(
                         window.into(),

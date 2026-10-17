@@ -1,7 +1,7 @@
 // MIT: extracted with the orb; see THIRD_PARTY_NOTICES.md.
 //! Smoke tests + microbench for mode painters.
 
-use zeron_ui::orb::{
+use openagents_ui::orb::{
     ModeKey, OrbSize, OrbState,
     engine::{MAX_ICON_D, MAX_MORPH_DOTS, MAX_NODE_N, ModeOpts, draw_mode, sanitize_mode_opts},
     resolve_preset,

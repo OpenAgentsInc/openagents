@@ -6,7 +6,7 @@
 ## Behavior
 
 Implement a macOS-only global shortcut that captures the frontmost application
-window before Zeron activates, collects bounded Accessibility context, routes
+window before OpenAgents activates, collects bounded Accessibility context, routes
 the result to the current or new-session composer, and stages it for review and
 send. The paperclip and ordinary image intake remain unchanged.
 
@@ -18,7 +18,7 @@ send. The paperclip and ordinary image intake remain unchanged.
   CoreGraphics fallback for older macOS versions, Accessibility traversal,
   permission probes, and Carbon global-hotkey registration.
 - `crates/ui/src/lib.rs`: initialize and retain the capture service; deliver
-  captures to the main window without capturing Zeron itself.
+  captures to the main window without capturing OpenAgents itself.
 - `crates/ui/src/settings.rs`: persist Appshots enabled/destination/first-use
   state as device-local settings.
 - `crates/ui/src/settings/shortcuts.rs`: expose Appshots enablement,
@@ -47,9 +47,9 @@ boundary so existing local and remote attachment delivery remains intact.
 - Existing settings round-trip tests extended for backward-compatible defaults.
 - Composer send/failure tests extended where practical for Appshot state.
 - `cargo fmt --all -- --check`.
-- `cargo check -p zeron-ui`.
-- `cargo test -p zeron-ui`.
-- A headed macOS smoke run with an isolated `ZERON_DATA_DIR` to validate global
+- `cargo check -p openagents-ui`.
+- `cargo test -p openagents-ui`.
+- A headed macOS smoke run with an isolated `OPENAGENTS_DATA_DIR` to validate global
   shortcut delivery, permission recovery, frontmost-window ordering,
   screenshot preview, accessibility degradation, and local send. Remote-path
   behavior is covered by the existing queued attachment transport plus focused

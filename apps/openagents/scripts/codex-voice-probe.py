@@ -5,7 +5,7 @@ import json
 import shutil
 
 METHODS = (
-    ("initialize", {"clientInfo": {"name": "zeron-voice-probe", "version": "1"},
+    ("initialize", {"clientInfo": {"name": "openagents-voice-probe", "version": "1"},
                     "capabilities": {"experimentalApi": True}}),
     ("account/read", {"refreshToken": False}),
     ("account/rateLimits/read", {}),

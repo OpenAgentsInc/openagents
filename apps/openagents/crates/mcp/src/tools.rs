@@ -1,7 +1,7 @@
 //! The tool catalog and its dispatch.
 //!
 //! Every tool is a thin composition of engine reads/writes from
-//! [`Zeron`]; the only logic that lives here is argument resolution (chat
+//! [`OpenAgents`]; the only logic that lives here is argument resolution (chat
 //! by prefix, project by path), sender attribution, and the "how do I
 //! deliver a message to a chat in this state" choice the composer makes
 //! for humans.
@@ -13,14 +13,14 @@ use std::time::{Duration, Instant};
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use zeron_doc::SessionCommandPayload;
-use zeron_proto::{
+use openagents_doc::SessionCommandPayload;
+use openagents_proto::{
     Chat, ChatConfig, HarnessId, ReasoningLevel, RunRequest, SandboxLevel, Session, SessionStatus,
     Space, UserInputAnswer,
 };
 
 use crate::transcript::{RenderOptions, RenderedMessage, render_entries};
-use crate::zeron::{HarnessInfo, TurnOutcome, Zeron, session_for, short};
+use crate::openagents::{HarnessInfo, TurnOutcome, OpenAgents, session_for, short};
 
 /// Default and ceiling for the blocking waits.
 const MAX_BATCH: usize = 32;
@@ -39,7 +39,7 @@ pub struct ToolDef {
 }
 
 pub struct Tools {
-    zeron: Arc<Zeron>,
+    openagents: Arc<OpenAgents>,
     // Remember successful sends on this MCP connection so wait_for_turn after
     // wait:false also waits for a newly created chat with no session row yet.
     pending_turns: tokio::sync::Mutex<HashMap<String, Arc<PendingTurn>>>,
@@ -249,7 +249,7 @@ fn catalog() -> Vec<ToolDef> {
 }
 
 /// Shows a page in the CALLING chat, so it is offered only to an agent that
-/// Zeron launched (`ZERON_CHAT_ID` set).
+/// OpenAgents launched (`OPENAGENTS_CHAT_ID` set).
 const SHOW_VISUAL: &str = "show_visual";
 
 const SHOW_VISUAL_DESCRIPTION: &str = "\
@@ -258,10 +258,10 @@ chat, above your final text reply; call it before writing that reply. Use it whe
 than prose. The reader already sees it, so the reply should not announce, locate, or restate it: add \
 only what the visual doesn't say.\n\
 \n\
-A visual is a Luau script (Lua 5.1 plus `+=`, `continue`, and `if` expressions). Zeron runs it in a \
+A visual is a Luau script (Lua 5.1 plus `+=`, `continue`, and `if` expressions). OpenAgents runs it in a \
 sandbox (no I/O or network; math.random is seeded, so data is the same on every render) and renders \
-what it returns with Zeron's own native interface. Build data and state at the top level, then return \
-a view function. Zeron calls the view again after every handler, so handlers just assign to state:\n\
+what it returns with OpenAgents's own native interface. Build data and state at the top level, then return \
+a view function. OpenAgents calls the view again after every handler, so handlers just assign to state:\n\
 \n\
 local s = ui.state { metric = \"p95\" }\n\
 local data = { { region = \"us-east\", p95 = 182, p99 = 240 }, { region = \"eu-west\", p95 = 140, p99 = 210 } }\n\
@@ -275,7 +275,7 @@ return function()\n\
   }\n\
 end\n\
 \n\
-Zeron runs the script before showing it (setup, render, every draw, and each tab, toggle, slider, and \
+OpenAgents runs the script before showing it (setup, render, every draw, and each tab, toggle, slider, and \
 button once) and returns the first error with its line; fix it and call again.\n\
 \n\
 Nodes are props tables: children are the array part, strings are plain text, nil and false children \
@@ -313,7 +313,7 @@ radians clockwise from 3 o'clock), g:text(x, y, str, { size, color, weight, alig
 effects with it); t is seconds, and animate = true redraws every frame while visible.\n\
 - ui.scene { height = 320, draw = function(s, t) ... end, orbit = true, spin = 0.3 (turntable \
 radians per second), camera = { yaw = 0.6, pitch = 0.45, zoom = 1 }, animate = bool }: real 3D, y up, \
-rendered on the GPU with depth, soft shadows from a key light, and bloom. Zeron frames the camera on \
+rendered on the GPU with depth, soft shadows from a key light, and bloom. OpenAgents frames the camera on \
 your geometry and the reader drags to orbit. Solids (box, sphere, cylinder, surface, mesh) take \
 material props: roughness (0 mirror to 1 matte), metal (0-1), glow (emits its color and blooms; \
 use for lamps, beams, highlights), glass = true (refracts what's behind it; ior = 1.5, dispersion \
@@ -374,7 +374,7 @@ Style, enforced: layout nodes have no fill, border, shadow, padding, or font pro
 of the reply, not a widget, so lay content directly on the chat with type, spacing, and alignment: no \
 cards, tiles, boxed panels, banners, or canvas backgrounds. Stats are a row of plain ui.stat figures; \
 a chart is a plain heading, then the chart; separate sections with gap or one ui.rule. Text renders \
-in Zeron's interface font at the reader's text size: body for most text, sm and xs for labels and \
+in OpenAgents's interface font at the reader's text size: body for most text, sm and xs for labels and \
 notes, lg and xl for headings, 2xl for a headline figure. The width is the reply column (about 720px, \
 as narrow as 360px), so lay out fluidly with grow, wrap, and grid, and give charts, canvases, and \
 scenes heights of 160-420px.";
@@ -385,7 +385,7 @@ async fn read_visual_assets(
     assets: &std::collections::BTreeMap<String, String>,
 ) -> anyhow::Result<serde_json::Map<String, Value>> {
     use base64::Engine as _;
-    use zeron_proto::{
+    use openagents_proto::{
         VISUAL_MAX_ASSET_BYTES as MAX_ASSET_BYTES, VISUAL_MAX_ASSETS as MAX_ASSETS,
         VISUAL_MAX_TOTAL_ASSET_BYTES as MAX_TOTAL_ASSET_BYTES,
         valid_visual_asset_name as valid_name,
@@ -659,15 +659,15 @@ fn last_pending_input(messages: &[RenderedMessage]) -> Option<Value> {
 // ---- dispatch ----------------------------------------------------------------
 
 impl Tools {
-    pub fn new(zeron: Arc<Zeron>) -> Self {
+    pub fn new(openagents: Arc<OpenAgents>) -> Self {
         Self {
-            zeron,
+            openagents,
             pending_turns: Default::default(),
         }
     }
 
     pub fn list(&self) -> Vec<ToolDef> {
-        let in_chat = self.zeron.origin().chat_id.is_some();
+        let in_chat = self.openagents.origin().chat_id.is_some();
         catalog()
             .into_iter()
             .filter(|tool| in_chat || tool.name != SHOW_VISUAL)
@@ -739,14 +739,14 @@ impl Tools {
     }
 
     async fn whoami(&self) -> anyhow::Result<Value> {
-        let origin = self.zeron.origin().clone();
-        let local_device = self.zeron.local_device_id().await?;
-        let engine = self.zeron.engine_info().await.unwrap_or(Value::Null);
+        let origin = self.openagents.origin().clone();
+        let local_device = self.openagents.local_device_id().await?;
+        let engine = self.openagents.engine_info().await.unwrap_or(Value::Null);
         let chat = match origin.chat_id.as_deref() {
-            Some(id) => match self.zeron.resolve_chat(id).await {
+            Some(id) => match self.openagents.resolve_chat(id).await {
                 Ok(chat) => {
                     let (spaces, sessions) =
-                        tokio::try_join!(self.zeron.spaces(), self.zeron.sessions())?;
+                        tokio::try_join!(self.openagents.spaces(), self.openagents.sessions())?;
                     summarize_chat(&chat, &spaces, &sessions)
                 }
                 Err(_) => json!({ "id": id }),
@@ -768,7 +768,7 @@ impl Tools {
 
     async fn list_devices(&self) -> anyhow::Result<Value> {
         let (devices, local) =
-            tokio::try_join!(self.zeron.devices(), self.zeron.local_device_id())?;
+            tokio::try_join!(self.openagents.devices(), self.openagents.local_device_id())?;
         Ok(json!({
             "devices": devices.iter().map(|d| json!({
                 "id": d.id,
@@ -782,9 +782,9 @@ impl Tools {
     }
 
     async fn list_projects(&self, args: DeviceArgs) -> anyhow::Result<Value> {
-        let (mut spaces, devices) = tokio::try_join!(self.zeron.spaces(), self.zeron.devices())?;
+        let (mut spaces, devices) = tokio::try_join!(self.openagents.spaces(), self.openagents.devices())?;
         if let Some(device) = args.device.as_deref() {
-            let device = self.zeron.resolve_device_id(Some(device)).await?;
+            let device = self.openagents.resolve_device_id(Some(device)).await?;
             spaces.retain(|s| s.device_id == device);
         }
         let device_name = |id: &str| devices.iter().find(|d| d.id == id).map(|d| d.name.clone());
@@ -802,10 +802,10 @@ impl Tools {
 
     async fn list_harnesses(&self, args: DeviceArgs) -> anyhow::Result<Value> {
         let device = match args.device.as_deref() {
-            Some(key) => Some(self.zeron.resolve_device_id(Some(key)).await?),
+            Some(key) => Some(self.openagents.resolve_device_id(Some(key)).await?),
             None => None,
         };
-        let harnesses = self.zeron.harnesses_on(device.as_deref()).await?;
+        let harnesses = self.openagents.harnesses_on(device.as_deref()).await?;
         Ok(json!({
             "harnesses": harnesses.iter().map(|h| json!({
                 "id": h.id,
@@ -822,10 +822,10 @@ impl Tools {
         let harness: HarnessId =
             parse_enum("harness", &args.harness).map_err(anyhow::Error::msg)?;
         let device = match args.device.as_deref() {
-            Some(key) => Some(self.zeron.resolve_device_id(Some(key)).await?),
+            Some(key) => Some(self.openagents.resolve_device_id(Some(key)).await?),
             None => None,
         };
-        let models = self.zeron.models_on(harness, device.as_deref()).await?;
+        let models = self.openagents.models_on(harness, device.as_deref()).await?;
         Ok(json!({
             "harness": harness,
             "models": models.iter().map(|m| json!({
@@ -839,27 +839,27 @@ impl Tools {
 
     async fn list_chats(&self, args: ListChatsArgs) -> anyhow::Result<Value> {
         let (mut chats, spaces, sessions) = tokio::try_join!(
-            self.zeron.chats(),
-            self.zeron.spaces(),
-            self.zeron.sessions()
+            self.openagents.chats(),
+            self.openagents.spaces(),
+            self.openagents.sessions()
         )?;
         if let Some(project) = args.project.as_deref() {
             let (space, _) = self
-                .zeron
+                .openagents
                 .resolve_target(Some(project), args.device.as_deref())
                 .await?;
             let space = space.expect("project provided");
             chats.retain(|c| c.space_id.as_deref() == Some(space.id.as_str()));
         }
         if args.device.is_some() {
-            let device = self.zeron.resolve_device_id(args.device.as_deref()).await?;
+            let device = self.openagents.resolve_device_id(args.device.as_deref()).await?;
             chats.retain(|c| c.device_id == device);
         }
         if !args.include_archived {
             chats.retain(|c| !c.archived);
         }
         if let Some(parent) = args.parent.as_deref() {
-            let parent = self.zeron.resolve_chat(parent).await?;
+            let parent = self.openagents.resolve_chat(parent).await?;
             chats.retain(|c| c.parent_chat_id.as_deref() == Some(parent.id.as_str()));
         }
         chats.sort_by(|a, b| {
@@ -878,11 +878,11 @@ impl Tools {
     }
 
     async fn get_chat(&self, args: ChatArgs) -> anyhow::Result<Value> {
-        let chat = self.zeron.resolve_chat(&args.chat).await?;
+        let chat = self.openagents.resolve_chat(&args.chat).await?;
         let (spaces, sessions, entries) = tokio::try_join!(
-            self.zeron.spaces(),
-            self.zeron.sessions(),
-            self.zeron.transcript_on(&chat.id, Some(&chat.device_id))
+            self.openagents.spaces(),
+            self.openagents.sessions(),
+            self.openagents.transcript_on(&chat.id, Some(&chat.device_id))
         )?;
         let rendered = render_entries(&entries, RenderOptions::default());
         let mut summary = summarize_chat(&chat, &spaces, &sessions);
@@ -893,8 +893,8 @@ impl Tools {
     }
 
     async fn create_chat(&self, args: CreateChatArgs) -> anyhow::Result<Value> {
-        if let Some(origin) = self.zeron.origin().chat_id.as_deref() {
-            let chat = self.zeron.resolve_chat(origin).await?;
+        if let Some(origin) = self.openagents.origin().chat_id.as_deref() {
+            let chat = self.openagents.resolve_chat(origin).await?;
             anyhow::ensure!(
                 chat.parent_chat_id.is_none(),
                 "Side chats cannot create chats. Ask your parent chat to create another side chat."
@@ -915,11 +915,11 @@ impl Tools {
             None
         } else {
             match explicit_parent {
-                Some(key) => Some(self.zeron.resolve_chat(key).await?.id),
-                None => self.zeron.origin().chat_id.clone(),
+                Some(key) => Some(self.openagents.resolve_chat(key).await?.id),
+                None => self.openagents.origin().chat_id.clone(),
             }
             // A hidden voice orchestrator creates top-level sessions.
-            .filter(|parent| !zeron_proto::voice::is_orchestrator_chat(parent))
+            .filter(|parent| !openagents_proto::voice::is_orchestrator_chat(parent))
         };
         anyhow::ensure!(
             args.kind != Some(ChatKind::Side) || parent_chat_id.is_some(),
@@ -932,17 +932,17 @@ impl Tools {
         };
 
         if let Some(parent) = parent_chat_id.as_deref() {
-            let chat = self.zeron.resolve_chat(parent).await?;
+            let chat = self.openagents.resolve_chat(parent).await?;
             anyhow::ensure!(
                 chat.parent_chat_id.is_none(),
                 "Cannot create a child of a side chat. Choose a top-level parent chat."
             );
         }
         let (space, device_id) = self
-            .zeron
+            .openagents
             .resolve_target(args.project.as_deref(), args.device.as_deref())
             .await?;
-        let harnesses = self.zeron.harnesses_on(Some(&device_id)).await?;
+        let harnesses = self.openagents.harnesses_on(Some(&device_id)).await?;
         let harness = match args.harness.as_deref() {
             Some(raw) => {
                 let id: HarnessId = parse_enum("harness", raw).map_err(anyhow::Error::msg)?;
@@ -955,7 +955,7 @@ impl Tools {
             None => default_harness(&harnesses).with_context(|| format!("device {device_id}"))?,
         };
         if let Some(model) = args.model.as_deref() {
-            let models = self.zeron.models_on(harness, Some(&device_id)).await?;
+            let models = self.openagents.models_on(harness, Some(&device_id)).await?;
             anyhow::ensure!(
                 models.iter().any(|m| m.id == model),
                 "model {model:?} is not offered by {harness:?} on device {device_id}; available: {}",
@@ -1014,14 +1014,14 @@ impl Tools {
         // in agreement.
         if space.is_none()
             && cwd.is_none()
-            && self.zeron.devices().await?.iter().any(|d| {
+            && self.openagents.devices().await?.iter().any(|d| {
                 d.id == device_id
                     && d.capabilities
                         .iter()
-                        .any(|c| c == zeron_proto::capabilities::PROJECTLESS_SCRATCH_V1)
+                        .any(|c| c == openagents_proto::capabilities::PROJECTLESS_SCRATCH_V1)
             })
         {
-            cwd = Some(zeron_proto::projectless::scratch_cwd(
+            cwd = Some(openagents_proto::projectless::scratch_cwd(
                 &chat_id,
                 chrono::Utc::now(),
             ));
@@ -1029,14 +1029,14 @@ impl Tools {
         if let Some(cwd) = &cwd {
             mutate["cwd"] = json!(cwd);
         }
-        self.zeron.mutate(mutate).await?;
+        self.openagents.mutate(mutate).await?;
         if let Some(title) = args
             .title
             .as_deref()
             .map(str::trim)
             .filter(|t| !t.is_empty())
         {
-            self.zeron
+            self.openagents
                 .mutate(json!({ "op": "renameChat", "chatId": chat_id, "title": title }))
                 .await?;
         }
@@ -1098,9 +1098,9 @@ impl Tools {
     }
 
     async fn read_chat(&self, args: ReadChatArgs) -> anyhow::Result<Value> {
-        let chat = self.zeron.resolve_chat(&args.chat).await?;
+        let chat = self.openagents.resolve_chat(&args.chat).await?;
         let entries = self
-            .zeron
+            .openagents
             .transcript_on(&chat.id, Some(&chat.device_id))
             .await?;
         let rendered = render_entries(
@@ -1132,17 +1132,17 @@ impl Tools {
         if text.is_empty() {
             anyhow::bail!("text is empty");
         }
-        let chat = self.zeron.resolve_chat(&args.chat).await?;
-        if self.zeron.origin().chat_id.as_deref() == Some(chat.id.as_str()) {
+        let chat = self.openagents.resolve_chat(&args.chat).await?;
+        if self.openagents.origin().chat_id.as_deref() == Some(chat.id.as_str()) {
             anyhow::bail!(
                 "refusing to send a message to your own chat ({})",
                 short(&chat.id)
             );
         }
         let (spaces, sessions, harnesses) = tokio::try_join!(
-            self.zeron.spaces(),
-            self.zeron.sessions(),
-            self.zeron.harnesses_on(Some(&chat.device_id))
+            self.openagents.spaces(),
+            self.openagents.sessions(),
+            self.openagents.harnesses_on(Some(&chat.device_id))
         )?;
         let space = chat
             .space_id
@@ -1151,7 +1151,7 @@ impl Tools {
         let baseline = session_for(&sessions, &chat);
         let mode = args.mode.as_deref().unwrap_or("auto");
         let message_ids = self
-            .zeron
+            .openagents
             .transcript_on(&chat.id, Some(&chat.device_id))
             .await?
             .into_iter()
@@ -1182,7 +1182,7 @@ impl Tools {
     }
 
     async fn wait_for_turn(&self, args: WaitArgs) -> anyhow::Result<Value> {
-        let chat = self.zeron.resolve_chat(&args.chat).await?;
+        let chat = self.openagents.resolve_chat(&args.chat).await?;
         let pending = self.pending_turns.lock().await.get(&chat.id).cloned();
         let turn = match pending {
             Some(pending) => {
@@ -1204,9 +1204,9 @@ impl Tools {
     }
 
     async fn archive_chat(&self, args: ArchiveArgs) -> anyhow::Result<Value> {
-        let chat = self.zeron.resolve_chat(&args.chat).await?;
+        let chat = self.openagents.resolve_chat(&args.chat).await?;
         let archived = args.archived.unwrap_or(true);
-        self.zeron
+        self.openagents
             .mutate(json!({ "op": "setChatArchived", "chatId": chat.id, "archived": archived }))
             .await?;
         Ok(json!({ "chatId": chat.id, "title": chat.title, "archived": archived }))
@@ -1214,16 +1214,16 @@ impl Tools {
 
     async fn show_visual(&self, args: ShowVisualArgs) -> anyhow::Result<Value> {
         let chat_id = self
-            .zeron
+            .openagents
             .origin()
             .chat_id
             .clone()
-            .context("show_visual only works from an agent Zeron launched in a chat")?;
+            .context("show_visual only works from an agent OpenAgents launched in a chat")?;
         let assets = read_visual_assets(&args.assets).await?;
         let shown = self
-            .zeron
+            .openagents
             .call(
-                zeron_rpc::methods::PUBLISH_VISUAL,
+                openagents_rpc::methods::PUBLISH_VISUAL,
                 json!({
                     "chatId": chat_id,
                     "title": args.title,
@@ -1242,7 +1242,7 @@ impl Tools {
     /// reply (the same native visual `show_visual` publishes).
     async fn video_lab(&self, name: &str, args: Value) -> Result<Value, String> {
         let mut result = crate::video_lab::call(name, args).await?;
-        let Some(chat_id) = self.zeron.origin().chat_id.clone() else {
+        let Some(chat_id) = self.openagents.origin().chat_id.clone() else {
             return Ok(result);
         };
         let Some(card) = result.get("card").cloned() else {
@@ -1257,9 +1257,9 @@ impl Tools {
         }
         let shown = match read_visual_assets(&paths).await {
             Ok(assets) => self
-                .zeron
+                .openagents
                 .call(
-                    zeron_rpc::methods::PUBLISH_VISUAL,
+                    openagents_rpc::methods::PUBLISH_VISUAL,
                     json!({
                         "chatId": chat_id,
                         "title": visual.title,
@@ -1288,21 +1288,21 @@ impl Tools {
     }
 
     async fn interrupt_chat(&self, args: ChatArgs) -> anyhow::Result<Value> {
-        let chat = self.zeron.resolve_chat(&args.chat).await?;
+        let chat = self.openagents.resolve_chat(&args.chat).await?;
         let command_id = self
-            .zeron
+            .openagents
             .queue_command(&chat.id, &SessionCommandPayload::Interrupt {})
             .await?;
         Ok(json!({ "chatId": chat.id, "commandId": command_id }))
     }
 
     async fn respond_to_input(&self, args: RespondArgs) -> anyhow::Result<Value> {
-        let chat = self.zeron.resolve_chat(&args.chat).await?;
+        let chat = self.openagents.resolve_chat(&args.chat).await?;
         let request_id = match args.request_id {
             Some(id) => id,
             None => {
                 let entries = self
-                    .zeron
+                    .openagents
                     .transcript_on(&chat.id, Some(&chat.device_id))
                     .await?;
                 let rendered = render_entries(&entries, RenderOptions::default());
@@ -1329,7 +1329,7 @@ impl Tools {
             })
             .collect();
         let command_id = self
-            .zeron
+            .openagents
             .queue_command(
                 &chat.id,
                 &SessionCommandPayload::RespondInput {
@@ -1348,13 +1348,13 @@ impl Tools {
     /// an agent-to-agent message from a typed one. Reply instructions always
     /// use the full id: display prefixes need not uniquely identify a chat.
     async fn attribute(&self, target: &Chat, text: &str) -> String {
-        let Some(origin_id) = self.zeron.origin().chat_id.as_deref() else {
+        let Some(origin_id) = self.openagents.origin().chat_id.as_deref() else {
             return text.to_owned();
         };
         if origin_id == target.id {
             return text.to_owned();
         }
-        let title = match self.zeron.resolve_chat(origin_id).await {
+        let title = match self.openagents.resolve_chat(origin_id).await {
             Ok(chat) => chat.title,
             Err(_) => None,
         };
@@ -1365,7 +1365,7 @@ impl Tools {
             _ => short(origin_id).to_owned(),
         };
         format!(
-            "[Message from Zeron chat {label}. Reply to it with the Zeron `send_message` tool, chat {}.]\n\n{text}",
+            "[Message from OpenAgents chat {label}. Reply to it with the OpenAgents `send_message` tool, chat {}.]\n\n{text}",
             origin_id
         )
     }
@@ -1429,7 +1429,7 @@ impl Tools {
                     attachments: Vec::new(),
                     worktree: None,
                 };
-                self.zeron
+                self.openagents
                     .queue_command(
                         &chat.id,
                         &SessionCommandPayload::Run {
@@ -1440,7 +1440,7 @@ impl Tools {
                     .await?
             }
             "steer" => {
-                self.zeron
+                self.openagents
                     .queue_command(
                         &chat.id,
                         &SessionCommandPayload::Steer {
@@ -1450,7 +1450,7 @@ impl Tools {
                     )
                     .await?
             }
-            _ => self.zeron.queue_message(&chat.id, &text).await?,
+            _ => self.openagents.queue_message(&chat.id, &text).await?,
         };
         Ok(json!({
             "delivery": chosen,
@@ -1499,7 +1499,7 @@ impl Tools {
     ) -> anyhow::Result<Value> {
         let deadline = Instant::now() + timeout;
         let (mut outcome, session) = self
-            .zeron
+            .openagents
             .wait_for_turn(chat, baseline, expect_turn, timeout)
             .await?;
         // Registry session updates can arrive before the separate transcript doc.
@@ -1516,7 +1516,7 @@ impl Tools {
             }
             let entries = match tokio::time::timeout(
                 remaining,
-                self.zeron.transcript_on(&chat.id, Some(&chat.device_id)),
+                self.openagents.transcript_on(&chat.id, Some(&chat.device_id)),
             )
             .await
             {
@@ -1529,7 +1529,7 @@ impl Tools {
             rendered = render_entries(&entries, RenderOptions::default());
             replies = rendered
                 .iter()
-                .filter(|m| m.role == zeron_doc::MessageRole::Assistant)
+                .filter(|m| m.role == openagents_doc::MessageRole::Assistant)
                 .filter(|m| !start.message_ids.contains(&m.id))
                 .cloned()
                 .collect();
@@ -1537,7 +1537,7 @@ impl Tools {
                 || outcome != TurnOutcome::Completed
                 || replies
                     .iter()
-                    .any(|m| m.status != Some(zeron_doc::MessageStatus::Streaming))
+                    .any(|m| m.status != Some(openagents_doc::MessageStatus::Streaming))
             {
                 break;
             }
@@ -1573,11 +1573,11 @@ fn default_harness(harnesses: &[HarnessInfo]) -> anyhow::Result<HarnessId> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zeron::Origin;
+    use crate::openagents::Origin;
     use async_trait::async_trait;
     use futures::StreamExt;
     use std::sync::Mutex;
-    use zeron_rpc::{RpcError, RpcReply, RpcService, memory_client, methods};
+    use openagents_rpc::{RpcError, RpcReply, RpcService, memory_client, methods};
 
     /// Two devices with distinct catalogs and repeated project paths, plus
     /// two chats with a two-message transcript. Writes are recorded for assertions.
@@ -1702,7 +1702,7 @@ mod tests {
 
     fn tools(world: Arc<World>, origin: Origin) -> Tools {
         let client = memory_client(world);
-        Tools::new(Arc::new(Zeron::with_client(client, origin)))
+        Tools::new(Arc::new(OpenAgents::with_client(client, origin)))
     }
 
     #[tokio::test]
@@ -1723,9 +1723,9 @@ mod tests {
         let start = SHOW_VISUAL_DESCRIPTION.find("local s = ui.state").unwrap();
         let end = start
             + SHOW_VISUAL_DESCRIPTION[start..]
-                .find("\n\nZeron runs the script")
+                .find("\n\nOpenAgents runs the script")
                 .unwrap();
-        let report = zeron_visual::check(&SHOW_VISUAL_DESCRIPTION[start..end], 1).unwrap();
+        let report = openagents_visual::check(&SHOW_VISUAL_DESCRIPTION[start..end], 1).unwrap();
         assert_eq!(report.interactions, 2, "both tabs");
     }
 
@@ -1753,7 +1753,7 @@ mod tests {
         );
         assert!(inside.has("show_visual"));
         // The guidance names every color the runtime accepts.
-        for name in zeron_visual::TOKEN_NAMES {
+        for name in openagents_visual::TOKEN_NAMES {
             assert!(SHOW_VISUAL_DESCRIPTION.contains(name), "{name}");
         }
         let shown = inside
@@ -1835,7 +1835,7 @@ mod tests {
         assert_eq!(params["command"]["kind"], "run");
         let prompt = params["command"]["request"]["prompt"].as_str().unwrap();
         assert!(
-            prompt.starts_with("[Message from Zeron chat Beta (chat-bet)"),
+            prompt.starts_with("[Message from OpenAgents chat Beta (chat-bet)"),
             "{prompt}"
         );
         assert!(prompt.ends_with("please review"));
@@ -1869,7 +1869,7 @@ mod tests {
             },
         );
         let error = orchestrator
-            .zeron
+            .openagents
             .resolve_chat("voice-or")
             .await
             .unwrap_err();
@@ -1922,7 +1922,7 @@ mod tests {
     async fn auto_steers_busy_chats_even_at_turn_boundaries_or_after_long_quiet_tools() {
         let world = Arc::new(World::default());
         let tools = tools(world.clone(), Origin::default());
-        let chats = tools.zeron.chats().await.unwrap();
+        let chats = tools.openagents.chats().await.unwrap();
         let session = Session {
             chat_id: chats[0].id.clone(),
             device_id: "dev-local".into(),
@@ -2512,7 +2512,7 @@ mod tests {
                 never_reply: false,
                 host_skew_millis: 0,
             });
-            let tools = Tools::new(Arc::new(Zeron::with_client(
+            let tools = Tools::new(Arc::new(OpenAgents::with_client(
                 memory_client(service),
                 Origin::default(),
             )));
@@ -2551,7 +2551,7 @@ mod tests {
                 never_reply: false,
                 host_skew_millis: 0,
             });
-            let tools = Tools::new(Arc::new(Zeron::with_client(
+            let tools = Tools::new(Arc::new(OpenAgents::with_client(
                 memory_client(service),
                 Origin::default(),
             )));
@@ -2600,7 +2600,7 @@ mod tests {
                 never_reply: false,
                 host_skew_millis: -30_000,
             });
-            let tools = Tools::new(Arc::new(Zeron::with_client(
+            let tools = Tools::new(Arc::new(OpenAgents::with_client(
                 memory_client(service),
                 Origin::default(),
             )));
@@ -2634,7 +2634,7 @@ mod tests {
             never_reply: true,
             host_skew_millis: 0,
         });
-        let tools = Tools::new(Arc::new(Zeron::with_client(
+        let tools = Tools::new(Arc::new(OpenAgents::with_client(
             memory_client(service),
             Origin::default(),
         )));
@@ -2663,7 +2663,7 @@ mod tests {
                     never_reply: false,
                     host_skew_millis,
                 });
-                let tools = Tools::new(Arc::new(Zeron::with_client(
+                let tools = Tools::new(Arc::new(OpenAgents::with_client(
                     memory_client(service),
                     Origin::default(),
                 )));
@@ -2715,7 +2715,7 @@ mod tests {
         )
         .await;
         assert_eq!(init["result"]["protocolVersion"], "2025-03-26");
-        assert_eq!(init["result"]["serverInfo"]["name"], "zeron");
+        assert_eq!(init["result"]["serverInfo"]["name"], "openagents");
         let list =
             crate::jsonrpc::handle_request(&tools, json!(2), "tools/list", Value::Null).await;
         assert!(list["result"]["tools"].as_array().unwrap().len() >= 10);

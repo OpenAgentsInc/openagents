@@ -5,8 +5,8 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use zeron_client::events::NullListener;
-use zeron_client::{
+use openagents_client::events::NullListener;
+use openagents_client::{
     ChatIndicator, Client, ClientConfig, Credentials, DemoFixture, DemoOptions, MessageRole,
     MessageStatus, SendOutcome, SendRequest, StreamSpeed, TranscriptScale,
 };
@@ -35,7 +35,7 @@ fn wait_for(what: &str, timeout: Duration, mut f: impl FnMut() -> bool) {
     }
 }
 
-fn ids(rows: &[Arc<zeron_client::SessionRow>]) -> Vec<&str> {
+fn ids(rows: &[Arc<openagents_client::SessionRow>]) -> Vec<&str> {
     rows.iter().map(|r| r.id.as_str()).collect()
 }
 
@@ -76,7 +76,7 @@ fn front_page_mirrors_the_desktop_sidebar() {
     assert_eq!(veil.indicator, ChatIndicator::Working);
     assert!(veil.working_since_ms.is_some());
     assert!(veil.pinned);
-    assert_eq!(veil.project.as_ref().unwrap().name, "zeron");
+    assert_eq!(veil.project.as_ref().unwrap().name, "openagents");
     assert_eq!(veil.device_name.as_deref(), Some("MacBook Pro"));
     assert!(veil.device_online);
     assert_eq!(veil.model_label.as_deref(), Some("Fable 5"));
@@ -100,17 +100,17 @@ fn front_page_mirrors_the_desktop_sidebar() {
     assert_eq!(ids(&prs.merged), ["chat-picker"]);
     assert_eq!(ids(&prs.closed), ["chat-tabs"]);
 
-    let zeron = ws.project("space-zeron").unwrap();
-    assert_eq!(zeron.indicator, ChatIndicator::AwaitingInput);
-    assert!(zeron.unseen_count >= 2);
+    let openagents = ws.project("space-openagents").unwrap();
+    assert_eq!(openagents.indicator, ChatIndicator::AwaitingInput);
+    assert!(openagents.unseen_count >= 2);
     // Clones of one repository are one project, with one name and color.
-    let clone = ws.project("space-zeron-vps").unwrap();
-    assert_eq!(clone.group_key, zeron.group_key);
-    assert_eq!(clone.group_name, "zeron");
-    assert_eq!(clone.color_index, zeron.color_index);
+    let clone = ws.project("space-openagents-vps").unwrap();
+    assert_eq!(clone.group_key, openagents.group_key);
+    assert_eq!(clone.group_name, "openagents");
+    assert_eq!(clone.color_index, openagents.color_index);
     let cjk = ws.session("chat-cjk").unwrap();
-    assert_eq!(cjk.project.as_ref().unwrap().color_index, zeron.color_index);
-    assert_ne!(ws.project("space-edge").unwrap().group_key, zeron.group_key);
+    assert_eq!(cjk.project.as_ref().unwrap().color_index, openagents.color_index);
+    assert_ne!(ws.project("space-edge").unwrap().group_key, openagents.group_key);
     assert_eq!(ids(&ws.projectless), ["chat-visuals", "chat-home"]);
     assert!(ws.devices.iter().any(|d| d.is_self && d.id == "ios-test"));
     assert!(!ws.device("dev-studio").unwrap().online);
@@ -272,7 +272,7 @@ fn questions_answer_through_respond_input() {
     session
         .respond_input(
             &input.request_id,
-            vec![zeron_proto_answer(&input.questions[0].id, "iOS only")],
+            vec![openagents_proto_answer(&input.questions[0].id, "iOS only")],
         )
         .unwrap();
     wait_for("answered", Duration::from_secs(10), || {
@@ -282,8 +282,8 @@ fn questions_answer_through_respond_input() {
     assert!(format!("{:?}", last.message.parts).contains("iOS only"));
 }
 
-fn zeron_proto_answer(question_id: &str, label: &str) -> zeron_client::UserInputAnswer {
-    zeron_client::UserInputAnswer {
+fn openagents_proto_answer(question_id: &str, label: &str) -> openagents_client::UserInputAnswer {
+    openagents_client::UserInputAnswer {
         question_id: question_id.into(),
         labels: vec![label.into()],
     }
@@ -348,8 +348,8 @@ fn empty_fixtures() {
 fn new_sessions_are_born_on_chat2() {
     let (client, _dir) = demo(fast());
     let id = client
-        .create_session(zeron_client::NewSession {
-            target: zeron_client::SessionTarget::Project {
+        .create_session(openagents_client::NewSession {
+            target: openagents_client::SessionTarget::Project {
                 space_id: "space-edge".into(),
             },
             config: None,
@@ -379,7 +379,7 @@ fn warm_sessions_are_capped_and_preload_follows_the_front_page() {
     let (client, _dir) = demo(fast());
     client.preload_sessions();
     let open = client.open_session_ids();
-    assert_eq!(open.len(), zeron_client::PRELOAD_CAP);
+    assert_eq!(open.len(), openagents_client::PRELOAD_CAP);
     for id in ["chat-veil", "chat-picker", "chat-tabs", "chat-errored"] {
         assert!(open.iter().any(|o| o == id), "{id} preloaded");
     }
@@ -396,7 +396,7 @@ fn warm_sessions_are_capped_and_preload_follows_the_front_page() {
         client.close_session(id);
     }
     let open = client.open_session_ids();
-    assert!(open.len() <= zeron_client::WARM_SESSION_CAP + 2, "{open:?}");
+    assert!(open.len() <= openagents_client::WARM_SESSION_CAP + 2, "{open:?}");
     assert!(
         open.iter().any(|o| o == "chat-home"),
         "attached sessions stay"
@@ -413,7 +413,7 @@ fn offline_sends_queue_durably_and_deliver_on_recovery() {
     let session = client.open_session("chat-deploy").unwrap();
     client.set_network_online(false);
     wait_for("graced offline", Duration::from_secs(8), || {
-        client.connectivity().state == zeron_client::ConnectivityState::Offline
+        client.connectivity().state == openagents_client::ConnectivityState::Offline
     });
     let SendOutcome::Started { message_id } =
         session.send(SendRequest::text("while offline")).unwrap()
@@ -422,7 +422,7 @@ fn offline_sends_queue_durably_and_deliver_on_recovery() {
     };
     std::thread::sleep(Duration::from_millis(400));
     let composer = session.composer();
-    assert_eq!(composer.send_state, Some(zeron_client::SendState::Queued));
+    assert_eq!(composer.send_state, Some(openagents_client::SendState::Queued));
     assert!(composer.delivery_degraded);
     assert_eq!(
         client
@@ -430,7 +430,7 @@ fn offline_sends_queue_durably_and_deliver_on_recovery() {
             .session("chat-deploy")
             .unwrap()
             .send_state,
-        Some(zeron_client::SendState::Queued)
+        Some(openagents_client::SendState::Queued)
     );
     assert!(
         session
@@ -490,7 +490,7 @@ fn steering_while_busy_sends_a_steer_not_a_queue_row() {
     let session = client.open_session("chat-home").unwrap();
     // The composer learns mid-turn steering from the host's live catalog.
     let host = session.composer().host.device_id.clone();
-    zeron_client::runtime::shared().block_on(client.list_harnesses(&host));
+    openagents_client::runtime::shared().block_on(client.list_harnesses(&host));
     session.send(SendRequest::text("first")).unwrap();
     wait_for("turn running and steerable", Duration::from_secs(5), || {
         let composer = session.composer();
@@ -498,7 +498,7 @@ fn steering_while_busy_sends_a_steer_not_a_queue_row() {
     });
     let outcome = session
         .send(SendRequest {
-            busy: zeron_client::BusyPolicy::Steer,
+            busy: openagents_client::BusyPolicy::Steer,
             ..SendRequest::text("also this")
         })
         .unwrap();
@@ -547,12 +547,12 @@ fn sends_to_an_offline_host_park_as_queued_not_working() {
     let snap = session.snapshot();
     let composer = session.composer();
     assert_eq!(snap.pending[0].message_id, message_id);
-    assert_eq!(snap.pending[0].state, zeron_client::SendState::Queued);
+    assert_eq!(snap.pending[0].state, openagents_client::SendState::Queued);
     assert!(!snap.working, "a parked send is not a running turn");
     assert!(!composer.live.turn_running && !composer.live.can_interrupt);
     assert!(composer.delivery_degraded);
     // The sidebar still shows the send in flight (desktop display_status_for).
     let row = client.workspace().session("chat-blog").unwrap().clone();
-    assert_eq!(row.send_state, Some(zeron_client::SendState::Queued));
+    assert_eq!(row.send_state, Some(openagents_client::SendState::Queued));
     assert_eq!(row.host_indicator, ChatIndicator::Idle);
 }

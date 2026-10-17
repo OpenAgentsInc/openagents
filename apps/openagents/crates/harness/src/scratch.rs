@@ -44,7 +44,7 @@ impl ScratchDir {
             .collect();
         loop {
             let path = std::env::temp_dir().join(format!(
-                "zeron-{label}-{}-{}",
+                "openagents-{label}-{}-{}",
                 std::process::id(),
                 NEXT_SCRATCH.fetch_add(1, Ordering::Relaxed)
             ));

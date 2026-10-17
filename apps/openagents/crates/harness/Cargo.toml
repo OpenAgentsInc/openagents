@@ -1,5 +1,5 @@
 [package]
-name = "zeron-harness"
+name = "openagents-harness"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -23,9 +23,9 @@ required-features = ["native-fixture"]
 
 [dependencies]
 openagents-sdk = { path = "../../../../crates/openagents-sdk" }
-coder-brand.workspace = true
-zeron-voice-media.workspace = true
-zeron-proto.workspace = true
+openagents-brand.workspace = true
+openagents-voice-media.workspace = true
+openagents-proto.workspace = true
 base64 = "0.22"
 reqwest.workspace = true
 tokio.workspace = true

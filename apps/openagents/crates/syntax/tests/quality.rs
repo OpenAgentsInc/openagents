@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use zeron_syntax::{HighlightKind, HighlightRequest, HighlightedDocument, highlight};
+use openagents_syntax::{HighlightKind, HighlightRequest, HighlightedDocument, highlight};
 
 fn document(source: &str, path: &str) -> HighlightedDocument {
     highlight(HighlightRequest {

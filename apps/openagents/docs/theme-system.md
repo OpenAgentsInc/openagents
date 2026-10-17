@@ -1,7 +1,7 @@
 # Theme system
 
-Zeron themes are complete, source-neutral `ThemeVariant` values owned by the
-`zeron-theme` crate. Runtime components consume only Zeron semantic roles. VS
+OpenAgents themes are complete, source-neutral `ThemeVariant` values owned by the
+`openagents-theme` crate. Runtime components consume only OpenAgents semantic roles. VS
 Code workbench ids and TextMate selectors stop at the source compiler.
 
 ## Runtime model
@@ -11,7 +11,7 @@ Code workbench ids and TextMate selectors stop at the source compiler.
 - `ThemeSelection` stores independent light and dark variant ids.
 - `AccentSelection::ThemeDefault` preserves the variant's authored accent.
 - `AccentSelection::Preset` derives a contrast-checked interaction overlay.
-- Every variant records a recommended `SurfaceTreatment`: Zeron recommends
+- Every variant records a recommended `SurfaceTreatment`: OpenAgents recommends
   frost, while VS Code-derived themes recommend opaque surfaces because that is
   what their authors targeted.
 - `SurfacePreference` is a separate device-local choice: `Theme default`,
@@ -28,7 +28,7 @@ Surface preference affects only surface composition. Theme default preserves
 the variant's recommendation; either override remains active while users move
 between built-in, imported, and linked themes. Forced frost derives window,
 floating, input, card, and hover tints from the variant's mapped shell roles
-instead of fixed Zeron greys. Its window tint becomes denser when necessary to
+instead of fixed OpenAgents greys. Its window tint becomes denser when necessary to
 keep primary text at 4.5:1 and muted text at 3:1 against the adverse desktop
 luminance. Floating overlays, settings cards, and inputs run the same
 composited-background check independently; a delicate palette can therefore
@@ -44,7 +44,7 @@ The preference remains portable even where a particular surface cannot honor blu
 The built-in registry contains 32 variants across 20 families:
 
 - Coder Light and Coder Noir (the default light and dark choices)
-- Zeron Light and Dark
+- OpenAgents Light and Dark
 - VS Code Light+ and Dark+
 - Catppuccin Latte and Mocha
 - Tokyo Night Light and Tokyo Night
@@ -96,13 +96,13 @@ the optional mapping review.
 
 The importer records `Opaque` as the variant's recommended surface treatment
 and reports that inference. This preserves the source palette by default while
-still allowing the independent Zeron surface preference to force frost.
+still allowing the independent OpenAgents surface preference to force frost.
 
-After source mapping, a deterministic hardening pass checks Zeron's shared
+After source mapping, a deterministic hardening pass checks OpenAgents's shared
 roles across every solid surface where they are painted. It keeps VS Code's
 semantic distinctions (`foreground`, `descriptionForeground`,
 `editor.foreground`, and component-specific foregrounds), promotes a stronger
-related source role when the preferred one cannot carry the Zeron role, and
+related source role when the preferred one cannot carry the OpenAgents role, and
 only then adjusts the original color toward a contrast-safe anchor. Primary,
 muted, button, terminal, focus/status, and interaction roles are covered.
 Foundational surfaces with alpha are flattened against the resolved theme
@@ -126,15 +126,15 @@ activated only after the updated library is persisted successfully. The library 
 `{data_dir}/theme-library.json` and is loaded before the first palette is
 installed.
 
-The `zeron-theme-import` development tool exposes the same single-file adapter
+The `openagents-theme-import` development tool exposes the same single-file adapter
 for built-in curation:
 
 Example:
 
 ```bash
-cargo run -p zeron-theme --bin zeron-theme-import -- \
+cargo run -p openagents-theme --bin openagents-theme-import -- \
   --input /path/to/theme.json \
-  --output /tmp/theme.zeron.json \
+  --output /tmp/theme.openagents.json \
   --report /tmp/theme.report.json \
   --id example-dark \
   --family-id example \
@@ -151,7 +151,7 @@ without truncating the advanced mapping review. Structural errors such as
 duplicate ids or incomplete provenance block installation. Contrast findings
 remain reviewable because compiled imports and runtime native-theme resolution
 apply deterministic safeguards rather than rejecting an otherwise valid
-source. Zeron does not fetch or execute VSIX packages at runtime; custom
+source. OpenAgents does not fetch or execute VSIX packages at runtime; custom
 sources are local files and folders compiled into resolved data.
 
 ## Acceptance and visual QA

@@ -1,5 +1,5 @@
 //! Mends half-streamed inline markdown for display (after streamdown's
-//! `remend`, ported to zeron's incremental parser).
+//! `remend`, ported to openagents's incremental parser).
 //!
 //! While a block is streaming, an unclosed `**bold`, `*em`, `` `code ``,
 //! `~~strike` or `[link](partial-url` parses as literal text; the closing
@@ -12,7 +12,7 @@
 //! flip when the row completes — instead of jittering throughout.
 //!
 //! Repairs, in the spirit of remend's handler set (its katex/html/comparison
-//! handlers don't apply here — zeron renders raw HTML literally and has no
+//! handlers don't apply here — openagents renders raw HTML literally and has no
 //! math):
 //! - emphasis parity: `**a`→`**a**`, `*a`→`*a*`, `_a`/`__a`, `~~a`, nested
 //!   closers innermost-first (`**a *b` → `**a *b***`), half-streamed closers
@@ -39,11 +39,11 @@
 //! top-level block of the stream, so per-append work stays O(tail) — the same
 //! bound as the incremental reparse itself. remend re-scans the entire
 //! accumulated message every delta; feeding just the tail is what makes the
-//! port fit zeron's parser.
+//! port fit openagents's parser.
 
 /// Sentinel destination for a link whose URL is still streaming. The renderer
 /// styles it like any link but must not register it as clickable.
-pub const PENDING_LINK_URL: &str = "zeron:pending-link";
+pub const PENDING_LINK_URL: &str = "openagents:pending-link";
 
 /// One unclosed emphasis-family delimiter run (`*`, `_`, or `~~`).
 struct OpenDelim {
@@ -375,10 +375,10 @@ mod tests {
 
     #[test]
     fn links_mend_to_pending_sentinel() {
-        mends("[docs](https://x.dev/lo", "[docs](zeron:pending-link)");
-        mends("[docs](", "[docs](zeron:pending-link)");
-        mends("see [do", "see [do](zeron:pending-link)");
-        mends("![alt](https://x/i.p", "![alt](zeron:pending-link)");
+        mends("[docs](https://x.dev/lo", "[docs](openagents:pending-link)");
+        mends("[docs](", "[docs](openagents:pending-link)");
+        mends("see [do", "see [do](openagents:pending-link)");
+        mends("![alt](https://x/i.p", "![alt](openagents:pending-link)");
         stays("see [");
         stays("[x] task-like"); // completed bracket, no url
     }
@@ -386,13 +386,13 @@ mod tests {
     #[test]
     fn link_urls_allow_nested_parens() {
         stays("[a](https://x.dev/(y)) done");
-        mends("[a](https://x.dev/(y", "[a](zeron:pending-link)");
+        mends("[a](https://x.dev/(y", "[a](openagents:pending-link)");
     }
 
     #[test]
     fn emphasis_inside_link_text_closes_inside() {
-        mends("[**a", "[**a**](zeron:pending-link)");
-        mends("**a [b", "**a [b](zeron:pending-link)**");
+        mends("[**a", "[**a**](openagents:pending-link)");
+        mends("**a [b", "**a [b](openagents:pending-link)**");
     }
 
     #[test]

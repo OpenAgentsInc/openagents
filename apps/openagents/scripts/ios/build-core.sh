@@ -1,14 +1,15 @@
 #!/bin/bash
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../env-compat.sh"
 # Build the Rust mobile core (crates/mobile) for the active Xcode platform and
-# generate its Swift bindings. Run by the Zeron target's "Rust core" build
+# generate its Swift bindings. Run by the OpenAgents target's "Rust core" build
 # phase; also runnable by hand (defaults to the simulator, dev profile).
 #
 #   scripts/ios/build-core.sh [iphonesimulator|iphoneos]
 #
 # Outputs (target/ios-core/<platform>/):
-#   libzeron_mobile.a            linked via LIBRARY_SEARCH_PATHS
-#   include/module.modulemap     `import zeron_coreFFI` (SWIFT_INCLUDE_PATHS)
-# and refreshes apps/ios/Zeron/Core/Generated/zeron_core.swift — committed so
+#   libopenagents_mobile.a            linked via LIBRARY_SEARCH_PATHS
+#   include/module.modulemap     `import openagents_coreFFI` (SWIFT_INCLUDE_PATHS)
+# and refreshes apps/ios/OpenAgents/Core/Generated/openagents_core.swift — committed so
 # Xcode's synchronized folder always sees it; CI fails if it drifts.
 set -euo pipefail
 
@@ -27,7 +28,7 @@ OUT="$ROOT/target/ios-core/$PLATFORM"
 mkdir -p "$OUT/include"
 
 CORE_FEATURES=()
-if [[ "${ZERON_ACCOUNT_FIXTURE:-}" == "1" ]]; then
+if [[ "${OPENAGENTS_ACCOUNT_FIXTURE:-}" == "1" ]]; then
   if [[ "${CONFIGURATION:-Debug}" == "Release" || "$PLATFORM" != "iphonesimulator" ]]; then
     echo "error: account fixture is only available in a debug simulator build" >&2
     exit 1
@@ -36,14 +37,14 @@ if [[ "${ZERON_ACCOUNT_FIXTURE:-}" == "1" ]]; then
 fi
 
 # Iterating on Swift while the core is mid-edit: reuse the last good build.
-if [[ "${ZERON_SKIP_CORE:-}" == "1" && -f "$OUT/libzeron_mobile.a" ]]; then
-  expected=${ZERON_ACCOUNT_FIXTURE:-0}
+if [[ "${OPENAGENTS_SKIP_CORE:-}" == "1" && -f "$OUT/libopenagents_mobile.a" ]]; then
+  expected=${OPENAGENTS_ACCOUNT_FIXTURE:-0}
   staged=$(cat "$OUT/account-fixture" 2>/dev/null || echo 0)
   if [[ "$expected" != "$staged" ]]; then
     echo "error: rebuild the Rust core after changing the account fixture setting" >&2
     exit 1
   fi
-  echo "note: ZERON_SKIP_CORE=1 — reusing $OUT/libzeron_mobile.a"
+  echo "note: OPENAGENTS_SKIP_CORE=1 — reusing $OUT/libopenagents_mobile.a"
   exit 0
 fi
 
@@ -55,23 +56,24 @@ run_cargo() {
     IPHONEOS_DEPLOYMENT_TARGET=26.0 \
     RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-1.98.1}" \
     CARGO_TARGET_DIR="$CARGO_OUT" \
+    CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-1}" \
     cargo "$@"
 }
 
 cd "$ROOT"
-run_cargo build --locked -p zeron-mobile --lib --profile "$PROFILE" --target "$TARGET" ${CORE_FEATURES[@]+"${CORE_FEATURES[@]}"}
-run_cargo build --locked -p zeron-mobile --bin uniffi-bindgen --features bindgen --profile mobile
+run_cargo build --locked -p openagents-mobile --lib --profile "$PROFILE" --target "$TARGET" ${CORE_FEATURES[@]+"${CORE_FEATURES[@]}"}
+run_cargo build --locked -p openagents-mobile --bin uniffi-bindgen --features bindgen --profile mobile
 
-LIB="$CARGO_OUT/$TARGET/$PROFILE/libzeron_mobile.a"
-cp -p "$LIB" "$OUT/libzeron_mobile.a"
+LIB="$CARGO_OUT/$TARGET/$PROFILE/libopenagents_mobile.a"
+cp -p "$LIB" "$OUT/libopenagents_mobile.a"
 
 GEN="$OUT/gen"
 "$CARGO_OUT/mobile/uniffi-bindgen" generate --library "$LIB" --language swift --out-dir "$GEN" >/dev/null
-cp "$GEN/zeron_coreFFI.h" "$OUT/include/zeron_coreFFI.h"
-cp "$GEN/zeron_coreFFI.modulemap" "$OUT/include/module.modulemap"
+cp "$GEN/openagents_coreFFI.h" "$OUT/include/openagents_coreFFI.h"
+cp "$GEN/openagents_coreFFI.modulemap" "$OUT/include/module.modulemap"
 # Only touch the Swift file when it changed so Xcode doesn't recompile it.
-SWIFT_OUT="$ROOT/apps/ios/Zeron/Core/Generated/zeron_core.swift"
+SWIFT_OUT="$ROOT/apps/ios/OpenAgents/Core/Generated/openagents_core.swift"
 mkdir -p "$(dirname "$SWIFT_OUT")"
-cmp -s "$GEN/zeron_core.swift" "$SWIFT_OUT" || cp "$GEN/zeron_core.swift" "$SWIFT_OUT"
+cmp -s "$GEN/openagents_core.swift" "$SWIFT_OUT" || cp "$GEN/openagents_core.swift" "$SWIFT_OUT"
 
-printf "%s\n" "${ZERON_ACCOUNT_FIXTURE:-0}" > "$OUT/account-fixture"
+printf "%s\n" "${OPENAGENTS_ACCOUNT_FIXTURE:-0}" > "$OUT/account-fixture"

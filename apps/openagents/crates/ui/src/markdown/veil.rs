@@ -1,5 +1,5 @@
 //! Streaming fade veil for GPUI text: the chunk tracking lives in
-//! `zeron-veil` (shared with the voice captions on desktop and mobile); this
+//! `openagents-veil` (shared with the voice captions on desktop and mobile); this
 //! module recolors GPUI text runs with its spans.
 //!
 //! [`apply_veil`] multiplies the fading alpha into the `TextRun` colors
@@ -10,7 +10,7 @@
 //! survive; wrapping is byte-identical to the unsplit render).
 
 use gpui::TextRun;
-pub use zeron_veil::{RowVeil, VeilSpan, slice_spans};
+pub use openagents_veil::{RowVeil, VeilSpan, slice_spans};
 
 /// Multiply veil opacities into the runs' paint colors, splitting runs at span
 /// boundaries. Fonts, lengths, and text are untouched — the total run length is

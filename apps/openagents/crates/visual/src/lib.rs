@@ -3,10 +3,10 @@
 //! An agent's `show_visual` call carries a Luau script. The script builds its
 //! data once and returns a view function; the view returns a tree of `ui.*`
 //! nodes (layout, text, stats, tables, charts, controls, canvases, 3D scenes).
-//! Zeron renders that tree with native elements, so a visual scrolls, clips,
+//! OpenAgents renders that tree with native elements, so a visual scrolls, clips,
 //! takes input, and sits on frosted glass exactly like the transcript around
 //! it, on every platform. Interactivity is Lua: controls call handlers that
-//! change the script's state, and Zeron renders the view again.
+//! change the script's state, and OpenAgents renders the view again.
 //!
 //! The style rules are the API: colors are theme tokens, text sizes are steps
 //! on the transcript's type scale, the font is always the interface font, and

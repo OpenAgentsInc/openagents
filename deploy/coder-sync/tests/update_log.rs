@@ -3,8 +3,8 @@
 use coder_sync::server::{
     self, StateData, config::AuthMode, db::Database, rooms::Rooms, storage::Bucket,
 };
+use openagents_sync::chat_frames::{self as wire, frame_type as kind};
 use serde_json::Value;
-use zeron_sync::chat_frames::{self as wire, frame_type as kind};
 const CHUNK: usize = 1_500_000;
 struct Server {
     base: String,

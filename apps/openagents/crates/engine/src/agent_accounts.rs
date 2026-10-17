@@ -1,5 +1,5 @@
 //! AgentAccounts — the logins of every agent CLI on this device that has one
-//! (feature-inventory §3.7 "Agent accounts"; port of zeron's
+//! (feature-inventory §3.7 "Agent accounts"; port of openagents's
 //! `agent-accounts.ts`).
 //!
 //! Grok, Devin, OpenCode, Pi and Hermes live in [`stores`] (credential
@@ -16,7 +16,7 @@
 //! | Hermes   | yes    | no¹    | `hermes auth add` (device code) | yes  |
 //!
 //! ¹ Hermes keeps every account in its own credential pool and rotates
-//! through it itself; zeron lists the pool and adds to it through Hermes'
+//! through it itself; openagents lists the pool and adds to it through Hermes'
 //! own CLI, but never rewrites it.
 //!
 //! The original four providers each store exactly one live login:
@@ -30,7 +30,7 @@
 //! - **Cursor** — `~/.cursor/sdk/auth.json`: the Cursor SDK's credential store
 //!   (`StoredSdkCredentials`) holding the named, expiring user API key its
 //!   browser login mints. Deliberately SEPARATE from `cursor-agent login`'s
-//!   whole-account session tokens, which zeron never reads.
+//!   whole-account session tokens, which openagents never reads.
 //! - **Antigravity** — its ACP server keeps one Google login per
 //!   `GEMINI_HOME`: a token blob in the macOS Keychain (service `gemini`) or
 //!   `antigravity-acp/acp_token.json`, plus the method in `settings.json`.
@@ -58,7 +58,7 @@
 //!    Codex spawns `codex login` against a throwaway `CODEX_HOME` and polls
 //!    until its loopback callback lands; Antigravity runs its server's
 //!    `authenticate`. A login run for ANOTHER device (`requester`) publishes
-//!    its callback port to [`zeron_preview::login`], so the requester can
+//!    its callback port to [`openagents_preview::login`], so the requester can
 //!    forward its own loopback to it over the P2P link.
 //!
 //! Usage probes: all three providers expose the rate-limit view their own CLIs render
@@ -86,7 +86,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use zeron_proto::{
+use openagents_proto::{
     AgentAccount, AgentAccountWarning, AgentAccountsSnapshot, AgentAuthKind, AgentLoginMode,
     AgentLoginPoll, AgentLoginStart, AgentLoginStatus, AgentUsageWindow, HarnessId,
 };
@@ -217,7 +217,7 @@ impl AgentAccountsConfig {
             claude_config_file,
             codex_home: env_dir("CODEX_HOME").unwrap_or_else(|| home_dir().join(".codex")),
             cursor_sdk_auth_file: home_dir().join(".cursor").join("sdk").join("auth.json"),
-            antigravity_home: zeron_harness::acp::antigravity_home().ok(),
+            antigravity_home: openagents_harness::acp::antigravity_home().ok(),
             antigravity_keychain: cfg!(target_os = "macos")
                 && std::env::var_os("AGY_ACP_FORCE_FILE_STORAGE")
                     .is_none_or(|v| !matches!(v.to_str(), Some("1" | "true"))),
@@ -330,7 +330,7 @@ struct SlotProfile {
     auth_kind: AgentAuthKind,
 }
 
-/// One saved login (`{slotId}.json`), same field surface as zeron's slot files.
+/// One saved login (`{slotId}.json`), same field surface as openagents's slot files.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Slot {
@@ -408,7 +408,7 @@ enum LoginFlow {
     Spawned {
         harness: HarnessId,
         /// The login child; monitored (try_wait) + killable from cancel.
-        child: Arc<Mutex<Option<zeron_harness::process::Child>>>,
+        child: Arc<Mutex<Option<openagents_harness::process::Child>>>,
         /// Throwaway dir, reclaimed on cancel/completion.
         home: PathBuf,
         /// What finishing looks like.
@@ -522,7 +522,7 @@ enum NoCredentials {
     Missing,
     /// Cursor's minted key is past its expiry.
     KeyExpired,
-    /// The provider behind this login has no usage view zeron can read
+    /// The provider behind this login has no usage view openagents can read
     /// (a Hermes API key for some other vendor, Pi's Copilot session).
     Unsupported,
 }
@@ -730,7 +730,7 @@ struct Inner {
     inflight_refreshes: Mutex<std::collections::HashSet<String>>,
     claude_credentials: Mutex<Option<CachedClaudeCredentials>>,
     /// Callback ports of logins run for another device (see module docs).
-    callback_routes: zeron_preview::login::CallbackRoutes,
+    callback_routes: openagents_preview::login::CallbackRoutes,
     /// Who an opaque live token belongs to (Pi's Claude login, a Copilot
     /// token), by token fingerprint — one profile call per token, not per
     /// list; a failed lookup waits [`IDENTITY_RETRY`] before the next. See
@@ -776,7 +776,7 @@ impl AgentAccounts {
     /// (the engine's P2P service, which serves them to the requester).
     pub fn with_callback_routes(
         config: AgentAccountsConfig,
-        routes: zeron_preview::login::CallbackRoutes,
+        routes: openagents_preview::login::CallbackRoutes,
     ) -> Self {
         Self::with_endpoints(config, ProbeEndpoints::default(), routes)
     }
@@ -784,7 +784,7 @@ impl AgentAccounts {
     fn with_endpoints(
         config: AgentAccountsConfig,
         endpoints: ProbeEndpoints,
-        callback_routes: zeron_preview::login::CallbackRoutes,
+        callback_routes: openagents_preview::login::CallbackRoutes,
     ) -> Self {
         // Startup sweep: a previous process that crashed mid-login leaves
         // `.login-<uuid>` throwaway CODEX_HOME dirs — each may hold live OAuth
@@ -841,12 +841,12 @@ impl AgentAccounts {
     }
 
     /// The ACP harness for `harness`'s CLI, honouring [`Self::override_cli`].
-    fn acp_harness(&self, harness: HarnessId) -> Option<zeron_harness::AcpHarness> {
+    fn acp_harness(&self, harness: HarnessId) -> Option<openagents_harness::AcpHarness> {
         let acp = match harness {
-            HarnessId::Grok => zeron_harness::AcpHarness::grok(),
-            HarnessId::Devin => zeron_harness::AcpHarness::devin(),
-            HarnessId::Hermes => zeron_harness::AcpHarness::hermes(),
-            HarnessId::Antigravity => zeron_harness::AcpHarness::antigravity(),
+            HarnessId::Grok => openagents_harness::AcpHarness::grok(),
+            HarnessId::Devin => openagents_harness::AcpHarness::devin(),
+            HarnessId::Hermes => openagents_harness::AcpHarness::hermes(),
+            HarnessId::Antigravity => openagents_harness::AcpHarness::antigravity(),
             _ => return None,
         };
         Some(match lock(&self.inner.cli_overrides).get(&harness) {
@@ -1051,7 +1051,7 @@ impl AgentAccounts {
                 });
             }
         }
-        // Antigravity keeps exactly one login whose token zeron never reads:
+        // Antigravity keeps exactly one login whose token openagents never reads:
         // one active, unswitchable row, and no usage (it has no quota view).
         if let Some(login) = antigravity {
             accounts.push(login.account());
@@ -1067,7 +1067,7 @@ impl AgentAccounts {
     ///
     /// Refused for Hermes (and by [`Self::forget`]): Hermes owns its
     /// credential pool and rotates through it itself — a running Hermes
-    /// would write its own order back over any change — so zeron keeps it
+    /// would write its own order back over any change — so openagents keeps it
     /// read-only (see [`stores`]).
     pub async fn activate(
         &self,
@@ -1076,7 +1076,7 @@ impl AgentAccounts {
     ) -> Result<AgentAccountsSnapshot, EngineError> {
         if harness == HarnessId::Hermes {
             return Err(EngineError::Other(
-                "Hermes picks from its own credential pool — zeron doesn't reorder it. Use \
+                "Hermes picks from its own credential pool — openagents doesn't reorder it. Use \
                  `hermes auth` to manage it."
                     .into(),
             ));
@@ -1210,7 +1210,7 @@ impl AgentAccounts {
     }
 
     /// Whether a per-provider agent has a live entry under `store_key` at
-    /// all, identified or not — a live login zeron can't identify is still
+    /// all, identified or not — a live login openagents can't identify is still
     /// never replaced unasked.
     fn has_live_entry(&self, harness: HarnessId, store_key: Option<&str>) -> bool {
         match harness {
@@ -1344,7 +1344,7 @@ impl AgentAccounts {
             return Err(EngineError::Other("Unknown account.".into()));
         }
         if harness == HarnessId::Hermes {
-            // Hermes' rows are its own pool, not zeron slots.
+            // Hermes' rows are its own pool, not openagents slots.
             return Err(EngineError::Other(
                 "Hermes keeps this login in its own credential pool — remove it with \
                  `hermes auth remove`."
@@ -1574,7 +1574,7 @@ impl AgentAccounts {
                 &format!(
                     "<!doctype html><title>Sign-in failed</title><p>{}</p>\
                      <p>Return to OpenAgents to try again.</p>",
-                    html_escape(&zeron_harness::redact::redact_output(&error.to_string()))
+                    html_escape(&openagents_harness::redact::redact_output(&error.to_string()))
                 ),
             ),
         };
@@ -1662,16 +1662,16 @@ impl AgentAccounts {
         &self,
         login_id: String,
         harness: HarnessId,
-        mut command: zeron_harness::process::Command,
+        mut command: openagents_harness::process::Command,
         home: PathBuf,
         completion: SpawnedCompletion,
         scan_url: fn(&str) -> Option<String>,
         requester: Option<&str>,
     ) -> Result<AgentLoginStart, EngineError> {
         command
-            .stdin(zeron_harness::process::Stdio::null())
-            .stdout(zeron_harness::process::Stdio::piped())
-            .stderr(zeron_harness::process::Stdio::piped());
+            .stdin(openagents_harness::process::Stdio::null())
+            .stdout(openagents_harness::process::Stdio::piped())
+            .stderr(openagents_harness::process::Stdio::piped());
         let child = match command.spawn() {
             Ok(child) => child,
             Err(err) => {
@@ -1725,12 +1725,12 @@ impl AgentAccounts {
         // login-shell snapshot, install dirs — the Windows npm payload
         // included) and compose the same child PATH a chat run gets, so
         // account login never diverges from what the harness can launch.
-        let mut command = match zeron_harness::codex::login_command(&home) {
+        let mut command = match openagents_harness::codex::login_command(&home) {
             Ok(command) => command,
             Err(err) => {
                 let _ = std::fs::remove_dir_all(&home);
                 return Err(EngineError::Other(match err {
-                    zeron_harness::HarnessError::NotInstalled(hint) => {
+                    openagents_harness::HarnessError::NotInstalled(hint) => {
                         format!(
                             "The `codex` CLI was not found on this device — install it first. ({hint})"
                         )
@@ -1740,9 +1740,9 @@ impl AgentAccounts {
             }
         };
         command
-            .stdin(zeron_harness::process::Stdio::null())
-            .stdout(zeron_harness::process::Stdio::piped())
-            .stderr(zeron_harness::process::Stdio::piped());
+            .stdin(openagents_harness::process::Stdio::null())
+            .stdout(openagents_harness::process::Stdio::piped())
+            .stderr(openagents_harness::process::Stdio::piped());
         // The CLI opens the authorization tab itself (via the `webbrowser`
         // crate) AND the app opens the page when this start reply lands —
         // users got TWO identical auth.openai.com tabs. `webbrowser` prefers
@@ -1795,9 +1795,9 @@ impl AgentAccounts {
         let task_state = state.clone();
         let handle = tokio::spawn(async move {
             let progress_state = task_state.clone();
-            let mut outcome = zeron_harness::AcpHarness::antigravity()
+            let mut outcome = openagents_harness::AcpHarness::antigravity()
                 .sign_in(browser, move |progress| match progress {
-                    zeron_harness::acp::SignInProgress::OpenBrowser(url) => {
+                    openagents_harness::acp::SignInProgress::OpenBrowser(url) => {
                         lock(&progress_state).url = Some(url);
                     }
                 })
@@ -1835,7 +1835,7 @@ impl AgentAccounts {
         }
     }
 
-    /// Cursor: the SDK's own PKCE browser flow, driven through the zeron shim
+    /// Cursor: the SDK's own PKCE browser flow, driven through the openagents shim
     /// in login mode. The minted key lands in a throwaway store file (never
     /// the live `~/.cursor/sdk/auth.json`), then snapshots into a slot on
     /// poll — mirroring codex's throwaway `CODEX_HOME`.
@@ -1843,7 +1843,7 @@ impl AgentAccounts {
         self.reap_spawned_flows(HarnessId::Cursor);
         let login_id = new_id();
         let home = self.login_home(&login_id)?;
-        let cmd = zeron_harness::cursor::login_command(&home.join("auth.json"))
+        let cmd = openagents_harness::cursor::login_command(&home.join("auth.json"))
             .await
             .map_err(|e| {
                 let _ = std::fs::remove_dir_all(&home);
@@ -2155,7 +2155,7 @@ impl AgentAccounts {
             // worse — never hand them to the UI (or a log) raw.
             return Ok(AgentLoginPoll {
                 status: AgentLoginStatus::Error,
-                message: Some(zeron_harness::redact::redact_output(&message)),
+                message: Some(openagents_harness::redact::redact_output(&message)),
                 url: None,
                 callback_port: None,
             });
@@ -2223,7 +2223,7 @@ impl AgentAccounts {
                 },
                 Some(Err(message)) => AgentLoginPoll {
                     status: AgentLoginStatus::Error,
-                    message: Some(zeron_harness::redact::redact_output(message)),
+                    message: Some(openagents_harness::redact::redact_output(message)),
                     url: None,
                     callback_port: None,
                 },
@@ -2270,7 +2270,7 @@ impl AgentAccounts {
         }
     }
 
-    /// Lazy TTL sweep (zeron uses a background fiber; native reaps on the next
+    /// Lazy TTL sweep (openagents uses a background fiber; native reaps on the next
     /// accounts call — same bound, no standing task).
     fn sweep_flows(&self) {
         let stale: Vec<String> = lock(&self.inner.flows)
@@ -2997,7 +2997,7 @@ mod keychain {
 
 // ── Antigravity ─────────────────────────────────────────────────────────────
 
-/// Antigravity's live login, as far as zeron can see it without its secret.
+/// Antigravity's live login, as far as openagents can see it without its secret.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct AntigravityLogin {
     /// The canonical auth method (`oauth-personal`, `oauth-business`, …).
@@ -3051,7 +3051,7 @@ impl AntigravityLogin {
 /// so the saved method is all there is. A first run saves no method; its
 /// default is the personal Google sign-in.
 async fn detect_antigravity_login(home: &Path, keychain: bool) -> Option<AntigravityLogin> {
-    let method = zeron_harness::acp::antigravity_saved_auth_method(home)
+    let method = openagents_harness::acp::antigravity_saved_auth_method(home)
         .unwrap_or_else(|| "oauth-personal".into());
     let token = match method.as_str() {
         "oauth-personal" => Some(("acp_token.json", "antigravity-acp")),
@@ -3550,7 +3550,7 @@ fn usage_error_message(
         ProbeError::Http { status, .. } => format!("Usage check failed ({status})"),
         ProbeError::Network { timeout: true } => format!("{provider} didn't respond{retry}"),
         ProbeError::Network { .. } => format!("Couldn't reach {provider}{retry}"),
-        ProbeError::Schema => "Usage format changed — update zeron".to_string(),
+        ProbeError::Schema => "Usage format changed — update openagents".to_string(),
         ProbeError::NoCredentials {
             why: NoCredentials::ApiKey,
         } => "API keys have no plan usage".to_string(),
@@ -3564,7 +3564,7 @@ fn usage_error_message(
             why: NoCredentials::Unsupported,
         } => "No usage view for this login".to_string(),
         ProbeError::UntrustedEndpoint => {
-            "Usage skipped — this login names a server zeron doesn't recognize".to_string()
+            "Usage skipped — this login names a server openagents doesn't recognize".to_string()
         }
     })
 }
@@ -3788,15 +3788,15 @@ fn ensure_noop_browser(root: &Path) -> Option<PathBuf> {
 }
 
 /// A "browser" that records the url it was asked to open into
-/// `$ZERON_LOGIN_URL_FILE` instead of opening it — so the app opens the
+/// `$OPENAGENTS_LOGIN_URL_FILE` instead of opening it — so the app opens the
 /// one tab (on the requesting device, for a remote login) even when the CLI
 /// never prints its sign-in url. Unix only, like [`ensure_noop_browser`].
 #[cfg(unix)]
 fn ensure_recording_browser(root: &Path) -> Option<PathBuf> {
     // `umask 077`: should the file not exist yet, it's still owner-only
     // (the sign-in pre-creates it 0600).
-    const SCRIPT: &str = "#!/bin/sh\numask 077\n[ -n \"$ZERON_LOGIN_URL_FILE\" ] && \
-                          printf '%s\\n' \"$1\" >> \"$ZERON_LOGIN_URL_FILE\"\nexit 0\n";
+    const SCRIPT: &str = "#!/bin/sh\numask 077\n[ -n \"$OPENAGENTS_LOGIN_URL_FILE\" ] && \
+                          printf '%s\\n' \"$1\" >> \"$OPENAGENTS_LOGIN_URL_FILE\"\nexit 0\n";
     let path = root.join(".record-browser");
     if std::fs::read_to_string(&path).ok().as_deref() != Some(SCRIPT) {
         std::fs::write(&path, SCRIPT).ok()?;
@@ -3829,7 +3829,7 @@ fn scan_shim_fatal(output: &str) -> Option<String> {
 }
 
 type LoginChildHandles = (
-    Arc<Mutex<Option<zeron_harness::process::Child>>>,
+    Arc<Mutex<Option<openagents_harness::process::Child>>>,
     Arc<Mutex<String>>,
     Arc<Mutex<Option<Option<i32>>>>,
 );
@@ -3838,7 +3838,7 @@ type LoginChildHandles = (
 /// (the URL can land on either stream), and a monitor polls `try_wait` so the
 /// child is reaped without owning it — the cancel path needs concurrent kill
 /// access.
-fn wire_login_child(mut child: zeron_harness::process::Child) -> LoginChildHandles {
+fn wire_login_child(mut child: openagents_harness::process::Child) -> LoginChildHandles {
     let output = Arc::new(Mutex::new(String::new()));
     for pipe in [
         child
@@ -5120,7 +5120,7 @@ mod login_tests {
     #[tokio::test]
     async fn a_login_for_another_device_publishes_its_callback_until_it_ends() {
         let tmp = tempfile::tempdir().unwrap();
-        let routes = zeron_preview::login::CallbackRoutes::default();
+        let routes = openagents_preview::login::CallbackRoutes::default();
         let accounts = AgentAccounts::with_callback_routes(config(tmp.path()), routes.clone());
         // A local login publishes nothing.
         let local = accounts.start_login(HarnessId::ClaudeCode).await.unwrap();

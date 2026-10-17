@@ -7,9 +7,9 @@
     <key>CFBundleDisplayName</key>
     <string>OpenAgents Dev</string>
     <key>CFBundleExecutable</key>
-    <string>zeron</string>
+    <string>openagents</string>
     <key>CFBundleIconFile</key>
-    <string>coder.icns</string>
+    <string>openagents.icns</string>
     <key>CFBundleIdentifier</key>
     <string>com.openagents.desktop.dev</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -29,11 +29,11 @@
          the same isolated development instance. -->
     <key>LSEnvironment</key>
     <dict>
-        <key>ZERON_AUTO_UPDATE</key>
+        <key>OPENAGENTS_AUTO_UPDATE</key>
         <string>0</string>
-        <key>ZERON_DATA_DIR</key>
+        <key>OPENAGENTS_DATA_DIR</key>
         <string>__DATA_DIR__</string>
-        <key>ZERON_IPC_PORT</key>
+        <key>OPENAGENTS_IPC_PORT</key>
         <string>__IPC_PORT__</string>
     </dict>
     <key>NSMicrophoneUsageDescription</key>

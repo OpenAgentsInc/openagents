@@ -13,8 +13,8 @@ export default function(pi) {
   pi.registerCommand('probe-metadata', {description:'Native extension state', handler: async () => { pi.appendEntry('probe-state', {saved: true}); }});
   pi.registerCommand('probe-noop', {description:'No model run', handler: async () => {}});
   pi.registerCommand('probe-input', {description:'Input dialog', handler: async (_args, ctx) => { const value = await ctx.ui.input('Probe input'); ctx.ui.notify(`answer:${value}`, 'info'); }});
-  pi.registerProvider('zeron-probe', {
-    baseUrl:'http://127.0.0.1:1', apiKey:'local-fake-key', api:'zeron-probe-api',
+  pi.registerProvider('openagents-probe', {
+    baseUrl:'http://127.0.0.1:1', apiKey:'local-fake-key', api:'openagents-probe-api',
     models:[{id:'mock', name:'Local mock', reasoning:true, input:['text'], cost:{input:0,output:0,cacheRead:0,cacheWrite:0}, contextWindow:128000,maxTokens:4096}],
     streamSimple(model, context, options) {
       const stream = createAssistantMessageEventStream();

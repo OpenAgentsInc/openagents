@@ -2,7 +2,7 @@ Native GPUI screenshots from the isolated sidebar fixture, with synthetic sessio
 and no signed-in account or connected engine.
 
 ```sh
-ZERON_SIDEBAR_COMPACT=1 cargo run -p zeron-ui --example sidebar-fixture --features project-palette-fixture
+OPENAGENTS_SIDEBAR_COMPACT=1 cargo run -p openagents-ui --example sidebar-fixture --features project-palette-fixture
 ```
 
 The sidebar's three-dot menu offers Create Section. Sections appear below Pinned

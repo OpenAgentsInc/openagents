@@ -1,5 +1,5 @@
 //! The style vocabulary a visual may use. Every value names something in the
-//! active Zeron theme (a color token, a step on the transcript's type scale),
+//! active OpenAgents theme (a color token, a step on the transcript's type scale),
 //! so a script can't paint a background, pick a font, or hard-code a color:
 //! the renderer resolves tokens against whatever theme, surface (glass or
 //! opaque), appearance, and text size the reader has.

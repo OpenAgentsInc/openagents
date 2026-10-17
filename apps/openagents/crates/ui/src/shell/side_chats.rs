@@ -48,7 +48,7 @@ impl Shell {
     /// sibling; the picker passes the source itself.
     pub(super) fn fork_chat(
         &mut self,
-        source: zeron_proto::Chat,
+        source: openagents_proto::Chat,
         parent_id: String,
         cx: &mut Context<Self>,
     ) {
@@ -69,7 +69,7 @@ impl Shell {
         cx.spawn(async move |this, cx| {
             let result = engine
                 .client()
-                .call_as::<zeron_proto::Chat>(methods::FORK_SIDE_CHAT, params)
+                .call_as::<openagents_proto::Chat>(methods::FORK_SIDE_CHAT, params)
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.side_chat_creating = false;
@@ -97,7 +97,7 @@ impl Shell {
     /// A fresh, empty side chat under `parent_id` (the active chat when
     /// None), opened in the right pane ready for its first message. Nothing
     /// is written until that message: the first send mints it with the same
-    /// shape the Zeron MCP server's `create_chat` does, so agent-spawned and
+    /// shape the OpenAgents MCP server's `create_chat` does, so agent-spawned and
     /// hand-started side chats list together, and an abandoned one leaves
     /// no row behind.
     pub(super) fn create_child_chat(&mut self, parent_id: Option<String>, cx: &mut Context<Self>) {
@@ -160,7 +160,7 @@ impl Shell {
 
     pub(super) fn open_side_chat(
         &mut self,
-        chat: zeron_proto::Chat,
+        chat: openagents_proto::Chat,
         key: String,
         cx: &mut Context<Self>,
     ) {
@@ -170,7 +170,7 @@ impl Shell {
     /// `unsaved`: `chat` is only minted here, and its first send creates it.
     fn open_side_chat_tab(
         &mut self,
-        chat: zeron_proto::Chat,
+        chat: openagents_proto::Chat,
         key: String,
         unsaved: bool,
         cx: &mut Context<Self>,
@@ -393,7 +393,7 @@ mod tests {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -447,7 +447,7 @@ mod tests {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -509,7 +509,7 @@ mod tests {
         window
             .update(cx, |shell, window, cx| {
                 shell.active_chat = "main".into();
-                let main: zeron_proto::Chat = serde_json::from_value(serde_json::json!({
+                let main: openagents_proto::Chat = serde_json::from_value(serde_json::json!({
                     "id": "main", "deviceId": "local", "cwd": "/tmp/main",
                     "archived": false, "createdAt": Utc::now(),
                 }))
@@ -526,7 +526,7 @@ mod tests {
                 let chat_id = side.read(cx).selected_chat.clone().unwrap();
                 assert!(side.read(cx).side_chat_unsaved());
                 // A model picked before the first send is what gets minted.
-                let config: zeron_proto::ChatConfig = serde_json::from_value(serde_json::json!({
+                let config: openagents_proto::ChatConfig = serde_json::from_value(serde_json::json!({
                     "harness": "codex", "sandbox": "workspace-write",
                 }))
                 .unwrap();
@@ -539,7 +539,7 @@ mod tests {
                 assert_eq!(create["cwd"], "/tmp/main");
                 assert_eq!(create["config"]["harness"], "codex");
                 let row = side.read(cx).selected_chat_row().cloned().unwrap();
-                assert_eq!(row.config.unwrap().harness, zeron_proto::HarnessId::Codex);
+                assert_eq!(row.config.unwrap().harness, openagents_proto::HarnessId::Codex);
                 assert_eq!(shell.state.read(cx).chats.len(), 1, "no row yet");
                 // A draft cannot keep it: no row could reopen it.
                 let composer = shell.side_chats[&id].composer.clone();
@@ -573,7 +573,7 @@ mod tests {
                 );
             })
             .unwrap();
-        let chat: zeron_proto::Chat = serde_json::from_value(serde_json::json!({
+        let chat: openagents_proto::Chat = serde_json::from_value(serde_json::json!({
             "id": "side", "parentChatId": "main", "deviceId": "local", "cwd": "/tmp/other",
             "archived": false, "createdAt": Utc::now(),
         }))
@@ -581,7 +581,7 @@ mod tests {
         window
             .update(cx, |shell, _, cx| {
                 shell.active_chat = "main".into();
-                let main: zeron_proto::Chat = serde_json::from_value(serde_json::json!({
+                let main: openagents_proto::Chat = serde_json::from_value(serde_json::json!({
                     "id": "main", "deviceId": "local", "cwd": "/tmp/main",
                     "archived": false, "createdAt": Utc::now(),
                 }))

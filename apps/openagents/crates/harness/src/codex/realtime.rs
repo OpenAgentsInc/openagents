@@ -10,11 +10,11 @@ use std::{path::PathBuf, sync::atomic::Ordering, time::Duration};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 type AudioAbort = Arc<Mutex<Option<(u64, CancellationToken)>>>;
-use zeron_proto::voice::*;
+use openagents_proto::voice::*;
 
-/// Every Zeron voice session is a projectless orchestrator. Given to both the
+/// Every OpenAgents voice session is a projectless orchestrator. Given to both the
 /// realtime voice model and the backing Codex model that runs its delegations.
-pub const ORCHESTRATOR_INSTRUCTIONS: &str = "This is a Zeron voice session and you are the user's orchestrator. Use the Zeron MCP tools to do the work: list and read chats, create new chats with the right agent and project, send them messages, check on their progress, and report back. Delegate coding and file changes to those chats instead of doing them yourself in this session. Keep spoken replies short and conversational.";
+pub const ORCHESTRATOR_INSTRUCTIONS: &str = "This is a OpenAgents voice session and you are the user's orchestrator. Use the OpenAgents MCP tools to do the work: list and read chats, create new chats with the right agent and project, send them messages, check on their progress, and report back. Delegate coding and file changes to those chats instead of doing them yourself in this session. Keep spoken replies short and conversational.";
 
 #[derive(Clone)]
 pub(super) struct ThreadContext {

@@ -11,11 +11,11 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use zeron_doc::parts::MessagePart;
-use zeron_doc::parts::MessageStatus;
-use zeron_doc::schema::{MessageRole, SessionMessageEntry};
-use zeron_markdown::parser::{IncrementalParser, TopBlock};
-use zeron_text::WhiteSpace;
+use openagents_doc::parts::MessagePart;
+use openagents_doc::parts::MessageStatus;
+use openagents_doc::schema::{MessageRole, SessionMessageEntry};
+use openagents_markdown::parser::{IncrementalParser, TopBlock};
+use openagents_text::WhiteSpace;
 
 use super::display::{ColorRole, DisplayBuilder, FadeEdge, TextRun, WidgetKind};
 use super::file_icons::file_icon_asset;
@@ -503,13 +503,13 @@ impl RowBuilder {
     fn user_row(&mut self, ctx: &mut Ctx, id: &str, content: &str, pending: bool) -> RowCore {
         let key = row_key(&format!("{id}#u"));
         // Shared parser: strips the image trailer *and* hidden Appshot context.
-        let parsed = zeron_client::attachments::parse_user_message(content);
+        let parsed = openagents_client::attachments::parse_user_message(content);
         let (size, lh) = TYPE.body;
         let style = ctx.typo.style(Family::Sans, Weight::Regular, false, size);
         let lh = ctx.typo.px(lh);
         // Chips stand in for their attachments (as on the desktop): those
         // leave the strip, and an image chip opens its upload on tap.
-        let mentions = zeron_proto::attachment_mentions::attachment_mentions(&parsed.text);
+        let mentions = openagents_proto::attachment_mentions::attachment_mentions(&parsed.text);
         let chipped = |path: &str| mentions.iter().any(|mention| mention.names_attachment(path));
         let previews: Vec<(u32, String)> = mentions
             .iter()
@@ -521,7 +521,7 @@ impl RowBuilder {
             .collect();
         let text = prepare_user_text(ctx, parsed.text.trim(), style, lh, &previews);
         // Copied text reads attachment chips as their plain label.
-        let body = zeron_proto::attachment_mentions::attachment_mention_prompt(&parsed.text);
+        let body = openagents_proto::attachment_mentions::attachment_mention_prompt(&parsed.text);
         let (msize, mlh) = TYPE.small;
         let mstyle = ctx.typo.style(Family::Sans, Weight::Medium, false, msize);
         // Only images go to image widgets; other files (desktop-sent ZIPs)
@@ -530,12 +530,12 @@ impl RowBuilder {
             .images
             .into_iter()
             .filter(|i| !chipped(&i.path))
-            .partition(|i| zeron_proto::attachment_mentions::is_image_path(&i.path));
+            .partition(|i| openagents_proto::attachment_mentions::is_image_path(&i.path));
         let images = images.into_iter().map(|i| i.path).collect();
         let files = others
             .iter()
             .map(|f| {
-                let name = zeron_proto::attachment_mentions::attachment_display_name(&f.name);
+                let name = openagents_proto::attachment_mentions::attachment_display_name(&f.name);
                 (file_icon_asset(name), prepare_plain(ctx, name, mstyle, ctx.typo.px(mlh), ColorRole::Text, WhiteSpace::Pre))
             })
             .collect();
@@ -578,7 +578,7 @@ struct UserChip {
 
 /// The link an image chip opens: the host attachment ref, percent-encoded.
 fn image_preview_link(reference: &str) -> String {
-    let mut out = String::from("zeron-preview://image?ref=");
+    let mut out = String::from("openagents-preview://image?ref=");
     for byte in reference.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
             out.push(byte as char);
@@ -590,11 +590,11 @@ fn image_preview_link(reference: &str) -> String {
 }
 
 /// The chips a sent prompt's canonical links read as, like the desktop's:
-/// files and folders (`zeron-file:`), skills and commands (`zeron-invoke:`),
-/// and attachments (`zeron-image:` / `zeron-attachment:`), in text order.
+/// files and folders (`openagents-file:`), skills and commands (`openagents-invoke:`),
+/// and attachments (`openagents-image:` / `openagents-attachment:`), in text order.
 /// `previews` pairs image chip numbers with the uploads they open.
 fn user_chips(body: &str, previews: &[(u32, String)]) -> Vec<UserChip> {
-    let mut chips: Vec<UserChip> = zeron_proto::file_mentions::file_mention_links(body)
+    let mut chips: Vec<UserChip> = openagents_proto::file_mentions::file_mention_links(body)
         .into_iter()
         .map(|link| UserChip {
             icon: if link.is_dir { "fileicon-folders-folder".to_owned() } else { file_icon_asset(&link.path) },
@@ -603,13 +603,13 @@ fn user_chips(body: &str, previews: &[(u32, String)]) -> Vec<UserChip> {
             open: None,
         })
         .collect();
-    chips.extend(zeron_proto::invocation::invocation_links(body).into_iter().map(|(range, invocation)| UserChip {
+    chips.extend(openagents_proto::invocation::invocation_links(body).into_iter().map(|(range, invocation)| UserChip {
         range,
         label: invocation.name().to_owned(),
         icon: if invocation.prefix() == '/' { "command" } else { "wand.and.stars" }.to_owned(),
         open: None,
     }));
-    chips.extend(zeron_proto::attachment_mentions::attachment_mentions(body).into_iter().map(|mention| UserChip {
+    chips.extend(openagents_proto::attachment_mentions::attachment_mentions(body).into_iter().map(|mention| UserChip {
         range: mention.range,
         icon: if mention.is_image { "photo".to_owned() } else { file_icon_asset(&mention.label) },
         open: previews
@@ -655,7 +655,7 @@ fn prepare_user_text(ctx: &mut Ctx, body: &str, style: super::style::Resolved, l
         }
         let start = text.len();
         text.push_str(piece);
-        spans.push(zeron_text::Span {
+        spans.push(openagents_text::Span {
             range: start..text.len(),
             style: style.id,
             pad_start: pad.0,
@@ -682,14 +682,14 @@ fn prepare_user_text(ctx: &mut Ctx, body: &str, style: super::style::Resolved, l
         at = chip.range.end;
     }
     push(&mut text, &body[at..], (0.0, 0.0), false, None);
-    let p = zeron_text::prepare(
+    let p = openagents_text::prepare(
         &ctx.typo.book,
         ctx.cache,
         &text,
         &spans,
-        &zeron_text::PrepareOptions {
+        &openagents_text::PrepareOptions {
             white_space: WhiteSpace::PreWrap,
-            overflow_wrap: zeron_text::OverflowWrap::Anywhere,
+            overflow_wrap: openagents_text::OverflowWrap::Anywhere,
             ..Default::default()
         },
     );

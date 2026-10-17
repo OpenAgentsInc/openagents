@@ -2,7 +2,7 @@
 //! Thinking orbs — dotted loading indicators for AI & agent UIs, ported from
 //! gpui-thinking-orbs (MIT), itself a port of Jakub Antalik's thinking-orbs.
 //!
-//! The animation engine and playback live in `zeron-orb`, shared with the
+//! The animation engine and playback live in `openagents-orb`, shared with the
 //! mobile apps; this module is its GPUI widget and paint path.
 //!
 //! ```ignore
@@ -16,4 +16,4 @@ mod orb;
 mod paint;
 
 pub use orb::{DEFAULT_TARGET_FPS, Orb, orb_element};
-pub use zeron_orb::{ModeKey, OrbSize, OrbState, OrbTheme, Resolved, engine, resolve_preset};
+pub use openagents_orb::{ModeKey, OrbSize, OrbState, OrbTheme, Resolved, engine, resolve_preset};

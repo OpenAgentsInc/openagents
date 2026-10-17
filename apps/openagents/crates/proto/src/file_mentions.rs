@@ -1,6 +1,6 @@
 //! Canonical file chips shared by the editor and harness delivery boundary.
 use std::ops::Range;
-pub const FILE_MENTION_SCHEME: &str = "zeron-file:";
+pub const FILE_MENTION_SCHEME: &str = "openagents-file:";
 
 pub struct FileMentionLink {
     pub range: Range<usize>,
@@ -74,7 +74,7 @@ pub fn local_path_is_safe(path: &str) -> bool {
 
 /// Only decode canonical chip links, never escaped text or code examples.
 pub fn file_mention_links(text: &str) -> Vec<FileMentionLink> {
-    if !text.contains(FILE_MENTION_SCHEME) {
+    if !text.contains(FILE_MENTION_SCHEME) && !text.contains("zeron-file:") {
         return Vec::new();
     }
     let mut image_depth = 0;
@@ -97,7 +97,11 @@ pub fn file_mention_links(text: &str) -> Vec<FileMentionLink> {
             else {
                 return None;
             };
-            let target = percent_decode_path(dest_url.strip_prefix(FILE_MENTION_SCHEME)?)?;
+            let target = percent_decode_path(
+                dest_url
+                    .strip_prefix(FILE_MENTION_SCHEME)
+                    .or_else(|| dest_url.strip_prefix("zeron-file:"))?,
+            )?;
             let is_dir = target.ends_with('/');
             let path = target.strip_suffix('/').unwrap_or(&target);
             if !local_path_is_safe(path) {
@@ -105,6 +109,7 @@ pub fn file_mention_links(text: &str) -> Vec<FileMentionLink> {
             }
             let canonical = local_file_link(path, is_dir);
             let source = &text[range.clone()];
+            let source = source.replacen("zeron-file:", FILE_MENTION_SCHEME, 1);
             // Keep old recognizable selections after escaping new labels.
             if canonical != source && canonical.replace("\\`", "`") != source {
                 return None;
@@ -155,8 +160,8 @@ mod tests {
             format!("```\n{file}\n```"),
             format!("\\{file}"),
             format!("![example {file}](example.png)"),
-            "[x](zeron-file:../x)".into(),
-            "[other](zeron-file:src/x)".into(),
+            "[x](openagents-file:../x)".into(),
+            "[other](openagents-file:src/x)".into(),
         ] {
             assert!(file_mention_links(&literal).is_empty());
             assert_eq!(file_mention_prompt(&literal), literal);
@@ -165,10 +170,10 @@ mod tests {
         let links = file_mention_links(&image_then_file);
         assert_eq!(links.len(), 1);
         assert_eq!(&image_then_file[links[0].range.clone()], file);
-        for name in ["src/é.rs", "src/](zeron-file:x)", "src/what?.rs"] {
+        for name in ["src/é.rs", "src/](openagents-file:x)", "src/what?.rs"] {
             let raw = local_file_link(name, false);
             assert_eq!(file_mention_links(&raw)[0].path, name);
-            assert!(!file_mention_prompt(&raw).contains("](zeron-file:src/"));
+            assert!(!file_mention_prompt(&raw).contains("](openagents-file:src/"));
         }
     }
 }

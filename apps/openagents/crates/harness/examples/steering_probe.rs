@@ -1,14 +1,14 @@
 //! Opt-in live steering regression. Uses real model quota in a disposable cwd.
-//! cargo run -p zeron-harness --example steering_probe -- <harness> [model|--models]
+//! cargo run -p openagents-harness --example steering_probe -- <harness> [model|--models]
 //! Checks a running shell survives a rapid burst and every follow-up is acted on.
 use futures::StreamExt;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::{mpsc, oneshot};
-use zeron_harness::{
+use openagents_harness::{
     AcpHarness, CancellationToken, ClaudeHarness, CodexHarness, CursorHarness, Harness,
     OpencodeHarness, RunControls, SteerMessage,
 };
-use zeron_proto::{AgentEvent, DoneStatus, RunRequest, SandboxLevel};
+use openagents_proto::{AgentEvent, DoneStatus, RunRequest, SandboxLevel};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -23,7 +23,7 @@ async fn main() -> anyhow::Result<()> {
         "grok" => Arc::new(AcpHarness::grok()),
         "devin" => Arc::new(AcpHarness::devin()),
         "hermes" => Arc::new(AcpHarness::hermes()),
-        "pi" => Arc::new(zeron_harness::PiHarness::new()),
+        "pi" => Arc::new(openagents_harness::PiHarness::new()),
         "antigravity" => Arc::new(AcpHarness::antigravity()),
         _ => anyhow::bail!("unknown harness"),
     };

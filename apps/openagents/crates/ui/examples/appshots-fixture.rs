@@ -1,7 +1,7 @@
 //! Native Appshots layout evidence with isolated data. No agent messages are sent.
 use gpui::{AppContext, AsyncApp, Bounds, WindowBounds, WindowOptions, px, size};
 use std::{path::PathBuf, sync::Arc, time::Duration};
-use zeron_ui::*;
+use openagents_ui::*;
 async fn pause(cx: &mut AsyncApp, ms: u64) {
     cx.background_executor()
         .timer(Duration::from_millis(ms))
@@ -58,10 +58,10 @@ fn main() -> anyhow::Result<()> {
     let temp = tempfile::tempdir()?;
     let runtime = tokio::runtime::Runtime::new()?;
     let core = runtime.block_on(async {
-        zeron_engine::EngineCore::assemble(
+        openagents_engine::EngineCore::assemble(
             &temp.path().join("engine"),
-            Arc::new(zeron_engine::default_registry()),
-            zeron_proto::HarnessId::ClaudeCode,
+            Arc::new(openagents_engine::default_registry()),
+            openagents_proto::HarnessId::ClaudeCode,
             None,
         )
     })?;
@@ -70,7 +70,7 @@ fn main() -> anyhow::Result<()> {
     core.workspace
         .rename_chat("appshots-fixture", "Review the workspace design")?;
     let ipc_port = port();
-    let _ipc = runtime.block_on(zeron_engine::serve_ipc(ipc_port, core.rpc_service()))?;
+    let _ipc = runtime.block_on(openagents_engine::serve_ipc(ipc_port, core.rpc_service()))?;
     let data = temp.path().join("ui");
     std::fs::create_dir(&data)?;
     let boot = EngineBootConfig {
@@ -80,7 +80,7 @@ fn main() -> anyhow::Result<()> {
         edge_token: None,
         org_id: None,
         workos_client_id: None,
-        default_harness: zeron_proto::HarnessId::ClaudeCode,
+        default_harness: openagents_proto::HarnessId::ClaudeCode,
     };
     let handle = runtime.block_on(state::EngineHandle::bootstrap(boot.clone()))?;
     let chats = core.workspace.read_chats()?;
@@ -135,7 +135,7 @@ fn main() -> anyhow::Result<()> {
     );
     let message = attachments::with_attachments(&body, &paths);
     let queue = vec![
-        zeron_doc::QueuedMessage {
+        openagents_doc::QueuedMessage {
             id: "queued-review".into(),
             text: body,
             attachments: paths.clone(),
@@ -145,7 +145,7 @@ fn main() -> anyhow::Result<()> {
             edited_at: None,
             delivery_gate: None,
         },
-        zeron_doc::QueuedMessage {
+        openagents_doc::QueuedMessage {
             id: "queued-text".into(),
             text: "Then check the spacing and keyboard navigation.".into(),
             attachments: vec![],
@@ -165,13 +165,13 @@ fn main() -> anyhow::Result<()> {
         theme_library::init(data.clone(),cx); appearance::init(appearance::AppearanceMode::Dark,settings.theme_selection,settings.accent,settings.surface,cx);
         history::init(settings.git_history_columns,settings.git_history_column_widths,settings.git_history_column_order,settings.git_history_author_display,cx);
         composer::init(cx,settings.composer_send_behavior); terminal::panel::init(cx); app_menus::init(cx);
-        let state=cx.new(|_| { let mut s=state::AppState::new(); s.fixture_attachment_engine(handle); s.connection=zeron_proto::view::ConnectionStatus::Ready; s.workspace_scope=Some(zeron_proto::WorkspaceScope::Development); s.local_device_id=Some(device.clone()); s.devices=vec![serde_json::from_value(serde_json::json!({"id":device,"name":"This device","platform":std::env::consts::OS,"lastSeenAt":null})).unwrap()]; s.chats=chats; s.selected_chat=Some("appshots-fixture".into()); s.auto_selected=true; s.chats_synced=true; s.spaces_synced=true; s });
+        let state=cx.new(|_| { let mut s=state::AppState::new(); s.fixture_attachment_engine(handle); s.connection=openagents_proto::view::ConnectionStatus::Ready; s.workspace_scope=Some(openagents_proto::WorkspaceScope::Development); s.local_device_id=Some(device.clone()); s.devices=vec![serde_json::from_value(serde_json::json!({"id":device,"name":"This device","platform":std::env::consts::OS,"lastSeenAt":null})).unwrap()]; s.chats=chats; s.selected_chat=Some("appshots-fixture".into()); s.auto_selected=true; s.chats_synced=true; s.spaces_synced=true; s });
         let window=cx.open_window(WindowOptions {window_background:theme::Theme::of(cx).window_background_appearance(),window_bounds:Some(WindowBounds::Windowed(Bounds::new(gpui::point(px(20.),px(40.)),size(px(1100.),px(850.))))),..Default::default()},|_,cx|cx.new(|cx|shell::Shell::new(state.clone(),boot,cx))).unwrap();
         state.update(cx,|_,cx|cx.notify()); cx.activate(true);
         cx.spawn(async move |cx| {
             let run:anyhow::Result<()>=async {
                 pause(cx,1000).await;
-                state.update(cx,|s,cx| {s.receive_transcript_frame(zeron_doc::TranscriptFrame::Reset {reset:serde_json::from_value(serde_json::json!([
+                state.update(cx,|s,cx| {s.receive_transcript_frame(openagents_doc::TranscriptFrame::Reset {reset:serde_json::from_value(serde_json::json!([
                     {"id":"user","role":"user","parts":[{"id":"text","kind":"text","text":message}],"createdAt":1788900000000_i64,"deviceId":device},
                     {"id":"assistant","role":"assistant","parts":[{"id":"text","kind":"text","text":"The three Appshots show a consistent visual style. I’ll compare the spacing and reading order, then check how the layout adapts to smaller screens."}],"createdAt":1788900001000_i64,"deviceId":device,"status":"complete"}
                 ])).unwrap()},cx).unwrap();cx.notify();});
@@ -208,7 +208,7 @@ fn main() -> anyhow::Result<()> {
                 attachments::store_error(&device,&state_paths[2]);
                 let state_body=appshots::with_appshots("Appshots keep their source labels while images are loading or unavailable.",&evidence_shots,&evidence_shots.iter().zip(&state_paths).map(|(s,p)|(s.screenshot.id.clone(),p.clone())).collect());
                 let state_message=attachments::with_attachments(&state_body,&state_paths);
-                state.update(cx,|s,cx|{s.queue.clear();s.receive_transcript_frame(zeron_doc::TranscriptFrame::Reset{reset:serde_json::from_value(serde_json::json!([
+                state.update(cx,|s,cx|{s.queue.clear();s.receive_transcript_frame(openagents_doc::TranscriptFrame::Reset{reset:serde_json::from_value(serde_json::json!([
                     {"id":"states-user","role":"user","parts":[{"id":"text","kind":"text","text":state_message}],"createdAt":1788900000000_i64,"deviceId":device}
                 ])).unwrap()},cx).unwrap();cx.notify();});
                 pause(cx,700).await;capture(window.into(),cx,&output,"appshots-transcript-transfer-states")?;

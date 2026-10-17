@@ -146,7 +146,7 @@ impl AssetHttpClient {
             }
         });
         let mut client = reqwest::Client::builder()
-            .user_agent("Zeron/desktop")
+            .user_agent("OpenAgents/desktop")
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(30))
             // A redirect never tells the next host which image linked to it.

@@ -3,7 +3,7 @@
   "main_revision": "67c960f4",
   "worker_version": "c2c7587e-b5f7-49ae-aefe-d9b54fc95039",
   "worker_source_revision": "67c960f4",
-  "worker_name": "zeron-transport-385-20260915",
+  "worker_name": "openagents-transport-385-20260915",
   "baseline_binary_sha256": "b07dbfb2d755bab0de4952d2420fc905cf4d0f16e29c4c806f4c903df7690410",
   "notes": [
     "Fresh synthetic room and proxy per run. No production routes or data.",

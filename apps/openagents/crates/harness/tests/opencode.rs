@@ -13,10 +13,10 @@ use futures::StreamExt;
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{broadcast, mpsc, oneshot};
-use zeron_harness::{
+use openagents_harness::{
     CancellationToken, Harness, HarnessError, OpencodeHarness, RunControls, SteerMessage,
 };
-use zeron_proto::{
+use openagents_proto::{
     AgentEvent, DoneStatus, ReasoningLevel, RunRequest, SandboxLevel, ToolCall, UserInputAnswer,
 };
 
@@ -641,10 +641,10 @@ async fn stoppable_turn(
 ) -> (
     futures::stream::BoxStream<'static, Result<AgentEvent, HarnessError>>,
     mpsc::Sender<SteerMessage>,
-    zeron_harness::TurnControl,
+    openagents_harness::TurnControl,
 ) {
     let (mut controls, steer, _token) = controls();
-    let turn = zeron_harness::TurnControl::default();
+    let turn = openagents_harness::TurnControl::default();
     controls.turn = turn.clone();
     assert!(driver.stops_turn_in_place());
     let mut stream = driver
@@ -1315,7 +1315,7 @@ async fn slash_command_rejects_attachments_instead_of_dropping_them() {
 
 #[tokio::test]
 async fn dollar_selected_skill_uses_opencode_native_command_with_arguments() {
-    use zeron_proto::{
+    use openagents_proto::{
         HarnessId,
         invocation::{Invocation, harness_prompt},
     };

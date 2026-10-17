@@ -1,12 +1,12 @@
-//! zeron-proto — wire types shared by engine, UI, and RPC.
+//! openagents-proto — wire types shared by engine, UI, and RPC.
 //!
-//! Ported from zeron's `packages/control/src/wire.ts` + `packages/harness/src/types.ts`.
+//! Ported from openagents's `packages/control/src/wire.ts` + `packages/harness/src/types.ts`.
 //! Context occupancy is replicated per chat; billing `Usage` remains a harness passthrough.
 
 pub mod agent;
 pub mod attachment_mentions;
-pub mod chat_mentions;
 pub mod change_request_assessment;
+pub mod chat_mentions;
 pub mod device_paths;
 pub mod entities;
 pub mod file_mentions;
@@ -41,4 +41,36 @@ pub fn version_triple(version: &str) -> Option<(u64, u64, u64)> {
         .parse()
         .ok()?;
     Some((major, minor, patch))
+}
+
+#[cfg(test)]
+mod rename_compatibility_tests {
+    #[test]
+    fn saved_conversation_links_remain_readable() {
+        let file = crate::file_mentions::local_file_link("src/lib.rs", false)
+            .replace("openagents-file:", "zeron-file:");
+        assert_eq!(
+            crate::file_mentions::file_mention_links(&file)[0].path,
+            "src/lib.rs"
+        );
+        let chat = crate::chat_mentions::chat_mention_link("chat-1", "Existing chat")
+            .unwrap()
+            .replace("openagents-chat:", "zeron-chat:");
+        assert_eq!(
+            crate::chat_mentions::chat_mention_links(&chat)[0].chat_id,
+            "chat-1"
+        );
+        let image = crate::attachment_mentions::attachment_mention_link(2, None)
+            .replace("openagents-image:", "zeron-image:");
+        let attachment = crate::attachment_mentions::attachment_mention_link(3, Some("notes.md"))
+            .replace("openagents-attachment:", "zeron-attachment:");
+        assert_eq!(
+            crate::attachment_mentions::attachment_mentions(&image)[0].index,
+            2
+        );
+        assert_eq!(
+            crate::attachment_mentions::attachment_mentions(&attachment)[0].index,
+            3
+        );
+    }
 }

@@ -5,7 +5,7 @@ mod common;
 use std::sync::Arc;
 
 use common::*;
-use zeron_text::*;
+use openagents_text::*;
 
 fn assert_send_sync<T: Send + Sync>() {}
 fn assert_send<T: Send>() {}

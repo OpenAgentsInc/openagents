@@ -1,6 +1,6 @@
 # Projectless session screenshots
 
-Real Linux desktop application captures taken on 2026-09-09 from this branch, built with `cargo build -p zeron --locked`.
+Real Linux desktop application captures taken on 2026-09-09 from this branch, built with `cargo build -p openagents --locked`.
 
 The application ran in Xvfb with Openbox at a 1200 × 800 window size. A separate local engine used temporary data directories, two empty demo repositories, the mock harness, and a device renamed to “Demo workstation.” No personal session history is included.
 

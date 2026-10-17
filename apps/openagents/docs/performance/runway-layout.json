@@ -84,7 +84,7 @@
   ],
   "runs": {
     "main-long-1": {
-      "binary": "/tmp/cool-summit-runway-v2/zeron-main",
+      "binary": "/tmp/cool-summit-runway-v2/openagents-main",
       "binarySha256": "5b8d8723278acd9a8321319cf956b4dedea71e3d395b6c9b4ee8ac896110720c",
       "harness": "claude-code",
       "mode": "replay",
@@ -174,7 +174,7 @@
       }
     },
     "main-long-2": {
-      "binary": "/tmp/cool-summit-runway-v2/zeron-main",
+      "binary": "/tmp/cool-summit-runway-v2/openagents-main",
       "binarySha256": "5b8d8723278acd9a8321319cf956b4dedea71e3d395b6c9b4ee8ac896110720c",
       "harness": "claude-code",
       "mode": "replay",
@@ -264,7 +264,7 @@
       }
     },
     "candidate-long-1": {
-      "binary": "/tmp/cool-summit-runway-v2/zeron-candidate",
+      "binary": "/tmp/cool-summit-runway-v2/openagents-candidate",
       "binarySha256": "6d41ca9ce07283429f7f800204e926e94940d9c281f50a45900539891cf0b17e",
       "harness": "claude-code",
       "mode": "replay",
@@ -354,7 +354,7 @@
       }
     },
     "candidate-long-2": {
-      "binary": "/tmp/cool-summit-runway-v2/zeron-candidate",
+      "binary": "/tmp/cool-summit-runway-v2/openagents-candidate",
       "binarySha256": "6d41ca9ce07283429f7f800204e926e94940d9c281f50a45900539891cf0b17e",
       "harness": "claude-code",
       "mode": "replay",
@@ -444,7 +444,7 @@
       }
     },
     "main-short-1": {
-      "binary": "/tmp/cool-summit-runway-v2/zeron-main",
+      "binary": "/tmp/cool-summit-runway-v2/openagents-main",
       "binarySha256": "5b8d8723278acd9a8321319cf956b4dedea71e3d395b6c9b4ee8ac896110720c",
       "harness": "claude-code",
       "mode": "replay",
@@ -534,7 +534,7 @@
       }
     },
     "main-short-2": {
-      "binary": "/tmp/cool-summit-runway-v2/zeron-main",
+      "binary": "/tmp/cool-summit-runway-v2/openagents-main",
       "binarySha256": "5b8d8723278acd9a8321319cf956b4dedea71e3d395b6c9b4ee8ac896110720c",
       "harness": "claude-code",
       "mode": "replay",
@@ -624,7 +624,7 @@
       }
     },
     "candidate-short-1": {
-      "binary": "/tmp/cool-summit-runway-v2/zeron-candidate",
+      "binary": "/tmp/cool-summit-runway-v2/openagents-candidate",
       "binarySha256": "6d41ca9ce07283429f7f800204e926e94940d9c281f50a45900539891cf0b17e",
       "harness": "claude-code",
       "mode": "replay",
@@ -714,7 +714,7 @@
       }
     },
     "candidate-short-2": {
-      "binary": "/tmp/cool-summit-runway-v2/zeron-candidate",
+      "binary": "/tmp/cool-summit-runway-v2/openagents-candidate",
       "binarySha256": "6d41ca9ce07283429f7f800204e926e94940d9c281f50a45900539891cf0b17e",
       "harness": "claude-code",
       "mode": "replay",

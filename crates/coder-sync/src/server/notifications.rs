@@ -1,12 +1,12 @@
 //! Pure registry transition rules for the later push-gateway integration.
 //! No route invokes delivery in the first release.
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use zeron_doc::RegistryRow;
-use zeron_proto::{
+use openagents_doc::RegistryRow;
+use openagents_proto::{
     SessionStatus,
     view::{Indicator, SESSION_STALE_MS},
 };
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Category {

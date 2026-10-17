@@ -680,7 +680,7 @@ mod tests {
     fn common_ancestor_of_survivors() {
         let a = PathBuf::from("/u/me/projects/a");
         let b = PathBuf::from("/u/me/projects/b/.git");
-        let c = PathBuf::from("/u/me/.zeron/wt");
+        let c = PathBuf::from("/u/me/.openagents/wt");
         assert_eq!(common_ancestor(&[&a]), Some(a.clone()));
         assert_eq!(
             common_ancestor(&[&a, &b]),

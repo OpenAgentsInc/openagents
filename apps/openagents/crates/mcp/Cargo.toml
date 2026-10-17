@@ -1,15 +1,15 @@
 [package]
-name = "zeron-mcp"
+name = "openagents-mcp"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [dependencies]
-coder-brand.workspace = true
-zeron-proto.workspace = true
-zeron-doc.workspace = true
-zeron-rpc.workspace = true
+openagents-brand.workspace = true
+openagents-proto.workspace = true
+openagents-doc.workspace = true
+openagents-rpc.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -23,5 +23,5 @@ futures.workspace = true
 reqwest.workspace = true
 
 [dev-dependencies]
-zeron-visual.workspace = true
+openagents-visual.workspace = true
 image = { version = "0.25.10", default-features = false, features = ["png"] }

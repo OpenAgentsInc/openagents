@@ -1,15 +1,15 @@
 //! Embedded icon assets + the gpui [`AssetSource`] that serves them.
 //!
-//! The set mirrors the original zeron's icon usage exactly:
+//! The set mirrors the original openagents's icon usage exactly:
 //! - Most glyphs come from the **Solar Icons** set (Linear weight) by 480 Design,
 //!   the same set the Electron app used via `@solar-icons/react`. Solar Icons is
 //!   licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/);
 //!   attribution: "Solar Icons by 480 Design".
 //! - The terminal tab glyphs (`terminal`, `plus`, `close`) and the stop square
-//!   are ports of the hand-drawn inline SVGs in zeron's `terminal-panel.tsx` /
+//!   are ports of the hand-drawn inline SVGs in openagents's `terminal-panel.tsx` /
 //!   `composer-actions.tsx`.
 //! - The harness brand marks (`claude-mark`, `openai-mark`, `cursor-mark`) are
-//!   ports of zeron's `icons.tsx`. gpui tints SVGs with the text color, so the
+//!   ports of openagents's `icons.tsx`. gpui tints SVGs with the text color, so the
 //!   Claude mark's brand orange is applied at the call site ([`CLAUDE_BRAND`]).
 //!
 //! Icons render via [`icon`]: `icon(icons::PAPERCLIP).size(px(16.)).text_color(…)`.
@@ -88,7 +88,7 @@ icon_assets![
     (FOLDER_TREE, "folder-tree"),
     // Hand-drawn floppy disk in the Solar Linear style. Workspace editor save.
     (FLOPPY_DISK, "floppy-disk"),
-    // Zeron Icons (icons.zeron.sh): 24px canvas, 1.75px round strokes. The
+    // OpenAgents Icons (icons.openagents.sh): 24px canvas, 1.75px round strokes. The
     // git family shares rails at x=6/18 and 2.25-radius nodes; the carets
     // and arrows are the site's one path pre-rotated per direction.
     (FOLDER, "folder"),
@@ -186,7 +186,7 @@ icon_assets![
     (MICROPHONE, "microphone"),
     (MICROPHONE_OFF, "microphone-off"),
     (PHONE_HANG_UP, "phone-hang-up"),
-    // Hand-drawn zeron glyphs (terminal-panel.tsx / composer-actions.tsx /
+    // Hand-drawn openagents glyphs (terminal-panel.tsx / composer-actions.tsx /
     // menu-check.tsx / logo.tsx).
     (TERMINAL, "terminal"),
     (CLOSE, "close"),
@@ -217,7 +217,7 @@ icon_assets![
     // favorited state and the picker's favorites rail tab.
     (STAR, "star"),
     (STAR_BOLD, "star-bold"),
-    (ZERON_LOGO, "zeron-logo"),
+    (OPENAGENTS_LOGO, "openagents-logo"),
     // Harness brand marks (icons.tsx).
     (CLAUDE_MARK, "claude-mark"),
     (OPENAI_MARK, "openai-mark"),
@@ -249,7 +249,7 @@ impl AssetSource for Assets {
     }
 }
 
-/// The Claude mark's brand orange (`#D97757`) — zeron keeps it even on the
+/// The Claude mark's brand orange (`#D97757`) — openagents keeps it even on the
 /// monochrome surface.
 pub fn claude_brand() -> Hsla {
     gpui::rgb(0xD97757).into()
@@ -264,7 +264,7 @@ pub fn icon(path: &'static str) -> Svg {
     svg().path(path).flex_none()
 }
 
-/// The Zeron Icons sidebar glyph (icons.zeron.sh "Sidebar" / "Right
+/// The OpenAgents Icons sidebar glyph (icons.openagents.sh "Sidebar" / "Right
 /// sidebar"): a rounded frame holding a panel whose width morphs 5.5 → 1.75
 /// as the sidebar closes. gpui SVGs are static, so it is drawn from quads in
 /// the source's 24-unit space, scaled to `size`. `open` is the morph progress

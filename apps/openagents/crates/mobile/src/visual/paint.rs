@@ -1,8 +1,8 @@
 //! Vector paint for visuals: positioned text runs (measured here with the
 //! bundled faces, drawn by the platform with the same bytes) and shapes.
 
-use zeron_text::{OverflowWrap, PrepareOptions, Prepared, Span, WhiteSpace, WidthCache};
-use zeron_visual::{Align, TextSize};
+use openagents_text::{OverflowWrap, PrepareOptions, Prepared, Span, WhiteSpace, WidthCache};
+use openagents_visual::{Align, TextSize};
 
 use super::{Rgba, VisualPaint, VisualRun, VisualShape};
 use crate::layout::style::{Family, Typography, Weight, baseline};
@@ -17,13 +17,13 @@ pub(crate) struct TextCtx<'a> {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Face {
     pub size: TextSize,
-    pub weight: zeron_visual::Weight,
+    pub weight: openagents_visual::Weight,
     pub mono: bool,
     pub italic: bool,
 }
 
 impl Face {
-    pub fn new(size: TextSize, weight: zeron_visual::Weight) -> Self {
+    pub fn new(size: TextSize, weight: openagents_visual::Weight) -> Self {
         Self {
             size,
             weight,
@@ -33,12 +33,12 @@ impl Face {
     }
 }
 
-fn weight(w: zeron_visual::Weight) -> Weight {
+fn weight(w: openagents_visual::Weight) -> Weight {
     match w {
-        zeron_visual::Weight::Regular => Weight::Regular,
-        zeron_visual::Weight::Medium => Weight::Medium,
-        zeron_visual::Weight::Semibold => Weight::Semibold,
-        zeron_visual::Weight::Bold => Weight::Bold,
+        openagents_visual::Weight::Regular => Weight::Regular,
+        openagents_visual::Weight::Medium => Weight::Medium,
+        openagents_visual::Weight::Semibold => Weight::Semibold,
+        openagents_visual::Weight::Bold => Weight::Bold,
     }
 }
 
@@ -83,7 +83,7 @@ impl TextCtx<'_> {
             spans.push(Span::new(start..text.len(), style.id));
             colors.push(*color);
         }
-        let p = zeron_text::prepare(
+        let p = openagents_text::prepare(
             &self.typo.book,
             self.cache,
             &text,
@@ -254,7 +254,7 @@ impl Paint {
             // Room for the ellipsis in the last span's face.
             let last_style = para.p.spans().last().map(|s| s.style);
             let ellipsis_width = last_style.map_or(0.0, |style| {
-                let p = zeron_text::prepare(
+                let p = openagents_text::prepare(
                     &ctx.typo.book,
                     ctx.cache,
                     "…",
@@ -290,7 +290,7 @@ impl Paint {
     fn lines(
         &mut self,
         para: &Para,
-        lines: &[zeron_text::Line],
+        lines: &[openagents_text::Line],
         x: f32,
         y: f32,
         width: f32,

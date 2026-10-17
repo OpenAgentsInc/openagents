@@ -3,7 +3,7 @@
 //! The Lab is `scripts/film/lab.py serve` in the OpenAgents repository. A
 //! card's Play and "Open in the Lab player" first make sure it answers, and
 //! start it when it doesn't, the same way the chat's Lab tools do
-//! (`zeron_mcp::video_lab`).
+//! (`openagents_mcp::video_lab`).
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -17,7 +17,7 @@ pub fn script() -> Option<PathBuf> {
             .find(|path| path.is_file())
     });
     [
-        std::env::var_os("OPENAGENTS_VIDEO_LAB_SCRIPT").map(PathBuf::from),
+        openagents_brand::env_var_os("OPENAGENTS_VIDEO_LAB_SCRIPT").map(PathBuf::from),
         from_exe,
         std::env::var_os("HOME").map(|h| PathBuf::from(h).join("work/openagents/scripts/film/lab.py")),
     ]

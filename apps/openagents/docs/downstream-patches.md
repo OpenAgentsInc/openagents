@@ -3,14 +3,14 @@
 Keep fork-specific changes here so upstream updates can review each integration.
 
 - [OpenAgents #11836](https://github.com/OpenAgentsInc/openagents/issues/11836):
-  Add Coder Light and Coder Noir to `zeron-theme`, make them the default light
+  Add Coder Light and Coder Noir to `openagents-theme`, make them the default light
   and dark selections, and use them when a selected theme is missing. Map the
   public `oa-tokens` palette snapshot in `crates/theme/src/builtins.rs`; no
   sibling checkout is needed. Preserve upstream themes and saved preferences.
   See [the theme system](theme-system.md) for the source revision.
 - [OpenAgents D0 (Coder Desktop identity)](../FORK.md#identity-and-branding-seams-patch-log):
   Coder name and icon, `com.openagents.coder.desktop` bundle IDs, own data
-  directory, IPC port and `coder-desktop://` scheme, and Zeron's update feed,
+  directory, IPC port and `coder-desktop://` scheme, and OpenAgents's update feed,
   sign-in and edge turned off. Values live in `crates/brand`; the full seam
   list and the platform matrix are in [FORK.md](../FORK.md).
 - [OpenAgents #11871](https://github.com/OpenAgentsInc/openagents/issues/11871)
@@ -32,7 +32,7 @@ Keep fork-specific changes here so upstream updates can review each integration.
 
 - [OpenAgents #11892](https://github.com/OpenAgentsInc/openagents/issues/11892):
   saved chats use the session transcript on desktop and phone. The shared
-  `coder-account::chat_entries` adapter supplies message parts; the existing
+  `openagents-account::chat_entries` adapter supplies message parts; the existing
   account reader loads the latest page and older messages on upward scroll.
   Desktop attachment and paging hooks live in `transcript/account_history.rs`.
   `SavedTranscriptController` mounts the phone's Rust layout and normal cells;
@@ -62,7 +62,7 @@ adds personal agents beside existing models. Rust Native's optional syntax
 feature keeps forms independent of the app's separate syntax-engine version.
 
 - [OpenAgents #11912](https://github.com/OpenAgentsInc/openagents/issues/11912):
-  customizable Home dashboards. `coder-account::dashboard` owns layout edits,
+  customizable Home dashboards. `openagents-account::dashboard` owns layout edits,
   summary reads, import/export, account saves, and the layout directory. UIKit
   `HomeViewController` and GPUI `home` mount the same Rust Native cards. Hooks
   add the Home destination, account lifecycle callbacks, mobile FFI, and one
@@ -70,11 +70,11 @@ feature keeps forms independent of the app's separate syntax-engine version.
 
 - [OpenAgents #11922](https://github.com/OpenAgentsInc/openagents/issues/11922):
   iPhone logins use a stable Keychain profile across app-container changes.
-  `coder-account::PlatformStore::mobile` carries over existing credentials and
+  `openagents-account::PlatformStore::mobile` carries over existing credentials and
   keeps explicit sign-out effective; `CoreAccount` selects it on iOS.
 
 - Account cloud composer (#11893): `openagents_composer.rs` uses the normal
-  `ComposerInput` with the shared Rust `coder-account::turns` controller.
+  `ComposerInput` with the shared Rust `openagents-account::turns` controller.
   `openagents_reader.rs` mounts it. `SavedHistoryController.swift` mounts the
   normal `ComposerBar`; its small cloud-controls hook hides attachments and
   replaces local queue behavior with Stop. `client_ffi/saved.rs` exports Rust
@@ -90,7 +90,15 @@ feature keeps forms independent of the app's separate syntax-engine version.
   Rust rejects late replies after switching computers or accounts and preserves
   saved model selections. The bundled Claude list includes Opus 5.5.
 
-- Our cloud engine build (#11852): `apps/zeron` makes `zeron-ui` an optional
-  default feature, `ui`. `cargo zigbuild --release -p zeron --no-default-features
+- Our cloud engine build (#11852): `apps/openagents` makes `openagents-ui` an optional
+  default feature, `ui`. `cargo zigbuild --release -p openagents --no-default-features
   --target x86_64-unknown-linux-gnu.2.36` builds the headless engine alone,
   linking only libc and libm, for the cloud computers that run Our cloud.
+
+## Complete OpenAgents names (#11899)
+
+Renamed crates, the desktop binary, iOS targets and UniFFI modules, packaging,
+MCP instructions, and developer settings. Existing bundle IDs, Keychain
+identities, storage locations, and the UIKit scene delegate stay stable. Old
+environment names, saved theme choices, project imports, and conversation
+links remain readable. Upstream fixes now require manual ports.

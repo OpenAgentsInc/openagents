@@ -1,7 +1,7 @@
 //! Canonical final text reducer. Call from the engine's serialized document
 //! owner; this never submits a command and never accepts PCM or partial text.
 use crate::{DocError, MessagePart, MessageRole, MessageStatus, SessionDoc, SessionMessageEntry};
-use zeron_proto::voice::{MAX_TRANSCRIPT_BYTES, VoiceRole, VoiceTranscript};
+use openagents_proto::voice::{MAX_TRANSCRIPT_BYTES, VoiceRole, VoiceTranscript};
 
 pub fn commit_voice_transcript(
     doc: &SessionDoc,

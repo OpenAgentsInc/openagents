@@ -29,11 +29,11 @@ Watch and acknowledgement revisions are monotonic within an engine attachment, n
 ## Regression commands
 
 ```sh
-cargo test --locked -p zeron-proto --lib
-cargo test --locked -p zeron-doc --lib
-cargo test --locked -p zeron-engine --lib
-cargo test --locked -p zeron-ui --lib -- --test-threads=1
+cargo test --locked -p openagents-proto --lib
+cargo test --locked -p openagents-doc --lib
+cargo test --locked -p openagents-engine --lib
+cargo test --locked -p openagents-ui --lib -- --test-threads=1
 cd edge && npm run typecheck && npm test
 ```
 
-Run `ZeronTests/PinnedSessionsTests` on an iOS simulator for Swift key parity, dense insertion, membership, persistence and ignored old preferences. Registry tests cover independent concurrent moves, move/unpin races, duplicated delivery, restarts and capacity overflow. Workerd tests verify single-pin writes and unchanged session activity on real SQLite. Native UI and RPC tests cover filtered movement, drag gaps, empty targets, animated returns, successful-drop animation suppression, serialization, failures, timeouts and late acknowledgements.
+Run `OpenAgentsTests/PinnedSessionsTests` on an iOS simulator for Swift key parity, dense insertion, membership, persistence and ignored old preferences. Registry tests cover independent concurrent moves, move/unpin races, duplicated delivery, restarts and capacity overflow. Workerd tests verify single-pin writes and unchanged session activity on real SQLite. Native UI and RPC tests cover filtered movement, drag gaps, empty targets, animated returns, successful-drop animation suppression, serialization, failures, timeouts and late acknowledgements.

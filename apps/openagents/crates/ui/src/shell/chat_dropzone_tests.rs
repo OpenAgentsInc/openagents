@@ -106,7 +106,7 @@ fn setup_with_shell(
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             );
@@ -196,8 +196,8 @@ fn full_shell_file_tab_drops_reach_side_chat_body(cx: &mut TestAppContext) {
             shell.read_with(cx, |shell, cx| {
                 let after = text(&shell.side_chats[&2].composer, cx);
                 assert_eq!(
-                    after.matches("zeron-file:src/tab.rs").count(),
-                    before.matches("zeron-file:src/tab.rs").count() + 1,
+                    after.matches("openagents-file:src/tab.rs").count(),
+                    before.matches("openagents-file:src/tab.rs").count() + 1,
                     "drop failed: expanded={expanded}, over_input={over_input}"
                 );
                 assert!(text(&shell.composer, cx).is_empty());
@@ -253,7 +253,7 @@ fn workspace_drops_target_saved_and_unsaved_side_chat_composers(cx: &mut TestApp
                 text(composer, cx),
                 format!(
                     "{} ",
-                    zeron_proto::file_mentions::local_file_link(path, directory)
+                    openagents_proto::file_mentions::local_file_link(path, directory)
                 )
             );
             assert!(composer.focus_handle(cx).is_focused(window));
@@ -303,7 +303,7 @@ fn file_tab_drops_attach_to_side_chat_transcript_and_main_without_reordering(
     });
     drag(cx, "right-surface-tab-0", to);
     shell.read_with(cx, |shell, cx| {
-        assert!(text(&shell.side_chats[&2].composer, cx).contains("zeron-file:src/tab.rs"));
+        assert!(text(&shell.side_chats[&2].composer, cx).contains("openagents-file:src/tab.rs"));
         assert!(text(&shell.side_chats[&1].composer, cx).is_empty());
         assert!(text(&shell.composer, cx).is_empty());
         assert_eq!(shell.resolved_right_active(cx), RightSurface::SideChat(2));
@@ -311,7 +311,7 @@ fn file_tab_drops_attach_to_side_chat_transcript_and_main_without_reordering(
     });
     drag(cx, "right-surface-tab-0", gpui::point(px(200.), px(150.)));
     shell.read_with(cx, |shell, cx| {
-        assert!(text(&shell.composer, cx).contains("zeron-file:src/tab.rs"));
+        assert!(text(&shell.composer, cx).contains("openagents-file:src/tab.rs"));
         assert_eq!(shell.right_tabs[&shell.panel_key(cx)], original_tabs);
     });
     // Chat tabs have no workspace path and must not insert a mention.
@@ -386,7 +386,7 @@ fn staged_names(composer: &Entity<Composer>, cx: &App) -> Vec<String> {
 /// composer's error notice. Composers not yet dropped on stay untouched.
 #[gpui::test]
 fn external_file_drops_stage_files_and_refuse_folders_and_oversize_files(cx: &mut TestAppContext) {
-    use zeron_proto::attachment_mentions::attachment_mention_link;
+    use openagents_proto::attachment_mentions::attachment_mention_link;
     let (shell, cx) = setup_with_shell(cx, true);
     let (_files, paths) = external_files();
     let targets = [None, Some(2), Some(1)];

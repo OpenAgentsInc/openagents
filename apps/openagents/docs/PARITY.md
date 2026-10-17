@@ -37,13 +37,13 @@ not built yet).
 | DataRpc watches + QueueCommand | done | — |
 | Mutate ops | partial | createChat/renameChat/setChatArchived/deleteChat/renameDevice done; markChatSeen accepted as a no-op (unseen markers UI-local); `SetChatConfig` exists on the doc layer but is not yet exposed as a Mutate op. |
 | AuthRpc | done | AuthStatus emits the canonical proto shape (`{"state": "signedIn", …}`); SignIn/SignInHeadless/CompleteSignIn/SignOut/ListOrgs/CreateOrg/SelectOrg. |
-| Wire types | done | `zeron-proto`: AgentEvent, ToolCall kinds, models/options, entities, AuthState. |
+| Wire types | done | `openagents-proto`: AgentEvent, ToolCall kinds, models/options, entities, AuthState. |
 
 ## §3 Backend engine
 
 | Item | Status | Notes |
 | --- | --- | --- |
-| 3.1 Lifecycle | partial | Device registration, presence heartbeat (ephemeral, 15s), stale-session recovery, host-only doc executor with steer→new-turn fallback, single-instance data-dir lock. CLI auth decoupled from the daemon: `zeron login`/`logout`/`status` work on the persisted session and exit; headless TTY sign-in remains, and off-TTY (systemd/launchd) headless fails fast with "run `zeron login` first"; `zeron daemon install/start/stop/restart/status/uninstall` manages launchd / systemd `--user` units (install-time PATH captured into the unit for harness CLIs). Gaps: login-shell PATH capture for the headed app, crash shield, parent-PID watchdog. |
+| 3.1 Lifecycle | partial | Device registration, presence heartbeat (ephemeral, 15s), stale-session recovery, host-only doc executor with steer→new-turn fallback, single-instance data-dir lock. CLI auth decoupled from the daemon: `openagents login`/`logout`/`status` work on the persisted session and exit; headless TTY sign-in remains, and off-TTY (systemd/launchd) headless fails fast with "run `openagents login` first"; `openagents daemon install/start/stop/restart/status/uninstall` manages launchd / systemd `--user` units (install-time PATH captured into the unit for harness CLIs). Gaps: login-shell PATH capture for the headed app, crash shield, parent-PID watchdog. |
 | 3.2 Sessions engine | partial | Run journal on disk with crash recovery (aborted stamps), steering mailbox at step boundaries, doc hooks at boundaries, streamed part folding at STREAM_COMMIT_MS. Gaps: idle reaper + 10-min stall watchdog for persistent harness sessions. |
 | 3.3 Session-docs host | done | docs.sqlite snapshots + processed-command ledger, mark-BEFORE-execute, room join per open chat, diff sidecar publish, cold-chat delivery both directions (nudge POST on queue for remote-hosted chats + warm-open on nudge receipt). Gap (minor): no boot-time warm-open of recent chats (14d/30) — cold chats rely on nudges. |
 | 3.4 Terminals | done | PTYs, 1MB bounded replay + `afterSeq` resume, 32 max, exited 30-min TTL, live shells survive detach. |
@@ -60,7 +60,7 @@ not built yet).
 | Devin (ACP) | done | Shared `AcpHarness` spec; `devin acp` (Cognition's native ACP server), turn-boundary steering, no effort ladder (effort rides the advertised model ids). Unattended mode via the `bypass` mode value. Subagent lifecycle and nested transcripts ride Devin's `cognition.ai/subagentSupport` extension. **Live-verified against the real `devin` CLI 3000.6.14** (2026-09-04): model discovery (193 rows), an edit + `cargo test` turn settled on the truthful `end_turn`, `run_subagent` rendered as a link chip with a nested child transcript, stop → `session/cancel` → `stopReason: cancelled`, and `session/load` resume. |
 | Grok (ACP) | done | Shared `AcpHarness` spec; `grok agent stdio`, turn-boundary steering. |
 | Hermes (ACP) | done | Shared `AcpHarness` spec; `hermes acp` (Nous Research's native ACP server), turn-boundary steering, no effort ladder yet. |
-| Pi (RPC) | done | Native `PiHarness` (Pi ≥0.85.1), step-boundary steering, native/legacy session resume, per-model thinking levels including off, extension dialogs and Zeron MCP delegation. See [Pi integration](pi.md). |
+| Pi (RPC) | done | Native `PiHarness` (Pi ≥0.85.1), step-boundary steering, native/legacy session resume, per-model thinking levels including off, extension dialogs and OpenAgents MCP delegation. See [Pi integration](pi.md). |
 | Mock harness | done | Scripted event replay; powers tests + the e2e smoke. |
 
 ## §5 Session doc schema

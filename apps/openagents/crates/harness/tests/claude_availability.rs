@@ -4,7 +4,7 @@
 //! Child-process probes: resolution reads process env (PATH, the override), so
 //! each case re-runs this test binary with a controlled environment.
 
-use zeron_harness::{ClaudeHarness, Harness};
+use openagents_harness::{ClaudeHarness, Harness};
 
 #[test]
 fn availability_child() {
@@ -36,7 +36,7 @@ fn probe(path: &std::path::Path, override_path: Option<&std::path::Path>, expect
         command.env_remove(key);
     }
     // The login-shell PATH snapshot would otherwise carry this machine's shell.
-    command.env("ZERON_NO_LOGIN_SHELL", "1");
+    command.env("OPENAGENTS_NO_LOGIN_SHELL", "1");
     command
         .env("PATH", path)
         .env("CLAUDE_AVAILABILITY_EXPECTED", expected.to_string());

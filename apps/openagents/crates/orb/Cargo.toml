@@ -1,5 +1,5 @@
 [package]
-name = "zeron-orb"
+name = "openagents-orb"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

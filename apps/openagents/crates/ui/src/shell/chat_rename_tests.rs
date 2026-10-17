@@ -49,7 +49,7 @@ fn setup(cx: &mut TestAppContext) -> (Entity<Shell>, &mut VisualTestContext) {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             );
@@ -340,7 +340,7 @@ fn rename_refuses_a_row_the_project_filter_hides(cx: &mut TestAppContext) {
 
 #[gpui::test]
 fn rename_expands_a_collapsed_custom_section(cx: &mut TestAppContext) {
-    use zeron_proto::SidebarSectionChange;
+    use openagents_proto::SidebarSectionChange;
 
     let (shell, cx) = setup(cx);
     shell.update(cx, |shell, cx| {

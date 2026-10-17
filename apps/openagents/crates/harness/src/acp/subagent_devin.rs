@@ -11,7 +11,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde_json::Value;
-use zeron_proto::{AgentEvent, DoneStatus};
+use openagents_proto::{AgentEvent, DoneStatus};
 
 use super::normalize::map_update;
 
@@ -206,7 +206,7 @@ fn tag(parent: &str, event: AgentEvent) -> AgentEvent {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
-    use zeron_proto::{AgentEvent, DoneStatus, ToolCall};
+    use openagents_proto::{AgentEvent, DoneStatus, ToolCall};
 
     use super::DevinTracker;
 

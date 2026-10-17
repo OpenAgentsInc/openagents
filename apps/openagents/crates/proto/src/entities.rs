@@ -1,6 +1,6 @@
 //! Synced entity rows (workspace doc) and local projections.
 //!
-//! In zeron these were synced Postgres rows; in zeron they live in the per-org
+//! In openagents these were synced Postgres rows; in openagents they live in the per-org
 //! workspace Loro doc (see ARCHITECTURE.md §2.2) with the same field surface.
 
 use chrono::{DateTime, Utc};
@@ -79,7 +79,7 @@ pub struct Device {
     pub name: String,
     pub platform: String,
     pub last_seen_at: Option<DateTime<Utc>>,
-    /// First registration time (zeron devices.created_at — the Devices page
+    /// First registration time (openagents devices.created_at — the Devices page
     /// "Added …" fragment). Optional so pre-existing docs stay readable.
     #[serde(default)]
     pub created_at: Option<DateTime<Utc>>,
@@ -207,7 +207,7 @@ pub struct Chat {
     pub last_message_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     /// Harness-native session id of the chat's latest run — engine-owned resume
-    /// continuity across engine restarts (zeron's `chats.harness_session_id`).
+    /// continuity across engine restarts (openagents's `chats.harness_session_id`).
     /// Empty string = explicit
     /// "do not resume" tombstone after a rejected resume.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -234,7 +234,7 @@ pub struct Chat {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub room_gen: Option<u32>,
     /// The chat this one hangs off: the conversation a side chat was forked
-    /// from, or the chat whose agent spawned this one through the Zeron MCP
+    /// from, or the chat whose agent spawned this one through the OpenAgents MCP
     /// server. Children stay out of the main sidebar and list under their
     /// parent instead. Absent for top-level chats; a dangling id (parent
     /// deleted) is tolerated rather than cascaded.
@@ -418,7 +418,7 @@ pub struct Worktree {
     pub repo_path: String,
     pub path: String,
     pub branch: String,
-    /// Generated worktree folder name (`zeron/<name>` is its branch).
+    /// Generated worktree folder name (`openagents/<name>` is its branch).
     #[serde(default)]
     pub name: String,
     /// Canonical checkout identity (device-scoped hash of the git dir).
@@ -1245,7 +1245,7 @@ pub struct AgentAccount {
     /// False for a live login whose credentials we could not read (e.g. macOS
     /// Keychain denied) or whose account couldn't be identified — shown, but
     /// not re-activatable. Always false for Hermes: Hermes owns its
-    /// credential pool (it picks and rotates entries itself), so zeron lists
+    /// credential pool (it picks and rotates entries itself), so openagents lists
     /// it read-only — no switch, no remove; accounts are added through
     /// `hermes auth add`.
     #[serde(default)]
@@ -1565,7 +1565,7 @@ mod tests {
                     provider: "github".into(),
                     number: 90,
                     title: "Model checkout change request status".into(),
-                    url: "https://github.com/acme/zeron/pull/90".into(),
+                    url: "https://github.com/acme/openagents/pull/90".into(),
                     state,
                     base_ref: "main".into(),
                     head_ref: "feature/change".into(),
@@ -1678,10 +1678,10 @@ mod tests {
             ci: Default::default(),
             viewer_did_author: None,
             viewer_review_requested: None,
-            repository: "acme/zeron".into(),
+            repository: "acme/openagents".into(),
             number: 1,
             title: "No decision".into(),
-            url: "https://github.com/acme/zeron/pull/1".into(),
+            url: "https://github.com/acme/openagents/pull/1".into(),
             state: ChangeRequestState::Open,
             is_draft: false,
             review_decision: ChangeRequestReviewDecision::Approved,
@@ -1728,7 +1728,7 @@ mod tests {
         let legacy = serde_json::json!({
             "repoPath": "/repo",
             "path": "/worktree",
-            "branch": "zeron/branch",
+            "branch": "openagents/branch",
             "name": "branch",
             "checkoutId": "checkout",
         });

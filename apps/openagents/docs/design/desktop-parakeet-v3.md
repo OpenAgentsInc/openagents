@@ -1,6 +1,6 @@
 # Desktop Parakeet v3 dictation
 
-Authorized implementation brief: `/Users/gaelcado/zeron/evidence/voice/desktop-parakeet-v3-handoff-2026-09-27.md`.
+Authorized implementation brief: `/Users/gaelcado/openagents/evidence/voice/desktop-parakeet-v3-handoff-2026-09-27.md`.
 
 Dictation is device-local and opt-in. Settings → Voice provides the optional model download, microphone selection, privacy notice and lifecycle actions; supported languages are documented in the desktop dictation reference. A microphone beside the composer utilities starts/stops recording; a rebindable composer shortcut uses the existing keymap. Stop inserts an editable transcription; only explicit Send/Queue can submit.
 

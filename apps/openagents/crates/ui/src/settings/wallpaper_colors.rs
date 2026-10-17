@@ -1,6 +1,6 @@
 //! Wallpaper-derived accents and subtle surface tints. User theme choices stay intact.
 use gpui::{App, Global};
-use zeron_theme::{AccentRoles, Color, ThemeVariant};
+use openagents_theme::{AccentRoles, Color, ThemeVariant};
 
 /// Quantized dominant colour, favouring chromatic regions over neutral pixels.
 /// Sampling is bounded by the caller; transparent pixels do not influence it.
@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn overlays_preserve_semantic_colours_and_accessible_accents() {
-        let registry = zeron_theme::ThemeRegistry::builtin();
+        let registry = openagents_theme::ThemeRegistry::builtin();
         for original in registry.families.iter().flat_map(|family| &family.variants) {
             for color in [
                 Color::BLACK,
@@ -193,7 +193,7 @@ mod tests {
         cx.update(|cx| {
             gpui_base::init(cx);
             let settings = super::super::UiSettings {
-                accent: zeron_theme::AccentSelection::Preset(zeron_theme::AccentPreset::Pink),
+                accent: openagents_theme::AccentSelection::Preset(openagents_theme::AccentPreset::Pink),
                 appearance: crate::appearance::AppearanceMode::Dark,
                 ..Default::default()
             };

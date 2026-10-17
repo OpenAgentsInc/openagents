@@ -1,9 +1,9 @@
 //! Run the M1 thin rebuild against a REAL whale snapshot (read-only: loads a
 //! snapshot file, rebuilds, reports accounting — writes nothing anywhere).
-//! Usage: cargo run -p zeron-doc --example rebuild_whale -- <snapshot.bin>
+//! Usage: cargo run -p openagents-doc --example rebuild_whale -- <snapshot.bin>
 use loro::LoroDoc;
-use zeron_doc::rebuild::{doc_epoch, rebuild_thin_doc};
-use zeron_doc::schema::SessionDoc;
+use openagents_doc::rebuild::{doc_epoch, rebuild_thin_doc};
+use openagents_doc::schema::SessionDoc;
 
 fn main() {
     let path = std::env::args()

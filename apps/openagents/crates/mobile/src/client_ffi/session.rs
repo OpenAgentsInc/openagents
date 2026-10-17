@@ -1,10 +1,10 @@
 //! The per-chat FFI object: composer-facing state and every command.
 //! Transcript rows never cross here — the layout engine reads
-//! [`zeron_client::SessionSnapshot`] in Rust.
+//! [`openagents_client::SessionSnapshot`] in Rust.
 
 use std::sync::Arc;
 
-use zeron_client as zc;
+use openagents_client as zc;
 
 use super::types::{CoreResult, SendState};
 
@@ -27,7 +27,7 @@ pub struct OutgoingAttachment {
 pub struct WorktreeSpec {
     /// The repo to branch (the project's folder on the host).
     pub repo_path: String,
-    /// Base ref for the fresh `zeron/<name>` branch.
+    /// Base ref for the fresh `openagents/<name>` branch.
     pub base: String,
     pub space_id: Option<String>,
 }

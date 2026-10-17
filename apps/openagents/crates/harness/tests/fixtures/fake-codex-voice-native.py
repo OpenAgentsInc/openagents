@@ -45,7 +45,7 @@ for line in sys.stdin:
     elif method=='turn/start':result={'turn':{'id':'text-turn'}}
     elif method=='thread/realtime/start':
         p=frame['params'];assert p['transport']=={'type':'webrtc','sdp':'fixture-offer'};assert p['version']=='v3';assert p['outputModality']=='audio';assert p['clientManagedHandoffs'] is False;assert p['includeStartupContext'] is True
-        assert 'Zeron MCP' in p['realtimeStartInstructions'] and p['initialItems']==[{'role':'developer','text':p['realtimeStartInstructions']}]
+        assert 'OpenAgents MCP' in p['realtimeStartInstructions'] and p['initialItems']==[{'role':'developer','text':p['realtimeStartInstructions']}]
         session=p['realtimeSessionId']
     elif method=='thread/realtime/appendAudio':raise RuntimeError('subscription voice must never append PCM')
     send({'id':frame['id'],'result':result})

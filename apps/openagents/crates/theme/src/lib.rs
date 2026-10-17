@@ -1,4 +1,4 @@
-//! Zeron's source-neutral theme domain model.
+//! OpenAgents's source-neutral theme domain model.
 //!
 //! Runtime code consumes complete [`ThemeVariant`] values. Import formats such
 //! as VS Code are deliberately isolated in [`vscode`], so a component never
@@ -276,7 +276,8 @@ pub struct ColorParseError;
 #[serde(rename_all = "camelCase")]
 pub enum AccentPreset {
     #[default]
-    Zeron,
+    #[serde(alias = "zeron")]
+    OpenAgents,
     Orange,
     Amber,
     Green,
@@ -287,7 +288,7 @@ pub enum AccentPreset {
 
 impl AccentPreset {
     pub const ALL: [Self; 7] = [
-        Self::Zeron,
+        Self::OpenAgents,
         Self::Orange,
         Self::Amber,
         Self::Green,
@@ -298,7 +299,7 @@ impl AccentPreset {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Zeron => "Zeron",
+            Self::OpenAgents => "OpenAgents",
             Self::Orange => "Orange",
             Self::Amber => "Amber",
             Self::Green => "Green",
@@ -310,7 +311,7 @@ impl AccentPreset {
 
     pub fn color(self, appearance: Appearance) -> Color {
         let (dark, light) = match self {
-            Self::Zeron => ("#8b7cf6", "#5b43e8"),
+            Self::OpenAgents => ("#8b7cf6", "#5b43e8"),
             Self::Orange => ("#fb923c", "#c2410c"),
             Self::Amber => ("#fbbf24", "#a16207"),
             Self::Green => ("#4ade80", "#15803d"),
@@ -537,6 +538,11 @@ impl ThemeRegistry {
     }
 
     pub fn variant(&self, id: &str) -> Option<&ThemeVariant> {
+        let id = match id {
+            "zeron-light" => "openagents-light",
+            "zeron-dark" => "openagents-dark",
+            id => id,
+        };
         self.families
             .iter()
             .flat_map(|family| &family.variants)
@@ -812,8 +818,8 @@ mod tests {
     fn builtins_have_complete_provenance_and_no_validation_errors() {
         let registry = ThemeRegistry::builtin();
         assert_eq!(registry.families.len(), 20);
-        assert!(registry.variant("zeron-light").is_some());
-        assert!(registry.variant("zeron-dark").is_some());
+        assert!(registry.variant("openagents-light").is_some());
+        assert!(registry.variant("openagents-dark").is_some());
         let errors: Vec<_> = registry
             .validate()
             .into_iter()
@@ -835,7 +841,7 @@ mod tests {
             "coder-noir"
         );
         let saved = ThemeSelection {
-            light: "zeron-light".into(),
+            light: "openagents-light".into(),
             dark: "github-dark".into(),
         };
         assert_eq!(registry.resolve(&saved, Appearance::Dark).id, "github-dark");
@@ -884,5 +890,27 @@ mod tests {
             .sum::<usize>();
         assert_eq!(variants, 32);
         assert_eq!(variants * VisualFixture::ALL.len(), 320);
+    }
+}
+
+#[cfg(test)]
+mod rename_tests {
+    use super::*;
+
+    #[test]
+    fn saved_theme_names_still_select_the_same_palette() {
+        let registry = ThemeRegistry::builtin();
+        assert_eq!(
+            registry.variant("zeron-light").unwrap().id,
+            "openagents-light"
+        );
+        assert_eq!(
+            registry.variant("zeron-dark").unwrap().id,
+            "openagents-dark"
+        );
+        assert_eq!(
+            serde_json::from_str::<AccentPreset>("\"zeron\"").unwrap(),
+            AccentPreset::OpenAgents
+        );
     }
 }

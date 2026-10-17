@@ -3,7 +3,7 @@
 //! transport that rides the prompt, the transcript read-back cache, and the
 //! full-size preview lightbox.
 //!
-//! Ports of zeron's `composer/use-attachments.ts` (staging/upload),
+//! Ports of openagents's `composer/use-attachments.ts` (staging/upload),
 //! `control/message-attachments.ts` (the `withAttachments` /
 //! `parseUserMessageImages` text transport — attachment refs are embedded in
 //! the user message's plain text, which is exactly what persists in the doc),
@@ -25,7 +25,7 @@ use gpui::{
 
 use crate::state::EngineHandle;
 use crate::theme::ink;
-use zeron_rpc::methods;
+use openagents_rpc::methods;
 
 /// use-attachments.ts `MAX_ATTACHMENT_BYTES`.
 pub const MAX_ATTACHMENT_BYTES: u64 = 24 * 1024 * 1024;
@@ -68,11 +68,11 @@ pub fn is_image_path(path: &str) -> bool {
     format_by_extension(Path::new(path)).is_some()
 }
 
-pub use zeron_proto::attachment_mentions::attachment_display_name;
+pub use openagents_proto::attachment_mentions::attachment_display_name;
 
 /// Whether `mention` is the chip for the attachment at `path`.
 pub fn chip_names_attachment(
-    mention: &zeron_proto::attachment_mentions::AttachmentMention,
+    mention: &openagents_proto::attachment_mentions::AttachmentMention,
     path: &str,
 ) -> bool {
     mention.names_attachment(path)
@@ -81,7 +81,7 @@ pub fn chip_names_attachment(
 /// Number restored attachments after the chips in `text` that name them, so
 /// those chips stay live; an attachment no chip names is left unnumbered.
 pub fn pair_with_chips(text: &str, attachments: &mut [StagedAttachment]) {
-    let chips = zeron_proto::attachment_mentions::attachment_mentions(text);
+    let chips = openagents_proto::attachment_mentions::attachment_mentions(text);
     for att in attachments {
         att.mention = chips
             .iter()
@@ -94,7 +94,7 @@ pub fn pair_with_chips(text: &str, attachments: &mut [StagedAttachment]) {
 /// attachment's handle wherever it shows, so only these still need a tile;
 /// anything a chip can't be matched to keeps its tile.
 pub fn unchipped_attachments<'a>(text: &str, paths: &'a [String]) -> Vec<&'a String> {
-    let mentions = zeron_proto::attachment_mentions::attachment_mentions(text);
+    let mentions = openagents_proto::attachment_mentions::attachment_mentions(text);
     paths
         .iter()
         .filter(|path| {
@@ -156,7 +156,7 @@ fn name_from_path(path: &str) -> String {
 
 /// Find the refs trailer: a blank line, then a line starting (case-insensitive)
 /// with `Attached images (local files` and ending `):`. Returns
-/// `(body_end, refs_start)` byte offsets — the tolerant equivalent of zeron's
+/// `(body_end, refs_start)` byte offsets — the tolerant equivalent of openagents's
 /// `ATTACHED_IMAGES_RE`.
 fn find_refs_marker(content: &str) -> Option<(usize, usize)> {
     let lower = content.to_ascii_lowercase();
@@ -629,7 +629,7 @@ pub struct LoadedAttachmentImage {
 }
 
 /// `ReadAttachmentChunk` loop: 45KB base64 chunks until `done` (bounded, with
-/// the same stuck-offset guard as zeron's `readAttachmentImage`). Returns the
+/// the same stuck-offset guard as openagents's `readAttachmentImage`). Returns the
 /// file's name, MIME type and bytes.
 pub(crate) async fn read_attachment_bytes(
     engine: &EngineHandle,
@@ -1751,15 +1751,15 @@ mod generated_image_tests {
     }
 
     #[async_trait::async_trait]
-    impl zeron_rpc::RpcService for ImageRpc {
+    impl openagents_rpc::RpcService for ImageRpc {
         async fn handle(
             &self,
             method: &str,
             params: serde_json::Value,
-        ) -> Result<zeron_rpc::RpcReply, zeron_rpc::RpcError> {
+        ) -> Result<openagents_rpc::RpcReply, openagents_rpc::RpcError> {
             assert_eq!(method, methods::READ_ATTACHMENT_CHUNK);
             self.calls.lock().unwrap().push(params);
-            zeron_rpc::RpcReply::value(
+            openagents_rpc::RpcReply::value(
                 &serde_json::json!({"name":"generated.png", "mimeType":"image/png", "data":BASE64.encode(&self.bytes), "nextOffset": self.bytes.len(), "done":true}),
             )
         }
@@ -1768,13 +1768,13 @@ mod generated_image_tests {
     struct FileRpc(Vec<u8>);
 
     #[async_trait::async_trait]
-    impl zeron_rpc::RpcService for FileRpc {
+    impl openagents_rpc::RpcService for FileRpc {
         async fn handle(
             &self,
             _: &str,
             _: serde_json::Value,
-        ) -> Result<zeron_rpc::RpcReply, zeron_rpc::RpcError> {
-            zeron_rpc::RpcReply::value(&serde_json::json!({
+        ) -> Result<openagents_rpc::RpcReply, openagents_rpc::RpcError> {
+            openagents_rpc::RpcReply::value(&serde_json::json!({
                 "name": "ab12cd34-notes.md",
                 "mimeType": "application/octet-stream",
                 "data": BASE64.encode(&self.0),
@@ -1786,7 +1786,7 @@ mod generated_image_tests {
 
     #[test]
     fn chips_stand_in_for_their_attachments() {
-        use zeron_proto::attachment_mentions::attachment_mention_link;
+        use openagents_proto::attachment_mentions::attachment_mention_link;
         let paths: Vec<String> = [
             "/uploads/ab12cd34-Image_1.png",
             "pending://att-2/my notes.md",
@@ -1813,7 +1813,7 @@ mod generated_image_tests {
     async fn a_queued_file_reads_back_with_its_bytes_and_display_name() {
         let executor = gpui_platform::background_executor();
         for bytes in [b"# notes\n".to_vec(), Vec::new()] {
-            let engine = EngineHandle::from_test_client(zeron_rpc::memory_client(Arc::new(
+            let engine = EngineHandle::from_test_client(openagents_rpc::memory_client(Arc::new(
                 FileRpc(bytes.clone()),
             )));
             let file = read_attachment_file(&engine, &executor, None, "/uploads/ab12cd34-notes.md")
@@ -1852,7 +1852,7 @@ mod generated_image_tests {
                 .unwrap();
             let calls = Arc::new(Mutex::new(vec![]));
             let engine =
-                EngineHandle::from_test_client(zeron_rpc::memory_client(Arc::new(ImageRpc {
+                EngineHandle::from_test_client(openagents_rpc::memory_client(Arc::new(ImageRpc {
                     calls: calls.clone(),
                     bytes: png.into_inner(),
                 })));
