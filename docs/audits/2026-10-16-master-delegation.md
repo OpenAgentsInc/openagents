@@ -83,7 +83,9 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 1: harness and chats (critical path)
 
-**Still free:** #11896, the completed chats umbrella awaiting its closure audit. #11823 stays with its existing owner.
+**Taken 2026-10-17 04:25 CDT** by Codex working #11896 in `~/work/openagents-labs-finish`. #11823 stays with its owner; #11871 stays claimed pending #11948.
+
+**Claimed above:** #11896, the completed chats umbrella awaiting its closure audit. #11823 stays with its existing owner.
 
 **Taken 2026-10-17 00:48 CDT** by a Claude Code subagent working #11823 in ~/work/openagents-11823.
 
@@ -108,7 +110,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 3: keepers and moving agents
 
-**Done 2026-10-17 04:25 CDT** by Codex in `~/work/openagents-labs-finish`: #11958 is source-complete in `761ad950ed` and `c04314b54c`, with all 1,786 UI tests passing serially, and closing. #11933 and #11951 stay with their owners; #11871 stays claimed pending #11948.
+**Done 2026-10-17 04:25 CDT** by Codex in `~/work/openagents-labs-finish`: #11958 is source-complete in `761ad950ed` and `c04314b54c`, with all 1,786 UI tests passing serially, and closed. #11933 and #11951 stay with their owners; #11871 stays claimed pending #11948.
 
 **#11958 source complete:** fixtures enter Chat explicitly, popup geometry comparisons disable motion, and the settings key preserves both earlier spellings.
 
@@ -369,7 +371,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Checks:** web continuation 4, client 27, document 149, engine 533 (2 ignored), mobile 69 (1 ignored), protocol 83, RPC 18, sync 74, shared controls 4, SDK fixtures 3, and access 126 passed. Five focused UI checks passed, including preservation of an unsent draft on an old part; all 56 app/shared Swift sources typechecked. The broader UI suite subsequently passed all 1,786 tests serially under #11958 (`761ad950ed`, `c04314b54c`).
 - **After-close:** lane 0 deploys the server first and runs the dedicated-account web, Mac, and cloud round trip and the paired-computer/device checks below.
 
-**#11958 Desktop UI test failures.** Lane 3, code-complete in `761ad950ed` and `c04314b54c`. All 1,786 UI library tests passed with one test thread. Chat fixtures keep their assertions with an explicit starting route; copy and theme expectations match the current app, popup geometry is fixed during its scroll check, and the settings key reads both previous spellings.
+**#11958 Desktop UI test failures.** Lane 3, closed in `761ad950ed` and `c04314b54c`. All 1,786 UI library tests passed with one test thread. Chat fixtures keep their assertions with an explicit starting route; copy and theme expectations match the current app, popup geometry is fixed during its scroll check, and the settings key reads both previous spellings.
 
 **#11911 Computer sharing: owner-approved project-scoped access over NIP-HOST.** Lane 7, closed.
 - **Status:** `72a0bc730c` adds device-pinned project invitations, absolute expiry, separate scopes, and scoped revocation. `28994246be` requires `project.redeem` and `project-sharing-v2` so an older host cannot accept a project invitation as broad enrollment. `0d5bca7a54` adds the account-bound client and shared Rust Native form. `f2b101f35b` mounts that form in Settings, cancels work on account changes, and stores device keys and grants separately for each account. It offers only implemented project files and commands; broad HOST tasks, raw terminals, and general app RPC remain unavailable to guests.
