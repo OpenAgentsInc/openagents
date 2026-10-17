@@ -105,6 +105,29 @@ uses saved turn identities, bounded waits, and a process-memory canary; an
 uncertain submission requires inspection before another request. The helper
 leaves the guest stopped for the recovery check.
 
+For #11939's saved refusal, lane 0 deploys the checked recovery image first.
+Set `SPACE_IMAGE_DIGEST` to that image's SHA-256 digest, then render the
+single-task operator job from the current private service:
+
+```bash
+SPACE_RECOVERY_SCRATCH="$(openagents scratch)"
+gcloud run services describe oa-space-service-computers --project=openagentsgemini \
+  --region=us-central1 --format=json > "$SPACE_RECOVERY_SCRATCH/recovery-service.json"
+python3 deploy/space-service/recovery_job.py \
+  --source-service "$SPACE_RECOVERY_SCRATCH/recovery-service.json" \
+  --image-digest "$SPACE_IMAGE_DIGEST" --output "$SPACE_RECOVERY_SCRATCH/recovery-job.json"
+```
+
+The renderer checks the maintained identity, network, proxy pin, and numeric
+database secret reference. It includes only the saved synthetic-account request
+and does not deploy anything. Lane 0 reviews the file, runs `gcloud run jobs
+replace FILE`, then `gcloud run jobs execute oa-space-retry-11939 --wait`, and
+`gcloud run jobs delete oa-space-retry-11939 --quiet` after recording the result, with `--project=openagentsgemini --region=us-central1` on
+each command. The job has no automatic retries, a 120-second limit, and an exit
+hook that stops its proxy on success or failure. Then run the checkpoint and
+resume checks above. See [Cloud Run job containers](https://docs.cloud.google.com/run/docs/configuring/jobs/containers)
+and the [proxy shutdown example](https://github.com/GoogleCloudPlatform/cloud-sql-proxy/blob/main/examples/k8s-sidecar/job_with_shutdown_hook.yaml).
+
 `cleanup.patch` keeps deleted sandbox tombstones eligible for ordinary final
 cleanup. Its controller settings allow eight snapshot prefixes per sweep, with
 two deletions at once and the existing one-hour upload grace. Each prefix has a

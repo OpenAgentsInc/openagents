@@ -1,4 +1,6 @@
 # An isolated candidate; this never changes the production Computers service.
+serviceAccount: projects/openagentsgemini/serviceAccounts/oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com
+logsBucket: gs://openagentsgemini-oa-mvp-cloud-build-logs/space-native
 substitutions:
   _COMMIT: ''
 steps:

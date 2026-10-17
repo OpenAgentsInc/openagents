@@ -557,6 +557,53 @@
       },
       "expected_child": "lifecycle-retry:18c1a207eecb70830e1909aa86b6589bdb3a627f45fde7739d3fbc8ef8f936b9"
     },
-    "customer_pricing": "not_enabled"
+    "customer_pricing": "not_enabled",
+    "candidate_build": {
+      "id": "e9ee09d8-da6f-4ad6-b511-90cc085888e9",
+      "source": "f83f2538f8368169c4005fe94cd2e6bbda420ccd",
+      "project": "openagentsgemini",
+      "region": "us-central1",
+      "status": "WORKING",
+      "explicit_existing_builder_identity": true,
+      "first_submission": "Refused before a build was created because org policy requires an explicit service account. Resubmission uses the previous successful candidate builder and log bucket."
+    },
+    "operator_job": {
+      "renderer": "deploy/space-service/recovery_job.py",
+      "render_only": true,
+      "deployed": false,
+      "executed": false,
+      "database_secret": "Existing numeric proxy DSN reference; no plaintext DSN or provider key in the manifest.",
+      "identity": "Existing private Computers service identity.",
+      "tasks": 1,
+      "automatic_retries": 0,
+      "timeout_seconds": 120,
+      "checks": {
+        "rendered": true,
+        "real_credentials_loaded": false,
+        "created_cloud_resources": false,
+        "shell_cleanup": [
+          {
+            "operator_exit": 0,
+            "proxy_shutdown_requested": true,
+            "exit_preserved": true
+          },
+          {
+            "operator_exit": 7,
+            "proxy_shutdown_requested": true,
+            "exit_preserved": true
+          }
+        ],
+        "invalid_inputs_refused": 3
+      },
+      "cloud_validation": {
+        "dry_run": true,
+        "http_status": 200,
+        "job": "oa-space-retry-11939",
+        "deployed": false,
+        "executed": false,
+        "validation_image": "previous published candidate; not an operator qualification",
+        "job_absence_http_status": 404
+      }
+    }
   }
 }
