@@ -91,6 +91,18 @@ pub(crate) struct Screen {
 /// GET address must belong to a screen (see the route test).
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
+    (
+        "/login/key/{request}/qr.svg",
+        "the QR code image on the sign-in card, not a page",
+    ),
+    (
+        "/login/key/{request}/status",
+        "the sign-in card's poll for a phone's approval, answered in JSON",
+    ),
+    (
+        "/login/scan",
+        "where a phone camera that opens a sign-in code without the app lands; it only says to scan from the app",
+    ),
     ("/landing", "its old address, which goes to /"),
     ("/landing/*", "the landing page's stylesheet and pictures"),
     ("/contact", "the contact form, a public page"),

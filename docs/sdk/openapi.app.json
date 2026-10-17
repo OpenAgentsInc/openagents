@@ -27796,6 +27796,7 @@
       },
       "HomeIssueFilter": {
         "title": "IssueFilter",
+        "description": "Filters for the Home issue list.",
         "type": "object",
         "properties": {
           "scope": {
@@ -28364,6 +28365,7 @@
       },
       "HomeSave": {
         "title": "SaveLibrary",
+        "description": "The body of a request that saves the dashboard library.",
         "type": "object",
         "properties": {
           "request_id": {
@@ -28606,6 +28608,7 @@
       },
       "HomePublish": {
         "title": "Publish",
+        "description": "The body of a request that publishes a dashboard template.",
         "type": "object",
         "properties": {
           "request_id": {
@@ -28789,6 +28792,7 @@
       },
       "HomeRemove": {
         "title": "Remove",
+        "description": "The body of a request that removes a published template.",
         "type": "object",
         "properties": {
           "request_id": {
@@ -28808,6 +28812,7 @@
       },
       "HomeReport": {
         "title": "Report",
+        "description": "The body of a request that reports a published template.",
         "type": "object",
         "properties": {
           "request_id": {

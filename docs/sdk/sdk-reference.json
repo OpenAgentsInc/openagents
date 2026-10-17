@@ -1,6 +1,3782 @@
 {
   "schema": "openagents.sdk-reference.v1",
   "crate": "openagents-sdk",
-  "description": "",
-  "modules": []
+  "description": "The lightweight public OpenAgents client: app authentication and account resources.",
+  "regenerate": "SDK_REFERENCE_WRITE=1 cargo test -p openagents-sdk --test reference",
+  "modules": [
+    {
+      "path": "",
+      "doc": "Public OpenAgents HTTP client. Authentication is supplied explicitly; this\nclient never adopts CLI credentials, launches a browser, or loads a host.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "Account",
+          "doc": "A signed-in account: its ID, display label, and optional email and avatar.",
+          "declaration": "pub struct Account {\n    pub id: String,\n    pub label: String,\n    pub email: Option<String>,\n    pub avatar_url: Option<String>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "AccountView",
+          "doc": "The account and its current workspaces, as [`Client::account`] returns them.",
+          "declaration": "pub struct AccountView {\n    pub account: Account,\n    pub workspaces: Vec<Workspace>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Client",
+          "doc": "A bounded client for one deployment that refuses redirects. Auth and history\nsend once; the Computers facade applies its own operation-specific retry policy.",
+          "declaration": "pub struct Client {}",
+          "methods": [
+            {
+              "name": "new",
+              "doc": "Creates a client for `deployment` with a 20-second request timeout.",
+              "declaration": "pub fn new(deployment: Deployment) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "with_timeout",
+              "doc": "Creates a client with a request timeout of `timeout`. The connection timeout\nis the shorter of `timeout` and 10 seconds.",
+              "declaration": "pub fn with_timeout(deployment: Deployment, timeout: Duration) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "with_timeouts",
+              "doc": "Creates a client with separate connection and request timeouts. Refuses a\ntimeout that is zero or over two minutes, or a connection timeout longer than\nthe request timeout.",
+              "declaration": "pub fn with_timeouts(\n    deployment: Deployment,\n    connect_timeout: Duration,\n    timeout: Duration,\n) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "with_test_run",
+              "doc": "Mark requests made by an explicitly identified test run. This option\nreads no environment variables and does not change the credential.",
+              "declaration": "pub fn with_test_run(\n    deployment: Deployment,\n    timeout: Duration,\n    test_run: bool,\n) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "deployment",
+              "doc": "The deployment this client talks to.",
+              "declaration": "pub fn deployment(&self) -> &Deployment",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "CredentialRecord",
+          "doc": "Explicit persistence payload. Serialize only into the application's credential store.",
+          "declaration": "pub struct CredentialRecord {}",
+          "methods": [
+            {
+              "name": "deployment",
+              "doc": "The deployment this record belongs to.",
+              "declaration": "pub fn deployment(&self) -> &Deployment",
+              "calls": []
+            },
+            {
+              "name": "account",
+              "doc": "The account this record signs in.",
+              "declaration": "pub fn account(&self) -> &Account",
+              "calls": []
+            },
+            {
+              "name": "expires_at",
+              "doc": "When the credential expires, in Unix seconds, or `None` when it has no set expiry.",
+              "declaration": "pub fn expires_at(&self) -> Option<u64>",
+              "calls": []
+            },
+            {
+              "name": "expired",
+              "doc": "Whether the credential has expired at `now`, in Unix seconds.",
+              "declaration": "pub fn expired(&self, now: u64) -> bool",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "trait",
+          "name": "CredentialStore",
+          "doc": "Caller-owned persistence. Implement with Keychain, another OS store, or memory.",
+          "declaration": "pub trait CredentialStore {\n    fn load(\n        &self,\n        deployment: &Deployment,\n    ) -> Result<Option<CredentialRecord>, StorageError>;\n    fn save(&self, record: &CredentialRecord) -> Result<(), StorageError>;\n    fn clear(&self, deployment: &Deployment) -> Result<(), StorageError>;\n}",
+          "methods": [
+            {
+              "name": "load",
+              "doc": "Loads the login saved for `deployment`, if there is one.",
+              "declaration": "fn load(\n    &self,\n    deployment: &Deployment,\n) -> Result<Option<CredentialRecord>, StorageError>",
+              "calls": []
+            },
+            {
+              "name": "save",
+              "doc": "Saves `record`, replacing any login saved for its deployment.",
+              "declaration": "fn save(&self, record: &CredentialRecord) -> Result<(), StorageError>",
+              "calls": []
+            },
+            {
+              "name": "clear",
+              "doc": "Removes the login saved for `deployment`.",
+              "declaration": "fn clear(&self, deployment: &Deployment) -> Result<(), StorageError>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Deployment",
+          "doc": "The two explicit addresses belonging to one deployment.",
+          "declaration": "pub struct Deployment {}",
+          "methods": [
+            {
+              "name": "new",
+              "doc": "Creates a deployment from its API base, such as `https://api.openagents.com/v1`,\nand its website address. Refuses an address that isn't HTTPS, except HTTP to\nthis computer.",
+              "declaration": "pub fn new(api_base: &str, website: &str) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "production",
+              "doc": "The OpenAgents production deployment.",
+              "declaration": "pub fn production() -> Self",
+              "calls": []
+            },
+            {
+              "name": "api_base",
+              "doc": "The API base address, ending in `/v1/`.",
+              "declaration": "pub fn api_base(&self) -> &Url",
+              "calls": []
+            },
+            {
+              "name": "website",
+              "doc": "The website address.",
+              "declaration": "pub fn website(&self) -> &Url",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "enum",
+          "name": "Error",
+          "doc": "Error diagnostics omit response bodies, credential values, request URLs,\nand the HTTP 402 headers available through the explicit accessor.",
+          "declaration": "pub enum Error {\n    InvalidDeployment,\n    InvalidTimeout,\n    InvalidCredential,\n    WrongDeployment,\n    WrongAccount,\n    ExpiredSession,\n    Unauthorized,\n    Forbidden,\n    Denied,\n    KeyDenied,\n    ExpiredLogin,\n    FinishedLogin,\n    Cancelled,\n    UncertainLogin(Box<Error>),\n    Network { timeout: bool },\n    InvalidResponse,\n    NotFound,\n    Changed,\n    InvalidCursor,\n    InvalidReference,\n    TooLarge,\n    Redirect,\n    PaymentRequired(crate::PaymentRequired),\n    RateLimited { retry_after: Option<Duration> },\n    Unavailable { retry_after: Option<Duration> },\n    Refused { status: u16, code: Option<&'static str> },\n}",
+          "methods": [
+            {
+              "name": "payment_required",
+              "doc": "The HTTP 402 challenge, when this error is a payment request.",
+              "declaration": "pub fn payment_required(&self) -> Option<&crate::PaymentRequired>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "EventTemplate",
+          "doc": "An unsigned NIP-01 event for the signer to complete with `id`,\n`pubkey`, and `sig`.",
+          "declaration": "pub struct EventTemplate {\n    pub created_at: u64,\n    pub kind: u16,\n    pub tags: Vec<Vec<String>>,\n    pub content: String,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "KeySignIn",
+          "doc": "A completed key sign-in.",
+          "declaration": "pub struct KeySignIn {\n    pub session: Session,\n    pub created: bool,\n    pub pubkey: String,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "LinkedKey",
+          "doc": "One of the account's keys.",
+          "declaration": "pub struct LinkedKey {\n    pub pubkey: String,\n    pub npub: String,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Login",
+          "doc": "A single login attempt. Drop or cancel it to stop waiting; no credential is saved.",
+          "declaration": "pub struct Login {}",
+          "methods": [
+            {
+              "name": "user_code",
+              "doc": "The code the person confirms on the website.",
+              "declaration": "pub fn user_code(&self) -> &str",
+              "calls": []
+            },
+            {
+              "name": "verification_url",
+              "doc": "A validated URL on this deployment's website, suitable for a system browser.",
+              "declaration": "pub fn verification_url(&self) -> &Url",
+              "calls": []
+            },
+            {
+              "name": "expires_in",
+              "doc": "The time left before this login code expires.",
+              "declaration": "pub fn expires_in(&self) -> Duration",
+              "calls": []
+            },
+            {
+              "name": "next_poll_in",
+              "doc": "The time to wait before the next poll.",
+              "declaration": "pub fn next_poll_in(&self) -> Duration",
+              "calls": []
+            },
+            {
+              "name": "cancel",
+              "doc": "Stops this login. Later polls return `Error::FinishedLogin`.",
+              "declaration": "pub fn cancel(&mut self)",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "trait",
+          "name": "NostrSigner",
+          "doc": "Signs events with the caller's key. The SDK only asks for signatures.",
+          "declaration": "pub trait NostrSigner: Send + Sync {\n    fn sign_event(&self, template: &EventTemplate) -> Result<String, SignerError>;\n}",
+          "methods": [
+            {
+              "name": "sign_event",
+              "doc": "Sign `template`, answering the complete event as NIP-01 JSON\n(`{\"id\", \"pubkey\", \"created_at\", \"kind\", \"tags\", \"content\", \"sig\"}`).",
+              "declaration": "fn sign_event(&self, template: &EventTemplate) -> Result<String, SignerError>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "PaymentRequired",
+          "doc": "An untrusted `PAYMENT-REQUIRED` header from an HTTP 402 response.\n\nThe SDK preserves the header without parsing, paying, or following any URL\nit contains. An application must validate the offer, invoice, and actual\nrequest through its separately authorized payment integration before spending.\nDebug output omits the header, which can contain private request details.",
+          "declaration": "pub struct PaymentRequired {}",
+          "methods": [
+            {
+              "name": "header",
+              "doc": "The exact text header value, without decoding or offer validation.\nMissing, repeated, oversized, or non-text headers remain typed HTTP 402\nerrors, but their contents are not retained.",
+              "declaration": "pub fn header(&self) -> Result<&str, PaymentRequiredHeaderError>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "enum",
+          "name": "PaymentRequiredHeaderError",
+          "doc": "Why an HTTP 402 did not supply one usable text header.",
+          "declaration": "pub enum PaymentRequiredHeaderError {\n    Missing,\n    Repeated,\n    TooLarge,\n    InvalidText,\n}"
+        },
+        {
+          "kind": "enum",
+          "name": "Poll",
+          "doc": "The result of one login poll: keep waiting, slow down, or signed in.",
+          "declaration": "pub enum Poll {\n    Pending { retry_after: Duration },\n    SlowDown { retry_after: Duration },\n    SignedIn(Session),\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "ScannedLogin",
+          "doc": "A website login the phone scanned. The challenge is a one-time\ncapability: never log it.",
+          "declaration": "pub struct ScannedLogin {\n    pub origin: String,\n}",
+          "methods": [
+            {
+              "name": "parse",
+              "doc": "Read a scanned code, or `None` when it isn't a website login.",
+              "declaration": "pub fn parse(text: &str) -> Option<Self>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "ScannedLoginAbout",
+          "doc": "Which browser a scanned login is for.",
+          "declaration": "pub struct ScannedLoginAbout {\n    pub browser: String,\n    pub expires_at: u64,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "ScannedLoginApproved",
+          "doc": "An approved website login.",
+          "declaration": "pub struct ScannedLoginApproved {\n    pub browser: String,\n    pub created: bool,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Session",
+          "doc": "An authenticated account, bound to its exact API/website pair.",
+          "declaration": "pub struct Session {}",
+          "methods": [
+            {
+              "name": "account",
+              "doc": "The signed-in account.",
+              "declaration": "pub fn account(&self) -> &Account",
+              "calls": []
+            },
+            {
+              "name": "expires_at",
+              "doc": "When the session expires, in Unix seconds, or `None` when it has no set expiry.",
+              "declaration": "pub fn expires_at(&self) -> Option<u64>",
+              "calls": []
+            },
+            {
+              "name": "deployment",
+              "doc": "The deployment this session belongs to.",
+              "declaration": "pub fn deployment(&self) -> &Deployment",
+              "calls": []
+            },
+            {
+              "name": "record",
+              "doc": "Export for explicit storage; the client never saves it by itself.",
+              "declaration": "pub fn record(&self) -> CredentialRecord",
+              "calls": []
+            },
+            {
+              "name": "bearer_token",
+              "doc": "Bearer for an explicitly configured OpenAgents service, such as Coder sync.\nKeep it out of logs and ordinary application files.",
+              "declaration": "pub fn bearer_token(&self) -> &str",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "SignerError",
+          "doc": "Why a signer didn't sign.",
+          "declaration": "pub struct SignerError;"
+        },
+        {
+          "kind": "enum",
+          "name": "StorageError",
+          "doc": "Why a credential store couldn't load, save, or clear a login.",
+          "declaration": "pub enum StorageError {\n    Denied,\n    Unavailable,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Workspace",
+          "doc": "A workspace the account belongs to, with the account's role in it.",
+          "declaration": "pub struct Workspace {\n    pub id: String,\n    pub name: String,\n    pub role: String,\n    pub kind: String,\n    pub tenant: String,\n}"
+        },
+        {
+          "kind": "fn",
+          "name": "solve_pow",
+          "doc": "Solve the sign-up proof of work over `challenge`: the first counter, in\ndecimal, whose `SHA-256(challenge \":\" counter)` starts with `bits` zero\nbits. About a million hashes at 20 bits: run it off the UI thread.",
+          "declaration": "pub fn solve_pow(challenge: &str, bits: u8) -> String",
+          "calls": []
+        },
+        {
+          "kind": "const",
+          "name": "DELETE_ACCOUNT_CONFIRM",
+          "doc": "The words `DELETE /v1/account` asks for, sent after the person confirms\nin the app.",
+          "declaration": "pub const DELETE_ACCOUNT_CONFIRM: &str = \"delete my account\";"
+        },
+        {
+          "kind": "const",
+          "name": "HTTP_AUTH_KIND",
+          "doc": "The NIP-98 HTTP authorization kind.",
+          "declaration": "pub const HTTP_AUTH_KIND: u16 = 27_235;"
+        },
+        {
+          "kind": "const",
+          "name": "KEY_BODY_MAX",
+          "doc": "The largest sign-in body the server takes (`oa_auth::nostr::BODY_MAX`).",
+          "declaration": "pub const KEY_BODY_MAX: usize = 16 * 1024;"
+        },
+        {
+          "kind": "const",
+          "name": "MAX_PAYMENT_REQUIRED_HEADER_BYTES",
+          "doc": "The same encoded-header limit used by the existing x402 HTTP codec.",
+          "declaration": "pub const MAX_PAYMENT_REQUIRED_HEADER_BYTES: usize = 64 * 1024;"
+        },
+        {
+          "kind": "const",
+          "name": "POW_BITS",
+          "doc": "The proof-of-work difficulty a new key's first sign-in needs by default\n(#11994): leading zero bits of `SHA-256(challenge \":\" solution)`.",
+          "declaration": "pub const POW_BITS: u8 = 20;"
+        }
+      ],
+      "reexports": [
+        {
+          "from": "tokio_util::sync",
+          "name": "CancellationToken"
+        }
+      ]
+    },
+    {
+      "path": "agent_lab",
+      "doc": "Account-owned Agent Lab documents and bounded experiments.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "AgentLabClient",
+          "doc": "Calls the Agent Lab routes for one signed-in session.",
+          "declaration": "pub struct AgentLabClient<'a> {}",
+          "methods": [
+            {
+              "name": "bind",
+              "doc": "Ties `body` to this session's account and deployment.",
+              "declaration": "pub fn bind<T>(&self, body: T) -> Request<T>",
+              "calls": []
+            },
+            {
+              "name": "delete_document",
+              "doc": "Deletes the Agent Lab document `id`.",
+              "declaration": "pub async fn delete_document(\n    &self,\n    id: &str,\n    request: &Request<DeleteDocument>,\n    cancel: &CancellationToken,\n) -> Result<Document, Error>",
+              "calls": [
+                {
+                  "method": "DELETE",
+                  "path": "/v1/labs/agent/documents/*"
+                }
+              ]
+            },
+            {
+              "name": "hosts",
+              "doc": "Lists the computers that can run Agent Lab experiments.",
+              "declaration": "pub async fn hosts(&self, cancel: &CancellationToken) -> Result<Vec<Host>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/labs/agent/hosts"
+                }
+              ]
+            },
+            {
+              "name": "heartbeat",
+              "doc": "Reports that `host` is online and returns the saved host record.",
+              "declaration": "pub async fn heartbeat(\n    &self,\n    host: &Host,\n    cancel: &CancellationToken,\n) -> Result<Host, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/labs/agent/hosts"
+                }
+              ]
+            },
+            {
+              "name": "documents",
+              "doc": "Lists Agent Lab documents, starting after the cursor `after`.",
+              "declaration": "pub async fn documents(\n    &self,\n    after: Option<&str>,\n    cancel: &CancellationToken,\n) -> Result<Page<Document>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/labs/agent/documents"
+                }
+              ]
+            },
+            {
+              "name": "document",
+              "doc": "Fetches the Agent Lab document `id`.",
+              "declaration": "pub async fn document(\n    &self,\n    id: &str,\n    cancel: &CancellationToken,\n) -> Result<Document, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/labs/agent/documents/*"
+                }
+              ]
+            },
+            {
+              "name": "save",
+              "doc": "Saves a document: updates `id` when given, or creates a new document otherwise.",
+              "declaration": "pub async fn save(\n    &self,\n    id: Option<&str>,\n    request: &Request<SaveDocument>,\n    cancel: &CancellationToken,\n) -> Result<Document, Error>",
+              "calls": []
+            },
+            {
+              "name": "start",
+              "doc": "Starts a run of a version of the document `id`.",
+              "declaration": "pub async fn start(\n    &self,\n    id: &str,\n    request: &Request<StartRun>,\n    cancel: &CancellationToken,\n) -> Result<Run, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/labs/agent/documents/*/jobs"
+                }
+              ]
+            },
+            {
+              "name": "runs",
+              "doc": "Lists runs, optionally for one host, starting after the cursor `after`.",
+              "declaration": "pub async fn runs(\n    &self,\n    host: Option<&str>,\n    after: Option<&str>,\n    cancel: &CancellationToken,\n) -> Result<Page<Run>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/labs/agent/jobs"
+                }
+              ]
+            },
+            {
+              "name": "run",
+              "doc": "Fetches the run `id`.",
+              "declaration": "pub async fn run(&self, id: &str, cancel: &CancellationToken) -> Result<Run, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/labs/agent/jobs/*"
+                }
+              ]
+            },
+            {
+              "name": "change",
+              "doc": "Applies a user action, such as stop, to the run `id`.",
+              "declaration": "pub async fn change(\n    &self,\n    id: &str,\n    request: &Request<RunChange>,\n    cancel: &CancellationToken,\n) -> Result<Run, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/labs/agent/jobs/*/actions"
+                }
+              ]
+            },
+            {
+              "name": "host_update",
+              "doc": "Reports a host's progress on the run `id`.",
+              "declaration": "pub async fn host_update(\n    &self,\n    id: &str,\n    request: &Request<HostUpdate>,\n    cancel: &CancellationToken,\n) -> Result<Run, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/labs/agent/jobs/*/host"
+                }
+              ]
+            },
+            {
+              "name": "promote",
+              "doc": "Saves a version of the document `id` as an agent definition.",
+              "declaration": "pub async fn promote(\n    &self,\n    id: &str,\n    request: &Request<Promote>,\n    cancel: &CancellationToken,\n) -> Result<agent_contract::AgentDefinition, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/labs/agent/documents/*/promote"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Request",
+          "doc": "An Agent Lab request body tied to one account and deployment. Keep it across retries.",
+          "declaration": "pub struct Request<T> {\n    pub body: T,\n}"
+        }
+      ],
+      "reexports": [
+        {
+          "from": "agent_lab::api",
+          "name": "*"
+        },
+        {
+          "from": "agent_lab",
+          "name": "*"
+        }
+      ]
+    },
+    {
+      "path": "agents",
+      "doc": "Private, revisioned agent definitions. Saving a definition never starts work.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "AgentPage",
+          "doc": "One page of agent definitions and the cursor for the next page.",
+          "declaration": "pub struct AgentPage {\n    pub data: Vec<AgentDefinition>,\n    pub next: Option<String>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "AgentRequest",
+          "doc": "A saved mutation belongs to exactly one account and deployment. Keep it across retries.",
+          "declaration": "pub struct AgentRequest<T> {\n    pub body: T,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Agents",
+          "doc": "Calls the agent definition and assignment routes for one signed-in session.",
+          "declaration": "pub struct Agents<'a> {}",
+          "methods": [
+            {
+              "name": "assignment_request",
+              "doc": "Checks `spec` and prepares a request that creates an assignment.",
+              "declaration": "pub fn assignment_request(\n    &self,\n    spec: AssignmentSpec,\n) -> Result<AgentRequest<CreateAssignment>, Error>",
+              "calls": []
+            },
+            {
+              "name": "command_request",
+              "doc": "Checks `action` and prepares a request that sends it to an assignment.",
+              "declaration": "pub fn command_request(\n    &self,\n    action: AssignmentAction,\n) -> Result<AgentRequest<AssignmentCommand>, Error>",
+              "calls": []
+            },
+            {
+              "name": "report_request",
+              "doc": "Prepares a request a computer uses to report an assignment's state.",
+              "declaration": "pub fn report_request(\n    &self,\n    host: String,\n    expected_revision: u64,\n    state: AssignmentState,\n    result: Option<String>,\n    active_command: Option<String>,\n    after_seq: u64,\n) -> Result<AgentRequest<AssignmentReport>, Error>",
+              "calls": []
+            },
+            {
+              "name": "assign",
+              "doc": "Creates an assignment from a prepared request.",
+              "declaration": "pub async fn assign(\n    &self,\n    request: &AgentRequest<CreateAssignment>,\n    cancel: &CancellationToken,\n) -> Result<Assignment, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/agent-assignments"
+                }
+              ]
+            },
+            {
+              "name": "assignment",
+              "doc": "Fetches the assignment `id`.",
+              "declaration": "pub async fn assignment(\n    &self,\n    id: &str,\n    cancel: &CancellationToken,\n) -> Result<Assignment, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/agent-assignments/*"
+                }
+              ]
+            },
+            {
+              "name": "assignments",
+              "doc": "Lists assignments, optionally for one computer, starting after the cursor `after`.",
+              "declaration": "pub async fn assignments(\n    &self,\n    host: Option<&str>,\n    after: Option<&str>,\n    cancel: &CancellationToken,\n) -> Result<AssignmentPage, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/agent-assignments"
+                }
+              ]
+            },
+            {
+              "name": "command",
+              "doc": "Sends a prepared user action to the assignment `id`.",
+              "declaration": "pub async fn command(\n    &self,\n    id: &str,\n    request: &AgentRequest<AssignmentCommand>,\n    cancel: &CancellationToken,\n) -> Result<Assignment, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/agent-assignments/*/commands"
+                }
+              ]
+            },
+            {
+              "name": "report",
+              "doc": "Sends a prepared state report for the assignment `id`.",
+              "declaration": "pub async fn report(\n    &self,\n    id: &str,\n    request: &AgentRequest<AssignmentReport>,\n    cancel: &CancellationToken,\n) -> Result<Assignment, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/agent-assignments/*/report"
+                }
+              ]
+            },
+            {
+              "name": "create_request",
+              "doc": "Checks `spec` and prepares a request that saves it as a new agent.",
+              "declaration": "pub fn create_request(\n    &self,\n    spec: AgentSpec,\n) -> Result<AgentRequest<CreateAgent>, Error>",
+              "calls": []
+            },
+            {
+              "name": "update_request",
+              "doc": "Checks `spec` and prepares a request that replaces the agent at `expected_revision`.",
+              "declaration": "pub fn update_request(\n    &self,\n    expected_revision: u64,\n    spec: AgentSpec,\n) -> Result<AgentRequest<UpdateAgent>, Error>",
+              "calls": []
+            },
+            {
+              "name": "delete_request",
+              "doc": "Prepares a request that deletes the agent at `expected_revision`.",
+              "declaration": "pub fn delete_request(\n    &self,\n    expected_revision: u64,\n) -> Result<AgentRequest<DeleteAgent>, Error>",
+              "calls": []
+            },
+            {
+              "name": "list",
+              "doc": "Lists up to `limit` agent definitions (1 to 100), starting after the cursor `after`.",
+              "declaration": "pub async fn list(\n    &self,\n    after: Option<&str>,\n    limit: usize,\n    cancel: &CancellationToken,\n) -> Result<AgentPage, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/agent-definitions"
+                }
+              ]
+            },
+            {
+              "name": "get",
+              "doc": "Fetches one agent definition, at `revision` when given or the latest otherwise.",
+              "declaration": "pub async fn get(\n    &self,\n    id: &str,\n    revision: Option<u64>,\n    cancel: &CancellationToken,\n) -> Result<AgentDefinition, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/agent-definitions/*"
+                }
+              ]
+            },
+            {
+              "name": "create",
+              "doc": "Saves a new agent definition from a prepared request.",
+              "declaration": "pub async fn create(\n    &self,\n    request: &AgentRequest<CreateAgent>,\n    cancel: &CancellationToken,\n) -> Result<AgentDefinition, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/agent-definitions"
+                }
+              ]
+            },
+            {
+              "name": "update",
+              "doc": "Replaces the agent definition `id` from a prepared request.",
+              "declaration": "pub async fn update(\n    &self,\n    id: &str,\n    request: &AgentRequest<UpdateAgent>,\n    cancel: &CancellationToken,\n) -> Result<AgentDefinition, Error>",
+              "calls": [
+                {
+                  "method": "PUT",
+                  "path": "/v1/agent-definitions/*"
+                }
+              ]
+            },
+            {
+              "name": "delete",
+              "doc": "Deletes the agent definition `id` from a prepared request.",
+              "declaration": "pub async fn delete(\n    &self,\n    id: &str,\n    request: &AgentRequest<DeleteAgent>,\n    cancel: &CancellationToken,\n) -> Result<AgentDefinition, Error>",
+              "calls": [
+                {
+                  "method": "DELETE",
+                  "path": "/v1/agent-definitions/*"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "CreateAgent",
+          "doc": "The request body that saves a new agent definition.",
+          "declaration": "pub struct CreateAgent {\n    pub request_id: String,\n    pub spec: AgentSpec,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "DeleteAgent",
+          "doc": "The request body that deletes an agent definition at an expected revision.",
+          "declaration": "pub struct DeleteAgent {\n    pub request_id: String,\n    pub expected_revision: u64,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "UpdateAgent",
+          "doc": "The request body that replaces an agent definition at an expected revision.",
+          "declaration": "pub struct UpdateAgent {\n    pub request_id: String,\n    pub expected_revision: u64,\n    pub spec: AgentSpec,\n}"
+        },
+        {
+          "kind": "fn",
+          "name": "request_id",
+          "doc": "Returns a new random request ID as 64 hexadecimal characters.",
+          "declaration": "pub fn request_id() -> Result<String, Error>",
+          "calls": []
+        }
+      ],
+      "reexports": [
+        {
+          "from": "agent_contract",
+          "name": "ANY_RUNTIME"
+        },
+        {
+          "from": "agent_contract",
+          "name": "Access"
+        },
+        {
+          "from": "agent_contract",
+          "name": "AgentDefinition"
+        },
+        {
+          "from": "agent_contract",
+          "name": "AgentSpec"
+        },
+        {
+          "from": "agent_contract",
+          "name": "MAX_FALLBACKS"
+        },
+        {
+          "from": "agent_contract",
+          "name": "Profile"
+        },
+        {
+          "from": "agent_contract",
+          "name": "RuntimeChoice"
+        },
+        {
+          "from": "agent_contract",
+          "name": "valid_id"
+        }
+      ]
+    },
+    {
+      "path": "agents::assignments",
+      "doc": "Durable requests routed to an authorized app host's existing session ledger.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "Assignment",
+          "doc": "A task assigned to an agent on a computer, with its chat, state, and result.",
+          "declaration": "pub struct Assignment {\n    pub id: String,\n    pub revision: u64,\n    pub spec: AssignmentSpec,\n    pub definition: AgentDefinition,\n    pub chat: String,\n    pub state: AssignmentState,\n    pub commands: Vec<AssignmentCommand>,\n    pub result: Option<String>,\n    pub archived: bool,\n    pub active_command: Option<String>,\n    pub after_seq: u64,\n}"
+        },
+        {
+          "kind": "enum",
+          "name": "AssignmentAction",
+          "doc": "A user action on an assignment.",
+          "declaration": "pub enum AssignmentAction {\n    FollowUp { text: String },\n    Stop,\n    Archive,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "AssignmentCommand",
+          "doc": "A user action on an assignment with its request ID.",
+          "declaration": "pub struct AssignmentCommand {\n    pub request_id: String,\n    pub action: AssignmentAction,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "AssignmentPage",
+          "doc": "One page of assignments and the cursor for the next page.",
+          "declaration": "pub struct AssignmentPage {\n    pub data: Vec<Assignment>,\n    pub next: Option<String>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "AssignmentReport",
+          "doc": "The request body a computer sends to report an assignment's state and result.",
+          "declaration": "pub struct AssignmentReport {\n    pub active_command: Option<String>,\n    pub after_seq: u64,\n    pub request_id: String,\n    pub host: String,\n    pub expected_revision: u64,\n    pub state: AssignmentState,\n    pub result: Option<String>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "AssignmentSpec",
+          "doc": "What to run: an agent revision, the computer and optional project, and the task text.",
+          "declaration": "pub struct AssignmentSpec {\n    pub agent: String,\n    pub agent_revision: u64,\n    pub host: String,\n    pub project: Option<String>,\n    pub task: String,\n}",
+          "methods": [
+            {
+              "name": "validate",
+              "doc": "Checks the fields and returns a message for the user when one is not valid.",
+              "declaration": "pub fn validate(&self) -> Result<(), &'static str>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "enum",
+          "name": "AssignmentState",
+          "doc": "Where an assignment is in its life.",
+          "declaration": "pub enum AssignmentState {\n    Queued,\n    Running,\n    Completed,\n    Failed,\n    Stopped,\n    Unknown,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "CreateAssignment",
+          "doc": "The request body that assigns a task to an agent.",
+          "declaration": "pub struct CreateAssignment {\n    pub request_id: String,\n    pub spec: AssignmentSpec,\n}"
+        }
+      ],
+      "reexports": []
+    },
+    {
+      "path": "agents::place",
+      "doc": "Where a saved agent runs when asked: an online computer of the account\nwith the agent's runtime and a project on it (#11934). The CLI's\n`openagents agents ask` and the website chat's agents door choose the\nsame way.",
+      "items": [
+        {
+          "kind": "enum",
+          "name": "Unplaced",
+          "doc": "Why no computer can run the agent now.",
+          "declaration": "pub enum Unplaced {\n    NoComputer,\n    NoProject,\n}"
+        },
+        {
+          "kind": "fn",
+          "name": "place",
+          "doc": "Choose the computer and project. `computer` and `project` narrow the\nchoice to an exact name or ID (names compare without regard to case).\nWithout `project`, the project named `prefer` comes first, then the\ncomputer seen most recently and its first project.",
+          "declaration": "pub fn place(\n    hosts: &[Host],\n    agent: &AgentDefinition,\n    computer: Option<&str>,\n    project: Option<&str>,\n    prefer: Option<&str>,\n) -> Result<(Host, String), Unplaced>",
+          "calls": []
+        },
+        {
+          "kind": "const",
+          "name": "HOST_DEFAULTS",
+          "doc": "Runtimes a host may pick for an agent that leaves the choice to it.",
+          "declaration": "pub const HOST_DEFAULTS: [&str; 3] = [\"claude-code\", \"codex\", \"opencode\"];"
+        }
+      ],
+      "reexports": []
+    },
+    {
+      "path": "agents::runner",
+      "doc": "Typed, bounded stdio contract for an operator-installed Rust agent.\nA definition identifies a runner; it never supplies its executable or arguments.",
+      "items": [
+        {
+          "kind": "enum",
+          "name": "Event",
+          "doc": "A message a runner writes back: progress text or a final result.",
+          "declaration": "pub enum Event {\n    Text { text: String },\n    Completed { result: String },\n    Failed { message: String },\n}",
+          "methods": [
+            {
+              "name": "text",
+              "doc": "Returns the event's text, result, or error message.",
+              "declaration": "pub fn text(&self) -> &str",
+              "calls": []
+            },
+            {
+              "name": "terminal",
+              "doc": "Returns true when the event ends the turn.",
+              "declaration": "pub fn terminal(&self) -> bool",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Turn",
+          "doc": "One request to a runner: the assignment, the agent, the task, and the working folder.",
+          "declaration": "pub struct Turn {\n    pub schema: String,\n    pub assignment: String,\n    pub conversation: String,\n    pub agent: AgentSpec,\n    pub task: String,\n    pub cwd: String,\n}",
+          "methods": [
+            {
+              "name": "validate",
+              "doc": "Checks the request and returns a message for the user when it is not valid.",
+              "declaration": "pub fn validate(&self) -> Result<(), &'static str>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "fn",
+          "name": "serve_once",
+          "doc": "Read one bounded JSON request, invoke application code, and write one result.\nLogs belong on stderr. The host terminates the process when the user stops it.",
+          "declaration": "pub fn serve_once<R: BufRead, W: Write>(\n    mut input: R,\n    mut output: W,\n    run: impl FnOnce(Turn) -> Result<String, String>,\n) -> std::io::Result<()>",
+          "calls": []
+        },
+        {
+          "kind": "const",
+          "name": "MAX_FRAME",
+          "doc": "The largest request or result line, in bytes.",
+          "declaration": "pub const MAX_FRAME: usize = 96 * 1024;"
+        },
+        {
+          "kind": "const",
+          "name": "MAX_OUTPUT",
+          "doc": "The most output a runner may produce, in bytes.",
+          "declaration": "pub const MAX_OUTPUT: usize = 1024 * 1024;"
+        },
+        {
+          "kind": "const",
+          "name": "VERSION",
+          "doc": "The schema version a runner request must carry.",
+          "declaration": "pub const VERSION: &str = \"openagents.agent.runner.v1\";"
+        }
+      ],
+      "reexports": []
+    },
+    {
+      "path": "chats",
+      "doc": "Cloud turns in the existing account chat. Keep a `Send` to retry the same message.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "Current",
+          "doc": "The latest turn in a chat, its outcome, and whether it's still working.",
+          "declaration": "pub struct Current {\n    pub turn: Turn,\n    pub outcome: String,\n    pub working: bool,\n}"
+        },
+        {
+          "kind": "enum",
+          "name": "Event",
+          "doc": "One event of a turn's stream: message text, tool output, cards, the end, or an error.",
+          "declaration": "pub enum Event {\n    Text {\n        request_id: String,\n        index: usize,\n        role: crate::MessageRole,\n        text: String,\n        replace: bool,\n    },\n    Tool {\n        request_id: String,\n        index: usize,\n        role: crate::MessageRole,\n        text: String,\n        replace: bool,\n    },\n    Cards { request_id: String, cards: Value },\n    Done { request_id: String, outcome: String, revision: u64 },\n    Error { request_id: String, error: Refusal },\n}",
+          "methods": [
+            {
+              "name": "request_id",
+              "doc": "The request this event belongs to.",
+              "declaration": "pub fn request_id(&self) -> &str",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Refusal",
+          "doc": "A refused turn: its code, a message to show, and when to try again.",
+          "declaration": "pub struct Refusal {\n    pub code: RefusalCode,\n    pub message: String,\n    pub retry_after_ms: Option<u64>,\n}"
+        },
+        {
+          "kind": "enum",
+          "name": "RefusalCode",
+          "doc": "Why the service refused or ended a turn.",
+          "declaration": "pub enum RefusalCode {\n    QuotaExhausted,\n    RateLimited,\n    Busy,\n    Unavailable,\n    Timeout,\n    AccessLost,\n    StreamTimeout,\n    Other(String),\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Send",
+          "doc": "A retained retry identity, bound to one chat, account and deployment.",
+          "declaration": "pub struct Send {}",
+          "methods": [
+            {
+              "name": "new",
+              "doc": "Creates a message for `chat` with a new request ID. Refuses empty text or text\nover 4,000 characters.",
+              "declaration": "pub fn new(chat: ChatRef, text: String) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "first",
+              "doc": "The first message of a new chat answered by OpenAgents (#11979): the\nchat is named by this message's request id. Send it with [`start`].",
+              "declaration": "pub fn first(client: &Client, session: &Session, text: String) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "with_id",
+              "doc": "Restore an explicitly retained request after an uncertain response.",
+              "declaration": "pub fn with_id(chat: ChatRef, request_id: String, text: String) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "turn",
+              "doc": "The turn this message starts.",
+              "declaration": "pub fn turn(&self) -> Turn",
+              "calls": []
+            },
+            {
+              "name": "request_id",
+              "doc": "The message's request ID. Keep it to retry the same message.",
+              "declaration": "pub fn request_id(&self) -> &str",
+              "calls": []
+            },
+            {
+              "name": "chat",
+              "doc": "The chat the message goes to.",
+              "declaration": "pub fn chat(&self) -> &ChatRef",
+              "calls": []
+            },
+            {
+              "name": "text",
+              "doc": "The message text.",
+              "declaration": "pub fn text(&self) -> &str",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Stopped",
+          "doc": "The service's answer to a stop request.",
+          "declaration": "pub struct Stopped {\n    pub request_id: String,\n    pub stopped: bool,\n    pub finished: bool,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Stream",
+          "doc": "The events of one turn, read in order with [`Stream::next`].",
+          "declaration": "pub struct Stream {}",
+          "methods": [
+            {
+              "name": "next",
+              "doc": "Reads the next event. Returns `None` after the turn's last event.",
+              "declaration": "pub async fn next(&mut self) -> Result<Option<Event>, Error>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Turn",
+          "doc": "A cloud turn in one account chat, including turns started on another device.",
+          "declaration": "pub struct Turn {}",
+          "methods": [
+            {
+              "name": "new",
+              "doc": "Names a turn by its chat and request ID. Refuses a request ID that isn't a UUID.",
+              "declaration": "pub fn new(chat: ChatRef, request_id: String) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "chat",
+              "doc": "The chat the turn is in.",
+              "declaration": "pub fn chat(&self) -> &ChatRef",
+              "calls": []
+            },
+            {
+              "name": "request_id",
+              "doc": "The turn's request ID.",
+              "declaration": "pub fn request_id(&self) -> &str",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "fn",
+          "name": "current",
+          "doc": "Find the latest turn, including a turn sent from the web or another app.",
+          "declaration": "pub async fn current(\n    client: &Client,\n    session: &Session,\n    chat: &ChatRef,\n    cancel: &CancellationToken,\n) -> Result<Option<Current>, Error>",
+          "calls": [
+            {
+              "method": "GET",
+              "path": "/v1/threads/*"
+            }
+          ]
+        },
+        {
+          "kind": "fn",
+          "name": "send",
+          "doc": "Submit the retained message. Cancellation can leave an accepted turn; retry this same `Send`.",
+          "declaration": "pub async fn send(\n    client: &Client,\n    session: &Session,\n    message: &Send,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
+          "calls": [
+            {
+              "method": "POST",
+              "path": "/v1/threads/*/messages"
+            }
+          ]
+        },
+        {
+          "kind": "fn",
+          "name": "start",
+          "doc": "Start the new chat [`Send::first`] made (`POST /v1/threads`). Retrying the\nsame `Send` after an uncertain response starts it once.",
+          "declaration": "pub async fn start(\n    client: &Client,\n    session: &Session,\n    message: &Send,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
+          "calls": [
+            {
+              "method": "POST",
+              "path": "/v1/threads"
+            }
+          ]
+        },
+        {
+          "kind": "fn",
+          "name": "stop",
+          "doc": "Stop this request only. A late stop never cancels a newer turn.",
+          "declaration": "pub async fn stop(\n    client: &Client,\n    session: &Session,\n    message: &Turn,\n    cancel: &CancellationToken,\n) -> Result<Stopped, Error>",
+          "calls": [
+            {
+              "method": "POST",
+              "path": "/v1/threads/*/stop"
+            }
+          ]
+        },
+        {
+          "kind": "fn",
+          "name": "stream",
+          "doc": "Reconnecting starts with replacements of the current request's messages,\nthen deltas. Apply by message index; never append a replacement twice.",
+          "declaration": "pub async fn stream(\n    client: &Client,\n    session: &Session,\n    message: &Turn,\n    cancel: &CancellationToken,\n) -> Result<Stream, Error>",
+          "calls": []
+        }
+      ],
+      "reexports": []
+    },
+    {
+      "path": "cloud_host",
+      "doc": "Our cloud (#11852): the account's OpenAgents engine on one of its cloud\ncomputers. Starting it makes the computer the first time and runs the\nengine for up to an hour; the engine then shows as one more of the\naccount's devices. Stop ends it and stops the computer.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "CloudHost",
+          "doc": "Our cloud's state. `engine` is `running` while the engine's run lasts.",
+          "declaration": "pub struct CloudHost {\n    pub computer: Option<CloudHostComputer>,\n    pub engine: String,\n    pub device_name: String,\n    pub started_unix: Option<u64>,\n    pub until_unix: Option<u64>,\n}",
+          "methods": [
+            {
+              "name": "running",
+              "doc": "Whether the engine is running.",
+              "declaration": "pub fn running(&self) -> bool",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "CloudHostComputer",
+          "doc": "The cloud computer behind Our cloud.",
+          "declaration": "pub struct CloudHostComputer {\n    pub id: String,\n    pub state: String,\n}"
+        }
+      ],
+      "reexports": []
+    },
+    {
+      "path": "computers",
+      "doc": "Account-bound cloud computers over the generated public contract.\nSave mutation requests before sending them; reuse the same request after\nresponse loss. Local cancellation never stops a remote computer or command.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "Command",
+          "doc": "A command as the service last reported it.",
+          "declaration": "pub struct Command {}",
+          "methods": [
+            {
+              "name": "reference",
+              "doc": "Returns the reference to this command.",
+              "declaration": "pub fn reference(&self) -> &CommandRef",
+              "calls": []
+            },
+            {
+              "name": "data",
+              "doc": "Returns the command's details as the service sent them.",
+              "declaration": "pub fn data(&self) -> &generated::AppCommand",
+              "calls": []
+            },
+            {
+              "name": "outcome",
+              "doc": "Returns how the command ended, or `None` while it still runs.",
+              "declaration": "pub fn outcome(&self) -> Option<CommandOutcome>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "enum",
+          "name": "CommandOutcome",
+          "doc": "How a finished command ended.",
+          "declaration": "pub enum CommandOutcome {\n    Succeeded,\n    Failed,\n    Cancelled,\n    TimedOut,\n    Unknown,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "CommandRef",
+          "doc": "Identifies one command on one cloud computer.",
+          "declaration": "pub struct CommandRef {}",
+          "methods": [
+            {
+              "name": "id",
+              "doc": "Returns the command's ID.",
+              "declaration": "pub fn id(&self) -> &str",
+              "calls": []
+            },
+            {
+              "name": "computer",
+              "doc": "Returns the computer the command runs on.",
+              "declaration": "pub fn computer(&self) -> &ComputerRef",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "CommandRequest",
+          "doc": "A saved request to run a command, safe to resend after a lost response.",
+          "declaration": "pub struct CommandRequest {}",
+          "methods": [
+            {
+              "name": "options",
+              "doc": "The exact saved command settings, including credential references.",
+              "declaration": "pub fn options(&self) -> &CommandOptions",
+              "calls": []
+            },
+            {
+              "name": "key",
+              "doc": "Returns the key that identifies this request.",
+              "declaration": "pub fn key(&self) -> &RequestKey",
+              "calls": []
+            },
+            {
+              "name": "computer",
+              "doc": "Returns the computer the command runs on.",
+              "declaration": "pub fn computer(&self) -> &ComputerRef",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Computer",
+          "doc": "A cloud computer as the service last reported it.",
+          "declaration": "pub struct Computer {}",
+          "methods": [
+            {
+              "name": "reference",
+              "doc": "Returns the reference to this computer.",
+              "declaration": "pub fn reference(&self) -> &ComputerRef",
+              "calls": []
+            },
+            {
+              "name": "data",
+              "doc": "Returns the computer's details as the service sent them.",
+              "declaration": "pub fn data(&self) -> &generated::AppComputer",
+              "calls": []
+            },
+            {
+              "name": "awake",
+              "doc": "Returns whether the computer is running and online.",
+              "declaration": "pub fn awake(&self) -> bool",
+              "calls": []
+            },
+            {
+              "name": "stopped",
+              "doc": "Returns whether the computer is stopped and offline.",
+              "declaration": "pub fn stopped(&self) -> bool",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "ComputerPage",
+          "doc": "One page of cloud computers from a list call.",
+          "declaration": "pub struct ComputerPage {\n    pub computers: Vec<Computer>,\n    pub next_cursor: Option<String>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "ComputerRef",
+          "doc": "Identifies one cloud computer on one account and deployment.",
+          "declaration": "pub struct ComputerRef {}",
+          "methods": [
+            {
+              "name": "id",
+              "doc": "Returns the computer's ID.",
+              "declaration": "pub fn id(&self) -> &str",
+              "calls": []
+            },
+            {
+              "name": "account",
+              "doc": "Returns the ID of the account that owns the computer.",
+              "declaration": "pub fn account(&self) -> &str",
+              "calls": []
+            },
+            {
+              "name": "deployment",
+              "doc": "Returns the deployment the computer belongs to.",
+              "declaration": "pub fn deployment(&self) -> &Deployment",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Computers",
+          "doc": "A borrowed client bound to one authenticated account. Auth and history\nretain their existing retry behavior; only eligible Computers operations retry.",
+          "declaration": "pub struct Computers<'a> {}",
+          "methods": [
+            {
+              "name": "command_request",
+              "doc": "Builds a request to run a command; save it before you send it.",
+              "declaration": "pub fn command_request(\n    &self,\n    computer: &ComputerRef,\n    mut options: CommandOptions,\n) -> Result<CommandRequest, Error>",
+              "calls": []
+            },
+            {
+              "name": "execute",
+              "doc": "Runs a saved command request on its computer.",
+              "declaration": "pub async fn execute(\n    &self,\n    request: &CommandRequest,\n    cancel: &CancellationToken,\n) -> Result<Command, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/computers/{id}/commands"
+                }
+              ]
+            },
+            {
+              "name": "get_command",
+              "doc": "Gets the current state of a command.",
+              "declaration": "pub async fn get_command(\n    &self,\n    reference: &CommandRef,\n    cancel: &CancellationToken,\n) -> Result<Command, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/computers/{id}/commands/{command}"
+                }
+              ]
+            },
+            {
+              "name": "cancel_command",
+              "doc": "Asks the computer to cancel a command.",
+              "declaration": "pub async fn cancel_command(\n    &self,\n    reference: &CommandRef,\n    cancel: &CancellationToken,\n) -> Result<Command, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/computers/{id}/commands/{command}/cancel"
+                }
+              ]
+            },
+            {
+              "name": "output",
+              "doc": "Returns a reader for a command's output from the start.",
+              "declaration": "pub fn output(&self, reference: &CommandRef) -> Result<OutputReader, Error>",
+              "calls": []
+            },
+            {
+              "name": "output_at",
+              "doc": "Read from previously delivered byte positions without replaying a command.",
+              "declaration": "pub fn output_at(\n    &self,\n    reference: &CommandRef,\n    stdout: u64,\n    stderr: u64,\n) -> Result<OutputReader, Error>",
+              "calls": []
+            },
+            {
+              "name": "wait_command",
+              "doc": "Waits until a command finishes, the timeout ends, or the call is canceled.",
+              "declaration": "pub async fn wait_command(\n    &self,\n    reference: &CommandRef,\n    timeout: Duration,\n    cancel: &CancellationToken,\n) -> Result<Command, Error>",
+              "calls": []
+            },
+            {
+              "name": "credential_request",
+              "doc": "Save this request, prepare every required source, then send the command.\nA wake or expired/revoked reference requires a new preparation request.",
+              "declaration": "pub fn credential_request(\n    &self,\n    command: &CommandRequest,\n    source: &str,\n    rule: &str,\n    ttl_seconds: u64,\n) -> Result<CredentialRequest, Error>",
+              "calls": []
+            },
+            {
+              "name": "credential_reference",
+              "doc": "Returns a reference to the credential with this ID on a computer.",
+              "declaration": "pub fn credential_reference(\n    &self,\n    computer: &ComputerRef,\n    id: &str,\n) -> Result<CredentialRef, Error>",
+              "calls": []
+            },
+            {
+              "name": "command_with_credential",
+              "doc": "Add the non-secret marker before saving and dispatching the final command.\nA changed command body cannot reuse a key that was already submitted.",
+              "declaration": "pub fn command_with_credential(\n    &self,\n    command: &CommandRequest,\n    credential: &Credential,\n    env_name: &str,\n) -> Result<CommandRequest, Error>",
+              "calls": []
+            },
+            {
+              "name": "prepare_credential",
+              "doc": "Sends a saved request to prepare a credential.",
+              "declaration": "pub async fn prepare_credential(\n    &self,\n    request: &CredentialRequest,\n    cancel: &CancellationToken,\n) -> Result<Credential, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/computers/{id}/credential-references"
+                }
+              ]
+            },
+            {
+              "name": "get_credential",
+              "doc": "Gets the current state of a prepared credential.",
+              "declaration": "pub async fn get_credential(\n    &self,\n    reference: &CredentialRef,\n    cancel: &CancellationToken,\n) -> Result<Credential, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/computers/{id}/credential-references/{reference}"
+                }
+              ]
+            },
+            {
+              "name": "revoke_credential",
+              "doc": "Revokes a prepared credential so no command can use it.",
+              "declaration": "pub async fn revoke_credential(\n    &self,\n    reference: &CredentialRef,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
+              "calls": [
+                {
+                  "method": "DELETE",
+                  "path": "/v1/computers/{id}/credential-references/{reference}"
+                }
+              ]
+            },
+            {
+              "name": "write_intent",
+              "doc": "Builds a write request for a file of up to 4 MiB; save it before you send it.",
+              "declaration": "pub fn write_intent(\n    &self,\n    computer: &ComputerRef,\n    path: &str,\n    bytes: &[u8],\n) -> Result<WriteIntent, Error>",
+              "calls": []
+            },
+            {
+              "name": "read_file",
+              "doc": "Reads a file from a cloud computer and checks its hash.",
+              "declaration": "pub async fn read_file(\n    &self,\n    computer: &ComputerRef,\n    path: &str,\n    cancel: &CancellationToken,\n) -> Result<File, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/computers/{id}/files"
+                }
+              ]
+            },
+            {
+              "name": "write_file",
+              "doc": "Send once. A lost write response requires read/hash reconciliation;\nit never triggers another upload, including on a 429 or 503.",
+              "declaration": "pub async fn write_file(\n    &self,\n    intent: &WriteIntent,\n    bytes: &[u8],\n    cancel: &CancellationToken,\n) -> Result<WriteReceipt, Error>",
+              "calls": [
+                {
+                  "method": "PUT",
+                  "path": "/v1/computers/{id}/files"
+                }
+              ]
+            },
+            {
+              "name": "reconcile_write",
+              "doc": "Observe matching bytes after an uncertain upload. This does not claim\nwhich writer produced them or submit another write.",
+              "declaration": "pub async fn reconcile_write(\n    &self,\n    intent: &WriteIntent,\n    cancel: &CancellationToken,\n) -> Result<Option<WriteReceipt>, Error>",
+              "calls": []
+            },
+            {
+              "name": "create_request",
+              "doc": "Create and retain this request before sending it. Serialization is\nexplicit and contains private settings, but never a session credential.",
+              "declaration": "pub fn create_request(\n    &self,\n    mut options: CreateOptions,\n) -> Result<CreateRequest, Error>",
+              "calls": []
+            },
+            {
+              "name": "create",
+              "doc": "Creates a cloud computer from a saved request.",
+              "declaration": "pub async fn create(\n    &self,\n    request: &CreateRequest,\n    cancel: &CancellationToken,\n) -> Result<Computer, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/computers"
+                }
+              ]
+            },
+            {
+              "name": "get",
+              "doc": "Gets the current state of a cloud computer.",
+              "declaration": "pub async fn get(\n    &self,\n    reference: &ComputerRef,\n    cancel: &CancellationToken,\n) -> Result<Computer, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/computers/{id}"
+                }
+              ]
+            },
+            {
+              "name": "list",
+              "doc": "Lists up to `limit` cloud computers, starting after a cursor.",
+              "declaration": "pub async fn list(\n    &self,\n    limit: u16,\n    after: Option<&str>,\n    cancel: &CancellationToken,\n) -> Result<ComputerPage, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/computers"
+                }
+              ]
+            },
+            {
+              "name": "capabilities",
+              "doc": "Returns what cloud computers on this deployment support.",
+              "declaration": "pub async fn capabilities(\n    &self,\n    cancel: &CancellationToken,\n) -> Result<Capabilities, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/computers/capabilities"
+                }
+              ]
+            },
+            {
+              "name": "stop",
+              "doc": "An explicit intent; an uncertain stop is observed, never automatically replayed.",
+              "declaration": "pub async fn stop(\n    &self,\n    reference: &ComputerRef,\n    cancel: &CancellationToken,\n) -> Result<Computer, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/computers/{id}/stop"
+                }
+              ]
+            },
+            {
+              "name": "wake",
+              "doc": "Starts a stopped cloud computer.",
+              "declaration": "pub async fn wake(\n    &self,\n    reference: &ComputerRef,\n    cancel: &CancellationToken,\n) -> Result<Computer, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/computers/{id}/wake"
+                }
+              ]
+            },
+            {
+              "name": "delete",
+              "doc": "Delete only a cloud computer. Never reinterpret its ID as an enrolled name.",
+              "declaration": "pub async fn delete(\n    &self,\n    reference: &ComputerRef,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
+              "calls": [
+                {
+                  "method": "DELETE",
+                  "path": "/v1/computers/{id}"
+                }
+              ]
+            },
+            {
+              "name": "wait",
+              "doc": "Wait for an observed state; timeout and cancellation send no remote intent.",
+              "declaration": "pub async fn wait(\n    &self,\n    reference: &ComputerRef,\n    target: WaitFor,\n    timeout: Duration,\n    cancel: &CancellationToken,\n) -> Result<Computer, Error>",
+              "calls": []
+            },
+            {
+              "name": "with_retries",
+              "doc": "Sets how failed requests are retried.",
+              "declaration": "pub fn with_retries(mut self, policy: RetryPolicy) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "with_operation_timeout",
+              "doc": "Sets how long one call may take, up to 10 minutes.",
+              "declaration": "pub fn with_operation_timeout(mut self, timeout: Duration) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "reference",
+              "doc": "Returns a reference to the computer with this ID on the session's account.",
+              "declaration": "pub fn reference(&self, id: &str) -> Result<ComputerRef, Error>",
+              "calls": []
+            },
+            {
+              "name": "command_reference",
+              "doc": "Returns a reference to the command with this ID on a computer.",
+              "declaration": "pub fn command_reference(\n    &self,\n    computer: &ComputerRef,\n    id: &str,\n) -> Result<CommandRef, Error>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "CreateRequest",
+          "doc": "A saved request to create a cloud computer, safe to resend after a lost response.",
+          "declaration": "pub struct CreateRequest {}",
+          "methods": [
+            {
+              "name": "key",
+              "doc": "Returns the key that identifies this request.",
+              "declaration": "pub fn key(&self) -> &RequestKey",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Credential",
+          "doc": "A prepared credential as the service last reported it.",
+          "declaration": "pub struct Credential {}",
+          "methods": [
+            {
+              "name": "reference",
+              "doc": "Returns the reference to this credential.",
+              "declaration": "pub fn reference(&self) -> &CredentialRef",
+              "calls": []
+            },
+            {
+              "name": "data",
+              "doc": "Returns the credential's details as the service sent them.",
+              "declaration": "pub fn data(&self) -> &generated::AppComputerCredentialReference",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "CredentialRef",
+          "doc": "Identifies one prepared credential on a cloud computer.",
+          "declaration": "pub struct CredentialRef {}",
+          "methods": [
+            {
+              "name": "id",
+              "doc": "Returns the credential's ID.",
+              "declaration": "pub fn id(&self) -> &str",
+              "calls": []
+            },
+            {
+              "name": "computer",
+              "doc": "Returns the computer the credential is for.",
+              "declaration": "pub fn computer(&self) -> &ComputerRef",
+              "calls": []
+            },
+            {
+              "name": "placeholder",
+              "doc": "The non-secret marker to give the model or Git client in the guest.",
+              "declaration": "pub fn placeholder(&self) -> String",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "CredentialRequest",
+          "doc": "A saved request to prepare a credential for a command.",
+          "declaration": "pub struct CredentialRequest {}",
+          "methods": [
+            {
+              "name": "key",
+              "doc": "Returns the key that identifies this request.",
+              "declaration": "pub fn key(&self) -> &RequestKey",
+              "calls": []
+            },
+            {
+              "name": "computer",
+              "doc": "Returns the computer the credential is for.",
+              "declaration": "pub fn computer(&self) -> &ComputerRef",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "enum",
+          "name": "Error",
+          "doc": "An error from a cloud computer call.",
+          "declaration": "pub enum Error {\n    Session(crate::Error),\n    InvalidInput,\n    InvalidResponse,\n    TooLarge,\n    Redirect,\n    PaymentRequired(crate::PaymentRequired),\n    Cancelled,\n    WaitTimedOut,\n    Unsupported,\n    RandomUnavailable,\n    Network { timeout: bool },\n    Api { status: u16, code: Option<String>, retry_after: Option<Duration> },\n    Uncertain { operation: &'static str, key: Option<String>, cause: Box<Error> },\n}",
+          "methods": [
+            {
+              "name": "refusal",
+              "doc": "Returns the kind of refusal, when the service refused the request.",
+              "declaration": "pub fn refusal(&self) -> Option<Refusal>",
+              "calls": []
+            },
+            {
+              "name": "status",
+              "doc": "Returns the HTTP status code, when the service sent one.",
+              "declaration": "pub fn status(&self) -> Option<u16>",
+              "calls": []
+            },
+            {
+              "name": "code",
+              "doc": "Returns the service's error code, when it sent one.",
+              "declaration": "pub fn code(&self) -> Option<&str>",
+              "calls": []
+            },
+            {
+              "name": "retry_after",
+              "doc": "Returns how long the service asked you to wait before trying again.",
+              "declaration": "pub fn retry_after(&self) -> Option<Duration>",
+              "calls": []
+            },
+            {
+              "name": "payment_required",
+              "doc": "Returns the payment request, when the call needs payment.",
+              "declaration": "pub fn payment_required(&self) -> Option<&crate::PaymentRequired>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "File",
+          "doc": "A file read from a cloud computer.",
+          "declaration": "pub struct File {\n    pub bytes: Vec<u8>,\n    pub sha256: String,\n    pub etag: String,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Output",
+          "doc": "One page of a command's output.",
+          "declaration": "pub struct Output {\n    pub command: Command,\n    pub stdout: Vec<u8>,\n    pub stderr: Vec<u8>,\n    pub stdout_gap: bool,\n    pub stderr_gap: bool,\n    pub terminal: bool,\n    pub has_more: bool,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "OutputReader",
+          "doc": "Reads a command's output page by page; save it to continue reading later.",
+          "declaration": "pub struct OutputReader {}",
+          "methods": [
+            {
+              "name": "command",
+              "doc": "Returns the command whose output this reads.",
+              "declaration": "pub fn command(&self) -> &CommandRef",
+              "calls": []
+            },
+            {
+              "name": "next_page",
+              "doc": "Reads the next page of output, or returns `None` after the last page.",
+              "declaration": "pub async fn next_page(\n    &mut self,\n    computers: &Computers<'_>,\n    cancel: &CancellationToken,\n) -> Result<Option<Output>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/computers/{id}/commands/{command}/output"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "enum",
+          "name": "Refusal",
+          "doc": "A stable refusal category; `Error::code` preserves future server codes.",
+          "declaration": "pub enum Refusal {\n    Authentication,\n    AccessDenied,\n    PaymentRequired,\n    Missing,\n    Quota,\n    RateLimited,\n    Conflict,\n    Unsupported,\n    Unavailable,\n    Other,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "RequestKey",
+          "doc": "A key that lets the service recognize a resent request as the same request.",
+          "declaration": "pub struct RequestKey(String);",
+          "methods": [
+            {
+              "name": "generate",
+              "doc": "Creates a new random key.",
+              "declaration": "pub fn generate() -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "as_str",
+              "doc": "Returns the key as text.",
+              "declaration": "pub fn as_str(&self) -> &str",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "RetryPolicy",
+          "doc": "How many times, and how long apart, to retry a failed request.",
+          "declaration": "pub struct RetryPolicy {\n    pub max_retries: u8,\n    pub initial_delay: Duration,\n    pub max_delay: Duration,\n}",
+          "methods": [
+            {
+              "name": "none",
+              "doc": "Returns a policy that never retries.",
+              "declaration": "pub fn none() -> Self",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "enum",
+          "name": "WaitFor",
+          "doc": "The computer state that `wait` waits for.",
+          "declaration": "pub enum WaitFor {\n    Awake,\n    Stopped,\n    Deleted,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "WriteIntent",
+          "doc": "A recovery record contains the expected hash, not the file's private bytes.",
+          "declaration": "pub struct WriteIntent {}",
+          "methods": [
+            {
+              "name": "allow_overwrite",
+              "doc": "Choose this before sending; never change a write being recovered.",
+              "declaration": "pub fn allow_overwrite(mut self) -> Self",
+              "calls": []
+            },
+            {
+              "name": "overwrites",
+              "doc": "Returns whether the write may replace an existing file.",
+              "declaration": "pub fn overwrites(&self) -> bool",
+              "calls": []
+            },
+            {
+              "name": "computer",
+              "doc": "Returns the computer the file is written to.",
+              "declaration": "pub fn computer(&self) -> &ComputerRef",
+              "calls": []
+            },
+            {
+              "name": "path",
+              "doc": "Returns the file's path on the computer.",
+              "declaration": "pub fn path(&self) -> &str",
+              "calls": []
+            },
+            {
+              "name": "size",
+              "doc": "Returns the file's size in bytes.",
+              "declaration": "pub fn size(&self) -> u64",
+              "calls": []
+            },
+            {
+              "name": "sha256",
+              "doc": "Returns the file's SHA-256 hash as hexadecimal text.",
+              "declaration": "pub fn sha256(&self) -> &str",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "WriteReceipt",
+          "doc": "Confirms that a file on the computer has the expected bytes.",
+          "declaration": "pub struct WriteReceipt {\n    pub intent: WriteIntent,\n    pub observed_matching: bool,\n}"
+        }
+      ],
+      "reexports": []
+    },
+    {
+      "path": "continuations",
+      "doc": "Move to a linked part without creating a second editable copy of the source.",
+      "items": [
+        {
+          "kind": "fn",
+          "name": "claim",
+          "doc": "Continues `source` in the claimed part, using the chat history the service\nalready holds.",
+          "declaration": "pub async fn claim(\n    client: &Client,\n    session: &Session,\n    source: &ChatRef,\n    claim: &Claim,\n    cancel: &CancellationToken,\n) -> Result<Continued, Error>",
+          "calls": []
+        },
+        {
+          "kind": "fn",
+          "name": "destination",
+          "doc": "The part that continues `source`, if one does.",
+          "declaration": "pub async fn destination(\n    client: &Client,\n    session: &Session,\n    source: &ChatRef,\n    cancel: &CancellationToken,\n) -> Result<Option<PartRef>, Error>",
+          "calls": [
+            {
+              "method": "GET",
+              "path": "/v1/threads/*"
+            }
+          ]
+        },
+        {
+          "kind": "fn",
+          "name": "transfer",
+          "doc": "Choose a linked destination. Computer hosts supply a screened seed;\nsaved-chat sources use the history already held by the service.",
+          "declaration": "pub async fn transfer(\n    client: &Client,\n    session: &Session,\n    source: &ChatRef,\n    claim: &TransferClaim,\n    cancel: &CancellationToken,\n) -> Result<Continued, Error>",
+          "calls": [
+            {
+              "method": "POST",
+              "path": "/v1/threads/*/continue"
+            }
+          ]
+        }
+      ],
+      "reexports": [
+        {
+          "from": "chat_home",
+          "name": "Claim"
+        },
+        {
+          "from": "chat_home",
+          "name": "Continued"
+        },
+        {
+          "from": "chat_home",
+          "name": "Home"
+        },
+        {
+          "from": "chat_home",
+          "name": "Links"
+        },
+        {
+          "from": "chat_home",
+          "name": "PartRef"
+        },
+        {
+          "from": "chat_home",
+          "name": "REQUEST_OPTION"
+        },
+        {
+          "from": "chat_home",
+          "name": "Role"
+        },
+        {
+          "from": "chat_home",
+          "name": "Seed"
+        },
+        {
+          "from": "chat_home",
+          "name": "Source"
+        },
+        {
+          "from": "chat_home",
+          "name": "TransferClaim"
+        }
+      ]
+    },
+    {
+      "path": "dashboard",
+      "doc": "Public Home summaries and portable layouts. Reads never start execution.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "Home",
+          "doc": "Home reads and dashboard edits for one signed-in session.",
+          "declaration": "pub struct Home<'a> {}",
+          "methods": [
+            {
+              "name": "bind",
+              "doc": "Ties a request body to this session's account and deployment.",
+              "declaration": "pub fn bind<T>(&self, body: T) -> Request<T>",
+              "calls": []
+            },
+            {
+              "name": "projects",
+              "doc": "Lists the projects shown on Home.",
+              "declaration": "pub async fn projects(&self, cancel: &CancellationToken) -> Result<Vec<Project>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/home/projects"
+                }
+              ]
+            },
+            {
+              "name": "issues",
+              "doc": "Returns a page of issues that match a filter.",
+              "declaration": "pub async fn issues(\n    &self,\n    filter: &IssueFilter,\n    cancel: &CancellationToken,\n) -> Result<IssueSummary, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/home/issues"
+                }
+              ]
+            },
+            {
+              "name": "work",
+              "doc": "Returns a page of recent work, starting after an optional cursor.",
+              "declaration": "pub async fn work(\n    &self,\n    after: Option<&str>,\n    cancel: &CancellationToken,\n) -> Result<WorkPage, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/home/work"
+                }
+              ]
+            },
+            {
+              "name": "library",
+              "doc": "Returns the saved dashboard library.",
+              "declaration": "pub async fn library(&self, cancel: &CancellationToken) -> Result<Library, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/home/dashboards"
+                }
+              ]
+            },
+            {
+              "name": "save_request",
+              "doc": "Checks a library and builds a request that saves it.",
+              "declaration": "pub fn save_request(&self, library: Library) -> Result<Request<SaveLibrary>, Error>",
+              "calls": []
+            },
+            {
+              "name": "save",
+              "doc": "Saves the dashboard library and returns the saved copy.",
+              "declaration": "pub async fn save(\n    &self,\n    request: &Request<SaveLibrary>,\n    cancel: &CancellationToken,\n) -> Result<Library, Error>",
+              "calls": [
+                {
+                  "method": "PUT",
+                  "path": "/v1/home/dashboards"
+                }
+              ]
+            },
+            {
+              "name": "publish_request",
+              "doc": "Checks a package and builds a request that publishes it.",
+              "declaration": "pub fn publish_request(\n    &self,\n    package: Package,\n    visibility: Visibility,\n    expected_revision: u64,\n) -> Result<Request<Publish>, Error>",
+              "calls": []
+            },
+            {
+              "name": "publish",
+              "doc": "Publishes a template under an ID and returns its listing.",
+              "declaration": "pub async fn publish(\n    &self,\n    id: &str,\n    request: &Request<Publish>,\n    cancel: &CancellationToken,\n) -> Result<Listing, Error>",
+              "calls": [
+                {
+                  "method": "PUT",
+                  "path": "/v1/home/templates/*"
+                }
+              ]
+            },
+            {
+              "name": "directory",
+              "doc": "Searches the template directory, optionally only your own templates.",
+              "declaration": "pub async fn directory(\n    &self,\n    search: &str,\n    after: Option<&str>,\n    mine: bool,\n    cancel: &CancellationToken,\n) -> Result<Directory, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/home/templates"
+                }
+              ]
+            },
+            {
+              "name": "template",
+              "doc": "Returns a template's listing, at a given version or the latest.",
+              "declaration": "pub async fn template(\n    &self,\n    id: &str,\n    version: Option<u64>,\n    cancel: &CancellationToken,\n) -> Result<Listing, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/home/templates/*"
+                }
+              ]
+            },
+            {
+              "name": "directory_by_author",
+              "doc": "Lists templates published by one author.",
+              "declaration": "pub async fn directory_by_author(\n    &self,\n    author: &str,\n    after: Option<&str>,\n    cancel: &CancellationToken,\n) -> Result<Directory, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/home/templates"
+                }
+              ]
+            },
+            {
+              "name": "remove_request",
+              "doc": "Builds a request that removes a published template.",
+              "declaration": "pub fn remove_request(&self, expected_revision: u64) -> Result<Request<Remove>, Error>",
+              "calls": []
+            },
+            {
+              "name": "remove",
+              "doc": "Removes a published template and returns its final listing.",
+              "declaration": "pub async fn remove(\n    &self,\n    id: &str,\n    request: &Request<Remove>,\n    cancel: &CancellationToken,\n) -> Result<Listing, Error>",
+              "calls": [
+                {
+                  "method": "DELETE",
+                  "path": "/v1/home/templates/*"
+                }
+              ]
+            },
+            {
+              "name": "report",
+              "doc": "Reports a published template for review.",
+              "declaration": "pub async fn report(\n    &self,\n    id: &str,\n    request: &Request<Report>,\n    cancel: &CancellationToken,\n) -> Result<serde_json::Value, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/home/templates/*/report"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "IssueFilter",
+          "doc": "Filters for the Home issue list.",
+          "declaration": "pub struct IssueFilter {\n    pub scope: Scope,\n    pub mine: bool,\n    pub assignee: Option<String>,\n    pub labels: Vec<String>,\n    pub page: u32,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Publish",
+          "doc": "The body of a request that publishes a dashboard template.",
+          "declaration": "pub struct Publish {\n    pub request_id: String,\n    pub expected_revision: u64,\n    pub package: Package,\n    pub visibility: Visibility,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Remove",
+          "doc": "The body of a request that removes a published template.",
+          "declaration": "pub struct Remove {\n    pub request_id: String,\n    pub expected_revision: u64,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Report",
+          "doc": "The body of a request that reports a published template.",
+          "declaration": "pub struct Report {\n    pub request_id: String,\n    pub reason: String,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Request",
+          "doc": "A request body tied to the account and deployment that made it.",
+          "declaration": "pub struct Request<T> {\n    pub body: T,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "SaveLibrary",
+          "doc": "The body of a request that saves the dashboard library.",
+          "declaration": "pub struct SaveLibrary {\n    pub request_id: String,\n    pub expected_revision: u64,\n    pub library: Library,\n}"
+        }
+      ],
+      "reexports": [
+        {
+          "from": "openagents_dashboard",
+          "name": "*"
+        }
+      ]
+    },
+    {
+      "path": "generated",
+      "doc": "Generated wire values and transport-independent public request builders.",
+      "items": [],
+      "reexports": [],
+      "generated": true
+    },
+    {
+      "path": "generated::computers",
+      "doc": "",
+      "items": [],
+      "reexports": [],
+      "generated": true
+    },
+    {
+      "path": "history",
+      "doc": "Saved account history. References carry their account and deployment; readers\nmake one bounded GET per call and never drive an engine or write a chat.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "AttachmentRef",
+          "doc": "Only the SDK constructs these references, from saved metadata. No URL or bearer is embedded.",
+          "declaration": "pub struct AttachmentRef {}",
+          "methods": [
+            {
+              "name": "chat",
+              "doc": "The chat the attachment belongs to.",
+              "declaration": "pub fn chat(&self) -> &ChatRef",
+              "calls": []
+            },
+            {
+              "name": "id",
+              "doc": "The attachment's ID.",
+              "declaration": "pub fn id(&self) -> &str",
+              "calls": []
+            },
+            {
+              "name": "size",
+              "doc": "The attachment's size in bytes.",
+              "declaration": "pub fn size(&self) -> u64",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "ChatReader",
+          "doc": "Reads the account's chat list a page at a time.",
+          "declaration": "pub struct ChatReader(ListReader);",
+          "methods": [
+            {
+              "name": "with_page_size",
+              "doc": "Sets how many chats each page holds, from 1 to 200.",
+              "declaration": "pub fn with_page_size(mut self, limit: usize) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "next_page",
+              "doc": "Reads the next page of chats. Returns `None` after the last page.",
+              "declaration": "pub async fn next_page(\n    &mut self,\n    client: &Client,\n    session: &Session,\n    cancel: &CancellationToken,\n) -> Result<Option<HistoryPage<ChatSummary>>, Error>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "ChatRef",
+          "doc": "A saved chat ID in one account. Construct with `Client::chat` or a summary.",
+          "declaration": "pub struct ChatRef {}",
+          "methods": [
+            {
+              "name": "id",
+              "doc": "The chat's ID.",
+              "declaration": "pub fn id(&self) -> &str",
+              "calls": []
+            },
+            {
+              "name": "account",
+              "doc": "The account the chat belongs to.",
+              "declaration": "pub fn account(&self) -> &str",
+              "calls": []
+            },
+            {
+              "name": "deployment",
+              "doc": "The deployment the chat is on.",
+              "declaration": "pub fn deployment(&self) -> &Deployment",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "ChatSummary",
+          "doc": "One chat in the account's history list.",
+          "declaration": "pub struct ChatSummary {\n    pub home: chat_home::Home,\n    pub links: chat_home::Links,\n    pub chat: ChatRef,\n    pub title: String,\n    pub revision: u64,\n    pub updated_unix: u64,\n    pub pinned_unix: Option<u64>,\n    pub archived_unix: Option<u64>,\n    pub project: Option<String>,\n    pub source: ChatSource,\n    pub messages: usize,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "HistoryIndex",
+          "doc": "Optional in-memory merge for owned/shared pages in one account. Replace it on\naccess refresh; it does not grant authority to read or download cached rows.",
+          "declaration": "pub struct HistoryIndex {}",
+          "methods": [
+            {
+              "name": "extend",
+              "doc": "Adds rows to the index, keeping the newest revision of each chat. Refuses rows\nfrom another account or deployment.",
+              "declaration": "pub fn extend(\n    &mut self,\n    rows: impl IntoIterator<Item = ChatSummary>,\n) -> Result<(), Error>",
+              "calls": []
+            },
+            {
+              "name": "len",
+              "doc": "The number of chats in the index.",
+              "declaration": "pub fn len(&self) -> usize",
+              "calls": []
+            },
+            {
+              "name": "is_empty",
+              "doc": "Whether the index is empty.",
+              "declaration": "pub fn is_empty(&self) -> bool",
+              "calls": []
+            },
+            {
+              "name": "clear",
+              "doc": "Removes every chat from the index.",
+              "declaration": "pub fn clear(&mut self)",
+              "calls": []
+            },
+            {
+              "name": "get",
+              "doc": "The chat with this ID, if the index holds it.",
+              "declaration": "pub fn get(&self, id: &str) -> Option<&ChatSummary>",
+              "calls": []
+            },
+            {
+              "name": "sorted",
+              "doc": "The archived or unarchived chats, pinned first, then the most recently updated.",
+              "declaration": "pub fn sorted(&self, archived: bool) -> Vec<&ChatSummary>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "HistoryPage",
+          "doc": "One page of a history list.",
+          "declaration": "pub struct HistoryPage<T> {\n    pub data: Vec<T>,\n    pub has_more: bool,\n    pub sessions: Vec<crate::sessions::SessionSummary>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "HistoryProject",
+          "doc": "A project in the account's history, which may be shared.",
+          "declaration": "pub struct HistoryProject {\n    pub name: String,\n    pub shared: bool,\n}",
+          "methods": [
+            {
+              "name": "id",
+              "doc": "The project's ID.",
+              "declaration": "pub fn id(&self) -> &str",
+              "calls": []
+            },
+            {
+              "name": "account",
+              "doc": "The account the project belongs to.",
+              "declaration": "pub fn account(&self) -> &str",
+              "calls": []
+            },
+            {
+              "name": "deployment",
+              "doc": "The deployment the project is on.",
+              "declaration": "pub fn deployment(&self) -> &Deployment",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "ProjectReader",
+          "doc": "Reads the account's projects a page at a time.",
+          "declaration": "pub struct ProjectReader(ListReader);",
+          "methods": [
+            {
+              "name": "with_page_size",
+              "doc": "Sets how many projects each page holds, from 1 to 200.",
+              "declaration": "pub fn with_page_size(mut self, limit: usize) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "next_page",
+              "doc": "Reads the next page of projects. Returns `None` after the last page.",
+              "declaration": "pub async fn next_page(\n    &mut self,\n    client: &Client,\n    session: &Session,\n    cancel: &CancellationToken,\n) -> Result<Option<HistoryPage<HistoryProject>>, Error>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "SavedCapture",
+          "doc": "A capture saved with a chat transcript.",
+          "declaration": "pub struct SavedCapture {\n    pub id: String,\n    pub name: String,\n    pub state: CaptureState,\n    pub size: Option<u64>,\n    pub media: Option<String>,\n}",
+          "methods": [
+            {
+              "name": "download_ref",
+              "doc": "The reference to download the capture with, when it can be downloaded.",
+              "declaration": "pub fn download_ref(&self) -> Option<&AttachmentRef>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "SavedFile",
+          "doc": "A file attached to a saved message.",
+          "declaration": "pub struct SavedFile {\n    pub id: String,\n    pub name: String,\n    pub kind: FileKind,\n    pub size: u64,\n}",
+          "methods": [
+            {
+              "name": "download_ref",
+              "doc": "The reference to download the file with, when it can be downloaded.",
+              "declaration": "pub fn download_ref(&self) -> Option<&AttachmentRef>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "SavedLabCard",
+          "doc": "A saved Lab card and the account-bound document used to read its media.",
+          "declaration": "pub struct SavedLabCard {\n    pub card: lab_kit::Card,\n}",
+          "methods": [
+            {
+              "name": "document_ref",
+              "doc": "The document used to read the card's media.",
+              "declaration": "pub fn document_ref(&self) -> &crate::labs::DocumentRef",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "SavedMessage",
+          "doc": "One message in a saved chat transcript.",
+          "declaration": "pub struct SavedMessage {\n    pub id: String,\n    pub role: MessageRole,\n    pub text: String,\n    pub files: Vec<SavedFile>,\n    pub tool: Option<ToolDetail>,\n    pub cards: Vec<SavedLabCard>,\n    pub extra: BTreeMap<String, Value>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "ToolDetail",
+          "doc": "A tool call in a saved message: its name, status, input, and output.",
+          "declaration": "pub struct ToolDetail {\n    pub name: String,\n    pub summary: String,\n    pub status: ToolStatus,\n    pub input: String,\n    pub output: String,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "TranscriptPage",
+          "doc": "One page of a chat transcript, with the chat's summary and captures.",
+          "declaration": "pub struct TranscriptPage {\n    pub thread: ChatSummary,\n    pub revision: u64,\n    pub data: Vec<SavedMessage>,\n    pub captures: Vec<SavedCapture>,\n    pub has_more: bool,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "TranscriptReader",
+          "doc": "Reads a chat's messages a page at a time.",
+          "declaration": "pub struct TranscriptReader {}",
+          "methods": [
+            {
+              "name": "with_page_size",
+              "doc": "Sets how many messages each page holds, from 1 to 200.",
+              "declaration": "pub fn with_page_size(mut self, limit: usize) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "starting_at",
+              "doc": "Start at an indexed message in a known revision, for loading recent history first.",
+              "declaration": "pub fn starting_at(mut self, index: usize, revision: u64) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "chat",
+              "doc": "The chat being read.",
+              "declaration": "pub fn chat(&self) -> &ChatRef",
+              "calls": []
+            },
+            {
+              "name": "next_page",
+              "doc": "Reads the next page of messages. Returns `None` after the last page.",
+              "declaration": "pub async fn next_page(\n    &mut self,\n    client: &Client,\n    session: &Session,\n    cancel: &CancellationToken,\n) -> Result<Option<TranscriptPage>, Error>",
+              "calls": []
+            }
+          ]
+        }
+      ],
+      "reexports": []
+    },
+    {
+      "path": "labs",
+      "doc": "Account-bound Labs, checked edits, and cancellable job and event readers.\nSave a job request before sending it; response loss reuses its exact key.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "ArtifactDownload",
+          "doc": "Read to EOF before accepting a complete download. Full reads verify the\nfile digest; ranged reads verify the server's range and exact byte count.",
+          "declaration": "pub struct ArtifactDownload {}",
+          "methods": [
+            {
+              "name": "next_chunk",
+              "doc": "Reads the next part of the file, or `None` when the whole file has arrived.",
+              "declaration": "pub async fn next_chunk(\n    &mut self,\n    cancel: &CancellationToken,\n) -> Result<Option<Vec<u8>>, Error>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "ArtifactHandle",
+          "doc": "A lab file's details and its download link.",
+          "declaration": "pub struct ArtifactHandle {}",
+          "methods": [
+            {
+              "name": "metadata",
+              "doc": "Returns the file's details, such as its name, size, and checksum.",
+              "declaration": "pub fn metadata(&self) -> &Artifact",
+              "calls": []
+            },
+            {
+              "name": "signed_url",
+              "doc": "A public signed link, without an account bearer. Refresh metadata after expiry.",
+              "declaration": "pub fn signed_url(&self) -> Option<&str>",
+              "calls": []
+            },
+            {
+              "name": "expires_seconds",
+              "doc": "Returns how many seconds the signed link stays valid, if it is signed.",
+              "declaration": "pub fn expires_seconds(&self) -> Option<u32>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Client",
+          "doc": "Clones share account changes. Call `set_session` or `clear_session` when\nthe application changes accounts; outstanding reads then discard late results.",
+          "declaration": "pub struct Client {}",
+          "methods": [
+            {
+              "name": "agent_lab",
+              "doc": "Returns the Agent Lab client for `session`, or an error if the session belongs to another deployment.",
+              "declaration": "pub fn agent_lab<'a>(\n    &'a self,\n    session: &'a Session,\n) -> Result<AgentLabClient<'a>, Error>",
+              "calls": []
+            },
+            {
+              "name": "agents",
+              "doc": "Returns the agents client for `session`, or an error if the session belongs to another deployment.",
+              "declaration": "pub fn agents<'a>(&'a self, session: &'a Session) -> Result<Agents<'a>, Error>",
+              "calls": []
+            },
+            {
+              "name": "scanned_login",
+              "doc": "Which browser `scanned` signs in, to show before approving.",
+              "declaration": "pub async fn scanned_login(\n    &self,\n    scanned: &ScannedLogin,\n) -> Result<ScannedLoginAbout, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/web-sign-in/*"
+                }
+              ]
+            },
+            {
+              "name": "approve_scanned_login",
+              "doc": "Approve `scanned` with the key behind `signer`: the browser that\nshowed the code signs in as that key's account (a new key makes it).\nSends once.",
+              "declaration": "pub async fn approve_scanned_login(\n    &self,\n    signer: &dyn NostrSigner,\n    scanned: &ScannedLogin,\n) -> Result<ScannedLoginApproved, Error>",
+              "calls": []
+            },
+            {
+              "name": "sign_in_with_key",
+              "doc": "Sign in with the key behind `signer`: fetch a challenge, sign one\nrequest, and receive an app session. A key that already has an\naccount signs in this way; a new key may be asked for a sign-up proof\nfirst (`Refused { code: Some(\"proof_required\"), .. }`, #11994), which\n[`Client::sign_in_with_key_on`] sends. Sends once; the caller stores\nthe session as it stores a device sign-in's, and signs in again\nbefore it expires.",
+              "declaration": "pub async fn sign_in_with_key(\n    &self,\n    signer: &dyn NostrSigner,\n    app: &str,\n    computer: &str,\n) -> Result<KeySignIn, Error>",
+              "calls": []
+            },
+            {
+              "name": "key_challenge",
+              "doc": "A fresh sign-in challenge, for a sign-in that needs a proof over it.",
+              "declaration": "pub async fn key_challenge(&self) -> Result<String, Error>",
+              "calls": []
+            },
+            {
+              "name": "sign_in_with_key_on",
+              "doc": "Sign in over `challenge` (from [`Client::key_challenge`]), adding\n`proof` to the body: `{\"pow\": solve_pow(challenge, POW_BITS)}`, or\n`{\"app_attest\": {\"key_id\", \"attestation\"}}` from App Attest over\n`SHA-256(challenge)`. The body stays under [`KEY_BODY_MAX`].",
+              "declaration": "pub async fn sign_in_with_key_on(\n    &self,\n    signer: &dyn NostrSigner,\n    challenge: &str,\n    app: &str,\n    computer: &str,\n    proof: serde_json::Map<String, Value>,\n) -> Result<KeySignIn, Error>",
+              "calls": []
+            },
+            {
+              "name": "link_key",
+              "doc": "Add the key behind `new_key` to the signed-in account; `new_key`\nsigns a proof bound to this account. Answers the account's keys.\nA key that already signs in to another account is refused\n(`Refused { status: 409, code: Some(\"identity_taken\") }`).",
+              "declaration": "pub async fn link_key(\n    &self,\n    session: &Session,\n    new_key: &dyn NostrSigner,\n) -> Result<Vec<LinkedKey>, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/device/keys"
+                }
+              ]
+            },
+            {
+              "name": "account_keys",
+              "doc": "The signed-in account's keys, oldest first.",
+              "declaration": "pub async fn account_keys(&self, session: &Session) -> Result<Vec<LinkedKey>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/device/keys"
+                }
+              ]
+            },
+            {
+              "name": "remove_key",
+              "doc": "Remove one of the account's keys (hex or `npub`). The last key is\nnever removed (`Refused { status: 409, code: Some(\"last_key\") }`).",
+              "declaration": "pub async fn remove_key(\n    &self,\n    session: &Session,\n    pubkey: &str,\n) -> Result<Vec<LinkedKey>, Error>",
+              "calls": [
+                {
+                  "method": "DELETE",
+                  "path": "/v1/device/keys/*"
+                }
+              ]
+            },
+            {
+              "name": "authenticate_computer_job",
+              "doc": "Import a job credential issued by the work service. This credential\nauthorizes only that job's computer operations, not account or chat access.",
+              "declaration": "pub async fn authenticate_computer_job(\n    &self,\n    credential: &str,\n) -> Result<Session, Error>",
+              "calls": []
+            },
+            {
+              "name": "authenticate_environment_job",
+              "doc": "Import an Environment attempt's computer credential. The grant excludes\naccount reads and every other attempt's computers and artifacts.",
+              "declaration": "pub async fn authenticate_environment_job(\n    &self,\n    credential: &str,\n) -> Result<Session, Error>",
+              "calls": []
+            },
+            {
+              "name": "start_login",
+              "doc": "Start an existing OpenAgents device grant. Does not launch a browser.",
+              "declaration": "pub async fn start_login(&self, app: &str, computer: &str) -> Result<Login, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/device/code"
+                }
+              ]
+            },
+            {
+              "name": "poll_login",
+              "doc": "Poll no faster than the server permits. An interrupted redemption ends this attempt.",
+              "declaration": "pub async fn poll_login(&self, login: &mut Login) -> Result<Poll, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/device/token"
+                }
+              ]
+            },
+            {
+              "name": "wait_for_login",
+              "doc": "Wait with explicit cancellation. A dropped/uncertain redemption is never automatically retried.",
+              "declaration": "pub async fn wait_for_login(\n    &self,\n    login: &mut Login,\n    cancellation: &CancellationToken,\n) -> Result<Session, Error>",
+              "calls": []
+            },
+            {
+              "name": "account",
+              "doc": "Read the existing account and current workspaces; never trusts saved membership data.",
+              "declaration": "pub async fn account(&self, session: &Session) -> Result<AccountView, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/account"
+                }
+              ]
+            },
+            {
+              "name": "authenticate",
+              "doc": "Explicitly import an app session or sign-in key. Does not read environment variables.",
+              "declaration": "pub async fn authenticate(&self, credential: &str) -> Result<Session, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/account"
+                }
+              ]
+            },
+            {
+              "name": "restore",
+              "doc": "Revalidate a record loaded by the caller. Failure does not erase caller storage.",
+              "declaration": "pub async fn restore(&self, record: &CredentialRecord) -> Result<Session, Error>",
+              "calls": []
+            },
+            {
+              "name": "delete_account",
+              "doc": "Delete the signed-in account and what it keeps (#12002): chats,\nfiles, projects, connections, computers, keys, and sessions. The\nwallet's 12 words stay on the device. Refusals come back as\n[`Error::Refused`] with code `balance_remaining` (paid credit is\nleft: ask, then call again with `forfeit_balance`),\n`shared_workspace` (the person owns a team with other members), or\n`confirm_required`. Clear local storage after it succeeds.",
+              "declaration": "pub async fn delete_account(\n    &self,\n    session: &Session,\n    forfeit_balance: bool,\n) -> Result<(), Error>",
+              "calls": [
+                {
+                  "method": "DELETE",
+                  "path": "/v1/account"
+                }
+              ]
+            },
+            {
+              "name": "sign_out_record",
+              "doc": "Revoke a saved app session without restoring account authority first.\nThis also works when account discovery is unavailable or local expiry has passed.\nAlways clear local credentials and views, even when revocation fails.",
+              "declaration": "pub async fn sign_out_record(&self, record: &CredentialRecord) -> Result<(), Error>",
+              "calls": []
+            },
+            {
+              "name": "sign_out",
+              "doc": "Revoke this app session. Sign-in keys are only forgotten by the caller, as in the CLI.\nClear the caller's local storage and views even if this request fails offline.",
+              "declaration": "pub async fn sign_out(&self, session: &Session) -> Result<(), Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/device/sign-out"
+                }
+              ]
+            },
+            {
+              "name": "cloud_host",
+              "doc": "Our cloud's current state.",
+              "declaration": "pub async fn cloud_host(\n    &self,\n    session: &Session,\n    cancel: &CancellationToken,\n) -> Result<CloudHost, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/cloud-host"
+                }
+              ]
+            },
+            {
+              "name": "start_cloud_host",
+              "doc": "Start Our cloud, or return the run already going.",
+              "declaration": "pub async fn start_cloud_host(\n    &self,\n    session: &Session,\n    cancel: &CancellationToken,\n) -> Result<CloudHost, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/cloud-host"
+                }
+              ]
+            },
+            {
+              "name": "stop_cloud_host",
+              "doc": "End the engine and stop the computer.",
+              "declaration": "pub async fn stop_cloud_host(\n    &self,\n    session: &Session,\n    cancel: &CancellationToken,\n) -> Result<CloudHost, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/cloud-host/stop"
+                }
+              ]
+            },
+            {
+              "name": "delete_cloud_host",
+              "doc": "End the engine and delete the computer.",
+              "declaration": "pub async fn delete_cloud_host(\n    &self,\n    session: &Session,\n    cancel: &CancellationToken,\n) -> Result<CloudHost, Error>",
+              "calls": [
+                {
+                  "method": "DELETE",
+                  "path": "/v1/cloud-host"
+                }
+              ]
+            },
+            {
+              "name": "computers",
+              "doc": "Returns a client for the cloud computers on the session's account.",
+              "declaration": "pub fn computers<'a>(&'a self, session: &'a Session) -> Result<Computers<'a>, Error>",
+              "calls": []
+            },
+            {
+              "name": "home",
+              "doc": "Returns the Home client for a session on this deployment.",
+              "declaration": "pub fn home<'a>(&'a self, session: &'a Session) -> Result<Home<'a>, Error>",
+              "calls": []
+            },
+            {
+              "name": "chat",
+              "doc": "Bind an explicit saved ID to this account; the service checks access on each read.",
+              "declaration": "pub fn chat(&self, session: &Session, id: &str) -> Result<ChatRef, Error>",
+              "calls": []
+            },
+            {
+              "name": "history",
+              "doc": "Starts reading the account's chat list.",
+              "declaration": "pub fn history(&self, session: &Session) -> Result<ChatReader, Error>",
+              "calls": []
+            },
+            {
+              "name": "history_projects",
+              "doc": "Starts reading the account's projects.",
+              "declaration": "pub fn history_projects(&self, session: &Session) -> Result<ProjectReader, Error>",
+              "calls": []
+            },
+            {
+              "name": "shared_history",
+              "doc": "Starts reading the chats in a shared project. Refuses a project that isn't shared.",
+              "declaration": "pub fn shared_history(\n    &self,\n    session: &Session,\n    project: &HistoryProject,\n) -> Result<ChatReader, Error>",
+              "calls": []
+            },
+            {
+              "name": "transcript",
+              "doc": "Starts reading a chat's messages from the first one.",
+              "declaration": "pub fn transcript(\n    &self,\n    session: &Session,\n    chat: &ChatRef,\n) -> Result<TranscriptReader, Error>",
+              "calls": []
+            },
+            {
+              "name": "download",
+              "doc": "Fetch only this deployment's authorized saved bytes. No redirects, files, hosts, or external URLs are followed.",
+              "declaration": "pub async fn download(\n    &self,\n    session: &Session,\n    file: &AttachmentRef,\n    cancel: &CancellationToken,\n) -> Result<Vec<u8>, Error>",
+              "calls": []
+            },
+            {
+              "name": "history_index",
+              "doc": "Creates an empty history index for the signed-in account.",
+              "declaration": "pub fn history_index(&self, session: &Session) -> Result<HistoryIndex, Error>",
+              "calls": []
+            },
+            {
+              "name": "artifact",
+              "doc": "Looks up a lab file in a space and returns its details and link.",
+              "declaration": "pub async fn artifact(\n    &self,\n    space: &str,\n    id: &str,\n    cancel: &CancellationToken,\n) -> Result<ArtifactHandle, Error>",
+              "calls": []
+            },
+            {
+              "name": "download",
+              "doc": "Starts downloading a lab file, or only a byte range of it.",
+              "declaration": "pub async fn download(\n    &self,\n    artifact: &ArtifactHandle,\n    range: Option<Range<u64>>,\n    cancel: &CancellationToken,\n) -> Result<ArtifactDownload, Error>",
+              "calls": []
+            },
+            {
+              "name": "events",
+              "doc": "Opens an event stream for a document, starting after the given cursor.",
+              "declaration": "pub fn events(&self, document: &DocumentRef, since: u64) -> Result<Events, Error>",
+              "calls": []
+            },
+            {
+              "name": "kinds",
+              "doc": "Lists the lab kinds available in a space.",
+              "declaration": "pub async fn kinds(\n    &self,\n    space: &str,\n    cancel: &CancellationToken,\n) -> Result<Vec<KindManifest>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/labs/kinds"
+                }
+              ]
+            },
+            {
+              "name": "tools",
+              "doc": "Lists the tools a lab kind offers in a space.",
+              "declaration": "pub async fn tools(\n    &self,\n    space: &str,\n    kind: &str,\n    cancel: &CancellationToken,\n) -> Result<Vec<ToolDecl>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/labs/kinds/*/tools"
+                }
+              ]
+            },
+            {
+              "name": "invoke",
+              "doc": "Calls a lab kind's tool and returns its result.",
+              "declaration": "pub async fn invoke(\n    &self,\n    kind: &str,\n    name: &str,\n    request: &Request<ToolCall>,\n    cancel: &CancellationToken,\n) -> Result<ToolResult, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/labs/kinds/*/tools/*"
+                }
+              ]
+            },
+            {
+              "name": "documents",
+              "doc": "Returns a page of documents in a space.",
+              "declaration": "pub async fn documents(\n    &self,\n    space: &str,\n    page: &PageOptions,\n    cancel: &CancellationToken,\n) -> Result<List<DocumentMeta>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/labs/documents"
+                }
+              ]
+            },
+            {
+              "name": "create_document",
+              "doc": "Creates a document and returns its first version.",
+              "declaration": "pub async fn create_document(\n    &self,\n    request: &Request<CreateDocument>,\n    cancel: &CancellationToken,\n) -> Result<Version, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/labs/documents"
+                }
+              ]
+            },
+            {
+              "name": "document",
+              "doc": "Returns a document's details.",
+              "declaration": "pub async fn document(\n    &self,\n    document: &DocumentRef,\n    cancel: &CancellationToken,\n) -> Result<DocumentMeta, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/labs/documents/*"
+                }
+              ]
+            },
+            {
+              "name": "delete_document",
+              "doc": "Deletes a document and returns whether it was deleted.",
+              "declaration": "pub async fn delete_document(\n    &self,\n    document: &DocumentRef,\n    cancel: &CancellationToken,\n) -> Result<bool, Error>",
+              "calls": [
+                {
+                  "method": "DELETE",
+                  "path": "/v1/labs/documents/*"
+                }
+              ]
+            },
+            {
+              "name": "versions",
+              "doc": "Returns a page of a document's versions.",
+              "declaration": "pub async fn versions(\n    &self,\n    document: &DocumentRef,\n    page: &PageOptions,\n    cancel: &CancellationToken,\n) -> Result<List<Version>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/labs/documents/*/versions"
+                }
+              ]
+            },
+            {
+              "name": "version",
+              "doc": "Returns one version of a document by number.",
+              "declaration": "pub async fn version(\n    &self,\n    document: &DocumentRef,\n    number: u64,\n    cancel: &CancellationToken,\n) -> Result<Version, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/labs/documents/*/versions/*"
+                }
+              ]
+            },
+            {
+              "name": "edit",
+              "doc": "Proposes a new version of a document and reports whether it was created, out of date, or refused.",
+              "declaration": "pub async fn edit(\n    &self,\n    document: &DocumentRef,\n    request: &Request<EditDocument>,\n    cancel: &CancellationToken,\n) -> Result<EditResult, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/labs/documents/*/versions"
+                }
+              ]
+            },
+            {
+              "name": "card",
+              "doc": "Returns the card for one version of a document.",
+              "declaration": "pub async fn card(\n    &self,\n    document: &DocumentRef,\n    number: u64,\n    cancel: &CancellationToken,\n) -> Result<Card, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/labs/documents/*/versions/*/card"
+                }
+              ]
+            },
+            {
+              "name": "create_job",
+              "doc": "Starts a job, retrying with the same key after network errors or busy responses.",
+              "declaration": "pub async fn create_job(\n    &self,\n    request: &JobRequest,\n    cancel: &CancellationToken,\n) -> Result<JobState, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/labs/jobs"
+                }
+              ]
+            },
+            {
+              "name": "jobs",
+              "doc": "Returns a page of a document's jobs.",
+              "declaration": "pub async fn jobs(\n    &self,\n    document: &DocumentRef,\n    page: &PageOptions,\n    cancel: &CancellationToken,\n) -> Result<List<JobState>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/labs/jobs"
+                }
+              ]
+            },
+            {
+              "name": "job",
+              "doc": "Returns a job's current state.",
+              "declaration": "pub async fn job(\n    &self,\n    job: &JobRef,\n    cancel: &CancellationToken,\n) -> Result<JobState, Error>",
+              "calls": []
+            },
+            {
+              "name": "cancel_job",
+              "doc": "Cancels a job and returns its state.",
+              "declaration": "pub async fn cancel_job(\n    &self,\n    job: &JobRef,\n    cancel: &CancellationToken,\n) -> Result<JobState, Error>",
+              "calls": []
+            },
+            {
+              "name": "wait",
+              "doc": "Checks a job until it finishes or the wait times out.",
+              "declaration": "pub async fn wait(\n    &self,\n    job: &JobRef,\n    options: WaitOptions,\n    cancel: &CancellationToken,\n) -> Result<JobState, Error>",
+              "calls": []
+            },
+            {
+              "name": "notes",
+              "doc": "Returns a page of a document's notes.",
+              "declaration": "pub async fn notes(\n    &self,\n    document: &DocumentRef,\n    page: &PageOptions,\n    cancel: &CancellationToken,\n) -> Result<List<Note>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/labs/documents/*/notes"
+                }
+              ]
+            },
+            {
+              "name": "add_note",
+              "doc": "Adds a note to a document version.",
+              "declaration": "pub async fn add_note(\n    &self,\n    document: &DocumentRef,\n    request: &Request<AddNote>,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/labs/documents/*/notes"
+                }
+              ]
+            },
+            {
+              "name": "upload",
+              "doc": "Uploads a file to a space and returns its details.",
+              "declaration": "pub async fn upload(\n    &self,\n    request: &Request<Upload>,\n    cancel: &CancellationToken,\n) -> Result<Artifact, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/labs/uploads"
+                }
+              ]
+            },
+            {
+              "name": "events_since",
+              "doc": "Returns up to `limit` document events after a cursor, without a live stream.",
+              "declaration": "pub async fn events_since(\n    &self,\n    document: &DocumentRef,\n    since: u64,\n    limit: u16,\n    cancel: &CancellationToken,\n) -> Result<List<Event>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/labs/documents/*/events"
+                }
+              ]
+            },
+            {
+              "name": "labs",
+              "doc": "Returns a Labs client for a session on this deployment.",
+              "declaration": "pub fn labs(&self, session: &Session) -> Result<Client, Error>",
+              "calls": []
+            },
+            {
+              "name": "set_session",
+              "doc": "Switches the client to another session and cancels reads in progress.",
+              "declaration": "pub fn set_session(&self, session: &Session) -> Result<(), Error>",
+              "calls": []
+            },
+            {
+              "name": "clear_session",
+              "doc": "Signs the client out and cancels reads in progress.",
+              "declaration": "pub fn clear_session(&self)",
+              "calls": []
+            },
+            {
+              "name": "with_retries",
+              "doc": "Sets the retry policy, refusing values outside the allowed range.",
+              "declaration": "pub fn with_retries(mut self, retries: RetryPolicy) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "bind",
+              "doc": "Ties a request body to the current account and deployment.",
+              "declaration": "pub fn bind<T>(&self, body: T) -> Result<Request<T>, Error>",
+              "calls": []
+            },
+            {
+              "name": "document_ref",
+              "doc": "Checks a space and ID and returns a document reference.",
+              "declaration": "pub fn document_ref(&self, space: &str, id: &str) -> Result<DocumentRef, Error>",
+              "calls": []
+            },
+            {
+              "name": "job_ref",
+              "doc": "Checks a space and ID and returns a job reference.",
+              "declaration": "pub fn job_ref(&self, space: &str, id: &str) -> Result<JobRef, Error>",
+              "calls": []
+            },
+            {
+              "name": "job_request",
+              "doc": "Builds a job request with a new random key.",
+              "declaration": "pub fn job_request(&self, body: CreateJob) -> Result<JobRequest, Error>",
+              "calls": []
+            },
+            {
+              "name": "job_request_with_key",
+              "doc": "Builds a job request with a key you supply, such as a saved one.",
+              "declaration": "pub fn job_request_with_key(\n    &self,\n    body: CreateJob,\n    key: RequestKey,\n) -> Result<JobRequest, Error>",
+              "calls": []
+            },
+            {
+              "name": "schedules",
+              "doc": "Returns a client for the scheduled prompts on the session's account.",
+              "declaration": "pub fn schedules<'a>(&'a self, session: &'a Session) -> Result<Schedules<'a>, Error>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "enum",
+          "name": "EditResult",
+          "doc": "The outcome of a document edit.",
+          "declaration": "pub enum EditResult {\n    Created(Version),\n    Stale,\n    Refused(Refusal),\n}"
+        },
+        {
+          "kind": "enum",
+          "name": "Error",
+          "doc": "An error from a Labs request.",
+          "declaration": "pub enum Error {\n    Session(crate::Error),\n    InvalidInput,\n    InvalidResponse,\n    TooLarge,\n    Cancelled,\n    AccountChanged,\n    WaitTimedOut,\n    ExpiredLink,\n    Refused { status: u16, refusal: Refusal, retry_after: Option<Duration> },\n}",
+          "methods": [
+            {
+              "name": "payment_required",
+              "doc": "Returns the payment details when the request needs payment first.",
+              "declaration": "pub fn payment_required(&self) -> Option<&crate::PaymentRequired>",
+              "calls": []
+            },
+            {
+              "name": "refusal",
+              "doc": "Returns the server's refusal, if the server refused the request.",
+              "declaration": "pub fn refusal(&self) -> Option<&Refusal>",
+              "calls": []
+            },
+            {
+              "name": "status",
+              "doc": "Returns the HTTP status of a refused request.",
+              "declaration": "pub fn status(&self) -> Option<u16>",
+              "calls": []
+            },
+            {
+              "name": "retry_after",
+              "doc": "Returns how long the server asked you to wait before trying again.",
+              "declaration": "pub fn retry_after(&self) -> Option<Duration>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Events",
+          "doc": "A live stream of one document's events, read in order.",
+          "declaration": "pub struct Events {}",
+          "methods": [
+            {
+              "name": "cursor",
+              "doc": "The last event delivered to the caller, suitable for caller-owned storage.",
+              "declaration": "pub fn cursor(&self) -> u64",
+              "calls": []
+            },
+            {
+              "name": "next",
+              "doc": "Waits for and returns the next event, reconnecting if the connection drops.",
+              "declaration": "pub async fn next(&mut self, cancel: &CancellationToken) -> Result<Event, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/labs/documents/*/events"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "JobRequest",
+          "doc": "A job request with its key, ready to save before you send it.",
+          "declaration": "pub struct JobRequest {}",
+          "methods": [
+            {
+              "name": "key",
+              "doc": "Returns the request's key.",
+              "declaration": "pub fn key(&self) -> &RequestKey",
+              "calls": []
+            },
+            {
+              "name": "body",
+              "doc": "Returns the job to create.",
+              "declaration": "pub fn body(&self) -> &CreateJob",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "PageOptions",
+          "doc": "Paging and filter options for list reads.",
+          "declaration": "pub struct PageOptions {\n    pub after: u64,\n    pub limit: u16,\n    pub kind: Option<String>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Request",
+          "doc": "A request body tied to the account and deployment that made it.",
+          "declaration": "pub struct Request<T> {}",
+          "methods": [
+            {
+              "name": "body",
+              "doc": "Returns the request body.",
+              "declaration": "pub fn body(&self) -> &T",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "RequestKey",
+          "doc": "A key that lets the server recognize a repeated job request.",
+          "declaration": "pub struct RequestKey(String);",
+          "methods": [
+            {
+              "name": "generate",
+              "doc": "Creates a random key.",
+              "declaration": "pub fn generate() -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "as_str",
+              "doc": "Returns the key as a string.",
+              "declaration": "pub fn as_str(&self) -> &str",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "RetryPolicy",
+          "doc": "How many times and how often a client retries a failed read.",
+          "declaration": "pub struct RetryPolicy {\n    pub max_retries: u8,\n    pub initial_delay: Duration,\n    pub max_delay: Duration,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "WaitOptions",
+          "doc": "How long to wait for a job and how often to check it.",
+          "declaration": "pub struct WaitOptions {\n    pub timeout: Duration,\n    pub poll_interval: Duration,\n}"
+        }
+      ],
+      "reexports": [
+        {
+          "from": "lab_kit::api",
+          "name": "AddNote"
+        },
+        {
+          "from": "lab_kit::api",
+          "name": "CreateDocument"
+        },
+        {
+          "from": "lab_kit::api",
+          "name": "CreateJob"
+        },
+        {
+          "from": "lab_kit::api",
+          "name": "EditDocument"
+        },
+        {
+          "from": "lab_kit::api",
+          "name": "Event"
+        },
+        {
+          "from": "lab_kit::api",
+          "name": "List"
+        },
+        {
+          "from": "lab_kit::api",
+          "name": "ToolCall"
+        },
+        {
+          "from": "lab_kit::api",
+          "name": "ToolResult"
+        },
+        {
+          "from": "lab_kit::api",
+          "name": "Upload"
+        },
+        {
+          "from": "lab_kit",
+          "name": "lab_kit"
+        },
+        {
+          "from": "lab_kit",
+          "name": "*"
+        }
+      ]
+    },
+    {
+      "path": "labs::cad",
+      "doc": "Local CAD previews use the same portable rules as the server. Measurements\nmust describe the proposed content; the server rebuilds it independently.",
+      "items": [
+        {
+          "kind": "fn",
+          "name": "apply",
+          "doc": "Applies a change to a CAD version and returns the draft the server would accept.",
+          "declaration": "pub fn apply(\n    base: &Version,\n    change: &Change,\n    summary: &str,\n    measurements: &Measurements,\n) -> Result<Draft, Refusal>",
+          "calls": []
+        },
+        {
+          "kind": "fn",
+          "name": "check",
+          "doc": "Checks CAD content against its measurements with the server's rules.",
+          "declaration": "pub fn check(content: &Value, measurements: &Measurements) -> Result<Report, Refusal>",
+          "calls": []
+        }
+      ],
+      "reexports": [
+        {
+          "from": "cad::doc",
+          "name": "DEFAULT_MATERIAL"
+        },
+        {
+          "from": "cad::doc",
+          "name": "new_part"
+        },
+        {
+          "from": "cad::lab",
+          "name": "Cad"
+        },
+        {
+          "from": "cad::lab",
+          "name": "Intent"
+        },
+        {
+          "from": "cad::lab",
+          "name": "changed_content"
+        },
+        {
+          "from": "cad::lab",
+          "name": "measurements"
+        }
+      ]
+    },
+    {
+      "path": "labs::worker",
+      "doc": "Account-authorized enrollment and a separate job-only worker client.\nRequests send once. Retain attempts and finish requests after response loss;\nobserving a started assignment does not grant permission to spawn it again.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "Client",
+          "doc": "A client whose credential authorizes only its worker's assigned work.\nIt cannot authenticate as an account, read documents, or choose an executable.",
+          "declaration": "pub struct Client {}",
+          "methods": [
+            {
+              "name": "labs_worker",
+              "doc": "Import a job-only key explicitly. The next worker request checks it with\nthe service; this does not create an account session.",
+              "declaration": "pub fn labs_worker(&self, token: &str) -> Result<Client, Error>",
+              "calls": []
+            },
+            {
+              "name": "restore_labs_worker",
+              "doc": "Restores a worker client from a saved credential for this deployment.",
+              "declaration": "pub fn restore_labs_worker(&self, record: &CredentialRecord) -> Result<Client, Error>",
+              "calls": []
+            },
+            {
+              "name": "worker_ref",
+              "doc": "Checks a space and ID and returns a worker reference.",
+              "declaration": "pub fn worker_ref(&self, space: &str, id: &str) -> Result<WorkerRef, Error>",
+              "calls": []
+            },
+            {
+              "name": "enroll_worker",
+              "doc": "Enrolls a worker for the account and returns its job-only key.",
+              "declaration": "pub async fn enroll_worker(\n    &self,\n    request: &Request<Enroll>,\n    cancel: &CancellationToken,\n) -> Result<Enrolled, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/labs/workers"
+                }
+              ]
+            },
+            {
+              "name": "revoke_worker",
+              "doc": "Revokes a worker's key and returns whether it was revoked.",
+              "declaration": "pub async fn revoke_worker(\n    &self,\n    worker: &WorkerRef,\n    cancel: &CancellationToken,\n) -> Result<bool, Error>",
+              "calls": []
+            },
+            {
+              "name": "job_usage",
+              "doc": "Returns the usage that workers recorded for a job.",
+              "declaration": "pub async fn job_usage(\n    &self,\n    job: &JobRef,\n    cancel: &CancellationToken,\n) -> Result<Vec<Usage>, Error>",
+              "calls": []
+            },
+            {
+              "name": "record",
+              "doc": "Returns the credential to save so you can restore this client later.",
+              "declaration": "pub fn record(&self) -> CredentialRecord",
+              "calls": []
+            },
+            {
+              "name": "worker_id",
+              "doc": "Returns this worker's ID.",
+              "declaration": "pub fn worker_id(&self) -> &str",
+              "calls": []
+            },
+            {
+              "name": "clear_credential",
+              "doc": "Stop this client's clones locally. Use `retire` to revoke the remote key,\nand remove any caller-owned saved credential separately.",
+              "declaration": "pub fn clear_credential(&self)",
+              "calls": []
+            },
+            {
+              "name": "with_timeout",
+              "doc": "Sets the request timeout, up to two minutes.",
+              "declaration": "pub fn with_timeout(mut self, timeout: Duration) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "inputs",
+              "doc": "What started work may read: its version, the versions it references\nin its space, and their stored source files. The service checks the\nkey, the space, and the lease again on every call.",
+              "declaration": "pub async fn inputs(\n    &self,\n    work: &Work,\n    cancel: &CancellationToken,\n) -> Result<Inputs, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/inputs"
+                }
+              ]
+            },
+            {
+              "name": "input_file",
+              "doc": "Read one file `inputs` listed, checked against its size and checksum.",
+              "declaration": "pub async fn input_file(\n    &self,\n    work: &Work,\n    file: &lab_kit::Artifact,\n    cancel: &CancellationToken,\n) -> Result<Vec<u8>, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/inputs/file"
+                }
+              ]
+            },
+            {
+              "name": "poll",
+              "doc": "Asks for work, waiting up to 25 seconds for an assignment.",
+              "declaration": "pub async fn poll(\n    &self,\n    request: &Poll,\n    cancel: &CancellationToken,\n) -> Result<Available, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/poll"
+                }
+              ]
+            },
+            {
+              "name": "start",
+              "doc": "Marks an assigned attempt as started and returns its work.",
+              "declaration": "pub async fn start(\n    &self,\n    request: &Attempt,\n    cancel: &CancellationToken,\n) -> Result<Work, Error>",
+              "calls": []
+            },
+            {
+              "name": "heartbeat",
+              "doc": "Tells the service the attempt is still running and returns its work.",
+              "declaration": "pub async fn heartbeat(\n    &self,\n    request: &Attempt,\n    cancel: &CancellationToken,\n) -> Result<Work, Error>",
+              "calls": []
+            },
+            {
+              "name": "finish",
+              "doc": "Send a retained finish request once. An identical retry after response\nloss is safe; a response never grants permission to execute the job again.",
+              "declaration": "pub async fn finish(\n    &self,\n    request: &Finish,\n    cancel: &CancellationToken,\n) -> Result<lab_kit::JobState, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/finish"
+                }
+              ]
+            },
+            {
+              "name": "retire",
+              "doc": "Revokes this worker's key and stops the client if the revoke succeeds.",
+              "declaration": "pub async fn retire(&self, cancel: &CancellationToken) -> Result<bool, Error>",
+              "calls": [
+                {
+                  "method": "DELETE",
+                  "path": "/v1/*"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "CredentialRecord",
+          "doc": "A worker's saved key and the deployment it belongs to.",
+          "declaration": "pub struct CredentialRecord {}"
+        },
+        {
+          "kind": "const",
+          "name": "MAX_INPUT_FILE",
+          "doc": "The largest input file the service returns in one read.",
+          "declaration": "pub const MAX_INPUT_FILE: usize = 64 * 1024 * 1024;"
+        }
+      ],
+      "reexports": [
+        {
+          "from": "lab_kit::worker",
+          "name": "Assignment"
+        },
+        {
+          "from": "lab_kit::worker",
+          "name": "Capabilities"
+        },
+        {
+          "from": "lab_kit::worker",
+          "name": "EffectiveRequirements"
+        },
+        {
+          "from": "lab_kit::worker",
+          "name": "Enrolled"
+        },
+        {
+          "from": "lab_kit::worker",
+          "name": "Lease"
+        },
+        {
+          "from": "lab_kit::worker",
+          "name": "Placement"
+        },
+        {
+          "from": "lab_kit::worker",
+          "name": "Usage"
+        },
+        {
+          "from": "lab_kit::worker",
+          "name": "Worker"
+        },
+        {
+          "from": "lab_kit::worker",
+          "name": "protocol"
+        }
+      ]
+    },
+    {
+      "path": "rooms",
+      "doc": "Authenticated access to the app's existing Loro rooms on Coder sync.\n\nThe caller supplies the service address and account session. Room bytes stay\nopaque here; `openagents-sync` owns the shared room protocol and retry loop.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "Room",
+          "doc": "A room reference cannot be moved to a different account or deployment.",
+          "declaration": "pub struct Room {}",
+          "methods": [
+            {
+              "name": "id",
+              "doc": "Returns the room's ID.",
+              "declaration": "pub fn id(&self) -> &str",
+              "calls": []
+            },
+            {
+              "name": "socket",
+              "doc": "Returns the WebSocket address that connects `device` to this room.",
+              "declaration": "pub fn socket(&self, device: &str) -> Result<String, Error>",
+              "calls": []
+            },
+            {
+              "name": "checkpoint",
+              "doc": "Downloads the room's latest checkpoint.",
+              "declaration": "pub async fn checkpoint(&self) -> Result<Vec<u8>, Error>",
+              "calls": []
+            },
+            {
+              "name": "rows",
+              "doc": "Downloads the room's rows after the row number `after`.",
+              "declaration": "pub async fn rows(&self, after: u64) -> Result<Vec<u8>, Error>",
+              "calls": []
+            },
+            {
+              "name": "push",
+              "doc": "Uploads one row from `device` as batch `batch` and returns the service's reply.",
+              "declaration": "pub async fn push(\n    &self,\n    device: &str,\n    batch: &str,\n    bytes: Vec<u8>,\n) -> Result<String, Error>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Service",
+          "doc": "One explicitly trusted sync service, bound to an authenticated account.",
+          "declaration": "pub struct Service {}",
+          "methods": [
+            {
+              "name": "new",
+              "doc": "Connects to a sync service at `base` for the session's account.",
+              "declaration": "pub fn new(\n    client: Client,\n    session: Session,\n    base: &str,\n    cancel: CancellationToken,\n) -> Result<Self, Error>",
+              "calls": []
+            },
+            {
+              "name": "room",
+              "doc": "Returns the room with this ID.",
+              "declaration": "pub fn room(&self, id: &str) -> Result<Room, Error>",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "const",
+          "name": "MAX_CHECKPOINT_BYTES",
+          "doc": "The largest checkpoint or row page a room read accepts, in bytes.",
+          "declaration": "pub const MAX_CHECKPOINT_BYTES: usize = 32 * 1024 * 1024;"
+        },
+        {
+          "kind": "const",
+          "name": "MAX_ROW_BYTES",
+          "doc": "The largest row a push accepts, in bytes.",
+          "declaration": "pub const MAX_ROW_BYTES: usize = 1024 * 1024 - 4096;"
+        }
+      ],
+      "reexports": []
+    },
+    {
+      "path": "schedules",
+      "doc": "The account's scheduled prompts (`/v1/schedules`, #11177). The site keeps\none list per account; each computer runs its own entries, so no server\nclock starts work. The app host uses this for Foreman's check-ins\n(#11965); Coder keeps its own copy of the same records.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "Schedule",
+          "doc": "One scheduled prompt, or the record that it was deleted. Either a time\nof day on chosen days or an interval. `chat` names the conversation it\nposts into; unset means a new run.",
+          "declaration": "pub struct Schedule {\n    pub id: String,\n    pub computer: String,\n    pub prompt: Option<String>,\n    pub days: Vec<u8>,\n    pub time: Option<String>,\n    pub every_secs: Option<u64>,\n    pub chat: Option<String>,\n    pub chat_title: Option<String>,\n    pub workspace: Option<String>,\n    pub paused: bool,\n    pub updated: u64,\n    pub deleted: bool,\n}",
+          "methods": [
+            {
+              "name": "valid",
+              "doc": "Whether the site would keep this record as sent.",
+              "declaration": "pub fn valid(&self) -> bool",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "Schedules",
+          "doc": "A client for the scheduled prompts on one account.",
+          "declaration": "pub struct Schedules<'a> {}",
+          "methods": [
+            {
+              "name": "list",
+              "doc": "Every live scheduled prompt on the account, newest first.",
+              "declaration": "pub async fn list(&self, cancel: &CancellationToken) -> Result<Vec<Schedule>, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/schedules"
+                }
+              ]
+            },
+            {
+              "name": "sync",
+              "doc": "Send `computer`'s changed records (a newer `updated` wins, a deletion\nwins a tie) and receive that computer's whole list, deletions included.",
+              "declaration": "pub async fn sync(\n    &self,\n    computer: &str,\n    changed: &[Schedule],\n    cancel: &CancellationToken,\n) -> Result<Vec<Schedule>, Error>",
+              "calls": [
+                {
+                  "method": "POST",
+                  "path": "/v1/schedules/sync"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "fn",
+          "name": "new_id",
+          "doc": "A fresh schedule id.",
+          "declaration": "pub fn new_id() -> Result<String, Error>",
+          "calls": []
+        },
+        {
+          "kind": "const",
+          "name": "MAX_EVERY_SECS",
+          "doc": "The longest interval the site keeps.",
+          "declaration": "pub const MAX_EVERY_SECS: u64 = 30 * 24 * 3600;"
+        },
+        {
+          "kind": "const",
+          "name": "MAX_PROMPT_BYTES",
+          "doc": "The longest prompt the site keeps.",
+          "declaration": "pub const MAX_PROMPT_BYTES: usize = 4000;"
+        },
+        {
+          "kind": "const",
+          "name": "MIN_EVERY_SECS",
+          "doc": "The shortest and longest interval the site keeps.",
+          "declaration": "pub const MIN_EVERY_SECS: u64 = 60;"
+        },
+        {
+          "kind": "const",
+          "name": "PREFIX",
+          "doc": "Every id starts with this (a Coder background rule's id).",
+          "declaration": "pub const PREFIX: &str = \"prompt-\";"
+        }
+      ],
+      "reexports": []
+    },
+    {
+      "path": "sessions",
+      "doc": "Computer sessions in the account's chat list (#11897).\n\nA desktop or phone host publishes one summary row per session it runs:\ntitle, computer, project, status, last activity, and a short recap. The\nweb and every app list them with the account's chats, marked\n`source: \"session\"` with their computer home. A row holds no transcript.\nThe transcript is opt-in per chat or per project, off by default; while\nit is on, the host uploads a read-only copy.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "CopiedMessage",
+          "doc": "One message of a session's read-only transcript copy.",
+          "declaration": "pub struct CopiedMessage {\n    pub role: CopiedRole,\n    pub text: String,\n}"
+        },
+        {
+          "kind": "enum",
+          "name": "CopiedRole",
+          "doc": "Who wrote a message in a transcript copy.",
+          "declaration": "pub enum CopiedRole {\n    User,\n    Assistant,\n    Tool,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "PublishedSession",
+          "doc": "One session a host publishes. Text is bounded and screened by the\nservice; never put transcript content in `recap`.",
+          "declaration": "pub struct PublishedSession {\n    pub id: String,\n    pub home_transfer: bool,\n    pub continues: Option<PartRef>,\n    pub title: String,\n    pub project: Option<String>,\n    pub folder: Option<String>,\n    pub status: SessionStatus,\n    pub last_activity_unix: u64,\n    pub recap: String,\n    pub workspace: Option<String>,\n    pub agent: Option<String>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "SessionDetail",
+          "doc": "One session, and its transcript copy when it is shared with the caller.",
+          "declaration": "pub struct SessionDetail {\n    pub session: SessionSummary,\n    pub messages: Option<Vec<CopiedMessage>>,\n}"
+        },
+        {
+          "kind": "enum",
+          "name": "SessionStatus",
+          "doc": "What a session is doing.",
+          "declaration": "pub enum SessionStatus {\n    Idle,\n    Working,\n    AwaitingInput,\n    Errored,\n    Other(String),\n}",
+          "methods": [
+            {
+              "name": "as_str",
+              "doc": "The status as the service writes it.",
+              "declaration": "pub fn as_str(&self) -> &str",
+              "calls": []
+            }
+          ]
+        },
+        {
+          "kind": "struct",
+          "name": "SessionSummary",
+          "doc": "One session row as the account lists it.",
+          "declaration": "pub struct SessionSummary {\n    pub id: String,\n    pub home: Home,\n    pub title: String,\n    pub computer: String,\n    pub project: Option<String>,\n    pub folder: Option<String>,\n    pub status: SessionStatus,\n    pub last_activity_unix: u64,\n    pub recap: String,\n    pub online: bool,\n    pub transcript: bool,\n    pub app_link: Option<String>,\n    pub continues: Option<PartRef>,\n    pub continued_by: Option<PartRef>,\n    pub home_transfer: bool,\n    pub agent: Option<String>,\n}"
+        },
+        {
+          "kind": "fn",
+          "name": "forget_computer",
+          "doc": "Remove this computer's rows and transcript copies, as when it signs out.",
+          "declaration": "pub async fn forget_computer(\n    client: &Client,\n    session: &Session,\n    device: &str,\n    cancel: &CancellationToken,\n) -> Result<bool, Error>",
+          "calls": [
+            {
+              "method": "DELETE",
+              "path": "/v1/history/sessions/computers/*"
+            }
+          ]
+        },
+        {
+          "kind": "fn",
+          "name": "get",
+          "doc": "One session, with its transcript copy when it is shared with the caller.",
+          "declaration": "pub async fn get(\n    client: &Client,\n    session: &Session,\n    id: &str,\n    cancel: &CancellationToken,\n) -> Result<SessionDetail, Error>",
+          "calls": [
+            {
+              "method": "GET",
+              "path": "/v1/history/sessions/*"
+            }
+          ]
+        },
+        {
+          "kind": "fn",
+          "name": "list",
+          "doc": "The account's session rows, newest first, or a shared project's rows.",
+          "declaration": "pub async fn list(\n    client: &Client,\n    session: &Session,\n    project: Option<&str>,\n    cancel: &CancellationToken,\n) -> Result<Vec<SessionSummary>, Error>",
+          "calls": [
+            {
+              "method": "GET",
+              "path": "/v1/history/sessions"
+            }
+          ]
+        },
+        {
+          "kind": "fn",
+          "name": "pending_moves",
+          "doc": "Requests from the web wait for this computer's normal handoff path.",
+          "declaration": "pub async fn pending_moves(\n    client: &Client,\n    session: &Session,\n    device: &str,\n    cancel: &CancellationToken,\n) -> Result<Vec<MoveRequest>, Error>",
+          "calls": [
+            {
+              "method": "GET",
+              "path": "/v1/history/sessions/computers/*/moves"
+            }
+          ]
+        },
+        {
+          "kind": "fn",
+          "name": "publish",
+          "doc": "Publish this computer's current sessions, replacing what it published\nbefore. Returns the ids whose transcript is on, which the host may\nupload with [`upload_transcript`]. Publishing also says the computer is\nonline, so a host republishes about every 30 seconds.",
+          "declaration": "pub async fn publish(\n    client: &Client,\n    session: &Session,\n    device: &str,\n    name: &str,\n    sessions: &[PublishedSession],\n    cancel: &CancellationToken,\n) -> Result<Vec<String>, Error>",
+          "calls": [
+            {
+              "method": "PUT",
+              "path": "/v1/history/sessions/computers/*"
+            }
+          ]
+        },
+        {
+          "kind": "fn",
+          "name": "set_project_transcripts",
+          "doc": "Turn the transcripts of every session in a project on or off.",
+          "declaration": "pub async fn set_project_transcripts(\n    client: &Client,\n    session: &Session,\n    project: &str,\n    on: bool,\n    cancel: &CancellationToken,\n) -> Result<(), Error>",
+          "calls": [
+            {
+              "method": "PUT",
+              "path": "/v1/history/sessions/projects/*/transcript"
+            }
+          ]
+        },
+        {
+          "kind": "fn",
+          "name": "set_transcript",
+          "doc": "Turn one chat's transcript on or off on the web. Returns whether it is\nnow on, counting its project's choice. Off deletes the copy.",
+          "declaration": "pub async fn set_transcript(\n    client: &Client,\n    session: &Session,\n    id: &str,\n    on: bool,\n    cancel: &CancellationToken,\n) -> Result<bool, Error>",
+          "calls": [
+            {
+              "method": "PUT",
+              "path": "/v1/history/sessions/*/transcript"
+            }
+          ]
+        },
+        {
+          "kind": "fn",
+          "name": "upload_transcript",
+          "doc": "Upload a session's read-only transcript copy, replacing the last one.\nRefused with `transcript_off` while its transcript is off.",
+          "declaration": "pub async fn upload_transcript(\n    client: &Client,\n    session: &Session,\n    id: &str,\n    messages: &[CopiedMessage],\n    cancel: &CancellationToken,\n) -> Result<usize, Error>",
+          "calls": [
+            {
+              "method": "PUT",
+              "path": "/v1/history/sessions/*/messages"
+            }
+          ]
+        },
+        {
+          "kind": "const",
+          "name": "MAX_PER_COMPUTER",
+          "doc": "The most sessions one publish may carry.",
+          "declaration": "pub const MAX_PER_COMPUTER: usize = 200;"
+        }
+      ],
+      "reexports": [
+        {
+          "from": "chat_home",
+          "name": "Home"
+        },
+        {
+          "from": "chat_home",
+          "name": "MoveRequest"
+        },
+        {
+          "from": "chat_home",
+          "name": "PartRef"
+        }
+      ]
+    },
+    {
+      "path": "terminal_chats",
+      "doc": "Saved terminal chats use the same account history and continuation IDs.",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "Message",
+          "doc": "One message of a terminal chat.",
+          "declaration": "pub struct Message {\n    pub role: Role,\n    pub text: String,\n    pub step: Option<Value>,\n}"
+        },
+        {
+          "kind": "enum",
+          "name": "Role",
+          "doc": "Who wrote a terminal chat message.",
+          "declaration": "pub enum Role {\n    User,\n    Assistant,\n    Thinking,\n    Tool,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Saved",
+          "doc": "The saved chat, and whether this save changed it.",
+          "declaration": "pub struct Saved {\n    pub chat: ChatRef,\n    pub changed: bool,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "Snapshot",
+          "doc": "A terminal chat to save: its computer, title, and messages.",
+          "declaration": "pub struct Snapshot {\n    pub computer: String,\n    pub title: String,\n    pub messages: Vec<Message>,\n    pub repository: Option<String>,\n    pub active_unix: Option<u64>,\n}"
+        },
+        {
+          "kind": "fn",
+          "name": "save",
+          "doc": "Publish an already screened transcript. The returned ID is also its Loro room\nID; callers must not derive a separate ID from the terminal's local filename.",
+          "declaration": "pub async fn save(\n    client: &Client,\n    session: &Session,\n    local_id: &str,\n    snapshot: &Snapshot,\n    cancel: &CancellationToken,\n) -> Result<Saved, Error>",
+          "calls": []
+        }
+      ],
+      "reexports": []
+    }
+  ]
 }

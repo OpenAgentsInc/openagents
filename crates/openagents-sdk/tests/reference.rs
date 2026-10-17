@@ -263,6 +263,10 @@ fn segments_of(expr: &Expr) -> Option<String> {
     let Expr::Array(array) = &*reference.expr else {
         return None;
     };
+    // An empty list is the query (`&[]`), not a path.
+    if array.elems.is_empty() {
+        return None;
+    }
     let mut out = String::from("/v1");
     for element in &array.elems {
         out.push('/');
@@ -294,6 +298,14 @@ impl<'ast> Visit<'ast> for Calls<'_> {
     fn visit_expr_method_call(&mut self, call: &'ast syn::ExprMethodCall) {
         self.arguments(call.args.iter());
         syn::visit::visit_expr_method_call(self, call);
+    }
+    fn visit_expr_struct(&mut self, value: &'ast syn::ExprStruct) {
+        if let Some(last) = value.path.segments.last()
+            && let Some((method, route)) = self.operations.get(&last.ident.to_string())
+        {
+            self.found.insert((method.clone(), route.clone()));
+        }
+        syn::visit::visit_expr_struct(self, value);
     }
     fn visit_expr_path(&mut self, path: &'ast syn::ExprPath) {
         if let Some(last) = path.path.segments.last()
@@ -345,6 +357,32 @@ fn generated_operations(modules: &[Module]) -> BTreeMap<String, (String, String)
             };
             if let (Some(method), Some(path)) = (field("method"), field("path")) {
                 out.insert(constant.ident.to_string(), (method, path));
+            }
+        }
+        // The SDK builds generated requests by type (`generated::ListComputers
+        // { .. }.into_request()`), so map each request type to the operation
+        // its `into_request` names.
+        let mut by_type = Vec::new();
+        for item in &module.items {
+            let Item::Impl(block) = item else { continue };
+            let Some(ty) = self_type(&block.self_ty) else {
+                continue;
+            };
+            for entry in &block.items {
+                let ImplItem::Fn(f) = entry else { continue };
+                if f.sig.ident != "into_request" {
+                    continue;
+                }
+                let mut named = OperationField(None);
+                named.visit_block(&f.block);
+                if let Some(name) = named.0 {
+                    by_type.push((ty.clone(), name));
+                }
+            }
+        }
+        for (ty, name) in by_type {
+            if let Some(operation) = out.get(&name).cloned() {
+                out.insert(ty, operation);
             }
         }
     }
@@ -769,4 +807,21 @@ fn every_module_and_its_calls_are_found() {
         text.contains("\"path\":\"/v1/computers\""),
         "generated calls"
     );
+}
+
+/// The constant a generated `into_request` puts in its `operation` field.
+struct OperationField(Option<String>);
+
+impl<'ast> Visit<'ast> for OperationField {
+    fn visit_field_value(&mut self, field: &'ast syn::FieldValue) {
+        if let syn::Member::Named(id) = &field.member
+            && id == "operation"
+            && let Expr::Reference(reference) = &field.expr
+            && let Expr::Path(path) = &*reference.expr
+            && let Some(last) = path.path.segments.last()
+        {
+            self.0 = Some(last.ident.to_string());
+        }
+        syn::visit::visit_field_value(self, field);
+    }
 }
