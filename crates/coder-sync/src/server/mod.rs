@@ -6,6 +6,7 @@ pub mod db;
 pub mod device;
 pub mod notifications;
 pub mod push;
+pub mod proof;
 pub mod registry;
 pub mod rooms;
 pub mod storage;
@@ -32,6 +33,7 @@ pub struct StateData {
     pub revision: String,
     /// Session notifications; `None` when push isn't configured.
     pub push: Option<Arc<push::Push>>,
+    pub proof_origin: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -67,6 +69,10 @@ pub fn router(state: StateData) -> Router {
         .route(
             "/attachments/{*path}",
             axum::routing::put(blob::retired_attachment),
+        )
+        .route(
+            "/device/{id}/key",
+            axum::routing::post(proof::register).delete(proof::revoke),
         )
         .route("/device/{id}/ws", get(device::websocket))
         .route("/device/{id}/status", get(device::status))

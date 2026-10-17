@@ -59,6 +59,8 @@ pub async fn guard(
     next: Next,
 ) -> Response {
     request.headers_mut().remove(ACCOUNT_HEADER);
+    request.headers_mut().remove(super::proof::KEY_HEADER);
+    request.headers_mut().remove(super::proof::EXPIRY_HEADER);
     if request.uri().path() == "/health" || state.auth != AuthMode::OpenAgents {
         return next.run(request).await;
     }
@@ -84,7 +86,10 @@ pub async fn guard(
                 return denied(StatusCode::SERVICE_UNAVAILABLE);
             };
             request.headers_mut().insert(ACCOUNT_HEADER, value);
-            next.run(request).await
+            match super::proof::admit(&state, &who, request).await {
+                Ok(request) => next.run(request).await,
+                Err(status) => denied(status),
+            }
         }
         Err(status) => denied(status),
     }
@@ -97,6 +102,7 @@ pub struct SocketLease {
     accounts: Accounts,
     token: String,
     account: String,
+    proof_expiry: Option<u64>,
 }
 pub fn socket_lease(
     state: &StateData,
@@ -111,6 +117,10 @@ pub fn socket_lease(
         accounts: state.accounts.clone()?,
         token: bearer(headers, query)?,
         account: who.account.clone(),
+        proof_expiry: headers
+            .get(super::proof::EXPIRY_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse().ok()),
     })
 }
 /// Close revoked, expired, or unverifiable live sockets; callers reconnect after an outage.
@@ -119,7 +129,19 @@ pub async fn socket_ended(lease: Option<SocketLease>) -> u16 {
         return std::future::pending().await;
     };
     loop {
-        tokio::time::sleep(Duration::from_secs(15)).await;
+        let remaining = lease
+            .proof_expiry
+            .map(|expiry| expiry.saturating_sub(coder_access::unix_time().unwrap_or(u64::MAX)));
+        if remaining == Some(0) {
+            return 4401;
+        }
+        tokio::time::sleep(Duration::from_secs(remaining.unwrap_or(15).min(15))).await;
+        if lease
+            .proof_expiry
+            .is_some_and(|expiry| expiry <= coder_access::unix_time().unwrap_or(u64::MAX))
+        {
+            return 4401;
+        }
         match lease.accounts.verify(&lease.token).await {
             Ok(who) if who.account == lease.account => {}
             Ok(_) | Err(StatusCode::UNAUTHORIZED) => return 4401,

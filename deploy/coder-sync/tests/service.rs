@@ -164,6 +164,7 @@ async fn database_migrations_health_and_auth_with_fake_bucket() {
     let bucket = Bucket::memory();
     bucket.probe().await.unwrap();
     let app = coder_sync::server::router(StateData {
+            proof_origin: None,
         database: db.clone(),
         bucket,
         rooms: Rooms::default(),

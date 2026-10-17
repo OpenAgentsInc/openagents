@@ -6,6 +6,9 @@ rust-version = "1.98.1"
 publish = false
 
 [dependencies]
+coder-access = { path = "../../../crates/coder-access", default-features = false }
+nostr = { path = "../../../crates/nostr" }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
 openagents.workspace = true
 coder-sync = { package = "coder-sync-service", path = "..", features = ["server"] }
 openagents-sync.workspace = true

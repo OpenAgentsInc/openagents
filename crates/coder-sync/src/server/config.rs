@@ -15,6 +15,7 @@ pub struct Config {
     pub account_deployment: openagents::Deployment,
     pub revision: String,
     pub push: Option<super::push::Settings>,
+    pub proof_origin: String,
 }
 
 impl Config {
@@ -53,7 +54,22 @@ impl Config {
             .unwrap_or_else(|| format!("0.0.0.0:{}", get("PORT").unwrap_or("8080")))
             .parse()
             .map_err(|_| "Invalid listen address.")?;
+        let proof_origin = get("CODER_SYNC_PUBLIC_ORIGIN")
+            .unwrap_or("https://sync.openagents.com")
+            .to_owned();
+        let origin = reqwest::Url::parse(&proof_origin).map_err(|_| "Invalid public origin.")?;
+        if !matches!(origin.scheme(), "http" | "https")
+            || origin.host().is_none()
+            || origin.path() != "/"
+            || origin.query().is_some()
+            || origin.fragment().is_some()
+            || !origin.username().is_empty()
+            || origin.password().is_some()
+        {
+            return Err("Invalid public origin.");
+        }
         Ok(Self {
+            proof_origin,
             listen,
             database_url,
             bucket,

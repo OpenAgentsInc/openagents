@@ -33,6 +33,8 @@ path = "../../crates/coder-sync/src/main.rs"
 server = []
 
 [dependencies]
+coder-access = { path = "../../crates/coder-access", default-features = false }
+nostr = { path = "../../crates/nostr" }
 openagents.workspace = true
 openagents-proto.workspace = true
 sha2 = "0.10"

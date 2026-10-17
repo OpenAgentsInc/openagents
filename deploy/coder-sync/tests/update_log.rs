@@ -36,6 +36,7 @@ impl Server {
             uuid::Uuid::new_v4()
         );
         let app = server::router(StateData {
+            proof_origin: None,
             database: db.clone(),
             bucket: Bucket::memory(),
             rooms: Rooms::default(),

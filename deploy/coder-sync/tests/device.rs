@@ -39,6 +39,7 @@ impl Server {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let app = server::router(StateData {
+            proof_origin: None,
             database: db.clone(),
             bucket: Bucket::memory(),
             rooms: Rooms::default(),
