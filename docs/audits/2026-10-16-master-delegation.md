@@ -409,13 +409,14 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 | --- | --- | --- |
 | #11934 | Deploy the agents door. Run `ask_foreman_cli.py` and `openagents agents ask Foreman …` with test account `acct_500d3e1d125b7782`. Land the web door's switch to `place` (in the issue's patch). | to do |
 | #11936 | Redeploy the SPACE candidate with explicit zero-length framing and verify suspend and wake through Cloud Run. | to do |
+| #11814 | Promote the checked cleanup images, install eleven measurements and nine alert policies, then run encrypted lifecycle, worker replacement, concurrent wakes, drain/rollback/placement disable, guest denial, retention, and fixture cleanup. Use the [private service runbook](../../deploy/space-service/README.md) and [receipt](../cloud/evidence/2026-10-16-space-private-foundation.json). | to do; source checks passed 50/0 |
 | #11875 | The dedicated-account CAD run on staging and then production: fan bracket, picked face, 5 mm thicker, project versions, STEP download, cleanup. | Closed. Standard staging smoke passed 99/0/2 on `646d5fb6bd`. CAD staging passed 18 checks, isolated browser face selection, and cleanup after #11937; evidence in `docs/sdk/labs-cad-staging-handoff.json`. Production pending. |
 | #11876 | Run the Git-pinned `examples/sdk-labs` CAD flow against production with the dedicated account, including ranged GLB, notes, events, and deletion. | External build and iOS account-client check passed; evidence: `docs/sdk/labs-client-evidence.json`. Live run: to do. |
 | #11877 | A CAD chat's card through `/v1/history`, re-rendered in a second browser session. | to do |
 | #11878 | Deploy the account-service worker routes before the web worker routes. Run dedicated-account Echo on server, disposable enrolled, and cloud placements; prove private input bytes and paths stay local, retire scoped keys, and observe cloud computer deletion. The cloud environment needs the pinned `labs-worker` and trusted handlers installed. | to do; owner Mac installation is in `NEEDS_OWNER.md` |
 | #11852 | Deploy `4a796e8ff8` or newer. Run `OurCloudLiveTests/testStartRunAndStopOurCloud` with the dedicated test account, check `GET /v1/computer-usage`, delete the computer with `DELETE /v1/cloud-host`, and remove its test registry rows. Validate TestFlight 1011 or the next free build. | to do; phone source `d37ed99d0c`, local control acceptance `a67ec60b44` passed |
 | #11894 | A test account's terminal chat continued on the desktop: the first turn knows the history, and the phone steers it. | to do |
-| #11815 | The dedicated production account's usage read (it returned 403). | to do |
+| #11815 | Read usage with the configured dedicated production test account and explain the earlier 403. | passed with `acct_83d16a35955ef908`: HTTP 200, pricing off, no charge; the earlier account remains outside the rollout. [Evidence](../sdk/computers-usage-evidence.json). |
 
 ## Shared rules
 

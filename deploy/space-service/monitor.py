@@ -7,8 +7,10 @@ import json
 import os
 import socket
 import subprocess
-from cluster_secrets import identity
+import xml.etree.ElementTree as ET
+from cluster_secrets import identity, secret
 from database_check import credential
+from storage_inventory import protocol, unfinished_uploads
 
 PROJECT='openagentsgemini'
 PREFIX='custom.googleapis.com/openagents/space/'
@@ -48,10 +50,20 @@ def collect():
         sql="""SELECT json_build_object(
  'oldest_operation_seconds',(SELECT COALESCE(max(extract(epoch FROM now()-created_at)),0) FROM public_operations WHERE state IN ('queued','running')),
  'oldest_transition_seconds',(SELECT COALESCE(max(extract(epoch FROM now()-lifecycle_changed_at)),0) FROM sandboxes WHERE lifecycle IN ('creating','starting','restoring','pausing','resuming','suspending','stopping','checkpointing')),
- 'sandbox_count',(SELECT count(*) FROM sandboxes));"""
+ 'sandbox_count',(SELECT count(*) FROM sandboxes),
+ 'orphan_snapshot_locations',(SELECT count(*) FROM snapshot_storage_locations WHERE orphaned_at IS NOT NULL),
+ 'oldest_orphan_seconds',(SELECT COALESCE(max(extract(epoch FROM now()-orphaned_at)),0) FROM snapshot_storage_locations WHERE orphaned_at IS NOT NULL));"""
         result=subprocess.run(['psql','-X','-A','-t','-w','--set=ON_ERROR_STOP=1','-c',sql],env=environment,capture_output=True,check=True,timeout=15)
         measurements.update(json.loads(result.stdout))
     except (OSError,ValueError,KeyError,subprocess.SubprocessError): errors.append('database')
+    try:
+        value=secret('object-credentials',identity())
+        client=protocol()
+        pending=[unfinished_uploads(client.Store(value,PROJECT+'-oa-space-service-'+purpose))
+            for purpose in ('templates','snapshots')]
+        measurements['unfinished_uploads']=sum(item['unfinished_uploads'] for item in pending)
+        measurements['oldest_unfinished_upload_seconds']=max(item['oldest_unfinished_upload_seconds'] for item in pending)
+    except (OSError,ValueError,KeyError,RuntimeError,ET.ParseError): errors.append('storage')
     measurements['collector_errors']=len(errors)
     return measurements,errors
 

@@ -31,7 +31,9 @@ def configure():
     cloud('projects','add-iam-policy-binding',PROJECT,'--member=serviceAccount:'+PREFIX+'-control@'+PROJECT+'.iam.gserviceaccount.com',
         '--role=roles/monitoring.metricWriter','--condition=None')
     for metric in ('nodes_ready','services_ready_ratio','collector_errors','oldest_operation_seconds',
-        'oldest_transition_seconds','worker_disk_free_bytes','sandbox_count'):
+        'oldest_transition_seconds','worker_disk_free_bytes','sandbox_count',
+        'orphan_snapshot_locations','oldest_orphan_seconds','unfinished_uploads',
+        'oldest_unfinished_upload_seconds'):
         path=BASE+'/metricDescriptors/'+METRICS+metric
         descriptor=api('GET',path,missing=True)
         if descriptor is None:
@@ -52,7 +54,9 @@ def configure():
     else: raise RuntimeError('The alert inventory exceeded its page bound.')
     specs=[('nodes_ready','COMPARISON_LT',2,120),('services_ready_ratio','COMPARISON_LT',1,120),
         ('collector_errors','COMPARISON_GT',0,120),('oldest_operation_seconds','COMPARISON_GT',600,120),
-        ('oldest_transition_seconds','COMPARISON_GT',900,120),('worker_disk_free_bytes','COMPARISON_LT',60*1024**3,300)]
+        ('oldest_transition_seconds','COMPARISON_GT',900,120),('worker_disk_free_bytes','COMPARISON_LT',60*1024**3,300),
+        ('sandbox_count','COMPARISON_GT',2,120),('oldest_orphan_seconds','COMPARISON_GT',7200,120),
+        ('oldest_unfinished_upload_seconds','COMPARISON_GT',3600,120)]
     policies=[]
     for metric,comparison,threshold,duration in specs:
         name='SPACE private: '+metric

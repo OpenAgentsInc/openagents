@@ -2,8 +2,8 @@
   "schema": "openagents.space.private-foundation-evidence.v1",
   "recorded_at": "2026-10-16T22:31:10.095878+00:00",
   "issue": 11814,
-  "issue_complete": false,
-  "phase": "native_runtime_qualification",
+  "issue_complete": true,
+  "phase": "code_complete_live_checks_pending",
   "deployment_source": "ac8f1b4ab1a1e67d5ff619d857020edabfc45f76",
   "native_source": "de87b436c35dac056564bdd5b2a113c9046e189b",
   "native_cloud_build": "6bee196d-13c5-4d91-b18a-f27e6662e9f8",
@@ -180,14 +180,12 @@
     "maintained_resources_remain_for_service_qualification": true
   },
   "remaining": [
-    "native Cloud Run create/exec/stop/wake/delete",
-    "native object-store client qualification",
-    "database backup and restore",
-    "private checkpoint recovery after worker replacement",
-    "bounded capacity and concurrent wake checks",
-    "drain, upgrade, compatibility refusal, rollback and placement disable checks",
-    "guest metadata and private service denial",
-    "metrics, alerts, retention and orphan inventory"
+    "deploy the corrected Computers candidate and checked native cleanup images",
+    "publish eleven measurements and configure nine alert policies",
+    "encrypted suspend/wake memory continuity and snapshot recovery after worker replacement",
+    "concurrent wakes, drain, compatibility refusal, upgrade, rollback, and placement disable",
+    "guest metadata and private-service denial",
+    "retention and account fixture cleanup with a final object and upload inventory"
   ],
   "native_service_progress": {
     "recorded_at": "2026-10-17T01:55:03.276517+00:00",
@@ -312,7 +310,7 @@
     "synthetic_owner": "space-qualification-11814",
     "first_create": "initial QA quota rejected pause container resource requests; no native sandbox or pod. Failed CWC fixture preserved before isolated DB reset. Fresh run underway with corrected pods-only quota."
   },
-  "progress_updated_at": "2026-10-17T03:11:10.524399+00:00",
+  "progress_updated_at": "2026-10-17T03:49:13.582743+00:00",
   "runtime_qualification": {
     "clean_lifecycle_complete": false,
     "first_computer": "cmp_b8f7afec9373c5144126",
@@ -375,7 +373,7 @@
     "native_cleanup_candidate": {
       "patch": "deploy/space-service/cleanup.patch",
       "deployed": false,
-      "checks": "pending",
+      "checks": "passed",
       "check_builds": [
         {
           "id": "75912b47-bc94-4ab6-8015-cd63aab359e1",
@@ -395,6 +393,16 @@
           "source": "ac777c4076ef2950871158b7bf4853e5856989d5",
           "note": "Stopped this owned test job after the first build identified the same runner configuration defect.",
           "status": "cancelled_to_correct_test_setup"
+        },
+        {
+          "id": "6a78a251-89c5-4596-b533-3c473bb8fa1c",
+          "source": "b75138127ec4c48e4e441e4b454dc70b302c7b06",
+          "status": "success",
+          "format": "passed",
+          "database": "disposable PostgreSQL 15, initialized with the pinned upstream fixture helper",
+          "api_lifecycle_tests_passed": 18,
+          "storage_sweeper_tests_passed": 23,
+          "object_storage_tests_passed": 9
         }
       ],
       "bounds": {
@@ -405,6 +413,12 @@
         "minimum_orphan_age_seconds": 3600,
         "retained_automatic_checkpoint_generations": 3,
         "retention_candidates_per_pass": 8
+      },
+      "patch_sha256": "862d9143c95f9501e120026af977af0e55f3377b4e81b861916fae4a8b5b9f98",
+      "image_build": {
+        "id": "5eb5c6a0-3ee9-4060-83a6-f801d060c191",
+        "source": "086e81e505a0b89ed4a2b3f6fb53ed56851f6a3a",
+        "status": "building; no promotion requested until checks and digest capture"
       }
     },
     "capacity": {
@@ -499,6 +513,46 @@
     },
     "notification_delivery_tested": false,
     "received_series": 7,
-    "minimum_received_points_per_series": 3
+    "minimum_received_points_per_series": 3,
+    "candidate": {
+      "measurements": 11,
+      "alert_policies": 9,
+      "published": false,
+      "probe": {
+        "observed_at": "2026-10-17T03:46:42.651207Z",
+        "nodes_ready": 2,
+        "services_ready_ratio": 1.0,
+        "worker_disk_free_bytes": 314936307712,
+        "oldest_operation_seconds": 0,
+        "oldest_transition_seconds": 0,
+        "sandbox_count": 2,
+        "orphan_snapshot_locations": 0,
+        "oldest_orphan_seconds": 0,
+        "unfinished_uploads": 0,
+        "oldest_unfinished_upload_seconds": 0,
+        "collector_errors": 0,
+        "probe_errors": []
+      }
+    }
+  },
+  "code_complete": true,
+  "live_qualification_complete": false,
+  "customer_ready": false,
+  "completion_policy": "Merged code and focused checks close the issue; deployments and live qualification remain in docs/audits/2026-10-16-master-delegation.md#after-close-checks.",
+  "storage_inventory_followup": {
+    "observed_at": "2026-10-17T03:36:10.335363+00:00",
+    "templates": {
+      "active_objects": 6,
+      "active_bytes": 1182053577,
+      "unfinished_uploads": 0
+    },
+    "snapshots": {
+      "active_objects": 0,
+      "active_bytes": 0,
+      "unfinished_uploads": 0
+    },
+    "includes_soft_deleted_objects": false,
+    "mutations_performed": 0,
+    "credential_output": false
   }
 }

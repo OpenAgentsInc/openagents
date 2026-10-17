@@ -156,10 +156,11 @@ objects and unfinished multipart uploads need separate checks.
 
 Install `monitor.py` beside the protected control tools and the monitor service
 and timer under `/etc/systemd/system`. Run `monitoring.py` before enabling
-`oa-space-monitor.timer`. Seven fixed measurements publish every minute through
-the control identity's Metrics Writer role; six policies alert on missing or
-unhealthy services, stale work, collection failures, and less than 60 GiB free
-on the worker data disk. Policies appear in Cloud Monitoring incidents. The
+`oa-space-monitor.timer`. Eleven fixed measurements publish every minute through
+the control identity's Metrics Writer role; nine policies cover missing or
+unhealthy services, stale work, collection failures, capacity, cleanup age, and
+less than 60 GiB free on the worker data disk. Orphan storage alerts after two
+hours; unfinished uploads alert after one hour. Policies appear in Cloud Monitoring incidents. The
 helper preserves existing notification channels and creates none automatically.
 See the [time-series API](https://docs.cloud.google.com/monitoring/api/ref_v3/rest/v3/projects.timeSeries/create)
 and [alert policy API](https://docs.cloud.google.com/monitoring/api/ref_v3/rest/v3/projects.alertPolicies).
