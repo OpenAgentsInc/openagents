@@ -232,6 +232,7 @@ mod tests {
                 id: "home".into(),
                 title: "Home".into(),
                 area: "home".into(),
+                current: true,
                 versions: vec![ScreenVersion {
                     image: "20261017-100000-aaaa/home--home.png".into(),
                     sha256: "a".repeat(64),

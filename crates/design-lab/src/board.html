@@ -70,6 +70,7 @@
   <button id="in" title="Zoom in (+)">+</button>
   <button id="fit" title="Show everything (Shift+1)">Fit</button>
   <button id="mode" title="Show screens in light or dark mode (D)">Light</button>
+  <button id="removed" title="Also show screens the app no longer has">Show removed</button>
 </div>
 <div id="help">Drag or scroll to move · Pinch or ⌘/Ctrl + scroll to zoom · Click a screen to open it · D switches light and dark</div>
 <div id="empty">No screens match.</div>
@@ -99,6 +100,19 @@ let bounds = { w: 1, h: 1 };
 // Run times are the capturing Mac's wall clock, stored as if UTC.
 const when = (unix) => new Date(unix * 1000).toLocaleString(undefined,
   { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+
+// Screens the newest capture run no longer has stay hidden unless asked for.
+let showRemoved = false;
+document.getElementById("removed").onclick = () => {
+  showRemoved = !showRemoved;
+  const b = document.getElementById("removed");
+  b.textContent = showRemoved ? "Hide removed" : "Show removed";
+  b.classList.toggle("on", showRemoved);
+  areas();
+  layout();
+  fit();
+};
+function visible(s) { return showRemoved || s.current !== false; }
 
 // Light or dark screens. A version without a dark capture shows its light one.
 let mode = "light";
@@ -157,6 +171,7 @@ function layout() {
   const byArea = new Map();
   let shown = 0, versions = 0;
   for (const screen of board.screens) {
+    if (!visible(screen)) continue;
     if (only && screen.area !== only) continue;
     const hay = (screen.title + " " + screen.id + " " + screen.area).toLowerCase();
     if (q && !hay.includes(q)) continue;
@@ -310,7 +325,7 @@ function areas() {
   const select = document.getElementById("areas");
   const keep = select.value;
   select.length = 1;
-  const names = board.screens.map((s) => s.area);
+  const names = board.screens.filter(visible).map((s) => s.area);
   for (const a of [...new Set(names)]) {
     const o = document.createElement("option");
     o.value = a; o.textContent = a;

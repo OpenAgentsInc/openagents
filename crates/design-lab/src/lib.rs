@@ -37,6 +37,15 @@ pub struct Screen {
     pub area: String,
     /// Oldest first.
     pub versions: Vec<ScreenVersion>,
+    /// Whether the newest capture run still has this screen. A screen the
+    /// app no longer shows (the tour stopped capturing it) is kept for its
+    /// history but hidden by default.
+    #[serde(default = "yes")]
+    pub current: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -155,7 +164,9 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
         })
         .collect();
     runs.sort();
+    let newest = runs.last().map(|(run, _, _)| run.clone());
     let mut screens: BTreeMap<String, Screen> = BTreeMap::new();
+    let mut in_newest: std::collections::BTreeSet<String> = Default::default();
     for (run, unix, commit) in runs {
         let mut files: Vec<String> = std::fs::read_dir(captures.join(&run))
             .map_err(|e| e.to_string())?
@@ -184,6 +195,9 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
             let Some(file) = light else {
                 continue;
             };
+            if newest.as_deref() == Some(run.as_str()) {
+                in_newest.insert(id.clone());
+            }
             let bytes =
                 std::fs::read(captures.join(&run).join(&file)).map_err(|e| e.to_string())?;
             let sha256 = format!("{:x}", Sha256::digest(&bytes));
@@ -200,6 +214,7 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
                 area,
                 id,
                 versions: Vec::new(),
+                current: true,
             });
             // Unchanged since the last run: still the same version. A run
             // without a dark picture doesn't count as a change by itself.
@@ -231,6 +246,9 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
         }
     }
     let mut screens: Vec<Screen> = screens.into_values().collect();
+    for screen in &mut screens {
+        screen.current = in_newest.contains(&screen.id);
+    }
     screens.sort_by(|a, b| (&a.area, &a.id).cmp(&(&b.area, &b.id)));
     Ok(Board {
         schema: SCHEMA.into(),
@@ -313,6 +331,24 @@ mod tests {
         let dark = versions[0].dark.as_deref().unwrap();
         assert_eq!(dark, "20261017-110000-bbbb/home--home@dark.png");
         assert!(image(&dir, &board, dark).is_some());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn screens_missing_from_the_newest_run_are_not_current() {
+        let dir = std::env::temp_dir().join(format!("design-lab-current-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01\0\0\0\x01".to_vec();
+        std::fs::create_dir_all(dir.join("20261017-100000-aaaa")).unwrap();
+        std::fs::create_dir_all(dir.join("20261017-110000-bbbb")).unwrap();
+        for file in ["welcome--sign-in.png", "home--home.png"] {
+            std::fs::write(dir.join("20261017-100000-aaaa").join(file), &png).unwrap();
+        }
+        std::fs::write(dir.join("20261017-110000-bbbb/home--home.png"), &png).unwrap();
+        let board = scan(&dir).unwrap();
+        let current = |id: &str| board.screens.iter().find(|s| s.id == id).unwrap().current;
+        assert!(current("home--home"));
+        assert!(!current("welcome--sign-in"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
