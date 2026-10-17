@@ -43,3 +43,9 @@ Deployment uses `OPENAGENTS_WEB_LABS_DATABASE_URL` as a PostgreSQL URL.
 Run `python3 deploy/labs/database.py staging` (or `production`) to create
 a URL-form secret from the existing account database credential. The original
 secret stays in place. Each Labs runtime receives access to its own new secret.
+
+Production signs file links with the keyless `openagents-labs-files` service
+account. Run `deploy/labs/production-signing.sh` after the signing role exists;
+it grants the runtime signing access and limits the signer to the bucket's
+`labs/` files. `WEB_DEPLOY_TAG=labs-11874` gives a concurrent deployment its
+own candidate URL when running `scripts/deploy/web.sh promote`.

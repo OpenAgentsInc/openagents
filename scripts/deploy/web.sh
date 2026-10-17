@@ -44,7 +44,8 @@
 # before it takes the account store (GATEWAY_HOLD=serving, #11154), so the
 # 8 checks answered through it print WAIT ("expected until traffic") rather
 # than FAIL. Any other failure stops promote with exit 1: do not shift.
-# SMOKE=0 skips the smoke.
+# SMOKE=0 skips the smoke. WEB_DEPLOY_TAG selects a separate candidate tag
+# and host when another deployment is using the default `new` tag.
 #
 # shift and rollback move all traffic; their default revisions are the ones
 # the last promote recorded under $STATE. shift refuses when the revision
@@ -71,7 +72,8 @@ REPO=us-central1-docker.pkg.dev/$PROJECT/openagents
 SERVICE=coder
 STAGING=openagents-web-1-staging
 TRAFFIC_ORIGIN=https://openagents.com
-TAG_URL=https://new---coder-ezxz4mgdsq-uc.a.run.app
+DEPLOY_TAG=${WEB_DEPLOY_TAG:-new}
+TAG_URL=https://$DEPLOY_TAG---coder-ezxz4mgdsq-uc.a.run.app
 BUILD_SA=projects/$PROJECT/serviceAccounts/oa-mvp-automation@$PROJECT.iam.gserviceaccount.com
 # The staging chat worker's public key (deploy/staging/README.md).
 WORKER_PUBKEY=${STAGING_WORKER_PUBKEY:-be4c57cadade24f6a3dd95a6e5a7414cbeab2d0df219c31157b850d4b6718b9c}
@@ -110,6 +112,23 @@ serving_revision() {
 t=[e for e in json.load(sys.stdin)["status"]["traffic"] if e.get("percent")]
 t.sort(key=lambda e: -e["percent"])
 print(t[0]["revisionName"] if t else "")'
+}
+
+wait_candidate() {
+    candidate_deadline=$(( $(now) + 420 ))
+    while [ "$(now)" -lt "$candidate_deadline" ]; do
+        if g run revisions describe "$1" --region "$REGION" --project "$PROJECT" \
+            --format='json(status.conditions)' > "$STATE/candidate-status.json" 2> "$STATE/candidate-status.log"; then
+            candidate_ready=$(python3 -c 'import json,sys; print(next((c.get("status", "") for c in json.load(open(sys.argv[1])).get("status", {}).get("conditions", []) if c.get("type") == "Ready"), ""))' "$STATE/candidate-status.json")
+            case "$candidate_ready" in
+                True) return 0 ;;
+                False) cat "$STATE/candidate-status.json" >&2; return 1 ;;
+            esac
+        fi
+        sleep 5
+    done
+    say "The candidate did not become ready: $1"
+    return 1
 }
 
 stage() {
@@ -260,12 +279,16 @@ promote() {
     python3 - "$STATE/service.json" "$STATE/revision.json" "$image" "$name" \
         "$ROOT/deploy/production/web.sh" "$stack_image" "$serve_image" \
         "$ROOT/deploy/staging/gateway.sh" "$retire_serve" > "$spec" << 'PY'
-import json, sys
+import json, os, re, sys
 
 service, revision = (json.load(open(p)) for p in sys.argv[1:3])
 image, name, launcher_path, stack_image, serve_image, gateway_launcher_path, retire_serve = sys.argv[3:10]
 # Our own Boat-compatible service on GCE (crates/oa-boat, #11256).
 OA_BOAT_BASE = "https://oa-boat-157437760789.us-central1.run.app/api/v1"
+tag = os.environ.get("WEB_DEPLOY_TAG", "new")
+if not re.fullmatch(r"[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?", tag):
+    sys.exit("Choose a candidate tag with lowercase letters, digits, and hyphens.")
+candidate_host = tag + "---coder-ezxz4mgdsq-uc.a.run.app"
 
 def keep(entries, drop):
     return {k: v for k, v in (entries or {}).items() if not k.startswith(drop)}
@@ -283,6 +306,8 @@ web["image"] = image
 # requires a chat bucket (production's own, which the runtime account may
 # write), and the image ships the chat and Grow Little Bunny builds.
 args = web.setdefault("args", [])
+if candidate_host not in args:
+    args += ["--public-host", candidate_host]
 env = {e["name"] for e in web.get("env", [])}
 if "--chat-bucket" not in args and "OPENAGENTS_WEB_CHAT_BUCKET" not in env:
     args += ["--chat-bucket", "openagentsgemini-web-chats-prod"]
@@ -361,6 +386,7 @@ if "openagents-production-pg" in instances:
     for entry in (
         {"name": "OPENAGENTS_WEB_LABS_DATABASE_URL", "valueFrom": {"secretKeyRef": {"name": "openagents-labs-production-pg-url", "key": "latest"}}},
         {"name": "OPENAGENTS_WEB_LABS_BUCKET", "value": "openagentsgemini-web-chats-prod"},
+        {"name": "OPENAGENTS_WEB_LABS_SIGNING_ACCOUNT", "value": "openagents-labs-files@openagentsgemini.iam.gserviceaccount.com"},
     ):
         if entry["name"] not in env:
             envs.append(entry)
@@ -464,12 +490,12 @@ for entry in service["spec"].get("traffic", []):
     if entry.get("latestRevision"):
         sys.exit("refusing: a traffic entry follows the latest revision, which would move traffic")
     entry = dict(entry)
-    if entry.get("tag") == "new":
+    if entry.get("tag") == tag:
         del entry["tag"]
         if not entry.get("percent"):
             continue
     traffic.append(entry)
-traffic.append({"revisionName": name, "tag": "new"})
+traffic.append({"revisionName": name, "tag": tag})
 out = {
     "apiVersion": "serving.knative.dev/v1",
     "kind": "Service",
@@ -498,7 +524,12 @@ if old.get("args") != args:
 PY
     say "  serving now: $previous"
     t=$(now)
-    apply run services replace "$spec" --region "$REGION" --project "$PROJECT"
+    if [ "$DEPLOY_TAG" = new ]; then
+        apply run services replace "$spec" --region "$REGION" --project "$PROJECT"
+    else
+        apply run services replace "$spec" --region "$REGION" --project "$PROJECT" --async
+        [ -n "${DRY_RUN:-}" ] || wait_candidate "$name"
+    fi
     took "production revision (no traffic)" "$t"
     [ -z "${DRY_RUN:-}" ] || { say "  spec: $spec"; return 0; }
     printf '%s\n' "$previous" > "$STATE/$SERVICE.previous"
