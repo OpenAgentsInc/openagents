@@ -194,7 +194,7 @@ fn main() -> anyhow::Result<()> {
     });
     let failure = std::sync::Arc::new(std::sync::Mutex::new(None));
     let result = failure.clone();
-    gpui_platform::application().with_assets(icons::Assets).run(move |cx| {
+    openagents_gpui_test::real_application().with_assets(icons::Assets).run(move |cx| {
         gpui_tokio::init(cx); gpui_base::init(cx);
         let settings = settings::UiSettings::default();
         settings::init(settings.clone(), data.clone(), cx);

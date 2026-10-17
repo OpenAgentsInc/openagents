@@ -39,10 +39,9 @@ fn main() -> anyhow::Result<()> {
     anyhow::ensure!(!frames.is_empty(), "Empty replay");
     let output = std::path::PathBuf::from(&args[2]);
     std::fs::create_dir_all(&output)?;
-    let native = gpui_platform::current_platform(true);
     let platform = gpui::bench_platform(
-        Some(Box::new(gpui_platform::current_headless_renderer)),
-        native.text_system(),
+        Some(Box::new(openagents_gpui_test::offscreen_renderer)),
+        openagents_gpui_test::text_system(),
     );
     let executor = platform.background_executor();
     let handles = Rc::new(RefCell::new(None));

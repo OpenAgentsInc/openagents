@@ -321,7 +321,7 @@ fn main() -> anyhow::Result<()> {
             .collect::<Vec<_>>()},
     ]);
 
-    gpui_platform::application()
+    openagents_gpui_test::real_application()
         .with_assets(icons::Assets)
         .run(move |cx| {
             gpui_tokio::init(cx);

@@ -82,7 +82,7 @@ fn main() -> anyhow::Result<()> {
     runtime.block_on(controller.restore());
     anyhow::ensure!(controller.lease().is_some(), "fixture sign-in failed");
     let data = output.join("workspace");
-    gpui_platform::application()
+    openagents_gpui_test::real_application()
         .with_assets(icons::Assets)
         .run(move |cx| {
             gpui_tokio::init_from_handle(cx, runtime.handle().clone());

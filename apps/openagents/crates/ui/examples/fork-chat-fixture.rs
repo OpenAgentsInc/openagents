@@ -60,7 +60,7 @@ fn main() -> anyhow::Result<()> {
     let _guard = runtime.enter();
     let temp = tempfile::tempdir()?;
     let data = temp.path().to_path_buf();
-    gpui_platform::application()
+    openagents_gpui_test::real_application()
         .with_assets(icons::Assets)
         .run(move |cx| {
             gpui_tokio::init(cx);

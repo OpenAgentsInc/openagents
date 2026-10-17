@@ -1,0 +1,18 @@
+[package]
+name = "openagents-gpui-test"
+description = "GPUI test support: the headless test platform, offscreen captures, and the opt-in door to the real platform."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+gpui = { workspace = true, features = ["test-support"] }
+gpui_platform = { workspace = true, features = ["test-support"] }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+
+# A real text system that doesn't build the macOS platform, whose
+# keyboard-layout lookup aborts off the main thread (#11970).
+[target.'cfg(target_os = "macos")'.dependencies]
+gpui_wgpu = { git = "https://github.com/zeronsh/zui", rev = "361ff20b919fdfb80199ee6d9aed725300cb7d54" }

@@ -1174,7 +1174,7 @@ mod corner_render_tests {
         let mut cx = gpui::HeadlessAppContext::with_platform(
             Arc::new(gpui::NoopTextSystem),
             Arc::new(()),
-            gpui_platform::current_headless_renderer,
+            openagents_gpui_test::offscreen_renderer,
         );
         for (name, appearance, surface, treatment) in [
             (

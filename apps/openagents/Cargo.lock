@@ -8809,6 +8809,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-gpui-test"
+version = "0.2.113"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "gpui_platform",
+ "gpui_wgpu",
+ "image",
+]
+
+[[package]]
 name = "openagents-harness"
 version = "0.2.113"
 dependencies = [
@@ -9136,7 +9147,6 @@ dependencies = [
  "gpui-base",
  "gpui_platform",
  "gpui_tokio",
- "gpui_wgpu",
  "html5ever",
  "image",
  "lab-kit",
@@ -9159,6 +9169,7 @@ dependencies = [
  "openagents-dashboard",
  "openagents-doc",
  "openagents-engine",
+ "openagents-gpui-test",
  "openagents-harness",
  "openagents-markdown",
  "openagents-orb",

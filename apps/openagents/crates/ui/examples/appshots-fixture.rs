@@ -158,7 +158,7 @@ fn main() -> anyhow::Result<()> {
     ];
     let failure = Arc::new(std::sync::Mutex::new(None));
     let result = failure.clone();
-    gpui_platform::application().with_assets(icons::Assets).run(move |cx| {
+    openagents_gpui_test::real_application().with_assets(icons::Assets).run(move |cx| {
         gpui_tokio::init(cx); gpui_base::init(cx);
         let settings=settings::UiSettings::default(); settings::init(settings.clone(),data.clone(),cx);
         let fonts=typography::register_fonts(cx); typography::init(settings.ui_font_family.clone(), settings.ui_font_size, settings.terminal_font_family.clone(), settings.terminal_font_size, settings.code_font_family.clone(), settings.code_font_size, fonts, cx);

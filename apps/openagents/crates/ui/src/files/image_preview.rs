@@ -429,7 +429,7 @@ mod tests {
     #[test]
     fn rendered_workspace_image_click_keeps_zoom_in_the_file_panel() {
         use gpui::{AppContext, point, size};
-        gpui_platform::headless().run(|cx| {
+        openagents_gpui_test::os_test_application().run(|cx| {
             cx.set_global(Theme::dark());
             let window = cx
                 .open_window(

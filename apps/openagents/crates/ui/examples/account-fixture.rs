@@ -232,7 +232,7 @@ fn main() -> anyhow::Result<()> {
     let controller = Controller::new(client, store.clone(), output.join("profile/signed-out"));
     let result = Arc::new(AtomicBool::new(false));
     let passed = result.clone();
-    gpui_platform::application()
+    openagents_gpui_test::real_application()
         .with_assets(icons::Assets)
         .run(move |cx| {
             gpui_tokio::init_from_handle(cx, runtime.handle().clone());

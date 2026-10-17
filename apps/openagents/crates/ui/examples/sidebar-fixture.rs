@@ -9,7 +9,7 @@ fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().with_env_filter("warn").init();
     let temp = tempfile::tempdir()?;
     let data = temp.path().to_path_buf();
-    gpui_platform::application().with_assets(icons::Assets).run(move |cx| {
+    openagents_gpui_test::real_application().with_assets(icons::Assets).run(move |cx| {
         gpui_tokio::init(cx); gpui_base::init(cx);
         let mut settings = settings::UiSettings::default();
         settings.sidebar_show_branch = true;

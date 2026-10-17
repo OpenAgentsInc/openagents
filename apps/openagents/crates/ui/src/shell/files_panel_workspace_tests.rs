@@ -149,9 +149,9 @@ fn files_panel_workspace_navigation_and_external_updates() {
         .unwrap();
     let output = openagents_brand::env_var_os("OPENAGENTS_FILES_CAPTURES").map(PathBuf::from);
     let application = if output.is_some() {
-        gpui_platform::application()
+        openagents_gpui_test::real_application()
     } else {
-        gpui_platform::headless()
+        openagents_gpui_test::os_test_application()
     };
     application
         .with_assets(crate::icons::Assets)

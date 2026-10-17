@@ -1548,7 +1548,7 @@ mod layout_tests {
 
     #[test]
     fn code_fences_scroll_copy_and_share_persistent_fit_preference() {
-        gpui_platform::headless().run(|cx| {
+        openagents_gpui_test::os_test_application().run(|cx| {
             let settings_dir = tempfile::tempdir().unwrap();
             crate::settings::init(
                 crate::settings::UiSettings::default(),
@@ -1659,7 +1659,7 @@ mod layout_tests {
 
     #[test]
     fn task_click_edits_buffer_and_supports_undo_redo_and_stale_guards() {
-        gpui_platform::headless().run(|cx| {
+        openagents_gpui_test::os_test_application().run(|cx| {
             gpui_base::init(cx);
             cx.set_global(Theme::dark());
             let source = "- [ ] tarea 🦀\n- [X] tarea 🦀\n";
@@ -1790,7 +1790,7 @@ mod layout_tests {
 
     #[test]
     fn selection_stays_in_its_document_with_two_markdown_surfaces() {
-        gpui_platform::headless().run(|cx| {
+        openagents_gpui_test::os_test_application().run(|cx| {
             cx.set_global(Theme::dark());
             let make = |text: &str, cx: &mut gpui::App| {
                 cx.new(|cx| {
@@ -1844,7 +1844,7 @@ mod layout_tests {
 
     #[test]
     fn rendered_image_opens_centered_lightbox_and_escape_restores_focus() {
-        gpui_platform::headless().run(|cx| {
+        openagents_gpui_test::os_test_application().run(|cx| {
             cx.set_global(Theme::dark());
             let window = cx.open_window(gpui::WindowOptions { window_bounds: Some(gpui::WindowBounds::Windowed(Bounds::new(Point::default(), gpui::size(px(1200.0), px(600.0))))), ..Default::default() }, |_, cx| {
                 cx.new(|cx| {
@@ -1881,7 +1881,7 @@ mod layout_tests {
 
     #[test]
     fn rendered_mermaid_opens_lightbox_and_toggles_source() {
-        gpui_platform::headless().run(|cx| {
+        openagents_gpui_test::os_test_application().run(|cx| {
             cx.set_global(Theme::dark());
             let window = cx
                 .open_window(

@@ -4514,7 +4514,7 @@ mod markdown_buffer_tests {
                 cx,
             );
         }
-        gpui_platform::headless().run(|cx| {
+        openagents_gpui_test::os_test_application().run(|cx| {
             gpui_base::init(cx);
             cx.set_global(Theme::dark());
             let source =

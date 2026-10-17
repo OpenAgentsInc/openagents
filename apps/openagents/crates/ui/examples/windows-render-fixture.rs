@@ -151,7 +151,7 @@ fn main() -> anyhow::Result<()> {
     );
     anyhow::ensure!(image.is_file(), "fixture PNG does not exist");
     tracing_subscriber::fmt().with_env_filter("info").init();
-    gpui_platform::application().run(move |cx| {
+    openagents_gpui_test::real_application().run(move |cx| {
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::new(

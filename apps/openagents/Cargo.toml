@@ -18,6 +18,7 @@ members = [
     "crates/rpc",
     "crates/update",
     "crates/ui",
+    "crates/gpui-test",
     "crates/syntax",
     "crates/markdown",
     "crates/mobile",
