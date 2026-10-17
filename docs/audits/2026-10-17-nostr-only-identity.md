@@ -11,6 +11,11 @@ against one owner request:
 > scanning a QR code. No Apple login next to GitHub login next to Google
 > login.
 
+Follow-up decisions (owner, same day): the 12 words used for NIP-06 are
+the backup and also control the wallet, with the nsec optional; onboarding
+is a short tutorial with no sign-in; build 1012 does not ship Monday, and
+this work starts now.
+
 ## Verdict
 
 **Feasible, and most of the hard parts already exist.** The server already
@@ -35,13 +40,15 @@ What is missing is small in code and large in product decisions:
 4. **Abuse controls that don't depend on GitHub.** Today the free
    allowances ($1/day of models, $3 of cloud time) are bounded because
    each account needs a GitHub or Apple identity. Keys cost nothing.
-5. **Recovery.** A lost phone without backup is a lost account.
+5. **Recovery.** A lost phone without backup is a lost account. The
+   backup is 12 words that derive the identity key (NIP-06) and also
+   open the wallet, so there is one thing to write down.
 6. **Coder 1.0.0 compatibility.** The released binary uses the device-code
    flow and `sess_`/`oa_sk_` tokens. Those stay, so this is an addition,
    not a removal, until 1.0 ages out.
 
-Estimated size: the minimum version (phases 1 and 2 below: instant start on
-the phone and desktop, QR pairing) is about 4 to 6 focused agent-days. The
+Estimated size: phases 1 and 2 below (instant start on
+the phone and desktop, QR pairing) are about 4 to 6 focused agent-days. The
 full version, including recovery, website sign-in, key consolidation and
 retiring Apple and visitor tokens, is about 2 to 3 weeks.
 
@@ -245,9 +252,21 @@ introduces devices. Rights come only from a host-signed NIP-HOST grant."
 
 ### Identity
 
-- **One identity key per person, held by the first device.** On first
-  launch the phone (or desktop) generates a secp256k1 key and stores it in
-  the Keychain. Its npub is the person's ID everywhere a person sees one.
+- **One set of 12 words per person, and everything derives from them**
+  (owner decision, 2026-10-17). On first launch the phone (or desktop)
+  generates a 12-word BIP-39 phrase, the same shape the wallet seed already
+  uses (`crates/spark-wallet/src/seed.rs`, `Seed::generate`, 16 bytes of
+  entropy). From it:
+  - the **identity key** is NIP-06 (`m/44'/1237'/0'/0/0`), and its npub is
+    the person's ID everywhere a person sees one;
+  - the **wallet** is the same phrase handed to Spark as today
+    (`crates/spark-wallet/src/spark.rs:131`, `Seed::Mnemonic`, no
+    passphrase). Spark derives its own keys on its own paths, so the
+    Nostr key and the wallet keys are different keys from one backup.
+
+  The phrase is stored in the Keychain; the derived key is cached beside it.
+  NIP-06 derivation is missing today (`crates/nostr/src/lane.rs:110` has only
+  the path string), so this adds BIP-32 derivation to `crates/nostr`.
 - **Keep `acct_` as the server's internal ID.** The first sign-in creates an
   account whose principal is `nostr:<hex>`. This keeps every store, cache and
   room unchanged, lets one person hold several keys, and allows key
@@ -325,7 +344,11 @@ desktop's account-link request. A headless computer uses reverse
 enrollment (the 8-character code) or `openagents connect invite`, as today.
 
 A second phone joins the same way: the old phone shows a link code and the
-new phone scans it. Without the old phone, use recovery.
+new phone scans it. Without the old phone, restore from the 12 words.
+
+Per-device keys stay: each computer and phone has its own random device key
+for pairing grants and push, so revoking a lost device never means changing
+the words.
 
 For people who want one key everywhere (power users, existing Nostr users),
 offer **Use my existing key**: import an nsec, or connect a NIP-46 bunker
@@ -333,24 +356,52 @@ offer **Use my existing key**: import an nsec, or connect a NIP-46 bunker
 
 ### Recovery
 
-Without recovery, a lost phone is a lost account. Offer these, in order:
+Without recovery, a lost phone is a lost account. **The backup is the 12
+words** (owner decision, 2026-10-17):
 
-1. **iCloud Keychain sync for the identity key**
-   (`kSecAttrSynchronizable: true`), on by default. A new iPhone on the same
-   Apple account restores it with no steps. This is a product choice: it
-   trades key exposure to Apple's sync for not losing accounts. Recommend
-   on, with a setting to keep the key on this device only.
-2. **Another linked device.** Any linked desktop can approve a new phone.
-3. **Recovery words** (24 words) and **a passkey**, as the NIP-VAULT slots
-   already design (`crates/oa-vault/src/slot.rs`, `recovery.rs`). Show the
-   prompt after the account holds something worth keeping (first credit
-   purchase, first connected computer), not at first launch.
-4. **A connected GitHub or Apple account as a recovery method**, chosen by
-   the person: signing in with it adds a new key to the account it is
-   connected to. This is the only sign-in role a provider keeps.
-5. **Export**: Reveal nsec and NIP-49 encrypted export, under the
-   `INVARIANTS.md` rules (explicit reveal, 60-second pasteboard expiry, no
-   screenshots).
+- **Settings > Back up your account** shows the 12 words, one at a time or
+  as a grid, after Face ID, under the `INVARIANTS.md` rules for key screens
+  (explicit reveal, no screenshots, 60-second pasteboard expiry). It asks
+  the person to confirm a few of them, and records that they were saved (the
+  wallet's words-saved marker, `Seed::fingerprint`, already does this).
+- **The same words restore the identity and the wallet.** Restoring on a new
+  phone or computer is **Restore from 12 words**: derive the NIP-06 key, sign
+  in, and the account, chats, computers and wallet come back. Because the
+  wallet uses the same words, there is one thing to write down, not two.
+- **Reveal nsec** is an optional extra under the backup screen, for people
+  who use the key in other Nostr apps. It reveals only the Nostr key: the
+  nsec can't recover the wallet, and the words recover both. The screen says
+  so in plain words.
+- **When to ask.** Not at first launch. Ask after the account holds
+  something worth keeping: the first payment or wallet balance, the first
+  connected computer, or a few days of chats. A badge on Settings stays until
+  the words are confirmed.
+
+Secondary ways back in, both optional:
+
+1. **Another linked device.** Any linked desktop can approve a new phone by
+   QR. That device joins with its own device key; it does not need the
+   words.
+2. **iCloud Keychain sync for the words**, off by default, as a setting
+   (**Keep a copy in iCloud Keychain**). With it on, a new iPhone on the same
+   Apple account restores without typing the words.
+
+GitHub or Apple are not recovery methods: the words are the account.
+
+What this changes in existing rules:
+
+- `INVARIANTS.md` (device identity rows, lines 325-331) says the device key
+  "is not derived from a NIP-06 seed phrase, and the app says so", and the
+  wallet rows (lines 378-424) keep the wallet seed "separate from the device
+  and world keys". Both rows change: the identity key is NIP-06 from the
+  wallet's words, and per-device keys (pairing, push) stay random and
+  separate.
+- Exposure: anyone with the 12 words holds both the identity and the money.
+  That is already true of the wallet today; the backup screen says it once,
+  plainly.
+- NIP-VAULT's 24-word recovery slot (`crates/oa-vault/src/recovery.rs`)
+  protects vault data with its own words. Later, the vault's recovery slot
+  can be derived from the same 12 words so there is still one backup.
 
 ### Abuse controls without GitHub
 
@@ -434,133 +485,140 @@ Settings row.
 | Project invites by npub as well as GitHub username | `projects/pending.rs` | small |
 | Website: phone-scan sign-in and NIP-07 sign-in | `openagents-web/src/auth.rs` | 2 days |
 | `DELETE /v1/account` | `gateway`, `openagents-web`, `oa-computers` | 1-2 days |
-| GitHub as recovery: signing in with a connected GitHub adds a key to its account | `accounts.rs` `github_sign_in` | small |
 
 ### Shared Rust (account, SDK, client)
 
 | Change | Where |
 |---|---|
-| `Identity` type: generate, load, store in Keychain (synchronizable by default), sign NIP-98 | `apps/openagents/crates/account` (new module), reusing `crates/nostr` and `coder_access::http_proof` |
+| `Identity` type: generate 12 words, derive the NIP-06 key, store in Keychain (this-device-only by default, iCloud copy as a setting), sign NIP-98; restore from words | `apps/openagents/crates/account` (new module), reusing `crates/nostr` and `coder_access::http_proof` |
 | `Controller`: on launch, load or create the identity, then sign in silently; `Phase::Waiting` and the device code leave the app path | `apps/openagents/crates/account/src/lib.rs` |
 | SDK: `sign_in_with_key(identity)` beside `sign_in_with_apple` | `crates/openagents-sdk/src/auth.rs` |
 | Retire the visitor token and claim in the new app | `crates/openagents-sdk/src/visitor.rs`, `account/src/cloud_chat.rs` |
+| `crates/nostr`: NIP-06 derivation (BIP-39 seed, BIP-32 `m/44'/1237'/0'/0/0`) with the NIP-06 test vectors | `crates/nostr/src/nip06.rs` (new) |
+| Wallet: open Spark from the identity's words when the app has a wallet | `crates/spark-wallet` |
 | Pairing: keep the grant in the Keychain, and let a paired computer appear without a prior registry entry | `apps/openagents/crates/sync/src/paired_device.rs:117,190-195` |
 | Later: derive the push, sharing and chat device keys from (or attest them with) the device's identity key | `apps/openagents/crates/mobile/src/push.rs`, `crates/coder-sharing/src/store.rs`, `crates/openagents-chat` |
 
 ### Phone (iOS)
 
+- **Onboarding is a short tutorial, with no sign-in** (owner decision,
+  2026-10-17). First launch makes the 12 words and the key, signs in
+  silently in the background, and shows a few skippable screens: ask
+  anything here; coding tasks run in our cloud or on your computer; connect
+  your computer by scanning its code; back up your account in Settings. The
+  last screen lands on a new chat with the composer focused.
 - Remove `SignInViewController`, the sign-in sheet, the Apple button, the
-  visitor countdown and `SignInPromptController`.
-- `SceneDelegate` always opens the shell; the first screen is a chat.
+  visitor countdown and `SignInPromptController`. Nothing in the app asks the
+  person to sign in.
+- `SceneDelegate` always opens the shell.
 - Add a QR scanner (AVFoundation) that feeds
   `coder_computers::connect::classify`, plus a universal-link handler for
   `https://openagents.com/connect#…`.
-- Settings: **Your identity** (npub, copy, Reveal nsec, back up with words or
-  passkey), **Linked devices** (list, revoke), **Connected accounts**
-  (GitHub, Google), **Delete account**.
+- Settings: **Back up your account** (the 12 words, optional Reveal nsec),
+  **Restore from 12 words**, **Your ID** (npub, copy), **Linked devices**
+  (list, revoke), **Connected accounts** (GitHub, Google), **Delete
+  account**.
 - App Attest at first sign-in.
 
 ### Desktop (GPUI)
 
+- The same onboarding idea, shorter: the desktop makes its own device key
+  and shows **Connect your phone** (the QR code) or **Start here** (make new
+  12 words) or **Restore from 12 words**. Scanning with a phone that already
+  has an account links this computer to it.
 - The sidebar account row becomes an identity row (npub, connected
-  accounts, linked devices).
-- On first launch, create the identity. The natural key to promote is the
-  owner key `coder-host` already creates, because it already signs the host
-  directory.
+  accounts, linked devices, back up).
 - Turn the NIP-HOST host on by default (drop the `OPENAGENTS_NIP_HOST=1`
-  gate) and add a **Connect your phone** window that shows the rotating QR
+  gate) and add the **Connect your phone** window that shows the rotating QR
   code from `device_channel_invitation`.
 - `configure_sync` signs in with the key; the bearer comes from the minted
   session.
 
 ### CLIs
 
-- `openagents identity create|show|import|export`, and the key-based sign-in
+- `openagents identity create|show|restore|export`, and the key-based sign-in
   in the shared login library, writing the same `account.json`.
 - Coder 1.0.0: no change; the server keeps its routes.
 
 ### Docs and protocol
 
 - `docs/auth/README.md`: replace "GitHub first" with key first; record the
-  route and the recovery methods.
+  route, the 12 words and NIP-06.
 - A NIP-HOST or new NIP section for "link a device key to an account by
   QR" (the approval event).
-- `INVARIANTS.md`: point the device-identity rows at the current app and its
-  tests; add rows for the identity key's storage and sync.
+- `INVARIANTS.md`: rewrite the device-identity and wallet-seed rows for the
+  shared 12 words, pointing at the current app and its tests.
 - `docs/coder/next-release.md`: key-based sign-in for the next Coder.
 
 ## Plan
 
-Each step is issue-sized and closes on code with its own tests, per the
-repository rules.
+**Timing (owner, 2026-10-17): build 1012 does not ship on Monday; Nostr
+identity is the next work, now.** Each step is issue-sized and closes on code
+with its own tests, per the repository rules. Steps 1 to 3 have no
+dependencies on each other and start in parallel.
 
-**Phase 1: instant start (the owner's core request).**
+**Phase 1: instant start.**
 
-1. Server: `POST /v1/sessions/nostr` with challenge, replay store and
-   find-or-create, answering `sess_`. Tests: valid signature signs in and
-   creates once; wrong URL, method, time, challenge or signature is refused;
-   replay is refused.
-2. Server: App Attest at first sign-in, plus the agent-registration caps for
-   key accounts; gate the free cloud allowance on attest, connection or
-   payment.
-3. Shared Rust: the `Identity` type and silent sign-in in `Controller`; the
-   SDK call.
-4. Phone: remove the sign-in screens and the visitor flow; open on the shell
-   with a chat; Settings > Your identity with Reveal nsec.
-5. Desktop: identity on first launch and silent sign-in; identity row.
+1. `crates/nostr`: NIP-06 derivation with the spec's test vectors.
+2. Server: `GET /v1/sessions/nostr/challenge` and `POST /v1/sessions/nostr`,
+   answering `sess_`; `POST /v1/account/keys` to link and revoke more keys.
+   Tests: a valid signature signs in and creates once; wrong URL, method,
+   time, challenge or signature is refused; replay is refused.
+3. Server: App Attest at first sign-in, the agent-registration caps for key
+   accounts, a global free-spend breaker, and the free cloud allowance gated
+   on attest, connection or payment.
+4. Shared Rust: the `Identity` type (words, NIP-06, Keychain, restore) and
+   silent sign-in in `Controller`; the SDK call. Depends on 1 and 2.
+5. Phone: the tutorial onboarding; remove every sign-in screen and the
+   visitor flow; Settings > Back up your account, Restore from 12 words, Your
+   ID. Depends on 4.
+6. Desktop: device key, silent sign-in, identity row, Start here or Restore.
+   Depends on 4.
 
 **Phase 2: QR-first pairing.**
 
-6. Desktop: NIP-HOST on by default and the Connect your phone QR window.
-7. Phone: QR scanner and universal link; persistent grants; computers
-   appear from pairing alone.
-8. Server: `POST /v1/account/keys` and the link-on-scan approval, so a
-   paired desktop signs in as the same person.
+7. Desktop: NIP-HOST on by default and the Connect your phone QR window.
+8. Phone: QR scanner and universal link; persistent grants; computers
+   appear from pairing alone; one scan also links the computer's key to the
+   account (uses step 2's key route).
 
-**Phase 3: recovery and the website.**
+**Phase 3: the website and the rules.**
 
-9. iCloud Keychain sync on by default, with a setting; recovery words and
-   passkey on the NIP-VAULT slots; NIP-49 export.
-10. Website: phone-scan sign-in and NIP-07; `/device` and `/oauth` work for
-    key-only people.
-11. Connected GitHub or Apple as an optional recovery method.
-12. `DELETE /v1/account` and its Settings row.
-
-**Phase 4: cleanup.**
-
-13. Admin, email allowlists and project invites move to account IDs or
+9. Website: phone-scan sign-in and NIP-07; `/device` and `/oauth` work for
+   key-only people.
+10. `DELETE /v1/account` and its Settings row.
+11. Admin, email allowlists and project invites move to account IDs or
     npubs.
-14. Consolidate the per-feature device keys under the device's identity
-    key.
-15. When build 1012 and Coder 1.0.0 age out, stop advertising Apple
-    sign-in and visitor tokens. Keep the routes answering while any
-    released client calls them.
+12. Docs: `docs/auth/README.md`, the NIP section, `INVARIANTS.md`.
 
-Phases 1 and 2 are the owner's request. Phase 3 is what makes it safe to
-leave people on it.
+**Later.**
+
+13. Consolidate the per-feature device keys under the device's key.
+14. Derive the vault's recovery slot from the same 12 words.
+15. When build 1012's testers and Coder 1.0.0 move on, stop advertising
+    Apple sign-in and visitor tokens. Keep the routes answering while any
+    released client calls them.
 
 ## Risks and open decisions
 
 | Risk | Mitigation |
 |---|---|
 | Farmed accounts drain free allowances | App Attest, agent-registration caps, a global breaker; gate free cloud time harder |
-| Lost phone, lost account | iCloud Keychain sync by default; linked devices; recovery words or passkey; connected GitHub as recovery |
-| Stolen key is permanent identity theft | Several keys per account with revocation; sessions expire; Linked devices shows and revokes each key |
-| Existing accounts orphaned | A signed-in app adds its new key to the existing account on first launch of the new build (call `POST /v1/account/keys` with the old session); never auto-link by email |
-| Paid credit stranded by a lost key | Prompt for backup before or at first purchase |
-| App Review | Account deletion is required either way; confirm guideline 4.8 no longer applies once GitHub is only a connection |
-| Monday's build already uses Apple and visitor sign-in | Ship build 1012 as is; land phase 1 after it; the server stays compatible with both |
+| Lost phone, lost account | The 12 words; another linked device; an optional iCloud Keychain copy |
+| Lost words, lost wallet and account together | The backup screen says so once; ask for the backup at the first payment or balance |
+| Stolen key or words | Several device keys per account with revocation; sessions expire; Linked devices shows and revokes each key. Stolen words are the account, as they are the wallet today |
+| Existing accounts orphaned | A signed-in app adds its new key to the existing account on first launch of the new build (`POST /v1/account/keys` with the old session); never auto-link by email |
+| App Review | Account deletion is required either way; confirm guideline 4.8 does not apply once GitHub is only a connection |
+| Build 1012 testers have Apple and visitor sign-in | The server keeps both routes answering; the new build adds the key to their account |
 
-Decisions for the owner:
+Decided (owner, 2026-10-17): the 12 words are the backup and also control
+the wallet; Reveal nsec is optional; onboarding is a short tutorial with no
+sign-in; build 1012 does not ship Monday; Nostr identity starts now.
 
-1. **iCloud Keychain sync for the identity key: on by default?** Recommended
-   yes, with a this-device-only setting.
+Still open:
+
+1. **iCloud Keychain copy of the words: off by default?** Recommended off,
+   as a setting.
 2. **Free cloud time for a brand-new key: after App Attest alone, or only
    after a connection or payment?** Recommended: App Attest plus a smaller
    first allowance, the full $3 after a connection or payment.
-3. **Drop Sign in with Apple from the next build?** Recommended yes, keeping
-   the route for build 1012.
-4. **One key everywhere, or one key per device linked to the account?**
-   Recommended one per device, with "Use my existing key" for Nostr users.
-5. **Timing.** Recommended: Monday ships build 1012 unchanged; phase 1
-   starts right after and is the next TestFlight build.
