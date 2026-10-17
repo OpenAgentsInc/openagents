@@ -146,6 +146,7 @@ pub struct CoreSavedHistory {
     foreground: AtomicBool,
     cancel: CancellationToken,
     listener: Arc<dyn SavedHistoryListener>,
+    labs: super::labs::LabFollow,
 }
 fn unavailable() -> CoreError {
     CoreError::Auth {
@@ -219,6 +220,7 @@ impl CoreSavedHistory {
             foreground: AtomicBool::new(true),
             cancel: CancellationToken::new(),
             listener: listener.clone(),
+            labs: Default::default(),
         });
         let cancel = this.cancel.clone();
         let weak = Arc::downgrade(&this);
@@ -232,6 +234,7 @@ impl CoreSavedHistory {
                     _ = cancel.cancelled() => break,
                     changed = account.changed() => {
                         if changed.is_err() || !lease.is_current() {
+                            if let Some(this) = weak.upgrade() { this.labs.stop(); }
                             history.reset(None); reader.clear(); turns.clear();
                             listener.on_saved_history_changed(); break;
                         }
@@ -263,6 +266,23 @@ impl CoreSavedHistory {
     }
     fn current(&self) -> bool {
         !self.cancel.is_cancelled() && self.lease.is_current()
+    }
+    pub(super) fn current_view(&self) -> bool {
+        self.current()
+    }
+    pub(super) fn reader(&self) -> &Arc<Reader> {
+        &self.reader
+    }
+    pub(super) fn labs(&self) -> &super::labs::LabFollow {
+        &self.labs
+    }
+    /// Lab cards follow their documents only while the transcript is
+    /// visible and the app is in the foreground.
+    pub(super) fn sync_labs(&self) {
+        let active = self.current()
+            && self.visible.load(Ordering::SeqCst)
+            && self.foreground.load(Ordering::SeqCst);
+        self.labs.sync(&self.reader, active);
     }
     fn refresh_lists(&self) {
         let runtime = openagents_client::runtime::shared();
@@ -298,23 +318,17 @@ impl CoreSavedHistory {
             return Err(unavailable());
         }
         let snapshot = self.reader.snapshot();
+        let target = self.reader.target();
         view.set_input(crate::layout::TranscriptInput {
-            entries: self
-                .reader
-                .target()
-                .map_or_else(
-                    || openagents_account::chat_entries::entries(&snapshot.messages, snapshot.epoch),
-                    |target| {
-                        openagents_account::chat_entries::entries_for_chat(
-                            &snapshot.messages,
-                            snapshot.epoch,
-                            &target.chat,
-                        )
-                    },
-                )
-                .into_iter()
-                .map(Arc::new)
-                .collect(),
+            entries: openagents_account::chat_entries::entries_with_lab_rows(
+                &snapshot.messages,
+                snapshot.epoch,
+                target.as_ref().map(|target| &target.chat),
+            )
+            .into_iter()
+            .map(Arc::new)
+            .collect(),
+            lab_cards: super::labs::layout_cards(&self.reader),
             ..Default::default()
         });
         Ok(())
@@ -467,6 +481,7 @@ impl CoreSavedHistory {
         }
         self.reader
             .set_following(visible && self.foreground.load(Ordering::SeqCst));
+        self.sync_labs();
     }
     pub fn set_foreground(&self, active: bool) {
         let was_active = self.foreground.swap(active, Ordering::SeqCst);
@@ -477,6 +492,7 @@ impl CoreSavedHistory {
         }
         self.reader
             .set_following(active && self.visible.load(Ordering::SeqCst));
+        self.sync_labs();
         if active && !was_active && self.current() {
             self.refresh_lists();
         }
@@ -523,6 +539,7 @@ impl CoreSavedHistory {
                 runtime.spawn(self.history.more());
             }
             SavedHistoryAction::Open { id } => {
+                self.labs.stop();
                 self.turns.clear();
                 self.reader
                     .open_latest(self.history.existing(&id).ok_or_else(unavailable)?)
@@ -530,6 +547,7 @@ impl CoreSavedHistory {
                 runtime.spawn(self.reader.more());
             }
             SavedHistoryAction::Close => {
+                self.labs.stop();
                 self.turns.clear();
                 self.reader.clear();
             }
@@ -624,6 +642,7 @@ impl CoreSavedHistory {
         })
     }
     pub fn shutdown(&self) {
+        self.labs.stop();
         self.cancel.cancel();
         self.turns.clear();
         self.history.reset(None);
@@ -633,6 +652,7 @@ impl CoreSavedHistory {
 }
 impl Drop for CoreSavedHistory {
     fn drop(&mut self) {
+        self.labs.stop();
         self.cancel.cancel();
         self.turns.clear();
         self.history.reset(None);

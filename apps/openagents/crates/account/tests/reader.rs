@@ -54,6 +54,40 @@ struct Server {
     bad: AtomicBool,
     started: tokio::sync::Notify,
     release: tokio::sync::Notify,
+    /// Lab notes posted, and the card's status line (#11884).
+    notes: Mutex<Vec<serde_json::Value>>,
+    lab_status: Mutex<Option<String>>,
+    lab_event: tokio::sync::Notify,
+}
+async fn lab_version_card(State(s): State<Arc<Server>>) -> Response {
+    let mut card = lab_card();
+    card["notes"] = json!(
+        s.notes
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|n| json!({"locator":n["locator"],"author":"acct_a","text":n["text"]}))
+            .collect::<Vec<_>>()
+    );
+    card["state_text"] = json!(*s.lab_status.lock().unwrap());
+    Json(card).into_response()
+}
+async fn lab_note(State(s): State<Arc<Server>>, Json(body): Json<serde_json::Value>) -> Response {
+    s.notes.lock().unwrap().push(body);
+    (StatusCode::CREATED, Json(json!({"saved":true}))).into_response()
+}
+async fn lab_events(State(s): State<Arc<Server>>, h: HeaderMap) -> Response {
+    let event =
+        |cursor: u64| json!({"cursor":cursor,"document":"beach","at_unix_ms":1,"change":{}});
+    if h.get("accept").is_none_or(|a| a != "text/event-stream") {
+        return Json(json!({"data":[event(1)],"next":null})).into_response();
+    }
+    s.lab_event.notified().await;
+    let body = format!(
+        "id: 2\nevent: changes\ndata: {}\n\n",
+        json!({"data":[event(2)]})
+    );
+    ([("content-type", "text/event-stream")], body).into_response()
 }
 async fn messages(
     State(s): State<Arc<Server>>,
@@ -144,6 +178,15 @@ async fn setup() -> (Arc<Controller>, Arc<Reader>, Arc<Server>, tempfile::TempDi
         .route("/v1/history/{id}/messages", get(messages))
         .route("/v1/history/{id}/files/{file}", get(file))
         .route("/v1/labs/artifacts/{id}", get(artifact))
+        .route(
+            "/v1/labs/documents/{id}/versions/{n}/card",
+            get(lab_version_card),
+        )
+        .route(
+            "/v1/labs/documents/{id}/notes",
+            axum::routing::post(lab_note),
+        )
+        .route("/v1/labs/documents/{id}/events", get(lab_events))
         .route(
             "/v1/labs/artifacts/{id}/content",
             get(|| async { PICTURE.to_vec() }),
@@ -597,7 +640,7 @@ async fn saved_lab_cards_become_rows_that_read_only_their_own_files() {
         })
         .expect("a Lab row");
     assert!(openagents_account::lab_cards::is_card_path(&path));
-    // The phone's entries keep no Lab row until it draws them.
+    // Clients that don't draw Lab rows keep the older card links.
     let phone = openagents_account::chat_entries::entries(&snapshot.messages, snapshot.epoch);
     assert!(
         !phone
@@ -618,4 +661,75 @@ async fn saved_lab_cards_become_rows_that_read_only_their_own_files() {
     assert_eq!(r.lab_media("lab-card:00", "art_photo_v2").await, None);
     c.sign_out().await;
     assert!(r.lab_card(&path).is_none());
+}
+
+#[tokio::test]
+async fn a_shown_lab_card_takes_notes_at_a_time_and_follows_its_events() {
+    use openagents_account::lab_cards::NoteError;
+    use openagents_account::openagents::CancellationToken;
+    let (c, r, server, _root) = setup().await;
+    r.open(target(&c, 1)).unwrap();
+    r.more().await;
+    let path = r.lab_cards().first().expect("a Lab card").0.clone();
+    assert_eq!(
+        r.lab_add_note(&path, Some(12.5), "  ").await,
+        Err(NoteError::Empty)
+    );
+    assert_eq!(
+        r.lab_add_note("lab-card:00", None, "Hi").await,
+        Err(NoteError::Unavailable)
+    );
+    let mut updates = r.watch();
+    r.lab_add_note(&path, Some(12.5), "Warmer still")
+        .await
+        .unwrap();
+    let posted = server.notes.lock().unwrap()[0].clone();
+    assert_eq!(posted["locator"], json!({"at":"time","seconds":12.5}));
+    assert_eq!(posted["space"], "me");
+    assert_eq!(posted["text"], "Warmer still");
+    assert!(updates.has_changed().unwrap());
+    updates.mark_unchanged();
+    let card = r.lab_card(&path).unwrap().card;
+    assert_eq!(card.notes.last().unwrap().text, "Warmer still");
+
+    // Following: the catch-up read, then each event, refreshes the card.
+    *server.lab_status.lock().unwrap() = Some("Rendering".into());
+    let stop = CancellationToken::new();
+    let follow = tokio::spawn({
+        let (r, path, stop) = (r.clone(), path.clone(), stop.clone());
+        async move { r.follow_lab(&path, &stop).await }
+    });
+    let wait_for = |want: &'static str| {
+        let (r, path) = (r.clone(), path.clone());
+        async move {
+            tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                while r.lab_card(&path).unwrap().card.state_text.as_deref() != Some(want) {
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .expect(want);
+        }
+    };
+    wait_for("Rendering").await;
+    *server.lab_status.lock().unwrap() = Some("Done rendering".into());
+    server.lab_event.notify_waiters();
+    let notify = tokio::spawn({
+        let server = server.clone();
+        async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                server.lab_event.notify_waiters();
+            }
+        }
+    });
+    wait_for("Done rendering").await;
+    notify.abort();
+    stop.cancel();
+    tokio::time::timeout(std::time::Duration::from_secs(5), follow)
+        .await
+        .expect("stopping ends the follower")
+        .unwrap();
+    c.sign_out().await;
+    assert!(r.lab_cards().is_empty());
 }

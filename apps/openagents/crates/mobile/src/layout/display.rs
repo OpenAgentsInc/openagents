@@ -195,6 +195,13 @@ pub enum WidgetKind {
     Shimmer,
     /// An agent visual; `TranscriptView::visual(id)` is its live session.
     Visual { id: String },
+    /// A Lab card's picture, drawn by the cell for `view`; the saved
+    /// history's `lab_card(card)` names its files.
+    LabMedia { card: String, view: super::lab::LabMediaView },
+    /// Opens the Lab card's page.
+    LabOpen { card: String },
+    /// Adds a note to the Lab card, at the playing time when it plays.
+    LabNote { card: String },
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]

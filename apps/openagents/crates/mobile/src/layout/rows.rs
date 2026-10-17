@@ -33,6 +33,8 @@ pub enum RowKind {
     Image,
     Working,
     Visual,
+    /// A Lab card (#11884).
+    Lab,
 }
 
 /// A user message awaiting its host echo (client-minted id = the echo's id).
@@ -51,6 +53,8 @@ pub struct TranscriptInput {
     pub working: bool,
     pub working_since_ms: Option<i64>,
     pub streaming: bool,
+    /// Lab cards for `lab-card:` visual parts, by path.
+    pub lab_cards: super::lab::LabCards,
 }
 
 pub(crate) fn row_key(id: &str) -> u64 {
@@ -95,6 +99,8 @@ pub(crate) enum Content {
     Working { since_ms: Option<i64>, streaming: bool },
     /// An agent visual: its height comes from its worker.
     Visual(Arc<crate::visual::VisualSlot>),
+    /// A Lab card, drawn from `lab-ui`'s card.
+    Lab(super::lab::LabRow),
 }
 
 /// A width-independent row: identity, top gap class and prepared content.
@@ -191,6 +197,8 @@ pub(crate) struct RowBuilder {
     /// Visual rows' links to their workers, by visual id (kept across
     /// rebuilds: the worker holds the same slot).
     pub visual_slots: HashMap<String, Arc<crate::visual::VisualSlot>>,
+    /// The input's Lab cards, for the entry being built.
+    lab_cards: super::lab::LabCards,
 }
 
 pub(crate) fn quick_hash(s: &str) -> u64 {
@@ -210,6 +218,7 @@ impl RowBuilder {
         let mut live_entries: HashSet<&str> = HashSet::with_capacity(input.entries.len());
         let mut live_parts: HashSet<String> = HashSet::new();
         let mut prev_role: Option<MessageRole> = None;
+        self.lab_cards = input.lab_cards.clone();
         for entry in &input.entries {
             live_entries.insert(entry.id.as_str());
             let first = out.is_empty();
@@ -304,8 +313,17 @@ impl RowBuilder {
     }
 
     /// Context outside the entry that changes its rows (gaps only).
-    fn entry_sig(&self, _entry: &SessionMessageEntry, first: bool, prev: Option<MessageRole>) -> u64 {
-        (first as u64) | ((prev.map_or(0, |r| r as u64 + 1)) << 1)
+    fn entry_sig(&self, entry: &SessionMessageEntry, first: bool, prev: Option<MessageRole>) -> u64 {
+        let mut sig = (first as u64) | ((prev.map_or(0, |r| r as u64 + 1)) << 1);
+        // A Lab card that changed (a note, a finished job) rebuilds its entry.
+        for part in &entry.parts {
+            if let MessagePart::Visual { path, .. } = part
+                && let Some(card) = self.lab_cards.get(path)
+            {
+                sig = sig.rotate_left(7) ^ quick_hash(&format!("{card:?}"));
+            }
+        }
+        sig
     }
 
     fn entry_rows(
@@ -410,6 +428,22 @@ impl RowBuilder {
                                 copy_text: String::new(),
                             });
                             rows.push(Placed { core, gap });
+                        }
+                        MessagePart::Visual { id, path, title } if openagents_account::lab_cards::is_card_path(path) => {
+                            let gap = gap_for(&rows, false);
+                            let key = row_key(&format!("{}#{}", entry.id, id));
+                            let core = match self.lab_cards.get(path).and_then(|card| super::lab::prepare(ctx, path, card)) {
+                                Some(lab) => RowCore {
+                                    key,
+                                    version: next_version(),
+                                    kind: RowKind::Lab,
+                                    entry_id: Arc::from(entry.id.as_str()),
+                                    content: Content::Lab(lab),
+                                    copy_text: title.clone(),
+                                },
+                                None => chip_row(ctx, &entry.id, id, "flask", ColorRole::TextSecondary, title),
+                            };
+                            rows.push(Placed { core: Arc::new(core), gap });
                         }
                         MessagePart::Visual { id, path, title } => {
                             let gap = gap_for(&rows, false);
@@ -778,6 +812,7 @@ pub(crate) fn place_row(
             }
             h
         }
+        Content::Lab(lab) => super::lab::place(lab, px, x, top, cw, out),
         Content::Working { since_ms, streaming } => {
             let h = px.v(WORKING);
             if let Some(out) = out {
@@ -918,6 +953,16 @@ pub(crate) fn content_heap_bytes(content: &Content) -> usize {
         Content::Tools(t) => super::tools::heap_bytes(t),
         Content::Chip(c) => c.text.p.heap_bytes(),
         Content::Image { reference } => reference.len(),
+        Content::Lab(lab) => lab
+            .pieces
+            .iter()
+            .map(|p| match p {
+                super::lab::Piece::Text(t) => t.p.heap_bytes(),
+                super::lab::Piece::Media(_) => 0,
+            })
+            .sum::<usize>()
+            + lab.note.p.heap_bytes()
+            + lab.open.as_ref().map_or(0, |t| t.p.heap_bytes()),
         Content::Working { .. } | Content::Visual(_) => 0,
     }
 }

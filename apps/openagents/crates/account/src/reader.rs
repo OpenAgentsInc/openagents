@@ -65,6 +65,9 @@ struct State {
     following: Option<CancellationToken>,
     polling: bool,
     snapshot: Snapshot,
+    /// Newer copies of shown Lab cards, by row path, from their documents'
+    /// events (#11884, #11943). Dropped with the epoch.
+    lab_live: std::collections::HashMap<String, lab_kit::Card>,
 }
 pub struct Reader {
     state: Mutex<State>,
@@ -93,6 +96,7 @@ impl Reader {
                 following: None,
                 polling: false,
                 snapshot: Snapshot::default(),
+                lab_live: Default::default(),
             }),
             updates,
             limits,
@@ -140,6 +144,7 @@ impl Reader {
         s.following = None;
         s.polling = false;
         s.epoch += 1;
+        s.lab_live.clear();
         s.target = None;
         s.reader = None;
         s.bytes = 0;
@@ -233,6 +238,7 @@ impl Reader {
         s.polling = false;
         s.file_cancel = s.cancel.child_token();
         s.epoch += 1;
+        s.lab_live.clear();
         s.reader = Some(reader);
         s.replace = true;
         s.snapshot.epoch = s.epoch;
@@ -753,16 +759,146 @@ impl Reader {
         result
     }
 
-    /// The saved Lab card a `lab-card:` transcript row shows.
+    /// The saved Lab card a `lab-card:` transcript row shows, with any newer
+    /// copy its document's events brought.
     pub fn lab_card(&self, path: &str) -> Option<crate::openagents::SavedLabCard> {
+        self.lab_cards()
+            .into_iter()
+            .find_map(|(p, saved)| (p == path).then_some(saved))
+    }
+
+    /// Every Lab card row in the shown transcript, by row path, newest
+    /// copies applied.
+    pub fn lab_cards(&self) -> Vec<(String, crate::openagents::SavedLabCard)> {
         let s = self.state.lock().unwrap();
-        s.target.as_ref().filter(|t| t.is_current())?;
-        s.snapshot.messages.iter().find_map(|message| {
-            message.cards.iter().enumerate().find_map(|(index, saved)| {
-                (crate::lab_cards::card_path(s.epoch, &message.id, index) == path)
-                    .then(|| saved.clone())
+        if s.target.as_ref().filter(|t| t.is_current()).is_none() {
+            return Vec::new();
+        }
+        let mut all = Vec::new();
+        for message in s.snapshot.messages.iter() {
+            for (index, saved) in message.cards.iter().enumerate().take(16) {
+                let path = crate::lab_cards::card_path(s.epoch, &message.id, index);
+                let mut saved = saved.clone();
+                if let Some(live) = s.lab_live.get(&path) {
+                    saved.card = live.clone();
+                }
+                all.push((path, saved));
+            }
+        }
+        all
+    }
+
+    /// Follows a shown card's document until `stop` is cancelled, the
+    /// account changes, or the chat closes, keeping the card's state and
+    /// notes current between history polls. Call it only while the card is
+    /// visible.
+    pub async fn follow_lab(&self, path: &str, stop: &CancellationToken) {
+        let Some((labs, saved, cancel)) = self.lab_client(path) else {
+            return;
+        };
+        let doc = saved.document_ref().clone();
+        let version = saved.card.version;
+        let work = async {
+            let mut cursor = 0;
+            loop {
+                let page = labs.events_since(&doc, cursor, 100, &cancel).await.ok()?;
+                if let Some(last) = page.data.last() {
+                    cursor = cursor.max(last.cursor);
+                }
+                if page.next.is_none() || page.data.is_empty() {
+                    break;
+                }
+            }
+            self.lab_update(path, &labs, &doc, version, &cancel).await;
+            let mut events = labs.events(&doc, cursor).ok()?;
+            while events.next(&cancel).await.is_ok() {
+                self.lab_update(path, &labs, &doc, version, &cancel).await;
+            }
+            Some(())
+        };
+        tokio::select! {
+            _ = stop.cancelled() => {}
+            _ = work => {}
+        }
+    }
+
+    /// Adds a note to a shown card's version, at `seconds` into its video
+    /// when given, then shows the card with it.
+    pub async fn lab_add_note(
+        &self,
+        path: &str,
+        seconds: Option<f64>,
+        text: &str,
+    ) -> Result<(), crate::lab_cards::NoteError> {
+        use crate::lab_cards::NoteError;
+        let text = text.trim();
+        if text.is_empty() {
+            return Err(NoteError::Empty);
+        }
+        if text.chars().count() > crate::lab_cards::MAX_NOTE_CHARS {
+            return Err(NoteError::TooLong);
+        }
+        let (labs, saved, cancel) = self.lab_client(path).ok_or(NoteError::Unavailable)?;
+        let doc = saved.document_ref().clone();
+        let locator = match seconds {
+            Some(seconds) if seconds.is_finite() && seconds >= 0.0 => {
+                lab_kit::Locator::Time { seconds }
+            }
+            _ => lab_kit::Locator::None,
+        };
+        let request = labs
+            .bind(lab_kit::api::AddNote {
+                space: doc.space().to_owned(),
+                version: saved.card.version,
+                locator,
+                text: text.to_owned(),
             })
-        })
+            .map_err(|_| NoteError::Unavailable)?;
+        labs.add_note(&doc, &request, &cancel)
+            .await
+            .map_err(|e| match e.refusal() {
+                Some(refusal) => NoteError::Refused(refusal.message.clone()),
+                None => NoteError::Unavailable,
+            })?;
+        self.lab_update(path, &labs, &doc, saved.card.version, &cancel)
+            .await;
+        Ok(())
+    }
+
+    fn lab_client(
+        &self,
+        path: &str,
+    ) -> Option<(
+        crate::openagents::labs::Client,
+        crate::openagents::SavedLabCard,
+        CancellationToken,
+    )> {
+        let saved = self.lab_card(path)?;
+        let s = self.state.lock().unwrap();
+        let target = s.target.clone().filter(ExistingChat::is_current)?;
+        let labs = target.lease.client().labs(target.lease.session()).ok()?;
+        Some((labs, saved, s.cancel.child_token()))
+    }
+
+    async fn lab_update(
+        &self,
+        path: &str,
+        labs: &crate::openagents::labs::Client,
+        doc: &crate::openagents::labs::DocumentRef,
+        version: u64,
+        cancel: &CancellationToken,
+    ) {
+        let Ok(card) = labs.card(doc, version, cancel).await else {
+            return;
+        };
+        let mut s = self.state.lock().unwrap();
+        if cancel.is_cancelled() || !s.target.as_ref().is_some_and(ExistingChat::is_current) {
+            return;
+        }
+        if s.lab_live.get(path) != Some(&card) {
+            s.lab_live.insert(path.to_owned(), card);
+            self.publish(&s);
+        }
     }
 
     /// The web page of a shown Lab card, on the chat's own website.

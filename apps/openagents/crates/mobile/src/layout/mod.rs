@@ -11,6 +11,7 @@
 pub mod display;
 mod markdown;
 mod file_icons;
+pub mod lab;
 mod rows;
 pub(crate) mod style;
 mod tools;
@@ -437,6 +438,7 @@ impl TranscriptView {
                 working: snap.working,
                 working_since_ms: snap.working_since_ms,
                 streaming: snap.streaming,
+                lab_cards: Default::default(),
             };
             let _ = tx.lock().unwrap().send(Msg::Input(input));
         });
@@ -526,6 +528,7 @@ pub(crate) fn debug_input(entries: Vec<DebugEntry>, working: bool) -> Transcript
         working,
         working_since_ms: None,
         streaming: working,
+        lab_cards: Default::default(),
     }
 }
 

@@ -17,6 +17,7 @@ mod cloud_host;
 pub use agent_lab::*;
 mod custom_agents;
 mod home;
+mod labs;
 pub use account::*;
 pub use custom_agents::*;
 pub use home::*;

@@ -8650,6 +8650,8 @@ dependencies = [
  "coder-access",
  "coder-sharing",
  "computer-driver",
+ "lab-kit",
+ "lab-ui",
  "oa-copy",
  "openagents-account",
  "openagents-client",

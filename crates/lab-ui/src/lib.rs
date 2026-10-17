@@ -106,11 +106,11 @@ pub fn card(
         ));
     }
     for (at, note) in card.notes.iter().take(100).enumerate() {
-        children.push(text(
-            &format!("note-{at}"),
-            note.text.clone(),
-            TextRole::Body,
-        ));
+        let value = match note_at(&note.locator) {
+            Some(place) => format!("{place} · {}", note.text),
+            None => note.text.clone(),
+        };
+        children.push(text(&format!("note-{at}"), value, TextRole::Body));
     }
     if card.page.is_some() {
         children.push(node(
@@ -142,11 +142,52 @@ pub fn card(
     })
 }
 
+/// Where a note is anchored, in words: "1:26" for a time.
+pub fn note_at(locator: &lab_kit::Locator) -> Option<String> {
+    match locator {
+        lab_kit::Locator::Time { seconds } if seconds.is_finite() && *seconds >= 0.0 => {
+            Some(clock(*seconds))
+        }
+        lab_kit::Locator::Frame { frame } => Some(format!("Frame {frame}")),
+        lab_kit::Locator::Step { step } => Some(format!("Step {step}")),
+        _ => None,
+    }
+}
+
+/// A playing time as `m:ss`, or `h:mm:ss` past an hour.
+pub fn clock(seconds: f64) -> String {
+    let total = if seconds.is_finite() {
+        seconds.max(0.0).floor() as u64
+    } else {
+        0
+    };
+    let (h, m, s) = (total / 3600, total / 60 % 60, total % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use rust_native::Activation;
     use serde_json::json;
+
+    #[test]
+    fn notes_at_a_time_show_the_time() {
+        assert_eq!(clock(86.4), "1:26");
+        assert_eq!(clock(3723.0), "1:02:03");
+        assert_eq!(clock(f64::NAN), "0:00");
+        let value: Card = serde_json::from_value(json!({"kind":"video","document":"film","version":2,
+            "title":"Film","view":"video","notes":[{"locator":{"at":"time","seconds":86.0},"author":"a","text":"Too bright"},
+            {"locator":{"at":"none"},"author":"a","text":"Good cut"}]})).unwrap();
+        let drawn = card(&value, "me", "test", 1).unwrap();
+        let json = String::from_utf8(drawn.view.to_json().unwrap()).unwrap();
+        assert!(json.contains("1:26 · Too bright"), "{json}");
+        assert!(json.contains("\"Good cut\""), "{json}");
+    }
 
     #[test]
     fn unknown_views_and_private_cards_share_the_same_native_controls() {

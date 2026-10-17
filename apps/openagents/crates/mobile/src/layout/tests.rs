@@ -446,7 +446,7 @@ fn bench_layout_passes() {
             continuation_of: None,
             duration_ms: None,
         }));
-        w.input = TranscriptInput { entries: e, pending: vec![], working: true, working_since_ms: None, streaming: true };
+        w.input = TranscriptInput { entries: e, pending: vec![], working: true, working_since_ms: None, streaming: true, ..Default::default() };
         let t = Instant::now();
         w.pass();
         total += t.elapsed();
@@ -647,4 +647,131 @@ fn visual_rows_take_the_height_their_worker_measures() {
     assert!((widget.y + widget.h - row.height).abs() < 0.5, "the widget fills the row below its gap");
     assert!(view.visual("v1".into()).is_some());
     view.close();
+}
+
+fn lab_fixtures() -> Vec<(String, lab_kit::Card)> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../crates/lab-kit/fixtures/cards");
+    let mut all: Vec<(String, lab_kit::Card)> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|e| e == "json"))
+        .map(|p| {
+            let card = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+            (p.file_stem().unwrap().to_string_lossy().into_owned(), card)
+        })
+        .collect();
+    all.sort_by(|a, b| a.0.cmp(&b.0));
+    all
+}
+
+fn lab_input(cards: &[(String, lab_kit::Card)]) -> TranscriptInput {
+    let mut map = std::collections::HashMap::new();
+    let parts = cards
+        .iter()
+        .enumerate()
+        .map(|(i, (name, card))| {
+            let path = openagents_account::lab_cards::card_path(1, "m1", i);
+            map.insert(path.clone(), lab::LabCardInput { space: "me".into(), card: card.clone() });
+            MessagePart::Visual { id: format!("m1-lab-{i}"), path, title: name.clone() }
+        })
+        .collect();
+    TranscriptInput {
+        entries: vec![Arc::new(SessionMessageEntry {
+            id: "m1".into(),
+            role: MessageRole::Assistant,
+            parts,
+            created_at: 0,
+            device_id: String::new(),
+            status: Some(MessageStatus::Complete),
+            continuation_of: None,
+            duration_ms: None,
+        })],
+        lab_cards: Arc::new(map),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn every_fixture_lab_card_lays_out_its_view() {
+    use display::WidgetKind;
+    let cards = lab_fixtures();
+    assert!(cards.len() >= 8);
+    for width in [320.0, 393.0, 744.0] {
+        let mut w = worker(width);
+        w.input = lab_input(&cards);
+        let frame = w.pass();
+        assert_eq!(frame.row_count() as usize, cards.len());
+        for (i, (name, card)) in cards.iter().enumerate() {
+            let p = frame.placement(i as u32).unwrap();
+            assert_eq!(p.kind, RowKind::Lab, "{name}");
+            let d = frame.display(i as u32).unwrap();
+            assert!((d.height - p.height).abs() < 0.01, "{name}");
+            for run in &d.runs {
+                assert!(run.x >= 0.0 && run.x + run.width <= width + 0.5, "{name}: {run:?}");
+            }
+            assert!(d.text.contains(&card.title), "{name}: {}", d.text);
+            let media: Vec<_> = d
+                .widgets
+                .iter()
+                .filter_map(|w| match &w.kind {
+                    WidgetKind::LabMedia { view, .. } => Some((*view, w.h, w.w)),
+                    _ => None,
+                })
+                .collect();
+            let expected = match name.as_str() {
+                "image" => Some(lab::LabMediaView::Image),
+                "video" => Some(lab::LabMediaView::Video),
+                "compare" => Some(lab::LabMediaView::Compare),
+                "model3d" => Some(lab::LabMediaView::Model3d),
+                "playable" => Some(lab::LabMediaView::Playable),
+                "report-refused" | "unknown-view" => None,
+                _ => media.first().map(|m| m.0),
+            };
+            assert_eq!(media.first().map(|m| m.0), expected, "{name}");
+            assert!(media.len() <= 1, "{name}");
+            for (_, h, w) in &media {
+                assert!(*h > 0.0 && *w <= width, "{name}");
+            }
+            assert!(d.widgets.iter().any(|w| matches!(&w.kind, WidgetKind::LabNote { .. })), "{name}");
+            assert_eq!(
+                d.widgets.iter().any(|w| matches!(&w.kind, WidgetKind::LabOpen { .. })),
+                card.page.is_some(),
+                "{name}"
+            );
+        }
+    }
+}
+
+#[test]
+fn lab_note_at_a_time_shows_and_rebuilds_the_row() {
+    let cards: Vec<_> = lab_fixtures().into_iter().filter(|(n, _)| n == "video").collect();
+    let mut w = worker(393.0);
+    w.input = lab_input(&cards);
+    let before = w.pass();
+    let d = before.display(0).unwrap();
+    assert!(d.text.contains("1:26 · the glare's overdone"), "{}", d.text);
+    // A note arrives from the card's events: the row rebuilds and grows.
+    let mut changed = cards.clone();
+    changed[0].1.notes.push(lab_kit::NoteBrief {
+        locator: lab_kit::Locator::Time { seconds: 3.0 },
+        author: "me".into(),
+        text: "Hold this frame".into(),
+    });
+    w.input = lab_input(&changed);
+    let after = w.pass();
+    assert_ne!(before.placement(0).unwrap().version, after.placement(0).unwrap().version);
+    assert!(after.placement(0).unwrap().height > before.placement(0).unwrap().height);
+    assert!(after.display(0).unwrap().text.contains("0:03 · Hold this frame"));
+}
+
+#[test]
+fn a_lab_card_the_transcript_lacks_shows_its_title() {
+    let cards: Vec<_> = lab_fixtures().into_iter().take(1).collect();
+    let mut input = lab_input(&cards);
+    input.lab_cards = Default::default();
+    let mut w = worker(393.0);
+    w.input = input;
+    let frame = w.pass();
+    assert_eq!(frame.placement(0).unwrap().kind, RowKind::Chip);
+    assert!(frame.display(0).unwrap().text.contains(&cards[0].0));
 }

@@ -28,6 +28,8 @@ coder-access = { path = "../../../../crates/coder-access", default-features = fa
 computer-driver = { path = "../../../../crates/computer-driver" }
 openagents-dashboard = { path = "../../../../crates/openagents-dashboard", features = ["views"] }
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
+lab-kit = { path = "../../../../crates/lab-kit" }
+lab-ui = { path = "../../../../crates/lab-ui" }
 openagents-account.workspace = true
 sha2.workspace = true
 reqwest = { workspace = true, optional = true }

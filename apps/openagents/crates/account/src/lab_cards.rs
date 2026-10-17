@@ -105,6 +105,34 @@ pub enum Media {
     Other,
 }
 
+/// The longest note a card row sends.
+pub const MAX_NOTE_CHARS: usize = 4000;
+
+/// Why a note wasn't added.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NoteError {
+    Empty,
+    TooLong,
+    /// The chat closed, the account changed, or the network failed.
+    Unavailable,
+    /// The Lab refused the note, in its own words.
+    Refused(String),
+}
+
+impl NoteError {
+    /// What the person sees.
+    pub fn message(&self) -> String {
+        match self {
+            Self::Empty => "Write a note first.".into(),
+            Self::TooLong => "That note is too long.".into(),
+            Self::Unavailable => "Couldn't add the note. Try again.".into(),
+            Self::Refused(message) => message.clone(),
+        }
+    }
+}
+
+pub use lab_ui::{clock, note_at};
+
 /// The largest picture a row downloads.
 pub const MAX_IMAGE_BYTES: u64 = 16 * 1024 * 1024;
 
@@ -178,6 +206,20 @@ mod tests {
                 "model3d" => assert!(pictures.plays.is_none()),
                 _ => {}
             }
+        }
+    }
+
+    #[test]
+    fn note_times_read_as_a_clock() {
+        assert_eq!(clock(86.4), "1:26");
+        assert_eq!(clock(3723.0), "1:02:03");
+        assert_eq!(
+            note_at(&lab_kit::Locator::Time { seconds: 5.0 }).as_deref(),
+            Some("0:05")
+        );
+        assert_eq!(note_at(&lab_kit::Locator::None), None);
+        for e in [NoteError::Empty, NoteError::TooLong, NoteError::Unavailable] {
+            assert!(oa_copy::violations(&e.message(), &[]).is_empty());
         }
     }
 
