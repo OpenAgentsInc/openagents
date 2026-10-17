@@ -181,7 +181,7 @@ The website agents door uses the shared `place` (`1708f44f49`). Deploy and the F
 
 ### Lane 10: signet and LayerTree (mostly waiting)
 
-**Taken 2026-10-16 22:40 CDT** by a Claude Code subagent working #11863, #11770, #11862, #11793, #11794, #11799, #11762, #11779 in `~/work/openagents-lane10`.
+**Taken 2026-10-17 00:42 CDT** by a Claude Code subagent (Opus 5.5) taking over #11863, #11770, #11862, #11793, #11794, #11799, #11762, #11779 in `~/work/openagents-lane10`.
 
 - **Owns:** reading the observers on `oa-lnd-builder` and the LayerTree service, writing the final results into the reports, and closing each issue. It changes no live controller.
 - **Schedule** (signet has run about 5–6 blocks an hour; height was 326691 at 02:45 UTC):
