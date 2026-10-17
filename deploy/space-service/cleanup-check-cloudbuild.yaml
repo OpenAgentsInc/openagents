@@ -1,0 +1,48 @@
+# Focused checks against the exact upstream source and maintained patch.
+substitutions:
+  _COMMIT: ''
+steps:
+  - name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        git init -q config
+        git -C config fetch -q --depth 1 https://github.com/OpenAgentsInc/openagents.git '${_COMMIT}'
+        git -C config checkout -q FETCH_HEAD
+        test "$$(git -C config rev-parse HEAD)" = '${_COMMIT}'
+        git init -q space
+        git -C space fetch -q --depth 1 https://github.com/perplexityai/SPACE.git de87b436c35dac056564bdd5b2a113c9046e189b
+        git -C space checkout -q FETCH_HEAD
+        git -C space apply ../config/deploy/space-service/seed-kernel.patch
+        git -C space apply ../config/deploy/space-service/cleanup.patch
+        sha256sum config/deploy/space-service/cleanup.patch
+  - name: public.ecr.aws/docker/library/rust:1-bookworm
+    dir: space
+    entrypoint: bash
+    env:
+      - CARGO_BUILD_JOBS=6
+      - CARGO_PROFILE_DEV_DEBUG=0
+      - CARGO_PROFILE_TEST_DEBUG=0
+      - CARGO_TARGET_DIR=/workspace/space-cleanup-target
+      - SPACE_TEST_POSTGRES_ADMIN_URL=postgres://postgres@127.0.0.1:5432/postgres
+    args:
+      - -c
+      - |
+        set -eu
+        apt-get update -qq
+        apt-get install -y -qq --no-install-recommends protobuf-compiler libprotobuf-dev pkg-config postgresql-15
+        rustup toolchain install
+        cargo fmt --check -p pplx-space-api -p pplx-space-cluster-controller-server -p pplx-space-snapshot-storage
+        install -d -o postgres -g postgres /var/lib/postgresql/space-test
+        su postgres -s /bin/sh -c '/usr/lib/postgresql/15/bin/initdb -D /var/lib/postgresql/space-test --auth=trust >/dev/null'
+        su postgres -s /bin/sh -c '/usr/lib/postgresql/15/bin/pg_ctl -D /var/lib/postgresql/space-test -o "-h 127.0.0.1" -l /var/lib/postgresql/space-test/server.log -w start'
+        trap 'su postgres -s /bin/sh -c "/usr/lib/postgresql/15/bin/pg_ctl -D /var/lib/postgresql/space-test -m immediate -w stop"' EXIT
+        cargo test --locked -p pplx-space-api --features kubernetes controllers::sandbox::lifecycle::tests:: -- --test-threads=2
+        cargo test --locked -p pplx-space-cluster-controller-server snapshot_storage_sweeper::tests::
+        cargo test --locked -p pplx-space-snapshot-storage --features s3
+options:
+  machineType: E2_HIGHCPU_32
+  diskSizeGb: 150
+timeout: 2400s

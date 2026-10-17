@@ -194,6 +194,13 @@
       },
       "warmPool": {
         "env": {}
+      },
+      "snapshotStorageSweeper": {
+        "env": {
+          "SPACE_SNAPSHOT_STORAGE_SWEEPER_ENABLED": "true",
+          "SPACE_SNAPSHOT_STORAGE_SWEEPER_MAX_PER_TICK": "8",
+          "SPACE_SNAPSHOT_STORAGE_SWEEPER_CONCURRENCY": "2"
+        }
       }
     },
     "replicaCount": 1

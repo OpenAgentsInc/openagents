@@ -1,0 +1,178 @@
+--- a/crates/libs/api/src/controllers/sandbox/lifecycle/tests.rs
++++ b/crates/libs/api/src/controllers/sandbox/lifecycle/tests.rs
+@@ -954,3 +954,60 @@
+     }
+     Ok(())
+ }
++
++#[tokio::test(flavor = "current_thread")]
++async fn delayed_delete_finalizes_a_deleted_tombstone() -> TestResult {
++    let db = pg_test_db_with_max_connections(3).await?;
++    let sandbox_id = SandboxId::new();
++    sqlx::query(sql!(
++        "INSERT INTO sandboxes (
++             id, user_id, org_id, managed_by, lifecycle, placement,
++             network_policy_generation
++         ) VALUES (
++             $1,
++             '00000000-0000-0000-0000-000000000010',
++             '00000000-0000-0000-0000-000000000001',
++             'space', 'deleted', 'unplaced', 1
++         )"
++    ))
++    .bind(sandbox_id)
++    .execute(&db.pool)
++    .await?;
++
++    let previous = begin_delete_against_active_fork(&db.pool, sandbox_id).await?;
++    assert_eq!(previous, None);
++    restore_lifecycle_after_failed_finalize_delete(&db.pool, sandbox_id, previous).await?;
++    let lifecycle: String =
++        sqlx::query_scalar(sql!("SELECT lifecycle FROM sandboxes WHERE id = $1"))
++            .bind(sandbox_id)
++            .fetch_one(&db.pool)
++            .await?;
++    assert_eq!(lifecycle, "deleted");
++
++    let make_substrate = || {
++        crate::controllers::substrate::Substrate::Direct(Box::new(
++            crate::controllers::substrate::direct::DirectSubstrate::new(db.pool.clone()),
++        ))
++    };
++    let admission = crate::cluster_admission::ClusterSandboxAdmission::with_config(
++        make_substrate(),
++        crate::cluster_admission::ClusterSandboxAdmissionConfig {
++            enabled: false,
++            refill_rps: 6.0,
++            burst: 60.0,
++            redis_url: None,
++        },
++        pplx_space_feature_flags::FeatureFlagClient::disabled(),
++    );
++    let controller = SandboxController::with_cluster_admission(make_substrate(), admission);
++    controller
++        .delete_control_plane(&db.pool, sandbox_id, None)
++        .await?;
++    let exists: bool =
++        sqlx::query_scalar(sql!("SELECT EXISTS(SELECT 1 FROM sandboxes WHERE id = $1)"))
++            .bind(sandbox_id)
++            .fetch_one(&db.pool)
++            .await?;
++    assert!(!exists);
++    Ok(())
++}
+--- a/crates/libs/api/src/controllers/sandbox/lifecycle.rs
++++ b/crates/libs/api/src/controllers/sandbox/lifecycle.rs
+@@ -167,6 +167,9 @@
+     .fetch_optional(&mut *guard)
+     .await
+     .map_err(|error| db_contention_error("failed to read sandbox lifecycle before delete", &error))?
++    // A deleted row can still own snapshots. Keep its tombstone while the
++    // ordinary finalizer detaches those references; it has no live state to restore.
++    .filter(|lifecycle| lifecycle != "deleted")
+     .map(|lifecycle| {
+         lifecycle
+             .parse::<pplx_space_common_core::types::SandboxLifecycle>()
+@@ -179,7 +182,7 @@
+     sqlx::query(sql!(
+         "UPDATE sandboxes
+          SET lifecycle = 'deleting'
+-         WHERE id = $1"
++         WHERE id = $1 AND lifecycle <> 'deleted'"
+     ))
+     .bind(sandbox_id)
+     .execute(&mut *guard)
+--- a/crates/libs/cluster/controller/server/src/snapshot_storage_sweeper/mod.rs
++++ b/crates/libs/cluster/controller/server/src/snapshot_storage_sweeper/mod.rs
+@@ -176,8 +176,16 @@
+             // disable it rather than leave it running.
+             enabled: config.destructive_gate("SPACE_SNAPSHOT_STORAGE_SWEEPER_ENABLED"),
+             tick: default.tick,
+-            max_per_tick: default.max_per_tick,
+-            concurrency: default.concurrency,
++            max_per_tick: config.bounded_u32(
++                "SPACE_SNAPSHOT_STORAGE_SWEEPER_MAX_PER_TICK",
++                default.max_per_tick,
++                DEFAULT_MAX_PER_TICK,
++            ),
++            concurrency: config.bounded_usize(
++                "SPACE_SNAPSHOT_STORAGE_SWEEPER_CONCURRENCY",
++                default.concurrency,
++                DEFAULT_CONCURRENCY,
++            ),
+             min_age: default.min_age,
+             scoped_bucket: env
+                 .var("SPACE_SNAPSHOT_BUCKET")
+--- a/crates/libs/cluster/controller/server/src/snapshot_storage_sweeper/tests.rs
++++ b/crates/libs/cluster/controller/server/src/snapshot_storage_sweeper/tests.rs
+@@ -793,3 +793,22 @@
+     );
+     assert_eq!(sink.delete_calls(), vec![orphan]);
+ }
++
++#[test]
++fn configured_storage_sweep_bounds_can_reduce_but_not_expand_defaults() {
++    let mut env = pplx_space_test_env::TestEnv::default();
++    env.set("SPACE_SNAPSHOT_STORAGE_SWEEPER_MAX_PER_TICK", "8");
++    env.set("SPACE_SNAPSHOT_STORAGE_SWEEPER_CONCURRENCY", "2");
++    let config = ReconcilerConfig::from_environment(&env);
++    assert_eq!(config.max_per_tick, 8);
++    assert_eq!(config.concurrency, 2);
++    assert_eq!(config.min_age, Some(DEFAULT_MIN_AGE));
++    for value in ["0", "invalid", "999999999999999999999999999"] {
++        env.set("SPACE_SNAPSHOT_STORAGE_SWEEPER_MAX_PER_TICK", value);
++        env.set("SPACE_SNAPSHOT_STORAGE_SWEEPER_CONCURRENCY", value);
++        let config = ReconcilerConfig::from_environment(&env);
++        assert_eq!(config.max_per_tick, DEFAULT_MAX_PER_TICK);
++        assert_eq!(config.concurrency, DEFAULT_CONCURRENCY);
++        assert_eq!(config.min_age, Some(DEFAULT_MIN_AGE));
++    }
++}
+--- a/crates/libs/snapshot/storage/src/s3/tests.rs
++++ b/crates/libs/snapshot/storage/src/s3/tests.rs
+@@ -332,3 +332,19 @@
+         "clusters/c/suspend_snapshots/aa/sbx-1/snap-1/"
+     );
+ }
++
++#[tokio::test]
++async fn unfinished_listing_hits_page_budget_without_reporting_completion() {
++    let uri = fixture_uri();
++    let client = FakeS3Client::new();
++    for page in 0..=MAX_DELETE_PAGES {
++        client.enqueue_list_page(ListObjectsResponse {
++            keys: vec![format!("{}/object-{page}", uri.key_prefix)],
++            next_continuation_token: Some(format!("page-{page}")),
++        });
++    }
++    let backend = S3StorageBackend::new(client.clone());
++    assert!(backend.delete_prefix(&uri).await.is_err());
++    assert_eq!(client.list_calls().len(), MAX_DELETE_PAGES);
++    assert_eq!(client.delete_calls().len(), MAX_DELETE_PAGES);
++}
+--- a/crates/libs/snapshot/storage/src/s3.rs
++++ b/crates/libs/snapshot/storage/src/s3.rs
+@@ -37,6 +37,8 @@
+ /// (which sit at a handful of objects today but cost the same one call
+ /// either way).
+ const DELETE_OBJECTS_BATCH: usize = 1000;
++// Partial work keeps the database reference so the next sweep can continue.
++const MAX_DELETE_PAGES: usize = 16;
+ 
+ /// Thin seam over the two `aws_sdk_s3::Client` operations we need.
+ /// Production: forwards to the real SDK. Tests: substitute a recording
+@@ -130,7 +132,14 @@
+ 
+         let mut total_deleted: u64 = 0;
+         let mut continuation: Option<String> = None;
++        let mut pages = 0;
+         loop {
++            if pages == MAX_DELETE_PAGES {
++                return Err(DeletePrefixError::Backend(
++                    "snapshot prefix exceeded the deletion page budget; retry required".into(),
++                ));
++            }
++            pages += 1;
+             let resp = self
+                 .client
+                 .list_objects(ListObjectsRequest {

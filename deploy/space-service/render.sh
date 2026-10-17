@@ -40,6 +40,9 @@ for filename in ('worker.yaml','builder.yaml','migrate.yaml'):
         assert pod['imagePullSecrets']==[{'name':'space-image-reader'}]
         for container in pod.get('containers',[])+pod.get('initContainers',[]):
             env={e['name']:e for e in container.get('env',[])}
+            if doc['metadata']['name']=='space-cluster-controller':
+                assert env['SPACE_SNAPSHOT_STORAGE_SWEEPER_MAX_PER_TICK']['value']=='8'
+                assert env['SPACE_SNAPSHOT_STORAGE_SWEEPER_CONCURRENCY']['value']=='2'
             if 'SPACE_INTERNAL_API_ENDPOINT' in env: assert env['SPACE_INTERNAL_API_ENDPOINT']['value']=='https://10.219.14.10:9800'
             if 'SPACE_CREDMGR_ENDPOINT' in env and env['SPACE_CREDMGR_ENDPOINT'].get('value','').startswith('https:'):
                 assert env['SPACE_CREDMGR_ENDPOINT']['value']=='https://10.219.14.10:9810'

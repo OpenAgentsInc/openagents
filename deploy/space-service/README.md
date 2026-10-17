@@ -98,6 +98,14 @@ HTTP and WebSockets without buffering or logging request paths and headers.
 admin session. Remove its computers, credentials, session, and owner rows when
 qualification ends. The production Boat deployment remains separate.
 
+`cleanup.patch` keeps deleted sandbox tombstones eligible for ordinary final
+cleanup. Its controller settings allow eight snapshot prefixes per sweep, with
+two deletions at once and the existing one-hour upload grace. Each prefix has a
+16-page listing budget; unfinished deletion keeps its database reference for a
+later retry. Run `cleanup-check-cloudbuild.yaml` against the exact patch commit
+before building or promoting replacement API and controller images. Existing
+image pins remain in effect until those checks and live cleanup pass.
+
 The deployment is still under qualification. A healthy process and successful
 database migration do not prove checkpoint recovery, capacity admission,
 upgrades, or customer readiness. Retain that distinction in published evidence.
