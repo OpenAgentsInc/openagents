@@ -106,7 +106,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 4: Labs platform
 
-**Taken 2026-10-16 22:03 CDT** by Codex working #11878, #11876, #11877, #11875, #11885 in `~/work/openagents-bang-codex`.
+**Released 2026-10-17 00:08 CDT** by Codex from `~/work/openagents-bang-codex`. #11878, #11876, #11877, and #11885 are closed; lane 0 closed #11875. No unfinished issue claims remain. Left: #11871, including the remaining lane 5 kinds and surfaces and the Game/Ship integration under #11881. Production checks are listed below.
 
 - **Owns:** `crates/lab-kit`, `crates/lab-jobs`, `crates/lab-store`, `crates/lab-api`, `crates/lab-ui`, `crates/openagents-sdk/src/labs*`, `crates/openagents-web/src/{labs,lab,cad_web,history_api}.rs` and the cards, `examples/sdk-labs/`, and the Labs tools in Coder for #11885.
 - **Order:**
@@ -292,7 +292,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 **#11884 Labs P1: iPhone Lab row and standard views, notes by voice.** Lane 5, not started.
 - **Remains:** a small UniFFI facade over `openagents::labs`, a Lab row and a cell per view, dictated notes, stopping media on background, and fixture UI tests. The bundle is now `com.openagents.app`.
 
-**#11885 Labs T1: Labs in Coder 1.0.0.** Lane 4, code complete on `main`.
+**#11885 Labs T1: Labs in Coder 1.0.0.** Lane 4, closed.
 - **New scope:** native Labs in `coder` and `openagents` through `openagents::labs`, not a bridge for a frozen binary. Read tools from `/v1/labs/kinds`, follow events, and keep the `VIDEO_LAB_URL`-style loopback only for local Labs not yet on the platform.
 - **Done:** native SDK discovery, calls, and events in Coder and `openagents`, shared `lab-ui` terminal text and links, verified CLI previews, and retained local tools for unhosted kinds (`d37b9a9b6b` through `0cedf5dbf1`). Adapter, native client, generated-tree, and isolated-HOME CLI checks passed. Evidence: `docs/sdk/labs-terminal-evidence.json`.
 - **After-close:** the production terminal flow and visual check are listed below. The separate Cursor screen test failure is recorded in the evidence.
