@@ -403,7 +403,7 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 | #11876 | The Git-pinned `examples/sdk-labs` build and the live CAD flow against production. | to do |
 | #11877 | A CAD chat's card through `/v1/history`, re-rendered in a second browser session. | to do |
 | #11878 | Live echo on server, enrolled, and cloud placements. Cloud computer deleted afterward. | to do |
-| #11852 | Deploy `4a796e8ff8`, run `OurCloudLiveTests`, check `GET /v1/computer-usage`, and `DELETE /v1/cloud-host`. TestFlight 1011. | to do |
+| #11852 | Deploy `4a796e8ff8` or newer. Run `OurCloudLiveTests/testStartRunAndStopOurCloud` with the dedicated test account, check `GET /v1/computer-usage`, delete the computer with `DELETE /v1/cloud-host`, and remove its test registry rows. Validate TestFlight 1011 or the next free build. | to do; phone source `d37ed99d0c`, local control acceptance `a67ec60b44` passed |
 | #11894 | A test account's terminal chat continued on the desktop: the first turn knows the history, and the phone steers it. | to do |
 | #11815 | The dedicated production account's usage read (it returned 403). | to do |
 
