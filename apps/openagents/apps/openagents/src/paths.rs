@@ -163,7 +163,7 @@ mod tests {
 
     #[cfg(not(windows))]
     #[test]
-    fn default_never_uses_openagents_data() {
+    fn default_never_uses_upstream_data() {
         let dir = resolve(&[("HOME", "/home/u")]);
         assert!(!dir.to_string_lossy().contains("zeron"));
         assert!(!dir.to_string_lossy().contains("Zeron"));

@@ -1,12 +1,12 @@
 //! Exercise the actual manual/setup runner with commands at the supported limit.
 #![cfg(unix)]
 
-use std::time::Duration;
 use openagents_engine::project_actions::{
     MAX_PROJECT_ACTION_COMMAND_BYTES, launch_project_action, launch_project_setup_action,
 };
 use openagents_engine::{ProjectActionsStore, Terminals};
 use openagents_proto::{ProjectActionDraft, ProjectActionIcon};
+use std::time::Duration;
 
 #[tokio::test]
 async fn manual_and_setup_actions_preserve_long_multiline_commands() {
@@ -17,7 +17,7 @@ async fn manual_and_setup_actions_preserve_long_multiline_commands() {
     let terminals = Terminals::new();
     for setup in [false, true] {
         let prefix = "printf '%s' '";
-        let suffix = "' > payload\nprintf '%s' \"$OPENAGENTS_PROJECT_ROOT\" > project-root\nprintf '%s' \"$OPENAGENTS_WORKTREE_PATH\" > worktree-path\nprintf '%s' 'quotes: \" $() ` ; é' > literal\n";
+        let suffix = "' > payload\nprintf '%s' \"$OPENAGENTS_PROJECT_ROOT\" > project-root\nprintf '%s' \"$OPENAGENTS_WORKTREE_PATH\" > worktree-path\nprintf '%s' \"$ZERON_PROJECT_ROOT\" > previous-project-root\nprintf '%s' \"$ZERON_WORKTREE_PATH\" > previous-worktree-path\nprintf '%s' 'quotes: \" $() ` ; é' > literal\n";
         let payload =
             "a".repeat(MAX_PROJECT_ACTION_COMMAND_BYTES - prefix.len() - suffix.trim_end().len());
         let command = format!("{prefix}{payload}{suffix}");
@@ -68,8 +68,23 @@ async fn manual_and_setup_actions_preserve_long_multiline_commands() {
             std::fs::read_to_string(checkout.join("worktree-path")).unwrap(),
             checkout.to_str().unwrap()
         );
+        assert_eq!(
+            std::fs::read_to_string(checkout.join("previous-project-root")).unwrap(),
+            root.path().to_str().unwrap()
+        );
+        assert_eq!(
+            std::fs::read_to_string(checkout.join("previous-worktree-path")).unwrap(),
+            checkout.to_str().unwrap()
+        );
         terminals.close(&run.terminal.id).unwrap();
-        for file in ["payload", "project-root", "worktree-path", "literal"] {
+        for file in [
+            "payload",
+            "project-root",
+            "worktree-path",
+            "previous-project-root",
+            "previous-worktree-path",
+            "literal",
+        ] {
             std::fs::remove_file(checkout.join(file)).unwrap();
         }
     }

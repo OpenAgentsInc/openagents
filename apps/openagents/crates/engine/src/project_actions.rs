@@ -657,6 +657,28 @@ mod tests {
     }
 
     #[test]
+    fn previous_project_file_is_used_until_the_new_file_exists() {
+        let (_temp, _store, project) = roots();
+        std::fs::write(
+            project.join("zeron.json"),
+            r#"{"actions":[{"name":"Previous","command":"echo previous","icon":"play"}]}"#,
+        )
+        .unwrap();
+        let (actions, issue) = read_project_file(&project);
+        assert!(issue.is_none(), "{issue:?}");
+        assert_eq!(actions[0].name, "Previous");
+
+        std::fs::write(
+            project.join(PROJECT_FILE),
+            r#"{"actions":[{"name":"Current","command":"echo current","icon":"play"}]}"#,
+        )
+        .unwrap();
+        let (actions, issue) = read_project_file(&project);
+        assert!(issue.is_none(), "{issue:?}");
+        assert_eq!(actions[0].name, "Current");
+    }
+
+    #[test]
     fn missing_store_round_trips_actions() {
         let (_temp, store_root, project_root) = roots();
         let store = ProjectActionsStore::open(&store_root).unwrap();
