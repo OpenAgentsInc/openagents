@@ -56,7 +56,7 @@ pub fn foreman() -> Experiment {
                 Case {
                     id: "status".into(),
                     title: "Holistic status".into(),
-                    task: "Give me the state of OpenAgents work right now: which epics have no agent on them, which idle issues can start now, and anything stuck.".into(),
+                    task: "Give me the state of OpenAgents work right now: which epics have no agent on them, which idle issues can start now, and anything stuck. Keep it under 3,000 characters.".into(),
                     check: Check::Review {
                         criteria: "Every claim is backed by a claim, chat or commit with its time; idle issues are split into can-start-now, waiting and parked with reasons; the answer leads with the conclusion and ends with a recommendation.".into(),
                     },
@@ -64,7 +64,7 @@ pub fn foreman() -> Experiment {
                 Case {
                     id: "collisions".into(),
                     title: "Finds collisions and drift".into(),
-                    task: "Are any two agents working on the same issue, and does the OpenAgents board disagree with what agents are actually doing? Name the chats and issues.".into(),
+                    task: "Are any two agents working on the same issue, and does the OpenAgents board disagree with what agents are actually doing? Name the chats and issues. Keep it under 3,000 characters.".into(),
                     check: Check::Review {
                         criteria: "Collisions name both chats or sessions and the issue; board drift cites the status and the contrary evidence; it says when it found none and what it could not reach.".into(),
                     },

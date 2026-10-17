@@ -1,4 +1,15 @@
-# OpenAgents 1.0.0 (1008)
+# OpenAgents 1.0.0 (1009)
+
+Foreman is a ready-made agent that keeps track of every open issue and every
+agent working on them. Open Agent Lab from the agent picker and choose Start from
+Foreman. Choose your computer and a project, then Save and Use agent. Foreman
+then appears in the agent picker.
+
+Pick Foreman and ask "What isn't being worked on?" or "Who is on #11812?". Check
+that it names issues, chats and evidence. The computer needs the updated desktop
+app, with Claude Code and the GitHub CLI signed in.
+
+OpenAgents 1.0.0 (1008)
 
 Custom agents now use the selected computer's saved model choices and refresh
 from that computer. Opus 5.5 also appears in the default Claude choices.

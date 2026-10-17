@@ -1,0 +1,32 @@
+{
+  "issues": [11926, 11927],
+  "date": "2026-10-17",
+  "source_commit": "02a98817af",
+  "account": "acct_83d16a35955ef908",
+  "host": "isolated headless host built from source_commit (own data directory and IPC port, the operator's Claude Code and gh logins)",
+  "agent_lab_run": {
+    "runtime": "claude-code",
+    "model": "claude-opus-5-5",
+    "trials": {
+      "Reaches GitHub issues": "passed",
+      "Reaches the app's agent tools": "passed",
+      "Reads claim markers": "passed",
+      "Holistic status": "unknown: the answer exceeded the 4,096-byte assignment summary; the suite now asks for under 3,000 characters",
+      "Finds collisions and drift": "needs_review"
+    }
+  },
+  "promotion": "Use agent saved Foreman revision 1 with the template's runtime, model and instructions",
+  "assignment_to_saved_agent": {
+    "task": "Who holds the claim on issue #11926, and is that agent one of the chats you can see?",
+    "state": "completed",
+    "answer_summary": "Named the claim's session and time, matched it against every chat's harnessSessionId, found no match, and correctly said the claim belongs to an agent outside the app."
+  },
+  "cleanup": {
+    "experiment_documents_deleted": 1,
+    "runs_archived": 1,
+    "agent_definitions_deleted": 1,
+    "assignments_archived": 1,
+    "host_stopped_and_data_removed": true,
+    "owner_account_used": false
+  }
+}
