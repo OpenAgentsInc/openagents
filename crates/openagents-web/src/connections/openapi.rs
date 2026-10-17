@@ -49,7 +49,7 @@ pub(crate) fn extend(doc: &mut Value) {
         }},
         "AppConnectionList":{"type":"object","required":["available","google","connections","sources"],"properties":{
             "available":{"type":"boolean"},"google":r("Google"),"connections":{"type":"array","items":r("Stored")},"sources":{"type":"array","maxItems":MAX_SOURCES,"items":{"type":"object","required":["project","id","name","kind","link"],"properties":{"project":{"type":"string"},"id":{"type":"string"},"name":{"type":"string"},"kind":r("Kind"),"link":{"type":"string","format":"uri"}}}}
-        },"description":"Stored status is not a live grant check. A later Drive request can discover a revoked grant. No refresh or access token is returned. Tools may include other separately qualified Google features."},
+        },"description":"Stored status is not a live grant check. A later Drive request can discover a revoked grant. No refresh or access token is returned. Tools may include other Google features."},
         "AppConnectionConnect":{"type":"object","properties":{
             "sheets":{"type":"boolean","default":false},"feature":{"type":["string","null"],"enum":["drive","sheets","gmail","gmail_compose","calendar","calendar_events",null]},"return_to":{"type":["string","null"],"description":"A same-site return path. Unsafe paths fall back to Settings, Connections."}
         },"description":"Empty or whitespace-only bodies are accepted. feature takes precedence over sheets. This only returns a consent link; it does not connect or grant access."},
