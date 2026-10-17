@@ -1,0 +1,42 @@
+{
+  "format": "openagents.web.grid-deployment.v1",
+  "source": "1cdf329dfcf2d22635613ef231573483e0df904b",
+  "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:7e9a650072c4bf75ba97f471111b44621ccb20231a68e5a2a5dc5f756e76b83c",
+  "build": "613416b6-2ad7-456d-ac2d-939c08b60020",
+  "production_revision": "coder-web-7e9a650072-20261017015537",
+  "production_traffic_percent": 100,
+  "staging_smoke": {
+    "passed": 99,
+    "failed": 0,
+    "skipped": 2
+  },
+  "candidate_smoke": {
+    "passed": 58,
+    "failed": 0,
+    "skipped": 2,
+    "waiting_for_traffic": 8
+  },
+  "production_smoke": {
+    "passed": 66,
+    "failed": 0,
+    "skipped": 2
+  },
+  "temporary_drain_tag_removed": true,
+  "frozen_coder_version": "1.0.0 (3230ded51181aa438656825da8245cea6c8e717c clean)",
+  "signed_out_checks": {
+    "source_operations": 8,
+    "published_operations": 200,
+    "credentials_used": false,
+    "objects_created": 0
+  },
+  "source_probes": {
+    "connected-sources-staging-2026-10-17.json": "7f0d0f3c58b5f0678d78e491e6d67af730b6a9e903f4c0d9b0dbab239a741352",
+    "connected-sources-production-2026-10-17.json": "817e9622133cf35cc92b7ca6f53e73a97cfcfd44775a505469310ef88290f4f1"
+  },
+  "local_log_sha256": {
+    "grid-web-promote.log": "b32324e34206d6c1f19017a9c05bf7e01cd661e41a9a21425c00997fc9f0c149",
+    "grid-web-shift.log": "36f0fd4871a21d600cb9caa215bb6b33c5f52384c82f8d0d478380fb1f954e15",
+    "grid-web-serving-traffic.json": "ea332d35cef9271c0cf455da2ece0f509d110246b608c71020e81d8d6e1f5613"
+  },
+  "scope": "This records the completed grid rollout. Later CAD and agents-door changes use a separate combined rollout."
+}

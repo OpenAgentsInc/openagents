@@ -97,9 +97,13 @@
     "repeat_export_bytes_match": true
   },
   "deployment": {
-    "status": "Source and fixtures are integrated on main. Web deployment and signed-out public probes are coordinated by the root agent and recorded separately.",
+    "status": "The schema is serving production at 100% traffic. Staging and production signed-out schema and routing checks passed for all eight source operations.",
+    "receipt": "evidence/grid-web-deployment-2026-10-17.json",
+    "production_revision": "coder-web-7e9a650072-20261017015537",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:7e9a650072c4bf75ba97f471111b44621ccb20231a68e5a2a5dc5f756e76b83c",
     "check": "python3 scripts/api/check_connected_sources_public.py --api ORIGIN --output FILE",
-    "probes": "Schema and signed-out routing only; no account credentials or resources."
+    "probes": "Schema and signed-out routing only; no account credentials or resources.",
+    "copy_followup": "The description-only wording fix is scheduled for the next combined CAD and agents-door rollout."
   },
   "cleanup": {
     "owner_data_accessed": false,
