@@ -294,3 +294,6 @@ links remain readable. Upstream fixes now require manual ports.
   links, speed, and dissolves. Saved cut cards open it through an additive
   `LabView` hook. Account changes and access refusals clear the editor.
   Scrubbing reuses the card's loaded frames; playback uses its hosted player.
+
+- Coder Noir sidebar (#11964): uses `#050505`, darker than the main area's
+  `#0a0a0a` background.

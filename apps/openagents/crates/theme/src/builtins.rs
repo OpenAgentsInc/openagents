@@ -267,7 +267,7 @@ fn coder(dark: bool) -> ThemeVariant {
         success,
     ] = if dark {
         [
-            "#0a0a0a", "#101010", "#191919", "#0e0e0e", "#1e1e1e", "#ededed", "#818181", "#656565",
+            "#0a0a0a", "#050505", "#191919", "#0e0e0e", "#1e1e1e", "#ededed", "#818181", "#656565",
             "#2c2c2c", "#404040", "#ededed", "#0a0a0a", "#ff4d42", "#e6c15c", "#9fd08a",
         ]
     } else {

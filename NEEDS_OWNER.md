@@ -2832,3 +2832,10 @@ and select trusted installed handlers. Add private file checksums and paths
 only on the Mac. Run `labs-worker --config /absolute/path/worker.json`.
 Revoke its worker key when removing the installation. Agents qualify this on
 a disposable host; they do not install or enroll it on your Mac.
+
+## After-close: rebuild the desktop app (#11964)
+
+When your active work finishes, rebuild OpenAgents Dev from current `main`
+to see the darker Coder Noir sidebar (`#050505`) beside the main area
+(`#0a0a0a`). Follow `apps/openagents/OPENAGENTS.md` and keep the existing
+data directory. The running app has not been relaunched.
