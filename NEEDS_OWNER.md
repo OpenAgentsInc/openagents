@@ -42,6 +42,13 @@ enabled. With the dedicated test account on an iPhone, check that a finished
 run, a question, and a failed run each wake the phone once. An open app stays
 quiet. Report a device defect as a new issue.
 
+Provide an APNs authentication key through Secret Manager or a protected file,
+along with its key ID and Apple Developer team ID. Lane 0 uses these for
+`PUSH_GATEWAY_APNS_KEY_FILE`, `PUSH_GATEWAY_APNS_KEY_ID`, and
+`PUSH_GATEWAY_APNS_TEAM_ID`. The gateway topic is `com.openagents.app`;
+TestFlight uses the production APNs environment. Gateway deployment and the
+coder-sync signing-key configuration remain with lane 0.
+
 The server, test-account, and cleanup checks remain in
 [After-close checks](docs/audits/2026-10-16-master-delegation.md#after-close-checks).
 
