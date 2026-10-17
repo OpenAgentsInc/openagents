@@ -5,7 +5,7 @@ open issue in `OpenAgentsInc/openagents` and every agent working on it. Ask it
 what nobody is doing, who is on an issue, which agents are colliding, what is
 stuck, or where the boards disagree with reality. It reads by default and
 changes things (board status, a message to a chat, a new agent chat) only
-when you ask. Tracked in [#11926](https://github.com/OpenAgentsInc/openagents/issues/11926).
+when you ask, or on its own check-ins once you give it standing authority. Tracked in [#11926](https://github.com/OpenAgentsInc/openagents/issues/11926).
 
 ## Get Foreman
 
@@ -50,6 +50,22 @@ copies the chosen project into a trial folder, so tests need a small project; a
 full `openagents` checkout is over the copy limit
 ([#11929](https://github.com/OpenAgentsInc/openagents/issues/11929)).
 **Use agent** doesn't run tests and works with any project.
+
+## Let Foreman run on its own
+
+In the desktop app, open **Settings → General → Foreman** on the computer that runs Foreman's chat ([#11965](https://github.com/OpenAgentsInc/openagents/issues/11965)):
+
+1. **Foreman's chat**: pick the chat you started with **Use agent**.
+2. **Check-ins**: choose how often (every 10 minutes to 4 hours) and turn them on. The schedule is saved to your account and also appears at [openagents.com/settings/schedules](https://openagents.com/settings/schedules), where you can pause or delete it. The computer runs it, not a server.
+3. **Standing authority**: turn it on to let Foreman message, start, steer and stop chats on your computers without asking during check-ins. Turn it off at any time. Money, keys, secrets, deploys and closing other agents' issues still need your approval. Turns you start yourself work as before.
+
+Foreman also checks in, at most once every few minutes and never over a turn it's already running, when:
+
+- a chat it started, messaged or stopped finishes, errors or waits for an answer;
+- an issue in `OpenAgentsInc/openagents` opens or closes;
+- a claim has had no new comment for six hours.
+
+The computer's `gh` reports the issue and claim events. Each check-in asks Foreman to call `record_decision` with what it saw, decided and did. The **Decision log** in the same card lists check-ins, those records, how each check-in ended, and authority changes. The log is a file in the app's data folder (`foreman/decisions.jsonl`), kept across restarts, and the next check-in includes the latest entries.
 
 ## What it is
 

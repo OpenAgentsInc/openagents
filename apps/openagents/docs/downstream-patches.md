@@ -395,3 +395,13 @@ links remain readable. Upstream fixes now require manual ports.
   `crates/ui/src/tool_progress.rs` turns the running tool into the working
   row's words and timer (hook: `render_working_trailer` in
   `crates/ui/src/transcript.rs`).
+
+- [OpenAgents #11965](https://github.com/OpenAgentsInc/openagents/issues/11965):
+  Foreman check-ins. `engine::foreman` and `doc_host/foreman.rs` run from the
+  custom-agent host loop. They mirror one account schedule through the SDK's
+  `schedules` module and queue each check-in into Foreman's chat as an
+  ordinary message. They also coalesce chat, issue and stale-claim events,
+  enforce the standing authority on the app tools' `QUEUE_COMMAND` and
+  `QUEUE_MESSAGE` (which now carry `originChatId`), and append
+  `foreman/decisions.jsonl`. MCP adds `record_decision`. Settings → General
+  shows a Foreman card.
