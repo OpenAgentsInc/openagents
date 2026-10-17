@@ -102,6 +102,8 @@ pub enum TurnOutcome {
     Errored,
     /// The deadline passed with the chat still working (or never starting).
     TimedOut,
+    /// A new message arrived for the calling chat, so the wait ended early.
+    Interrupted,
 }
 
 pub struct OpenAgents {

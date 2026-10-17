@@ -383,3 +383,15 @@ links remain readable. Upstream fixes now require manual ports.
     dispatches `OpenForkSource`; `crates/ui/src/state.rs`: `add_pending_chat`
     (the former pending side-chat row); `crates/ui/src/shell/session_info.rs`:
     the Fork row.
+
+- [OpenAgents #11969](https://github.com/OpenAgentsInc/openagents/issues/11969):
+  blocking MCP calls wait at most 120 seconds and end early when the calling
+  chat gets a new message. Our module `crates/mcp/src/inbox.rs` watches that
+  chat's transcript and queue; hooks are the wait race and the cap in
+  `crates/mcp/src/tools.rs`, the `Interrupted` outcome in
+  `crates/mcp/src/openagents.rs`, and one sentence in `jsonrpc.rs`
+  `INSTRUCTIONS`. `crates/doc/src/wait_target.rs` keeps the chat a waiting
+  tool names (hook: the `Mcp` arm of `sanitize_tool_call` in `parts.rs`), and
+  `crates/ui/src/tool_progress.rs` turns the running tool into the working
+  row's words and timer (hook: `render_working_trailer` in
+  `crates/ui/src/transcript.rs`).

@@ -19,13 +19,14 @@ use openagents_proto::{
     Space, UserInputAnswer,
 };
 
+use crate::inbox::Inbox;
 use crate::transcript::{RenderOptions, RenderedMessage, render_entries};
 use crate::openagents::{HarnessInfo, TurnOutcome, OpenAgents, session_for, short};
 
-/// Default and ceiling for the blocking waits.
 const MAX_BATCH: usize = 32;
-const DEFAULT_WAIT: Duration = Duration::from_secs(600);
-const MAX_WAIT: Duration = Duration::from_secs(3600);
+/// Default and ceiling for every blocking wait (#11969): a chat stuck in one
+/// long call can't show progress or take new messages.
+const MAX_WAIT_SECS: u64 = 120;
 /// A session row older than this is not trusted to still be working
 /// (the UI's staleness window): a crashed host must not read as busy forever.
 const SESSION_STALE: chrono::Duration = chrono::Duration::seconds(45);
@@ -43,6 +44,7 @@ pub struct Tools {
     // Remember successful sends on this MCP connection so wait_for_turn after
     // wait:false also waits for a newly created chat with no session row yet.
     pending_turns: tokio::sync::Mutex<HashMap<String, Arc<PendingTurn>>>,
+    inbox: tokio::sync::Mutex<std::sync::Weak<Inbox>>,
 }
 
 fn chat_key_schema(extra: Value) -> Value {
@@ -58,6 +60,13 @@ fn chat_key_schema(extra: Value) -> Value {
         }
     }
     json!({ "type": "object", "properties": properties, "required": ["chat"] })
+}
+
+fn timeout_schema() -> Value {
+    json!({
+        "type": "integer", "minimum": 1, "maximum": MAX_WAIT_SECS, "default": MAX_WAIT_SECS,
+        "description": "Seconds to wait, at most 120. The wait also ends early when a new message arrives for you."
+    })
 }
 
 fn device_schema() -> Value {
@@ -133,7 +142,7 @@ fn catalog() -> Vec<ToolDef> {
                     "cwd": { "type": "string", "description": "Working directory override (an existing worktree path). Defaults to the project folder." },
                     "prompt": { "type": "string", "description": "First message to send right away." },
                     "wait": { "type": "boolean", "default": false, "description": "With prompt: block until the first turn finishes and return the reply." },
-                    "timeout_secs": { "type": "integer", "minimum": 1, "maximum": 3600, "default": 600 }
+                    "timeout_secs": timeout_schema()
                 }
             }),
         },
@@ -154,14 +163,14 @@ fn catalog() -> Vec<ToolDef> {
                 "text": { "type": "string" },
                 "mode": { "type": "string", "enum": ["auto", "run", "steer", "queue"], "default": "auto" },
                 "wait": { "type": "boolean", "default": false },
-                "timeout_secs": { "type": "integer", "minimum": 1, "maximum": 3600, "default": 600 }
+                "timeout_secs": timeout_schema()
             })),
         },
         ToolDef {
             name: "wait_for_turn",
-            description: "Block until a chat is no longer working: returns completed, awaitingInput (answer with respond_to_input), errored, or timedOut, with the newest assistant message.",
+            description: "Block until a chat is no longer working, for at most 120 seconds: returns completed, awaitingInput (answer with respond_to_input), errored, timedOut (call again to keep waiting), or interrupted when a new message arrives for you (read it before waiting again), with the newest assistant message.",
             input_schema: chat_key_schema(json!({
-                "timeout_secs": { "type": "integer", "minimum": 1, "maximum": 3600, "default": 600 }
+                "timeout_secs": timeout_schema()
             })),
         },
         ToolDef {
@@ -638,10 +647,14 @@ fn parse<T: serde::de::DeserializeOwned>(args: Value) -> Result<T, String> {
     serde_json::from_value(args).map_err(|e| format!("invalid arguments: {e}"))
 }
 
-fn wait_duration(secs: Option<u64>) -> Duration {
-    secs.map(Duration::from_secs)
-        .unwrap_or(DEFAULT_WAIT)
-        .min(MAX_WAIT)
+/// The wait to use, and a note for the result when the request was over the cap.
+fn wait_duration(secs: Option<u64>) -> (Duration, Option<String>) {
+    let requested = secs.unwrap_or(MAX_WAIT_SECS).max(1);
+    let used = requested.min(MAX_WAIT_SECS);
+    let note = (requested > used).then(|| {
+        format!("timeout_secs is capped at {MAX_WAIT_SECS}; waited {used} seconds instead of {requested}. Call wait_for_turn to keep waiting.")
+    });
+    (Duration::from_secs(used), note)
 }
 
 #[cfg(test)]
@@ -721,6 +734,7 @@ impl Tools {
         Self {
             openagents,
             pending_turns: Default::default(),
+            inbox: Default::default(),
         }
     }
 
@@ -1542,7 +1556,7 @@ impl Tools {
         &self,
         chat: &Chat,
         pending: Arc<PendingTurn>,
-        timeout: Duration,
+        timeout: (Duration, Option<String>),
     ) -> anyhow::Result<Value> {
         let turn = self
             .await_turn(
@@ -1553,7 +1567,9 @@ impl Tools {
                 pending.start.clone(),
             )
             .await?;
-        if turn["timedOut"] == false {
+        // A timed-out or interrupted wait leaves the turn pending for the next.
+        let settled = !matches!(turn["outcome"].as_str(), Some("timedOut" | "interrupted"));
+        if settled {
             let mut turns = self.pending_turns.lock().await;
             // A concurrent send may already have installed a newer baseline.
             if turns
@@ -1573,14 +1589,33 @@ impl Tools {
         chat: &Chat,
         baseline: Option<&Session>,
         expect_turn: bool,
-        timeout: Duration,
+        (timeout, note): (Duration, Option<String>),
         start: TurnStart,
     ) -> anyhow::Result<Value> {
         let deadline = Instant::now() + timeout;
-        let (mut outcome, session) = self
+        let waited = self
             .openagents
-            .wait_for_turn(chat, baseline, expect_turn, timeout)
-            .await?;
+            .wait_for_turn(chat, baseline, expect_turn, timeout);
+        let inbox = self.inbox().await;
+        let (mut outcome, session, new_messages) = match inbox.as_deref() {
+            Some(inbox) => tokio::select! {
+                waited = waited => {
+                    let (outcome, session) = waited?;
+                    (outcome, session, None)
+                }
+                messages = inbox.arrived() => {
+                    let session = match self.openagents.sessions().await {
+                        Ok(sessions) => session_for(&sessions, chat),
+                        Err(_) => None,
+                    };
+                    (TurnOutcome::Interrupted, session, Some(messages))
+                }
+            },
+            None => {
+                let (outcome, session) = waited.await?;
+                (outcome, session, None)
+            }
+        };
         // Registry session updates can arrive before the separate transcript doc.
         // Keep the same deadline while waiting for a response to this send.
         let mut rendered = Vec::new();
@@ -1623,13 +1658,36 @@ impl Tools {
             tokio::time::sleep(Duration::from_millis(100).min(remaining)).await;
         }
         let (status, _) = status_of(session.as_ref());
-        Ok(json!({
+        let mut turn = json!({
             "outcome": outcome,
             "status": status,
             "timedOut": outcome == TurnOutcome::TimedOut,
             "pendingInput": last_pending_input(&rendered),
             "replies": replies,
-        }))
+        });
+        if let Some(messages) = new_messages {
+            turn["interrupted"] = json!("newMessage");
+            turn["newMessages"] = json!(messages);
+            turn["note"] = json!(
+                "A new message arrived for you, so this wait ended early. Read it and answer it first. The chat you were waiting on may still be working; call wait_for_turn to keep waiting."
+            );
+        } else if let Some(note) = note {
+            turn["note"] = json!(note);
+        }
+        Ok(turn)
+    }
+
+    /// The new-message watch for the chat this server speaks for, shared by
+    /// the blocking calls running at the same time. One that has already
+    /// fired is not reused: its message was reported.
+    async fn inbox(&self) -> Option<Arc<Inbox>> {
+        let mut slot = self.inbox.lock().await;
+        if let Some(inbox) = slot.upgrade().filter(|inbox| !inbox.fired()) {
+            return Some(inbox);
+        }
+        let inbox = Arc::new(Inbox::open(self.openagents.clone()).await?);
+        *slot = Arc::downgrade(&inbox);
+        Some(inbox)
     }
 }
 
@@ -1669,6 +1727,32 @@ mod tests {
         extra_chats: Vec<Value>,
         catalog_error: Option<&'static str>,
         reads: Mutex<Vec<(String, Value)>>,
+        /// Where a new message for chat-beta-2 shows up mid-wait:
+        /// "transcript" or "queue".
+        new_message_in: Option<&'static str>,
+    }
+
+    /// `first` now, `then` a moment later, and the stream stays open.
+    fn later(first: Value, then: Value) -> RpcReply {
+        RpcReply::Stream(
+            futures::stream::once(async move { first })
+                .chain(futures::stream::once(async move {
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                    then
+                }))
+                .chain(futures::stream::pending())
+                .boxed(),
+        )
+    }
+
+    fn beta_transcript(with_new_message: bool) -> Value {
+        let mut entries = vec![json!({ "id": "u1", "role": "user", "createdAt": 1,
+            "deviceId": "dev-local", "parts": [{ "kind": "text", "id": "t", "text": "work" }] })];
+        if with_new_message {
+            entries.push(json!({ "id": "u2", "role": "user", "createdAt": 3,
+                "deviceId": "dev-local", "parts": [{ "kind": "text", "id": "t", "text": "stop and look at this" }] }));
+        }
+        json!({ "reset": entries })
     }
 
     fn stream(item: Value) -> RpcReply {
@@ -1746,6 +1830,18 @@ mod tests {
                 methods::LIST_MODELS => RpcReply::Value(json!([
                     { "id": "opus", "label": "Opus" }, { "id": "sonnet", "label": "Sonnet" }
                 ])),
+                methods::WATCH_DOC_MESSAGES
+                    if self.new_message_in == Some("transcript")
+                        && params["chatId"] == "chat-beta-2" =>
+                {
+                    later(beta_transcript(false), beta_transcript(true))
+                }
+                methods::WATCH_QUEUE if self.new_message_in == Some("queue") => later(
+                    json!({ "items": [] }),
+                    json!({ "items": [{ "id": "q-9", "text": "stop and look at this",
+                        "issuedBy": "dev-local", "issuedAt": 3 }] }),
+                ),
+                methods::WATCH_QUEUE => stream(json!({ "items": [] })),
                 methods::WATCH_DOC_MESSAGES => stream(json!({ "reset": [
                     { "id": "u1", "role": "user", "createdAt": 1, "deviceId": "dev-local",
                       "parts": [{ "kind": "text", "id": "t", "text": "hi" }] },
@@ -2163,6 +2259,89 @@ mod tests {
             .unwrap();
         assert_eq!(sent["turn"]["outcome"], "timedOut");
         assert!(started.elapsed() >= Duration::from_millis(900));
+    }
+
+    #[test]
+    fn blocking_waits_are_capped_at_two_minutes() {
+        for def in catalog() {
+            let properties = &def.input_schema["properties"];
+            let timeout = properties
+                .get("timeout_secs")
+                .or_else(|| properties["requests"]["items"]["properties"].get("timeout_secs"));
+            if let Some(timeout) = timeout {
+                assert_eq!(timeout["maximum"], 120, "{}", def.name);
+                assert_eq!(timeout["default"], 120, "{}", def.name);
+            }
+        }
+        for name in [
+            "wait_for_turn",
+            "send_message",
+            "send_messages",
+            "create_chat",
+            "create_chats",
+        ] {
+            let def = catalog().into_iter().find(|d| d.name == name).unwrap();
+            assert!(
+                def.input_schema.to_string().contains("\"maximum\":120"),
+                "{name}"
+            );
+        }
+        assert_eq!(wait_duration(None), (Duration::from_secs(120), None));
+        assert_eq!(wait_duration(Some(30)), (Duration::from_secs(30), None));
+        let (used, note) = wait_duration(Some(1500));
+        assert_eq!(used, Duration::from_secs(120));
+        let note = note.expect("a clamped wait says so");
+        assert!(
+            note.contains("capped at 120") && note.contains("1500"),
+            "{note}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_new_message_for_the_waiting_chat_ends_the_wait_early() {
+        for place in ["transcript", "queue"] {
+            let world = Arc::new(World {
+                new_message_in: Some(place),
+                ..Default::default()
+            });
+            // Beta waits on Alpha, whose turn never lands in this world.
+            let tools = tools(
+                world,
+                Origin {
+                    chat_id: Some("chat-beta-2".into()),
+                    device_id: Some("dev-local".into()),
+                },
+            );
+            let started = std::time::Instant::now();
+            let sent = tokio::time::timeout(
+                Duration::from_secs(10),
+                tools.call(
+                    "send_message",
+                    json!({ "chat": "alpha", "text": "go", "wait": true, "timeout_secs": 60 }),
+                ),
+            )
+            .await
+            .expect("the new message ends the wait")
+            .unwrap();
+            let turn = &sent["turn"];
+            assert_eq!(turn["outcome"], "interrupted", "{place}: {turn}");
+            assert_eq!(turn["interrupted"], "newMessage", "{place}");
+            assert_eq!(turn["timedOut"], false, "{place}");
+            assert_eq!(
+                turn["newMessages"][0]["text"], "stop and look at this",
+                "{place}"
+            );
+            assert_eq!(turn["newMessages"][0]["queued"], place == "queue");
+            assert!(started.elapsed() < Duration::from_secs(10), "{place}");
+            // Alpha's turn is still pending, so a later wait picks it up.
+            assert!(
+                tools
+                    .pending_turns
+                    .lock()
+                    .await
+                    .contains_key("chat-alpha-1")
+            );
+        }
     }
 
     #[tokio::test]

@@ -19,6 +19,7 @@ pub mod registry;
 pub mod schema;
 pub mod transcript_delta;
 pub mod voice;
+pub mod wait_target;
 pub mod workspace;
 
 pub use commands::*;

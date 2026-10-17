@@ -7156,10 +7156,20 @@ impl Transcript {
                 self.compact_last_elapsed.insert(entry_id, elapsed_secs);
             }
         }
+        // OpenAgents (#11969): name the running tool and time it.
+        let tool = (!sending && !queued && self.doc_override.is_none())
+            .then(|| {
+                let state = self.state.read(cx);
+                crate::tool_progress::running(&state.transcript, &state.chats, chrono::Utc::now())
+            })
+            .flatten();
+        let elapsed_secs = tool.as_ref().map_or(elapsed_secs, |tool| tool.elapsed_secs);
         let word = if queued {
             "Queued — will send automatically"
         } else if sending {
             "Sending"
+        } else if let Some(tool) = &tool {
+            tool.label.as_str()
         } else {
             "Working"
         };

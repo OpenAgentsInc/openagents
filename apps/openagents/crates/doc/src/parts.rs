@@ -606,7 +606,8 @@ pub fn sanitize_tool_call(call: &ToolCall) -> ToolCall {
         ToolCall::Mcp { server, tool, .. } => ToolCall::Mcp {
             server: server.clone(),
             tool: tool.clone(),
-            input: spawn_badge(call),
+            // OpenAgents (#11969): a waiting tool keeps the chat it waits on.
+            input: spawn_badge(call).or_else(|| crate::wait_target::wait_target(call)),
         },
         ToolCall::Unknown { name, .. } => ToolCall::Unknown {
             name: name.clone(),

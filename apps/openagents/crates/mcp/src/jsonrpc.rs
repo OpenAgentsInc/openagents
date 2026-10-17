@@ -30,6 +30,8 @@ Chats are referenced by full id, a unique id prefix, or an exact title. Use \
 `whoami` to learn which chat you are speaking from; messages you send are \
 attributed to it and a chat cannot message itself. For request/response \
 with a single chat, `send_message` with `wait: true` returns its reply. \
+Every wait lasts at most 120 seconds and ends early, with outcome `interrupted`, \
+when a new message arrives for you; read it, then wait again. \
 For parallel delegation, use `create_chats` with a prompt for each chat or \
 `send_messages` for existing chats. These batch tools launch requests concurrently \
 even if your harness executes tool calls sequentially. Alternatively, launch ALL \

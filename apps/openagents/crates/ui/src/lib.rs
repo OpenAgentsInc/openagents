@@ -87,6 +87,7 @@ pub mod theme;
 pub mod theme_library;
 pub mod toast;
 mod todo_panel;
+mod tool_progress;
 pub(crate) mod tool_images;
 pub mod transcript;
 pub mod typography;
