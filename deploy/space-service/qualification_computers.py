@@ -42,10 +42,10 @@ def main(action):
         if path.exists(): raise RuntimeError('Inspect the saved computer before another create.')
         save('cwc-seed',{'state':'submission_pending','idempotency_key':'space-11814-runtime-small-1'})
         value=request('POST','/v1/computers',{'size':'small','idempotency_key':'space-11814-runtime-small-1'})
-        save('cwc-seed',value);print(json.dumps(value));return
+        save('cwc-seed',value);print(json.dumps({key:value.get(key) for key in ('id','state','desired','image','size','last_error')}));return
     computer=json.loads((ROOT/'cwc-seed.json').read_text())
     identifier=computer.get('id')
-    if not isinstance(identifier,str) or not identifier.replace('-','').isalnum(): raise RuntimeError('Inspect the create receipt before continuing.')
+    if not isinstance(identifier,str) or not identifier.replace('-','').replace('_','').isalnum(): raise RuntimeError('Inspect the create receipt before continuing.')
     base='/v1/computers/'+identifier
     if action=='status': value=request('GET',base)
     elif action in ('stop','wake'): value=request('POST',base+'/'+action,{})
@@ -54,7 +54,7 @@ def main(action):
         key='cwc-turn-memory' if action=='memory-status' else 'cwc-turn-start'
         turn=json.loads((ROOT/(key+'.json')).read_text())
         turn_id=turn.get('id')
-        if not isinstance(turn_id,str) or not turn_id.replace('-','').isalnum(): raise RuntimeError('Inspect the turn receipt before continuing.')
+        if not isinstance(turn_id,str) or not turn_id.replace('-','').replace('_','').isalnum(): raise RuntimeError('Inspect the turn receipt before continuing.')
         value=request('GET',base+'/turns/'+turn_id)
         save(key+'-status',value)
     else:
@@ -68,7 +68,7 @@ def main(action):
         save(key,{'state':'submission_pending'})
         value=request('POST',base+'/turns',{'command':command,'timeout_seconds':45})
         save(key,value)
-    print(json.dumps(value))
+    print(json.dumps({key:value[key] for key in ('id','state','desired','resource','turns','attempts','last_error','exit_code','stdout','stderr','error') if key in value}))
 
 
 if __name__=='__main__':
