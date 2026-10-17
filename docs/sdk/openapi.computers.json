@@ -297,12 +297,39 @@
       "AppComputer": {
         "examples": [
           {
+            "capabilities": {
+              "command_sessions": true,
+              "memory_suspend": true,
+              "profiles": [
+                "core",
+                "suspend"
+              ],
+              "shapes": {
+                "small": {
+                  "memory_mib": 1024,
+                  "vcpus": 2
+                }
+              },
+              "sizes": [
+                "small"
+              ],
+              "workspace_file_bytes": 4194304
+            },
             "chat": null,
             "created_unix": 1,
             "desired": "running",
             "id": "cmp_0123456789abcdef0123",
             "kind": "cloud",
             "last_error": null,
+            "lifecycle_policy": {
+              "absolute_ms": 5000,
+              "absolute_scope": "boot",
+              "idle_ms": 100,
+              "observed_extension_ms": 200,
+              "stopped_retention_ms": 604800000,
+              "turn_complete": "suspend",
+              "uncertain_at_absolute_limit": "delete"
+            },
             "name": "Cloud computer 012345",
             "online": true,
             "seen_unix": null,
@@ -314,6 +341,9 @@
           }
         ],
         "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/AppComputerResourceCapabilities"
+          },
           "chat": {
             "type": [
               "string",
@@ -343,6 +373,9 @@
               "string",
               "null"
             ]
+          },
+          "lifecycle_policy": {
+            "$ref": "#/components/schemas/AppComputerLifecyclePolicy"
           },
           "name": {
             "type": "string"
@@ -518,17 +551,94 @@
         ],
         "type": "object"
       },
+      "AppComputerLifecyclePolicy": {
+        "description": "The recorded service policy for this computer. Absent or null means unavailable; clients must not invent timing or memory guarantees.",
+        "properties": {
+          "absolute_ms": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "absolute_scope": {
+            "const": "boot"
+          },
+          "idle_ms": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "observed_extension_ms": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stopped_retention_ms": {
+            "description": "Recorded maximum time to keep a stopped computer, in milliseconds. Zero means delete after the observed stop. Current operator/account limits can shorten this time; absent or null means unavailable.",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "turn_complete": {
+            "enum": [
+              "suspend",
+              "delete"
+            ],
+            "type": "string"
+          },
+          "uncertain_at_absolute_limit": {
+            "const": "delete"
+          }
+        },
+        "required": [
+          "turn_complete",
+          "idle_ms",
+          "observed_extension_ms",
+          "absolute_ms",
+          "absolute_scope",
+          "uncertain_at_absolute_limit"
+        ],
+        "type": [
+          "object",
+          "null"
+        ]
+      },
       "AppComputerList": {
         "examples": [
           {
             "computers": [
               {
+                "capabilities": {
+                  "command_sessions": true,
+                  "memory_suspend": true,
+                  "profiles": [
+                    "core",
+                    "suspend"
+                  ],
+                  "shapes": {
+                    "small": {
+                      "memory_mib": 1024,
+                      "vcpus": 2
+                    }
+                  },
+                  "sizes": [
+                    "small"
+                  ],
+                  "workspace_file_bytes": 4194304
+                },
                 "chat": null,
                 "created_unix": 1,
                 "desired": "running",
                 "id": "cmp_0123456789abcdef0123",
                 "kind": "cloud",
                 "last_error": null,
+                "lifecycle_policy": {
+                  "absolute_ms": 5000,
+                  "absolute_scope": "boot",
+                  "idle_ms": 100,
+                  "observed_extension_ms": 200,
+                  "stopped_retention_ms": 604800000,
+                  "turn_complete": "suspend",
+                  "uncertain_at_absolute_limit": "delete"
+                },
                 "name": "Cloud computer 012345",
                 "online": true,
                 "seen_unix": null,
@@ -614,6 +724,61 @@
           }
         },
         "type": "object"
+      },
+      "AppComputerResourceCapabilities": {
+        "description": "The bound computer's supported operations. Absent or null means unknown. A known object defaults omitted memory_suspend and command_sessions declarations to false; a Suspend profile alone does not promise memory preservation.",
+        "properties": {
+          "command_sessions": {
+            "type": "boolean"
+          },
+          "memory_suspend": {
+            "type": "boolean"
+          },
+          "profiles": {
+            "items": {
+              "enum": [
+                "core",
+                "suspend",
+                "snapshot",
+                "fork"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "shapes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AppComputerShape"
+            },
+            "type": "object"
+          },
+          "sizes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "workspace_file_bytes": {
+            "maximum": 4194304,
+            "minimum": 1,
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "profiles",
+          "sizes",
+          "shapes",
+          "memory_suspend",
+          "command_sessions",
+          "workspace_file_bytes"
+        ],
+        "type": [
+          "object",
+          "null"
+        ]
       },
       "AppComputerShape": {
         "properties": {
@@ -1176,12 +1341,39 @@
                 "example": {
                   "computers": [
                     {
+                      "capabilities": {
+                        "command_sessions": true,
+                        "memory_suspend": true,
+                        "profiles": [
+                          "core",
+                          "suspend"
+                        ],
+                        "shapes": {
+                          "small": {
+                            "memory_mib": 1024,
+                            "vcpus": 2
+                          }
+                        },
+                        "sizes": [
+                          "small"
+                        ],
+                        "workspace_file_bytes": 4194304
+                      },
                       "chat": null,
                       "created_unix": 1,
                       "desired": "running",
                       "id": "cmp_0123456789abcdef0123",
                       "kind": "cloud",
                       "last_error": null,
+                      "lifecycle_policy": {
+                        "absolute_ms": 5000,
+                        "absolute_scope": "boot",
+                        "idle_ms": 100,
+                        "observed_extension_ms": 200,
+                        "stopped_retention_ms": 604800000,
+                        "turn_complete": "suspend",
+                        "uncertain_at_absolute_limit": "delete"
+                      },
                       "name": "Cloud computer 012345",
                       "online": true,
                       "seen_unix": null,
@@ -1341,12 +1533,39 @@
             "content": {
               "application/json": {
                 "example": {
+                  "capabilities": {
+                    "command_sessions": true,
+                    "memory_suspend": true,
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "memory_mib": 1024,
+                        "vcpus": 2
+                      }
+                    },
+                    "sizes": [
+                      "small"
+                    ],
+                    "workspace_file_bytes": 4194304
+                  },
                   "chat": null,
                   "created_unix": 1,
                   "desired": "running",
                   "id": "cmp_0123456789abcdef0123",
                   "kind": "cloud",
                   "last_error": null,
+                  "lifecycle_policy": {
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "stopped_retention_ms": 604800000,
+                    "turn_complete": "suspend",
+                    "uncertain_at_absolute_limit": "delete"
+                  },
                   "name": "Cloud computer 012345",
                   "online": true,
                   "seen_unix": null,
@@ -1367,12 +1586,39 @@
             "content": {
               "application/json": {
                 "example": {
+                  "capabilities": {
+                    "command_sessions": true,
+                    "memory_suspend": true,
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "memory_mib": 1024,
+                        "vcpus": 2
+                      }
+                    },
+                    "sizes": [
+                      "small"
+                    ],
+                    "workspace_file_bytes": 4194304
+                  },
                   "chat": null,
                   "created_unix": 1,
                   "desired": "running",
                   "id": "cmp_0123456789abcdef0123",
                   "kind": "cloud",
                   "last_error": null,
+                  "lifecycle_policy": {
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "stopped_retention_ms": 604800000,
+                    "turn_complete": "suspend",
+                    "uncertain_at_absolute_limit": "delete"
+                  },
                   "name": "Cloud computer 012345",
                   "online": true,
                   "seen_unix": null,
@@ -1777,12 +2023,39 @@
             "content": {
               "application/json": {
                 "example": {
+                  "capabilities": {
+                    "command_sessions": true,
+                    "memory_suspend": true,
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "memory_mib": 1024,
+                        "vcpus": 2
+                      }
+                    },
+                    "sizes": [
+                      "small"
+                    ],
+                    "workspace_file_bytes": 4194304
+                  },
                   "chat": null,
                   "created_unix": 1,
                   "desired": "running",
                   "id": "cmp_0123456789abcdef0123",
                   "kind": "cloud",
                   "last_error": null,
+                  "lifecycle_policy": {
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "stopped_retention_ms": 604800000,
+                    "turn_complete": "suspend",
+                    "uncertain_at_absolute_limit": "delete"
+                  },
                   "name": "Cloud computer 012345",
                   "online": true,
                   "seen_unix": null,
@@ -1803,12 +2076,39 @@
             "content": {
               "application/json": {
                 "example": {
+                  "capabilities": {
+                    "command_sessions": true,
+                    "memory_suspend": true,
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "memory_mib": 1024,
+                        "vcpus": 2
+                      }
+                    },
+                    "sizes": [
+                      "small"
+                    ],
+                    "workspace_file_bytes": 4194304
+                  },
                   "chat": null,
                   "created_unix": 1,
                   "desired": "running",
                   "id": "cmp_0123456789abcdef0123",
                   "kind": "cloud",
                   "last_error": null,
+                  "lifecycle_policy": {
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "stopped_retention_ms": 604800000,
+                    "turn_complete": "suspend",
+                    "uncertain_at_absolute_limit": "delete"
+                  },
                   "name": "Cloud computer 012345",
                   "online": true,
                   "seen_unix": null,
@@ -1952,12 +2252,39 @@
             "content": {
               "application/json": {
                 "example": {
+                  "capabilities": {
+                    "command_sessions": true,
+                    "memory_suspend": true,
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "memory_mib": 1024,
+                        "vcpus": 2
+                      }
+                    },
+                    "sizes": [
+                      "small"
+                    ],
+                    "workspace_file_bytes": 4194304
+                  },
                   "chat": null,
                   "created_unix": 1,
                   "desired": "running",
                   "id": "cmp_0123456789abcdef0123",
                   "kind": "cloud",
                   "last_error": null,
+                  "lifecycle_policy": {
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "stopped_retention_ms": 604800000,
+                    "turn_complete": "suspend",
+                    "uncertain_at_absolute_limit": "delete"
+                  },
                   "name": "Cloud computer 012345",
                   "online": true,
                   "seen_unix": null,
@@ -3300,12 +3627,39 @@
             "content": {
               "application/json": {
                 "example": {
+                  "capabilities": {
+                    "command_sessions": true,
+                    "memory_suspend": true,
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "memory_mib": 1024,
+                        "vcpus": 2
+                      }
+                    },
+                    "sizes": [
+                      "small"
+                    ],
+                    "workspace_file_bytes": 4194304
+                  },
                   "chat": null,
                   "created_unix": 1,
                   "desired": "running",
                   "id": "cmp_0123456789abcdef0123",
                   "kind": "cloud",
                   "last_error": null,
+                  "lifecycle_policy": {
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "stopped_retention_ms": 604800000,
+                    "turn_complete": "suspend",
+                    "uncertain_at_absolute_limit": "delete"
+                  },
                   "name": "Cloud computer 012345",
                   "online": true,
                   "seen_unix": null,
@@ -3326,12 +3680,39 @@
             "content": {
               "application/json": {
                 "example": {
+                  "capabilities": {
+                    "command_sessions": true,
+                    "memory_suspend": true,
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "memory_mib": 1024,
+                        "vcpus": 2
+                      }
+                    },
+                    "sizes": [
+                      "small"
+                    ],
+                    "workspace_file_bytes": 4194304
+                  },
                   "chat": null,
                   "created_unix": 1,
                   "desired": "running",
                   "id": "cmp_0123456789abcdef0123",
                   "kind": "cloud",
                   "last_error": null,
+                  "lifecycle_policy": {
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "stopped_retention_ms": 604800000,
+                    "turn_complete": "suspend",
+                    "uncertain_at_absolute_limit": "delete"
+                  },
                   "name": "Cloud computer 012345",
                   "online": true,
                   "seen_unix": null,
@@ -3474,12 +3855,39 @@
             "content": {
               "application/json": {
                 "example": {
+                  "capabilities": {
+                    "command_sessions": true,
+                    "memory_suspend": true,
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "memory_mib": 1024,
+                        "vcpus": 2
+                      }
+                    },
+                    "sizes": [
+                      "small"
+                    ],
+                    "workspace_file_bytes": 4194304
+                  },
                   "chat": null,
                   "created_unix": 1,
                   "desired": "running",
                   "id": "cmp_0123456789abcdef0123",
                   "kind": "cloud",
                   "last_error": null,
+                  "lifecycle_policy": {
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "stopped_retention_ms": 604800000,
+                    "turn_complete": "suspend",
+                    "uncertain_at_absolute_limit": "delete"
+                  },
                   "name": "Cloud computer 012345",
                   "online": true,
                   "seen_unix": null,
@@ -3500,12 +3908,39 @@
             "content": {
               "application/json": {
                 "example": {
+                  "capabilities": {
+                    "command_sessions": true,
+                    "memory_suspend": true,
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "memory_mib": 1024,
+                        "vcpus": 2
+                      }
+                    },
+                    "sizes": [
+                      "small"
+                    ],
+                    "workspace_file_bytes": 4194304
+                  },
                   "chat": null,
                   "created_unix": 1,
                   "desired": "running",
                   "id": "cmp_0123456789abcdef0123",
                   "kind": "cloud",
                   "last_error": null,
+                  "lifecycle_policy": {
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "stopped_retention_ms": 604800000,
+                    "turn_complete": "suspend",
+                    "uncertain_at_absolute_limit": "delete"
+                  },
                   "name": "Cloud computer 012345",
                   "online": true,
                   "seen_unix": null,

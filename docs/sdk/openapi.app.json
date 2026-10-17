@@ -11611,7 +11611,34 @@
                       "updated_unix": 1,
                       "seen_unix": null,
                       "sync": null,
-                      "last_error": null
+                      "last_error": null,
+                      "capabilities": {
+                        "profiles": [
+                          "core",
+                          "suspend"
+                        ],
+                        "sizes": [
+                          "small"
+                        ],
+                        "shapes": {
+                          "small": {
+                            "vcpus": 2,
+                            "memory_mib": 1024
+                          }
+                        },
+                        "memory_suspend": true,
+                        "command_sessions": true,
+                        "workspace_file_bytes": 4194304
+                      },
+                      "lifecycle_policy": {
+                        "turn_complete": "suspend",
+                        "idle_ms": 100,
+                        "observed_extension_ms": 200,
+                        "absolute_ms": 5000,
+                        "absolute_scope": "boot",
+                        "uncertain_at_absolute_limit": "delete",
+                        "stopped_retention_ms": 604800000
+                      }
                     }
                   ],
                   "next_cursor": null
@@ -11780,7 +11807,34 @@
                   "updated_unix": 1,
                   "seen_unix": null,
                   "sync": null,
-                  "last_error": null
+                  "last_error": null,
+                  "capabilities": {
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "sizes": [
+                      "small"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "vcpus": 2,
+                        "memory_mib": 1024
+                      }
+                    },
+                    "memory_suspend": true,
+                    "command_sessions": true,
+                    "workspace_file_bytes": 4194304
+                  },
+                  "lifecycle_policy": {
+                    "turn_complete": "suspend",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "uncertain_at_absolute_limit": "delete",
+                    "stopped_retention_ms": 604800000
+                  }
                 }
               }
             }
@@ -11896,7 +11950,34 @@
                   "updated_unix": 1,
                   "seen_unix": null,
                   "sync": null,
-                  "last_error": null
+                  "last_error": null,
+                  "capabilities": {
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "sizes": [
+                      "small"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "vcpus": 2,
+                        "memory_mib": 1024
+                      }
+                    },
+                    "memory_suspend": true,
+                    "command_sessions": true,
+                    "workspace_file_bytes": 4194304
+                  },
+                  "lifecycle_policy": {
+                    "turn_complete": "suspend",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "uncertain_at_absolute_limit": "delete",
+                    "stopped_retention_ms": 604800000
+                  }
                 }
               }
             }
@@ -11971,7 +12052,34 @@
                   "updated_unix": 1,
                   "seen_unix": null,
                   "sync": null,
-                  "last_error": null
+                  "last_error": null,
+                  "capabilities": {
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "sizes": [
+                      "small"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "vcpus": 2,
+                        "memory_mib": 1024
+                      }
+                    },
+                    "memory_suspend": true,
+                    "command_sessions": true,
+                    "workspace_file_bytes": 4194304
+                  },
+                  "lifecycle_policy": {
+                    "turn_complete": "suspend",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "uncertain_at_absolute_limit": "delete",
+                    "stopped_retention_ms": 604800000
+                  }
                 }
               }
             }
@@ -12116,7 +12224,34 @@
                   "updated_unix": 1,
                   "seen_unix": null,
                   "sync": null,
-                  "last_error": null
+                  "last_error": null,
+                  "capabilities": {
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "sizes": [
+                      "small"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "vcpus": 2,
+                        "memory_mib": 1024
+                      }
+                    },
+                    "memory_suspend": true,
+                    "command_sessions": true,
+                    "workspace_file_bytes": 4194304
+                  },
+                  "lifecycle_policy": {
+                    "turn_complete": "suspend",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "uncertain_at_absolute_limit": "delete",
+                    "stopped_retention_ms": 604800000
+                  }
                 }
               }
             }
@@ -12232,7 +12367,34 @@
                   "updated_unix": 1,
                   "seen_unix": null,
                   "sync": null,
-                  "last_error": null
+                  "last_error": null,
+                  "capabilities": {
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "sizes": [
+                      "small"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "vcpus": 2,
+                        "memory_mib": 1024
+                      }
+                    },
+                    "memory_suspend": true,
+                    "command_sessions": true,
+                    "workspace_file_bytes": 4194304
+                  },
+                  "lifecycle_policy": {
+                    "turn_complete": "suspend",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "uncertain_at_absolute_limit": "delete",
+                    "stopped_retention_ms": 604800000
+                  }
                 }
               }
             }
@@ -12304,7 +12466,34 @@
                   "updated_unix": 1,
                   "seen_unix": null,
                   "sync": null,
-                  "last_error": null
+                  "last_error": null,
+                  "capabilities": {
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "sizes": [
+                      "small"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "vcpus": 2,
+                        "memory_mib": 1024
+                      }
+                    },
+                    "memory_suspend": true,
+                    "command_sessions": true,
+                    "workspace_file_bytes": 4194304
+                  },
+                  "lifecycle_policy": {
+                    "turn_complete": "suspend",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "uncertain_at_absolute_limit": "delete",
+                    "stopped_retention_ms": 604800000
+                  }
                 }
               }
             }
@@ -12420,7 +12609,34 @@
                   "updated_unix": 1,
                   "seen_unix": null,
                   "sync": null,
-                  "last_error": null
+                  "last_error": null,
+                  "capabilities": {
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "sizes": [
+                      "small"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "vcpus": 2,
+                        "memory_mib": 1024
+                      }
+                    },
+                    "memory_suspend": true,
+                    "command_sessions": true,
+                    "workspace_file_bytes": 4194304
+                  },
+                  "lifecycle_policy": {
+                    "turn_complete": "suspend",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "uncertain_at_absolute_limit": "delete",
+                    "stopped_retention_ms": 604800000
+                  }
                 }
               }
             }
@@ -12478,7 +12694,34 @@
                   "updated_unix": 1,
                   "seen_unix": null,
                   "sync": null,
-                  "last_error": null
+                  "last_error": null,
+                  "capabilities": {
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "sizes": [
+                      "small"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "vcpus": 2,
+                        "memory_mib": 1024
+                      }
+                    },
+                    "memory_suspend": true,
+                    "command_sessions": true,
+                    "workspace_file_bytes": 4194304
+                  },
+                  "lifecycle_policy": {
+                    "turn_complete": "suspend",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "uncertain_at_absolute_limit": "delete",
+                    "stopped_retention_ms": 604800000
+                  }
                 }
               }
             }
@@ -12594,7 +12837,34 @@
                   "updated_unix": 1,
                   "seen_unix": null,
                   "sync": null,
-                  "last_error": null
+                  "last_error": null,
+                  "capabilities": {
+                    "profiles": [
+                      "core",
+                      "suspend"
+                    ],
+                    "sizes": [
+                      "small"
+                    ],
+                    "shapes": {
+                      "small": {
+                        "vcpus": 2,
+                        "memory_mib": 1024
+                      }
+                    },
+                    "memory_suspend": true,
+                    "command_sessions": true,
+                    "workspace_file_bytes": 4194304
+                  },
+                  "lifecycle_policy": {
+                    "turn_complete": "suspend",
+                    "idle_ms": 100,
+                    "observed_extension_ms": 200,
+                    "absolute_ms": 5000,
+                    "absolute_scope": "boot",
+                    "uncertain_at_absolute_limit": "delete",
+                    "stopped_retention_ms": 604800000
+                  }
                 }
               }
             }
@@ -18623,6 +18893,1119 @@
           }
         }
       }
+    },
+    "/v1/connections": {
+      "get": {
+        "operationId": "listAccountConnections",
+        "tags": [
+          "Connected project sources"
+        ],
+        "security": [
+          {
+            "connectionBearer": []
+          }
+        ],
+        "description": "Read this account's stored connection metadata and sources. available describes server configuration, not Google permission or an access-token check. The response is not paginated.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The current result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConnectionList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request or invalid: malformed JSON, unsupported feature, Drive link or tool arguments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked account credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role: shared project sources are unavailable; drive_forbidden: Google refused access.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: Connections is disabled for this account/server, the project is absent, the source is absent, or Google cannot find the file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "google_not_connected, google_reconnect, full or ambiguous_name. A revoked refresh grant is marked reconnect for later requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_request or tool_failed: Drive validation, missing tool scope, denied policy, unsupported input, or tool execution failure. Tool failures use this status even for a failed downstream read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: the project account service could not complete the request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "google_unavailable or github_unavailable: Google or the project account service could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: connection configuration or account/storage service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connections/google/connect": {
+      "post": {
+        "operationId": "createGoogleConsentLink",
+        "tags": [
+          "Connected project sources"
+        ],
+        "security": [
+          {
+            "connectionBearer": []
+          }
+        ],
+        "description": "Return a browser consent link. Open it signed in as the same account. The finish step checks the account again. This does not automate consent; Google must separately allow the person to connect while app verification is pending.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The current result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConnectionConsent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request or invalid: malformed JSON, unsupported feature, Drive link or tool arguments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked account credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role: shared project sources are unavailable; drive_forbidden: Google refused access.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: Connections is disabled for this account/server, the project is absent, the source is absent, or Google cannot find the file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "google_not_connected, google_reconnect, full or ambiguous_name. A revoked refresh grant is marked reconnect for later requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_request or tool_failed: Drive validation, missing tool scope, denied policy, unsupported input, or tool execution failure. Tool failures use this status even for a failed downstream read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: the project account service could not complete the request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "google_unavailable or github_unavailable: Google or the project account service could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: connection configuration or account/storage service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The framework refused an oversized request body.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppConnectionConnect"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connections/google": {
+      "delete": {
+        "operationId": "disconnectAccountGoogle",
+        "tags": [
+          "Connected project sources"
+        ],
+        "security": [
+          {
+            "connectionBearer": []
+          }
+        ],
+        "description": "Delete the local connection before asking Google to revoke its refresh token. Remote revocation is best effort; a successful response proves only local deletion. Existing project sources stay. Repeated removal succeeds with deleted=false. No idempotency key or transaction across Google and local storage is promised.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The current result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConnectionDeleted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request or invalid: malformed JSON, unsupported feature, Drive link or tool arguments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked account credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role: shared project sources are unavailable; drive_forbidden: Google refused access.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: Connections is disabled for this account/server, the project is absent, the source is absent, or Google cannot find the file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "google_not_connected, google_reconnect, full or ambiguous_name. A revoked refresh grant is marked reconnect for later requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_request or tool_failed: Drive validation, missing tool scope, denied policy, unsupported input, or tool execution failure. Tool failures use this status even for a failed downstream read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: the project account service could not complete the request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "google_unavailable or github_unavailable: Google or the project account service could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: connection configuration or account/storage service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connections/google/drive": {
+      "get": {
+        "operationId": "browseAccountDrive",
+        "tags": [
+          "Connected project sources"
+        ],
+        "security": [
+          {
+            "connectionBearer": []
+          }
+        ],
+        "description": "Browse the caller's own Drive. Folder listing asks Google for up to 50 entries and passes through next as an opaque page token; keep the same folder on subsequent pages. Empty or over-512-byte page values are ignored. q selects a trimmed 1–200-character search, optionally within folder; search ignores page, requests up to 50 matches, and returns next=null. Files and permissions can change between pages; this is not a snapshot.",
+        "parameters": [
+          {
+            "name": "folder",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The current result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConnectionDrivePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request or invalid: malformed JSON, unsupported feature, Drive link or tool arguments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked account credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role: shared project sources are unavailable; drive_forbidden: Google refused access.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: Connections is disabled for this account/server, the project is absent, the source is absent, or Google cannot find the file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "google_not_connected, google_reconnect, full or ambiguous_name. A revoked refresh grant is marked reconnect for later requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_request or tool_failed: Drive validation, missing tool scope, denied policy, unsupported input, or tool execution failure. Tool failures use this status even for a failed downstream read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: the project account service could not complete the request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "google_unavailable or github_unavailable: Google or the project account service could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: connection configuration or account/storage service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connections/google/tools/{tool}": {
+      "post": {
+        "operationId": "runAccountDriveTool",
+        "tags": [
+          "Connected project sources"
+        ],
+        "security": [
+          {
+            "connectionBearer": []
+          }
+        ],
+        "description": "This schema qualifies the Drive tools only. Choose arguments for the named tool: query and optional folder for search; folder and optional page_token for list_folder; file for read. Each call checks the stored grant and policy. Search requests up to 20 matches; list_folder up to 50 with next_page_token. Read may call a model for photos/videos and return usage/cost_usd; it is not a free-read guarantee. Gmail and Calendar tools on this same route have separate contracts.",
+        "parameters": [
+          {
+            "name": "tool",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "drive_search",
+                "drive_list_folder",
+                "drive_read",
+                "drive.search",
+                "drive.list_folder",
+                "drive.read"
+              ]
+            },
+            "description": "The source ID or supported Drive tool name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The current result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConnectionToolResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request or invalid: malformed JSON, unsupported feature, Drive link or tool arguments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked account credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role: shared project sources are unavailable; drive_forbidden: Google refused access.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: Connections is disabled for this account/server, the project is absent, the source is absent, or Google cannot find the file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "google_not_connected, google_reconnect, full or ambiguous_name. A revoked refresh grant is marked reconnect for later requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_request or tool_failed: Drive validation, missing tool scope, denied policy, unsupported input, or tool execution failure. Tool failures use this status even for a failed downstream read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: the project account service could not complete the request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "google_unavailable or github_unavailable: Google or the project account service could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: connection configuration or account/storage service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The framework refused an oversized request body.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppConnectionToolArguments"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{id}/sources": {
+      "get": {
+        "operationId": "listConnectedProjectSources",
+        "tags": [
+          "Connected project sources"
+        ],
+        "security": [
+          {
+            "connectionBearer": []
+          }
+        ],
+        "description": "List the account's own project's stored Drive sources in attachment order. There is no pagination or live Drive permission check. Stored metadata remains visible after disconnect or grant revocation. Shared project members cannot use this source contract.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Own project ID or name:NAME. Duplicate exact names return 409 ambiguous_name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The current result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConnectionSources"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request or invalid: malformed JSON, unsupported feature, Drive link or tool arguments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked account credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role: shared project sources are unavailable; drive_forbidden: Google refused access.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: Connections is disabled for this account/server, the project is absent, the source is absent, or Google cannot find the file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "google_not_connected, google_reconnect, full or ambiguous_name. A revoked refresh grant is marked reconnect for later requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_request or tool_failed: Drive validation, missing tool scope, denied policy, unsupported input, or tool execution failure. Tool failures use this status even for a failed downstream read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: the project account service could not complete the request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "google_unavailable or github_unavailable: Google or the project account service could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: connection configuration or account/storage service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "attachConnectedProjectSource",
+        "tags": [
+          "Connected project sources"
+        ],
+        "security": [
+          {
+            "connectionBearer": []
+          }
+        ],
+        "description": "Attach a file or folder after checking it with the caller's own live Drive grant. Only the account's own project is accepted; shared members, including editors, are refused. Up to 20 sources per project and 50 per account. A duplicate returns 200 with the original metadata, name and added_at, even if Drive changed; a new attachment returns 201. A retry checks Drive again, so it can fail after an earlier successful write. No Idempotency-Key handling is offered.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Own project ID or name:NAME. Duplicate exact names return 409 ambiguous_name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The current result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConnectionSource"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "A new source was attached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConnectionSource"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request or invalid: malformed JSON, unsupported feature, Drive link or tool arguments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked account credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role: shared project sources are unavailable; drive_forbidden: Google refused access.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: Connections is disabled for this account/server, the project is absent, the source is absent, or Google cannot find the file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "google_not_connected, google_reconnect, full or ambiguous_name. A revoked refresh grant is marked reconnect for later requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_request or tool_failed: Drive validation, missing tool scope, denied policy, unsupported input, or tool execution failure. Tool failures use this status even for a failed downstream read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: the project account service could not complete the request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "google_unavailable or github_unavailable: Google or the project account service could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: connection configuration or account/storage service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppConnectionAttach"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects/{id}/sources/{source}": {
+      "delete": {
+        "operationId": "detachConnectedProjectSource",
+        "tags": [
+          "Connected project sources"
+        ],
+        "security": [
+          {
+            "connectionBearer": []
+          }
+        ],
+        "description": "Remove stored metadata from the account's own project, without deleting or changing the Drive file. A live Google grant is not required. A repeated deletion returns 404. Account/project permission and the Google availability gate still apply.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Own project ID or name:NAME. Duplicate exact names return 409 ambiguous_name."
+          },
+          {
+            "name": "source",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The source ID or supported Drive tool name."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The current result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppConnectionSourceDeleted"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_request or invalid: malformed JSON, unsupported feature, Drive link or tool arguments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "signed_out: missing, unsupported, expired or revoked account credential.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "project_role: shared project sources are unavailable; drive_forbidden: Google refused access.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found: Connections is disabled for this account/server, the project is absent, the source is absent, or Google cannot find the file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "google_not_connected, google_reconnect, full or ambiguous_name. A revoked refresh grant is marked reconnect for later requests.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_request or tool_failed: Drive validation, missing tool scope, denied policy, unsupported input, or tool execution failure. Tool failures use this status even for a failed downstream read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "rate_limited: the project account service could not complete the request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "google_unavailable or github_unavailable: Google or the project account service could not be reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "unavailable: connection configuration or account/storage service is unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -18646,6 +20029,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "A live account-service sess_ session or oa_sk_ sign-in key. Cookies and oak_ keys are not accepted. File requests revalidate the session; attached files also require current project membership and, for mutations, editor/owner rights, even without the optional project query."
+      },
+      "connectionBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "A current account sess_ session or oa_sk_ sign-in key. Cookies and oak_ keys are refused. Connections must also be enabled for this account by the Google availability access list; other accounts receive 404 not_found. Google consent and Drive access are additional requirements, never implied by project membership."
       }
     },
     "schemas": {
@@ -24728,6 +26116,12 @@
               "string",
               "null"
             ]
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/AppComputerResourceCapabilities"
+          },
+          "lifecycle_policy": {
+            "$ref": "#/components/schemas/AppComputerLifecyclePolicy"
           }
         },
         "examples": [
@@ -24745,7 +26139,34 @@
             "updated_unix": 1,
             "seen_unix": null,
             "sync": null,
-            "last_error": null
+            "last_error": null,
+            "capabilities": {
+              "profiles": [
+                "core",
+                "suspend"
+              ],
+              "sizes": [
+                "small"
+              ],
+              "shapes": {
+                "small": {
+                  "vcpus": 2,
+                  "memory_mib": 1024
+                }
+              },
+              "memory_suspend": true,
+              "command_sessions": true,
+              "workspace_file_bytes": 4194304
+            },
+            "lifecycle_policy": {
+              "turn_complete": "suspend",
+              "idle_ms": 100,
+              "observed_extension_ms": 200,
+              "absolute_ms": 5000,
+              "absolute_scope": "boot",
+              "uncertain_at_absolute_limit": "delete",
+              "stopped_retention_ms": 604800000
+            }
           }
         ]
       },
@@ -24828,7 +26249,34 @@
                 "updated_unix": 1,
                 "seen_unix": null,
                 "sync": null,
-                "last_error": null
+                "last_error": null,
+                "capabilities": {
+                  "profiles": [
+                    "core",
+                    "suspend"
+                  ],
+                  "sizes": [
+                    "small"
+                  ],
+                  "shapes": {
+                    "small": {
+                      "vcpus": 2,
+                      "memory_mib": 1024
+                    }
+                  },
+                  "memory_suspend": true,
+                  "command_sessions": true,
+                  "workspace_file_bytes": 4194304
+                },
+                "lifecycle_policy": {
+                  "turn_complete": "suspend",
+                  "idle_ms": 100,
+                  "observed_extension_ms": 200,
+                  "absolute_ms": 5000,
+                  "absolute_scope": "boot",
+                  "uncertain_at_absolute_limit": "delete",
+                  "stopped_retention_ms": 604800000
+                }
               }
             ],
             "next_cursor": null
@@ -24985,6 +26433,111 @@
           "min_disk_gib": {
             "type": "integer",
             "minimum": 1
+          }
+        }
+      },
+      "AppComputerResourceCapabilities": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "required": [
+          "profiles",
+          "sizes",
+          "shapes",
+          "memory_suspend",
+          "command_sessions",
+          "workspace_file_bytes"
+        ],
+        "description": "The bound computer's supported operations. Absent or null means unknown. A known object defaults omitted memory_suspend and command_sessions declarations to false; a Suspend profile alone does not promise memory preservation.",
+        "properties": {
+          "profiles": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "core",
+                "suspend",
+                "snapshot",
+                "fork"
+              ]
+            }
+          },
+          "sizes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "shapes": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AppComputerShape"
+            }
+          },
+          "memory_suspend": {
+            "type": "boolean"
+          },
+          "command_sessions": {
+            "type": "boolean"
+          },
+          "workspace_file_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "maximum": 4194304
+          }
+        }
+      },
+      "AppComputerLifecyclePolicy": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "required": [
+          "turn_complete",
+          "idle_ms",
+          "observed_extension_ms",
+          "absolute_ms",
+          "absolute_scope",
+          "uncertain_at_absolute_limit"
+        ],
+        "description": "The recorded service policy for this computer. Absent or null means unavailable; clients must not invent timing or memory guarantees.",
+        "properties": {
+          "turn_complete": {
+            "type": "string",
+            "enum": [
+              "suspend",
+              "delete"
+            ]
+          },
+          "idle_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "observed_extension_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "absolute_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "absolute_scope": {
+            "const": "boot"
+          },
+          "uncertain_at_absolute_limit": {
+            "const": "delete"
+          },
+          "stopped_retention_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Recorded maximum time to keep a stopped computer, in milliseconds. Zero means delete after the observed stop. Current operator/account limits can shorten this time; absent or null means unavailable."
           }
         }
       },
@@ -26976,6 +28529,736 @@
             "text": "Example text."
           }
         ]
+      },
+      "AppConnectionState": {
+        "type": "string",
+        "enum": [
+          "connected",
+          "not_connected",
+          "reconnect",
+          "unavailable"
+        ]
+      },
+      "AppConnectionKind": {
+        "type": "string",
+        "enum": [
+          "folder",
+          "document",
+          "spreadsheet",
+          "presentation",
+          "pdf",
+          "photo",
+          "video",
+          "file"
+        ]
+      },
+      "AppConnectionSource": {
+        "type": "object",
+        "required": [
+          "id",
+          "object",
+          "project",
+          "integration",
+          "name",
+          "kind",
+          "link",
+          "added_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "const": "source"
+          },
+          "project": {
+            "type": "string"
+          },
+          "integration": {
+            "const": "google"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AppConnectionKind"
+          },
+          "link": {
+            "type": "string",
+            "format": "uri"
+          },
+          "added_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "examples": [
+          {
+            "id": "folder-example-0001",
+            "object": "source",
+            "project": "prj_0000000000000001",
+            "integration": "google",
+            "name": "Example folder",
+            "kind": "folder",
+            "link": "https://drive.google.com/drive/folders/folder-example-0001",
+            "added_at": "1970-01-01T00:00:01Z"
+          }
+        ]
+      },
+      "AppConnectionSources": {
+        "type": "object",
+        "required": [
+          "project",
+          "google",
+          "data"
+        ],
+        "properties": {
+          "project": {
+            "type": "string"
+          },
+          "google": {
+            "$ref": "#/components/schemas/AppConnectionState"
+          },
+          "data": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "$ref": "#/components/schemas/AppConnectionSource"
+            }
+          }
+        }
+      },
+      "AppConnectionAttach": {
+        "type": "object",
+        "anyOf": [
+          {
+            "required": [
+              "link"
+            ],
+            "properties": {
+              "link": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "properties": {
+          "link": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "description": "A Google Drive link or ID. A non-null link takes precedence over id, including when the link is invalid. Unknown fields are ignored.",
+        "examples": [
+          {
+            "id": "folder-example-0001"
+          }
+        ]
+      },
+      "AppConnectionSourceDeleted": {
+        "type": "object",
+        "required": [
+          "id",
+          "object",
+          "project"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "const": "source.deleted"
+          },
+          "project": {
+            "type": "string"
+          }
+        }
+      },
+      "AppConnectionDriveFile": {
+        "type": "object",
+        "required": [
+          "id",
+          "object",
+          "name",
+          "kind",
+          "folder",
+          "link",
+          "modified_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "const": "drive_file"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AppConnectionKind"
+          },
+          "folder": {
+            "type": "boolean"
+          },
+          "link": {
+            "type": "string",
+            "format": "uri"
+          },
+          "modified_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AppConnectionDrivePage": {
+        "type": "object",
+        "required": [
+          "data",
+          "folder",
+          "query",
+          "next"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppConnectionDriveFile"
+            }
+          },
+          "folder": {
+            "type": "string"
+          },
+          "query": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "next": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AppConnectionFeatures": {
+        "type": "object",
+        "required": [
+          "drive",
+          "sheets",
+          "gmail",
+          "gmail_compose",
+          "calendar",
+          "calendar_events"
+        ],
+        "properties": {
+          "drive": {
+            "type": "boolean"
+          },
+          "sheets": {
+            "type": "boolean"
+          },
+          "gmail": {
+            "type": "boolean"
+          },
+          "gmail_compose": {
+            "type": "boolean"
+          },
+          "calendar": {
+            "type": "boolean"
+          },
+          "calendar_events": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AppConnectionGoogle": {
+        "type": "object",
+        "required": [
+          "status",
+          "email",
+          "scopes",
+          "sheets",
+          "features",
+          "connected_at"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/AppConnectionState"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sheets": {
+            "type": "boolean"
+          },
+          "features": {
+            "$ref": "#/components/schemas/AppConnectionFeatures"
+          },
+          "connected_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "AppConnectionTool": {
+        "type": "object",
+        "required": [
+          "id",
+          "address",
+          "policy",
+          "description",
+          "parameters"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "policy": {
+            "enum": [
+              "allow",
+              "require_approval",
+              "block"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "parameters": {
+            "type": "object"
+          }
+        }
+      },
+      "AppConnectionStored": {
+        "type": "object",
+        "required": [
+          "integration",
+          "name",
+          "identity",
+          "status",
+          "scopes",
+          "sheets",
+          "connected_at",
+          "reconnect",
+          "tools"
+        ],
+        "properties": {
+          "integration": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "identity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/AppConnectionState"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sheets": {
+            "type": "boolean"
+          },
+          "connected_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reconnect": {
+            "type": "boolean"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppConnectionTool"
+            }
+          }
+        }
+      },
+      "AppConnectionList": {
+        "type": "object",
+        "required": [
+          "available",
+          "google",
+          "connections",
+          "sources"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "google": {
+            "$ref": "#/components/schemas/AppConnectionGoogle"
+          },
+          "connections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppConnectionStored"
+            }
+          },
+          "sources": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "object",
+              "required": [
+                "project",
+                "id",
+                "name",
+                "kind",
+                "link"
+              ],
+              "properties": {
+                "project": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "kind": {
+                  "$ref": "#/components/schemas/AppConnectionKind"
+                },
+                "link": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              }
+            }
+          }
+        },
+        "description": "Stored status is not a live grant check. A later Drive request can discover a revoked grant. No refresh or access token is returned. Tools may include other separately qualified Google features."
+      },
+      "AppConnectionConnect": {
+        "type": "object",
+        "properties": {
+          "sheets": {
+            "type": "boolean",
+            "default": false
+          },
+          "feature": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "drive",
+              "sheets",
+              "gmail",
+              "gmail_compose",
+              "calendar",
+              "calendar_events",
+              null
+            ]
+          },
+          "return_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A same-site return path. Unsafe paths fall back to Settings, Connections."
+          }
+        },
+        "description": "Empty or whitespace-only bodies are accepted. feature takes precedence over sheets. This only returns a consent link; it does not connect or grant access."
+      },
+      "AppConnectionConsent": {
+        "type": "object",
+        "required": [
+          "object",
+          "integration",
+          "url",
+          "scopes",
+          "status",
+          "message"
+        ],
+        "properties": {
+          "object": {
+            "const": "connection.consent"
+          },
+          "integration": {
+            "const": "google"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/AppConnectionState"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "AppConnectionDeleted": {
+        "type": "object",
+        "required": [
+          "object",
+          "integration",
+          "deleted",
+          "sources_kept"
+        ],
+        "properties": {
+          "object": {
+            "const": "connection.deleted"
+          },
+          "integration": {
+            "const": "google"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "sources_kept": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 50
+          }
+        }
+      },
+      "AppConnectionToolSearch": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "query"
+        ],
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "folder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AppConnectionToolListFolder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "folder"
+        ],
+        "properties": {
+          "folder": {
+            "type": "string"
+          },
+          "page_token": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AppConnectionToolRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "file"
+        ],
+        "properties": {
+          "file": {
+            "type": "string"
+          }
+        }
+      },
+      "AppConnectionToolArguments": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/AppConnectionToolSearch"
+          },
+          {
+            "$ref": "#/components/schemas/AppConnectionToolListFolder"
+          },
+          {
+            "$ref": "#/components/schemas/AppConnectionToolRead"
+          }
+        ]
+      },
+      "AppConnectionToolFile": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "link"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AppConnectionKind"
+          },
+          "link": {
+            "type": "string",
+            "format": "uri"
+          },
+          "modified": {
+            "type": "string"
+          },
+          "seconds": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "AppConnectionToolResult": {
+        "type": "object",
+        "required": [
+          "result",
+          "read"
+        ],
+        "properties": {
+          "result": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": [
+                  "files"
+                ],
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/AppConnectionToolFile"
+                    }
+                  },
+                  "next_page_token": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "required": [
+                  "file",
+                  "format",
+                  "text",
+                  "truncated"
+                ],
+                "properties": {
+                  "file": {
+                    "$ref": "#/components/schemas/AppConnectionToolFile"
+                  },
+                  "format": {
+                    "enum": [
+                      "text",
+                      "csv",
+                      "description"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "truncated": {
+                    "type": "boolean"
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "read": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "link"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "link": {
+                  "type": "string",
+                  "format": "uri"
+                }
+              }
+            }
+          },
+          "usage": {
+            "type": "object",
+            "required": [
+              "input",
+              "output"
+            ],
+            "properties": {
+              "input": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "output": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "cost_usd": {
+            "type": "number",
+            "minimum": 0
+          }
+        }
       }
     }
   }
