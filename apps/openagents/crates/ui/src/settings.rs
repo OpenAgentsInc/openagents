@@ -960,7 +960,11 @@ pub struct UiSettings {
     pub transcript_width: f32,
     /// Open a normal web-link activation in the session Browser. Explicit
     /// context-menu actions remain available regardless of this preference.
-    #[serde(alias = "openWebLinksInZeron")]
+    #[serde(
+        rename = "openWebLinksInOpenAgents",
+        alias = "openWebLinksInZeron",
+        alias = "openWebLinksInOpenagents"
+    )]
     pub open_web_links_in_openagents: bool,
     /// Compact transcript: a turn's working steps (thinking, tool calls, and
     /// the narration between them) fold into one collapsed accordion, so only
@@ -2696,6 +2700,19 @@ mod tests {
                 .get("activeTurnSendBehavior")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn web_link_preference_reads_each_previously_written_key() {
+        for key in [
+            "openWebLinksInZeron",
+            "openWebLinksInOpenagents",
+            "openWebLinksInOpenAgents",
+        ] {
+            let settings: UiSettings =
+                serde_json::from_value(serde_json::json!({key: false})).unwrap();
+            assert!(!settings.open_web_links_in_openagents, "{key}");
+        }
     }
 
     #[test]
