@@ -501,3 +501,8 @@ links remain readable. Upstream fixes now require manual ports.
   execution host's Codex account through the existing account RPC and cache.
   Rust owns host selection, refreshes, and usage state; UIKit shows the account,
   quota windows, resets, and last-updated time, including refresh failures.
+
+- [OpenAgents #12019](https://github.com/OpenAgentsInc/openagents/issues/12019):
+  The phone's saved-account transcript uses the existing turn activity state
+  for its Working row, including before answer text arrives. The saved
+  message adapter, Lab cards, Stop, and computer sessions keep their paths.
