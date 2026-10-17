@@ -25,7 +25,7 @@ root="$(cd "$here/../.." && pwd)"
 target="${CARGO_TARGET_DIR:-$root/target}"
 out="${1:-$target/release}"
 app="$out/OpenAgents.app"
-icon_source="$root/apps/openagents/apps/ios/Zeron/Assets.xcassets/AppIcon.appiconset/AppIcon1024.png"
+icon_source="$root/apps/openagents/apps/ios/OpenAgents/Assets.xcassets/AppIcon.appiconset/AppIcon1024.png"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "OpenAgents.app is macOS only; run \`cargo run -p openagents-desktop\` elsewhere" >&2

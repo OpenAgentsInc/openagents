@@ -1,6 +1,6 @@
 //! The same account controller used by the desktop, exposed to native controls.
 use super::{ClientListener, CoreClient, CoreConfig, CoreError, CoreResult, ListenerBridge};
-use coder_account::{
+use openagents_account::{
     Controller, Phase, PlatformStore,
     openagents::{Client, CredentialStore, Deployment},
 };
@@ -24,8 +24,8 @@ pub struct AccountSnapshot {
     pub generation: u64,
     pub state: AccountState,
 }
-impl From<coder_account::Snapshot> for AccountSnapshot {
-    fn from(snapshot: coder_account::Snapshot) -> Self {
+impl From<openagents_account::Snapshot> for AccountSnapshot {
+    fn from(snapshot: openagents_account::Snapshot) -> Self {
         Self {
             generation: snapshot.generation,
             state: match snapshot.phase {
@@ -107,7 +107,7 @@ impl CoreAccount {
             cancel: cancel.clone(),
         });
         let mut updates = controller.watch();
-        zeron_client::runtime::shared().spawn(async move {
+        openagents_client::runtime::shared().spawn(async move {
             listener.on_account_changed(controller.snapshot().into());
             let mut timer = tokio::time::interval(Duration::from_secs(1));
             let mut checked = Instant::now();
@@ -130,7 +130,7 @@ impl CoreAccount {
                         {
                             checked = Instant::now();
                             let controller = controller.clone();
-                            zeron_client::runtime::shared().spawn(controller.revalidate());
+                            openagents_client::runtime::shared().spawn(controller.revalidate());
                         }
                     }
                 }
@@ -141,7 +141,7 @@ impl CoreAccount {
     fn profile(&self, account: &str, edge: &str) -> PathBuf {
         self.data_dir.join(format!(
             "account-{}",
-            coder_account::desktop::sync_scope(&self.deployment, edge, account)
+            openagents_account::desktop::sync_scope(&self.deployment, edge, account)
         ))
     }
 }
@@ -226,22 +226,22 @@ impl CoreAccount {
     pub fn restore(&self) {
         let task = self.controller.restore();
         close_clients(&self.clients, None);
-        zeron_client::runtime::shared().spawn(task);
+        openagents_client::runtime::shared().spawn(task);
     }
     /// Resume account checks without cancelling a device-code approval in progress.
     pub fn revalidate(&self) {
-        zeron_client::runtime::shared().spawn(self.controller.clone().revalidate());
+        openagents_client::runtime::shared().spawn(self.controller.clone().revalidate());
     }
     pub fn sign_in(&self, device_name: String) {
         let task = self.controller.sign_in(device_name);
         close_clients(&self.clients, None);
-        zeron_client::runtime::shared().spawn(task);
+        openagents_client::runtime::shared().spawn(task);
     }
     /// Explicit credentials are checked by the same SDK and stored by the same controller.
     pub fn sign_in_with_credential(&self, credential: String) {
         let task = self.controller.import_credential(credential);
         close_clients(&self.clients, None);
-        zeron_client::runtime::shared().spawn(task);
+        openagents_client::runtime::shared().spawn(task);
     }
     pub fn cancel(&self) {
         self.sign_out();
@@ -249,7 +249,7 @@ impl CoreAccount {
     pub fn sign_out(&self) {
         let task = self.controller.sign_out();
         close_clients(&self.clients, None);
-        zeron_client::runtime::shared().spawn(task);
+        openagents_client::runtime::shared().spawn(task);
     }
     /// A native diagnostic checks only this app/profile/deployment's own entry.
     pub fn stored_login_present(&self) -> CoreResult<bool> {
@@ -293,12 +293,12 @@ impl CoreAccount {
             .to_string_lossy()
             .into_owned();
         let chosen_cache = PathBuf::from(&config.data_dir);
-        let credentials = zeron_client::Credentials::OpenAgents {
+        let credentials = openagents_client::Credentials::OpenAgents {
             account_id: lease.session().account().id.clone(),
             bearer: lease.session().bearer_token().into(),
             expires_at: lease.session().expires_at(),
         };
-        let client = zeron_client::Client::new(
+        let client = openagents_client::Client::new(
             config.into(),
             credentials,
             Arc::new(ListenerBridge(listener)),
@@ -329,7 +329,7 @@ impl CoreAccount {
     pub fn sign_in_from_fixture(&self, url: String) {
         let controller = self.controller.clone();
         close_clients(&self.clients, None);
-        zeron_client::runtime::shared().spawn(async move {
+        openagents_client::runtime::shared().spawn(async move {
             let Ok(url) = reqwest::Url::parse(&url) else {
                 return;
             };
@@ -368,7 +368,7 @@ impl CoreAccount {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use coder_account::openagents::{CredentialRecord, StorageError};
+    use openagents_account::openagents::{CredentialRecord, StorageError};
     struct Memory;
     impl CredentialStore for Memory {
         fn load(&self, _: &Deployment) -> Result<Option<CredentialRecord>, StorageError> {

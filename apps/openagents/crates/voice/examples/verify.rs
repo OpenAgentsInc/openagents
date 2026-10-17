@@ -2,11 +2,11 @@ use std::{path::PathBuf, sync::atomic::AtomicBool, time::Instant};
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
     let dir = PathBuf::from(args.next().expect("model directory"));
-    if !zeron_voice::installed(&dir) {
-        zeron_voice::download(&dir, &AtomicBool::new(false), |_| {})?;
+    if !openagents_voice::installed(&dir) {
+        openagents_voice::download(&dir, &AtomicBool::new(false), |_| {})?;
     }
     let start = Instant::now();
-    let mut model = zeron_voice::Recognizer::load(&dir)?;
+    let mut model = openagents_voice::Recognizer::load(&dir)?;
     println!("load_ms={}", start.elapsed().as_millis());
     for file in args {
         let mut wav = hound::WavReader::open(&file)?;

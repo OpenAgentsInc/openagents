@@ -11,10 +11,10 @@ use std::time::Duration;
 use futures::StreamExt;
 use tokio::sync::{mpsc, oneshot};
 
-use zeron_harness::{
+use openagents_harness::{
     CancellationToken, ClaudeHarness, Harness, HarnessError, RunControls, SteerMessage,
 };
-use zeron_proto::{
+use openagents_proto::{
     AgentEvent, DoneStatus, HarnessId, RunRequest, SandboxLevel, ToolCall, UserInputAnswer,
     UserInputQuestion,
 };
@@ -343,8 +343,8 @@ async fn ask_user_question_round_trips_through_the_control_channel() {
 
 #[tokio::test]
 async fn ultrathink_preserves_selected_commands_on_initial_and_steered_sends() {
-    use zeron_proto::ReasoningLevel;
-    use zeron_proto::invocation::{Invocation, SkillCommand, harness_prompt};
+    use openagents_proto::ReasoningLevel;
+    use openagents_proto::invocation::{Invocation, SkillCommand, harness_prompt};
 
     let invocations = [
         Invocation::Command {
@@ -656,7 +656,7 @@ async fn captured_live_background_subagent_frames_replay_correctly() {
 
 /// Live smoke against the REAL claude CLI (2.1.x, must be installed + authed):
 /// one trivial turn through the stdio permission channel, ending on the
-/// result frame. `cargo test -p zeron-harness --test claude -- --ignored`.
+/// result frame. `cargo test -p openagents-harness --test claude -- --ignored`.
 #[tokio::test]
 #[ignore = "spawns the real claude CLI; needs install + auth + network"]
 async fn live_real_cli_single_turn() {
@@ -724,7 +724,7 @@ async fn commands_come_from_the_initialize_control_request() {
     assert_eq!(again, commands);
 }
 
-/// Live smoke against the real CLI: `cargo test -p zeron-harness --test
+/// Live smoke against the real CLI: `cargo test -p openagents-harness --test
 /// claude -- --ignored live_commands`. No model turn, no API cost.
 #[tokio::test]
 #[ignore]
@@ -792,7 +792,7 @@ async fn command_discovery_tracks_project_changes() {
 
 #[tokio::test]
 async fn shared_skill_colliding_with_builtin_keeps_file_delivery() {
-    use zeron_proto::invocation::{Invocation, harness_prompt};
+    use openagents_proto::invocation::{Invocation, harness_prompt};
     let cwd = tempfile::tempdir().unwrap();
     std::fs::create_dir(cwd.path().join(".git")).unwrap();
     let directory = cwd.path().join(".agents/skills/compact");
@@ -828,7 +828,7 @@ async fn shared_skill_colliding_with_builtin_keeps_file_delivery() {
 
 #[tokio::test]
 async fn claude_skills_follow_native_availability_and_dollar_selection_keeps_arguments() {
-    use zeron_proto::{
+    use openagents_proto::{
         HarnessId,
         invocation::{Invocation, harness_prompt},
     };
@@ -1007,7 +1007,7 @@ async fn a_message_queued_behind_a_finishing_turn_owns_the_turn_end() {
 /// stopped turn's late result.
 #[tokio::test]
 async fn send_now_over_a_held_turn_end_never_settles_the_replacement() {
-    use zeron_harness::TurnControl;
+    use openagents_harness::TurnControl;
     let (mut controls, steer, _token) = controls("A");
     let turn = TurnControl::default();
     controls.turn = turn.clone();
@@ -1081,7 +1081,7 @@ async fn send_now_over_a_held_turn_end_never_settles_the_replacement() {
 /// stopped turn reporting late (which left the chat Working).
 #[tokio::test]
 async fn a_quick_unconfirmed_replacement_after_a_stop_still_completes() {
-    use zeron_harness::TurnControl;
+    use openagents_harness::TurnControl;
     let (mut controls, steer, _token) = controls("A");
     let turn = TurnControl::default();
     controls.turn = turn.clone();
@@ -1141,7 +1141,7 @@ async fn a_quick_unconfirmed_replacement_after_a_stop_still_completes() {
 /// the parked session), and none of its usage.
 #[tokio::test]
 async fn a_stopped_turns_delayed_duplicate_result_is_dropped() {
-    use zeron_harness::TurnControl;
+    use openagents_harness::TurnControl;
     let (mut controls, _steer, _token) = controls("A");
     let turn = TurnControl::default();
     controls.turn = turn.clone();
@@ -1220,7 +1220,7 @@ async fn a_cancelled_queued_message_releases_the_turn_end_immediately() {
 /// instead of replacing it (which killed its background agents and shells).
 #[tokio::test]
 async fn a_changed_model_and_effort_apply_to_the_live_process() {
-    use zeron_proto::ReasoningLevel;
+    use openagents_proto::ReasoningLevel;
     assert!(harness().reconfigures_in_place(&request("a"), &{
         let mut next = request("b");
         next.model = Some("claude-haiku-4-5".into());
@@ -1343,7 +1343,7 @@ async fn an_unreplayed_steer_releases_the_turn_end() {
 
 #[tokio::test]
 async fn a_stopped_turn_keeps_the_process_and_its_background_work() {
-    use zeron_harness::TurnControl;
+    use openagents_harness::TurnControl;
     let (mut controls, steer, _token) = controls("A");
     let turn = TurnControl::default();
     controls.turn = turn.clone();

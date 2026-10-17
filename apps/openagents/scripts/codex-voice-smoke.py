@@ -64,7 +64,7 @@ async def main():
                 elif v.get('method','').startswith('thread/realtime/'):
                     notifications.put_nowait(v)
         reader=asyncio.create_task(read())
-        await request('initialize',{'clientInfo':{'name':'zeron-voice-smoke','version':'1'},'capabilities':{'experimentalApi':True}})
+        await request('initialize',{'clientInfo':{'name':'openagents-voice-smoke','version':'1'},'capabilities':{'experimentalApi':True}})
         server.stdin.write(b'{"method":"initialized"}\n');await server.stdin.drain()
         account=await request('account/read',{'refreshToken':False})
         assert account.get('account',{}).get('type')=='chatgpt';result['chatgpt']=True

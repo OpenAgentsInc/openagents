@@ -1,6 +1,6 @@
 //! Native mounting and callbacks over the shared Rust Home controller.
 use super::{CoreClient, CoreError, CoreResult};
-use coder_account::{Lease, dashboard::Home};
+use openagents_account::{Lease, dashboard::Home};
 use openagents_dashboard::{Computer, Work};
 use std::{path::PathBuf, sync::Arc};
 use tokio_util::sync::CancellationToken;
@@ -30,7 +30,7 @@ impl CoreHome {
         let mut updates = home.watch();
         let owned = home.clone();
         let stopped = cancel.clone();
-        zeron_client::runtime::shared().spawn(async move{
+        openagents_client::runtime::shared().spawn(async move{
             Home::start(&owned);
             loop{tokio::select!{_ = stopped.cancelled()=>break,changed=updates.changed()=>{if changed.is_err(){break}listener.on_home_changed();}}}
         });
@@ -97,10 +97,10 @@ impl CoreHome {
                     project: row.project.as_ref().map(|p| p.id.clone()),
                     host: row.device_name.clone().unwrap_or_else(|| "Computer".into()),
                     state: match report.map(|s| s.status) {
-                        Some(zeron_proto::SessionStatus::Working) => "working",
-                        Some(zeron_proto::SessionStatus::AwaitingInput) => "awaiting",
-                        Some(zeron_proto::SessionStatus::Errored) => "failed",
-                        Some(zeron_proto::SessionStatus::Idle) => {
+                        Some(openagents_proto::SessionStatus::Working) => "working",
+                        Some(openagents_proto::SessionStatus::AwaitingInput) => "awaiting",
+                        Some(openagents_proto::SessionStatus::Errored) => "failed",
+                        Some(openagents_proto::SessionStatus::Idle) => {
                             if report.is_some_and(|s| s.last_completed_turn.is_some()) {
                                 "completed"
                             } else {
@@ -127,7 +127,7 @@ impl CoreHome {
     }
     pub async fn refresh(&self) {
         let home = self.home.clone();
-        let _ = zeron_client::runtime::shared()
+        let _ = openagents_client::runtime::shared()
             .spawn(async move {
                 home.refresh(true).await;
             })
@@ -141,7 +141,7 @@ impl CoreHome {
         value: Option<String>,
     ) -> CoreResult<String> {
         let home = self.home.clone();
-        let effect = zeron_client::runtime::shared()
+        let effect = openagents_client::runtime::shared()
             .spawn(async move {
                 home.activate(
                     rust_native::Activation {
@@ -160,7 +160,7 @@ impl CoreHome {
     }
     pub async fn import_layout(&self, bytes: Vec<u8>) -> CoreResult<()> {
         let home = self.home.clone();
-        zeron_client::runtime::shared()
+        openagents_client::runtime::shared()
             .spawn(async move { home.import(&bytes).await })
             .await
             .map_err(|_| failed("Couldn't import this layout."))?
@@ -168,7 +168,7 @@ impl CoreHome {
     }
     pub async fn open_layout_link(&self, link: String) -> CoreResult<()> {
         let home = self.home.clone();
-        zeron_client::runtime::shared()
+        openagents_client::runtime::shared()
             .spawn(async move { home.open_link(&link).await })
             .await
             .map_err(|_| failed("Couldn't open this layout."))?
@@ -187,7 +187,7 @@ impl CoreHome {
         let fields = serde_json::from_str(&fields)
             .map_err(|_| failed("Check the settings and try again."))?;
         let home = self.home.clone();
-        let effect = zeron_client::runtime::shared()
+        let effect = openagents_client::runtime::shared()
             .spawn(async move {
                 home.activate_form(
                     rust_native::Activation {

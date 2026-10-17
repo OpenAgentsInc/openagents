@@ -1,6 +1,6 @@
 use super::tests::composer_focus_window;
 use super::*;
-use zeron_proto::attachment_mentions::{attachment_mention_indices, attachment_mention_link};
+use openagents_proto::attachment_mentions::{attachment_mention_indices, attachment_mention_link};
 
 fn png() -> gpui::Image {
     let mut bytes = std::io::Cursor::new(Vec::new());
@@ -194,7 +194,7 @@ fn removing_a_thumbnail_removes_every_chip_for_it(cx: &mut gpui::TestAppContext)
         .unwrap();
     cx.run_until_parked();
     assert!(attachment_mention_indices(&text(&handle, cx)).is_empty());
-    assert!(!text(&handle, cx).contains("zeron-image"));
+    assert!(!text(&handle, cx).contains("openagents-image"));
     assert!(staged_names(&handle, cx).is_empty());
 }
 
@@ -209,7 +209,7 @@ fn a_chip_may_repeat_and_the_image_stays_until_the_last_is_removed(cx: &mut gpui
     );
     for expected_left in [1usize, 0] {
         edit(&handle, cx, |input| {
-            let first = zeron_proto::attachment_mentions::attachment_mentions(input.text())[0]
+            let first = openagents_proto::attachment_mentions::attachment_mentions(input.text())[0]
                 .range
                 .clone();
             (first, String::new())
@@ -524,9 +524,9 @@ fn chips_copied_from_another_draft_paste_as_plain_labels(cx: &mut gpui::TestAppC
                 cx.write_to_clipboard(ClipboardItem::new_string_with_json_metadata(
                     "Image 1".into(),
                     serde_json::json!({
-                        "zeronComposerV1": link,
+                        "openagentsComposerV1": link,
                         "text": "Image 1",
-                        "zeronAttachmentScope": "chat-a",
+                        "openagentsAttachmentScope": "chat-a",
                     }),
                 ));
                 input.attachment_scope = "chat-b".into();
@@ -558,7 +558,7 @@ fn sent_messages_project_image_chips_for_the_transcript() {
         format!("{MENTION_SIDE_PAD}{CHIP_ICON_SLOT}Image\u{a0}2{CHIP_TRAILING_PAD}")
     );
     assert!(sent_mention_display("Image 2 without a link").is_none());
-    assert!(sent_mention_display("[Image 2](zeron-image:9)").is_none());
+    assert!(sent_mention_display("[Image 2](openagents-image:9)").is_none());
 }
 
 #[test]
@@ -611,7 +611,7 @@ fn begin_queued_edit(
 
 fn remove_chip(handle: &gpui::WindowHandle<Composer>, cx: &mut gpui::TestAppContext, index: u32) {
     edit(handle, cx, move |input| {
-        let chip = zeron_proto::attachment_mentions::attachment_mentions(input.text())
+        let chip = openagents_proto::attachment_mentions::attachment_mentions(input.text())
             .into_iter()
             .find(|chip| chip.index == index)
             .unwrap();

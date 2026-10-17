@@ -5,7 +5,7 @@ mod common;
 
 use common::*;
 use unicode_segmentation::UnicodeSegmentation;
-use zeron_text::*;
+use openagents_text::*;
 
 struct Rng(u64);
 
@@ -132,13 +132,13 @@ fn random_spans(rng: &mut Rng, text: &str, styles: &[StyleId]) -> Vec<Span> {
     spans
 }
 
-/// `ZERON_TEXT_PROP_CASES` / `ZERON_TEXT_PROP_SEED` scale a run up for bug hunting.
+/// `OPENAGENTS_TEXT_PROP_CASES` / `OPENAGENTS_TEXT_PROP_SEED` scale a run up for bug hunting.
 fn knobs(default_cases: usize, default_seed: u64) -> (usize, u64) {
-    let cases = std::env::var("ZERON_TEXT_PROP_CASES")
+    let cases = openagents_brand::env_var("OPENAGENTS_TEXT_PROP_CASES")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(default_cases);
-    let seed = std::env::var("ZERON_TEXT_PROP_SEED")
+    let seed = openagents_brand::env_var("OPENAGENTS_TEXT_PROP_SEED")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(default_seed);

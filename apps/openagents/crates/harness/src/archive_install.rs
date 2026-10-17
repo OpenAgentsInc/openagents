@@ -3,7 +3,7 @@
 //! server.
 //!
 //! same contract as the npm installs in [`crate::adapter_install`]: the pinned
-//! archive lands ONCE in `~/.zeron/adapters/<name>/<version>`, extraction runs
+//! archive lands ONCE in `~/.openagents/adapters/<name>/<version>`, extraction runs
 //! in a `.tmp-*` sibling that is renamed into place only after the entry
 //! resolves and the marker is written, so a killed download never passes for
 //! a working install.
@@ -38,7 +38,7 @@ const MAX_EXTRACTED_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES: usize = 4_096;
 
 /// an archive release whose integrity is proven after extraction (by a
-/// vendor code signature) rather than by a digest pinned in zeron's source.
+/// vendor code signature) rather than by a digest pinned in openagents's source.
 pub struct VerifiedRelease<'a> {
     pub name: &'a str,
     pub version: &'a str,
@@ -179,7 +179,7 @@ where
     let _ = std::fs::remove_dir_all(&tmp_dir);
     std::fs::create_dir_all(&tmp_dir)?;
     tracing::info!(
-        target: "zeron_harness::adapter_install",
+        target: "openagents_harness::adapter_install",
         url = source.url,
         dir = %tmp_dir.display(),
         "installing {display_name} ACP server"
@@ -464,10 +464,10 @@ mod tests {
     }
 
     /// runs in a child process, since installs resolve through the
-    /// process-wide `ZERON_ADAPTERS_DIR`.
+    /// process-wide `OPENAGENTS_ADAPTERS_DIR`.
     #[test]
     fn verified_installs_commit_only_after_verification_passes() {
-        if std::env::var_os("ZERON_TEST_VERIFIED_INSTALL").is_none() {
+        if openagents_brand::env_var_os("OPENAGENTS_TEST_VERIFIED_INSTALL").is_none() {
             let root = tempfile::tempdir().unwrap();
             let output = std::process::Command::new(std::env::current_exe().unwrap())
                 .args([
@@ -475,8 +475,8 @@ mod tests {
                     "archive_install::tests::verified_installs_commit_only_after_verification_passes",
                     "--nocapture",
                 ])
-                .env("ZERON_ADAPTERS_DIR", root.path())
-                .env("ZERON_TEST_VERIFIED_INSTALL", "1")
+                .env("OPENAGENTS_ADAPTERS_DIR", root.path())
+                .env("OPENAGENTS_TEST_VERIFIED_INSTALL", "1")
                 .output()
                 .unwrap();
             assert!(
@@ -579,7 +579,7 @@ mod tests {
             sha512: "test-digest",
         };
         assert!(installed_entry(&pin).is_none());
-        if std::env::var_os("HOME").is_some() || std::env::var_os("ZERON_ADAPTERS_DIR").is_some() {
+        if std::env::var_os("HOME").is_some() || openagents_brand::env_var_os("OPENAGENTS_ADAPTERS_DIR").is_some() {
             let expected = install_dir(pin.name, pin.version).unwrap().join(pin.entry);
             assert!(expected.ends_with("never-installed-acp/0.0.0-test/server"));
         }

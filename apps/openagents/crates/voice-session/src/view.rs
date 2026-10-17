@@ -2,8 +2,8 @@
 //! state, reduced from the owner stream. Renderer-agnostic so every platform
 //! presents the orchestrator the same way.
 use std::time::{Duration, Instant};
-use zeron_orb::OrbState;
-use zeron_proto::voice::*;
+use openagents_orb::OrbState;
+use openagents_proto::voice::*;
 
 /// The orb for a voice phase and host snapshot. Speaking wins over work and
 /// mute, so a muted user still sees the assistant answer.

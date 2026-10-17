@@ -7,9 +7,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use zeron_doc::{MessagePart, MessageRole, MessageStatus, SessionDoc, SessionMessageEntry};
-use zeron_engine::{EngineCore, HarnessRegistry};
-use zeron_proto::HarnessId;
+use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionDoc, SessionMessageEntry};
+use openagents_engine::{EngineCore, HarnessRegistry};
+use openagents_proto::HarnessId;
 
 const CHAT: &str = "chat-salvage";
 
@@ -48,10 +48,10 @@ async fn blank_journaled_chat_recovers_entries_from_fat_rollback() {
     // the doc itself never gets a single entry, like a post-loss reopen.
     {
         let core = assemble(&dir);
-        let client = zeron_rpc::memory_client(core.rpc_service());
+        let client = openagents_rpc::memory_client(core.rpc_service());
         client
             .call(
-                zeron_rpc::methods::MUTATE,
+                openagents_rpc::methods::MUTATE,
                 serde_json::json!({
                     "op": "createChat",
                     "chatId": CHAT,
@@ -90,7 +90,7 @@ async fn blank_journaled_chat_recovers_entries_from_fat_rollback() {
     .unwrap();
     let fat_bytes = fat.export_snapshot().unwrap();
     {
-        let store = zeron_sync::DocsStore::open(&org_dir).unwrap();
+        let store = openagents_sync::DocsStore::open(&org_dir).unwrap();
         store
             .save_snapshot(&format!("{CHAT}.pre-chat2"), &fat_bytes)
             .unwrap();

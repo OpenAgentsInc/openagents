@@ -3,8 +3,8 @@
 use futures::StreamExt;
 use std::{os::unix::fs::PermissionsExt, time::Duration};
 use tokio::sync::{mpsc, oneshot};
-use zeron_harness::{CancellationToken, Harness, PiHarness, RunControls, SteerMessage};
-use zeron_proto::{AgentEvent, DoneStatus, RunRequest, SandboxLevel, UserInputAnswer};
+use openagents_harness::{CancellationToken, Harness, PiHarness, RunControls, SteerMessage};
+use openagents_proto::{AgentEvent, DoneStatus, RunRequest, SandboxLevel, UserInputAnswer};
 
 fn isolated_pi() -> (tempfile::TempDir, PiHarness) {
     let dir = tempfile::tempdir().unwrap();
@@ -86,7 +86,7 @@ async fn real_pi_mock_lifecycle() {
         let request = RunRequest {
             prompt: prompt.into(),
             harness: None,
-            model: Some("zeron-probe/mock".into()),
+            model: Some("openagents-probe/mock".into()),
             reasoning: None,
             model_options: Default::default(),
             cwd: cwd.display().to_string(),
@@ -187,7 +187,7 @@ async fn real_pi_mock_lifecycle() {
     let request = RunRequest {
         prompt: "after loss".into(),
         harness: None,
-        model: Some("zeron-probe/mock".into()),
+        model: Some("openagents-probe/mock".into()),
         reasoning: None,
         model_options: Default::default(),
         cwd: cwd.display().to_string(),
@@ -260,7 +260,7 @@ async fn real_pi_steering_bursts_share_the_next_model_call() {
     let request = RunRequest {
         prompt: "burst hold".into(),
         harness: None,
-        model: Some("zeron-probe/mock".into()),
+        model: Some("openagents-probe/mock".into()),
         reasoning: None,
         model_options: Default::default(),
         cwd: cwd.display().to_string(),

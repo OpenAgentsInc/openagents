@@ -42,7 +42,7 @@ Make adding a custom theme feel like a short settings task rather than a command
 
 - Update `crates/ui/src/settings/appearance.rs` to simplify the import dialog layout, make import errors visible in the body/footer, collapse technical mapping by default, and restyle installed-theme actions.
 - Add or adjust focused unit coverage for any extracted presentation helpers where practical.
-- Run `cargo fmt --check`, the relevant `zeron-ui` tests/checks, and a local app build.
+- Run `cargo fmt --check`, the relevant `openagents-ui` tests/checks, and a local app build.
 - Verify the settings page and both import states in the local app browser/UI at the desktop viewport shown in the supplied screenshots.
 
 ### Verification tier
@@ -52,8 +52,8 @@ Tier 2: compile and test the affected Rust UI crate, then visually inspect the s
 ### Verification result
 
 - `cargo fmt --check` passes.
-- `cargo check -p zeron-ui` passes with existing workspace warnings.
-- `cargo test -p zeron-ui --lib settings::appearance` passes (4 tests).
+- `cargo check -p openagents-ui` passes with existing workspace warnings.
+- `cargo test -p openagents-ui --lib settings::appearance` passes (4 tests).
 - A packaged debug build was opened on macOS and the Appearance page, installed-theme row, and empty import state were visually inspected at 1365 × 768.
 - The final visual pass found and removed a remaining overflowing helper sentence; long error paths are now explicitly truncated within the dialog.
 
@@ -63,14 +63,14 @@ Tier 2: compile and test the affected Rust UI crate, then visually inspect the s
 > for supported platforms, settings, and validation limits.
 
 - Product goal: capture the frontmost application from a global shortcut and
-  stage screenshot plus semantic application context in a Zeron composer.
+  stage screenshot plus semantic application context in a OpenAgents composer.
 - Visible output: a distinct, removable Appshot card in the destination draft;
   the existing paperclip and ordinary attachment flows remain unchanged.
 - Editable entities: global shortcut, destination policy, staged Appshot, and
   the user's accompanying prompt.
 - Required controls: documented by workflow in
   `docs/research/appshots.md#control-section-inventory`.
-- Export behavior: none. A send reuses Zeron's attachment upload and prompt
+- Export behavior: none. A send reuses OpenAgents's attachment upload and prompt
   transport.
 - Persistence: device-local settings; unsent-capture persistence remains an
   explicit product decision.
@@ -91,10 +91,10 @@ Tier 2: compile and test the affected Rust UI crate, then visually inspect the s
   retains a CoreGraphics fallback for macOS 12/13 and transient failures.
 - Window enumeration is no longer restricted to the current Space. Active
   ScreenCaptureKit windows win, followed by on-screen state and window area.
-- Added an isolated `Zeron Dev.app` workflow with bundle ID
-  `sh.zeron.app.dev`, stable Apple Development signing, its own data directory,
+- Added an isolated `OpenAgents Dev.app` workflow with bundle ID
+  `sh.openagents.app.dev`, stable Apple Development signing, its own data directory,
   and IPC port. It launches through LaunchServices so TCC attributes capture
-  permissions to Zeron Dev rather than the terminal.
+  permissions to OpenAgents Dev rather than the terminal.
 - The isolated data directory and IPC port are embedded in the development
   bundle's `LSEnvironment`, so macOS privacy's “Quit & Reopen” preserves the
   development instance instead of reopening against personal production data.
@@ -115,7 +115,7 @@ Tier 2: compile and test the affected Rust UI crate, then visually inspect the s
   action, optional Accessibility action, and a permission-status refresh.
 - Persistence and transport are unchanged. Application icons are presentation
   metadata only and are never uploaded or serialized into prompts.
-- Verification tier: pure tray-height and prompt tests, full `zeron-ui` unit
+- Verification tier: pure tray-height and prompt tests, full `openagents-ui` unit
   suite, macOS compile/build, and native visual/permission smoke testing.
 
 ## 2026-08-21 — Appshots aspect-ratio and fade refinement
@@ -131,7 +131,7 @@ Tier 2: compile and test the affected Rust UI crate, then visually inspect the s
 - Renderer decision: retain the native GPUI image renderer, but stop depending
   on its intrinsic sizing. Read dimensions from the captured PNG and assign
   exact contained dimensions inside both preview-level and card-level clips.
-- Verification tier: pure PNG/aspect-ratio tests, full `zeron-ui` unit suite,
+- Verification tier: pure PNG/aspect-ratio tests, full `openagents-ui` unit suite,
   macOS build checks, and native composer inspection with landscape and
   portrait captures.
 
@@ -151,7 +151,7 @@ Tier 2: compile and test the affected Rust UI crate, then visually inspect the s
   security-sensitive `UIAccess` privilege.
 - Wayland decision: probe portal versions and advertised targets. Prefer
   Active Window; fall back to the portal window picker. Prefer the Global
-  Shortcuts portal and expose `zeron appshot` for system-managed shortcut
+  Shortcuts portal and expose `openagents appshot` for system-managed shortcut
   configuration when the portal is absent.
 - X11 decision: prefer a portal-advertised Active Window target, then use
   `_NET_ACTIVE_WINDOW`, a passive key grab, direct drawable capture, EWMH

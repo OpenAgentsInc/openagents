@@ -12,11 +12,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
+use openagents_sync::chat_frames::{self as wire, frame_type as kind};
 use serde_json::{Value, json};
 use std::{collections::HashMap, sync::Arc};
 use tokio_postgres::Transaction;
 use uuid::Uuid;
-use zeron_sync::chat_frames::{self as wire, frame_type as kind};
 
 const ROW_LIMIT: usize = 1024 * 1024;
 const CHECKPOINT_LIMIT: usize = 32 * 1024 * 1024;

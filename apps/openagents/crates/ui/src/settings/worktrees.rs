@@ -1,15 +1,15 @@
 //! Settings → General: device-addressed worktree destination settings.
 
 use gpui::{AnyElement, Context, Entity, Render, Task, Window, div, prelude::*, px};
-use zeron_proto::{FolderListing, WorktreeSettings, WorktreeSettingsStatus};
-use zeron_rpc::methods;
+use openagents_proto::{FolderListing, WorktreeSettings, WorktreeSettingsStatus};
+use openagents_rpc::methods;
 
 use super::widgets;
 use crate::icons;
 use crate::popover::Loadable;
 use crate::state::AppState;
 use crate::theme::Theme;
-use zeron_proto::device_paths::{child_folder as child_path, parent_folder as folder_parent};
+use openagents_proto::device_paths::{child_folder as child_path, parent_folder as folder_parent};
 
 pub(super) struct WorktreeSettingsCard {
     state: Entity<AppState>,
@@ -162,7 +162,7 @@ impl WorktreeSettingsCard {
                 .call(method, params)
                 .await
                 .map_err(|error| match error {
-                    zeron_rpc::RpcError::UnknownMethod(_) => {
+                    openagents_rpc::RpcError::UnknownMethod(_) => {
                         "Update OpenAgents on the selected device to configure worktree locations."
                             .to_string()
                     }
@@ -507,7 +507,7 @@ impl Render for WorktreeSettingsCard {
             None => "Loading…".into(),
         }];
         if overridden {
-            meta.push("Set by ZERON_WORKTREES_DIR".into());
+            meta.push("Set by OPENAGENTS_WORKTREES_DIR".into());
         }
         let meta = meta
             .into_iter()

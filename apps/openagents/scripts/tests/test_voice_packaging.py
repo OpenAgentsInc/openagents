@@ -64,7 +64,7 @@ class RuntimePackagingTests(unittest.TestCase):
                 with patch.object(packager.subprocess, 'run') as codesign:
                     packager.install(root / 'source', destination, target)
                 self.assertEqual(codesign.call_count, 2 if target.endswith('apple-darwin') else 0)
-                manifest = json.loads((destination / 'zeron-runtime.json').read_text())
+                manifest = json.loads((destination / 'openagents-runtime.json').read_text())
                 self.assertEqual(manifest['target'], target)
                 for path in source.rglob('*'):
                     if path.is_file():

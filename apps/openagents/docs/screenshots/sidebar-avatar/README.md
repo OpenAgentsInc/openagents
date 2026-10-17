@@ -1,7 +1,7 @@
 Native GPUI screenshots from the isolated sidebar fixture with a synthetic account.
 
 ```sh
-ZERON_SIDEBAR_COMPACT=1 ZERON_SIDEBAR_ACCOUNT=1 cargo run -p zeron-ui --example sidebar-fixture --features project-palette-fixture
+OPENAGENTS_SIDEBAR_COMPACT=1 OPENAGENTS_SIDEBAR_ACCOUNT=1 cargo run -p openagents-ui --example sidebar-fixture --features project-palette-fixture
 ```
 
 The sidebar footer uses a circular 21px avatar button with a 13px circle matching the remote icon and a centered

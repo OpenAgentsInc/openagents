@@ -193,7 +193,7 @@ pub(crate) fn svg_options() -> usvg::Options<'static> {
 }
 
 pub(crate) fn decode_image(mime: &str, bytes: Vec<u8>) -> Result<MediaImage, String> {
-    if bytes.len() > zeron_proto::MAX_WORKSPACE_IMAGE_BYTES {
+    if bytes.len() > openagents_proto::MAX_WORKSPACE_IMAGE_BYTES {
         return Err("Image exceeds preview size limit".into());
     }
     if mime == "image/svg+xml" {
@@ -201,7 +201,7 @@ pub(crate) fn decode_image(mime: &str, bytes: Vec<u8>) -> Result<MediaImage, Str
         let (width, height) = (tree.size().width(), tree.size().height());
         // Re-serialize the parsed tree: scripts, HTML and external resources never reach GPUI.
         let svg = tree.to_string(&usvg::WriteOptions::default());
-        if svg.len() > zeron_proto::MAX_WORKSPACE_IMAGE_BYTES {
+        if svg.len() > openagents_proto::MAX_WORKSPACE_IMAGE_BYTES {
             return Err("Prepared SVG exceeds preview size limit".into());
         }
         // Account the raster that exists, not the largest one any view could
@@ -217,7 +217,7 @@ pub(crate) fn decode_image(mime: &str, bytes: Vec<u8>) -> Result<MediaImage, Str
         };
         return Ok(media.preview_for_view((900.0, 480.0), 2.0));
     }
-    decode_raster_image(bytes, zeron_proto::MAX_WORKSPACE_IMAGE_BYTES)
+    decode_raster_image(bytes, openagents_proto::MAX_WORKSPACE_IMAGE_BYTES)
 }
 
 /// Repository icons retain only a small static thumbnail, even for large source logos.
@@ -225,7 +225,7 @@ pub(crate) fn decode_project_icon(mime: &str, bytes: Vec<u8>) -> Result<MediaIma
     if mime == "image/svg+xml" {
         decode_image(mime, bytes).map(|media| media.for_view((16.0, 16.0), 2.0, 4096))
     } else {
-        decode_raster_image_bounded(bytes, zeron_proto::MAX_WORKSPACE_IMAGE_BYTES, Some(64))
+        decode_raster_image_bounded(bytes, openagents_proto::MAX_WORKSPACE_IMAGE_BYTES, Some(64))
     }
 }
 
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn svg_text_survives_an_unavailable_font() {
-        assert_svg_text_is_visible("Zeron Missing SVG Test Font");
+        assert_svg_text_is_visible("OpenAgents Missing SVG Test Font");
         assert_svg_text_is_visible(".SystemUIFont");
     }
 
@@ -441,7 +441,7 @@ mod tests {
         assert!(
             decode_image(
                 "image/png",
-                vec![0; zeron_proto::MAX_WORKSPACE_IMAGE_BYTES + 1]
+                vec![0; openagents_proto::MAX_WORKSPACE_IMAGE_BYTES + 1]
             )
             .is_err()
         );

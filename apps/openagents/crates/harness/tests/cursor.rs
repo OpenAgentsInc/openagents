@@ -9,8 +9,8 @@ use std::time::Duration;
 use futures::StreamExt;
 use tokio::sync::{mpsc, oneshot};
 
-use zeron_harness::{CancellationToken, CursorHarness, Harness, RunControls, SteerMessage};
-use zeron_proto::{AgentEvent, DoneStatus, HarnessId, RunRequest, SandboxLevel, ToolCall};
+use openagents_harness::{CancellationToken, CursorHarness, Harness, RunControls, SteerMessage};
+use openagents_proto::{AgentEvent, DoneStatus, HarnessId, RunRequest, SandboxLevel, ToolCall};
 
 fn fixture_path() -> PathBuf {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -690,11 +690,11 @@ async fn mcp_injection_reaches_shim_on_new_and_resumed_runs() {
     for resume in [None, Some("agent-1")] {
         let mut req = request("scenario:mcp");
         req.resume = resume.map(str::to_owned);
-        req.mcp = Some(zeron_proto::McpServer {
-            name: "zeron".into(),
-            command: "/path with spaces/zeron".into(),
+        req.mcp = Some(openagents_proto::McpServer {
+            name: "openagents".into(),
+            command: "/path with spaces/openagents".into(),
             args: vec!["mcp".into()],
-            env: [("ZERON_CHAT_ID".into(), "origin-chat".into())].into(),
+            env: [("OPENAGENTS_CHAT_ID".into(), "origin-chat".into())].into(),
         });
         let (controls, _steer, _token) = controls();
         let events = run_to_first_done(&harness(), req, controls).await;

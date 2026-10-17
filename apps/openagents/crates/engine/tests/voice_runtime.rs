@@ -1,8 +1,8 @@
 //! Offline tests for the remote voice protocol against a fake native Codex package.
 use serde_json::json;
-use zeron_engine::{EngineCore, EngineProfile, HarnessRegistry};
-use zeron_proto::HarnessId;
-use zeron_rpc::methods;
+use openagents_engine::{EngineCore, EngineProfile, HarnessRegistry};
+use openagents_proto::HarnessId;
+use openagents_rpc::methods;
 
 #[cfg(unix)]
 fn native_package(root: &std::path::Path) -> std::path::PathBuf {
@@ -33,7 +33,7 @@ async fn native_core(temp: &tempfile::TempDir) -> EngineCore {
     let binary = native_package(&package);
     let registry = std::sync::Arc::new(HarnessRegistry::new());
     registry.register(std::sync::Arc::new(
-        zeron_harness::CodexHarness::new().with_executable(binary),
+        openagents_harness::CodexHarness::new().with_executable(binary),
     ));
     let core = EngineCore::assemble_with_profile(
         EngineProfile::local(&temp.path().join("data")).unwrap(),
@@ -59,10 +59,10 @@ async fn native_core(temp: &tempfile::TempDir) -> EngineCore {
 #[cfg(unix)]
 #[tokio::test]
 async fn remote_failed_prepare_after_rotation_preserves_thread_for_retry() {
-    use zeron_proto::voice::{ORCHESTRATOR_CHAT_PREFIX, remote as wire};
+    use openagents_proto::voice::{ORCHESTRATOR_CHAT_PREFIX, remote as wire};
     let temp = tempfile::tempdir().unwrap();
     let core = native_core(&temp).await;
-    let client = zeron_rpc::memory_client(core.rpc_service());
+    let client = openagents_rpc::memory_client(core.rpc_service());
     let config =
         serde_json::from_value(json!({"harness":"codex","sandbox":"danger-full-access"})).unwrap();
     let mut request = wire::Prepare {
@@ -100,7 +100,7 @@ async fn remote_failed_prepare_after_rotation_preserves_thread_for_retry() {
         .await
         .unwrap_err();
     assert!(
-        matches!(failure, zeron_rpc::RpcError::Failed(ref message)
+        matches!(failure, openagents_rpc::RpcError::Failed(ref message)
             if message == "voice unavailable: Unsupported"),
         "unexpected preparation failure: {failure:?}"
     );
@@ -109,7 +109,7 @@ async fn remote_failed_prepare_after_rotation_preserves_thread_for_retry() {
         .read_chats()
         .unwrap()
         .into_iter()
-        .filter(|c| zeron_proto::voice::is_orchestrator_chat(&c.id))
+        .filter(|c| openagents_proto::voice::is_orchestrator_chat(&c.id))
         .collect();
     assert_eq!(
         remaining.len(),
@@ -153,7 +153,7 @@ async fn remote_failed_prepare_after_rotation_preserves_thread_for_retry() {
 #[cfg(unix)]
 #[tokio::test]
 async fn remote_voice_full_control_flow_and_idempotent_prepare_without_host_audio() {
-    use zeron_proto::voice::{VoiceEvent, remote as wire};
+    use openagents_proto::voice::{VoiceEvent, remote as wire};
     let temp = tempfile::tempdir().unwrap();
     let core = native_core(&temp).await;
     std::fs::remove_file(
@@ -161,7 +161,7 @@ async fn remote_voice_full_control_flow_and_idempotent_prepare_without_host_audi
             .join("codex-package/codex-resources/voice/bin/codex-voice-host"),
     )
     .unwrap();
-    let client = zeron_rpc::memory_client(core.rpc_service());
+    let client = openagents_rpc::memory_client(core.rpc_service());
     let request = wire::Prepare {
         attempt_key: wire::AttemptKey::new(),
         config: serde_json::from_value(json!({"harness":"codex","sandbox":"danger-full-access"}))
@@ -169,7 +169,7 @@ async fn remote_voice_full_control_flow_and_idempotent_prepare_without_host_audi
         voice: None,
     };
     let envelope = |p: serde_json::Value| json!({"targetDeviceId":core.device_id,"payload":p});
-    let info: zeron_proto::EngineInfo = client
+    let info: openagents_proto::EngineInfo = client
         .call_as(methods::ENGINE_INFO, json!({}))
         .await
         .unwrap();
@@ -202,7 +202,7 @@ async fn remote_voice_full_control_flow_and_idempotent_prepare_without_host_audi
             .unwrap()
             .title
             .as_deref(),
-        Some(zeron_proto::voice::ORCHESTRATOR_CHAT_TITLE)
+        Some(openagents_proto::voice::ORCHESTRATOR_CHAT_TITLE)
     );
     let mut owner = client
         .subscribe_checked(
@@ -286,10 +286,10 @@ async fn remote_voice_full_control_flow_and_idempotent_prepare_without_host_audi
 #[cfg(unix)]
 #[tokio::test]
 async fn remote_cancel_before_prepare_and_owner_drop_preserve_other_calls() {
-    use zeron_proto::voice::remote as wire;
+    use openagents_proto::voice::remote as wire;
     let temp = tempfile::tempdir().unwrap();
     let core = native_core(&temp).await;
-    let client = zeron_rpc::memory_client(core.rpc_service());
+    let client = openagents_rpc::memory_client(core.rpc_service());
     let wrap = |p: serde_json::Value| json!({"targetDeviceId":core.device_id,"payload":p});
     let config =
         serde_json::from_value(json!({"harness":"codex","sandbox":"danger-full-access"})).unwrap();
@@ -329,7 +329,7 @@ async fn remote_cancel_before_prepare_and_owner_drop_preserve_other_calls() {
     })
     .await
     .unwrap();
-    let _: zeron_proto::EngineInfo = client
+    let _: openagents_proto::EngineInfo = client
         .call_as(methods::ENGINE_INFO, json!({}))
         .await
         .unwrap();
@@ -359,8 +359,8 @@ mod voice_relay;
 #[tokio::test]
 async fn remote_voice_crosses_two_engines_and_owner_drop_releases_host() {
     use std::{sync::Arc, time::Duration};
-    use zeron_proto::voice::{VoiceEvent, remote as wire};
-    use zeron_rpc::{HostRelay, HostRelayConfig, LinkCache, LinkCacheConfig, StaticToken};
+    use openagents_proto::voice::{VoiceEvent, remote as wire};
+    use openagents_rpc::{HostRelay, HostRelayConfig, LinkCache, LinkCacheConfig, StaticToken};
     let temp = tempfile::tempdir().unwrap();
     let host = native_core(&temp).await;
     std::fs::remove_file(
@@ -389,7 +389,7 @@ async fn remote_voice_crosses_two_engines_and_owner_drop_releases_host() {
     let mut links = LinkCacheConfig::new(url, Arc::new(StaticToken("test".into())));
     links.probe_timeout = Duration::from_secs(3);
     viewer.set_links(LinkCache::new(links));
-    let client = zeron_rpc::memory_client(viewer.rpc_service());
+    let client = openagents_rpc::memory_client(viewer.rpc_service());
     let wrap = |p: serde_json::Value| json!({"targetDeviceId":host.device_id,"payload":p});
     tokio::time::timeout(Duration::from_secs(12), async {
         loop {
@@ -472,7 +472,7 @@ async fn remote_voice_crosses_two_engines_and_owner_drop_releases_host() {
     })
     .await
     .unwrap();
-    let info: zeron_proto::EngineInfo = client
+    let info: openagents_proto::EngineInfo = client
         .call_as(
             methods::ENGINE_INFO,
             json!({"targetDeviceId":host.device_id}),

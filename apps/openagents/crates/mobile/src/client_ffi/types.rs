@@ -1,4 +1,4 @@
-//! FFI records/enums mirroring `zeron-client`'s view models, plus the
+//! FFI records/enums mirroring `openagents-client`'s view models, plus the
 //! conversions both ways. Plain data: Swift/Kotlin get value types.
 //!
 //! Wire-string ids (harness `claude-code`, effort `xhigh`) stay strings so a
@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use zeron_client as zc;
+use openagents_client as zc;
 
 // ── errors ────────────────────────────────────────────────────────────────
 
@@ -804,9 +804,9 @@ impl From<&zc::ChatConfig> for ChatConfig {
                 })
                 .collect(),
             sandbox: match c.sandbox {
-                zeron_proto::SandboxLevel::ReadOnly => SandboxLevel::ReadOnly,
-                zeron_proto::SandboxLevel::WorkspaceWrite => SandboxLevel::WorkspaceWrite,
-                zeron_proto::SandboxLevel::DangerFullAccess => SandboxLevel::DangerFullAccess,
+                openagents_proto::SandboxLevel::ReadOnly => SandboxLevel::ReadOnly,
+                openagents_proto::SandboxLevel::WorkspaceWrite => SandboxLevel::WorkspaceWrite,
+                openagents_proto::SandboxLevel::DangerFullAccess => SandboxLevel::DangerFullAccess,
             },
         }
     }
@@ -830,9 +830,9 @@ impl TryFrom<ChatConfig> for zc::ChatConfig {
                 .map(|(k, v)| (k, serde_json::Value::String(v)))
                 .collect(),
             sandbox: match c.sandbox {
-                SandboxLevel::ReadOnly => zeron_proto::SandboxLevel::ReadOnly,
-                SandboxLevel::WorkspaceWrite => zeron_proto::SandboxLevel::WorkspaceWrite,
-                SandboxLevel::DangerFullAccess => zeron_proto::SandboxLevel::DangerFullAccess,
+                SandboxLevel::ReadOnly => openagents_proto::SandboxLevel::ReadOnly,
+                SandboxLevel::WorkspaceWrite => openagents_proto::SandboxLevel::WorkspaceWrite,
+                SandboxLevel::DangerFullAccess => openagents_proto::SandboxLevel::DangerFullAccess,
             },
         })
     }
@@ -1077,10 +1077,10 @@ pub struct FileMatch {
     pub is_dir: bool,
 }
 
-/// The canonical mention link the host understands (`[name](zeron-file:path)`).
+/// The canonical mention link the host understands (`[name](openagents-file:path)`).
 #[uniffi::export]
 pub fn file_mention_link(path: String, is_dir: bool) -> String {
-    zeron_proto::file_mentions::local_file_link(&path, is_dir)
+    openagents_proto::file_mentions::local_file_link(&path, is_dir)
 }
 
 /// Which session notifications this device wants.

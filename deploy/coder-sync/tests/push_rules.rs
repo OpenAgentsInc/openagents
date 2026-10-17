@@ -1,7 +1,7 @@
 use coder_sync::server::notifications::{Category, chat_title, notification_for, parse_prefs};
+use openagents_doc::RegistryRow;
+use openagents_proto::view::SESSION_STALE_MS;
 use serde_json::{Value, json};
-use zeron_doc::RegistryRow;
-use zeron_proto::view::SESSION_STALE_MS;
 const NOW: i64 = 1_800_000_000_000;
 fn session(status: &str, turn: Option<&str>, at: i64) -> RegistryRow {
     let mut fields = json!({"chatId":"c1","status":status,"updatedAt":at});

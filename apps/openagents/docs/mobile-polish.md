@@ -43,7 +43,7 @@ when inspecting a large history. VoiceOver page scrolling and Earlier/Later
 messages actions expose adjacent pages without building the entire transcript.
 
 The visual pass adopts Anara iOS's 17pt chat-body scale and larger secondary
-labels, while retaining Zeron's Geist fonts and desktop palette. Code line
+labels, while retaining OpenAgents's Geist fonts and desktop palette. Code line
 heights and list markers scale with Dynamic Type. Tool calls use the desktop
 activity rail with quiet group summaries, per-tool failure labels, expandable
 commands, and copy actions. Core composer and jump controls have 44pt targets
@@ -57,12 +57,12 @@ selection or dismissal. The menu itself now owns its glass surface and morph.
 
 ```sh
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-xcodebuild -project apps/ios/Zeron.xcodeproj -scheme Zeron \
+xcodebuild -project apps/ios/OpenAgents.xcodeproj -scheme OpenAgents \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 
-`ZeronTests/TranscriptFollowTests` checks follow state independently of layout.
-`ZeronTests/TranscriptLayoutTests` mounts the real SwiftUI transcript in a
+`OpenAgentsTests/TranscriptFollowTests` checks follow state independently of layout.
+`OpenAgentsTests/TranscriptLayoutTests` mounts the real SwiftUI transcript in a
 simulator window and measures physical tail-row and viewport frames. Debug probes
 are enabled only by these tests and compile to no-ops in release builds.
 
@@ -80,7 +80,7 @@ disconnect it in the menu: XCTest typing can force the software keyboard open
 even when ordinary editor taps would leave it hidden. The keyboard visibility
 assertion catches that setup problem instead of silently testing only the composer.
 
-`ZeronUITests/MobilePolishTests` exercises actual project selection/dismissal,
+`OpenAgentsUITests/MobilePolishTests` exercises actual project selection/dismissal,
 session navigation, scroll gestures, jump-to-latest, keyboard/composer changes,
 tool disclosures, model picking, sending, question entry, new-session creation,
 cancelled back swipes while streaming, user-message folding, and device rotation. Named screenshot

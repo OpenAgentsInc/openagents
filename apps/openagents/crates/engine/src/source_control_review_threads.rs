@@ -1,7 +1,7 @@
 //! Inline feedback is a separate, doubly paginated GitHub connection.
 use super::*;
 use serde_json::{Value, json};
-use zeron_proto::{ChangeRequestComment, ChangeRequestReviewThread};
+use openagents_proto::{ChangeRequestComment, ChangeRequestReviewThread};
 
 const COMMENT_FIELDS: &str =
     "id url body createdAt author { login } viewerDidAuthor replyTo { id }";

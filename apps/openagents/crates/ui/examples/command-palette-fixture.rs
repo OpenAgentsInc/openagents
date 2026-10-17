@@ -1,6 +1,6 @@
 //! Isolated, offline command palette screenshot fixture. Run on a dedicated display.
 use gpui::{AppContext, Bounds, WindowBounds, WindowOptions, px, size};
-use zeron_ui::*;
+use openagents_ui::*;
 
 fn main() -> anyhow::Result<()> {
     let runtime = tokio::runtime::Runtime::new()?;
@@ -12,20 +12,20 @@ fn main() -> anyhow::Result<()> {
         gpui_tokio::init(cx); gpui_base::init(cx);
         let mut settings = settings::UiSettings::default();
         settings.sidebar_show_branch = true;
-        settings.surface = zeron_theme::SurfacePreference::Frosted;
+        settings.surface = openagents_theme::SurfacePreference::Frosted;
         settings.save(&data).unwrap();
         settings::init(settings.clone(), data.clone(), cx);
         let fonts = typography::register_fonts(cx);
         typography::init(settings.ui_font_family.clone(), settings.ui_font_size, settings.terminal_font_family.clone(), settings.terminal_font_size, settings.code_font_family.clone(), settings.code_font_size, fonts, cx);
         theme_library::init(data.clone(), cx);
-        appearance::init(if std::env::var_os("ZERON_PALETTE_LIGHT").is_some() { appearance::AppearanceMode::Light } else { appearance::AppearanceMode::Dark }, settings.theme_selection, settings.accent, settings.surface, cx);
+        appearance::init(if openagents_brand::env_var_os("OPENAGENTS_PALETTE_LIGHT").is_some() { appearance::AppearanceMode::Light } else { appearance::AppearanceMode::Dark }, settings.theme_selection, settings.accent, settings.surface, cx);
         history::init(settings.git_history_columns, settings.git_history_column_widths,
             settings.git_history_column_order, settings.git_history_author_display, cx);
         composer::init(cx, settings.composer_send_behavior); terminal::panel::init(cx); app_menus::init(cx);
         let state = cx.new(|_| {
             let mut s = state::AppState::new();
-            s.connection = zeron_proto::view::ConnectionStatus::Ready;
-            s.workspace_scope = Some(zeron_proto::WorkspaceScope::Local);
+            s.connection = openagents_proto::view::ConnectionStatus::Ready;
+            s.workspace_scope = Some(openagents_proto::WorkspaceScope::Local);
             s.local_device_id = Some("local".into());
             s.devices = vec![serde_json::from_value(serde_json::json!({"id":"local","name":"This device","platform":std::env::consts::OS,"lastSeenAt":null})).unwrap()];
             s.selected_chat = Some("browser-fixture".into()); s.selected_space = Some("project".into());
@@ -38,7 +38,7 @@ fn main() -> anyhow::Result<()> {
                 chat.id = format!("chat-{ix}");
                 chat.title = Some((*title).into());
                 chat.branch = Some(format!("fieldnotes/{}", title.to_lowercase().replace(' ', "-")));
-                chat.source_context = Some(zeron_proto::ConversationSourceContext {
+                chat.source_context = Some(openagents_proto::ConversationSourceContext {
                     checkout_id: "fixture-checkout".into(), repo_root: "/tmp/fieldnotes".into(),
                     cwd: "/tmp/fieldnotes".into(), branch: chat.branch.clone().unwrap(),
                     head_sha: None, observed_at: chrono::Utc::now(),

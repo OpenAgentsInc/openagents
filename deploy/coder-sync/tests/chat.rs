@@ -2,15 +2,15 @@ use coder_sync::server::{
     self, StateData, config::AuthMode, db::Database, rooms::Rooms, storage::Bucket,
 };
 use futures::{SinkExt, StreamExt, future::BoxFuture};
+use openagents_sync::{
+    ChatClient, ChatDocSink, CheckpointFetcher, StaticUrl, SyncError,
+    chat_client::{ChatTransport, RowImportOutcome},
+    chat_frames::{self as wire, frame_type as kind},
+};
 use serde_json::{Value, json};
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
-};
-use zeron_sync::{
-    ChatClient, ChatDocSink, CheckpointFetcher, StaticUrl, SyncError,
-    chat_client::{ChatTransport, RowImportOutcome},
-    chat_frames::{self as wire, frame_type as kind},
 };
 
 #[test]

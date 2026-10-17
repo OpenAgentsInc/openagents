@@ -1,5 +1,5 @@
 use super::*;
-use zeron_proto::voice::{VoiceRejection, remote as wire};
+use openagents_proto::voice::{VoiceRejection, remote as wire};
 
 pub(super) fn handles(method: &str) -> bool {
     matches!(

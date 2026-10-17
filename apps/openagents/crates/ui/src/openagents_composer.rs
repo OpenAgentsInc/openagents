@@ -3,7 +3,7 @@ use crate::{
     composer::{ComposerInput, ComposerInputEvent},
     theme::Theme,
 };
-use coder_account::{openagents::ChatSource, reader::Reader, turns::Turns};
+use openagents_account::{openagents::ChatSource, reader::Reader, turns::Turns};
 use gpui::{prelude::*, *};
 use gpui_tokio::Tokio;
 use std::{future::Future, sync::Arc};

@@ -1,6 +1,6 @@
 # Browser on Linux
 
-The sidebar browser requires the distribution's WebKitGTK 4.1 and JSON-GLib runtime packages, including when using a prebuilt Zeron release. The Linux installer does not currently install or validate these dependencies; install them separately before opening a browser tab.
+The sidebar browser requires the distribution's WebKitGTK 4.1 and JSON-GLib runtime packages, including when using a prebuilt OpenAgents release. The Linux installer does not currently install or validate these dependencies; install them separately before opening a browser tab.
 
 On Ubuntu or Debian:
 
@@ -14,7 +14,7 @@ On Fedora:
 sudo dnf install webkit2gtk4.1 json-glib
 ```
 
-Zeron starts its browser helper when a page is first opened. The main application does not link to GTK or WebKit, so other app features remain available if the browser runtime is missing. WebKit runs in a separate process and uses a persistent website-data context shared by tabs and windows in the same Zeron profile. Persistent cookies, localStorage and IndexedDB survive closing tabs and restarting Zeron. See [browser profiles and login persistence](browser-profiles.md) for storage locations, profile isolation, and regression tests.
+OpenAgents starts its browser helper when a page is first opened. The main application does not link to GTK or WebKit, so other app features remain available if the browser runtime is missing. WebKit runs in a separate process and uses a persistent website-data context shared by tabs and windows in the same OpenAgents profile. Persistent cookies, localStorage and IndexedDB survive closing tabs and restarting OpenAgents. See [browser profiles and login persistence](browser-profiles.md) for storage locations, profile isolation, and regression tests.
 
 The helper sends live offscreen frames to GPUI, which draws the page alongside the rest of the app. Both X11 and Wayland use this path, including clipping, sidebar transitions, tooltips, and frosted overlays. It uses CPU-addressable frames rather than embedding a separate native browser window. Animated pages therefore incur frame-copy and texture-upload work.
 

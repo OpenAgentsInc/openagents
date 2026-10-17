@@ -107,7 +107,7 @@ impl SessionFixture {
             include_str!("fixtures/fake-cursor-sdk.mjs"),
         )
         .unwrap();
-        let source = std::env::var_os("ZERON_CURSOR_TEST_SHIM")
+        let source = openagents_brand::env_var_os("OPENAGENTS_CURSOR_TEST_SHIM")
             .map(|path| std::fs::read_to_string(path).unwrap())
             .unwrap_or_else(|| include_str!("../src/cursor/shim.mjs").to_owned());
         std::fs::write(dir.path().join("shim.mjs"), source).unwrap();
@@ -163,9 +163,9 @@ impl SessionFixture {
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
         let mut child = tokio::process::Command::new("node")
             .arg(self.dir.path().join("shim.mjs"))
-            .env("ZERON_CURSOR_STATE_DIR", self.dir.path().join("state"))
+            .env("OPENAGENTS_CURSOR_STATE_DIR", self.dir.path().join("state"))
             .env(
-                "ZERON_CURSOR_NATIVE_STEER_ONLY",
+                "OPENAGENTS_CURSOR_NATIVE_STEER_ONLY",
                 if native_only { "1" } else { "0" },
             )
             .stdin(Stdio::piped())
@@ -318,7 +318,7 @@ async fn engine_death_does_not_leave_an_orphan_owning_the_conversation() {
     let mut engine = tokio::process::Command::new("node")
         .arg(parent)
         .arg(fixture.dir.path().join("shim.mjs"))
-        .env("ZERON_CURSOR_STATE_DIR", fixture.dir.path().join("state"))
+        .env("OPENAGENTS_CURSOR_STATE_DIR", fixture.dir.path().join("state"))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
@@ -444,7 +444,7 @@ async fn repeated_startup_failures_retain_all_user_messages_without_nesting_or_d
     let store =
         std::fs::read_to_string(fixture.dir.path().join("state/by-agent/agent-fixture")).unwrap();
     let receipt: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(std::path::Path::new(store.trim()).join(".zeron-user-receipt.json"))
+        &std::fs::read(std::path::Path::new(store.trim()).join(".openagents-user-receipt.json"))
             .unwrap(),
     )
     .unwrap();
@@ -470,7 +470,7 @@ async fn corrupt_interrupted_receipt_fails_before_sending_a_contextless_prompt()
     let store =
         std::fs::read_to_string(fixture.dir.path().join("state/by-agent/agent-fixture")).unwrap();
     let root = std::path::Path::new(store.trim());
-    std::fs::write(root.join(".zeron-user-receipt.json"), "{\"version\":999}").unwrap();
+    std::fs::write(root.join(".openagents-user-receipt.json"), "{\"version\":999}").unwrap();
     let (mut child, stdin, mut lines) = fixture.start("must not send", true).await;
     let error = frame(&mut lines).await;
     assert_eq!(error["status"], "error");
@@ -530,8 +530,8 @@ async fn mcp_injection_reaches_sdk_on_create_and_resume_with_fresh_identity() {
                 "normal",
                 resume,
                 serde_json::json!({
-                    "name": "zeron", "command": "/path with spaces/zeron", "args": ["mcp"],
-                    "env": {"ZERON_CHAT_ID": chat, "ZERON_IPC_PORT": "27699"},
+                    "name": "openagents", "command": "/path with spaces/openagents", "args": ["mcp"],
+                    "env": {"OPENAGENTS_CHAT_ID": chat, "OPENAGENTS_IPC_PORT": "27699"},
                 }),
             )
             .await;
@@ -543,18 +543,18 @@ async fn mcp_injection_reaches_sdk_on_create_and_resume_with_fresh_identity() {
             &std::fs::read(fixture.dir.path().join("mcp-options.json")).unwrap(),
         )
         .unwrap();
-        assert_eq!(options["mcpServers"]["zeron"]["type"], "stdio");
+        assert_eq!(options["mcpServers"]["openagents"]["type"], "stdio");
         assert_eq!(
-            options["mcpServers"]["zeron"]["command"],
-            "/path with spaces/zeron"
+            options["mcpServers"]["openagents"]["command"],
+            "/path with spaces/openagents"
         );
         assert_eq!(
-            options["mcpServers"]["zeron"]["args"],
+            options["mcpServers"]["openagents"]["args"],
             serde_json::json!(["mcp"])
         );
-        assert_eq!(options["mcpServers"]["zeron"]["env"]["ZERON_CHAT_ID"], chat);
+        assert_eq!(options["mcpServers"]["openagents"]["env"]["OPENAGENTS_CHAT_ID"], chat);
         assert_eq!(
-            options["mcpServers"]["zeron"]["env"]["ZERON_IPC_PORT"],
+            options["mcpServers"]["openagents"]["env"]["OPENAGENTS_IPC_PORT"],
             "27699"
         );
         // Never "project"/"all": the SDK skips MCP approvals, so a repo's

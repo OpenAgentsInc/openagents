@@ -1,5 +1,5 @@
 [package]
-name = "zeron-engine"
+name = "openagents-engine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,16 +10,16 @@ publish.workspace = true
 upstream-workos = []
 
 [dependencies]
-coder-account.workspace = true
-coder-brand.workspace = true
-zeron-preview.workspace = true
-zeron-proto.workspace = true
-zeron-doc.workspace = true
-zeron-sync.workspace = true
-zeron-harness.workspace = true
-zeron-rpc.workspace = true
-zeron-update.workspace = true
-zeron-visual.workspace = true
+openagents-account.workspace = true
+openagents-brand.workspace = true
+openagents-preview.workspace = true
+openagents-proto.workspace = true
+openagents-doc.workspace = true
+openagents-sync.workspace = true
+openagents-harness.workspace = true
+openagents-rpc.workspace = true
+openagents-update.workspace = true
+openagents-visual.workspace = true
 loro.workspace = true
 tokio.workspace = true
 futures.workspace = true
@@ -54,11 +54,11 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Securit
 [dev-dependencies]
 axum = "0.8"
 tracing-subscriber.workspace = true
-zeron-mcp.workspace = true
-zeron-harness = { workspace = true, features = ["installer-fixture"] }
+openagents-mcp.workspace = true
+openagents-harness = { workspace = true, features = ["installer-fixture"] }
 # Paused-clock tests (the 30-minute idle reaper).
 tokio = { workspace = true, features = ["test-util"] }
 zip.workspace = true
 tokio-tungstenite.workspace = true
 # In-process registry server for the two-engine workspace integration tests.
-zeron-sync = { workspace = true, features = ["mock-server"] }
+openagents-sync = { workspace = true, features = ["mock-server"] }

@@ -1,7 +1,7 @@
-//! The app shell (zeron `__root.tsx`): sidebar column + main panel + optional
+//! The app shell (openagents `__root.tsx`): sidebar column + main panel + optional
 //! right "Changes" pane, plus the boot splash and the connection gate.
 //!
-//! Layout is zeron's: collapsible drag-resizable sidebar (224–400px, default
+//! Layout is openagents's: collapsible drag-resizable sidebar (224–400px, default
 //! 256) with a gentle 180–240ms width transition; main panel with an h-11 header,
 //! content outlet, and a reserved h-6 status strip so later content never
 //! shifts; right pane scaffold (360px floor, default 520), hidden by default.
@@ -23,9 +23,9 @@ use gpui::{
 };
 
 use gpui_tokio::Tokio;
-use zeron_engine::InstanceLock;
-use zeron_proto::{AuthState, ChatConfig, HarnessId, WorkspaceScope};
-use zeron_rpc::methods;
+use openagents_engine::InstanceLock;
+use openagents_proto::{AuthState, ChatConfig, HarnessId, WorkspaceScope};
+use openagents_rpc::methods;
 
 use crate::changes::{Changes, ChangesEvent, DiscardWorkingTreeRequest};
 use crate::composer::{Composer, ComposerEvent, ComposerInput, ComposerInputEvent};
@@ -100,8 +100,8 @@ use spaces::{AddSpaceFlow, RenameSpaceDialog};
 /// `connected` already includes the engine's degradation grace. A brief
 /// focus-triggered dial needs no sidebar status; queued changes or a sustained
 /// outage still deserve one.
-fn chat_sync_pill_caption(chat: &zeron_proto::ChatConnectivity) -> Option<&'static str> {
-    use zeron_proto::ChatSyncState as S;
+fn chat_sync_pill_caption(chat: &openagents_proto::ChatConnectivity) -> Option<&'static str> {
+    use openagents_proto::ChatSyncState as S;
     let sustained_or_queued = !chat.connected || chat.pending_pushes > 0;
     match chat.sync_state {
         S::Waiting if sustained_or_queued => Some("Sync queued — changes are saved"),
@@ -262,7 +262,7 @@ fn conversation_width(viewport: f32, sidebar: f32, right: f32) -> f32 {
 /// harness runs in (a worktree chat's worktree). Projectless `~` chats have
 /// none. Deliberately not `source_context.repo_root`: that is canonicalized
 /// (symlinks resolved, `\\?\` verbatim prefix on Windows hosts).
-fn chat_copy_path(chat: &zeron_proto::Chat) -> Option<&str> {
+fn chat_copy_path(chat: &openagents_proto::Chat) -> Option<&str> {
     chat.cwd
         .as_deref()
         .map(str::trim)
@@ -319,7 +319,7 @@ pub struct SelectPaletteTab(pub usize);
 // ---------------------------------------------------------------------------
 
 /// Where the top-left window-control cluster starts, in px from the window's
-/// left edge (zeron window-controls.tsx: `left: fullscreen ? 12 : 88`). The
+/// left edge (openagents window-controls.tsx: `left: fullscreen ? 12 : 88`). The
 /// frameless hiddenInset chrome puts the macOS traffic lights at {14,15};
 /// fullscreen hides them and the cluster reclaims the inset.
 pub fn titlebar_cluster_start(fullscreen: bool) -> f32 {
@@ -368,7 +368,7 @@ pub fn caption_buttons_width(count: usize) -> f32 {
 }
 
 /// Where the cluster's first button starts, from the window's left edge.
-/// `linux_left_captions` is the number of caption buttons zeron draws at the
+/// `linux_left_captions` is the number of caption buttons openagents draws at the
 /// top-left on Linux (GNOME `close:…` layouts) — the app cluster follows them
 /// at the shared 2px rhythm.
 pub fn cluster_buttons_start(is_macos: bool, fullscreen: bool, linux_left_captions: usize) -> f32 {
@@ -415,7 +415,7 @@ pub fn apply_keymap(
     cx.clear_key_bindings();
     // `clear_key_bindings` also removes the contextual editing actions that
     // gpui-base installed at startup. Reinitialize the component layer before
-    // rebuilding Zeron's bindings so the file editor keymap remains active.
+    // rebuilding OpenAgents's bindings so the file editor keymap remains active.
     gpui_base::init(cx);
     crate::composer::init(cx, composer_send_behavior);
     cx.bind_keys([KeyBinding::new(
@@ -596,7 +596,7 @@ impl SettingsSection {
         }
     }
 
-    /// Stable name shared by `ui-settings.json` and `ZERON_OPEN_ROUTE`.
+    /// Stable name shared by `ui-settings.json` and `OPENAGENTS_OPEN_ROUTE`.
     fn slug(self) -> &'static str {
         match self {
             SettingsSection::Devices => "devices",
@@ -637,7 +637,7 @@ impl SettingsSection {
         matches!(self, Self::Harnesses | Self::Files)
     }
 
-    /// Sidebar + header label (zeron settings-sidebar.tsx SECTIONS / __root.tsx
+    /// Sidebar + header label (openagents settings-sidebar.tsx SECTIONS / __root.tsx
     /// `settingsTitle` — the same strings in both places).
     pub fn label(self) -> &'static str {
         match self {
@@ -672,7 +672,7 @@ impl<'de> serde::Deserialize<'de> for SettingsSection {
     }
 }
 
-/// The section a `ZERON_OPEN_ROUTE` value opens: bare `settings` reopens the
+/// The section a `OPENAGENTS_OPEN_ROUTE` value opens: bare `settings` reopens the
 /// remembered section, `settings/<slug>` names one (and so becomes the
 /// remembered one). `None` for anything else, including unknown slugs.
 fn settings_open_route(route: &str, remembered: SettingsSection) -> Option<SettingsSection> {
@@ -740,7 +740,7 @@ fn workspace_file_title(path: &str) -> SharedString {
     path.rsplit('/').next().unwrap_or(path).to_string().into()
 }
 
-/// Per-chat panel open flags (zeron parity: `sessionPanels` — the terminal and
+/// Per-chat panel open flags (openagents parity: `sessionPanels` — the terminal and
 /// changes panels open *per session*, in memory only; heights and every other
 /// persisted setting stay global).
 ///
@@ -841,12 +841,12 @@ impl SessionPanels {
     }
 }
 
-/// One route-history entry (zeron parity: the renderer's TanStack memory
+/// One route-history entry (openagents parity: the renderer's TanStack memory
 /// history — every route the user visited, browser-style).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NavEntry {
     Home,
-    SavedHistory(coder_account::openagents::ChatSummary),
+    SavedHistory(openagents_account::openagents::ChatSummary),
     /// A chat route; the id of the selected chat ("" = the new-chat canvas).
     Chat(String),
     PullRequests,
@@ -860,7 +860,7 @@ pub enum NavEntry {
 }
 
 /// Browser-style navigation history for the titlebar back/forward buttons
-/// (zeron window-controls.tsx semantics): every route change pushes an entry;
+/// (openagents window-controls.tsx semantics): every route change pushes an entry;
 /// Back/Forward walk the stack without changing it; pushing while behind the
 /// tip truncates the entries ahead (a new branch, exactly like a browser).
 #[derive(Debug)]
@@ -894,7 +894,7 @@ impl NavHistory {
     }
 
     /// Swap the current entry in place without growing the stack — the native
-    /// equivalent of a `replace: true` navigation (zeron's boot redirect from
+    /// equivalent of a `replace: true` navigation (openagents's boot redirect from
     /// `/` into the last-used chat leaves no dead Back target behind).
     pub fn replace(&mut self, entry: NavEntry) {
         self.entries[self.index] = entry;
@@ -923,7 +923,7 @@ impl NavHistory {
     }
 
     /// Memory history keeps every entry, so "behind the last entry" is exactly
-    /// "can go forward" (zeron window-controls.tsx).
+    /// "can go forward" (openagents window-controls.tsx).
     pub fn can_forward(&self) -> bool {
         self.index + 1 < self.entries.len()
     }
@@ -1812,10 +1812,10 @@ fn account_menu_action(scope: Option<WorkspaceScope>, flow: SyncFlow) -> Option<
 }
 
 /// Coder Desktop: whether hosted sign-in is configured (off by default; see
-/// `coder_brand::WORKOS_CLIENT_ID`, dev override `ZERON_WORKOS_CLIENT_ID`).
+/// `openagents_brand::WORKOS_CLIENT_ID`, dev override `OPENAGENTS_WORKOS_CLIENT_ID`).
 fn coder_sign_in_available() -> bool {
-    coder_brand::WORKOS_CLIENT_ID.is_some()
-        || std::env::var("ZERON_WORKOS_CLIENT_ID").is_ok_and(|id| !id.trim().is_empty())
+    openagents_brand::WORKOS_CLIENT_ID.is_some()
+        || openagents_brand::env_var("OPENAGENTS_WORKOS_CLIENT_ID").is_ok_and(|id| !id.trim().is_empty())
 }
 
 /// The sidebar footer's profile label and the account menu's identity line.
@@ -1824,7 +1824,7 @@ fn coder_sign_in_available() -> bool {
 fn sidebar_account_identity(
     scope: Option<WorkspaceScope>,
     flow: SyncFlow,
-    user: Option<&zeron_proto::UserProfile>,
+    user: Option<&openagents_proto::UserProfile>,
 ) -> (SharedString, SharedString) {
     match scope {
         Some(WorkspaceScope::Local) => {
@@ -1906,7 +1906,7 @@ struct OrgGateUi {
 /// read-only transcript entity whose drop tears the view down.
 struct SubagentTab {
     doc_id: String,
-    harness: Option<zeron_proto::HarnessId>,
+    harness: Option<openagents_proto::HarnessId>,
     title: SharedString,
     transcript: Entity<Transcript>,
     /// Keeps a frozen-blob fetch alive (it falls back to a live doc watch).
@@ -1975,7 +1975,7 @@ pub struct Shell {
     /// Above the composer, only while the orchestrator's own chat is open.
     voice_composer_orb: Entity<crate::orb::Orb>,
     /// The stage caption's streaming veil (shared with mobile).
-    voice_caption: zeron_veil::CaptionVeil,
+    voice_caption: openagents_veil::CaptionVeil,
     voice_stage_focus: FocusHandle,
     voice_stage_was_open: bool,
     /// Last rendered route, used to distinguish navigation from staying in Settings.
@@ -2238,8 +2238,8 @@ pub struct Shell {
     /// Last observed `window.is_window_active()` — rising edge fires a
     /// ProbeSync so a broadcast-deaf room heals as the user looks at the app.
     was_window_active: bool,
-    /// Dev/testing knobs (`ZERON_OPEN_DIALOG`, `ZERON_FORCE_GATE`,
-    /// `ZERON_DEMO_UPLOAD`) — see [`Shell::new`].
+    /// Dev/testing knobs (`OPENAGENTS_OPEN_DIALOG`, `OPENAGENTS_FORCE_GATE`,
+    /// `OPENAGENTS_DEMO_UPLOAD`) — see [`Shell::new`].
     debug_dialog: Option<String>,
     debug_gate: Option<GatePhase>,
     debug_upload: Option<String>,
@@ -2319,7 +2319,7 @@ pub struct Shell {
     /// Armed by mouse-down on a titlebar strip; the next mouse-move hands the
     /// drag to the compositor (zed's platform-titlebar pattern).
     titlebar_should_move: bool,
-    /// The caption buttons zeron itself draws on Linux under client-side
+    /// The caption buttons openagents itself draws on Linux under client-side
     /// decorations, per side, already filtered to what the compositor
     /// supports — `None` off Linux or under server decorations (where the WM
     /// draws real buttons). Re-resolved every frame at the top of `render`.
@@ -2468,12 +2468,12 @@ impl Shell {
         crate::appshots::set_capture_sound_enabled(settings.appshot_sound_enabled);
         // Bind the customizable shortcuts from the persisted keymap.
         apply_keymap(cx, &settings.keymap, settings.composer_send_behavior);
-        // Dev/testing knob: `ZERON_OPEN_ROUTE=settings[/<section>]` boots
+        // Dev/testing knob: `OPENAGENTS_OPEN_ROUTE=settings[/<section>]` boots
         // straight into a settings section — these pages have no deep link and
         // synthetic input can't reach them on headless compositors. Bare
         // `settings` reopens the remembered section; a named one is
         // remembered like any other link to a section.
-        let open_route = std::env::var("ZERON_OPEN_ROUTE").ok();
+        let open_route = openagents_brand::env_var("OPENAGENTS_OPEN_ROUTE").ok();
         let route = match open_route.as_deref() {
             Some("pull-requests") => Route::PullRequests,
             Some(route) if route == "settings" || route.starts_with("settings/") => {
@@ -2500,21 +2500,21 @@ impl Shell {
         if route == Route::Home {
             state.update(cx, |s, _| s.auto_selected = true);
         }
-        // More capture knobs of the same kind: `ZERON_OPEN_DIALOG=rename|delete`
+        // More capture knobs of the same kind: `OPENAGENTS_OPEN_DIALOG=rename|delete`
         // opens that dialog for the first chat once chats land; `=model` pops
         // the combined harness/model menu once the shell is Ready;
-        // `ZERON_FORCE_GATE=signin|org|failed` renders that gate regardless of
+        // `OPENAGENTS_FORCE_GATE=signin|org|failed` renders that gate regardless of
         // real auth state (display-only — for styling passes).
-        let debug_dialog = std::env::var("ZERON_OPEN_DIALOG").ok();
-        // `ZERON_DEMO_UPLOAD=<pct>:<image path>` fabricates an in-flight image
+        let debug_dialog = openagents_brand::env_var("OPENAGENTS_OPEN_DIALOG").ok();
+        // `OPENAGENTS_DEMO_UPLOAD=<pct>:<image path>` fabricates an in-flight image
         // send on the selected chat (echo bubble + frozen thumbnail progress
         // ring) — display-only; a real upload can't be paused for a capture.
-        let debug_upload = std::env::var("ZERON_DEMO_UPLOAD").ok();
-        let debug_gate = match std::env::var("ZERON_FORCE_GATE").ok().as_deref() {
+        let debug_upload = openagents_brand::env_var("OPENAGENTS_DEMO_UPLOAD").ok();
+        let debug_gate = match openagents_brand::env_var("OPENAGENTS_FORCE_GATE").ok().as_deref() {
             Some("signin") => Some(GatePhase::SignIn),
             Some("org") => Some(GatePhase::OrgGate),
             Some("failed") => Some(GatePhase::Failed(
-                "Could not reach the zeron engine on port 27901".into(),
+                "Could not reach the openagents engine on port 27901".into(),
             )),
             _ => None,
         };
@@ -2565,7 +2565,7 @@ impl Shell {
             voice_footer_orb,
             voice_stage_orb,
             voice_composer_orb,
-            voice_caption: zeron_veil::CaptionVeil::new(voice_stage::STAGE_CAPTION_CHARS),
+            voice_caption: openagents_veil::CaptionVeil::new(voice_stage::STAGE_CAPTION_CHARS),
             voice_stage_focus: cx.focus_handle(),
             voice_stage_was_open: false,
             voice_stage_route: Route::Chat,
@@ -2903,7 +2903,7 @@ impl Shell {
                 _ => {}
             }
         }
-        // Capture knob: `ZERON_DEMO_UPLOAD=<pct>:<image path>` — once a chat
+        // Capture knob: `OPENAGENTS_DEMO_UPLOAD=<pct>:<image path>` — once a chat
         // is selected, push a fake sending echo carrying that image as a
         // pending attachment and freeze upload progress at <pct>, so the
         // thumbnail progress ring can be styled/screenshotted (a real upload
@@ -2933,10 +2933,10 @@ impl Shell {
                     "Here is the screenshot of the bug.",
                     std::slice::from_ref(&pending_path),
                 );
-                let echo = zeron_doc::SessionMessageEntry {
+                let echo = openagents_doc::SessionMessageEntry {
                     id: "demo-upload-echo".into(),
-                    role: zeron_doc::MessageRole::User,
-                    parts: vec![zeron_doc::MessagePart::Text {
+                    role: openagents_doc::MessageRole::User,
+                    parts: vec![openagents_doc::MessagePart::Text {
                         id: "t0".into(),
                         text,
                     }],
@@ -2991,9 +2991,9 @@ impl Shell {
                 )
             };
             // Background-only banners: `active_window()` is app-level (any
-            // Zeron window being key), so a ping for a *background chat* in a
+            // OpenAgents window being key), so a ping for a *background chat* in a
             // focused app still stays a chime — you're already looking at
-            // Zeron; the sidebar dot carries the rest.
+            // OpenAgents; the sidebar dot carries the rest.
             let app_focused = cx.active_window().is_some();
             for (chat_id, status, send_pending, title, notify) in sessions {
                 let prev = self.sound_prev.insert(chat_id.clone(), status.clone());
@@ -3041,7 +3041,7 @@ impl Shell {
                     && !(self.settings.notifications_background_only && app_focused)
                 {
                     let body = match connectivity {
-                        zeron_proto::ConnectivityState::Offline => "Your device is offline",
+                        openagents_proto::ConnectivityState::Offline => "Your device is offline",
                         _ => "OpenAgents is trying to reconnect",
                     };
                     crate::notify::post("Connection unavailable", body, None);
@@ -3059,8 +3059,8 @@ impl Shell {
             for status in &state.harness_updates {
                 if matches!(
                     status.phase,
-                    zeron_proto::HarnessUpdatePhase::Current
-                        | zeron_proto::HarnessUpdatePhase::Updated
+                    openagents_proto::HarnessUpdatePhase::Current
+                        | openagents_proto::HarnessUpdatePhase::Updated
                 ) {
                     self.harness_update_seen.remove(
                         &harness_updates::versionless_notification_key(device, status.harness),
@@ -3196,7 +3196,7 @@ impl Shell {
             self.active_chat = selected;
             // Route history: a chat switch is a navigation. The very first
             // selection off the untouched boot canvas REPLACES that entry —
-            // zeron's `/` route redirected into the last-used chat, leaving no
+            // openagents's `/` route redirected into the last-used chat, leaving no
             // dead Back target. Walking history lands here too, but the
             // destination already equals `current()`, so the push dedups.
             if matches!(self.route, Route::Chat) {
@@ -3874,7 +3874,7 @@ impl Shell {
                 LinkOutcome::Rejected
             };
         }
-        // A pull request link opens Zeron's own view in this session's pane,
+        // A pull request link opens OpenAgents's own view in this session's pane,
         // unless Settings sends pull requests to the browser.
         if matches!(
             activation.action,
@@ -3894,7 +3894,7 @@ impl Shell {
         }
         let mut resolved = activation.clone();
         if resolved.action == LinkAction::Primary {
-            resolved.action = if crate::settings::current(cx).open_web_links_in_zeron {
+            resolved.action = if crate::settings::current(cx).open_web_links_in_openagents {
                 LinkAction::Internal
             } else {
                 LinkAction::External
@@ -4279,7 +4279,7 @@ impl Shell {
     /// (user request).
     fn add_commit_diff_surface(
         &mut self,
-        commit: zeron_proto::GitHistoryCommit,
+        commit: openagents_proto::GitHistoryCommit,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -4487,17 +4487,17 @@ impl Shell {
                 .background_executor()
                 .spawn(async move {
                     let value = reply.ok()?;
-                    let entries: Vec<zeron_doc::SessionMessageEntry> =
+                    let entries: Vec<openagents_doc::SessionMessageEntry> =
                         serde_json::from_str(value.get("text")?.as_str()?).ok()?;
-                    let update = zeron_doc::TranscriptUpdate {
-                        replay_baseline: Some(zeron_doc::TranscriptBaseline::capture(&entries)),
-                        frame: zeron_doc::TranscriptFrame::Reset { reset: entries },
+                    let update = openagents_doc::TranscriptUpdate {
+                        replay_baseline: Some(openagents_doc::TranscriptBaseline::capture(&entries)),
+                        frame: openagents_doc::TranscriptFrame::Reset { reset: entries },
                         context_usage: None,
                     };
                     let prepared = crate::transcript::TranscriptPreparation::default()
                         .prepare(&update)
                         .ok()?;
-                    let zeron_doc::TranscriptFrame::Reset { reset } = update.frame else {
+                    let openagents_doc::TranscriptFrame::Reset { reset } = update.frame else {
                         unreachable!()
                     };
                     Some((reset, prepared))
@@ -4818,7 +4818,7 @@ impl Shell {
 
     /// Cmd/Ctrl+J and the header button (feature-inventory §1.10). Height
     /// animates 200 ms; closing detaches (PTYs stay alive), opening restores.
-    /// The flag is per chat (zeron `sessionPanels`).
+    /// The flag is per chat (openagents `sessionPanels`).
     fn toggle_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let from = self.terminal_geometry.get().height;
         let key = self.panel_key(cx);
@@ -4831,7 +4831,7 @@ impl Shell {
                 .update(cx, |composer, _| composer.focus_pending = false);
             panel.update(cx, |panel, cx| panel.request_focus(cx));
             // Opening lands keyboard focus IN the shell — typing goes straight
-            // to the prompt, no click needed (zeron terminal-panel.tsx: the
+            // to the prompt, no click needed (openagents terminal-panel.tsx: the
             // visible+active effect calls `terminal.focus()` on every open).
             // The handle is focusable before the panel's first paint; once the
             // terminal body mounts with `track_focus` it receives the keys.
@@ -4840,7 +4840,7 @@ impl Shell {
             // Hiding the panel removes the (likely focused) terminal view;
             // with nothing focused, window key bindings stop dispatching, so
             // hand focus to the composer. (Cmd+J is a pure toggle — a second
-            // press closes even while the terminal is focused, as in zeron's
+            // press closes even while the terminal is focused, as in openagents's
             // `useHotkey(toggleShortcut, ... setOpenScoped(!open))`.)
             window.focus(&self.composer.focus_handle(cx), cx);
         }
@@ -5255,7 +5255,7 @@ impl Shell {
             .and_then(|chat| chat.harness_session_id.as_deref())
             .is_some_and(|id| !id.trim().is_empty());
         let has_path = chat.as_ref().and_then(chat_copy_path).is_some();
-        let zeron_id = chat_id.to_owned();
+        let openagents_id = chat_id.to_owned();
         let harness_id = chat_id.to_owned();
         let session_chat_id = chat_id.to_owned();
         let path_chat_id = chat_id.to_owned();
@@ -5279,8 +5279,8 @@ impl Shell {
                 )))
             })
             .child(
-                item("chat-copy-zeron", "OpenAgents conversation link".into()).on_click(cx.listener(
-                    move |this, _, _, cx| this.copy_zeron_conversation_link(&zeron_id, cx),
+                item("chat-copy-openagents", "OpenAgents conversation link".into()).on_click(cx.listener(
+                    move |this, _, _, cx| this.copy_openagents_conversation_link(&openagents_id, cx),
                 )),
             )
             .when_some(harness_link, |menu, link| {
@@ -5308,7 +5308,7 @@ impl Shell {
             .into_any_element()
     }
 
-    fn copy_zeron_conversation_link(&mut self, chat_id: &str, cx: &mut Context<Self>) {
+    fn copy_openagents_conversation_link(&mut self, chat_id: &str, cx: &mut Context<Self>) {
         let link = {
             let state = self.state.read(cx);
             crate::links::workspace_locator(
@@ -5316,7 +5316,7 @@ impl Shell {
                 state.auth.as_ref(),
                 state.local_device_id.as_deref(),
             )
-            .map(|workspace| crate::links::zeron_conversation_link(chat_id, &workspace))
+            .map(|workspace| crate::links::openagents_conversation_link(chat_id, &workspace))
         };
         if let Some(link) = link {
             cx.write_to_clipboard(ClipboardItem::new_string(link));
@@ -5753,7 +5753,7 @@ impl Shell {
                         continue;
                     }
                     let online = state.device_online(&device.id, chrono::Utc::now());
-                    let compatible = device.supports(zeron_proto::voice::remote::CAPABILITY);
+                    let compatible = device.supports(openagents_proto::voice::remote::CAPABILITY);
                     let detail = if !online {
                         "Offline"
                     } else if !compatible {
@@ -6173,7 +6173,7 @@ impl Shell {
             Err("Pins are still syncing")
         } else {
             let current = self.active_sidebar_pins(cx);
-            zeron_proto::validate_sidebar_pin_update(&current, pins)
+            openagents_proto::validate_sidebar_pin_update(&current, pins)
         };
         if let Err(message) = result {
             self.show_notice(crate::toast::ToastKind::Error, message, cx);
@@ -6186,7 +6186,7 @@ impl Shell {
     fn apply_sidebar_pin_change(
         &mut self,
         profile_key: String,
-        change: zeron_proto::SidebarPinChange,
+        change: openagents_proto::SidebarPinChange,
         cx: &mut Context<Self>,
     ) -> bool {
         let mut pinned_session_ids = self.raw_sidebar_pins(cx);
@@ -6242,13 +6242,13 @@ impl Shell {
             return;
         }
         let change = if pinned {
-            zeron_proto::SidebarPinChange::Pin {
+            openagents_proto::SidebarPinChange::Pin {
                 session_id: chat_id.clone(),
                 after: pins.last().cloned(),
                 before: None,
             }
         } else {
-            zeron_proto::SidebarPinChange::Unpin {
+            openagents_proto::SidebarPinChange::Unpin {
                 session_id: chat_id.clone(),
             }
         };
@@ -6500,7 +6500,7 @@ impl Shell {
                         shell.org = None;
                         // An explicit sign-out returns to the workspace. The
                         // boot-time fallback from a signed-out synced runtime
-                        // keeps an open Settings page (and `ZERON_OPEN_ROUTE`).
+                        // keeps an open Settings page (and `OPENAGENTS_OPEN_ROUTE`).
                         if sign_out {
                             shell.set_route(Route::Chat, cx);
                         }
@@ -6844,7 +6844,7 @@ impl Shell {
                     },
                     Err(err) => {
                         shell.runtime_change_error = Some(format!(
-                            "Could not stop the remote engine: {err}. Run `zeron daemon stop`, then quit and reopen OpenAgents."
+                            "Could not stop the remote engine: {err}. Run `openagents daemon stop`, then quit and reopen OpenAgents."
                         ).into());
                         cx.notify();
                     }
@@ -7039,7 +7039,7 @@ impl Shell {
     /// Evaluate a width tween at the frame time (see [`WidthTween`]).
     /// Mid-flight: lerp on the tween's curve, flagging `motion_active` so
     /// render schedules the next frame. Finished, stale, absent, or under
-    /// reduced motion: exactly `target`. Honors `ZERON_MOTION_SCALE`.
+    /// reduced motion: exactly `target`. Honors `OPENAGENTS_MOTION_SCALE`.
     fn eval_tween(&self, tween: Option<WidthTween>, target: f32) -> f32 {
         let Some(WidthTween {
             from,
@@ -7190,11 +7190,11 @@ impl Shell {
     }
 
     /// The header's content row with the animated left inset — the native port
-    /// of zeron __root.tsx `transition-[padding-left] duration-200 ease-out` +
+    /// of openagents __root.tsx `transition-[padding-left] duration-200 ease-out` +
     /// `style={{ paddingLeft: headerInset }}`: on sidebar toggles (and macOS
     /// fullscreen flips) the SAME element's padding tweens, so the title
     /// glides to its new x-position. Route changes SNAP: the tween is killed
-    /// by every route transition (zeron remounts the keyed header variants —
+    /// by every route transition (openagents remounts the keyed header variants —
     /// instant swap, zero horizontal motion).
     /// Where unified-titlebar content (tabs / the settings label) starts: past
     /// the traffic lights + control cluster, riding the fullscreen inset tween.
@@ -7227,7 +7227,7 @@ impl Shell {
     }
 
     /// Make a titlebar strip drag the window — zed's platform-titlebar
-    /// pattern (zeron's `.drag` region): mark it a [`WindowControlArea::Drag`]
+    /// pattern (openagents's `.drag` region): mark it a [`WindowControlArea::Drag`]
     /// (macOS app-owned titlebar), hand the drag to the compositor once the
     /// pointer moves with the button down, and double-click zooms.
     fn titlebar_drag_region(
@@ -7279,7 +7279,7 @@ impl Shell {
     }
 
     /// The ONE top-left window-control cluster (sidebar toggle + back/forward —
-    /// zeron window-controls.tsx): rendered once, in a paint-only overlay layer
+    /// openagents window-controls.tsx): rendered once, in a paint-only overlay layer
     /// pinned at the window's top-left, ABOVE the sidebar and headers. The
     /// sidebar width animates *beneath* it, so the buttons keep their element
     /// identity and never move or remount on collapse/expand; only the
@@ -7460,7 +7460,7 @@ impl Shell {
         titlebar_new_session_alpha(&self.route, self.state.read(cx).selected_chat.is_some())
     }
 
-    /// Native Windows caption controls integrated into Zeron's unified
+    /// Native Windows caption controls integrated into OpenAgents's unified
     /// titlebar. `WindowControlArea` maps these hit targets to HTMINBUTTON,
     /// HTMAXBUTTON, and HTCLOSE, so Windows owns their behavior (including
     /// Snap Layouts) while GPUI renders the system Segoe caption glyphs.
@@ -7510,7 +7510,7 @@ impl Shell {
         )
     }
 
-    /// Which caption buttons zeron itself must draw on Linux: under
+    /// Which caption buttons openagents itself must draw on Linux: under
     /// client-side decorations (the Wayland default) nobody else will —
     /// without these the window has NO minimize/maximize/close at all.
     /// Server-side decorations (X11 WMs, KDE with SSD) already draw real
@@ -7571,7 +7571,7 @@ impl Shell {
     }
 
     /// Right padding titlebar content needs to clear the platform's caption
-    /// controls (native Windows cluster / zeron-drawn Linux buttons).
+    /// controls (native Windows cluster / openagents-drawn Linux buttons).
     pub(super) fn titlebar_right_pad(&self, base: f32) -> f32 {
         titlebar_right_padding(
             cfg!(target_os = "windows"),
@@ -7580,7 +7580,7 @@ impl Shell {
         )
     }
 
-    /// Zeron-drawn Linux caption controls, one overlay per populated side.
+    /// OpenAgents-drawn Linux caption controls, one overlay per populated side.
     /// Shell-level chrome like the Windows cluster: mounted at the root so
     /// they stay above the splash and every auth/org/error gate.
     fn render_linux_caption_controls(&self, window: &Window, cx: &App) -> Vec<AnyElement> {
@@ -7790,7 +7790,7 @@ impl Shell {
     }
 
     fn render_sidebar(&mut self, _cx: &mut Context<Self>) -> AnyElement {
-        // The sidebar is part of the resolved theme. A second fixed-Zeron
+        // The sidebar is part of the resolved theme. A second fixed-OpenAgents
         // palette here made imported families look split in half and froze
         // activity/glyph personality independently of the selected variant.
         let inner = self.sidebar_pane.clone().cached(
@@ -8097,9 +8097,9 @@ impl Shell {
         time_ago: SharedString,
         space_name: SharedString,
         branch: Option<SharedString>,
-        change_request: Option<zeron_proto::ChangeRequestSummary>,
-        harness: Option<zeron_proto::HarnessId>,
-        status: zeron_proto::ChatIndicator,
+        change_request: Option<openagents_proto::ChangeRequestSummary>,
+        harness: Option<openagents_proto::HarnessId>,
+        status: openagents_proto::ChatIndicator,
         selected: bool,
         archived: bool,
         preview: bool,
@@ -8184,16 +8184,16 @@ impl Shell {
             Some("Queued")
         } else {
             match status {
-                zeron_proto::ChatIndicator::Working => Some("Working"),
-                zeron_proto::ChatIndicator::AwaitingInput => Some("Input"),
-                zeron_proto::ChatIndicator::Errored => Some("Failed"),
-                zeron_proto::ChatIndicator::Completed => Some("Done"),
-                zeron_proto::ChatIndicator::Idle => None,
+                openagents_proto::ChatIndicator::Working => Some("Working"),
+                openagents_proto::ChatIndicator::AwaitingInput => Some("Input"),
+                openagents_proto::ChatIndicator::Errored => Some("Failed"),
+                openagents_proto::ChatIndicator::Completed => Some("Done"),
+                openagents_proto::ChatIndicator::Idle => None,
             }
         };
         let shows_metadata = branch.is_some() || change_request.is_some();
         let queued = queued && !undelivered;
-        let working = status == zeron_proto::ChatIndicator::Working && !queued && !undelivered;
+        let working = status == openagents_proto::ChatIndicator::Working && !queued && !undelivered;
         // Subagents running under this chat show as a "● N" pill beside the
         // row's own activity indicator, never in place of it: the pill takes
         // the time stamp's spot (compact) or leads the status (regular), and
@@ -8218,7 +8218,7 @@ impl Shell {
                     cx,
                 )
                 .into_any_element()
-            } else if status == zeron_proto::ChatIndicator::Completed && !queued && !undelivered {
+            } else if status == openagents_proto::ChatIndicator::Completed && !queued && !undelivered {
                 icon(icons::CHECK)
                     .size(px(11.0))
                     .text_color(status_color)
@@ -8314,7 +8314,7 @@ impl Shell {
                     // Glyph slot: Working wears the preset's animated pixel
                     // glyph beside its label, Done wears the check, and the
                     // remaining statuses use a compact dot.
-                    let glyph: AnyElement = if status == zeron_proto::ChatIndicator::Completed {
+                    let glyph: AnyElement = if status == openagents_proto::ChatIndicator::Completed {
                         icon(icons::CHECK)
                             .size(px(11.0))
                             .flex_none()
@@ -8443,7 +8443,7 @@ impl Shell {
         let rename_input = (search_query_none && !preview)
             .then(|| self.rename_input_for(&id, ChatRenameSurface::Sidebar))
             .flatten();
-        // Hover fades over transition-colors (zeron session-row.tsx) — both
+        // Hover fades over transition-colors (openagents session-row.tsx) — both
         // the wash and the title brighten ride the same 150ms blend.
         let fade_key = format!("{row_id}-hover");
         let rest_bg = if selected {
@@ -8950,14 +8950,14 @@ impl Shell {
     /// reconnecting; an amber dot only when the OS says offline. The
     /// transport error belongs in logs, not the sidebar.
     fn render_connection_pill(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
-        use zeron_proto::ConnectivityState as S;
+        use openagents_proto::ConnectivityState as S;
         let conn = self.state.read(cx).connectivity.clone();
         let selected = self.state.read(cx).selected_chat.as_deref();
         let chat = conn.chats.iter()
             .find(|c| Some(c.chat_id.as_str()) == selected);
         let chat_state = chat.map(|c| c.sync_state);
         let (label, glyph): (SharedString, AnyElement) = match conn.state {
-            _ if chat_state == Some(zeron_proto::ChatSyncState::StorageError) => (
+            _ if chat_state == Some(openagents_proto::ChatSyncState::StorageError) => (
                 "Changes could not be saved".into(),
                 div().size(px(5.0)).rounded_full().bg(theme.warning).into_any_element(),
             ),
@@ -9034,7 +9034,7 @@ impl Shell {
     /// Open saved account history without changing the local workspace selection.
     pub fn open_saved_chat(
         &mut self,
-        target: coder_account::history::ExistingChat,
+        target: openagents_account::history::ExistingChat,
         cx: &mut Context<Self>,
     ) {
         if !target.is_current() {
@@ -9577,7 +9577,7 @@ impl Shell {
     /// installs (macOS bundles, Windows installs, Linux managed installs) show
     /// the background download and then "restart to apply"; installs that
     /// can't replace themselves explain why; advisory installs point at
-    /// `zeron update` or the GitHub releases page and dismiss per version.
+    /// `openagents update` or the GitHub releases page and dismiss per version.
     fn render_update_strip(&mut self, theme: &Theme, cx: &mut Context<Self>) -> Option<AnyElement> {
         let update = crate::app_update::AppUpdate::global(cx)?;
         let (label, action) = update.read(cx).strip()?;
@@ -9644,7 +9644,7 @@ impl Shell {
             StripAction::Explain => update.update(cx, |update, cx| update.show_result(cx)),
             StripAction::Advise { open_releases } => {
                 if open_releases {
-                    cx.open_url(zeron_update::RELEASES_PAGE);
+                    cx.open_url(openagents_update::RELEASES_PAGE);
                 }
                 update.update(cx, |update, cx| update.dismiss_advisory(cx));
             }
@@ -9679,7 +9679,7 @@ impl Shell {
         use crate::app_update::{AppUpdate, Flow, Prompt};
         let update = AppUpdate::global(cx)?;
         let theme = Theme::of(cx).for_popup();
-        let current = zeron_update::current_version();
+        let current = openagents_update::current_version();
         let (title, body, buttons): (SharedString, SharedString, Vec<UpdatePromptButton>) = {
             let update = update.read(cx);
             match update.prompt()? {
@@ -9749,11 +9749,11 @@ impl Shell {
                             }
                         } else if matches!(
                             update.install(),
-                            zeron_update::InstallKind::Managed { .. }
+                            openagents_update::InstallKind::Managed { .. }
                         ) {
                             (
                                 title,
-                                "Run `zeron update` in a terminal to install it.".into(),
+                                "Run `openagents update` in a terminal to install it.".into(),
                                 vec![UpdatePromptButton::Close("OK")],
                             )
                         } else {
@@ -9818,7 +9818,7 @@ impl Shell {
                     popover::btn_primary(&theme, "Open download page")
                         .id("update-prompt-downloads")
                         .on_click(cx.listener(|_, _, _, cx| {
-                            cx.open_url(zeron_update::LATEST_RELEASE_PAGE);
+                            cx.open_url(openagents_update::LATEST_RELEASE_PAGE);
                             if let Some(update) = crate::app_update::AppUpdate::global(cx) {
                                 update.update(cx, |update, cx| update.dismiss_prompt(cx));
                             }
@@ -9992,7 +9992,7 @@ impl Shell {
                 cx.notify();
             }))
             .child(
-                // Avatar: white circle, initial in near-black (zeron user-menu.tsx).
+                // Avatar: white circle, initial in near-black (openagents user-menu.tsx).
                 div()
                     .size(px(SIDEBAR_FOOTER_AVATAR_SIZE))
                     .flex_none()
@@ -11345,7 +11345,7 @@ impl Shell {
                         .flex_col()
                         .items_center()
                         .child(
-                            icon(icons::ZERON_LOGO)
+                            icon(icons::OPENAGENTS_LOGO)
                                 .w(px(41.9))
                                 .h(px(48.0))
                                 .text_color(theme.text.opacity(0.09)),
@@ -12146,7 +12146,7 @@ impl Shell {
             .items_center()
             .text_center()
             .child(
-                icon(icons::ZERON_LOGO)
+                icon(icons::OPENAGENTS_LOGO)
                     .w(px(31.4))
                     .h(px(36.0))
                     .text_color(theme.text),
@@ -12350,7 +12350,7 @@ impl Shell {
                         .read(cx)
                         .sub_transcript(&tab.doc_id)
                         .last()
-                        .is_some_and(|e| e.status == Some(zeron_doc::MessageStatus::Streaming))
+                        .is_some_and(|e| e.status == Some(openagents_doc::MessageStatus::Streaming))
                 }),
                 _ => false,
             };
@@ -12691,7 +12691,7 @@ impl Shell {
     fn render_gate_card(&mut self, phase: &GatePhase, cx: &mut Context<Self>) -> AnyElement {
         let theme = Theme::of(cx).clone();
         let content: AnyElement = match phase {
-            // Backend unreachable: quiet centered copy (zeron Gate `Failed`),
+            // Backend unreachable: quiet centered copy (openagents Gate `Failed`),
             // plus a Retry affordance (the native engine doesn't self-redial).
             GatePhase::Failed(error) => div()
                 .flex()
@@ -12720,8 +12720,8 @@ impl Shell {
                         .child(SharedString::from("Retry")),
                 )
                 .into_any_element(),
-            // Login card (zeron App.tsx Gate): centered card on the grid —
-            // logo, "Log in to Zeron", copy, full-width white Log in button.
+            // Login card (openagents App.tsx Gate): centered card on the grid —
+            // logo, "Log in to OpenAgents", copy, full-width white Log in button.
             _ => div()
                 .w(px(360.0))
                 .px(px(32.0))
@@ -12736,7 +12736,7 @@ impl Shell {
                 .items_center()
                 .text_center()
                 .child(
-                    icon(icons::ZERON_LOGO)
+                    icon(icons::OPENAGENTS_LOGO)
                         .w(px(31.4))
                         .h(px(36.0))
                         .text_color(theme.text),
@@ -12792,7 +12792,7 @@ impl Shell {
                     .flex()
                     .items_center()
                     .justify_center()
-                    // Keyed per phase (zeron App.tsx `<div key={phase}
+                    // Keyed per phase (openagents App.tsx `<div key={phase}
                     // className="animate-in">`): every gate swap replays the
                     // 0.5s entrance instead of mutating one animated element.
                     .child(motion::fade_in(
@@ -12897,7 +12897,7 @@ impl Shell {
                     .into_any_element(),
             };
 
-        // zeron App.tsx OrgGate: w-400 card on the grid — logo, headline,
+        // openagents App.tsx OrgGate: w-400 card on the grid — logo, headline,
         // explainer (+ signed-in email), name form with a white Create button,
         // then existing memberships and the account escape hatch.
         let blurb: SharedString = match email {
@@ -12922,7 +12922,7 @@ impl Shell {
             .flex()
             .flex_col()
             .child(
-                icon(icons::ZERON_LOGO)
+                icon(icons::OPENAGENTS_LOGO)
                     .w(px(24.4))
                     .h(px(28.0))
                     .text_color(theme.text),
@@ -13034,7 +13034,7 @@ impl Shell {
     }
 }
 
-/// The sign-in gate's faint grid backdrop (zeron styles.css `.bg-grid`):
+/// The sign-in gate's faint grid backdrop (openagents styles.css `.bg-grid`):
 /// 44px hairlines at white 3.5%, with the radial mask approximated by edge
 /// gradients back into the page background (gpui has no mask-image).
 fn grid_backdrop(theme: &Theme) -> AnyElement {
@@ -13123,7 +13123,7 @@ fn grid_backdrop(theme: &Theme) -> AnyElement {
         .into_any_element()
 }
 
-/// A size-6 icon button for the titlebar strip (zeron window-controls.tsx:
+/// A size-6 icon button for the titlebar strip (openagents window-controls.tsx:
 /// `grid size-6 place-items-center rounded-md text-muted-foreground`).
 fn window_control_button(
     id: &'static str,
@@ -13156,7 +13156,7 @@ fn window_control_button_with(
         .justify_center()
         .rounded(px(6.0))
         .cursor_pointer()
-        // zeron window-controls.tsx: `transition-colors` — the wash fades.
+        // openagents window-controls.tsx: `transition-colors` — the wash fades.
         .bg(motion::hover_blend(
             &fade_key,
             theme.glass_hover().opacity(0.0),
@@ -13189,7 +13189,7 @@ const WINDOWS_CAPTION_BUTTON_WIDTH: f32 = 36.0;
 const WINDOWS_CAPTION_WIDTH: f32 = WINDOWS_CAPTION_BUTTON_WIDTH * 3.0;
 
 /// Right padding for titlebar content: past the native Windows caption
-/// cluster, or past zeron's own Linux caption buttons (10px edge inset +
+/// cluster, or past openagents's own Linux caption buttons (10px edge inset +
 /// the button row) when the layout puts any on the right.
 fn titlebar_right_padding(is_windows: bool, linux_right_captions: usize, base: f32) -> f32 {
     base + if is_windows {
@@ -13243,7 +13243,7 @@ fn windows_caption_button(
         .child(glyph)
 }
 
-/// A Linux caption button in zeron's own cluster style (24px, rounded-6,
+/// A Linux caption button in openagents's own cluster style (24px, rounded-6,
 /// 16px linear icon). gpui's `WindowControlArea` hit-testing is inert on
 /// Linux, so unlike the Windows cluster these carry explicit click handlers
 /// (`minimize_window` / `zoom_window` / `remove_window`), the same calls
@@ -13291,7 +13291,7 @@ fn linux_caption_button(
         )
 }
 
-/// A titlebar history button (zeron window-controls.tsx): enabled it is a
+/// A titlebar history button (openagents window-controls.tsx): enabled it is a
 /// normal window-control button; disabled it dims to 35% opacity and ignores
 /// the pointer (`disabled:pointer-events-none disabled:opacity-35`).
 fn nav_history_button(
@@ -13322,7 +13322,7 @@ fn nav_history_button(
     window_control_button(id, icon_path, label, theme, on_click).into_any_element()
 }
 
-/// A size-7 icon button for the main-panel header (zeron __root.tsx:
+/// A size-7 icon button for the main-panel header (openagents __root.tsx:
 /// `grid size-7 place-items-center rounded-md text-muted-foreground`).
 fn header_icon_button(
     id: &'static str,
@@ -13354,7 +13354,7 @@ fn header_icon_button_with(
         .justify_center()
         .rounded(px(6.0))
         .cursor_pointer()
-        // zeron __root.tsx header buttons: `transition-colors`.
+        // openagents __root.tsx header buttons: `transition-colors`.
         .bg(motion::hover_blend(
             &fade_key,
             crate::theme::wash(0.0),
@@ -13668,7 +13668,7 @@ impl Render for Shell {
             .on_drag_move(cx.listener(Self::on_files_panel_drag))
             .on_drag_move(cx.listener(Self::on_terminal_drag))
             // The panel shortcuts are chat-scoped chrome: in Settings they are
-            // no-ops (zeron __root.tsx gates the hotkey on `!isSettings`, and
+            // no-ops (openagents __root.tsx gates the hotkey on `!isSettings`, and
             // the terminal panel is only mounted on session routes). The
             // sidebar toggle stays live everywhere, as in the original.
             .on_action(cx.listener(|this, _: &ToggleTerminal, window, cx| {
@@ -13890,7 +13890,7 @@ impl Render for Shell {
                             .update(cx, |s, cx| s.mark_chat_seen(&chat_id, cx));
                     }
                 }
-                // Capture knob: `ZERON_OPEN_DIALOG=model` pops the combined
+                // Capture knob: `OPENAGENTS_OPEN_DIALOG=model` pops the combined
                 // harness/model menu (needs `window`, so it fires here rather
                 // than in `on_state_changed`).
                 if self.debug_dialog.as_deref() == Some("model") {
@@ -14008,7 +14008,7 @@ impl Render for Shell {
                 });
                 let main = self.render_main(window, main_content_width, transcript_width, cx);
                 // The Changes pane is chat-scoped chrome: the Settings route
-                // never renders it (zeron __root.tsx `!isSettings && activeChat`
+                // never renders it (openagents __root.tsx `!isSettings && activeChat`
                 // around the diff column) — the per-session open flags stay
                 // intact for the return trip.
                 let right_open = on_chat && self.right_pane_shown(cx);
@@ -14075,7 +14075,7 @@ impl Render for Shell {
                     .opacity(under_stage)
                     .child(main)
                     .into_any_element();
-                // The whole app page is one keyed `animate-in` entrance (zeron
+                // The whole app page is one keyed `animate-in` entrance (openagents
                 // App.tsx `<div key={phase} className="animate-in h-full">`):
                 // arriving from the splash or any gate fades the page in; the
                 // splash-out crossfades over it on boot.
@@ -14254,8 +14254,8 @@ mod tests {
     pub(super) fn chat_with_path(
         cwd: Option<&str>,
         source: Option<(&str, &str)>,
-    ) -> zeron_proto::Chat {
-        zeron_proto::Chat {
+    ) -> openagents_proto::Chat {
+        openagents_proto::Chat {
             id: "chat".into(),
             device_id: "remote-device".into(),
             title: None,
@@ -14264,7 +14264,7 @@ mod tests {
             branch: None,
             checkout_id: None,
             source_context: source.map(|(source_cwd, repo_root)| {
-                zeron_proto::ConversationSourceContext {
+                openagents_proto::ConversationSourceContext {
                     checkout_id: "checkout".into(),
                     repo_root: repo_root.into(),
                     cwd: source_cwd.into(),
@@ -14332,7 +14332,7 @@ mod tests {
 
     #[test]
     fn sidebar_sync_status_waits_for_grace_or_queued_changes() {
-        use zeron_proto::{ChatConnectivity, ChatSyncState as S};
+        use openagents_proto::{ChatConnectivity, ChatSyncState as S};
 
         let mut chat = ChatConnectivity {
             chat_id: "remote".into(),
@@ -14580,10 +14580,10 @@ mod tests {
 
     fn clock_session(
         chat_id: &str,
-        status: zeron_proto::SessionStatus,
+        status: openagents_proto::SessionStatus,
         updated_at: DateTime<Utc>,
-    ) -> zeron_proto::Session {
-        zeron_proto::Session {
+    ) -> openagents_proto::Session {
+        openagents_proto::Session {
             last_completed_turn: None,
             chat_id: chat_id.into(),
             device_id: "remote".into(),
@@ -14657,11 +14657,11 @@ mod tests {
         // A failed run, a pending question and a reconnecting pill show no
         // clock: only the relative-time minute remains.
         state.sessions = vec![
-            clock_session("failed", zeron_proto::SessionStatus::Errored, now),
-            clock_session("idle", zeron_proto::SessionStatus::Idle, now),
+            clock_session("failed", openagents_proto::SessionStatus::Errored, now),
+            clock_session("idle", openagents_proto::SessionStatus::Idle, now),
         ];
         state.selected_chat = Some("failed".into());
-        state.connectivity.state = zeron_proto::ConnectivityState::Reconnecting;
+        state.connectivity.state = openagents_proto::ConnectivityState::Reconnecting;
         assert_redraw_at(
             cx,
             &state,
@@ -14676,14 +14676,14 @@ mod tests {
         let mut state = AppState::new();
         state.sessions = vec![clock_session(
             "chat",
-            zeron_proto::SessionStatus::Working,
+            openagents_proto::SessionStatus::Working,
             now,
         )];
         state.selected_chat = Some("chat".into());
         assert_redraw_at(cx, &state, now, now + chrono::TimeDelta::seconds(1));
         // Awaiting input shows no elapsed timer; its staleness cutoff is an
         // AppState notification, not a shell tick.
-        state.sessions[0].status = zeron_proto::SessionStatus::AwaitingInput;
+        state.sessions[0].status = openagents_proto::SessionStatus::AwaitingInput;
         assert_redraw_at(cx, &state, now, now + chrono::TimeDelta::minutes(1));
     }
 
@@ -14911,7 +14911,7 @@ mod tests {
             edge_token: None,
             org_id: None,
             workos_client_id: Some("client_test".into()),
-            default_harness: zeron_proto::HarnessId::Mock,
+            default_harness: openagents_proto::HarnessId::Mock,
         };
         let synced = crate::state::EngineHandle::bootstrap(boot.clone())
             .await
@@ -14990,12 +14990,12 @@ mod tests {
 
     #[test]
     fn sidebar_footer_names_the_account_or_falls_back_to_local() {
-        let named = zeron_proto::UserProfile {
+        let named = openagents_proto::UserProfile {
             id: "u".into(),
             email: "wing@example.com".into(),
             name: Some("Wing".into()),
         };
-        let unnamed = zeron_proto::UserProfile {
+        let unnamed = openagents_proto::UserProfile {
             name: Some("  ".into()),
             ..named.clone()
         };
@@ -15014,7 +15014,7 @@ mod tests {
     #[test]
     fn local_sign_in_offers_the_in_place_switch() {
         let signed_in = AuthState::SignedIn {
-            user: zeron_proto::UserProfile {
+            user: openagents_proto::UserProfile {
                 id: "user-1".into(),
                 email: "user@example.com".into(),
                 name: None,
@@ -15126,7 +15126,7 @@ mod tests {
     #[test]
     fn dismissed_import_failure_stays_reachable_on_a_synced_runtime() {
         let signed_in = AuthState::SignedIn {
-            user: zeron_proto::UserProfile {
+            user: openagents_proto::UserProfile {
                 id: "user-1".into(),
                 email: "user@example.com".into(),
                 name: None,
@@ -15169,7 +15169,7 @@ mod tests {
     #[test]
     fn switch_lifecycle_survives_the_runtime_replacement_window() {
         let signed_in = AuthState::SignedIn {
-            user: zeron_proto::UserProfile {
+            user: openagents_proto::UserProfile {
                 id: "user-1".into(),
                 email: "user@example.com".into(),
                 name: None,
@@ -15204,7 +15204,7 @@ mod tests {
     #[test]
     fn synced_sign_out_blocks_every_viewport_and_cannot_switch_accounts() {
         let signed_in_as_another_user = AuthState::SignedIn {
-            user: zeron_proto::UserProfile {
+            user: openagents_proto::UserProfile {
                 id: "user-2".into(),
                 email: "other@example.com".into(),
                 name: None,
@@ -15242,8 +15242,8 @@ mod tests {
     }
 
     #[test]
-    fn titlebar_cluster_matches_zeron_window_controls() {
-        // zeron window-controls.tsx: `left: fullscreen ? 12 : 88` — the
+    fn titlebar_cluster_matches_openagents_window_controls() {
+        // openagents window-controls.tsx: `left: fullscreen ? 12 : 88` — the
         // cluster clears the {14,15} traffic lights, and reclaims the inset
         // when fullscreen hides them.
         assert_eq!(titlebar_cluster_start(false), 88.0);
@@ -15322,7 +15322,7 @@ mod tests {
         );
     }
 
-    // ---- per-session panel flags (§1.10/1.11 parity: zeron sessionPanels) ----
+    // ---- per-session panel flags (§1.10/1.11 parity: openagents sessionPanels) ----
 
     #[test]
     fn session_panels_default_closed_per_chat() {
@@ -15462,7 +15462,7 @@ mod tests {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -15669,7 +15669,7 @@ mod tests {
     #[test]
     fn nav_push_truncates_the_forward_branch() {
         // a → b → c, back to a, then push d: the b/c branch is gone (browser
-        // semantics — zeron's memory history PUSH truncates entries ahead).
+        // semantics — openagents's memory history PUSH truncates entries ahead).
         let mut nav = NavHistory::new(chat("a"));
         nav.push(chat("b"));
         nav.push(chat("c"));
@@ -15766,7 +15766,7 @@ mod exit_regressions {
             edge_token: None,
             org_id: None,
             workos_client_id: None,
-            default_harness: zeron_proto::HarnessId::Mock,
+            default_harness: openagents_proto::HarnessId::Mock,
         };
         for (connection, expected) in [
             (ConnectionStatus::Connecting, SplashPhase::Visible),
@@ -15819,7 +15819,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -15891,7 +15891,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -16000,7 +16000,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -16009,13 +16009,13 @@ mod exit_regressions {
             .into_iter()
             .enumerate()
         {
-            let open_links_in_zeron = index % 2 == 0;
-            let terminal_family = if open_links_in_zeron {
+            let open_links_in_openagents = index % 2 == 0;
+            let terminal_family = if open_links_in_openagents {
                 crate::typography::UiFontFamily::System
             } else {
                 crate::typography::UiFontFamily::Geist
             };
-            let code_family = if open_links_in_zeron {
+            let code_family = if open_links_in_openagents {
                 crate::typography::UiFontFamily::Geist
             } else {
                 crate::typography::UiFontFamily::System
@@ -16042,10 +16042,10 @@ mod exit_regressions {
                         settings.wallpaper_source = Some(dir.path().join("wallpapers/current.png"));
                         settings.wallpaper_history = vec![dir.path().join("wallpapers/current.png")];
                         settings.window_geometry = geometry;
-                        settings.open_web_links_in_zeron = open_links_in_zeron;
+                        settings.open_web_links_in_openagents = open_links_in_openagents;
                         settings.pull_request_destination =
                             settings::PullRequestDestination::External;
-                        settings.last_pull_request_repository = Some("acme/zeron".into());
+                        settings.last_pull_request_repository = Some("acme/openagents".into());
                         settings.last_pull_request_device = Some("remote-pr-device".into());
                         settings.terminal_font_family = terminal_family.clone();
                         settings.terminal_font_size = terminal_size;
@@ -16053,9 +16053,9 @@ mod exit_regressions {
                         settings.code_font_size = code_size;
                         settings.transcript_width = transcript_width;
                         settings.skill_completion_by_harness.insert(
-                            zeron_proto::HarnessId::ClaudeCode,
+                            openagents_proto::HarnessId::ClaudeCode,
                             settings::SkillCompletionSettings {
-                                dollar: open_links_in_zeron,
+                                dollar: open_links_in_openagents,
                                 separate_from_slash: true,
                             },
                         );
@@ -16074,7 +16074,7 @@ mod exit_regressions {
                         );
                         assert_eq!(
                             current.last_pull_request_repository.as_deref(),
-                            Some("acme/zeron")
+                            Some("acme/openagents")
                         );
                         assert_eq!(
                             current.last_pull_request_device.as_deref(),
@@ -16082,7 +16082,7 @@ mod exit_regressions {
                         );
                         assert_eq!(current.window_geometry, geometry);
                         assert_eq!(current.new_thread_background_effect, effect);
-                        assert_eq!(current.open_web_links_in_zeron, open_links_in_zeron);
+                        assert_eq!(current.open_web_links_in_openagents, open_links_in_openagents);
                         assert_eq!(
                             current.pull_request_destination,
                             settings::PullRequestDestination::External
@@ -16094,13 +16094,13 @@ mod exit_regressions {
                         assert_eq!(current.transcript_width, transcript_width);
                         assert_eq!(
                             current
-                                .skill_completion(zeron_proto::HarnessId::ClaudeCode)
+                                .skill_completion(openagents_proto::HarnessId::ClaudeCode)
                                 .dollar,
-                            open_links_in_zeron
+                            open_links_in_openagents
                         );
                         assert!(
                             current
-                                .skill_completion(zeron_proto::HarnessId::ClaudeCode)
+                                .skill_completion(openagents_proto::HarnessId::ClaudeCode)
                                 .separate_from_slash
                         );
                     }
@@ -16108,7 +16108,7 @@ mod exit_regressions {
                     let loaded = settings::UiSettings::load(dir.path());
                     assert_eq!(
                         loaded.last_pull_request_repository.as_deref(),
-                        Some("acme/zeron")
+                        Some("acme/openagents")
                     );
                     assert_eq!(
                         loaded.last_pull_request_device.as_deref(),
@@ -16122,7 +16122,7 @@ mod exit_regressions {
                         Some(dir.path().join("wallpapers/current.png"))
                     );
                     assert_eq!(loaded.new_thread_background_effect, effect);
-                    assert_eq!(loaded.open_web_links_in_zeron, open_links_in_zeron);
+                    assert_eq!(loaded.open_web_links_in_openagents, open_links_in_openagents);
                     assert_eq!(
                         loaded.pull_request_destination,
                         settings::PullRequestDestination::External
@@ -16167,7 +16167,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -16209,7 +16209,7 @@ mod exit_regressions {
     }
 
     #[gpui::test]
-    fn workspace_slash_commands_open_existing_zeron_surfaces(cx: &mut TestAppContext) {
+    fn workspace_slash_commands_open_existing_openagents_surfaces(cx: &mut TestAppContext) {
         use crate::composer::WorkspaceCommand;
         let dir = tempfile::tempdir().unwrap();
         cx.update(|cx| {
@@ -16236,7 +16236,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -16310,7 +16310,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -16360,7 +16360,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -16442,7 +16442,7 @@ mod exit_regressions {
                         edge_token: None,
                         org_id: None,
                         workos_client_id: None,
-                        default_harness: zeron_proto::HarnessId::Mock,
+                        default_harness: openagents_proto::HarnessId::Mock,
                     },
                     cx,
                 )
@@ -16501,7 +16501,7 @@ mod exit_regressions {
                         edge_token: None,
                         org_id: None,
                         workos_client_id: None,
-                        default_harness: zeron_proto::HarnessId::Mock,
+                        default_harness: openagents_proto::HarnessId::Mock,
                     },
                     cx,
                 )
@@ -16555,7 +16555,7 @@ mod exit_regressions {
         let (shell, cx) = cx.add_window_view(|_, cx| {
             let state = cx.new(|_| {
                 let mut state = AppState::new();
-                state.connection = zeron_proto::view::ConnectionStatus::Ready;
+                state.connection = openagents_proto::view::ConnectionStatus::Ready;
                 state
             });
             Shell::new(
@@ -16567,7 +16567,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -16815,7 +16815,7 @@ mod exit_regressions {
         let (shell, cx) = cx.add_window_view(|_, cx| {
             let state = cx.new(|_| {
                 let mut state = AppState::new();
-                state.connection = zeron_proto::view::ConnectionStatus::Ready;
+                state.connection = openagents_proto::view::ConnectionStatus::Ready;
                 state
             });
             Shell::new(
@@ -16827,7 +16827,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -17012,14 +17012,14 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
         });
         window
             .update(cx, |shell, _, cx| {
-                let space = |id: &str, device: &str| zeron_proto::Space {
+                let space = |id: &str, device: &str| openagents_proto::Space {
                     id: id.into(),
                     device_id: device.into(),
                     path: format!("/{id}"),
@@ -17113,7 +17113,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -17198,7 +17198,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -17279,7 +17279,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -17287,7 +17287,7 @@ mod exit_regressions {
         window
             .update(cx, |shell, _, cx| {
                 shell.state.update(cx, |state, _| {
-                    state.apply_spaces(vec![zeron_proto::Space {
+                    state.apply_spaces(vec![openagents_proto::Space {
                         id: "repo".into(),
                         device_id: "local".into(),
                         path: "/repo".into(),
@@ -17351,12 +17351,12 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
         });
-        let space = |id: &str, device: &str| zeron_proto::Space {
+        let space = |id: &str, device: &str| openagents_proto::Space {
             id: id.into(),
             device_id: device.into(),
             path: format!("/{id}"),
@@ -17371,7 +17371,7 @@ mod exit_regressions {
             .update(cx, |shell, _, cx| {
                 shell.state.update(cx, |state, cx| {
                     state.apply_spaces(vec![space("mine", "local"), space("other", "remote")]);
-                    state.apply_chats(vec![zeron_proto::Chat {
+                    state.apply_chats(vec![openagents_proto::Chat {
                         id: "elsewhere".into(),
                         device_id: "remote".into(),
                         title: None,
@@ -17432,12 +17432,12 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
         });
-        let space = |id: &str| zeron_proto::Space {
+        let space = |id: &str| openagents_proto::Space {
             id: id.into(),
             device_id: "local".into(),
             path: format!("/{id}"),
@@ -17488,7 +17488,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -17525,7 +17525,7 @@ mod exit_regressions {
                 shell.activate_session_link(&activation, window, cx);
                 assert_eq!(shell.browsers.len(), 2);
                 settings::update(settings::SavePolicy::Immediate, cx, |settings| {
-                    settings.open_web_links_in_zeron = false;
+                    settings.open_web_links_in_openagents = false;
                 });
                 assert_eq!(
                     shell.activate_session_link(&activation, window, cx),
@@ -17638,7 +17638,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -17707,7 +17707,7 @@ mod exit_regressions {
                 // different file under the linking chat's checkout.
                 let project = dir.path().join("other-project");
                 shell.state.update(cx, |state, _| {
-                    state.apply_spaces(vec![zeron_proto::Space {
+                    state.apply_spaces(vec![openagents_proto::Space {
                         id: "other".into(),
                         device_id: "local".into(),
                         path: project.to_string_lossy().into_owned(),
@@ -17757,7 +17757,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -17855,7 +17855,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -17864,7 +17864,7 @@ mod exit_regressions {
             .update(cx, |shell, window, cx| {
                 shell.active_chat = "session".into();
                 shell.state.update(cx, |state, _| {
-                    state.workspace_scope = Some(zeron_proto::WorkspaceScope::Local);
+                    state.workspace_scope = Some(openagents_proto::WorkspaceScope::Local);
                     state.local_device_id = Some("device-a".into());
                 });
                 // Selecting the identity happens before navigation, without requiring a render.
@@ -17937,7 +17937,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -18015,7 +18015,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -18113,7 +18113,7 @@ mod exit_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -18291,7 +18291,7 @@ mod right_tab_mouse_regressions {
                         edge_token: None,
                         org_id: None,
                         workos_client_id: None,
-                        default_harness: zeron_proto::HarnessId::Mock,
+                        default_harness: openagents_proto::HarnessId::Mock,
                     },
                     cx,
                 );
@@ -18345,8 +18345,8 @@ mod right_tab_mouse_regressions {
         });
         // Rechecks and repeated versionless availability remain deduplicated.
         for phase in [
-            zeron_proto::HarnessUpdatePhase::Checking,
-            zeron_proto::HarnessUpdatePhase::Available,
+            openagents_proto::HarnessUpdatePhase::Checking,
+            openagents_proto::HarnessUpdatePhase::Available,
         ] {
             shell.update(cx, |shell, cx| {
                 shell
@@ -18360,12 +18360,12 @@ mod right_tab_mouse_regressions {
         // another commit-only update to notify even if the version is unchanged.
         shell.update(cx, |shell, cx| {
             shell.state.update(cx, |state, _| {
-                state.harness_updates[1].phase = zeron_proto::HarnessUpdatePhase::Current
+                state.harness_updates[1].phase = openagents_proto::HarnessUpdatePhase::Current
             });
             shell.on_state_changed(&shell.state.clone(), cx);
             assert_eq!(shell.harness_update_seen.len(), 1);
             shell.state.update(cx, |state, _| {
-                state.harness_updates[1].phase = zeron_proto::HarnessUpdatePhase::Available
+                state.harness_updates[1].phase = openagents_proto::HarnessUpdatePhase::Available
             });
             shell.on_state_changed(&shell.state.clone(), cx);
         });
@@ -18804,7 +18804,7 @@ mod settings_modal_regressions {
                     edge_token: None,
                     org_id: None,
                     workos_client_id: None,
-                    default_harness: zeron_proto::HarnessId::Mock,
+                    default_harness: openagents_proto::HarnessId::Mock,
                 },
                 cx,
             )
@@ -18870,7 +18870,7 @@ mod settings_modal_regressions {
                 edge_token: None,
                 org_id: None,
                 workos_client_id: None,
-                default_harness: zeron_proto::HarnessId::Mock,
+                default_harness: openagents_proto::HarnessId::Mock,
             },
             cx,
         )
@@ -19141,7 +19141,7 @@ mod settings_modal_regressions {
         shell.read_with(cx, |shell, cx| {
             let text = shell.composer.read(cx).input.read(cx).text().to_owned();
             assert!(
-                text.contains("[Chat older](zeron-chat:older)"),
+                text.contains("[Chat older](openagents-chat:older)"),
                 "the drop mentions the chat: {text:?}"
             );
             assert!(shell.sidebar_session_transfer.is_none());
@@ -19164,7 +19164,7 @@ mod settings_modal_regressions {
 
         shell.update(cx, |shell, cx| {
             shell.voice.update(cx, |voice, _| {
-                voice.phase = zeron_proto::voice::VoicePhase::Active
+                voice.phase = openagents_proto::voice::VoicePhase::Active
             });
             shell.set_voice_stage_open(true, cx);
         });

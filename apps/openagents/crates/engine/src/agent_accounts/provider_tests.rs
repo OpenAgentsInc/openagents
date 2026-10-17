@@ -452,7 +452,7 @@ async fn a_rejected_saved_grok_token_refreshes_once_against_its_issuer() {
         store_key: detected.store_key,
     };
     accounts.write_slot(&slot).unwrap();
-    // The LIVE login is never refreshed by zeron.
+    // The LIVE login is never refreshed by openagents.
     let live = accounts.grok_usage(&slot, true).await;
     assert!(matches!(live, Err(ProbeError::Unauthorized { .. })));
     assert_eq!(issuer_hits.load(Ordering::SeqCst), 0);
@@ -992,7 +992,7 @@ async fn re_signing_in_the_live_chatgpt_account_replaces_its_dead_tokens() {
     assert_eq!(slot.credentials["refresh"], "fresh-refresh");
 }
 
-/// A live login zeron can't identify (an opaque token whose profile call
+/// A live login openagents can't identify (an opaque token whose profile call
 /// failed) is never replaced by a new sign-in — it has no slot, so it would
 /// be lost.
 #[tokio::test]
@@ -1270,7 +1270,7 @@ async fn hermes_lists_its_own_pool_read_only() {
         hermes[3].usage_error.as_deref(),
         Some("API keys have no plan usage")
     );
-    // zeron never writes Hermes' pool: no switch, no forget, no slot files.
+    // openagents never writes Hermes' pool: no switch, no forget, no slot files.
     assert!(
         accounts
             .activate(HarnessId::Hermes, &hermes[1].id)
@@ -1550,7 +1550,7 @@ fn credential_defined_endpoints_must_be_the_vendors_own_https_hosts() {
         "evil.example",
         "https://evil.example",
         // Self-hosted GHES: skipped (its REST root is /api/v3, and the
-        // host isn't one zeron can vouch for).
+        // host isn't one openagents can vouch for).
         "github.company.com",
         // Look-alikes and nesting.
         "ghe.com",
@@ -1646,7 +1646,7 @@ async fn untrusted_endpoints_in_credentials_are_never_sent_a_secret() {
     let devin = rows(&snapshot, HarnessId::Devin);
     assert_eq!(
         devin[0].usage_error.as_deref(),
-        Some("Usage skipped — this login names a server zeron doesn't recognize")
+        Some("Usage skipped — this login names a server openagents doesn't recognize")
     );
     let hermes = rows(&snapshot, HarnessId::Hermes);
     assert_eq!(hermes[0].usage_error, devin[0].usage_error);
@@ -1708,7 +1708,7 @@ fn the_accounts_root_and_sign_in_homes_are_owner_only() {
     for file in [&devin.url_file, &missing] {
         let status = std::process::Command::new(&browser)
             .arg("https://app.devin.ai/auth/cli/continue")
-            .env("ZERON_LOGIN_URL_FILE", file)
+            .env("OPENAGENTS_LOGIN_URL_FILE", file)
             .status()
             .unwrap();
         assert!(status.success());
@@ -1724,7 +1724,7 @@ fn the_accounts_root_and_sign_in_homes_are_owner_only() {
     assert_eq!(mode(&slots), 0o700);
 }
 
-/// A self-hosted GHES Copilot login (a host zeron never sends the token to)
+/// A self-hosted GHES Copilot login (a host openagents never sends the token to)
 /// still switches: keyed by a fingerprint of its token, snapshotted without
 /// any network call, and restored byte-for-byte after switching away.
 #[tokio::test]
@@ -1765,7 +1765,7 @@ async fn a_self_hosted_ghes_login_switches_away_and_back_without_the_network() {
     assert!(ghes_row.active && ghes_row.switchable);
     assert_eq!(
         ghes_row.usage_error.as_deref(),
-        Some("Usage skipped — this login names a server zeron doesn't recognize")
+        Some("Usage skipped — this login names a server openagents doesn't recognize")
     );
     let ghes_id = ghes_row.id.clone();
     // Keyed by a fingerprint — the token itself is never the account key.
@@ -1861,13 +1861,13 @@ fn secret_writes_are_exclusive_owner_only_and_never_follow_symlinks() {
     assert_eq!(mode(&config), 0o640);
 }
 
-/// OpenCode takes no lock of its own: zeron serialises its writers on a
+/// OpenCode takes no lock of its own: openagents serialises its writers on a
 /// sidecar lock (released after the write) and never leaves it held.
 #[test]
-fn opencode_writes_hold_a_zeron_side_lock_only_while_writing() {
+fn opencode_writes_hold_a_openagents_side_lock_only_while_writing() {
     let tmp = tempfile::tempdir().unwrap();
     let file = tmp.path().join("auth.json");
-    let lock = tmp.path().join("auth.json.zeron-lock");
+    let lock = tmp.path().join("auth.json.openagents-lock");
     std::fs::write(&file, r#"{"other":{"type":"api","key":"k"}}"#).unwrap();
     merge_json_entry(
         &file,

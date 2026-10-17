@@ -78,7 +78,7 @@ impl Default for EnvironmentState {
             environment: Environment::default(),
             own_folder: false,
             profile: format!(
-                "zeron-{}-{started}-{}",
+                "openagents-{}-{started}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             ),
@@ -147,7 +147,7 @@ impl BrowserData {
     }
 }
 
-/// A folder still held by another process (a second Zeron, or one shutting
+/// A folder still held by another process (a second OpenAgents, or one shutting
 /// down after a quick restart) answers ERROR_BUSY at any creation step.
 fn is_busy(error: &windows::core::Error) -> bool {
     error.code() == windows::core::HRESULT(0x8007_00AA_u32 as i32)
@@ -158,7 +158,7 @@ fn is_busy(error: &windows::core::Error) -> bool {
 fn user_data_folder(own: bool) -> std::path::PathBuf {
     let temp = std::env::temp_dir();
     if !own {
-        return temp.join("zeron-webview2");
+        return temp.join("openagents-webview2");
     }
     // Sweep folders of exited processes. Only those: removal deletes what
     // it can before failing on a locked file, so a live instance's folder
@@ -170,7 +170,7 @@ fn user_data_folder(own: bool) -> std::path::PathBuf {
             let name = entry.file_name();
             let owner = name
                 .to_str()
-                .and_then(|name| name.strip_prefix("zeron-webview2-"))
+                .and_then(|name| name.strip_prefix("openagents-webview2-"))
                 .and_then(|owner| owner.parse::<u32>().ok());
             if let Some(owner) = owner
                 && owner != pid
@@ -180,7 +180,7 @@ fn user_data_folder(own: bool) -> std::path::PathBuf {
             }
         }
     });
-    temp.join(format!("zeron-webview2-{pid}"))
+    temp.join(format!("openagents-webview2-{pid}"))
 }
 
 /// Whether `pid` names a running process (pids are reused, so a false
@@ -633,8 +633,8 @@ impl Host {
                 })),
                 &mut token,
             )?;
-            // Never hand a page's link to another app (zeron://, ms-*, mailto:)
-            // from inside Zeron, prompt or not.
+            // Never hand a page's link to another app (openagents://, ms-*, mailto:)
+            // from inside OpenAgents, prompt or not.
             if let Ok(webview18) = webview.cast::<ICoreWebView2_18>() {
                 webview18.add_LaunchingExternalUriScheme(
                     &LaunchingExternalUriSchemeEventHandler::create(Box::new(move |_, args| {
@@ -647,7 +647,7 @@ impl Host {
                 )?;
             }
             // Camera, microphone, location, notifications, clipboard reads:
-            // nothing a preview needs, and no prompt that looks like Zeron's.
+            // nothing a preview needs, and no prompt that looks like OpenAgents's.
             webview.add_PermissionRequested(
                 &PermissionRequestedEventHandler::create(Box::new(move |_, args| {
                     if let Some(args) = args {

@@ -306,7 +306,7 @@ impl Shell {
     }
 
     /// The Actions section: a row per project action (click runs it; the
-    /// gear edits it), imports from zeron.json, and Add action.
+    /// gear edits it), imports from openagents.json, and Add action.
     fn render_session_info_actions(
         &mut self,
         theme: &Theme,

@@ -9,7 +9,7 @@ use std::{
 };
 
 use sha2::{Digest, Sha256};
-use zeron_syntax::{HighlightedDocument, LanguageId};
+use openagents_syntax::{HighlightedDocument, LanguageId};
 
 pub const QUERY_GENERATION: u32 = 1;
 const MAX_DOCUMENTS: usize = 96;
@@ -129,12 +129,12 @@ fn estimated_document_bytes(document: &HighlightedDocument) -> usize {
             document
                 .lines
                 .capacity()
-                .saturating_mul(std::mem::size_of::<Vec<zeron_syntax::HighlightSpan>>()),
+                .saturating_mul(std::mem::size_of::<Vec<openagents_syntax::HighlightSpan>>()),
         )
         .saturating_add(document.lines.iter().fold(0usize, |total, line| {
             total.saturating_add(
                 line.capacity()
-                    .saturating_mul(std::mem::size_of::<zeron_syntax::HighlightSpan>()),
+                    .saturating_mul(std::mem::size_of::<openagents_syntax::HighlightSpan>()),
             )
         }))
 }
@@ -165,7 +165,7 @@ mod tests {
         let source = "fn main() {}";
         let key = DocumentHighlightKey::new(LanguageId::Rust, source);
         let document = Arc::new(
-            zeron_syntax::highlight(zeron_syntax::HighlightRequest {
+            openagents_syntax::highlight(openagents_syntax::HighlightRequest {
                 source,
                 path: None,
                 fence_tag: Some("rust"),
@@ -185,7 +185,7 @@ mod tests {
         let source = "let x = 1;";
         let key = DocumentHighlightKey::new(LanguageId::Rust, source);
         let document = Arc::new(
-            zeron_syntax::highlight(zeron_syntax::HighlightRequest {
+            openagents_syntax::highlight(openagents_syntax::HighlightRequest {
                 source,
                 path: None,
                 fence_tag: Some("rust"),

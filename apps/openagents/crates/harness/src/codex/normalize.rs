@@ -6,7 +6,7 @@
 //! types) are accepted, and unknown item types map to nothing.
 
 use serde_json::Value;
-use zeron_proto::{AgentEvent, DoneStatus, TodoItem, TodoStatus, ToolCall};
+use openagents_proto::{AgentEvent, DoneStatus, TodoItem, TodoStatus, ToolCall};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Phase {
@@ -203,7 +203,7 @@ fn file_change_call(changes: &[(String, String)]) -> ToolCall {
 
 /// `turn/plan/updated` → the live checklist chip. Steps carry
 /// `pending | inProgress | completed`; like ACP plans the update has no item
-/// id, so it refreshes the singleton [`zeron_proto::LIVE_PLAN_TOOL_ID`] in place.
+/// id, so it refreshes the singleton [`openagents_proto::LIVE_PLAN_TOOL_ID`] in place.
 pub(crate) fn plan_update_events(params: &Value) -> Vec<AgentEvent> {
     let Some(plan) = params.get("plan").and_then(Value::as_array) else {
         return Vec::new();
@@ -219,7 +219,7 @@ pub(crate) fn plan_update_events(params: &Value) -> Vec<AgentEvent> {
         .collect();
     tool_lifecycle(
         Phase::Completed,
-        zeron_proto::LIVE_PLAN_TOOL_ID.into(),
+        openagents_proto::LIVE_PLAN_TOOL_ID.into(),
         ToolCall::Todo { items },
         false,
     )
@@ -887,7 +887,7 @@ mod tests {
             events,
             vec![
                 AgentEvent::ToolCall {
-                    id: zeron_proto::LIVE_PLAN_TOOL_ID.into(),
+                    id: openagents_proto::LIVE_PLAN_TOOL_ID.into(),
                     call: ToolCall::Todo {
                         items: vec![
                             TodoItem::new("read", TodoStatus::Completed),
@@ -897,7 +897,7 @@ mod tests {
                     },
                 },
                 AgentEvent::ToolResult {
-                    id: zeron_proto::LIVE_PLAN_TOOL_ID.into(),
+                    id: openagents_proto::LIVE_PLAN_TOOL_ID.into(),
                     is_error: false,
                     output: None,
                     diff: None,

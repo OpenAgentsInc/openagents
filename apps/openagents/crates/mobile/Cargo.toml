@@ -1,5 +1,5 @@
 [package]
-name = "zeron-mobile"
+name = "openagents-mobile"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,7 +9,7 @@ publish.workspace = true
 # link. Platform code paints, scrolls and handles gestures; everything that
 # decides *what* to paint and *where* lives here.
 [lib]
-name = "zeron_mobile"
+name = "openagents_mobile"
 crate-type = ["lib", "staticlib", "cdylib"]
 
 [[bin]]
@@ -25,27 +25,27 @@ bindgen = ["uniffi/cli"]
 [dependencies]
 openagents-dashboard = { path = "../../../../crates/openagents-dashboard", features = ["views"] }
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
-coder-account.workspace = true
+openagents-account.workspace = true
 sha2.workspace = true
 reqwest = { workspace = true, optional = true }
-zeron-voice-session.workspace = true
-zeron-orb.workspace = true
-zeron-veil.workspace = true
+openagents-voice-session.workspace = true
+openagents-orb.workspace = true
+openagents-veil.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 async-trait.workspace = true
 uniffi = "0.32"
-zeron-markdown.workspace = true
-zeron-text.workspace = true
-zeron-visual.workspace = true
-zeron-visual-gpu.workspace = true
-zeron-doc.workspace = true
-zeron-proto.workspace = true
-zeron-client.workspace = true
+openagents-markdown.workspace = true
+openagents-text.workspace = true
+openagents-visual.workspace = true
+openagents-visual-gpu.workspace = true
+openagents-doc.workspace = true
+openagents-proto.workspace = true
+openagents-client.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 similar.workspace = true
-zeron-syntax.workspace = true
+openagents-syntax.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

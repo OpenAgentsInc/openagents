@@ -3,7 +3,7 @@
 Appshots capture an application window on the desktop and stage it in a composer
 for review before sending. Enable the feature in **Settings → Appshots**, choose
 a global shortcut and destination, and optionally enable capture sound. Invoke
-the shortcut while another application is focused. Invoking it inside Zeron is
+the shortcut while another application is focused. Invoking it inside OpenAgents is
 ignored. No message is sent automatically.
 
 ## Platforms and permissions
@@ -62,7 +62,7 @@ delivery still require a live release pass; the fixtures do not establish them.
 The opt-in `appshots-fixture` Rust example renders isolated native GPUI frames
 from supplied PNG fixtures. Run it with an output directory and a directory
 containing `wide.png`, `tall.png`, and `square.png` after building with
-`cargo build -p zeron-ui --example appshots-fixture --features appshots-fixture`.
+`cargo build -p openagents-ui --example appshots-fixture --features appshots-fixture`.
 It uses a temporary data directory and an ephemeral IPC listener. iOS's
 `-demo -appshots` fixture supplies neutral images; `AppshotUITests` verifies
 portrait/landscape presentation, image opening, the gallery, and queue actions.

@@ -3,7 +3,7 @@
 //! The legend band above the plot doubles as the readout while a finger
 //! scrubs the plot (the desktop's hover).
 
-use zeron_visual::{Align, Chart, ChartKind, TextSize, Weight};
+use openagents_visual::{Align, Chart, ChartKind, TextSize, Weight};
 
 use super::Rgba;
 use super::paint::{Face, Paint, TextCtx};
@@ -36,7 +36,7 @@ fn domain(lo: f64, hi: f64, include_zero: bool) -> (f64, f64, Vec<f64>) {
     if (hi - lo).abs() < f64::EPSILON {
         hi = lo + lo.abs().max(1.0);
     }
-    let ticks = zeron_visual::nice_ticks(lo, hi, 4);
+    let ticks = openagents_visual::nice_ticks(lo, hi, 4);
     let step = if ticks.len() > 1 {
         ticks[1] - ticks[0]
     } else {
@@ -44,7 +44,7 @@ fn domain(lo: f64, hi: f64, include_zero: bool) -> (f64, f64, Vec<f64>) {
     };
     let lo = (lo / step).floor() * step;
     let hi = (hi / step).ceil() * step;
-    (lo, hi, zeron_visual::nice_ticks(lo, hi, 4))
+    (lo, hi, openagents_visual::nice_ticks(lo, hi, 4))
 }
 
 fn value_range(chart: &Chart) -> (f64, f64) {

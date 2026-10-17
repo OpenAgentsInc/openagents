@@ -7,8 +7,8 @@
 //! - [`panel`] — session-scoped tabs, subscriptions with reconnect backoff,
 //!   drag-reorder, and the Cmd/Ctrl+J toggle action.
 //!
-//! Method names come from `zeron_rpc::methods` and wire types from
-//! `zeron_proto` (`TerminalSession`, `TerminalEvent`) — the same contract the
+//! Method names come from `openagents_rpc::methods` and wire types from
+//! `openagents_proto` (`TerminalSession`, `TerminalEvent`) — the same contract the
 //! engine serves (feature-inventory §2.1).
 
 pub(crate) mod dock;

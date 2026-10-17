@@ -347,7 +347,7 @@ impl PreloadedArtwork {
         Self(source)
     }
 
-    pub fn color(&self) -> Option<zeron_theme::Color> {
+    pub fn color(&self) -> Option<openagents_theme::Color> {
         let stride = (self.0.colors.len() / 4096).max(1);
         crate::settings::wallpaper_colors::extract(self.0.colors.iter().step_by(stride).copied())
     }

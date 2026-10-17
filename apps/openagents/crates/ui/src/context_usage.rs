@@ -1,7 +1,7 @@
 //! Context occupancy is read from the replicated chat snapshot, never local CLI state.
 use crate::theme::Theme;
 use gpui::{IntoElement, PathBuilder, SharedString, canvas, div, point, prelude::*, px};
-use zeron_proto::ContextUsage;
+use openagents_proto::ContextUsage;
 
 /// The context ring's trigger chip; the footer ([`crate::account_usage`])
 /// opens [`card`] from it on click.

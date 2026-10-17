@@ -3,7 +3,7 @@
 use super::HarnessesPage;
 use crate::{settings, settings::widgets, theme::Theme};
 use gpui::{AnyElement, Context, div, prelude::*, px};
-use zeron_proto::HarnessId;
+use openagents_proto::HarnessId;
 
 impl HarnessesPage {
     fn toggle_completion(&mut self, harness: HarnessId, dollar: bool, cx: &mut Context<Self>) {

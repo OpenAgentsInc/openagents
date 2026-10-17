@@ -13,7 +13,7 @@ pub fn builtin_registry() -> &'static ThemeRegistry {
     REGISTRY.get_or_init(|| ThemeRegistry {
         families: vec![
             family("coder", "Coder", vec![coder(false), coder(true)]),
-            family("zeron", "Zeron", vec![zeron_light(), zeron_dark()]),
+            family("openagents", "OpenAgents", vec![openagents_light(), openagents_dark()]),
             family(
                 "vscode-default",
                 "VS Code Default",
@@ -244,7 +244,7 @@ const ANSI_LIGHT: [&str; 16] = [
 // Public oa-tokens palette snapshot. Keep the revision with the copied values;
 // the desktop must build without a sibling OpenAgents checkout.
 fn coder(dark: bool) -> ThemeVariant {
-    let mut theme = if dark { zeron_dark() } else { zeron_light() };
+    let mut theme = if dark { openagents_dark() } else { openagents_light() };
     theme.id = if dark { "coder-noir" } else { "coder-light" }.into();
     theme.family_id = "coder".into();
     theme.name = if dark { "Coder Noir" } else { "Coder Light" }.into();
@@ -351,11 +351,11 @@ fn coder(dark: bool) -> ThemeVariant {
     seal(theme)
 }
 
-fn zeron_dark() -> ThemeVariant {
+fn openagents_dark() -> ThemeVariant {
     variant(Seeds {
-        id: "zeron-dark",
-        family_id: "zeron",
-        name: "Zeron Dark",
+        id: "openagents-dark",
+        family_id: "openagents",
+        name: "OpenAgents Dark",
         appearance: Appearance::Dark,
         treatment: SurfaceTreatment::Frosted,
         background: "#060606",
@@ -376,7 +376,7 @@ fn zeron_dark() -> ThemeVariant {
             "#a1a1aa", "#f472b6", "#22d3ee", "#f87171",
         ],
         source: source(
-            "zeron-dark",
+            "openagents-dark",
             "native",
             "https://github.com/zeronsh/comet",
             "d138049",
@@ -385,11 +385,11 @@ fn zeron_dark() -> ThemeVariant {
     })
 }
 
-fn zeron_light() -> ThemeVariant {
+fn openagents_light() -> ThemeVariant {
     variant(Seeds {
-        id: "zeron-light",
-        family_id: "zeron",
-        name: "Zeron Light",
+        id: "openagents-light",
+        family_id: "openagents",
+        name: "OpenAgents Light",
         appearance: Appearance::Light,
         treatment: SurfaceTreatment::Frosted,
         background: "#ffffff",
@@ -410,7 +410,7 @@ fn zeron_light() -> ThemeVariant {
             "#52525b", "#be185d", "#0e7490", "#b91c1c",
         ],
         source: source(
-            "zeron-light",
+            "openagents-light",
             "native",
             "https://github.com/zeronsh/comet",
             "d138049",

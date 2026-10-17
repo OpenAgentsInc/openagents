@@ -35,7 +35,7 @@ The recorded release binary has SHA-256
 All 620 release UI tests passed:
 
 ```sh
-cargo test --release --locked -p zeron-ui --lib -- --test-threads=1
+cargo test --release --locked -p openagents-ui --lib -- --test-threads=1
 ```
 
 The new headless tests use the cached transcript view and real mouse events.
@@ -46,11 +46,11 @@ regressions both failed before their respective fixes.
 
 The existing suite also covers runway geometry, wheel escape and re-sticking,
 resizes, completion shrinkage, viewport restoration, and selection edge scrolling.
-The native app also built with `cargo build --release --locked -p zeron`.
+The native app also built with `cargo build --release --locked -p openagents`.
 
 Replay with `scripts/resource-profile.mjs` and `scripts/replay-claude.py`:
 use `scripts/fixtures/transcript-selection-stream.jsonl` at 1200 ms per delta
 for the short turn, or `scripts/fixtures/resource-stream.jsonl` at 300 ms per
-delta for overflow. Set `ZERON_PROFILE_SUBMIT_UI=1`; the short-turn prompt
+delta for overflow. Set `OPENAGENTS_PROFILE_SUBMIT_UI=1`; the short-turn prompt
 must be long enough to expose Show more. The recordings used a 1939-character
 prompt for that case.

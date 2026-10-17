@@ -14,7 +14,7 @@ at 46.14 MiB while process physical footprint was approximately 371–382 MiB.
 An Allocations launch trace reported 8.63 MiB of persistent heap allocations.
 Virtual IOAccelerator mappings in that trace are not physical memory totals.
 
-A standalone reproduction isolates the mechanism without Zeron, a window,
+A standalone reproduction isolates the mechanism without OpenAgents, a window,
 history, network traffic, or streaming. It submits one GPU command every
 15 seconds, waits for completion, and samples physical footprint every 500 ms.
 On the test M4 Pro with macOS 26.0.1:
@@ -35,7 +35,7 @@ The blur test also reproduces the transient charge without an explicit blit.
 These sizes and retention times are measurements on this OS/GPU, not Metal API
 guarantees or universal limits.
 
-Zeron's rendering uses these command types. Reducing unnecessary submissions
+OpenAgents's rendering uses these command types. Reducing unnecessary submissions
 reduces how often the transient charge is incurred. Keeping it resident would
 only hold the process at the higher footprint. Streaming and visible animations
 still submit GPU work; this change does not promise a flat low footprint while
@@ -173,9 +173,9 @@ Separate process memory peaks need not occur at the same instant.
 
 ```sh
 CLAUDE_CODE_EXECUTABLE="$PWD/scripts/replay-claude.py" \
-ZERON_REPLAY_JOURNAL="$PWD/scripts/fixtures/resource-stream.jsonl" \
-ZERON_PROFILE_BACKGROUND_CHATS=50 ZERON_PROFILE_SUBMIT_UI=1 \
-ZERON_PROFILE_PROMPT='Replay fixture.' ZERON_PROFILE_IDLE_MS=10000 \
-ZERON_FRAME_STATS=0 node scripts/resource-profile.mjs \
-  /path/to/immutable/zeron /tmp/fresh-replay-profile claude-code
+OPENAGENTS_REPLAY_JOURNAL="$PWD/scripts/fixtures/resource-stream.jsonl" \
+OPENAGENTS_PROFILE_BACKGROUND_CHATS=50 OPENAGENTS_PROFILE_SUBMIT_UI=1 \
+OPENAGENTS_PROFILE_PROMPT='Replay fixture.' OPENAGENTS_PROFILE_IDLE_MS=10000 \
+OPENAGENTS_FRAME_STATS=0 node scripts/resource-profile.mjs \
+  /path/to/immutable/openagents /tmp/fresh-replay-profile claude-code
 ```

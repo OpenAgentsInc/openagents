@@ -83,7 +83,7 @@ numbers. Older hosts retain the existing command-send path.
 - Device-routing tests race local and remote consumers over the same row.
 - Desktop tests cover action selection, modifier submission, optimistic echo,
   settings compatibility and transcript anchoring.
-- `apps/ios/ZeronTests/MessageQueueTests.swift` covers projection, policy,
+- `apps/ios/OpenAgentsTests/MessageQueueTests.swift` covers projection, policy,
   attachment text, action acknowledgements and keyboard submission. Run with
   the iOS Xcode test suite on macOS.
 

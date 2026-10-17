@@ -31,7 +31,7 @@ use std::time::Duration;
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 
-use zeron_proto::Space;
+use openagents_proto::Space;
 
 use crate::fs_watch::{FsWatch, FsWatchHub};
 use crate::repos::Repos;

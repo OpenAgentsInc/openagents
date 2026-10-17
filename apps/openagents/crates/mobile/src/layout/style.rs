@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use zeron_text::{FaceId, FontBook, FontMetrics, StyleId, StyleOptions};
+use openagents_text::{FaceId, FontBook, FontMetrics, StyleId, StyleOptions};
 
 /// Faces the platform registers (same bytes it hands CoreText/Skia).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, uniffi::Enum)]
@@ -150,7 +150,7 @@ pub(crate) struct Typography {
 impl Typography {
     pub fn new(
         faces: &[(FaceRole, &'static [u8])],
-        fallback: Option<Arc<dyn zeron_text::FallbackMeasurer>>,
+        fallback: Option<Arc<dyn openagents_text::FallbackMeasurer>>,
         registry: Arc<Mutex<HashMap<u16, StyleDesc>>>,
     ) -> Self {
         let mut book = FontBook::new();

@@ -1,6 +1,6 @@
 # Native Codex subscription voice
 
-Zeron connects a local Codex chat to the installed Codex voice runtime. Voice
+OpenAgents connects a local Codex chat to the installed Codex voice runtime. Voice
 uses ChatGPT authentication and the normal Codex plan budget. Codex may use
 additional credits according to the user's account settings and usage limits.
 There is no OpenAI API-key fallback, separate public Realtime API client, or
@@ -21,7 +21,7 @@ Codex 0.159's WebSocket audio path calls `realtime_api_key` and requires API-key
 credentials, including an environment-key fallback. That path is unsuitable for
 this integration. Native subscription voice uses **WebRTC V3** instead:
 
-1. Prepare or reuse an idle native thread with the normal Zeron MCP server.
+1. Prepare or reuse an idle native thread with the normal OpenAgents MCP server.
    No initial `turn/start`, empty user message, title request, or submitted draft.
    Load the initial `account/read` snapshot before attaching the voice router:
    Codex announces initial authentication with `account/updated`, which must not
@@ -49,7 +49,7 @@ document, sync journal, or owner RPC stream. Helper stderr is discarded; errors
 and diagnostics use typed rejection reasons. Child processes are killed and
 reaped on cancellation, including when a helper control reply is stalled.
 
-The earlier `zeron-audio` PCM/AEC prototype remains isolated and tested offline;
+The earlier `openagents-audio` PCM/AEC prototype remains isolated and tested offline;
 it is not a dependency of the released UI or the subscription voice path.
 `voice-experimental` is retained as an empty compatibility build feature. The
 Codex voice control is available in ordinary desktop builds.
@@ -93,10 +93,10 @@ engine turn boundary before its text/tools, including on an idle bootstrap.
 
 Every session is an orchestrator. `thread/realtime/start` carries one short
 English instruction, as `realtimeStartInstructions` for the backing Codex model
-and as a developer `initialItems` entry for the voice model: use the Zeron MCP
+and as a developer `initialItems` entry for the voice model: use the OpenAgents MCP
 to create, message and monitor chats, and delegate coding work to them.
 
-The voice agent uses the unchanged upstream Zeron MCP. Creating chats, sending
+The voice agent uses the unchanged upstream OpenAgents MCP. Creating chats, sending
 messages and delegating tasks use the normal provider selection, authentication
 and device routing. A Codex voice session can create a Grok, Claude Code or other
 available provider session; those children use their own provider credentials.
@@ -134,7 +134,7 @@ only that preference is persisted. Devices use the operating system defaults.
 Codex's current helper protocol does not expose device selection.
 
 The native helper/runtime is supplied by the standalone Codex installation,
-not redistributed by Zeron, on macOS, Linux and Windows; the desktop client of
+not redistributed by OpenAgents, on macOS, Linux and Windows; the desktop client of
 a remote call uses its own installation the same way. npm/CLI-only
 installations without those resources report `nativeRuntimeUnavailable`. macOS production/dev bundles declare microphone
 usage and audio-input entitlements. The viewport verifies microphone authorization
@@ -144,7 +144,7 @@ embed the microphone purpose string in the executable's `__TEXT,__info_plist`
 section, so direct development launches can also request access. Missing
 metadata shows a rebuild hint instead of requesting permission and being
 terminated by macOS. `scripts/run-macos-dev.sh` builds the
-signed development bundle; `ZERON_DEV_BUILD_ONLY=1` prepares it without launching.
+signed development bundle; `OPENAGENTS_DEV_BUILD_ONLY=1` prepares it without launching.
 No new DSP DLLs or C++ build dependency are
 added to the production UI. Apache-2.0 attribution for the adapted native helper
 protocol is included in `THIRD_PARTY_NOTICES.md`.
@@ -155,16 +155,16 @@ Data flow:
 
 - Audio goes from the device with the microphone (Codex's helper on desktop,
   WebRTC on iOS) directly to OpenAI, under the user's own ChatGPT-authenticated
-  Codex account and OpenAI's terms. It never transits Zeron servers.
+  Codex account and OpenAI's terms. It never transits OpenAgents servers.
 - Remote calls exchange SDP signaling and controls over the authenticated
   owner-only device relay; they are ephemeral and never persisted.
 - Canonical final transcript text is stored in the orchestrator chat's session
-  document and syncs like any chat, through Zeron's relay. Orchestrator chats
+  document and syncs like any chat, through OpenAgents's relay. Orchestrator chats
   are hidden from the sidebar but are not deleted when a call ends.
 - Usage is billed to the user's Codex plan or credits by OpenAI.
 
 The microphone purpose strings (`dist/macos/Info*.plist`,
-`apps/ios/Zeron/Info.plist`) state that voice sessions stream audio to OpenAI;
+`apps/ios/OpenAgents/Info.plist`) state that voice sessions stream audio to OpenAI;
 dictation stays on device.
 
 Notices: `THIRD_PARTY_NOTICES.md` covers the Apache-2.0 Codex protocol
@@ -183,7 +183,7 @@ Pending before a public release (owner decisions, not code):
 - iOS privacy manifest (`PrivacyInfo.xcprivacy`) and App Store privacy labels
   declare no collected data. Decide whether audio sent to OpenAI and synced
   voice transcripts must be declared.
-- Zeron's public privacy policy and terms (outside this repository) should
+- OpenAgents's public privacy policy and terms (outside this repository) should
   describe the OpenAI audio flow and transcript sync.
 - WebRTC's embedded third-party licenses (BoringSSL, libsrtp, Opus, libyuv,
   Abseil and others) are referenced, not reproduced; generate the full list

@@ -4,8 +4,8 @@
 
 use std::os::unix::fs::PermissionsExt;
 
-use zeron_engine::{AgentAccounts, AgentAccountsConfig};
-use zeron_proto::HarnessId;
+use openagents_engine::{AgentAccounts, AgentAccountsConfig};
+use openagents_proto::HarnessId;
 
 #[tokio::test]
 async fn codex_login_resolves_override_and_adds_its_directory_to_child_path() {
@@ -29,7 +29,7 @@ async fn codex_login_resolves_override_and_adds_its_directory_to_child_path() {
     unsafe {
         std::env::set_var("CODEX_EXECUTABLE", &exe);
         std::env::set_var("PATH", "/usr/bin:/bin");
-        std::env::set_var("ZERON_NO_LOGIN_SHELL", "1");
+        std::env::set_var("OPENAGENTS_NO_LOGIN_SHELL", "1");
     }
     let accounts = AgentAccounts::new(AgentAccountsConfig::detect(dir.path()));
     let login = accounts.start_login(HarnessId::Codex).await.unwrap();

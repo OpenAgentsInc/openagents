@@ -2,8 +2,8 @@
 //! threads, chosen with the composer's own model picker (title-bound mode).
 
 use gpui::{AnyElement, Context, Entity, Subscription, Task, div, prelude::*, px};
-use zeron_engine::registry::TitleSettings;
-use zeron_rpc::methods;
+use openagents_engine::registry::TitleSettings;
+use openagents_rpc::methods;
 
 use crate::pickers::{Pickers, TitleModelPicked};
 use crate::popover::Loadable;

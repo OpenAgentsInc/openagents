@@ -8,11 +8,11 @@ publish = false
 [dependencies]
 openagents.workspace = true
 coder-sync = { package = "coder-sync-service", path = "..", features = ["server"] }
-zeron-sync.workspace = true
-zeron-client.workspace = true
-zeron-proto.workspace = true
-zeron-doc.workspace = true
-zeron-rpc.workspace = true
+openagents-sync.workspace = true
+openagents-client.workspace = true
+openagents-proto.workspace = true
+openagents-doc.workspace = true
+openagents-rpc.workspace = true
 axum = { version = "0.8", features = ["ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
 serde_json = "1"

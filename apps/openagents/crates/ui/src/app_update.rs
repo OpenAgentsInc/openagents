@@ -11,13 +11,13 @@
 //! release downloads in the background and is verified, the strip offers
 //! "restart to apply", and a staged update the user never restarts for is
 //! installed when the app quits — so nobody stays on a stale version just
-//! because they never clicked. `ZERON_AUTO_UPDATE=0` keeps it report-only.
+//! because they never clicked. `OPENAGENTS_AUTO_UPDATE=0` keeps it report-only.
 
 use std::path::{Path, PathBuf};
 
 use gpui::{App, AppContext as _, Context, Entity, Global, SharedString, Task};
 use gpui_tokio::Tokio;
-use zeron_update::{InstallKind, UpdateBlocker, UpdateStatus, Updater};
+use openagents_update::{InstallKind, UpdateBlocker, UpdateStatus, Updater};
 
 /// Download/install lifecycle of the newest release in this process.
 #[derive(Debug, Clone, PartialEq)]
@@ -66,7 +66,7 @@ pub enum StripAction {
 pub struct AppUpdate {
     install: InstallKind,
     blocker: Option<UpdateBlocker>,
-    /// Background download + install on quit (`ZERON_AUTO_UPDATE` unset or on).
+    /// Background download + install on quit (`OPENAGENTS_AUTO_UPDATE` unset or on).
     automatic: bool,
     edge_url: String,
     data_dir: PathBuf,
@@ -100,7 +100,7 @@ impl AppUpdate {
     }
 
     fn new(edge_url: String, data_dir: PathBuf, cx: &mut Context<Self>) -> Self {
-        let install = zeron_update::detect_install();
+        let install = openagents_update::detect_install();
         let blocker = install
             .supports_desktop_update()
             .then(|| install.desktop_update_blocker())
@@ -125,7 +125,7 @@ impl AppUpdate {
         Self {
             install,
             blocker,
-            automatic: zeron_update::desktop_auto_update_enabled(),
+            automatic: openagents_update::desktop_auto_update_enabled(),
             edge_url,
             data_dir,
             checker,
@@ -197,7 +197,7 @@ impl AppUpdate {
             Flow::Ready { version, .. } => Some(version),
             Flow::Idle | Flow::Failed { .. } => None,
         };
-        if current.is_some_and(|version| !zeron_update::version_newer(latest, version)) {
+        if current.is_some_and(|version| !openagents_update::version_newer(latest, version)) {
             return;
         }
         self.start_download(cx);
@@ -219,9 +219,9 @@ impl AppUpdate {
         let stage = Tokio::spawn(cx, async move {
             // Re-read the manifest so a long-lived status still downloads the
             // newest release, with that release's checksums.
-            let manifest = zeron_update::fetch_latest(&edge_url).await?;
+            let manifest = openagents_update::fetch_latest(&edge_url).await?;
             anyhow::ensure!(
-                zeron_update::version_newer(&manifest.version, zeron_update::current_version()),
+                openagents_update::version_newer(&manifest.version, openagents_update::current_version()),
                 "the release feed no longer offers a newer version"
             );
             let staged = install
@@ -377,7 +377,7 @@ impl AppUpdate {
 
 /// Label + click action of the strip. Self-updating installs drive their flow
 /// from it; blocked installs explain themselves; managed installs without a
-/// desktop path get the `zeron update` hint; unmanaged installs (source builds,
+/// desktop path get the `openagents update` hint; unmanaged installs (source builds,
 /// hand-copied binaries) are pointed at the GitHub releases page.
 pub fn strip_for(
     install: &InstallKind,
@@ -413,7 +413,7 @@ pub fn strip_for(
     }
     if matches!(install, InstallKind::Managed { .. }) {
         (
-            format!("Update available — v{latest} · run `zeron update`").into(),
+            format!("Update available — v{latest} · run `openagents update`").into(),
             StripAction::Advise {
                 open_releases: false,
             },
@@ -450,7 +450,7 @@ mod tests {
     #[test]
     fn strip_follows_the_flow_on_self_updating_installs() {
         let mac_app = InstallKind::MacApp {
-            bundle: PathBuf::from("/Applications/Zeron.app"),
+            bundle: PathBuf::from("/Applications/OpenAgents.app"),
         };
         assert_eq!(
             strip_for(&mac_app, false, &Flow::Idle, "0.2.86"),
@@ -471,7 +471,7 @@ mod tests {
         );
         let ready = Flow::Ready {
             version: "0.2.86".into(),
-            staged: PathBuf::from("/tmp/Zeron.app"),
+            staged: PathBuf::from("/tmp/OpenAgents.app"),
         };
         assert_eq!(
             strip_for(&mac_app, false, &ready, "0.2.86").1,
@@ -508,7 +508,7 @@ mod tests {
             )
         );
         let managed = InstallKind::Managed {
-            app_root: PathBuf::from("/home/u/.zeron/app"),
+            app_root: PathBuf::from("/home/u/.openagents/app"),
         };
         let strip = strip_for(&managed, false, &Flow::Idle, "0.2.86");
         if cfg!(target_os = "linux") {
@@ -518,7 +518,7 @@ mod tests {
         } else {
             assert_eq!(
                 strip.0,
-                SharedString::from("Update available — v0.2.86 · run `zeron update`")
+                SharedString::from("Update available — v0.2.86 · run `openagents update`")
             );
         }
     }
@@ -527,7 +527,7 @@ mod tests {
     #[test]
     fn windows_installs_drive_the_desktop_flow() {
         let installed = InstallKind::WindowsPortable {
-            directory: PathBuf::from(r"C:\Users\u\AppData\Local\Programs\Zeron"),
+            directory: PathBuf::from(r"C:\Users\u\AppData\Local\Programs\OpenAgents"),
         };
         assert_eq!(
             strip_for(&installed, false, &Flow::Idle, "0.2.86"),

@@ -1,17 +1,17 @@
 //! Opt-in production engine + Cursor SDK checks. Uses real account quota.
-//! ZERON_CURSOR_STATE_DIR=$(mktemp -d) cargo test -p zeron-engine --test cursor_live -- --ignored --nocapture --test-threads=1
+//! OPENAGENTS_CURSOR_STATE_DIR=$(mktemp -d) cargo test -p openagents-engine --test cursor_live -- --ignored --nocapture --test-threads=1
 use std::{sync::Arc, time::Duration};
-use zeron_doc::{
+use openagents_doc::{
     MessagePart, MessageRole, MessageStatus, SessionCommandPayload, SessionMessageEntry,
 };
-use zeron_engine::{EngineCore, HarnessRegistry};
-use zeron_harness::CursorHarness;
-use zeron_proto::{HarnessId, RunRequest, SandboxLevel};
+use openagents_engine::{EngineCore, HarnessRegistry};
+use openagents_harness::CursorHarness;
+use openagents_proto::{HarnessId, RunRequest, SandboxLevel};
 
 const CHAT: &str = "cursor-live-audit";
 fn setup(path: &std::path::Path) -> EngineCore {
     assert!(
-        std::env::var_os("ZERON_CURSOR_STATE_DIR").is_some(),
+        openagents_brand::env_var_os("OPENAGENTS_CURSOR_STATE_DIR").is_some(),
         "use isolated Cursor state"
     );
     let registry = HarnessRegistry::new();
@@ -130,11 +130,11 @@ async fn remote_steer_batch_reaches_real_muse_with_every_message() {
         .unwrap()
         .as_millis() as i64;
     for (i, token) in tokens.iter().enumerate().skip(1) {
-        handle.doc().queue_command(&zeron_doc::SessionCommandEntry {
+        handle.doc().queue_command(&openagents_doc::SessionCommandEntry {
             id: format!("remote-{i}"),
             payload: SessionCommandPayload::Steer {prompt: format!("Remember {token}. Reply with the immediately previous user token and this token. Do not use tools."), message_id: Some(format!("message-{i}"))},
             issued_by: "remote-viewer".into(), issued_at: now + i as i64,
-            based_on: None, expires_at: None, status: zeron_doc::SessionCommandStatus::Pending, resolution: None,
+            based_on: None, expires_at: None, status: openagents_doc::SessionCommandStatus::Pending, resolution: None,
         }).unwrap();
     }
     core.doc_host.drain_commands(&handle).await;
@@ -190,7 +190,7 @@ async fn send_now_keeps_the_interrupted_user_message() {
 #[tokio::test]
 #[ignore = "real authenticated Muse Spark; consumes quota"]
 async fn send_now_during_startup_keeps_the_interrupted_user_message() {
-    let rounds = std::env::var("ZERON_CURSOR_EARLY_ROUNDS")
+    let rounds = openagents_brand::env_var("OPENAGENTS_CURSOR_EARLY_ROUNDS")
         .ok()
         .map(|v| v.parse::<usize>().unwrap())
         .unwrap_or(1);
@@ -251,7 +251,7 @@ async fn send_now_recall(stage: u8) {
                     .ok()
                     .is_some_and(|(events, _)| {
                         events.iter().any(|e| {
-                            matches!(e.event, zeron_proto::AgentEvent::SessionStarted { .. })
+                            matches!(e.event, openagents_proto::AgentEvent::SessionStarted { .. })
                         })
                     })
             },
@@ -322,7 +322,7 @@ async fn startup_steering_burst_retains_all_interrupted_messages() {
                     .unwrap()
                     .0
                     .iter()
-                    .filter(|e| matches!(e.event, zeron_proto::AgentEvent::SessionStarted { .. }))
+                    .filter(|e| matches!(e.event, openagents_proto::AgentEvent::SessionStarted { .. }))
                     .count()
                     == i + 1
             },

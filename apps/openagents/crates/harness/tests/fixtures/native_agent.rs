@@ -29,9 +29,9 @@ fn main() {
             json!({
                 "argv": args.iter().skip(2).collect::<Vec<_>>(),
                 "cwd": std::env::current_dir().unwrap(),
-                "marker": std::env::var("ZERON_LAUNCH_MARKER").ok(),
-                "removed": std::env::var("ZERON_LAUNCH_REMOVED").ok(),
-                "unicode": std::env::var("ZERON_Ä_KEY").ok(),
+                "marker": openagents_brand::env_var("OPENAGENTS_LAUNCH_MARKER").ok(),
+                "removed": openagents_brand::env_var("OPENAGENTS_LAUNCH_REMOVED").ok(),
+                "unicode": openagents_brand::env_var("OPENAGENTS_Ä_KEY").ok(),
                 "path": std::env::var("PATH").ok(),
             })
         );
@@ -49,13 +49,13 @@ fn main() {
         let path = std::env::current_dir()
             .unwrap()
             .join("descendant-pids.json");
-        let mut command = zeron_harness::process::Command::new(std::env::current_exe().unwrap());
+        let mut command = openagents_harness::process::Command::new(std::env::current_exe().unwrap());
         command
             .arg("--tree-child")
             .arg(&path)
-            .stdin(zeron_harness::process::Stdio::null())
-            .stdout(zeron_harness::process::Stdio::null())
-            .stderr(zeron_harness::process::Stdio::null());
+            .stdin(openagents_harness::process::Stdio::null())
+            .stdout(openagents_harness::process::Stdio::null())
+            .stderr(openagents_harness::process::Stdio::null());
         let _owned = command.spawn().unwrap();
         let pids = await_tree(&path);
         println!("{}", serde_json::to_string(&pids).unwrap());

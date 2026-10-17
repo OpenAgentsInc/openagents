@@ -11,8 +11,8 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
-use zeron_engine::{Auth, AuthConfig, AuthState};
-use zeron_rpc::{TokenError, TokenSource};
+use openagents_engine::{Auth, AuthConfig, AuthState};
+use openagents_rpc::{TokenError, TokenSource};
 
 // ---------------------------------------------------------------------------
 // Fake JWTs
@@ -562,19 +562,19 @@ async fn twenty_consumers_and_background_loop_share_a_failed_refresh() {
 
 #[tokio::test]
 async fn temporary_token_errors_reach_http_and_websocket_consumers() {
-    use zeron_sync::chat_client::ChatTransport;
+    use openagents_sync::chat_client::ChatTransport;
     let edge = StubEdge::start().await;
     edge.state.drop_refresh.store(true, Ordering::SeqCst);
     let dir = tempfile::tempdir().unwrap();
     let auth = persisted_auth(&edge, dir.path());
-    let edge_config = zeron_engine::EdgeConfig::new(edge.url(), Arc::new(auth.clone()));
+    let edge_config = openagents_engine::EdgeConfig::new(edge.url(), Arc::new(auth.clone()));
 
     let websocket = edge_config.room_url("/registry/org_1/ws").url().await;
     assert!(matches!(
         websocket,
-        Err(zeron_sync::SyncError::TemporarilyUnavailable(_))
+        Err(openagents_sync::SyncError::TemporarilyUnavailable(_))
     ));
-    let transport = zeron_engine::chat2_host::EdgeChatTransport::new(
+    let transport = openagents_engine::chat2_host::EdgeChatTransport::new(
         reqwest::Client::new(),
         edge_config,
         "chat",
@@ -582,11 +582,11 @@ async fn temporary_token_errors_reach_http_and_websocket_consumers() {
     );
     assert!(matches!(
         transport.fetch_rows(0).await,
-        Err(zeron_sync::SyncError::TemporarilyUnavailable(_))
+        Err(openagents_sync::SyncError::TemporarilyUnavailable(_))
     ));
     assert!(matches!(
         auth.list_orgs().await,
-        Err(zeron_engine::EngineError::Token(
+        Err(openagents_engine::EngineError::Token(
             TokenError::TemporarilyUnavailable(_)
         ))
     ));

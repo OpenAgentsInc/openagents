@@ -3,7 +3,7 @@
 
 Live mode uses an explicit local helper and Codex app-server over SSH. Only
 sanitized stage/counter results are printed; no SDP, transcript or raw errors.
-This diagnostic does not use Zeron's production relay or certify its MCP routing.
+This diagnostic does not use OpenAgents's production relay or certify its MCP routing.
 """
 import argparse
 import asyncio
@@ -261,7 +261,7 @@ async def exercise(server, helper, build, cwd, report, seconds=0):
     try:
         report['stage'] = 'initialize'
         await server.request('initialize', {
-            'clientInfo': {'name': 'zeron-voice-remote-smoke', 'version': '1'},
+            'clientInfo': {'name': 'openagents-voice-remote-smoke', 'version': '1'},
             'capabilities': {'experimentalApi': True}})
         await server.send({'method': 'initialized'})
         account = await server.request('account/read', {'refreshToken': False})

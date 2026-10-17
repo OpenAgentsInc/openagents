@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use zeron_proto::WorkspaceScope;
+use openagents_proto::WorkspaceScope;
 
 use crate::EngineError;
 
@@ -396,7 +396,7 @@ mod tests {
         let core = crate::EngineCore::assemble_with_profile(
             profile,
             std::sync::Arc::new(crate::default_registry()),
-            zeron_proto::HarnessId::Mock,
+            openagents_proto::HarnessId::Mock,
             None,
         )
         .unwrap();
@@ -414,13 +414,13 @@ mod tests {
     #[tokio::test]
     async fn development_constructor_uses_account_scoped_uploads() {
         let dir = tempfile::tempdir().unwrap();
-        let org_id = crate::env_or("ZERON_ORG_ID", crate::DEFAULT_ORG_ID);
-        let user_id = crate::env_or("ZERON_USER_ID", crate::DEFAULT_USER_ID);
+        let org_id = crate::env_or("OPENAGENTS_ORG_ID", crate::DEFAULT_ORG_ID);
+        let user_id = crate::env_or("OPENAGENTS_USER_ID", crate::DEFAULT_USER_ID);
         let expected = EngineProfile::development(dir.path(), &org_id, &user_id);
         let core = crate::EngineCore::assemble(
             dir.path(),
             std::sync::Arc::new(crate::default_registry()),
-            zeron_proto::HarnessId::Mock,
+            openagents_proto::HarnessId::Mock,
             None,
         )
         .unwrap();
@@ -428,7 +428,7 @@ mod tests {
         assert_eq!(core.workspace_scope(), WorkspaceScope::Development);
         assert_eq!(core.uploads.dir(), expected.store_root().join("uploads"));
         assert!(expected.store_root().is_dir());
-        if std::env::var("ZERON_ORG_ID").is_err() && std::env::var("ZERON_USER_ID").is_err() {
+        if openagents_brand::env_var("OPENAGENTS_ORG_ID").is_err() && openagents_brand::env_var("OPENAGENTS_USER_ID").is_err() {
             assert_eq!(
                 expected.store_root(),
                 dir.path().join("orgs/dev-org/dev-user")

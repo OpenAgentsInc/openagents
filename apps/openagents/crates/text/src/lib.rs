@@ -1,4 +1,4 @@
-//! zeron-text — analytic text measurement and line layout for virtualized transcripts.
+//! openagents-text — analytic text measurement and line layout for virtualized transcripts.
 //!
 //! A Rust port of the technique behind chenglou/pretext: split text layout into a one-time
 //! [`prepare`] and a width-dependent layout that is pure arithmetic, so a virtualized list can

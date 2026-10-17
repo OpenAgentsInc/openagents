@@ -1,11 +1,11 @@
 //! Two-device preview diagnostic. Exchange `SIGNAL` lines over an authenticated
-//! channel (for example Zeron terminal RPC); never publish SDP in release logs.
+//! channel (for example OpenAgents terminal RPC); never publish SDP in release logs.
 //! `peer-probe host <localhost-port>` serves that explicit backend; `peer-probe
 //! client` requests it. Each process reads the other process's signals on stdin.
 use std::{sync::Arc, time::Duration};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
-use zeron_preview::{
+use openagents_preview::{
     mux::{BoxIo, Connector},
     peer::{Peers, Signal},
 };
@@ -27,7 +27,7 @@ impl Connector for Backend {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter("zeron_preview=debug,webrtc=warn")
+        .with_env_filter("openagents_preview=debug,webrtc=warn")
         .with_writer(std::io::stderr)
         .init();
     let args: Vec<_> = std::env::args().skip(1).collect();

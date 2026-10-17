@@ -1,6 +1,6 @@
 //! Saved account chats in the sidebar. Selecting a row never selects an engine chat.
 use crate::theme::Theme;
-use coder_account::{
+use openagents_account::{
     Controller,
     history::{ExistingChat, History, LoadState, Snapshot},
     openagents::HistoryProject,
@@ -185,7 +185,7 @@ impl HistoryPanel {
     }
     pub fn reopen(
         &mut self,
-        summary: coder_account::openagents::ChatSummary,
+        summary: openagents_account::openagents::ChatSummary,
         cx: &mut Context<Self>,
     ) {
         let Some(lease) = self.account.lease() else {

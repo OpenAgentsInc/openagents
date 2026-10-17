@@ -1,8 +1,8 @@
-//! CoreText ground truth (macOS only): lay a corpus out with zeron-text and with CTFramesetter
+//! CoreText ground truth (macOS only): lay a corpus out with openagents-text and with CTFramesetter
 //! using the *same font bytes*, and compare line starts — the methodology of
-//! apps/ios/ZeronTests/LineBreakAccuracyTests.swift, runnable with plain `cargo test`.
+//! apps/ios/OpenAgentsTests/LineBreakAccuracyTests.swift, runnable with plain `cargo test`.
 //!
-//! `cargo test -p zeron-text --release --test coretext -- --nocapture` prints accuracy and the
+//! `cargo test -p openagents-text --release --test coretext -- --nocapture` prints accuracy and the
 //! first mismatches. `ZT_CT_VERBOSE=n` prints up to `n` mismatches with line texts;
 //! `ZT_CT_FILTER=substr` restricts the corpus.
 
@@ -25,7 +25,7 @@ use core_text::font::{CTFont, new_from_CGFont};
 use core_text::framesetter::CTFramesetter;
 use core_text::line::CTLine;
 use core_text::string_attributes::{kCTFontAttributeName, kCTLigatureAttributeName};
-use zeron_text::*;
+use openagents_text::*;
 
 /// CTFonts indexed by StyleId, plus whether the style uses ligatures.
 struct CtFonts {
@@ -203,7 +203,7 @@ fn swift_corpus() -> Vec<String> {
         "Inline code spans get chips, links are tappable, and old ideas are struck through when they no longer apply to the plan.",
         "Nested bullet with a very/long/path/that/must/wrap/somewhere/in/the/middle/because/it/is/too/wide.rs and then more words.",
         "See https://example.com/a/very/long/url/that/keeps/going/and/going?query=parameters&more=stuff for the details.",
-        "Run cargo test -p zeron-text --release -- --nocapture, then compare the numbers against the previous baseline run.",
+        "Run cargo test -p openagents-text --release -- --nocapture, then compare the numbers against the previous baseline run.",
         "CJK: 日本語のテキストも正しく折り返されます。中文也可以正确换行，不需要空格。한국어 문장도 줄바꿈이 됩니다.",
         "Emoji sequences 👩‍💻 🧑🏽‍🚀 🇯🇵 1️⃣ never split, even when a line is tight 🚀✨🔥 around them.",
         "Numbers like 3,100 and 1.5×, dates like 2026-09-26, and times like 12:48 stay intact; so do e.g. and i.e. abbreviations.",
@@ -244,8 +244,8 @@ fn broad_corpus() -> Vec<String> {
         "Run `npm install --save-dev @types/node@^20.11.0 typescript@~5.4.2` then `npx tsc --noEmit --strict` and fix errors.",
         "camelCaseIdentifier snake_case_identifier SCREAMING_CASE_CONSTANT kebab-case-identifier PascalCaseTypeName __dunder__ methods",
         // paths / urls
-        "Edit /Users/wing/Documents/GitHub/comet-native/crates/text/src/layout.rs and ~/Library/Application Support/Zeron/config.toml today.",
-        "C:\\Program Files\\Zeron\\bin\\zeron.exe --config C:\\Users\\wing\\AppData\\Roaming\\Zeron\\settings.json --verbose",
+        "Edit /Users/wing/Documents/GitHub/comet-native/crates/text/src/layout.rs and ~/Library/Application Support/OpenAgents/config.toml today.",
+        "C:\\Program Files\\OpenAgents\\bin\\openagents.exe --config C:\\Users\\wing\\AppData\\Roaming\\OpenAgents\\settings.json --verbose",
         "Docs at https://developer.apple.com/documentation/coretext/1509588-ctframesettercreateframe?language=objc#discussion and more.",
         "Mail wing@anara.com or visit http://www.example.org:8080/path/to/resource.html?a=1&b=two#section-3 for further info.",
         "git@github.com:chenglou/pretext.git, ssh://git@host.example.com:2222/repo.git, and file:///tmp/some%20file.txt are URLs.",
@@ -635,7 +635,7 @@ fn line_breaks_match_coretext() {
 
 // ------------------------------------------------ CoreText behaviors the layout model relies on
 //
-// Each test pins one finding about CoreText's line breaker, then checks zeron-text reproduces it.
+// Each test pins one finding about CoreText's line breaker, then checks openagents-text reproduces it.
 // If an OS update changes CoreText, these say which assumption broke.
 
 fn font_at(file: &str, size: f64) -> CTFont {
@@ -671,7 +671,7 @@ fn ct_threshold(text: &str, font: &CTFont, first: &str) -> f64 {
     hi
 }
 
-/// zeron-text's lines for `text` in style `si` of the harness (PreWrap, anywhere).
+/// openagents-text's lines for `text` in style `si` of the harness (PreWrap, anywhere).
 fn rust_lines(h: &mut Harness, si: usize, text: &str, w: f32) -> Vec<String> {
     let (p, starts) = h.rust_lines(text, h.styles[si].1, w);
     let u16: Vec<u16> = p.text().encode_utf16().collect();
@@ -817,7 +817,7 @@ fn cf_breaks(text: &str) -> Vec<u32> {
     out
 }
 
-/// zeron-text's rule-based break opportunities (segment ends, excluding the CoreText-only
+/// openagents-text's rule-based break opportunities (segment ends, excluding the CoreText-only
 /// whitespace-overflow boundaries), as UTF-16 offsets.
 fn rust_breaks(h: &mut Harness, text: &str) -> Vec<u32> {
     let (p, _) = h.rust_lines(text, h.styles[0].1, 1e9);
@@ -834,7 +834,7 @@ fn rust_breaks(h: &mut Harness, text: &str) -> Vec<u32> {
 
 /// Differential fuzz of break opportunities against CFStringTokenizer over random strings drawn
 /// from every line-break class (including Apple's curly-quote tailoring, SA dictionaries,
-/// emoji sequences). Deliberate differences are excluded: zeron-text never breaks inside a
+/// emoji sequences). Deliberate differences are excluded: openagents-text never breaks inside a
 /// grapheme cluster (CoreText's tokenizer does before a lone combining mark / skin tone), and
 /// folds whitespace-only runs into the previous segment's hang.
 #[test]
@@ -1044,7 +1044,7 @@ fn break_opportunities_match_cf_tokenizer() {
     assert!(differ * 1000 <= iters, "{differ}/{iters} differ");
 }
 
-/// Debugging aid: `ZT_TEXT=… ZT_W=… [ZT_STYLE=i] cargo test -p zeron-text --release --test
+/// Debugging aid: `ZT_TEXT=… ZT_W=… [ZT_STYLE=i] cargo test -p openagents-text --release --test
 /// coretext debug_case -- --ignored --nocapture` prints both engines' lines and the segments.
 #[test]
 #[ignore]

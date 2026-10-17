@@ -90,10 +90,10 @@ try {
   await until(() => { if (native.exitCode !== null) throw Error('Native desktop stopped; inspect desktop.log.'); return fs.existsSync(path.join(desktop, 'ready')); }, 60);
   manifest.sources.desktop = 'Coder Desktop native GPUI account reader';
 
-  const phoneEnv = { ...process.env, ZERON_SKIP_CORE: '1', ZERON_ACCOUNT_FIXTURE: '1', CARGO_TARGET_DIR: target,
+  const phoneEnv = { ...process.env, OPENAGENTS_SKIP_CORE: '1', OPENAGENTS_ACCOUNT_FIXTURE: '1', CARGO_TARGET_DIR: target,
     TEST_RUNNER_CODER_FILM_CONFIG: JSON.stringify({ chat: chat.id, key_url: control + '/key', control }) };
   delete phoneEnv.OPENAGENTS_TOKEN;
-  phoneTest = spawn('xcodebuild', ['test', '-project', 'apps/ios/Zeron.xcodeproj', '-scheme', 'Zeron', '-configuration', 'Debug', '-destination', 'id=' + sim, '-derivedDataPath', path.join(target, 'ios-derived'), 'CODE_SIGNING_ALLOWED=YES', 'CODE_SIGN_IDENTITY=-', 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CODER_ACCOUNT_FIXTURE', '-only-testing:ZeronUITests/OpenAgentsHistoryTests/testRecordAccountChat'], { cwd: fork, env: phoneEnv, stdio: ['ignore', fs.openSync(path.join(work, 'phone.log'), 'w'), 'inherit'] });
+  phoneTest = spawn('xcodebuild', ['test', '-project', 'apps/ios/OpenAgents.xcodeproj', '-scheme', 'OpenAgents', '-configuration', 'Debug', '-destination', 'id=' + sim, '-derivedDataPath', path.join(target, 'ios-derived'), 'CODE_SIGNING_ALLOWED=YES', 'CODE_SIGN_IDENTITY=-', 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG CODER_ACCOUNT_FIXTURE', '-only-testing:OpenAgentsUITests/OpenAgentsHistoryTests/testRecordAccountChat'], { cwd: fork, env: phoneEnv, stdio: ['ignore', fs.openSync(path.join(work, 'phone.log'), 'w'), 'inherit'] });
   await until(() => { if (phoneTest.exitCode !== null) throw Error('Native phone stopped; inspect phone.log.'); return phoneReady; }, 90);
   manifest.sources.phone = 'OpenAgents Coder fork UIKit/Rust account reader on iOS Simulator';
   manifest.sources.terminal = execFileSync(coder, ['--version'], { encoding: 'utf8', env: cleanEnv }).trim();

@@ -2,7 +2,7 @@
 use super::*;
 use crate::attachments::{AttachmentSnapshot, CachedAttachmentImage};
 use crate::image_media::MediaImage;
-use coder_account::{history::LoadState, reader::Reader};
+use openagents_account::{history::LoadState, reader::Reader};
 use gpui_tokio::Tokio;
 
 pub(super) struct AccountHistory {

@@ -7,11 +7,11 @@ default-members = ["."]
 
 [workspace.dependencies]
 openagents = { package = "openagents-sdk", path = "../../crates/openagents-sdk" }
-zeron-sync = { path = "../../apps/openagents/crates/sync" }
-zeron-client = { path = "../../apps/openagents/crates/client" }
-zeron-proto = { path = "../../apps/openagents/crates/proto" }
-zeron-doc = { path = "../../apps/openagents/crates/doc" }
-zeron-rpc = { path = "../../apps/openagents/crates/rpc" }
+openagents-sync = { path = "../../apps/openagents/crates/sync" }
+openagents-client = { path = "../../apps/openagents/crates/client" }
+openagents-proto = { path = "../../apps/openagents/crates/proto" }
+openagents-doc = { path = "../../apps/openagents/crates/doc" }
+openagents-rpc = { path = "../../apps/openagents/crates/rpc" }
 
 [package]
 name = "coder-sync-service"
@@ -34,11 +34,11 @@ server = []
 
 [dependencies]
 openagents.workspace = true
-zeron-proto.workspace = true
+openagents-proto.workspace = true
 sha2 = "0.10"
-zeron-rpc.workspace = true
-zeron-doc.workspace = true
-zeron-sync.workspace = true
+openagents-rpc.workspace = true
+openagents-doc.workspace = true
+openagents-sync.workspace = true
 base64 = "0.22"
 axum = { version = "0.8", features = ["ws"] }
 bytes = { version = "1" }

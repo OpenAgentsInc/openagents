@@ -11,7 +11,7 @@ use gpui::{
     font, list, point, prelude::*, px,
 };
 use gpui_base::input::{RopeExt as _, TextDecoration, TextDecorationCollection};
-use zeron_proto::{
+use openagents_proto::{
     ReadWorkspaceFileRequest, WorkspaceReadOnlyReason, WriteWorkspaceFileOutcome,
     WriteWorkspaceFileRequest,
 };
@@ -53,7 +53,7 @@ const MAX_RETAINED_DOCUMENT_BYTES: usize = 32 * 1024 * 1024;
 
 struct HighlightedFile {
     content_hash: String,
-    document: Arc<zeron_syntax::HighlightedDocument>,
+    document: Arc<openagents_syntax::HighlightedDocument>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -361,12 +361,12 @@ fn estimated_highlighted_file_bytes(highlight: &HighlightedFile) -> usize {
             document
                 .lines
                 .capacity()
-                .saturating_mul(std::mem::size_of::<Vec<zeron_syntax::HighlightSpan>>()),
+                .saturating_mul(std::mem::size_of::<Vec<openagents_syntax::HighlightSpan>>()),
         )
         .saturating_add(document.lines.iter().fold(0usize, |total, line| {
             total.saturating_add(
                 line.capacity()
-                    .saturating_mul(std::mem::size_of::<zeron_syntax::HighlightSpan>()),
+                    .saturating_mul(std::mem::size_of::<openagents_syntax::HighlightSpan>()),
             )
         }))
 }
@@ -1291,7 +1291,7 @@ impl FilesSurface {
         content_hash: String,
         cx: &mut Context<Self>,
     ) {
-        let Some(language) = zeron_syntax::language_for_path(&path) else {
+        let Some(language) = openagents_syntax::language_for_path(&path) else {
             return;
         };
         let Some((document_key, generation, revision)) = self
@@ -1330,7 +1330,7 @@ impl FilesSurface {
             let highlighted = cx
                 .background_executor()
                 .spawn(async move {
-                    zeron_syntax::highlight(zeron_syntax::HighlightRequest {
+                    openagents_syntax::highlight(openagents_syntax::HighlightRequest {
                         source: &source,
                         path: Some(&request_path),
                         fence_tag: None,
@@ -1428,7 +1428,7 @@ impl FilesSurface {
         revision: u64,
         cx: &mut Context<Self>,
     ) {
-        let Some(language) = zeron_syntax::language_for_path(&path) else {
+        let Some(language) = openagents_syntax::language_for_path(&path) else {
             return;
         };
         let Some((document_key, generation)) = self
@@ -1451,7 +1451,7 @@ impl FilesSurface {
             let highlighted = cx
                 .background_executor()
                 .spawn(async move {
-                    zeron_syntax::highlight(zeron_syntax::HighlightRequest {
+                    openagents_syntax::highlight(openagents_syntax::HighlightRequest {
                         source: &source_for_parse,
                         path: Some(&request_path),
                         fence_tag: None,
@@ -3409,15 +3409,15 @@ mod tests {
                 cx,
             );
             let mut document = cached_document("note.md", "# Original");
-            document.set_loaded(zeron_proto::WorkspaceFileText {
+            document.set_loaded(openagents_proto::WorkspaceFileText {
                 checkout_id: "checkout".into(),
                 path: "note.md".into(),
                 text: Some("# Original".into()),
                 content_hash: Some("saved-hash".into()),
                 size: 10,
                 modified_at: None,
-                encoding: zeron_proto::WorkspaceTextEncoding::Utf8,
-                line_ending: Some(zeron_proto::WorkspaceLineEnding::Lf),
+                encoding: openagents_proto::WorkspaceTextEncoding::Utf8,
+                line_ending: Some(openagents_proto::WorkspaceLineEnding::Lf),
                 read_only_reason: None,
                 truncated: false,
             });
@@ -3438,9 +3438,9 @@ mod tests {
                     .is_some()
             );
             files.apply_semantic_mutation(
-                &zeron_proto::WorkspaceFileChange {
+                &openagents_proto::WorkspaceFileChange {
                     operation_id: Some("rename-md".into()),
-                    kind: zeron_proto::WorkspaceFileChangeKind::Renamed,
+                    kind: openagents_proto::WorkspaceFileChangeKind::Renamed,
                     path: "note.txt".into(),
                     old_path: Some("note.md".into()),
                 },
@@ -3500,7 +3500,7 @@ mod tests {
         cx.run_until_parked();
         files.update_in(cx, |files, _, cx| {
             let key = DocumentHighlightKey::new(
-                zeron_syntax::language_for_path("note.rs").unwrap(),
+                openagents_syntax::language_for_path("note.rs").unwrap(),
                 "let value = 1;",
             );
             assert!(
@@ -3708,7 +3708,7 @@ mod tests {
             .comment_anchors
             .insert("old.rs".into(), HashMap::new());
         let highlighted = Arc::new(
-            zeron_syntax::highlight(zeron_syntax::HighlightRequest {
+            openagents_syntax::highlight(openagents_syntax::HighlightRequest {
                 source: "fn main() {}",
                 path: Some("old.rs"),
                 fence_tag: None,
@@ -3753,15 +3753,15 @@ mod tests {
             checkout_id: Some("checkout-1".into()),
             path: path.into(),
         });
-        document.set_loaded(zeron_proto::WorkspaceFileText {
+        document.set_loaded(openagents_proto::WorkspaceFileText {
             checkout_id: "checkout-1".into(),
             path: path.into(),
             text: Some(stale_source.into()),
             content_hash: Some(disk_hash.into()),
             size: stale_source.len() as u64,
             modified_at: None,
-            encoding: zeron_proto::WorkspaceTextEncoding::Utf8,
-            line_ending: Some(zeron_proto::WorkspaceLineEnding::Lf),
+            encoding: openagents_proto::WorkspaceTextEncoding::Utf8,
+            line_ending: Some(openagents_proto::WorkspaceLineEnding::Lf),
             read_only_reason: None,
             truncated: false,
         });
@@ -3769,7 +3769,7 @@ mod tests {
         let task_generation = document.generation;
         let task_revision = document.revision;
         let stale_highlight_key =
-            DocumentHighlightKey::new(zeron_syntax::LanguageId::Rust, stale_source);
+            DocumentHighlightKey::new(openagents_syntax::LanguageId::Rust, stale_source);
 
         assert!(file_highlight_result_is_current(
             &document,
@@ -3781,7 +3781,7 @@ mod tests {
 
         document.mark_user_edit();
         let current_highlight_key =
-            DocumentHighlightKey::new(zeron_syntax::LanguageId::Rust, updated_source);
+            DocumentHighlightKey::new(openagents_syntax::LanguageId::Rust, updated_source);
 
         assert_ne!(document.revision, task_revision);
         assert_ne!(current_highlight_key, stale_highlight_key);
@@ -3807,15 +3807,15 @@ mod tests {
             checkout_id: Some("checkout-1".into()),
             path: path.into(),
         });
-        document.set_loaded(zeron_proto::WorkspaceFileText {
+        document.set_loaded(openagents_proto::WorkspaceFileText {
             checkout_id: "checkout-1".into(),
             path: path.into(),
             text: Some("fn main() {}".into()),
             content_hash: Some("hash-1".into()),
             size: 12,
             modified_at: None,
-            encoding: zeron_proto::WorkspaceTextEncoding::Utf8,
-            line_ending: Some(zeron_proto::WorkspaceLineEnding::Lf),
+            encoding: openagents_proto::WorkspaceTextEncoding::Utf8,
+            line_ending: Some(openagents_proto::WorkspaceLineEnding::Lf),
             read_only_reason: None,
             truncated: false,
         });
@@ -4057,15 +4057,15 @@ mod markdown_buffer_tests {
                     surface.apply_line_navigation(path, None, window, cx);
                     assert!(surface.pending_line_navigation.is_some());
                     surface.preview.documents.get_mut(path).unwrap().set_loaded(
-                        zeron_proto::WorkspaceFileText {
+                        openagents_proto::WorkspaceFileText {
                             checkout_id: "checkout".into(),
                             path: path.into(),
                             text: Some(source.clone()),
                             content_hash: Some("hash".into()),
                             size: source.len() as u64,
                             modified_at: None,
-                            encoding: zeron_proto::WorkspaceTextEncoding::Utf8,
-                            line_ending: Some(zeron_proto::WorkspaceLineEnding::Lf),
+                            encoding: openagents_proto::WorkspaceTextEncoding::Utf8,
+                            line_ending: Some(openagents_proto::WorkspaceLineEnding::Lf),
                             read_only_reason: None,
                             truncated: false,
                         },
@@ -4156,15 +4156,15 @@ mod markdown_buffer_tests {
                     Some((90, Some(FileColumn::Character(6))))
                 );
                 surface.preview.documents.get_mut(path).unwrap().set_loaded(
-                    zeron_proto::WorkspaceFileText {
+                    openagents_proto::WorkspaceFileText {
                         checkout_id: "checkout".into(),
                         path: path.into(),
                         text: Some(source.clone()),
                         content_hash: Some("hash".into()),
                         size: source.len() as u64,
                         modified_at: None,
-                        encoding: zeron_proto::WorkspaceTextEncoding::Utf8,
-                        line_ending: Some(zeron_proto::WorkspaceLineEnding::Lf),
+                        encoding: openagents_proto::WorkspaceTextEncoding::Utf8,
+                        line_ending: Some(openagents_proto::WorkspaceLineEnding::Lf),
                         read_only_reason: None,
                         truncated: false,
                     },
@@ -4278,15 +4278,15 @@ mod markdown_buffer_tests {
                     checkout_id: Some("checkout".into()),
                     path: path.into(),
                 });
-                document.set_loaded(zeron_proto::WorkspaceFileText {
+                document.set_loaded(openagents_proto::WorkspaceFileText {
                     checkout_id: "checkout".into(),
                     path: path.into(),
                     text: Some(source.clone()),
                     content_hash: Some("hash".into()),
                     size: source.len() as u64,
                     modified_at: None,
-                    encoding: zeron_proto::WorkspaceTextEncoding::Utf8,
-                    line_ending: Some(zeron_proto::WorkspaceLineEnding::Lf),
+                    encoding: openagents_proto::WorkspaceTextEncoding::Utf8,
+                    line_ending: Some(openagents_proto::WorkspaceLineEnding::Lf),
                     read_only_reason: None,
                     truncated: false,
                 });
@@ -4369,15 +4369,15 @@ mod markdown_buffer_tests {
                     checkout_id: Some("checkout".into()),
                     path: path.into(),
                 });
-                document.set_loaded(zeron_proto::WorkspaceFileText {
+                document.set_loaded(openagents_proto::WorkspaceFileText {
                     checkout_id: "checkout".into(),
                     path: path.into(),
                     text: Some(source.into()),
                     content_hash: Some("hash".into()),
                     size: source.len() as u64,
                     modified_at: None,
-                    encoding: zeron_proto::WorkspaceTextEncoding::Utf8,
-                    line_ending: Some(zeron_proto::WorkspaceLineEnding::Lf),
+                    encoding: openagents_proto::WorkspaceTextEncoding::Utf8,
+                    line_ending: Some(openagents_proto::WorkspaceLineEnding::Lf),
                     read_only_reason: None,
                     truncated: false,
                 });
@@ -4427,15 +4427,15 @@ mod markdown_buffer_tests {
                     checkout_id: Some("checkout".into()),
                     path: path.into(),
                 });
-                document.set_loaded(zeron_proto::WorkspaceFileText {
+                document.set_loaded(openagents_proto::WorkspaceFileText {
                     checkout_id: "checkout".into(),
                     path: path.into(),
                     text: Some(source.clone()),
                     content_hash: Some("hash".into()),
                     size: source.len() as u64,
                     modified_at: None,
-                    encoding: zeron_proto::WorkspaceTextEncoding::Utf8,
-                    line_ending: Some(zeron_proto::WorkspaceLineEnding::Lf),
+                    encoding: openagents_proto::WorkspaceTextEncoding::Utf8,
+                    line_ending: Some(openagents_proto::WorkspaceLineEnding::Lf),
                     read_only_reason: Some(WorkspaceReadOnlyReason::MixedLineEndings),
                     truncated: false,
                 });
@@ -4546,15 +4546,15 @@ mod markdown_buffer_tests {
                                 checkout_id: Some("checkout".into()),
                                 path: "README.md".into(),
                             });
-                            document.set_loaded(zeron_proto::WorkspaceFileText {
+                            document.set_loaded(openagents_proto::WorkspaceFileText {
                                 checkout_id: "checkout".into(),
                                 path: "README.md".into(),
                                 text: Some(source.into()),
                                 content_hash: Some("hash".into()),
                                 size: source.len() as u64,
                                 modified_at: None,
-                                encoding: zeron_proto::WorkspaceTextEncoding::Utf8,
-                                line_ending: Some(zeron_proto::WorkspaceLineEnding::Lf),
+                                encoding: openagents_proto::WorkspaceTextEncoding::Utf8,
+                                line_ending: Some(openagents_proto::WorkspaceLineEnding::Lf),
                                 read_only_reason: None,
                                 truncated: false,
                             });
@@ -4895,7 +4895,7 @@ mod markdown_buffer_tests {
         surface.update(cx, |surface, _| {
             assert_eq!(surface.system_open_path("src/lib.rs"), None);
             let local = FilesRequestContext {
-                target: zeron_proto::WorkspaceTarget {
+                target: openagents_proto::WorkspaceTarget {
                     chat_id: Some("chat".into()),
                     space_id: None,
                     checkout_path: None,
@@ -4930,7 +4930,7 @@ mod markdown_buffer_tests {
         window
             .update(cx, |surface, window, cx| {
                 surface.request_context = Some(FilesRequestContext {
-                    target: zeron_proto::WorkspaceTarget {
+                    target: openagents_proto::WorkspaceTarget {
                         chat_id: Some("chat".into()),
                         space_id: None,
                         checkout_path: None,
@@ -4944,15 +4944,15 @@ mod markdown_buffer_tests {
                     checkout_id: Some("checkout".into()),
                     path: "drawing.txt".into(),
                 });
-                document.set_loaded(zeron_proto::WorkspaceFileText {
+                document.set_loaded(openagents_proto::WorkspaceFileText {
                     checkout_id: "checkout".into(),
                     path: "drawing.txt".into(),
                     text: Some("disk text".into()),
                     content_hash: Some("disk-hash".into()),
                     size: 9,
                     modified_at: None,
-                    encoding: zeron_proto::WorkspaceTextEncoding::Utf8,
-                    line_ending: Some(zeron_proto::WorkspaceLineEnding::Lf),
+                    encoding: openagents_proto::WorkspaceTextEncoding::Utf8,
+                    line_ending: Some(openagents_proto::WorkspaceLineEnding::Lf),
                     read_only_reason: None,
                     truncated: false,
                 });
@@ -5017,15 +5017,15 @@ mod markdown_buffer_tests {
                     checkout_id: Some("checkout".into()),
                     path: "README.md".into(),
                 });
-                document.set_loaded(zeron_proto::WorkspaceFileText {
+                document.set_loaded(openagents_proto::WorkspaceFileText {
                     checkout_id: "checkout".into(),
                     path: "README.md".into(),
                     text: Some("[Docs](https://example.com/docs)".into()),
                     content_hash: Some("hash".into()),
                     size: 32,
                     modified_at: None,
-                    encoding: zeron_proto::WorkspaceTextEncoding::Utf8,
-                    line_ending: Some(zeron_proto::WorkspaceLineEnding::Lf),
+                    encoding: openagents_proto::WorkspaceTextEncoding::Utf8,
+                    line_ending: Some(openagents_proto::WorkspaceLineEnding::Lf),
                     read_only_reason: None,
                     truncated: false,
                 });
@@ -5153,15 +5153,15 @@ mod markdown_buffer_tests {
                     checkout_id: Some("checkout".into()),
                     path: "README.md".into(),
                 });
-                document.set_loaded(zeron_proto::WorkspaceFileText {
+                document.set_loaded(openagents_proto::WorkspaceFileText {
                     checkout_id: "checkout".into(),
                     path: "README.md".into(),
                     text: Some("# Disk".into()),
                     content_hash: Some("disk-hash".into()),
                     size: 6,
                     modified_at: None,
-                    encoding: zeron_proto::WorkspaceTextEncoding::Utf8,
-                    line_ending: Some(zeron_proto::WorkspaceLineEnding::Lf),
+                    encoding: openagents_proto::WorkspaceTextEncoding::Utf8,
+                    line_ending: Some(openagents_proto::WorkspaceLineEnding::Lf),
                     read_only_reason: None,
                     truncated: false,
                 });

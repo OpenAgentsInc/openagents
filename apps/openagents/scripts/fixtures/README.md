@@ -8,7 +8,7 @@ The assistant text is 51,769 bytes, SHA-256
 Reasoning contributes another 853 bytes. The production transcript's part
 separators bring the combined short reply to 52,624 bytes.
 
-Use `ZERON_REPLAY_REPEAT=10 ZERON_REPLAY_DELAY_MS=8` for the synthetic long
+Use `OPENAGENTS_REPLAY_REPEAT=10 OPENAGENTS_REPLAY_DELAY_MS=8` for the synthetic long
 workload. See [the profiling report](../../docs/performance-resource-usage.md)
 for build settings, commands and measured results.
 

@@ -32,7 +32,7 @@ or failed connection closes it; it never resumes automatically. Cancellation
 invalidates pending continuations so late SDK callbacks cannot return a second
 result or reactivate media.
 
-The orb is the desktop's: `zeron-orb` computes geometry, clock, audio response and
+The orb is the desktop's: `openagents-orb` computes geometry, clock, audio response and
 crossfades for both, and iOS only paints the frames (`OrbView`).
 
 Required live checks: iPhone on Wi-Fi and cellular, Fedora and Mac hosts, actual

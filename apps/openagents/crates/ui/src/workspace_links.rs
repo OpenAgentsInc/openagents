@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 
-const FILE_MENTION_SCHEME: &str = "zeron-file:";
+const FILE_MENTION_SCHEME: &str = "openagents-file:";
 
 /// Where a classified file link sits relative to a surface's ordered roots.
 #[derive(Debug, PartialEq, Eq)]
@@ -261,7 +261,7 @@ struct ClassifiedLink {
 }
 
 enum ClassifiedKind {
-    /// `zeron-file:` mention — resolution stays inside-or-unresolved.
+    /// `openagents-file:` mention — resolution stays inside-or-unresolved.
     Mention,
     /// Root-relative path.
     Relative,
@@ -317,9 +317,9 @@ fn classify_file_link(target: &str) -> Option<ClassifiedLink> {
         return None;
     }
 
-    // `zeron-file:` mentions keep their strict canonical spelling: the whole
+    // `openagents-file:` mentions keep their strict canonical spelling: the whole
     // path decodes once and must re-encode to the identical string.
-    if let Some(encoded) = target.strip_prefix(FILE_MENTION_SCHEME) {
+    if let Some(encoded) = target.strip_prefix(FILE_MENTION_SCHEME).or_else(|| target.strip_prefix("zeron-file:")) {
         let decoded = percent_decode_path(encoded)?;
         if percent_encode_path(&decoded) != encoded
             || decoded.ends_with('/')
@@ -1083,22 +1083,22 @@ mod tests {
     #[test]
     fn resolves_canonical_file_mentions() {
         assert_eq!(
-            resolve_workspace_file_link("zeron-file:src/a%20file.rs", "/work/comet"),
+            resolve_workspace_file_link("openagents-file:src/a%20file.rs", "/work/comet"),
             Some(link("src/a file.rs", None, None))
         );
-        assert!(resolve_workspace_file_link("zeron-file:src/%61.rs", "/work/comet").is_none());
-        assert!(resolve_workspace_file_link("zeron-file:src/", "/work/comet").is_none());
+        assert!(resolve_workspace_file_link("openagents-file:src/%61.rs", "/work/comet").is_none());
+        assert!(resolve_workspace_file_link("openagents-file:src/", "/work/comet").is_none());
         // Mentions with dotted-less names keep resolving like before.
         assert_eq!(
-            resolve_workspace_file_link("zeron-file:Makefile", "/work/comet"),
+            resolve_workspace_file_link("openagents-file:Makefile", "/work/comet"),
             Some(link("Makefile", None, None))
         );
         // An absolute mention resolves inside its root or not at all — it is
         // never an outside link.
         assert_eq!(
-            resolve_workspace_file_link("zeron-file:/work/comet/a.md", "/work/comet"),
+            resolve_workspace_file_link("openagents-file:/work/comet/a.md", "/work/comet"),
             Some(link("a.md", None, None))
         );
-        assert!(resolve_workspace_file_link("zeron-file:/tmp/a.md", "/work/comet").is_none());
+        assert!(resolve_workspace_file_link("openagents-file:/tmp/a.md", "/work/comet").is_none());
     }
 }

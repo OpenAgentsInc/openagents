@@ -7,6 +7,8 @@
 
 # Assets that ship with the code, app bundles, and fonts.
 assets/*
+# Renamed desktop bundle icon, already shipped in the imported app.
+apps/openagents/dist/openagents.png
 bins/*
 *.ttf
 *.otf

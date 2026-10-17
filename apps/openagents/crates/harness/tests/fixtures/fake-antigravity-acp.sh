@@ -1,11 +1,11 @@
 #!/bin/sh
-# fake antigravity acp server for zeron-harness tests.
+# fake antigravity acp server for openagents-harness tests.
 #
 # mirrors the wire shapes of agy_acp_server 1.1.1: effort baked into model
 # ids, a default/auto_edit/yolo mode select, auth_required (-32000) on
 # session/new for a cwd containing "needs-login", and an `authenticate` that
 # prints its sign-in url to stderr like the real browser flow. the prompt
-# reply echoes every config option zeron set.
+# reply echoes every config option openagents set.
 
 emit() { printf '%s\n' "$1"; }
 rid() { printf '%s' "$1" | sed 's/.*"id":\([0-9]*\).*/\1/'; }

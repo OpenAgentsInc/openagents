@@ -1,4 +1,4 @@
-# Appshots for Zeron
+# Appshots for OpenAgents
 
 > Historical design notes. The implemented behavior and current validation are
 > documented in [Appshots](../appshots.md); proposals below may be superseded.
@@ -7,21 +7,21 @@ Status: implemented on the exploration branch; native validation ongoing
 
 Branch: `wip/appshots-exploration`
 
-Scope: desktop Zeron on macOS, Linux X11, and Linux Wayland
+Scope: desktop OpenAgents on macOS, Linux X11, and Linux Wayland
 
 ## Summary
 
 An Appshot is a user-triggered capture of the frontmost application window. A
-global keyboard shortcut works while Zeron is in the background, captures both
+global keyboard shortcut works while OpenAgents is in the background, captures both
 the visible window and machine-readable application context, then stages that
-capture in a Zeron composer for review. It is not an attachment-menu action and
+capture in a OpenAgents composer for review. It is not an attachment-menu action and
 does not send a message automatically.
 
 The first useful release should support this vertical slice:
 
 1. The user invokes a global shortcut from any macOS application.
-2. Zeron captures the frontmost window before activating itself.
-3. Zeron opens the chosen composer and stages a screenshot plus accessibility
+2. OpenAgents captures the frontmost window before activating itself.
+3. OpenAgents opens the chosen composer and stages a screenshot plus accessibility
    context.
 4. The user can inspect, remove, annotate, and send the capture.
 5. For a remotely hosted session, the existing queued-attachment path moves the
@@ -52,7 +52,7 @@ Accessibility as separate rows in one guided permission surface.
 
 Make it effortless to give an agent rich context about the application the
 user is currently looking at, without making the user save a screenshot, switch
-to Zeron, attach a file, and manually copy otherwise invisible text.
+to OpenAgents, attach a file, and manually copy otherwise invisible text.
 
 ### Non-goals for the first release
 
@@ -68,7 +68,7 @@ to Zeron, attach a file, and manually copy otherwise invisible text.
 
 - The shortcut operates while another application is focused.
 - The frontmost eligible window at shortcut time is the capture target.
-- Zeron never steals focus until the screenshot has been acquired.
+- OpenAgents never steals focus until the screenshot has been acquired.
 - A staged Appshot is visually distinct from an ordinary image attachment.
 - The staged tile shows a large contained screenshot, the source application
   icon, and the window title when available.
@@ -90,7 +90,7 @@ Three settings are proposed:
   existing space/device defaults remain authoritative.
 
 The recommended default is **Automatic**, with a conservative eligibility
-rule: only reuse an existing composer if Zeron had an active session selected
+rule: only reuse an existing composer if OpenAgents had an active session selected
 recently and that session is still writable. Otherwise create a draft. The
 exact recency threshold should be validated in use rather than copied blindly
 from another product.
@@ -119,7 +119,7 @@ from another product.
 ### Destination and draft
 
 - Choose Automatic, Last session, or New session.
-- Restore or focus the Zeron window after capture.
+- Restore or focus the OpenAgents window after capture.
 - Stage the Appshot without submitting it.
 - Preserve the draft if destination resolution or host connectivity is delayed.
 
@@ -138,13 +138,13 @@ from another product.
 - Retain sent screenshots under the existing profile-scoped attachment rules.
 - Never write accessibility text to logs.
 - After successful staging, play a soft confirmation cue. Honor the
-  dedicated capture sound setting and `ZERON_DISABLE_SOUND`; failed captures stay silent.
+  dedicated capture sound setting and `OPENAGENTS_DISABLE_SOUND`; failed captures stay silent.
 
 ## Architecture
 
 ### Placement
 
-Capture belongs to the headed UI side of Zeron, not the engine:
+Capture belongs to the headed UI side of OpenAgents, not the engine:
 
 ```text
 macOS global event / hotkey
@@ -207,7 +207,7 @@ The macOS capture module is responsible for:
 - returning capture results over a narrow IPC protocol.
 
 The implementation uses an in-process Rust/Objective-C bridge. TCC attribution
-is kept correct in development by launching a separately signed `Zeron Dev.app`
+is kept correct in development by launching a separately signed `OpenAgents Dev.app`
 through LaunchServices; the bundle also embeds its isolated data directory and
 IPC port so privacy-driven relaunches cannot enter the personal instance.
 
@@ -217,11 +217,11 @@ Ordering is correctness-sensitive:
 
 1. Observe and identify the current frontmost window.
 2. Capture its screenshot and accessibility snapshot.
-3. Emit a completed capture to Zeron.
+3. Emit a completed capture to OpenAgents.
 4. Resolve the destination.
-5. activate/reveal Zeron and stage the result.
+5. activate/reveal OpenAgents and stage the result.
 
-Activating Zeron before steps 1-2 would capture Zeron itself.
+Activating OpenAgents before steps 1-2 would capture OpenAgents itself.
 
 ### Data model
 
@@ -322,7 +322,7 @@ first working slice.
 | Screen Recording denied | Permission explanation and direct recovery action. |
 | Accessibility denied | Screenshot-only Appshot with a visible warning. |
 | Accessibility traversal times out | Stage the screenshot with partial/truncated context. |
-| Zeron window cannot be restored | Preserve capture in an inbox-like pending slot and notify. |
+| OpenAgents window cannot be restored | Preserve capture in an inbox-like pending slot and notify. |
 | Remote host is offline | Keep the draft; existing queued-transfer behavior applies on send. |
 | Helper crashes | Restart lazily and report capture failure without affecting the engine. |
 
@@ -338,7 +338,7 @@ specific desktop:
 - first-use explanation completed.
 
 Unsent captures should initially live only in draft state and temporary files.
-If Zeron already persists composer drafts, Appshot metadata and the screenshot
+If OpenAgents already persists composer drafts, Appshot metadata and the screenshot
 temporary-file contract must be persisted atomically; otherwise the first
 slice should explicitly document that an application restart discards unsent
 Appshots.
@@ -350,7 +350,7 @@ No timeline, layer model, custom renderer, or export format is required.
 ### Slice 0: platform spike
 
 - Register and unregister a global shortcut.
-- Capture frontmost window pixels without focusing Zeron.
+- Capture frontmost window pixels without focusing OpenAgents.
 - Read a bounded accessibility snapshot from Safari, Terminal, and a native
   settings window.
 - Compare helper-process and in-process implementations for TCC behavior,
@@ -393,7 +393,7 @@ content, with provenance and prompt-injection framing.
 
 - Configurable shortcut, sound, and capture transition.
 - Accessibility disclosure/inspection UI.
-- Windows is outside this contribution: Zeron does not yet ship a Windows app.
+- Windows is outside this contribution: OpenAgents does not yet ship a Windows app.
 - Wayland portal and X11 implementations with AT-SPI enrichment.
 
 ## Verification strategy
@@ -414,7 +414,7 @@ content, with provenance and prompt-injection framing.
 - remote send resolves a pending screenshot path inside both prompt and
   attachment list;
 - permission denial degrades or blocks as specified;
-- Zeron is not selected as the capture target due to activation ordering.
+- OpenAgents is not selected as the capture target due to activation ordering.
 
 ### Manual macOS matrix
 
@@ -464,7 +464,7 @@ for screenshot-only capture. The chosen window ID stays fixed during capture.
 After capture and staging, a bundled macOS app requests foreground activation
 through `NSWorkspace.openApplication`, with activation enabled and new-instance
 creation disabled. Bare development executables retain GPUI window activation.
-This runs after pixels are captured so Zeron cannot replace the source image.
+This runs after pixels are captured so OpenAgents cannot replace the source image.
 
 Successful capture plays the original 0.67 s stereo rounded shutter and blended confirmation generated by
 `scripts/generate-appshot-sound.py`. The dedicated capture sound preference and environment
@@ -487,7 +487,7 @@ Settings → Shortcuts → Appshots includes a Capture sound toggle, persisted a
 `appshotSoundEnabled`. It controls captures independently of session notification
 sounds. On first load, existing settings inherit their previous `soundEnabled`
 value; explicit capture preferences take precedence thereafter. The global
-`ZERON_DISABLE_SOUND` override still mutes playback. The synthesized cue adapts the rounded sound-family auditions: three smooth shutter clicks 70 ms apart, then one blended C4–F4 resonance with a quiet C5 overtone. The notes share a softened attack rather than playing in two phases. The cue lasts 0.67 seconds and peaks at approximately -18.7 dBFS. Its quiet harmonic overtones decay quickly; there is no noise bed or resonant impact tail, and playback gain is never normalized upward.
+`OPENAGENTS_DISABLE_SOUND` override still mutes playback. The synthesized cue adapts the rounded sound-family auditions: three smooth shutter clicks 70 ms apart, then one blended C4–F4 resonance with a quiet C5 overtone. The notes share a softened attack rather than playing in two phases. The cue lasts 0.67 seconds and peaks at approximately -18.7 dBFS. Its quiet harmonic overtones decay quickly; there is no noise bed or resonant impact tail, and playback gain is never normalized upward.
 
 ### Desktop-only controls and customizable shortcut
 

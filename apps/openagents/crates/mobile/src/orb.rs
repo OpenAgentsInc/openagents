@@ -1,5 +1,5 @@
 //! The desktop's thinking orb for platform canvases. Geometry, clock, audio
-//! response and state crossfades come from `zeron-orb`, exactly as the GPUI
+//! response and state crossfades come from `openagents-orb`, exactly as the GPUI
 //! widget runs them; the platform only strokes lines and fills disks.
 //!
 //! Frames are flat `f32` lists so a 30 fps loop crosses the FFI with two
@@ -12,7 +12,7 @@
 //! then dots, onto a transparent canvas.
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use zeron_orb::{OrbAnimator, OrbSize, OrbState, engine::Frame};
+use openagents_orb::{OrbAnimator, OrbSize, OrbState, engine::Frame};
 
 /// The four tuned size presets (inline 20, avatar 64, large 96, hero 128).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]

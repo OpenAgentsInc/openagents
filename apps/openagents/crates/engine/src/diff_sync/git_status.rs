@@ -1,5 +1,5 @@
 use super::*;
-use zeron_proto::{CheckoutGitStatus, GitFileState, GitFileStatus};
+use openagents_proto::{CheckoutGitStatus, GitFileState, GitFileStatus};
 
 fn state(code: u8) -> Option<GitFileState> {
     Some(match code {

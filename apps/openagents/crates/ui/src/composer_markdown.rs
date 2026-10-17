@@ -35,7 +35,7 @@ pub fn faces(text: &str) -> Vec<(Range<usize>, Face)> {
 /// Highlight fenced code with its own grammar. Running the Markdown grammar
 /// over the whole draft colors fence bodies as strings, including identifiers.
 /// Keep prose and fence markers neutral, and retain exact source byte offsets.
-pub fn syntax_spans(text: &str) -> Vec<zeron_syntax::HighlightSpan> {
+pub fn syntax_spans(text: &str) -> Vec<openagents_syntax::HighlightSpan> {
     if text.len() > 128 * 1024 {
         return Vec::new();
     }
@@ -76,15 +76,15 @@ fn highlight_code_body(
     source: &str,
     language: &str,
     segments: &[(Range<usize>, Range<usize>)],
-    result: &mut Vec<zeron_syntax::HighlightSpan>,
+    result: &mut Vec<openagents_syntax::HighlightSpan>,
 ) {
-    let Ok(document) = zeron_syntax::highlight_with_limits(
-        zeron_syntax::HighlightRequest {
+    let Ok(document) = openagents_syntax::highlight_with_limits(
+        openagents_syntax::HighlightRequest {
             source,
             path: None,
             fence_tag: Some(language),
         },
-        zeron_syntax::HighlightLimits {
+        openagents_syntax::HighlightLimits {
             max_source_bytes: 128 * 1024,
             max_spans: 16_000 - result.len(),
         },
@@ -105,7 +105,7 @@ fn highlight_code_body(
                 if result.len() >= 16_000 {
                     return;
                 }
-                result.push(zeron_syntax::HighlightSpan {
+                result.push(openagents_syntax::HighlightSpan {
                     range: raw.start + start.max(body.start) - body.start
                         ..raw.start + end.min(body.end) - body.start,
                     kind: span.kind,
@@ -561,12 +561,12 @@ mod tests {
 
     #[test]
     fn injected_colors_use_source_offsets_after_unicode_and_mentions() {
-        let text = "héllo [file](zeron-file:src/main.rs)\n```rust\nfn main() { let café = 42; }\n```\n```python\ndef hello(): pass\n```";
+        let text = "héllo [file](openagents-file:src/main.rs)\n```rust\nfn main() { let café = 42; }\n```\n```python\ndef hello(): pass\n```";
         let spans = syntax_spans(text);
         assert!(spans.iter().any(|span| &text[span.range.clone()] == "fn"
-            && span.kind == zeron_syntax::HighlightKind::Keyword));
+            && span.kind == openagents_syntax::HighlightKind::Keyword));
         assert!(spans.iter().any(|span| &text[span.range.clone()] == "def"
-            && span.kind == zeron_syntax::HighlightKind::Keyword));
+            && span.kind == openagents_syntax::HighlightKind::Keyword));
         assert!(syntax_spans(&"x".repeat(128 * 1024 + 1)).is_empty());
         assert!(
             spans
@@ -579,7 +579,7 @@ mod tests {
         assert!(
             highlighted
                 .iter()
-                .filter(|span| span.kind == zeron_syntax::HighlightKind::String)
+                .filter(|span| span.kind == openagents_syntax::HighlightKind::String)
                 .all(|span| !rust[span.range.clone()].contains("name"))
         );
     }
@@ -591,13 +591,13 @@ mod tests {
                 "rust",
                 ["/* open", "café middle", "close */"],
                 "café middle",
-                zeron_syntax::HighlightKind::Comment,
+                openagents_syntax::HighlightKind::Comment,
             ),
             (
                 "python",
                 ["value = \"\"\"open", "café middle", "close\"\"\""],
                 "café middle",
-                zeron_syntax::HighlightKind::String,
+                openagents_syntax::HighlightKind::String,
             ),
         ] {
             for (opening, prefix) in [("", "> "), ("- item\n", "  ")] {

@@ -1,6 +1,6 @@
 //! live probe: the installed antigravity acp server's raw model catalog and,
 //! with `--prompt`, the session updates and usage one short turn produces.
-//! run from a directory outside any zeron project so preview discovery never
+//! run from a directory outside any openagents project so preview discovery never
 //! probes the server's ports.
 use std::process::Stdio;
 
@@ -9,8 +9,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 #[tokio::main]
 async fn main() {
-    use zeron_harness::Harness;
-    let harness = zeron_harness::AcpHarness::antigravity();
+    use openagents_harness::Harness;
+    let harness = openagents_harness::AcpHarness::antigravity();
     println!("installed: {}", harness.installed());
     if std::env::args().any(|arg| arg == "--detect-only") {
         return;
@@ -25,7 +25,7 @@ async fn main() {
         }
         return;
     }
-    let (server, args) = zeron_harness::AcpHarness::antigravity()
+    let (server, args) = openagents_harness::AcpHarness::antigravity()
         .resolve_program(true)
         .await
         .expect("install or resolve server");
@@ -83,7 +83,7 @@ async fn main() {
 
     let init = call("initialize", json!({
         "protocolVersion": 1,
-        "clientInfo": { "name": "zeron-probe", "version": "0" },
+        "clientInfo": { "name": "openagents-probe", "version": "0" },
         "clientCapabilities": { "fs": { "readTextFile": false, "writeTextFile": false }, "terminal": false },
     }))
     .await;

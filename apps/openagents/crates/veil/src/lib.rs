@@ -3,7 +3,7 @@
 //! The desktop app (docs/research/mugen-pretext.md §2e) commits streamed text to
 //! layout instantly and dissolves a purely cosmetic veil over the newly arrived
 //! characters. This crate is the renderer-agnostic part, shared by the desktop
-//! transcript (`zeron-ui`, which recolors GPUI text runs) and the voice call
+//! transcript (`openagents-ui`, which recolors GPUI text runs) and the voice call
 //! captions on desktop and mobile:
 //!
 //! - [`ElemVeil`] tracks, per rendered text element, the previously rendered

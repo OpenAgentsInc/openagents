@@ -17,9 +17,9 @@ use gpui::{
 #[cfg(test)]
 use std::time::Duration;
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
-use zeron_proto::change_request_assessment::{CiState, Facts, check_failed, check_status};
-use zeron_proto::{ChangeRequestDetail, ChangeRequestListItem};
-use zeron_rpc::methods;
+use openagents_proto::change_request_assessment::{CiState, Facts, check_failed, check_status};
+use openagents_proto::{ChangeRequestDetail, ChangeRequestListItem};
+use openagents_rpc::methods;
 
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = shell, no_json)]
@@ -49,8 +49,8 @@ pub struct AddPullRequestProject(pub String);
 
 /// What went wrong and what to do, in words. Error codes and transport
 /// details never reach the reader.
-fn failure_reason(error: &zeron_rpc::RpcError) -> &'static str {
-    use zeron_rpc::{RpcError, capability_errors as codes};
+fn failure_reason(error: &openagents_rpc::RpcError) -> &'static str {
+    use openagents_rpc::{RpcError, capability_errors as codes};
     match error {
         RpcError::Capability(code) if code == codes::PULL_REQUESTS_CLI_UNAVAILABLE => {
             "Install GitHub CLI (gh) on this device and sign in."
@@ -100,7 +100,7 @@ pub(crate) fn pull_request_link(url: &str) -> Option<String> {
     ))
 }
 
-/// Whether pull requests open in Zeron's own view, per Settings.
+/// Whether pull requests open in OpenAgents's own view, per Settings.
 pub(crate) fn opens_natively(cx: &App) -> bool {
     settings::current(cx).pull_request_destination != PullRequestDestination::External
 }
@@ -188,7 +188,7 @@ struct CodeRow {
     old: Option<u32>,
     new: Option<u32>,
     kind: crate::changes::LineKind,
-    spans: Vec<zeron_syntax::HighlightSpan>,
+    spans: Vec<openagents_syntax::HighlightSpan>,
 }
 
 fn code_rows(patch: &str) -> (Vec<CodeRow>, Vec<(String, usize)>) {
@@ -206,7 +206,7 @@ fn code_rows(patch: &str) -> (Vec<CodeRow>, Vec<(String, usize)>) {
         key(&a.path).cmp(&key(&b.path))
     });
     for file in parsed {
-        let highlights = zeron_syntax::language_for_path(&file.path)
+        let highlights = openagents_syntax::language_for_path(&file.path)
             .and_then(|language| crate::changes::excerpt_highlights(&file, language));
         files.push((file.path.clone(), rows.len()));
         rows.push(CodeRow {
@@ -328,7 +328,7 @@ struct CommentSubmission {
     result: Option<
         Result<
             (
-                zeron_proto::ChangeRequestComment,
+                openagents_proto::ChangeRequestComment,
                 crate::markdown::BlockTree,
             ),
             String,
@@ -761,7 +761,7 @@ impl PullRequestDetailPage {
         cx: &mut Context<Self>,
     ) {
         if preview.url != self.url
-            || !zeron_proto::change_request_assessment::valid_head_oid(&preview.head_ref_oid)
+            || !openagents_proto::change_request_assessment::valid_head_oid(&preview.head_ref_oid)
         {
             return;
         }
@@ -846,7 +846,7 @@ impl PullRequestDetailPage {
             .as_ref()
             .map(|detail| &detail.head_ref_oid)
             .or_else(|| self.preview.as_ref().map(|preview| &preview.head_ref_oid))
-            .filter(|head| zeron_proto::change_request_assessment::valid_head_oid(head))
+            .filter(|head| openagents_proto::change_request_assessment::valid_head_oid(head))
         {
             params["headRefOid"] = head.clone().into();
         }
@@ -854,7 +854,7 @@ impl PullRequestDetailPage {
             .detail
             .as_ref()
             .map(|detail| &detail.base_ref_oid)
-            .filter(|base| zeron_proto::change_request_assessment::valid_head_oid(base))
+            .filter(|base| openagents_proto::change_request_assessment::valid_head_oid(base))
         {
             params["baseRefOid"] = base.clone().into();
         }
@@ -1267,7 +1267,7 @@ fn rich_text(
 fn inline_thread(
     detail: &ChangeRequestDetail,
     index: usize,
-) -> Option<&zeron_proto::ChangeRequestReviewThread> {
+) -> Option<&openagents_proto::ChangeRequestReviewThread> {
     let mut index = index.checked_sub(detail.comments.len() + detail.reviews.len())?;
     for thread in detail.review_threads.iter().flatten() {
         if index < thread.comments.len() {
@@ -2616,23 +2616,23 @@ mod tests {
         fixture::init(cx);
         let rpc = ScriptedRpc::new(|method, _| async move {
             assert_eq!(method, methods::GET_CHANGE_REQUEST);
-            zeron_rpc::RpcReply::value(&ChangeRequestDetail {
+            openagents_rpc::RpcReply::value(&ChangeRequestDetail {
                 number: 1,
                 title: "Inline review".into(),
                 review_decision: "CHANGES_REQUESTED".into(),
-                review_threads: Some(vec![zeron_proto::ChangeRequestReviewThread {
+                review_threads: Some(vec![openagents_proto::ChangeRequestReviewThread {
                     path: "src/lib.rs".into(),
                     line: Some(12),
                     comments: vec![
-                        zeron_proto::ChangeRequestComment {
+                        openagents_proto::ChangeRequestComment {
                             id: "first".into(),
                             body: "Preserve newer drafts".into(),
                             ..Default::default()
                         },
-                        zeron_proto::ChangeRequestComment {
+                        openagents_proto::ChangeRequestComment {
                             id: "reply".into(),
                             body: "Covered by the reopen test".into(),
-                            reply_to: Some(zeron_proto::ChangeRequestCommentReference {
+                            reply_to: Some(openagents_proto::ChangeRequestCommentReference {
                                 id: "first".into(),
                             }),
                             ..Default::default()
@@ -2686,7 +2686,7 @@ mod tests {
                 assert_eq!(params["refresh"], true);
                 match method.as_str() {
                     methods::GET_CHANGE_REQUEST => {
-                        zeron_rpc::RpcReply::value(&ChangeRequestDetail {
+                        openagents_rpc::RpcReply::value(&ChangeRequestDetail {
                             head_ref_oid: head,
                             base_ref_oid: base,
                             ..Default::default()
@@ -2694,7 +2694,7 @@ mod tests {
                     }
                     methods::GET_CHANGE_REQUEST_DIFF => {
                         assert_eq!(params["baseRefOid"], base);
-                        zeron_rpc::RpcReply::value(&"new patch")
+                        openagents_rpc::RpcReply::value(&"new patch")
                     }
                     _ => panic!("unexpected method"),
                 }
@@ -2724,12 +2724,12 @@ mod tests {
                     number: 1,
                     title: "Updated".into(),
                     url: url.into(),
-                    state: zeron_proto::ChangeRequestState::Open,
+                    state: openagents_proto::ChangeRequestState::Open,
                     is_draft: false,
                     review_decision: Default::default(),
                     additions: 1,
                     deletions: 1,
-                    mergeability: zeron_proto::ChangeRequestMergeability::Unknown,
+                    mergeability: openagents_proto::ChangeRequestMergeability::Unknown,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 }),
@@ -2766,12 +2766,12 @@ mod tests {
             number: 1,
             title: "Updated".into(),
             url: "https://github.com/a/b/pull/1".into(),
-            state: zeron_proto::ChangeRequestState::Open,
+            state: openagents_proto::ChangeRequestState::Open,
             is_draft: false,
             review_decision: Default::default(),
             additions: 1,
             deletions: 1,
-            mergeability: zeron_proto::ChangeRequestMergeability::Unknown,
+            mergeability: openagents_proto::ChangeRequestMergeability::Unknown,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         }
@@ -2791,7 +2791,7 @@ mod tests {
                     assert_eq!(params["headRefOid"], "b".repeat(40));
                     assert!(params.get("baseRefOid").is_none());
                     // GitHub can already be ahead of the board's snapshot.
-                    zeron_rpc::RpcReply::value(&ChangeRequestDetail {
+                    openagents_rpc::RpcReply::value(&ChangeRequestDetail {
                         head_ref_oid: "c".repeat(40),
                         base_ref_oid: "d".repeat(40),
                         ..Default::default()
@@ -2800,7 +2800,7 @@ mod tests {
                 methods::GET_CHANGE_REQUEST_DIFF => {
                     assert_eq!(params["headRefOid"], "c".repeat(40));
                     assert_eq!(params["baseRefOid"], "d".repeat(40));
-                    zeron_rpc::RpcReply::value(&"new patch")
+                    openagents_rpc::RpcReply::value(&"new patch")
                 }
                 _ => panic!("unexpected RPC"),
             }
@@ -2884,7 +2884,7 @@ mod tests {
                         assert_eq!(params["headRefOid"], "c".repeat(40));
                         "c".repeat(40)
                     };
-                    zeron_rpc::RpcReply::value(&ChangeRequestDetail {
+                    openagents_rpc::RpcReply::value(&ChangeRequestDetail {
                         head_ref_oid: head,
                         ..Default::default()
                     })
@@ -2934,7 +2934,7 @@ mod tests {
         let rpc = ScriptedRpc::new(|method, params| async move {
             assert_eq!(method, methods::GET_CHANGE_REQUEST);
             assert_eq!(params["headRefOid"], "b".repeat(40));
-            Err(zeron_rpc::RpcError::Failed("offline".into()))
+            Err(openagents_rpc::RpcError::Failed("offline".into()))
         });
         let cache = Rc::new(RefCell::new(PullRequestCache::default()));
         let url = "https://github.com/a/b/pull/1";
@@ -3008,7 +3008,7 @@ mod tests {
                         match method.as_str() {
                             methods::GET_CHANGE_REQUEST => {
                                 release_detail.notified().await;
-                                zeron_rpc::RpcReply::value(&ChangeRequestDetail {
+                                openagents_rpc::RpcReply::value(&ChangeRequestDetail {
                                     head_ref_oid: "b".repeat(40),
                                     base_ref_oid: "d".repeat(40),
                                     ..Default::default()
@@ -3019,13 +3019,13 @@ mod tests {
                                 if call == 0 {
                                     assert_eq!(params["headRefOid"], "a".repeat(40));
                                     release_old.notified().await;
-                                    zeron_rpc::RpcReply::value(&"outdated patch")
+                                    openagents_rpc::RpcReply::value(&"outdated patch")
                                 } else {
                                     assert_eq!(call, 1);
                                     assert_eq!(params["headRefOid"], "b".repeat(40));
                                     assert_eq!(params["baseRefOid"], "d".repeat(40));
                                     assert_eq!(params["refresh"], true);
-                                    zeron_rpc::RpcReply::value(&"current patch")
+                                    openagents_rpc::RpcReply::value(&"current patch")
                                 }
                             }
                             _ => panic!("unexpected RPC"),
@@ -3100,7 +3100,7 @@ mod tests {
             async move {
                 match method.as_str() {
                     methods::GET_CHANGE_REQUEST => {
-                        zeron_rpc::RpcReply::value(&ChangeRequestDetail {
+                        openagents_rpc::RpcReply::value(&ChangeRequestDetail {
                             title: "Fresh".into(),
                             head_ref_oid: "new-head".into(),
                             ..Default::default()
@@ -3111,7 +3111,7 @@ mod tests {
                         let refresh = params["refresh"] == true;
                         calls.push(refresh);
                         if calls.len() == 1 {
-                            return Err(zeron_rpc::RpcError::Failed("offline".into()));
+                            return Err(openagents_rpc::RpcError::Failed("offline".into()));
                         }
                         // A non-refresh request before a successful refresh
                         // sees the engine's old cached patch.
@@ -3120,9 +3120,9 @@ mod tests {
                         } else {
                             "old patch"
                         };
-                        zeron_rpc::RpcReply::value(&patch)
+                        openagents_rpc::RpcReply::value(&patch)
                     }
-                    other => Err(zeron_rpc::RpcError::UnknownMethod(other.into())),
+                    other => Err(openagents_rpc::RpcError::UnknownMethod(other.into())),
                 }
             }
         });
@@ -3222,7 +3222,7 @@ mod tests {
 
     #[test]
     fn pull_request_failures_read_as_words_not_codes() {
-        use zeron_rpc::{RpcError, capability_errors as codes};
+        use openagents_rpc::{RpcError, capability_errors as codes};
         for error in [
             RpcError::Capability(codes::PULL_REQUESTS_AUTHENTICATION.into()),
             RpcError::Capability(codes::PULL_REQUESTS_DECODE.into()),
@@ -3244,15 +3244,15 @@ mod tests {
 
     #[test]
     fn ci_summary_handles_mixed_and_unreported_checks() {
-        let check = |conclusion: &str, state: &str, status: &str| zeron_proto::ChangeRequestCheck {
+        let check = |conclusion: &str, state: &str, status: &str| openagents_proto::ChangeRequestCheck {
             conclusion: conclusion.into(),
             state: state.into(),
             status: status.into(),
             ..Default::default()
         };
-        let ci_status = |checks: &[zeron_proto::ChangeRequestCheck]| {
+        let ci_status = |checks: &[openagents_proto::ChangeRequestCheck]| {
             super::ci_status(&ChangeRequestDetail {
-                ci: zeron_proto::change_request_assessment::ChangeRequestCi::from_checks(checks),
+                ci: openagents_proto::change_request_assessment::ChangeRequestCi::from_checks(checks),
                 status_check_rollup: checks.to_vec(),
                 ..Default::default()
             })
@@ -3812,7 +3812,7 @@ mod tests {
                     page.detail = Some(ChangeRequestDetail {
                         title: "Inspect a pull request with a very long title that must leave room for all actions".into(),
                         number: 1, body: "A description".into(),
-                        status_check_rollup: vec![zeron_proto::ChangeRequestCheck {
+                        status_check_rollup: vec![openagents_proto::ChangeRequestCheck {
                             name: "linux-browser".into(), conclusion: "SUCCESS".into(),
                             details_url: "https://github.com/a/b/actions/runs/1".into(),
                             ..Default::default()
@@ -3820,12 +3820,12 @@ mod tests {
                     });
                     page.body = Some(crate::markdown::parse_full("A description"));
                     let review = "### Review notes\n\n**Strong** text and [a link](https://github.com).\n\n```rust\nlet answer = 42;\n```";
-                    page.detail.as_mut().unwrap().reviews.push(zeron_proto::ChangeRequestComment {
+                    page.detail.as_mut().unwrap().reviews.push(openagents_proto::ChangeRequestComment {
                         body: review.into(), ..Default::default()
                     });
-                    page.detail.as_mut().unwrap().comments.push(zeron_proto::ChangeRequestComment {
+                    page.detail.as_mut().unwrap().comments.push(openagents_proto::ChangeRequestComment {
                         viewer_did_author: true, body: "My comment".into(),
-                        author: zeron_proto::ChangeRequestActor { login: "viewer".into() }, ..Default::default()
+                        author: openagents_proto::ChangeRequestActor { login: "viewer".into() }, ..Default::default()
                     });
                     page.activity_bodies = vec![
                         super::super::pull_request_media::parse_description("My comment"),

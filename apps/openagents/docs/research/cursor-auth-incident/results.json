@@ -75,7 +75,7 @@
   "finalCursorRegressionTests": {
     "passed": 17,
     "failed": 0,
-    "command": "cargo test -p zeron-harness --test cursor --test cursor_shim"
+    "command": "cargo test -p openagents-harness --test cursor --test cursor_shim"
   },
   "ongoingSafeguardsValidation": {
     "docAndProtoTestsPassed": 136,

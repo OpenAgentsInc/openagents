@@ -70,21 +70,20 @@ OpenAgents mobile app. Plan, sizes and steps:
   room, and NIP-HOST/REACH carry the device channel (#11854). NIP-SESS and
   NIP-CTRL are being revised to describe this; don't build a second session
   path beside it.
-- **Upstream Zeron.** We keep pulling upstream (`git subtree pull
-  --prefix=apps/openagents https://github.com/zeronsh/zeron.git main`)
-  until we decide crate by crate to stop. Until then, keep the imported
-  tree mergeable:
-  - crates stay `zeron-*`, the binary stays `zeron`, and `ZERON_*`
-    variables keep their names;
-  - don't reformat upstream code (format only the files you change);
-  - put OpenAgents features in our own crates and modules, with one hook in
-    each upstream file;
-  - record each integration in `apps/openagents/docs/downstream-patches.md`.
+- **Upstream attribution.** The apps are based on Zeron by Wing (MIT).
+  Product code, crates, binaries, targets, and environment variables use
+  OpenAgents names (#11899, owner 2026-10-16). Import upstream fixes by manual
+  port; don't run `git subtree pull` over the renamed tree. Keep copyright
+  notices and About attribution. Read old `ZERON_*` variables as fallbacks for
+  one release, and preserve existing bundle IDs, data, and sign-in.
+  - Don't reformat unrelated code; format only the files you change.
+  - Put OpenAgents features in our own crates and modules.
+  - Record integrations in `apps/openagents/docs/downstream-patches.md`.
 - **Builds.** `apps/openagents/` is its own Cargo workspace (its own lock,
   profiles and `rust-toolchain.toml`, Rust 1.98.1 for GPUI). It is not a
   member of the root workspace. Its SQLite (`libsqlite3-sys` 0.30) matches
   Breez; the root's `ldk-node` keeps 0.28. Build from that directory, for
-  example `cargo build -p zeron`. Domain crates linked into it must build in
+  example `cargo build -p openagents`. Domain crates linked into it must build in
   both workspaces, with SQLite behind a feature as `crates/spark-wallet`
   does.
 - **Not imported:** Zeron's TypeScript `edge/` (replaced by `coder-sync`;

@@ -154,7 +154,7 @@ impl FilesSurface {
                 let node = self.tree.node(path)?;
                 Some((
                     path.clone(),
-                    node.entry.kind == zeron_proto::WorkspaceEntryKind::Directory,
+                    node.entry.kind == openagents_proto::WorkspaceEntryKind::Directory,
                 ))
             })
             .collect::<Option<Vec<_>>>()

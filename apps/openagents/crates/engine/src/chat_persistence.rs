@@ -4,8 +4,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 use tokio::sync::mpsc;
-use zeron_doc::SessionDoc;
-use zeron_sync::DocsStore;
+use openagents_doc::SessionDoc;
+use openagents_sync::DocsStore;
 
 const SAVE_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -199,9 +199,9 @@ mod tests {
     /// Runs only on an explicitly supplied local snapshot; never writes back
     /// to it or connects to an edge/production room.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    #[ignore = "requires ZERON_WHALE_SNAPSHOT; reads privately supplied snapshot into a temporary store"]
+    #[ignore = "requires OPENAGENTS_WHALE_SNAPSHOT; reads privately supplied snapshot into a temporary store"]
     async fn real_whale_replay_keeps_146_heartbeats_running_on_two_workers() {
-        let bytes = std::fs::read(std::env::var("ZERON_WHALE_SNAPSHOT").unwrap()).unwrap();
+        let bytes = std::fs::read(openagents_brand::env_var("OPENAGENTS_WHALE_SNAPSHOT").unwrap()).unwrap();
         let raw = loro::LoroDoc::new();
         raw.import(&bytes).unwrap();
         let doc = Arc::new(SessionDoc::from_doc(raw));

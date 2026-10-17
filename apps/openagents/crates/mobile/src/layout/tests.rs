@@ -158,8 +158,8 @@ fn toggles_expand_tool_groups_and_long_user_messages() {
 /// markers (desktop PR #220; the mobile port dropped it).
 #[test]
 fn thinking_renders_styled_markdown_not_markers() {
-    use zeron_doc::parts::{MessagePart, MessageStatus};
-    use zeron_doc::schema::{MessageRole, SessionMessageEntry};
+    use openagents_doc::parts::{MessagePart, MessageStatus};
+    use openagents_doc::schema::{MessageRole, SessionMessageEntry};
     let reasoning = concat!(
         "**Planning** the `fix`\n\n",
         "- point *one*\n",
@@ -240,8 +240,8 @@ fn thinking_renders_styled_markdown_not_markers() {
 /// settles to exactly the frame a fresh full parse lays out.
 #[test]
 fn streaming_thought_markdown_settles_to_the_fresh_parse() {
-    use zeron_doc::parts::{MessagePart, MessageStatus};
-    use zeron_doc::schema::{MessageRole, SessionMessageEntry};
+    use openagents_doc::parts::{MessagePart, MessageStatus};
+    use openagents_doc::schema::{MessageRole, SessionMessageEntry};
     let text = "**Checking** the `parser`\n\n1. first step\n2. second with [docs](https://example.com)\n\n> note\n\n```rust\nfn main() {}\n```";
     let entry = |status: MessageStatus, text: &str| {
         Arc::new(SessionMessageEntry {
@@ -291,8 +291,8 @@ fn streaming_thought_markdown_settles_to_the_fresh_parse() {
 }
 
 fn thought_input(text: &str, streaming: bool) -> TranscriptInput {
-    use zeron_doc::parts::{MessagePart, MessageStatus};
-    use zeron_doc::schema::{MessageRole, SessionMessageEntry};
+    use openagents_doc::parts::{MessagePart, MessageStatus};
+    use openagents_doc::schema::{MessageRole, SessionMessageEntry};
     TranscriptInput {
         entries: vec![Arc::new(SessionMessageEntry {
             id: "a".into(),
@@ -410,7 +410,7 @@ fn huge_single_paragraph_thought_stops_reshaping() {
     assert!(bodies[80..].windows(2).all(|p| Arc::ptr_eq(&p[0], &p[1])), "past the budget, deltas reuse the prepared body");
 }
 
-/// Release-mode timings (run with `cargo test --release -p zeron-mobile -- --ignored --nocapture`).
+/// Release-mode timings (run with `cargo test --release -p openagents-mobile -- --ignored --nocapture`).
 #[test]
 #[ignore]
 fn bench_layout_passes() {
@@ -468,16 +468,16 @@ fn user_mentions_render_as_chips() {
     // The desktop's chips: a soft pill with the file theme's icon on a well,
     // the label in the body color — for files, folders, skills and commands.
     let mut w = worker(390.0);
-    let skill = zeron_proto::invocation::Invocation::Skill { name: "review".into(), path: "/repo/SKILL.md".into(), command: None };
+    let skill = openagents_proto::invocation::Invocation::Skill { name: "review".into(), path: "/repo/SKILL.md".into(), command: None };
     let text = format!(
-        "Look at [mod.rs](zeron-file:crates/mobile/src/layout/mod.rs) in [layout](zeron-file:crates/mobile/src/layout/) with {}",
+        "Look at [mod.rs](openagents-file:crates/mobile/src/layout/mod.rs) in [layout](openagents-file:crates/mobile/src/layout/) with {}",
         skill.link()
     );
     w.input = debug_input(vec![DebugEntry { id: "u".into(), user: true, text, streaming: false }], false);
     let frame = w.pass();
     let d = frame.display(0).unwrap();
     assert!(d.text.contains("mod.rs") && !d.text.contains("@mod.rs"), "{}", d.text);
-    assert!(!d.text.contains("zeron-"), "{}", d.text);
+    assert!(!d.text.contains("openagents-"), "{}", d.text);
     assert!(d.runs.iter().all(|r| r.color != display::ColorRole::Link));
     let icons: Vec<&str> = d
         .widgets
@@ -510,7 +510,7 @@ fn synced_file_attachments_render_as_chips_and_name_pills() {
     // chip only; the image chip opens its upload; the unchipped ZIP keeps a
     // name pill and never reaches image loading.
     let mut w = worker(390.0);
-    let text = "Compare [Image 1](zeron-image:1) with [notes.zip](zeron-attachment:2)\n\nAttached images (local files — open them to view):\n- /tmp/uploads/ab12cd34-Image_1.png\n- /tmp/uploads/ab12cd34-notes.zip\n- pending://up-3/logs.zip".to_owned();
+    let text = "Compare [Image 1](openagents-image:1) with [notes.zip](openagents-attachment:2)\n\nAttached images (local files — open them to view):\n- /tmp/uploads/ab12cd34-Image_1.png\n- /tmp/uploads/ab12cd34-notes.zip\n- pending://up-3/logs.zip".to_owned();
     w.input = debug_input(vec![DebugEntry { id: "u".into(), user: true, text, streaming: false }], false);
     let frame = w.pass();
     let d = frame.display(0).unwrap();
@@ -527,9 +527,9 @@ fn synced_file_attachments_render_as_chips_and_name_pills() {
     assert_eq!(icons, ["fileicon-files-compressed", "photo", "fileicon-files-compressed"]);
     assert!(d.text.contains("Compare Image 1 with notes.zip"), "{}", d.text);
     assert!(d.text.contains("logs.zip") && !d.text.contains("ab12cd34-"), "{}", d.text);
-    assert!(!d.text.contains("zeron-image") && !d.text.contains("zeron-attachment"), "{}", d.text);
+    assert!(!d.text.contains("openagents-image") && !d.text.contains("openagents-attachment"), "{}", d.text);
     let links: Vec<&str> = d.links.iter().map(|l| l.url.as_str()).collect();
-    assert_eq!(links, ["zeron-preview://image?ref=%2Ftmp%2Fuploads%2Fab12cd34-Image_1.png"]);
+    assert_eq!(links, ["openagents-preview://image?ref=%2Ftmp%2Fuploads%2Fab12cd34-Image_1.png"]);
 }
 
 #[test]
@@ -548,11 +548,11 @@ fn folded_user_message_fades_its_last_line() {
 
 #[test]
 fn running_subagent_shows_a_spinner_after_its_spawn_resolves() {
-    use zeron_doc::parts::{MessagePart, MessageStatus, SubagentStatus};
-    use zeron_doc::schema::{MessageRole, SessionMessageEntry};
+    use openagents_doc::parts::{MessagePart, MessageStatus, SubagentStatus};
+    use openagents_doc::schema::{MessageRole, SessionMessageEntry};
     let spawn = |status: SubagentStatus| MessagePart::Tool {
         id: "k1".into(),
-        call: zeron_proto::ToolCall::Unknown { name: "Agent: scan the repo".into(), input: None },
+        call: openagents_proto::ToolCall::Unknown { name: "Agent: scan the repo".into(), input: None },
         is_error: false,
         // Eager-done: the spawn call resolved while the subagent still runs.
         resolved: true,

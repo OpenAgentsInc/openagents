@@ -8,7 +8,7 @@ use std::path::PathBuf;
 /// Static per-install configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientConfig {
-    /// Edge base URL, e.g. `https://edge.zeron.sh` (no trailing slash needed).
+    /// Edge base URL, e.g. `https://sync.openagents.com` (no trailing slash needed).
     pub edge_url: String,
     /// Writable directory for registry/doc snapshots and caches. Scoped by the
     /// platform to the signed-in identity (sign-out wipes it).

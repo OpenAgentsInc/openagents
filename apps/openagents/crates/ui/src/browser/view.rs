@@ -778,7 +778,7 @@ impl Render for BrowserSurface {
                 .and_then(|s| url::Url::parse(s).ok())
                 .is_some_and(|u| {
                     super::model::loopback(&u)
-                        && !(u.port() == Some(zeron_proto::PREVIEW_PROXY_PORT)
+                        && !(u.port() == Some(openagents_proto::PREVIEW_PROXY_PORT)
                             && u.host_str()
                                 .is_some_and(|host| host.ends_with(".localhost")))
                 });

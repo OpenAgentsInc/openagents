@@ -1,4 +1,5 @@
 #!/bin/bash
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../env-compat.sh"
 # Runs a native macOS GUI fixture (browser-fixture / preview-fixture) with guards against a flaky,
 # heavily loaded GitHub runner VM (3 vCPU). The fixture binary, its arguments and assertions are
 # untouched; only the wrapper changes:
@@ -9,7 +10,7 @@
 # which is what the fixture exists to catch.
 # usage: run-macos-fixture.sh <fixture-binary> <capture-dir>
 set -uo pipefail
-ROOT="${ZERON_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
+ROOT="${OPENAGENTS_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 BINARY="$1"
 OUT="$2"
 ATTEMPTS="${FIXTURE_ATTEMPTS:-3}"

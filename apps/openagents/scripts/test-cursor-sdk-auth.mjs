@@ -22,7 +22,7 @@ const patched = original.replace(/\(0,\w+\.cf\)/g, '(0,globalThis.__cursorTestTr
 assert.notEqual(patched, original, 'SDK transport constructor changed');
 source = source.slice(0,start) + patched + source.slice(end);
 source += `\nexport const __testAuthFactory=${loader}("./src/agent/executor-common.ts").KU;\n`;
-const copy = path.join(root, 'dist/esm', `.zeron-auth-contract-${process.pid}.mjs`);
+const copy = path.join(root, 'dist/esm', `.openagents-auth-contract-${process.pid}.mjs`);
 fs.writeFileSync(copy, source);
 let captured;
 globalThis.__cursorTestTransport = options => {

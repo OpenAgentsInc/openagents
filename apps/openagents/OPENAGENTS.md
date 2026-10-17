@@ -17,8 +17,8 @@ This is its own Cargo workspace (its own `Cargo.lock`, profiles and
 Run commands from this directory:
 
 ```sh
-cargo build -p zeron
-cargo test -p coder-account -p coder-brand -p zeron-update -p zeron-mcp
+cargo build -p openagents
+cargo test -p openagents-account -p openagents-brand -p openagents-update -p openagents-mcp
 scripts/run-macos-dev.sh            # build and open the macOS development bundle
 scripts/ios/build-core.sh           # the phone core for the iOS simulator
 ```
@@ -31,11 +31,11 @@ your login":
 
 ```sh
 cd apps/ios
-xcodebuild -project Zeron.xcodeproj -scheme Zeron -destination 'id=<simulator id>' ARCHS=arm64 CODE_SIGN_IDENTITY=- build
+xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -destination 'id=<simulator id>' ARCHS=arm64 CODE_SIGN_IDENTITY=- build
 ```
 
 A persistent `CARGO_TARGET_DIR` outside the checkout saves a cold build of
-about 900 crates. `coder-account` uses the SDK from this repository by path
+about 900 crates. `openagents-account` uses the SDK from this repository by path
 (`../../crates/openagents-sdk`), so SDK changes and app changes land in
 one commit.
 
@@ -64,29 +64,29 @@ Update and relaunch (quit the app first):
 git -C ~/work/openagents-app fetch origin main
 git -C ~/work/openagents-app checkout --detach origin/main
 cd ~/work/openagents-app/apps/openagents
-ZERON_DEV_DATA_DIR="$HOME/Library/Application Support/OpenAgents Dev/data" scripts/run-macos-dev.sh
+OPENAGENTS_DEV_DATA_DIR="$HOME/Library/Application Support/OpenAgents Dev/data" scripts/run-macos-dev.sh
 ```
 
 The data directory is written into the bundle, so opening
 `~/work/openagents-app/apps/openagents/target/macos-dev/OpenAgents Dev.app` from the
 Dock or Finder uses the same data. Agents testing their own builds keep the
-default checkout-local data and a different `ZERON_DEV_IPC_PORT`, never this
+default checkout-local data and a different `OPENAGENTS_DEV_IPC_PORT`, never this
 directory.
 
-## Pull upstream Zeron
+## Port upstream fixes
 
-From the repository root, on a clean `main`:
+The apps retain Zeron's MIT attribution. Since the complete OpenAgents rename
+(#11899), import upstream fixes by manual port from
+[Zeron](https://github.com/zeronsh/zeron), then build and test the affected
+crates. Record the upstream commit and integration in `FORK.md` and
+`docs/downstream-patches.md`. Don't use `git subtree pull` over the renamed
+source tree.
 
-```sh
-git subtree pull --prefix=apps/openagents https://github.com/zeronsh/zeron.git main
-```
-
-Resolve conflicts, keeping upstream structure and names (see the root
-AGENTS.md rules). Then build and run the tests above. Record the merged
-upstream commit in `FORK.md`. Upstream changes to the parts we removed
-(`edge/` other than `edge/src/install.sh`, `apps/landing`,
-`apps/www-redirect`, `.github/`) show as modify/delete conflicts: delete them
-again.
+Crates and the desktop binary use `openagents` names. Set `OPENAGENTS_*`
+variables for new scripts; previous `ZERON_*` settings remain fallbacks for
+one release. Bundle IDs, Keychain identities, data directories, and the UIKit
+scene delegate keep their existing values. Existing project files, theme
+selections, and conversation links remain readable.
 
 ## Not here
 

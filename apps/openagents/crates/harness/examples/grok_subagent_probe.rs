@@ -2,12 +2,12 @@
 //! event stream, verifying subagent spawn correlation + the disk-tailed
 //! transcript end-to-end. Needs a logged-in `grok` on PATH.
 //!
-//!     cargo run -p zeron-harness --example grok_subagent_probe -- /tmp/probe-dir
+//!     cargo run -p openagents-harness --example grok_subagent_probe -- /tmp/probe-dir
 
 use futures::StreamExt;
 use tokio::sync::{mpsc, oneshot};
-use zeron_harness::{AcpHarness, CancellationToken, Harness, RunControls};
-use zeron_proto::{AgentEvent, RunRequest, SandboxLevel, UserInputAnswer};
+use openagents_harness::{AcpHarness, CancellationToken, Harness, RunControls};
+use openagents_proto::{AgentEvent, RunRequest, SandboxLevel, UserInputAnswer};
 
 #[tokio::main]
 async fn main() {

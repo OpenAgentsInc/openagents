@@ -10,8 +10,8 @@ use gpui::{
     Context, Entity, IntoElement, Render, SharedString, Subscription, Task, Window, div,
     prelude::*, px,
 };
-use zeron_proto::{AgentAccount, AgentAccountsSnapshot, HarnessId};
-use zeron_rpc::methods;
+use openagents_proto::{AgentAccount, AgentAccountsSnapshot, HarnessId};
+use openagents_rpc::methods;
 
 use crate::popover;
 use crate::settings::accounts::{
@@ -474,7 +474,7 @@ impl Render for AccountUsage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zeron_proto::AgentUsageWindow;
+    use openagents_proto::AgentUsageWindow;
 
     fn account(harness: HarnessId, active: bool, used: &[f32]) -> AgentAccount {
         serde_json::from_value(serde_json::json!({

@@ -1,5 +1,5 @@
-//! zeron-update — release checking and self-update, shared by the engine (the
-//! background checker + `ApplyUpdate`), the CLI (`zeron update`), and the UI
+//! openagents-update — release checking and self-update, shared by the engine (the
+//! background checker + `ApplyUpdate`), the CLI (`openagents update`), and the UI
 //! (its own report-only checker, the "Check for Updates…" menu item, the
 //! sidebar update strip, and the desktop install paths).
 //!
@@ -10,7 +10,7 @@
 //! releases published before the manifest existed.
 //!
 //! Install kinds and their update paths:
-//! - **Managed** (`~/.zeron/app/<ver>` + `current` symlink — the curl|sh
+//! - **Managed** (`~/.openagents/app/<ver>` + `current` symlink — the curl|sh
 //!   installer and the Linux tarball's `install.sh`): download the headless
 //!   tarball into a new versioned dir, flip the symlink, then restart the
 //!   service (daemon) or relaunch (desktop). Same flow the installer script
@@ -18,7 +18,7 @@
 //! - **MacApp** (running out of an app bundle): download the app tarball, swap the
 //!   bundle directory, relaunch. Driven by the UI.
 //! - **WindowsPortable** (the Windows installer or portable zip — both carry
-//!   `zeron-update.json`): swap the executable in place. Driven by the UI.
+//!   `openagents-update.json`): swap the executable in place. Driven by the UI.
 //! - **Unmanaged** (source builds, hand-copied binaries): report only — the
 //!   UI's advisory strip links to [`RELEASES_PAGE`].
 //!
@@ -133,16 +133,16 @@ fn require_mac_app_update_platform() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// `zeron-<ver>-<os>-<arch>.tar.gz` — the headless/CLI tarball (Linux CI builds).
+/// `openagents-<ver>-<os>-<arch>.tar.gz` — the headless/CLI tarball (Linux CI builds).
 pub fn headless_artifact(version: &str) -> String {
     let (os, arch) = platform_key();
-    format!("zeron-{version}-{os}-{arch}.tar.gz")
+    format!("openagents-{version}-{os}-{arch}.tar.gz")
 }
 
-/// `zeron-<ver>-macos-<arch>-app.tar.gz` — the macOS app update payload.
+/// `openagents-<ver>-macos-<arch>-app.tar.gz` — the macOS app update payload.
 pub fn mac_app_artifact(version: &str) -> String {
     let (_, arch) = platform_key();
-    format!("zeron-{version}-macos-{arch}-app.tar.gz")
+    format!("openagents-{version}-macos-{arch}-app.tar.gz")
 }
 
 fn parse_version(v: &str) -> Option<Vec<u64>> {
@@ -282,7 +282,7 @@ fn http_client_with_timeouts(connect: Duration, read: Duration) -> anyhow::Resul
         // Inactivity timeout, not a total download cap: slow progressing
         // updates remain viable on constrained links.
         .read_timeout(read)
-        .user_agent(concat!("zeron/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("openagents/", env!("CARGO_PKG_VERSION")))
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
             if attempt.previous().len() >= 10 {
                 return attempt.error("too many update redirects");
@@ -317,27 +317,27 @@ fn validate_release_override(value: &str) -> anyhow::Result<String> {
 /// The project's GitHub releases page — the advisory update strip opens this
 /// for unmanaged installs (source builds, hand-copied binaries), where no
 /// updater flow exists to drive.
-pub const RELEASES_PAGE: &str = coder_brand::DOWNLOAD_URL;
+pub const RELEASES_PAGE: &str = openagents_brand::DOWNLOAD_URL;
 
 /// The newest release's page — the download destination offered when this
 /// installation cannot replace itself.
-pub const LATEST_RELEASE_PAGE: &str = coder_brand::DOWNLOAD_URL;
+pub const LATEST_RELEASE_PAGE: &str = openagents_brand::DOWNLOAD_URL;
 
 /// Shown when no update feed is configured (Coder Desktop has none yet).
 pub const NO_FEED_MESSAGE: &str =
     "OpenAgents doesn't update itself yet. Get new versions at openagents.com/download.";
 
 /// Whether this build has an update feed: the developer override
-/// `ZERON_RELEASES_URL`, or `coder_brand::UPDATE_FEED`. Without one the
-/// updater never contacts any server; in particular it never reads Zeron's
-/// release feed, so the app can't offer a Zeron release as an update.
+/// `OPENAGENTS_RELEASES_URL`, or `openagents_brand::UPDATE_FEED`. Without one the
+/// updater never contacts any server; in particular it never reads OpenAgents's
+/// release feed, so the app can't offer a OpenAgents release as an update.
 pub fn feed_configured() -> bool {
-    std::env::var("ZERON_RELEASES_URL").is_ok_and(|url| !url.trim().is_empty())
-        || coder_brand::UPDATE_FEED.is_some()
+    openagents_brand::env_var("OPENAGENTS_RELEASES_URL").is_ok_and(|url| !url.trim().is_empty())
+        || openagents_brand::UPDATE_FEED.is_some()
 }
 
 fn release_base(edge_url: &str) -> anyhow::Result<String> {
-    if let Ok(url) = std::env::var("ZERON_RELEASES_URL")
+    if let Ok(url) = openagents_brand::env_var("OPENAGENTS_RELEASES_URL")
         && !url.trim().is_empty()
     {
         return validate_release_override(&url);
@@ -350,9 +350,9 @@ fn release_base(edge_url: &str) -> anyhow::Result<String> {
     if cfg!(test) {
         return Ok(format!("{}/releases", edge_url.trim_end_matches('/')));
     }
-    // Coder Desktop: the feed comes from `coder_brand::UPDATE_FEED`, never
-    // from the edge (Zeron's feed lives at `{edge}/releases`).
-    configured_feed(coder_brand::UPDATE_FEED)
+    // Coder Desktop: the feed comes from `openagents_brand::UPDATE_FEED`, never
+    // from the edge (OpenAgents's feed lives at `{edge}/releases`).
+    configured_feed(openagents_brand::UPDATE_FEED)
 }
 
 fn configured_feed(feed: Option<&str>) -> anyhow::Result<String> {
@@ -369,9 +369,9 @@ fn configured_feed(feed: Option<&str>) -> anyhow::Result<String> {
 /// How this binary was installed — decides the update path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstallKind {
-    /// `~/.zeron/app/<ver>/zeron` behind the `current` symlink
+    /// `~/.openagents/app/<ver>/openagents` behind the `current` symlink
     /// (curl|sh installer, the Linux tarball's `install.sh`, or a previous
-    /// `zeron update`).
+    /// `openagents update`).
     Managed { app_root: PathBuf },
     /// Running out of a macOS `.app` bundle.
     MacApp { bundle: PathBuf },
@@ -485,7 +485,7 @@ impl InstallKind {
                     .context("staged install has no version directory")?;
                 apply_headless(app_root, version)?;
                 if relaunch {
-                    let binary = app_root.join("current").join("zeron");
+                    let binary = app_root.join("current").join("openagents");
                     relaunch_after_exit(&binary, Path::new(""));
                 }
                 Ok(())
@@ -517,7 +517,7 @@ fn mac_bundle_blocker(bundle: &Path, writable: impl Fn(&Path) -> bool) -> Option
 /// Probe by creating (and removing) a file: permission bits alone miss
 /// read-only mounts, ACLs, and sandboxed locations.
 fn dir_writable(dir: &Path) -> bool {
-    let probe = dir.join(format!(".zeron-write-probe-{}", std::process::id()));
+    let probe = dir.join(format!(".openagents-write-probe-{}", std::process::id()));
     match std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -556,14 +556,14 @@ fn detect_install_from_for_os(exe: &Path, home: Option<&Path>, os: &str) -> Inst
             directory: exe.parent().unwrap().to_owned(),
         };
     }
-    // Never interpret a coincidental Windows `%HOME%\.zeron\app` layout as
+    // Never interpret a coincidental Windows `%HOME%\.openagents\app` layout as
     // the Unix symlink-managed installation.
     if !managed_updates_supported(os) {
         return InstallKind::Unmanaged;
     }
     if let Some(home) = home {
         // `current_exe` resolves the `current` symlink to the versioned dir.
-        let app_root = home.join(coder_brand::HOME_WORK_DIR).join("app");
+        let app_root = home.join(openagents_brand::HOME_WORK_DIR).join("app");
         if exe.starts_with(&app_root) {
             return InstallKind::Managed { app_root };
         }
@@ -582,7 +582,7 @@ fn detect_install_from_for_os(exe: &Path, home: Option<&Path>, os: &str) -> Inst
 
 /// The version currently installed on disk for `kind`, read without executing
 /// anything. A long-running process compares it with its own version to notice
-/// that something else (the desktop app, `zeron update`, a re-run installer)
+/// that something else (the desktop app, `openagents update`, a re-run installer)
 /// has already replaced its binary.
 pub fn installed_version(kind: &InstallKind) -> Option<String> {
     let version = match kind {
@@ -697,8 +697,8 @@ async fn verify_staged_binary(binary: &Path, version: &str) -> anyhow::Result<()
     .with_context(|| format!("running {} --version", binary.display()))?;
     let reported = String::from_utf8_lossy(&output.stdout).trim().to_owned();
     anyhow::ensure!(
-        output.status.success() && reported == format!("zeron {version}"),
-        "staged binary reported {reported:?} (exit {}), expected \"zeron {version}\"",
+        output.status.success() && reported == format!("openagents {version}"),
+        "staged binary reported {reported:?} (exit {}), expected \"openagents {version}\"",
         output.status
     );
     Ok(())
@@ -723,7 +723,7 @@ pub async fn stage_headless(
         "invalid release version {version:?}"
     );
     let dest = app_root.join(version);
-    if dest.join("zeron").exists() {
+    if dest.join("openagents").exists() {
         return Ok(dest);
     }
     let file = headless_artifact(version);
@@ -747,14 +747,14 @@ pub async fn stage_headless(
                 "--strip-components=1",
             ],
         )?;
-        if !unpacked.join("zeron").is_file() {
-            bail!("tarball {file} did not contain a zeron binary");
+        if !unpacked.join("openagents").is_file() {
+            bail!("tarball {file} did not contain a openagents binary");
         }
-        verify_staged_binary(&unpacked.join("zeron"), version).await?;
+        verify_staged_binary(&unpacked.join("openagents"), version).await?;
         match std::fs::rename(&unpacked, &dest) {
             Ok(()) => {}
             // Lost a race with another stager — the staged copy is equivalent.
-            Err(_) if dest.join("zeron").exists() => {}
+            Err(_) if dest.join("openagents").exists() => {}
             Err(err) => {
                 return Err(err).with_context(|| format!("moving {} into place", dest.display()));
             }
@@ -772,7 +772,7 @@ pub fn apply_headless(app_root: &Path, version: &str) -> anyhow::Result<()> {
     #[cfg(unix)]
     {
         let target = app_root.join(version);
-        if !target.join("zeron").exists() {
+        if !target.join("openagents").exists() {
             bail!("{} is not a staged install", target.display());
         }
         let tmp = app_root.join(format!(".current-{}", std::process::id()));
@@ -790,30 +790,30 @@ pub fn apply_headless(app_root: &Path, version: &str) -> anyhow::Result<()> {
 }
 
 /// Whether this process is the engine service [`restart_service`] manages:
-/// systemd places it in the `zeron.service` cgroup; launchd names the job in
+/// systemd places it in the `openagents.service` cgroup; launchd names the job in
 /// `XPC_SERVICE_NAME`.
 pub fn running_as_installed_service() -> bool {
     if cfg!(target_os = "macos") {
-        std::env::var("XPC_SERVICE_NAME").is_ok_and(|label| label == coder_brand::LAUNCHD_LABEL)
+        std::env::var("XPC_SERVICE_NAME").is_ok_and(|label| label == openagents_brand::LAUNCHD_LABEL)
     } else if cfg!(target_os = "linux") {
         std::fs::read_to_string("/proc/self/cgroup")
-            .is_ok_and(|cgroups| in_zeron_service_cgroup(&cgroups))
+            .is_ok_and(|cgroups| in_openagents_service_cgroup(&cgroups))
     } else {
         false
     }
 }
 
-fn in_zeron_service_cgroup(cgroups: &str) -> bool {
+fn in_openagents_service_cgroup(cgroups: &str) -> bool {
     cgroups
         .lines()
         .filter_map(|line| line.rsplit(':').next())
         .any(|path| {
             path.split('/')
-                .any(|part| part == coder_brand::SYSTEMD_UNIT)
+                .any(|part| part == openagents_brand::SYSTEMD_UNIT)
         })
 }
 
-/// Restart the installed engine service (the same units `zeron daemon` and the
+/// Restart the installed engine service (the same units `openagents daemon` and the
 /// curl|sh installer manage). Called after a symlink swap so the running daemon
 /// picks up the new binary. Only queues the restart: the caller may be the
 /// service itself, which must stay responsive to the stop signal that follows.
@@ -827,13 +827,13 @@ pub fn restart_service() -> anyhow::Result<()> {
             &[
                 "kickstart",
                 "-k",
-                &format!("gui/{uid}/{}", coder_brand::LAUNCHD_LABEL),
+                &format!("gui/{uid}/{}", openagents_brand::LAUNCHD_LABEL),
             ],
         )
     } else {
         run(
             "systemctl",
-            &["--user", "--no-block", "restart", coder_brand::SYSTEMD_UNIT],
+            &["--user", "--no-block", "restart", openagents_brand::SYSTEMD_UNIT],
         )
     }
 }
@@ -842,7 +842,7 @@ pub fn restart_service() -> anyhow::Result<()> {
 // macOS app-bundle installs — the desktop path
 // ---------------------------------------------------------------------------
 
-/// Download + unpack the app tarball into `{data_dir}/updates/<ver>/Zeron.app`
+/// Download + unpack the app tarball into `{data_dir}/updates/<ver>/OpenAgents.app`
 /// (idempotent). The bundle is unpacked beside its final name and renamed in
 /// only after its binary answers with the expected version, so an interrupted
 /// unpack can never be mistaken for a staged update. Returns the staged bundle.
@@ -860,8 +860,8 @@ pub async fn stage_mac_app(
     );
     let updates = data_dir.join("updates");
     let dir = updates.join(version);
-    let staged = dir.join("Zeron.app");
-    let staged_binary = staged.join("Contents/MacOS/zeron");
+    let staged = dir.join("OpenAgents.app");
+    let staged_binary = staged.join("Contents/MacOS/openagents");
     if staged_binary.exists() && verify_staged_binary(&staged_binary, version).await.is_ok() {
         return Ok(staged);
     }
@@ -882,13 +882,13 @@ pub async fn stage_mac_app(
             &unpack.to_string_lossy(),
         ],
     )
-    .map(|()| unpack.join("Zeron.app"));
+    .map(|()| unpack.join("OpenAgents.app"));
     std::fs::remove_file(&tarball).ok();
     let unpacked = unpacked?;
-    let unpacked_binary = unpacked.join("Contents/MacOS/zeron");
+    let unpacked_binary = unpacked.join("Contents/MacOS/openagents");
     if !unpacked_binary.exists() {
         let _ = std::fs::remove_dir_all(&dir);
-        bail!("app tarball {file} did not contain Zeron.app");
+        bail!("app tarball {file} did not contain OpenAgents.app");
     }
     if let Err(err) = verify_staged_binary(&unpacked_binary, version).await {
         let _ = std::fs::remove_dir_all(&dir);
@@ -964,7 +964,7 @@ if [ -n "$3" ]; then exec "$2" "$3"; else exec "$2"; fi"#;
         command
             .arg("-c")
             .arg(script)
-            .arg("zeron-relaunch")
+            .arg("openagents-relaunch")
             .arg(&pid)
             .arg(program)
             .arg(argument)
@@ -1014,17 +1014,17 @@ impl UpdateStatus {
     }
 }
 
-/// `ZERON_AUTO_UPDATE=1|true|yes` — headless daemons apply updates themselves.
+/// `OPENAGENTS_AUTO_UPDATE=1|true|yes` — headless daemons apply updates themselves.
 fn auto_update_enabled() -> bool {
-    std::env::var("ZERON_AUTO_UPDATE")
+    openagents_brand::env_var("OPENAGENTS_AUTO_UPDATE")
         .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
         .unwrap_or(false)
 }
 
-/// `ZERON_AUTO_UPDATE=0|false|no` — the desktop app then only reports: no
+/// `OPENAGENTS_AUTO_UPDATE=0|false|no` — the desktop app then only reports: no
 /// background download and no install on quit. Unset means on.
 pub fn desktop_auto_update_enabled() -> bool {
-    std::env::var("ZERON_AUTO_UPDATE")
+    openagents_brand::env_var("OPENAGENTS_AUTO_UPDATE")
         .map(|v| !matches!(v.trim().to_ascii_lowercase().as_str(), "0" | "false" | "no"))
         .unwrap_or(true)
 }
@@ -1035,7 +1035,7 @@ pub type QuiescentCheck = Arc<dyn Fn() -> bool + Send + Sync>;
 
 /// Who runs the checker — decides what it may do beyond reporting.
 enum Role {
-    /// The engine: managed installs with `ZERON_AUTO_UPDATE` apply themselves,
+    /// The engine: managed installs with `OPENAGENTS_AUTO_UPDATE` apply themselves,
     /// and a service daemon restarts into a binary someone else installed.
     Engine { quiescent: Option<QuiescentCheck> },
     /// The desktop app: report only — downloading and installing are UI
@@ -1046,7 +1046,7 @@ enum Role {
 /// Background release checker: polls `{edge}/releases` hourly on a wall-clock
 /// schedule (so sleep/wake cannot stretch it), backs off on failure, and
 /// publishes [`UpdateStatus`] over a watch channel. In the engine, managed
-/// installs with `ZERON_AUTO_UPDATE` set stage + apply + service restart on
+/// installs with `OPENAGENTS_AUTO_UPDATE` set stage + apply + service restart on
 /// their own — but only in a quiet window: while `quiescent` reports activity,
 /// the apply defers and re-probes every [`IDLE_RECHECK`].
 #[derive(Clone)]
@@ -1058,7 +1058,7 @@ pub struct Updater {
     /// a fresh look at the wall clock.
     wake_tx: Arc<watch::Sender<u64>>,
     forced: Arc<AtomicBool>,
-    /// Set by `zeron headless`: this process is the installed service and may
+    /// Set by `openagents headless`: this process is the installed service and may
     /// restart itself into a newer installed binary.
     service: Arc<AtomicBool>,
     /// Flips to true exactly once; the check loop selects against it so
@@ -1145,9 +1145,9 @@ impl Updater {
             .send_modify(|epoch| *epoch = epoch.wrapping_add(1));
     }
 
-    /// Called by `zeron headless`: when this process is the installed engine
+    /// Called by `openagents headless`: when this process is the installed engine
     /// service and something else installs a newer binary, restart into it at
-    /// the next quiet moment. A hand-started `zeron headless` is left alone —
+    /// the next quiet moment. A hand-started `openagents headless` is left alone —
     /// restarting the service unit would start a second engine beside it.
     pub fn restart_when_superseded(&self) {
         if !running_as_installed_service() {
@@ -1390,7 +1390,7 @@ impl Schedule {
 }
 
 /// Restarts a service daemon into a newer binary that is already installed
-/// (the desktop app swapped the bundle, `zeron update` flipped the symlink).
+/// (the desktop app swapped the bundle, `openagents update` flipped the symlink).
 /// Waits for quiescence, and tries at most once per installed version so a
 /// broken service manager cannot turn into a restart loop.
 #[derive(Debug, Default)]
@@ -1628,15 +1628,15 @@ mod tests {
 
     #[test]
     fn coder_build_has_no_update_feed_and_never_uses_the_edge() {
-        assert!(coder_brand::UPDATE_FEED.is_none());
-        let err = configured_feed(coder_brand::UPDATE_FEED).unwrap_err();
+        assert!(openagents_brand::UPDATE_FEED.is_none());
+        let err = configured_feed(openagents_brand::UPDATE_FEED).unwrap_err();
         assert_eq!(err.to_string(), NO_FEED_MESSAGE);
         assert_eq!(
             configured_feed(Some("https://openagents.com/releases/")).unwrap(),
             "https://openagents.com/releases"
         );
-        assert!(!RELEASES_PAGE.contains("zeron"));
-        assert!(!LATEST_RELEASE_PAGE.contains("zeron"));
+        assert!(!RELEASES_PAGE.contains("openagents"));
+        assert!(!LATEST_RELEASE_PAGE.contains("openagents"));
     }
 
     #[test]
@@ -1674,7 +1674,7 @@ mod tests {
     fn install_kind_detection() {
         assert_eq!(
             detect_install_from_for_os(
-                Path::new("/home/u/.coder-desktop/app/0.1.1/zeron"),
+                Path::new("/home/u/.coder-desktop/app/0.1.1/openagents"),
                 Some(Path::new("/home/u")),
                 "linux",
             ),
@@ -1684,22 +1684,22 @@ mod tests {
         );
         assert_eq!(
             detect_install_from_for_os(
-                Path::new("/Applications/Zeron.app/Contents/MacOS/zeron"),
+                Path::new("/Applications/OpenAgents.app/Contents/MacOS/openagents"),
                 Some(Path::new("/Users/u")),
                 "macos",
             ),
             InstallKind::MacApp {
-                bundle: PathBuf::from("/Applications/Zeron.app")
+                bundle: PathBuf::from("/Applications/OpenAgents.app")
             }
         );
         // A path merely containing `.app` without the bundle layout is not a bundle.
         assert_eq!(
-            detect_install_from_for_os(Path::new("/tmp/foo.app/zeron"), None, "macos"),
+            detect_install_from_for_os(Path::new("/tmp/foo.app/openagents"), None, "macos"),
             InstallKind::Unmanaged
         );
         assert_eq!(
             detect_install_from_for_os(
-                Path::new("/src/target/release/zeron"),
+                Path::new("/src/target/release/openagents"),
                 Some(Path::new("/home/u")),
                 "linux",
             ),
@@ -1710,10 +1710,10 @@ mod tests {
     #[test]
     fn artifact_names_match_packaging() {
         let (os, arch) = platform_key();
-        assert!(headless_artifact("0.2.0").starts_with("zeron-0.2.0-"));
+        assert!(headless_artifact("0.2.0").starts_with("openagents-0.2.0-"));
         assert_eq!(
             headless_artifact("0.2.0"),
-            format!("zeron-0.2.0-{os}-{arch}.tar.gz")
+            format!("openagents-0.2.0-{os}-{arch}.tar.gz")
         );
         assert!(mac_app_artifact("0.2.0").ends_with("-app.tar.gz"));
     }
@@ -1729,7 +1729,7 @@ mod tests {
     fn windows_install_is_always_unmanaged() {
         assert_eq!(
             detect_install_from(
-                Path::new(r"C:\Users\u\.zeron\app\0.2.0\zeron.exe"),
+                Path::new(r"C:\Users\u\.openagents\app\0.2.0\openagents.exe"),
                 Some(Path::new(r"C:\Users\u")),
             ),
             InstallKind::Unmanaged
@@ -1766,7 +1766,7 @@ mod tests {
                 .contains("not supported on windows")
         );
         assert!(
-            apply_mac_app(&data_dir.join("Zeron.app"), &data_dir.join("Installed.app"))
+            apply_mac_app(&data_dir.join("OpenAgents.app"), &data_dir.join("Installed.app"))
                 .unwrap_err()
                 .to_string()
                 .contains("not supported on windows")
@@ -1782,12 +1782,12 @@ mod tests {
     #[test]
     fn manifest_parses_with_and_without_files() {
         let full: Manifest = serde_json::from_str(
-            r#"{"version":"0.1.1","files":{"zeron-0.1.1-linux-x86_64.tar.gz":{"sha256":"abc"}}}"#,
+            r#"{"version":"0.1.1","files":{"openagents-0.1.1-linux-x86_64.tar.gz":{"sha256":"abc"}}}"#,
         )
         .unwrap();
         assert_eq!(full.version, "0.1.1");
         assert_eq!(
-            full.files["zeron-0.1.1-linux-x86_64.tar.gz"]
+            full.files["openagents-0.1.1-linux-x86_64.tar.gz"]
                 .sha256
                 .as_deref(),
             Some("abc")
@@ -1803,7 +1803,7 @@ mod tests {
         let app_root = tmp.path().join("app");
         for ver in ["0.1.0", "0.1.1"] {
             std::fs::create_dir_all(app_root.join(ver)).unwrap();
-            std::fs::write(app_root.join(ver).join("zeron"), ver).unwrap();
+            std::fs::write(app_root.join(ver).join("openagents"), ver).unwrap();
         }
         apply_headless(&app_root, "0.1.0").unwrap();
         assert_eq!(
@@ -1879,16 +1879,16 @@ mod tests {
 
     #[test]
     fn systemd_service_cgroup_is_recognized() {
-        assert!(in_zeron_service_cgroup(
+        assert!(in_openagents_service_cgroup(
             "0::/user.slice/user-1000.slice/user@1000.service/app.slice/openagents-desktop.service\n"
         ));
-        assert!(in_zeron_service_cgroup(
+        assert!(in_openagents_service_cgroup(
             "12:pids:/user.slice/user@1000.service/openagents-desktop.service\n1:name=systemd:/x\n"
         ));
-        assert!(!in_zeron_service_cgroup(
+        assert!(!in_openagents_service_cgroup(
             "0::/user.slice/user-1000.slice/session-3.scope\n"
         ));
-        assert!(!in_zeron_service_cgroup(
+        assert!(!in_openagents_service_cgroup(
             "0::/user.slice/user@1000.service/app.slice/openagents-desktop.service.d\n"
         ));
     }
@@ -1907,7 +1907,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let app_root = tmp.path().join("app");
         std::fs::create_dir_all(app_root.join("0.4.0")).unwrap();
-        std::fs::write(app_root.join("0.4.0").join("zeron"), "").unwrap();
+        std::fs::write(app_root.join("0.4.0").join("openagents"), "").unwrap();
         let managed = InstallKind::Managed {
             app_root: app_root.clone(),
         };
@@ -1915,7 +1915,7 @@ mod tests {
         apply_headless(&app_root, "0.4.0").unwrap();
         assert_eq!(installed_version(&managed).as_deref(), Some("0.4.0"));
 
-        let bundle = tmp.path().join("Zeron.app");
+        let bundle = tmp.path().join("OpenAgents.app");
         std::fs::create_dir_all(bundle.join("Contents")).unwrap();
         std::fs::write(
             bundle.join("Contents/Info.plist"),
@@ -1934,27 +1934,27 @@ mod tests {
         let writable = |_: &Path| true;
         let read_only = |_: &Path| false;
         assert_eq!(
-            mac_bundle_blocker(Path::new("/Applications/Zeron.app"), writable),
+            mac_bundle_blocker(Path::new("/Applications/OpenAgents.app"), writable),
             None
         );
         assert_eq!(
             mac_bundle_blocker(
-                Path::new("/private/var/folders/x/T/AppTranslocation/ABC/d/Zeron.app"),
+                Path::new("/private/var/folders/x/T/AppTranslocation/ABC/d/OpenAgents.app"),
                 writable
             ),
             Some(UpdateBlocker::Translocated)
         );
         assert_eq!(
-            mac_bundle_blocker(Path::new("/Volumes/Zeron/Zeron.app"), read_only),
+            mac_bundle_blocker(Path::new("/Volumes/OpenAgents/OpenAgents.app"), read_only),
             Some(UpdateBlocker::DiskImage)
         );
         // An external drive the user can write to updates in place.
         assert_eq!(
-            mac_bundle_blocker(Path::new("/Volumes/Work/Zeron.app"), writable),
+            mac_bundle_blocker(Path::new("/Volumes/Work/OpenAgents.app"), writable),
             None
         );
         assert_eq!(
-            mac_bundle_blocker(Path::new("/Applications/Zeron.app"), read_only),
+            mac_bundle_blocker(Path::new("/Applications/OpenAgents.app"), read_only),
             Some(UpdateBlocker::NotWritable(PathBuf::from("/Applications")))
         );
     }
@@ -2007,14 +2007,14 @@ mod tests {
         server.abort();
     }
 
-    /// A headless tarball whose `zeron` reports `reported` from `--version`.
+    /// A headless tarball whose `openagents` reports `reported` from `--version`.
     #[cfg(unix)]
     fn fake_headless_tarball(dir: &Path, reported: &str) -> Vec<u8> {
         use std::os::unix::fs::PermissionsExt as _;
-        let root = dir.join("zeron-pkg");
+        let root = dir.join("openagents-pkg");
         std::fs::create_dir_all(&root).unwrap();
-        let binary = root.join("zeron");
-        std::fs::write(&binary, format!("#!/bin/sh\necho \"zeron {reported}\"\n")).unwrap();
+        let binary = root.join("openagents");
+        std::fs::write(&binary, format!("#!/bin/sh\necho \"openagents {reported}\"\n")).unwrap();
         std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
         let tarball = dir.join("pkg.tar.gz");
         run(
@@ -2024,7 +2024,7 @@ mod tests {
                 &tarball.to_string_lossy(),
                 "-C",
                 &dir.to_string_lossy(),
-                "zeron-pkg",
+                "openagents-pkg",
             ],
         )
         .unwrap();
@@ -2055,7 +2055,7 @@ mod tests {
             .unwrap_err();
         server.abort();
         assert!(
-            format!("{error:#}").contains("expected \"zeron 9.9.9\""),
+            format!("{error:#}").contains("expected \"openagents 9.9.9\""),
             "unexpected error: {error:#}"
         );
         assert!(!app_root.join("9.9.9").exists());
@@ -2068,6 +2068,6 @@ mod tests {
             .unwrap();
         server.abort();
         assert_eq!(staged, app_root.join("9.9.9"));
-        assert!(staged.join("zeron").is_file());
+        assert!(staged.join("openagents").is_file());
     }
 }
