@@ -382,8 +382,8 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **After-close:** the deployed dedicated-account run, usage and deletion checks, and TestFlight release are listed below.
 
 **#11853 Push notifications through our push gateway.** Lane 8.
-- **Status:** server notification decisions, registry triggers, grant registration, gateway delivery, and conformance cases are on `main` in `cdb099df8e`. The current push agent owns the phone registration and remaining issue work.
-- **Checks:** after integration with device proofs, isolated PostgreSQL push delivery 3 and pure notification rules 17 passed.
+- **Status:** closed. The server sends wakes through the push gateway (`cdb099df8e`), and the phone core registers with the gateway (`b653d7e925`). The deploy and device check are in After-close checks.
+- **Checks:** push delivery 3 (isolated PostgreSQL), notification rules 17, push-gateway 17, and mobile push 5 passed.
 - **Owner-only:** the App ID's Push Notifications capability (before any build sets `CODER_IOS_PUSH`) and the real-device check.
 
 **#11854 Carry the device channel over NIP-HOST, with Nostr device proofs.** Lane 8.
