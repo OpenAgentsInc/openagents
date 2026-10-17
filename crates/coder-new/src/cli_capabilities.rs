@@ -186,6 +186,7 @@ pub fn instructions() -> Vec<(String, bool)> {
             true,
         ),
         (crate::computer_tool::instructions().to_owned(), false),
+        (crate::cloud_computer_tool::instructions().to_owned(), false),
         (crate::ops_tool::instructions().to_owned(), false),
         (crate::web_asks::NO_HOST.to_owned(), false),
         (

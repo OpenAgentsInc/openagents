@@ -269,9 +269,12 @@ impl Family {
             _ if crate::robot_lab::is_tool(name) => Family::Media,
             "remember" | "forget" | "recall" => Family::Memory,
             "github" | "pull_request" => Family::GitHub,
-            "openagents_cli" | "computer" | "deploy" | crate::routing_preferences::TOOL | "jev" => {
-                Family::OpenAgents
-            }
+            "openagents_cli"
+            | "computer"
+            | "cloud_computer"
+            | "deploy"
+            | crate::routing_preferences::TOOL
+            | "jev" => Family::OpenAgents,
             _ if name.starts_with("drive_") || name.starts_with("brainstorm") => Family::OpenAgents,
             crate::workflow::TOOL => Family::Workflow,
             coder_sdk::delegation::TOOL
@@ -516,6 +519,7 @@ impl ExecutionSettings {
                 }
                 if binding == ToolBinding::OpenAgentsCli {
                     definitions.push(crate::computer_tool::definition());
+                    definitions.push(crate::cloud_computer_tool::definition());
                     definitions.extend(crate::ops_tool::definitions());
                 }
             }
@@ -632,6 +636,7 @@ impl ExecutionSettings {
                 }
                 if self.registered(ToolBinding::OpenAgentsCli) {
                     guidance.push_str(crate::computer_tool::instructions());
+                    guidance.push_str(crate::cloud_computer_tool::instructions());
                     guidance.push_str(crate::ops_tool::instructions());
                     guidance.push_str(OPENAGENTS_CLI_GUIDANCE);
                 }
@@ -1033,6 +1038,16 @@ impl ExecutionSettings {
             }
             "pull_request" if self.registered(ToolBinding::OpenAgentsCli) => {
                 crate::ops_tool::execute_pull_request(
+                    arguments,
+                    &self.cwd,
+                    self.disclosure_desk.as_deref(),
+                    cancel,
+                    &mut emit,
+                )
+                .await
+            }
+            "cloud_computer" if self.registered(ToolBinding::OpenAgentsCli) => {
+                crate::cloud_computer_tool::execute(
                     arguments,
                     &self.cwd,
                     self.disclosure_desk.as_deref(),
