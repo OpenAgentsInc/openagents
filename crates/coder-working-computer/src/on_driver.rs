@@ -350,7 +350,8 @@ impl<D: Driver> Provider for OnDriver<D> {
         }
         // Actual deletion settles uncertainty even if the provider no longer
         // retains the earlier operation. It never authorizes another create.
-        if let Outcome::Done { value } = self.driver.observe(resource).await
+        if self.driver.capabilities().memory_suspend
+            && let Outcome::Done { value } = self.driver.observe(resource).await
             && value.state == State::Gone
         {
             return Outcome::done(Inspection {
