@@ -422,57 +422,220 @@ async fn exercise_bound_stop_and_wake(
     }
 }
 
+struct OverlappingFixture {
+    db: Db,
+    store: Store,
+    _roots: [tempfile::TempDir; 2],
+    a: Simulated,
+    b: Simulated,
+    first: oa_computers::store::Entry,
+    second: oa_computers::store::Entry,
+}
+
+async fn prepare_overlapping_providers(db: Db) -> OverlappingFixture {
+    let store = Store::new(db.clone());
+    let roots = [tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap()];
+    let a = Simulated::new(roots[0].path(), false);
+    let b = Simulated::new(roots[1].path(), true);
+    let original = configured("a", &a, &b);
+    let request = CreateIntent {
+        idempotency_key: Some("create-a".into()),
+        ..Default::default()
+    };
+    let (first, new) = store
+        .create_placed("alice", &request, original.catalog())
+        .await
+        .unwrap();
+    assert!(new);
+    let first = phase(&db, &store, &original, &first.id, "awake").await;
+    let second_request = CreateIntent {
+        idempotency_key: Some("create-b".into()),
+        placement: Some(Placement::FastSandbox),
+        ..Default::default()
+    };
+    let (second, _) = store
+        .create_placed("alice", &second_request, original.catalog())
+        .await
+        .unwrap();
+    let second = phase(&db, &store, &original, &second.id, "awake").await;
+    assert_eq!(
+        first.record.resource(),
+        second.record.resource(),
+        "raw provider IDs deliberately overlap"
+    );
+    assert_ne!(
+        first.binding.as_ref().unwrap().deployment,
+        second.binding.as_ref().unwrap().deployment
+    );
+    assert!(
+        db.client()
+            .await
+            .unwrap()
+            .execute(
+                "UPDATE computers.computers SET binding=NULL WHERE id=$1",
+                &[&first.id]
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(db.client().await.unwrap().execute("UPDATE computers.computers SET lease_holder='old-worker',lease_until=now()+interval '1 hour' WHERE id=$1",&[&first.id]).await.unwrap(),0);
+
+    OverlappingFixture {
+        db,
+        store,
+        _roots: roots,
+        a,
+        b,
+        first,
+        second,
+    }
+}
+
+async fn restart_bound_providers(fixture: &OverlappingFixture) -> Registry<Simulated> {
+    let OverlappingFixture {
+        store, a, b, first, ..
+    } = fixture;
+    let request = CreateIntent {
+        idempotency_key: Some("create-a".into()),
+        ..Default::default()
+    };
+    let mut a_new_defaults = a.clone();
+    a_new_defaults
+        .caps
+        .default_artifact
+        .as_mut()
+        .unwrap()
+        .reference = "projects/fixture/global/images/new-default".into();
+    let restarted = configured("b", &a_new_defaults, &b);
+    let (same, new) = store
+        .create_placed("alice", &request, restarted.catalog())
+        .await
+        .unwrap();
+    assert!(!new);
+    assert_eq!(same.id, first.id);
+    assert_eq!(same.binding.as_ref().unwrap().deployment, "a");
+    assert_eq!(
+        serde_json::to_value(&same.binding).unwrap(),
+        serde_json::to_value(&first.binding).unwrap()
+    );
+    let bound = restarted.resolve(&same).unwrap();
+    let before = a.fake.calls().len();
+    assert!(matches!(
+        bound
+            .create(&CreateRequest {
+                operation: "wrong-image".into(),
+                size: Some("small".into()),
+                image: Some("projects/fixture/global/images/new-default".into()),
+                ttl_seconds: None,
+                labels: Default::default()
+            })
+            .await,
+        Outcome::Failed { .. }
+    ));
+    assert_eq!(a.fake.calls().len(), before);
+
+    restarted
+}
+
+async fn exercise_overlapping_provider_api(
+    fixture: &OverlappingFixture,
+    restarted: &Registry<Simulated>,
+) {
+    let OverlappingFixture {
+        db,
+        store,
+        a,
+        b,
+        first,
+        second,
+        ..
+    } = fixture;
+    let (base, task) = server(store.clone(), &restarted).await;
+    let a_files = format!("{base}/v1/computers/{}/files", first.id);
+    let b_files = format!("{base}/v1/computers/{}/files", second.id);
+    assert_eq!(upload(&a_files, b"alpha\0\xff").await, 200);
+    assert_eq!(upload(&b_files, b"beta\0\x80").await, 200);
+    assert_eq!(
+        download(&a_files, "alice").await,
+        (200, b"alpha\0\xff".to_vec())
+    );
+    assert_eq!(
+        download(&b_files, "alice").await,
+        (200, b"beta\0\x80".to_vec())
+    );
+    assert_eq!(download(&a_files, "bob").await.0, 404);
+    a.fake.inject("start_command", Inject::LoseReply);
+    exercise_bound_commands(&db, &store, &restarted, &base, [&first.id, &second.id]).await;
+    for provider in [&a, &b] {
+        assert_eq!(
+            provider
+                .fake
+                .calls()
+                .iter()
+                .filter(|call| call.starts_with("start_command:"))
+                .count(),
+            1
+        );
+    }
+    let command = json!({"command":"printf alpha","idempotency_key":"command-alpha"});
+    let (_, known) = post(
+        &format!("{base}/v1/computers/{}/commands", first.id),
+        "alice",
+        command.clone(),
+    )
+    .await;
+    let missing = Registry::new(
+        Catalog::new("b", "missing", [b.target("b")]).unwrap(),
+        [("b".into(), b.clone())].into(),
+    )
+    .unwrap();
+    let (missing_base, missing_task) = server(store.clone(), &missing).await;
+    let (status, retried) = post(
+        &format!("{missing_base}/v1/computers/{}/commands", first.id),
+        "alice",
+        command,
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(retried["id"], known["id"]);
+    assert_eq!(
+        post(
+            &format!("{missing_base}/v1/computers/{}/commands", first.id),
+            "alice",
+            json!({"command":"false","idempotency_key":"command-alpha"})
+        )
+        .await
+        .0,
+        409
+    );
+    missing_task.abort();
+    exercise_bound_stop_and_wake(&db, &store, &restarted, [&first.id, &second.id]).await;
+    assert_eq!(download(&a_files, "alice").await.1, b"alpha\0\xff");
+    assert_eq!(download(&b_files, "alice").await.1, b"beta\0\x80");
+    for id in [&first.id, &second.id] {
+        store
+            .set_desired("alice", id, Desired::Deleted)
+            .await
+            .unwrap();
+        phase(&db, &store, &restarted, id, "deleted").await;
+    }
+    assert!(a.fake.live().is_empty() && b.fake.live().is_empty());
+    task.abort();
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn one_database_dispatches_overlapping_resources_commands_files_and_cleanup_by_binding() {
     let Some(db) = database().await else {
         eprintln!("skipping: OA_COMPUTERS_TEST_DATABASE_URL is unset");
         return;
     };
-    tokio::task::LocalSet::new().run_until(async {
-        let store=Store::new(db.clone());let roots=[tempfile::tempdir().unwrap(),tempfile::tempdir().unwrap()];
-        let a=Simulated::new(roots[0].path(),false);let b=Simulated::new(roots[1].path(),true);
-        let original=configured("a",&a,&b);let request=CreateIntent {idempotency_key:Some("create-a".into()),..Default::default()};
-        let (first,new)=store.create_placed("alice",&request,original.catalog()).await.unwrap();assert!(new);
-        let first=phase(&db,&store,&original,&first.id,"awake").await;
-        let second_request=CreateIntent {idempotency_key:Some("create-b".into()),placement:Some(Placement::FastSandbox),..Default::default()};
-        let (second,_)=store.create_placed("alice",&second_request,original.catalog()).await.unwrap();
-        let second=phase(&db,&store,&original,&second.id,"awake").await;
-        assert_eq!(first.record.resource(),second.record.resource(),"raw provider IDs deliberately overlap");
-        assert_ne!(first.binding.as_ref().unwrap().deployment,second.binding.as_ref().unwrap().deployment);
-        assert!(db.client().await.unwrap().execute("UPDATE computers.computers SET binding=NULL WHERE id=$1",&[&first.id]).await.is_err());
-        assert_eq!(db.client().await.unwrap().execute("UPDATE computers.computers SET lease_holder='old-worker',lease_until=now()+interval '1 hour' WHERE id=$1",&[&first.id]).await.unwrap(),0);
-        let mut a_new_defaults=a.clone();
-        a_new_defaults.caps.default_artifact.as_mut().unwrap().reference="projects/fixture/global/images/new-default".into();
-        let restarted=configured("b",&a_new_defaults,&b);
-        let (same,new)=store.create_placed("alice",&request,restarted.catalog()).await.unwrap();assert!(!new);assert_eq!(same.id,first.id);
-        assert_eq!(same.binding.as_ref().unwrap().deployment,"a");
-        assert_eq!(serde_json::to_value(&same.binding).unwrap(),serde_json::to_value(&first.binding).unwrap());
-        let bound=restarted.resolve(&same).unwrap();
-        let before=a.fake.calls().len();
-        assert!(matches!(bound.create(&CreateRequest{operation:"wrong-image".into(),size:Some("small".into()),image:Some("projects/fixture/global/images/new-default".into()),ttl_seconds:None,labels:Default::default()}).await,Outcome::Failed{..}));
-        assert_eq!(a.fake.calls().len(),before);
-        let (base,task)=server(store.clone(),&restarted).await;
-        let a_files=format!("{base}/v1/computers/{}/files",first.id);let b_files=format!("{base}/v1/computers/{}/files",second.id);
-        assert_eq!(upload(&a_files,b"alpha\0\xff").await,200);assert_eq!(upload(&b_files,b"beta\0\x80").await,200);
-        assert_eq!(download(&a_files,"alice").await,(200,b"alpha\0\xff".to_vec()));
-        assert_eq!(download(&b_files,"alice").await,(200,b"beta\0\x80".to_vec()));
-        assert_eq!(download(&a_files,"bob").await.0,404);
-        a.fake.inject("start_command",Inject::LoseReply);
-        exercise_bound_commands(&db,&store,&restarted,&base,[&first.id,&second.id]).await;
-        for provider in [&a,&b] {assert_eq!(provider.fake.calls().iter().filter(|call|call.starts_with("start_command:")).count(),1);}
-        let command=json!({"command":"printf alpha","idempotency_key":"command-alpha"});
-        let (_,known)=post(&format!("{base}/v1/computers/{}/commands",first.id),"alice",command.clone()).await;
-        let missing=Registry::new(Catalog::new("b","missing",[b.target("b")]).unwrap(),[("b".into(),b.clone())].into()).unwrap();
-        let (missing_base,missing_task)=server(store.clone(),&missing).await;
-        let (status,retried)=post(&format!("{missing_base}/v1/computers/{}/commands",first.id),"alice",command).await;
-        assert_eq!(status,200);assert_eq!(retried["id"],known["id"]);
-        assert_eq!(post(&format!("{missing_base}/v1/computers/{}/commands",first.id),"alice",json!({"command":"false","idempotency_key":"command-alpha"})).await.0,409);
-        missing_task.abort();
-        exercise_bound_stop_and_wake(&db,&store,&restarted,[&first.id,&second.id]).await;
-        assert_eq!(download(&a_files,"alice").await.1,b"alpha\0\xff");assert_eq!(download(&b_files,"alice").await.1,b"beta\0\x80");
-        for id in [&first.id,&second.id] {store.set_desired("alice",id,Desired::Deleted).await.unwrap();phase(&db,&store,&restarted,id,"deleted").await;}
-        assert!(a.fake.live().is_empty()&&b.fake.live().is_empty());task.abort();
-    }).await;
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let fixture = prepare_overlapping_providers(db).await;
+            let restarted = restart_bound_providers(&fixture).await;
+            exercise_overlapping_provider_api(&fixture, &restarted).await;
+        })
+        .await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
