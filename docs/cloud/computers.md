@@ -182,10 +182,14 @@ each boot. Observation cannot extend the absolute deadline. Stop and wake remain
 explicit intents; idle and absolute stops update the saved intent and survive
 API restart.
 
-Memory-preserving drivers repeat suspend and resume with identities derived from
-the saved boot and turn generation. SPACE returns the original provider operation
-for a repeated identity. The service waits for operation completion and observed
-state before dispatch, including after an accepted operation's lookup fails.
+Memory-preserving drivers name suspend and resume with identities derived from
+the saved boot and turn generation. The service records each SPACE request in
+PostgreSQL before sending it, then saves its accepted provider operation ID
+before waiting. Recovery only reads that saved operation; it does not depend on
+how long SPACE keeps retry keys. A lost response before the ID is saved remains
+unknown and is never sent again. The service waits for operation completion and
+observed state before dispatch, including after an accepted operation's lookup
+fails.
 A restored guest must also answer a harmless command before becoming ready.
 Existing service processes are checked without running their startup commands.
 

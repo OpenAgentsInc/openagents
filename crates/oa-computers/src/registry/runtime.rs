@@ -303,6 +303,20 @@ async fn load(
     }
 }
 
+pub fn retain_lifecycle_operations(registry: &mut Registry<RuntimeDriver>, db: crate::Db) {
+    #[cfg(feature = "space")]
+    {
+        let journal = std::sync::Arc::new(crate::lifecycle_operations::Journal(db));
+        for driver in registry.drivers_mut() {
+            if let RuntimeDriver::Space(space) = driver {
+                *space = space.clone().with_lifecycle_journal(journal.clone());
+            }
+        }
+    }
+    #[cfg(not(feature = "space"))]
+    let _ = (registry, db);
+}
+
 pub async fn from_environment() -> Result<Registry<RuntimeDriver>, Refused> {
     let config = if let Some(path) = env("OA_COMPUTERS_REGISTRY_FILE") {
         use std::io::Read;

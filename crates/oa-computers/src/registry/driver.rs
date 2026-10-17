@@ -80,6 +80,11 @@ impl<D: Driver + Clone> Registry<D> {
         }
         Ok(Self { catalog, drivers })
     }
+    #[cfg(feature = "space")]
+    pub(crate) fn drivers_mut(&mut self) -> impl Iterator<Item = &mut D> {
+        self.drivers.values_mut()
+    }
+
     pub fn catalog(&self) -> &Catalog {
         &self.catalog
     }
