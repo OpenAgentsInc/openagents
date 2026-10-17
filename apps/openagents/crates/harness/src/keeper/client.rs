@@ -210,10 +210,12 @@ pub async fn connect(dir: &Path, after: Option<u64>) -> io::Result<Link> {
             }
             _ => return Err(io::Error::other("the agent keeper sent no welcome")),
         };
-    if protocol::negotiate(version).is_none() {
-        return Err(io::Error::other(format!(
-            "the agent keeper speaks protocol {version}"
-        )));
+    // Drop the connection without sending anything else, so the agent runs on.
+    if !protocol::speaks(version) {
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            format!("the agent keeper speaks protocol {version}"),
+        ));
     }
     let (frames_tx, frames) = mpsc::unbounded_channel();
     tokio::spawn(async move {

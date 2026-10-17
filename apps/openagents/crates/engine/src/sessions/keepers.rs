@@ -47,6 +47,67 @@ pub(super) struct Keepers {
     adopting: Mutex<HashMap<String, Option<keeper::Link>>>,
     /// Runs that continue a transcript entry an earlier engine started.
     continuing: Mutex<std::collections::HashSet<String>>,
+    /// The update handoff (#11946): while draining, new work is refused.
+    drain: Drain,
+}
+
+/// The engine is handing its runs to a newer engine. `until` is when the
+/// drain lifts by itself, so an update that never restarts the engine
+/// doesn't leave it refusing work; `None` means not draining.
+#[derive(Default)]
+struct Drain {
+    until: Mutex<Option<std::time::Instant>>,
+    /// Dispatches that passed admission and haven't returned.
+    admitted: std::sync::atomic::AtomicUsize,
+}
+
+/// What a dispatch holds while it runs, so a drain waits for it.
+pub(super) struct Admitted(Option<Arc<Keepers>>);
+
+impl Drop for Admitted {
+    fn drop(&mut self) {
+        if let Some(keepers) = &self.0 {
+            keepers
+                .drain
+                .admitted
+                .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+}
+
+/// What a person sees when they send while the engine hands off.
+pub const HANDOFF_REFUSAL: &str =
+    "OpenAgents is restarting to finish an update. Send it again in a moment.";
+
+/// Admit one dispatch, or refuse it while the engine hands off.
+pub(super) fn admit(inner: &Inner) -> Result<Admitted, EngineError> {
+    let Some(keepers) = inner.keepers.get() else {
+        return Ok(Admitted(None));
+    };
+    // Count first, then look: a drain raises its flag first, then counts.
+    keepers
+        .drain
+        .admitted
+        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let admitted = Admitted(Some(keepers.clone()));
+    if keepers.drain.active() {
+        return Err(EngineError::Other(HANDOFF_REFUSAL.into()));
+    }
+    Ok(admitted)
+}
+
+impl Drain {
+    fn active(&self) -> bool {
+        lock(&self.until).is_some_and(|until| std::time::Instant::now() < until)
+    }
+
+    fn raise(&self, lasts: std::time::Duration) {
+        *lock(&self.until) = Some(std::time::Instant::now() + lasts);
+    }
+
+    fn lower(&self) {
+        *lock(&self.until) = None;
+    }
 }
 
 impl SessionsEngine {
@@ -60,6 +121,7 @@ impl SessionsEngine {
             #[cfg(unix)]
             adopting: Mutex::new(HashMap::new()),
             continuing: Mutex::new(std::collections::HashSet::new()),
+            drain: Drain::default(),
         });
         if self.inner.keepers.set(keepers.clone()).is_err() {
             return;
@@ -153,6 +215,99 @@ impl SessionsEngine {
         }
     }
 
+    /// Whether a newer engine could take over now without interrupting
+    /// anything: no dispatch is starting, and every working run's agent is
+    /// under a keeper the next engine picks up. Without keepers, whether no
+    /// run is working.
+    pub fn handoff_ready(&self) -> bool {
+        let Some(keepers) = self.inner.keepers.get() else {
+            return !self.any_active();
+        };
+        if keepers
+            .drain
+            .admitted
+            .load(std::sync::atomic::Ordering::SeqCst)
+            > 0
+        {
+            return false;
+        }
+        if lock(&self.inner.runs)
+            .values()
+            .any(|run| run.voice_active.live())
+        {
+            return false;
+        }
+        let active: Vec<String> = lock(&self.inner.statuses)
+            .iter()
+            .filter(|(_, session)| is_active(session))
+            .map(|(chat_id, _)| chat_id.clone())
+            .collect();
+        if active.is_empty() {
+            return true;
+        }
+        #[cfg(unix)]
+        {
+            let mut kept: std::collections::HashSet<String> =
+                lock(&keepers.adopting).keys().cloned().collect();
+            for found in keeper::client::discover(&keepers.root) {
+                if let Ok(meta) = serde_json::from_value::<RunMeta>(found.meta)
+                    && active.contains(&meta.chat_id)
+                    && alive(&found.dir)
+                {
+                    kept.insert(meta.chat_id);
+                }
+            }
+            active.iter().all(|chat_id| kept.contains(chat_id))
+        }
+        #[cfg(not(unix))]
+        false
+    }
+
+    /// Refuse new work for `lasts` if [`Self::handoff_ready`]; the caller
+    /// restarts the engine within that time. Returns false, refusing
+    /// nothing, when a run would be interrupted.
+    pub fn hold_for_handoff(&self, lasts: std::time::Duration) -> bool {
+        let Some(keepers) = self.inner.keepers.get() else {
+            return self.handoff_ready();
+        };
+        keepers.drain.raise(lasts);
+        if self.handoff_ready() {
+            return true;
+        }
+        keepers.drain.lower();
+        false
+    }
+
+    /// Refuse new work and wait up to `within` for the runs a newer engine
+    /// can't pick up to finish. True when the engine can hand off now; the
+    /// drain then holds until [`Self::end_drain`] or the engine exits. False,
+    /// with the drain lifted, when a run is still working.
+    pub async fn drain(&self, within: std::time::Duration) -> bool {
+        let Some(keepers) = self.inner.keepers.get() else {
+            return self.handoff_ready();
+        };
+        // Long enough to outlast the wait and the restart that follows.
+        keepers.drain.raise(within + HANDOFF_LEASE);
+        let deadline = tokio::time::Instant::now() + within;
+        loop {
+            if self.handoff_ready() {
+                return true;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                keepers.drain.lower();
+                return false;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    }
+
+    /// Take new work again after a handoff that didn't happen.
+    pub fn end_drain(&self) {
+        if let Some(keepers) = self.inner.keepers.get() {
+            keepers.drain.lower();
+        }
+    }
+
     /// The engine is going away on purpose: agents under keepers keep running.
     pub(super) fn detach_keepers(&self) {
         #[cfg(unix)]
@@ -161,6 +316,10 @@ impl SessionsEngine {
         }
     }
 }
+
+/// How long a drain holds after the engine is ready to hand off: the time a
+/// service manager has to restart it.
+pub const HANDOFF_LEASE: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Whether the run folder's keeper accepts connections.
 #[cfg(unix)]

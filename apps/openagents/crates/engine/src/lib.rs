@@ -24,6 +24,7 @@ mod chat_persistence;
 pub mod diff_sync;
 pub mod doc_host;
 mod fs_watch;
+pub mod handoff;
 pub mod harness_updates;
 pub(crate) mod home_index;
 pub mod host_rpc;
@@ -927,11 +928,9 @@ impl Engine {
         // Spawned for every install: application updates must not depend on
         // workspace sync being enabled — the feed is the public release feed
         // (served without authentication), not an edge feature.
-        let quiescent: openagents_update::QuiescentCheck = {
-            let sessions = core.sessions.clone();
-            let terminals = core.terminals.clone();
-            Arc::new(move || !sessions.any_active() && !terminals.any_open())
-        };
+        // Runs under keepers don't hold a restart (#11946, `handoff`).
+        let quiescent =
+            handoff::quiescent_check(core.sessions.clone(), core.terminals.clone());
         let updater = openagents_update::Updater::spawn(config.edge_url.clone(), Some(quiescent));
         if let Some(mut token_changes) = edge.as_ref().and_then(EdgeConfig::token_changes) {
             let updater_for_tokens = updater.clone();
@@ -1063,8 +1062,13 @@ impl Engine {
         // injected MCP server must dial back into THIS engine.
         runtime.core().sessions.set_ipc_port(config.ipc_port);
 
+        let mut restart = false;
         tokio::select! {
             result = shutdown_signal() => result?,
+            _ = handoff::superseded(
+                runtime.core().sessions.clone(),
+                runtime.core().terminals.clone(),
+            ) => restart = true,
             requested = stop_rx.recv() => {
                 if requested.is_some() {
                     tracing::info!("headless shutdown requested over IPC");
@@ -1082,6 +1086,12 @@ impl Engine {
         tracing::info!("shutting down");
         server.abort();
         runtime.shutdown().await;
+        if restart {
+            // Release the data-folder lock, then let the service start the
+            // newer binary, which picks up the runs under keepers.
+            drop(runtime);
+            std::process::exit(handoff::RESTART_EXIT_CODE);
+        }
         Ok(())
     }
 }

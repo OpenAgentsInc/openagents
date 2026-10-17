@@ -13,6 +13,10 @@ pub const PROTOCOL: u32 = 1;
 /// The oldest protocol version this build still adopts. An engine must adopt
 /// keepers started by its previous release.
 pub const MIN_PROTOCOL: u32 = 1;
+/// The protocol version the previous release's keepers speak. An update
+/// starts the new engine while those keepers still run, so
+/// [`MIN_PROTOCOL`] may never pass it.
+pub const PREVIOUS_RELEASE: u32 = 1;
 
 /// What one journaled frame carries.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,6 +116,12 @@ pub fn negotiate(theirs: u32) -> Option<u32> {
     (theirs >= MIN_PROTOCOL).then_some(theirs.min(PROTOCOL))
 }
 
+/// Whether this build speaks `version`. A keeper's welcome names the version
+/// the connection uses, so an engine refuses one outside its own range.
+pub fn speaks(version: u32) -> bool {
+    (MIN_PROTOCOL..=PROTOCOL).contains(&version)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,5 +145,58 @@ mod tests {
         assert_eq!(negotiate(1), Some(1));
         assert_eq!(negotiate(9), Some(PROTOCOL));
         assert_eq!(negotiate(0), None);
+        assert!(speaks(PROTOCOL) && speaks(MIN_PROTOCOL));
+        assert!(!speaks(PROTOCOL + 1) && !speaks(0));
+    }
+
+    #[test]
+    fn this_build_adopts_the_previous_release_keepers() {
+        assert!(MIN_PROTOCOL <= PREVIOUS_RELEASE && PREVIOUS_RELEASE <= PROTOCOL);
+        assert!(speaks(PREVIOUS_RELEASE));
+    }
+
+    /// Protocol 1 as the previous release writes it. These lines are frozen:
+    /// a later build must still read them.
+    #[test]
+    fn protocol_1_lines_still_parse() {
+        let welcome = r#"{"op":"welcome","version":1,"pid":42,"last_seq":3}"#;
+        assert_eq!(
+            serde_json::from_str::<FromKeeper>(welcome).unwrap(),
+            FromKeeper::Welcome {
+                version: 1,
+                pid: 42,
+                last_seq: 3,
+                exited: false,
+                acked: 0,
+            }
+        );
+        for line in [
+            r#"{"op":"frame","seq":1,"kind":"stdout","line":"x"}"#,
+            r#"{"op":"frame","seq":2,"kind":"stdin","line":"y"}"#,
+            r#"{"op":"frame","seq":3,"kind":"exit","code":0,"signal":null}"#,
+            r#"{"op":"refused","reason":"wrong token"}"#,
+        ] {
+            assert_ne!(
+                serde_json::from_str::<FromKeeper>(line).unwrap(),
+                FromKeeper::Unknown,
+                "{line}"
+            );
+        }
+        for line in [
+            r#"{"op":"hello","version":1,"token":"t"}"#,
+            r#"{"op":"stdin","line":"x"}"#,
+            r#"{"op":"closeStdin"}"#,
+            r#"{"op":"ack","seq":1}"#,
+            r#"{"op":"hold","seq":1}"#,
+            r#"{"op":"release","seq":1}"#,
+            r#"{"op":"signal","signal":"interrupt"}"#,
+            r#"{"op":"finish"}"#,
+        ] {
+            assert_ne!(
+                serde_json::from_str::<ToKeeper>(line).unwrap(),
+                ToKeeper::Unknown,
+                "{line}"
+            );
+        }
     }
 }

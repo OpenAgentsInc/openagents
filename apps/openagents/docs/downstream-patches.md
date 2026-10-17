@@ -235,6 +235,22 @@ links remain readable. Upstream fixes now require manual ports.
   - `crates/brand/src/lib.rs`: the service label and unit prefixes.
   Move all to a cloud computer is commented out until #11933.
 
+- [OpenAgents #11946](https://github.com/OpenAgentsInc/openagents/issues/11946):
+  the engine update handoff. An installed engine service restarts into a newer
+  binary while runs under keepers continue; runs without a keeper, terminals,
+  and voice still hold the restart. Our module is
+  `crates/engine/src/handoff.rs` (the updater's quiet check, and the background
+  engine's restart, which exits with code 75 so its service starts the new
+  binary); the drain and its admission are in
+  `crates/engine/src/sessions/keepers.rs`. Hooks:
+  - `crates/engine/src/lib.rs`: the `handoff` module, the quiet check passed to
+    `Updater::spawn`, and in `Engine::run` the `handoff::superseded` branch and
+    its exit.
+  - `crates/engine/src/sessions.rs`: `keepers::admit` at the top of
+    `dispatch_inner`, and the `HANDOFF_*` re-exports.
+  - `crates/harness/src/keeper/client.rs`: a welcome outside
+    `MIN_PROTOCOL..=PROTOCOL` is refused with nothing else sent.
+
 - [OpenAgents #11911](https://github.com/OpenAgentsInc/openagents/issues/11911):
   project-sharing controls use `coder-sharing` for account-bound device keys,
   owner-approved invitations, shared files, and commands through NIP-HOST.

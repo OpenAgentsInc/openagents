@@ -40,7 +40,7 @@ use crate::run_journal::RunJournal;
 use crate::{EngineError, new_id, now_ms};
 
 mod keepers;
-pub use keepers::set_keeper_launch;
+pub use keepers::{HANDOFF_LEASE, HANDOFF_REFUSAL, set_keeper_launch};
 pub mod move_cloud;
 
 /// One journaled event: the durable seq plus the event, as broadcast to subscribers.
@@ -583,6 +583,7 @@ impl SessionsEngine {
         startup_retry: bool,
         idle: bool,
     ) -> Result<String, EngineError> {
+        let _admitted = keepers::admit(&self.inner)?;
         if request.model_options.contains_key("openagentsAssignment") {
             let host = self.inner.doc_host().ok_or_else(|| {
                 EngineError::Other("This computer is not ready for custom agents.".into())
