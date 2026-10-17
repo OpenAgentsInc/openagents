@@ -1686,6 +1686,13 @@ permits choosing the WebSocket path for that operation.
 
 ### HTTP device proofs
 
+`AuthorizeSync` takes `{url, method, payload}`, where `payload` is the lowercase
+SHA-256 of the exact body, including the empty body. A WebSocket upgrade uses
+the corresponding `https` or `http` URL and method `GET`. Paired sockets send
+account tokens in the HTTP authorization header; signing refuses a URL with a
+nonempty `token` query. The phone reads the computer's registered key through
+its account session and checks the connect code against it before enrollment.
+
 The host registers its public key under its app computer ID on `coder-sync`
 with its account session and a NIP-98 proof. Another key cannot replace it.
 Every paired phone chat-room join, row read/write, checkpoint read, and fallback
@@ -1704,8 +1711,8 @@ The server checks both signatures, the configured public origin, the complete
 URL and query, method, exact body hash, account, recipient, registered host key,
 and expiry. The chat's registry row must name that app computer. Event IDs are
 consumed in Postgres across replicas. Invalid supplied proofs never downgrade
-to bearer-only access. A proved socket closes when its short admission expires;
-its reconnect asks the host again, so revocation takes effect within 15 seconds.
+to bearer-only access. A proved socket closes at the signed expiry, including while an account check
+waits for a reply. Its reconnect asks the host to check the grant again.
 Legacy clients keep the account-session path while this profile is opt-in.
 
 ### Opt in
@@ -1729,3 +1736,16 @@ Choose **Forget pairing** to revoke this phone's grant on that computer.
 The host's local access authority also lists and revokes each paired device; an
 account switch closes admission before host cleanup. The default stays on the
 existing WebSocket path until the production latency comparison passes.
+
+### Local latency comparison
+
+The engine's isolated relay test sends 30 warm `ListModels` calls per route to
+the same fixed one-model reply. On 2026-10-17, the NIP-HOST relay measured
+4.283 ms p50 and 4.517 ms p95; direct RPC WebSocket measured 0.171 ms p50 and
+0.210 ms p95. Both routes completed all 30 calls. The test includes NIP-42,
+NIP-HOST encryption, grant checks, and the app adapter on a loopback relay.
+The WebSocket baseline uses a direct RPC socket, without the production device
+room, TLS, network delay, or model inference. These numbers measure local
+transport overhead. They do not establish which deployed route is faster.
+The default remains WebSocket; lane 0 records the production comparison in
+[After-close checks](../../docs/audits/2026-10-16-master-delegation.md#after-close-checks).
