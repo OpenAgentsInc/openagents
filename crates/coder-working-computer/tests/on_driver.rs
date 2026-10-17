@@ -124,3 +124,153 @@ fn a_driver_without_suspend_is_refused_up_front() {
     let full = FakeDriver::new(dir.path());
     assert!(OnDriver::admit(&full).is_ok());
 }
+
+/// Publishes the target state before the asynchronous operation completes.
+#[derive(Clone)]
+struct MemoryDriver {
+    inner: FakeDriver,
+    complete: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    operations: std::sync::Arc<std::sync::Mutex<std::collections::BTreeMap<String, String>>>,
+}
+
+impl computer_driver::Driver for MemoryDriver {
+    fn capabilities(&self) -> computer_driver::Capabilities {
+        let mut caps = self.inner.capabilities();
+        caps.memory_suspend = true;
+        caps
+    }
+    async fn create(&self, r: &computer_driver::CreateRequest) -> computer_driver::Outcome<String> {
+        self.inner.create(r).await
+    }
+    async fn observe(&self, c: &str) -> computer_driver::Outcome<computer_driver::Observation> {
+        self.inner.observe(c).await
+    }
+    async fn exec(
+        &self,
+        c: &str,
+        e: &Exec,
+    ) -> computer_driver::Outcome<computer_driver::ExecOutput> {
+        self.inner.exec(c, e).await
+    }
+    async fn put_file(&self, c: &str, p: &str, b: &[u8]) -> computer_driver::Outcome<()> {
+        self.inner.put_file(c, p, b).await
+    }
+    async fn get_file(&self, c: &str, p: &str) -> computer_driver::Outcome<Vec<u8>> {
+        self.inner.get_file(c, p).await
+    }
+    async fn meter(&self, c: &str) -> computer_driver::Outcome<computer_driver::Meter> {
+        self.inner.meter(c).await
+    }
+    async fn delete(&self, c: &str) -> computer_driver::Outcome<()> {
+        self.inner.delete(c).await
+    }
+    async fn suspend_operation(&self, c: &str, key: &str) -> computer_driver::Outcome<String> {
+        self.lifecycle(c, key, false).await
+    }
+    async fn resume_operation(&self, c: &str, key: &str) -> computer_driver::Outcome<String> {
+        self.lifecycle(c, key, true).await
+    }
+}
+
+impl MemoryDriver {
+    async fn lifecycle(&self, c: &str, key: &str, wake: bool) -> computer_driver::Outcome<String> {
+        let known = self.operations.lock().unwrap().contains_key(key);
+        if !known {
+            let result = if wake {
+                self.inner.resume(c).await
+            } else {
+                self.inner.suspend(c).await
+            };
+            let value = result.value().unwrap();
+            self.operations.lock().unwrap().insert(key.into(), value);
+        }
+        if self.complete.load(std::sync::atomic::Ordering::SeqCst) {
+            computer_driver::Outcome::done(self.operations.lock().unwrap()[key].clone())
+        } else {
+            computer_driver::Outcome::unknown("accepted operation lookup unavailable")
+        }
+    }
+}
+
+#[tokio::test]
+async fn memory_lifecycle_waits_for_original_operations_across_restart_and_keeps_services() {
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let memory = MemoryDriver {
+        inner: FakeDriver::new(dir.path().join("machines")).boot_observations(0),
+        complete: Arc::new(AtomicBool::new(true)),
+        operations: Arc::new(Mutex::new(Default::default())),
+    };
+    let store = Store::under(dir.path().join("records"));
+    let mut request = spec();
+    request.services.push(ServiceDecl {
+        name: "one".into(),
+        command: "printf 'started\\n' >> starts".into(),
+        cwd: ".".into(),
+        health: Health::Command {
+            command: "test -s starts".into(),
+        },
+        ready_within_seconds: 1,
+    });
+    store.create(&Computer::new(request, 1).unwrap()).unwrap();
+    let driver = Driver::new(store.clone(), fast(memory.clone()));
+    let first = driver.prompt("computer-1", 10).await.unwrap();
+    assert!(matches!(first, Settled::Dispatch { generation: 1, .. }));
+    let resource = first.computer().resource().unwrap().to_owned();
+    memory.complete.store(false, Ordering::SeqCst);
+    let stopped = driver.turn_finished("computer-1", 1, 20).await.unwrap();
+    assert!(matches!(stopped.computer().phase, Phase::Unknown { .. }));
+    assert_eq!(memory.inner.live(), [(resource.clone(), State::Stopped)]);
+
+    // A new owner reads the saved fence. The early stopped state is not
+    // enough to dispatch a queued follow-up while teardown is unfinished.
+    let restarted = Driver::new(store.clone(), fast(memory.clone()));
+    let waiting = restarted.prompt("computer-1", 30).await.unwrap();
+    assert!(matches!(waiting.computer().phase, Phase::Unknown { .. }));
+    assert_eq!(memory.operations.lock().unwrap().len(), 1);
+    memory.complete.store(true, Ordering::SeqCst);
+    let second = restarted.prompt("computer-1", 31).await.unwrap();
+    assert!(
+        matches!(second, Settled::Dispatch { generation: 2, .. }),
+        "{second:?}"
+    );
+    assert_eq!(second.computer().resource(), Some(resource.as_str()));
+    restarted.turn_finished("computer-1", 2, 40).await.unwrap();
+
+    // Wake publishes running early, but the incomplete operation remains a
+    // barrier after another API restart and repeated observations.
+    memory.complete.store(false, Ordering::SeqCst);
+    let waking = restarted.prompt("computer-1", 50).await.unwrap();
+    assert!(matches!(waking.computer().phase, Phase::Unknown { .. }));
+    assert_eq!(memory.inner.live(), [(resource.clone(), State::Running)]);
+    let restarted = Driver::new(store, fast(memory.clone()));
+    assert!(matches!(
+        restarted
+            .prompt("computer-1", 51)
+            .await
+            .unwrap()
+            .computer()
+            .phase,
+        Phase::Unknown { .. }
+    ));
+    assert_eq!(memory.operations.lock().unwrap().len(), 4);
+    memory.complete.store(true, Ordering::SeqCst);
+    let third = restarted.prompt("computer-1", 52).await.unwrap();
+    assert!(matches!(third, Settled::Dispatch { generation: 3, .. }));
+    let read = memory
+        .inner
+        .exec(&resource, &Exec::new("cat starts"))
+        .await
+        .value()
+        .unwrap();
+    assert_eq!(
+        read.stdout, "started\n",
+        "restored startup hooks must not run again"
+    );
+    restarted.turn_finished("computer-1", 3, 60).await.unwrap();
+    restarted.delete("computer-1", 70).await.unwrap();
+    assert!(memory.inner.live().is_empty());
+}

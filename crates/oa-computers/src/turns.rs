@@ -543,6 +543,30 @@ async fn stop(
 /// What a stopped turn says.
 pub const STOPPED: &str = "Stopped.";
 
+pub(crate) const UNCERTAIN_MEMORY_TURN: &str =
+    "We couldn't confirm whether the command stopped. Delete this computer to end it.";
+
+/// Keep an uncertain live process out of a private memory checkpoint. Only
+/// explicit deletion can discard it; a new turn cannot take over its resource.
+pub(crate) async fn uncertain_memory_turn<D: Driver>(
+    p: &OnDriver<D>,
+    lease: &PgLease,
+    e: &Entry,
+    computer: Computer,
+) -> coder_working_computer::store::Result<Settled> {
+    if e.desired == Desired::Deleted {
+        use coder_working_computer::provider::Provider;
+        if let Some(resource) = computer.resource() {
+            lease.read().await?;
+            if let Outcome::Done { .. } = p.delete(&computer, resource).await {
+                // Deletion was observed, so stopping cannot capture RAM.
+                return driver::delete(p, lease, crate::reconcile::now_ms()).await;
+            }
+        }
+    }
+    Ok(Settled::Refused(UNCERTAIN_MEMORY_TURN.into(), computer))
+}
+
 pub fn routes() -> Router<Arc<Api>> {
     Router::new()
         .route("/v1/computers/{id}/turns", post(add))
@@ -668,8 +692,15 @@ pub async fn run_next<D: Driver + Clone + 'static>(
             tokio::select! {
                 o = &mut run => break o,
                 () = tokio::time::sleep(Duration::from_millis(500)) => {
-                    if secrets.stopping(&t.id) {
-                        break Outcome::failed(STOPPED);
+                    let stop_requested = secrets.stopping(&t.id)
+                        || store.get(&e.owner, &e.id).await
+                            .map_or(true, |entry| entry.is_none_or(|current| current.desired != Desired::Running));
+                    if stop_requested {
+                        break if p.driver.capabilities().memory_suspend {
+                            Outcome::unknown(STOPPED)
+                        } else {
+                            Outcome::failed(STOPPED)
+                        };
                     }
                 }
             }
@@ -698,6 +729,12 @@ pub async fn run_next<D: Driver + Clone + 'static>(
                 .await
                 .map_err(io)?;
         }
+        Outcome::Unknown { .. } if p.driver.capabilities().memory_suspend => {
+            store
+                .turn_ended(&t.id, false, None, None, None, Some(UNCERTAIN_MEMORY_TURN))
+                .await
+                .map_err(io)?;
+        }
         Outcome::Failed { reason } | Outcome::Unknown { reason } => {
             store
                 .turn_ended(
@@ -711,6 +748,9 @@ pub async fn run_next<D: Driver + Clone + 'static>(
                 .await
                 .map_err(io)?;
         }
+    }
+    if p.driver.capabilities().memory_suspend && matches!(outcome, Outcome::Unknown { .. }) {
+        return uncertain_memory_turn(p, lease, e, computer).await;
     }
     let finished = driver::turn_finished(p, lease, generation, crate::reconcile::now_ms()).await?;
     // Nothing else waiting: it stays stopped (its disk kept) until the
