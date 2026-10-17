@@ -2,11 +2,9 @@
 //! new chat. There is no sign-in. Rust owns the pages' words and whether the
 //! tutorial was seen; the app paints the pages.
 //!
-//! Also the account boundary the tutorial and Settings stand on:
-//! [`CoreAccount::start_identity`] and [`CoreAccount::identity`]. Both are
-//! stand-ins until #11995 makes the identity from 12 words and signs in
-//! silently.
-use super::CoreAccount;
+//! The account boundary the tutorial and Settings stand on,
+//! `CoreAccount::start_identity` and `CoreAccount::identity`, is in
+//! `super::identity` (#11995).
 use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
@@ -119,38 +117,6 @@ impl CoreOnboarding {
             }
             let _ = std::fs::write(record, b"1\n");
         }
-    }
-}
-
-/// The person's own account identity, for Settings' "Your ID" row.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
-pub struct IdentityView {
-    /// The public key as `npub1…`.
-    pub npub: String,
-    /// Whether the 12 words were backed up and confirmed.
-    pub words_saved: bool,
-}
-
-#[uniffi::export]
-impl CoreAccount {
-    /// Starts this phone's account on launch, with nothing for the person
-    /// to do.
-    ///
-    /// TODO(#11995): make or load the 12 words, derive the NIP-06 key and
-    /// sign in with it silently. Until then this restores a saved login if
-    /// there is one, and otherwise leaves the phone signed out, where the
-    /// chat answers as a visitor.
-    pub fn start_identity(&self) {
-        self.restore();
-    }
-
-    /// The account's identity, or `None` while there is none to show.
-    ///
-    /// TODO(#11995): return the NIP-06 identity and the words-saved marker.
-    /// Settings shows "Your ID", "Back up your account" and "Restore from
-    /// 12 words" only once this returns one.
-    pub fn identity(&self) -> Option<IdentityView> {
-        None
     }
 }
 

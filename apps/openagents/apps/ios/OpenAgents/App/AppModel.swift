@@ -159,13 +159,13 @@ final class AppModel {
                 account?.signInFromFixture(url: args[i + 1])
                 return
             }
-            #endif
             // The account fixture's tests sign in with a code, which the app
-            // no longer offers on screen.
+            // itself never offers: it signs in with its key (#11995).
             if args.contains("-account-sign-in") { account?.signIn(deviceName: UIDevice.current.name); return }
+            #endif
             if args.contains("-signedout") { account?.signOut(); return }
             #endif
-            account?.startIdentity()
+            account?.startIdentity(deviceName: UIDevice.current.name)
         } catch {
             accountSnapshot = AccountSnapshot(generation: 0, state: .failed(message: "Couldn't start sign-in. Try again.", canRestore: false))
         }
@@ -201,7 +201,7 @@ final class AppModel {
         guard let site = URL(string: Self.accountWebsite), let url = URL(string: "projects", relativeTo: site)?.absoluteURL else { return }
         UIApplication.shared.open(url)
     }
-    func restoreAccount() { account?.startIdentity() }
+    func restoreAccount() { account?.startIdentity(deviceName: UIDevice.current.name) }
     /// The person's account identity for Settings' "Your ID", once there is
     /// one (#11995).
     var identity: IdentityView? { account?.identity() }
@@ -726,7 +726,7 @@ final class AppModel {
 
     var accountDetail: String {
         if isDemo { return "Offline demo workspace" }
-        // No account yet (#11995): the chat answers as a visitor.
+        // Still signing in with this phone's key (#11995).
         if client == nil { return "On this phone" }
         let p = AccountProfile.load()
         return [p.name != nil ? p.email : nil, p.orgName].compactMap { $0 }.joined(separator: " · ").nonEmpty ?? "OpenAgents account"

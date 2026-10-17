@@ -17,7 +17,6 @@ pub mod rooms;
 pub mod schedules;
 pub mod sessions;
 pub mod terminal_chats;
-pub mod visitor;
 mod transport;
 
 pub use auth::nostr::{

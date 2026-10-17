@@ -1,8 +1,8 @@
 import UIKit
 
 /// The chat answered by OpenAgents (#11978, #11979), over the core's
-/// `CoreCloudChat`. Until the phone's account is made (#11995) it runs as a
-/// visitor; once the account exists the chat moves to it and keeps going.
+/// `CoreCloudChat`. It is always the account's chat: the phone signs in with
+/// its own key on first launch (#11995).
 /// One per app, so the conversation survives the swap of the window's root.
 final class CloudChatModel {
     private let core: CoreCloudChat
@@ -230,18 +230,12 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
         renderBar()
     }
 
-    /// The visitor's limit stays until #11995 gives every phone its own
-    /// account; until then it is a plain line, never a sign-in.
-    private static let limitReached = "That's all the messages we can answer for now. Try again later."
-
     private func noteText(_ s: CloudChatSnapshot) -> String? {
         if let error = s.error { return error }
-        if s.signInRequired, !signedIn { return Self.limitReached }
         return nil
     }
 
     private func send(_ text: String) -> ComposerBar.SendResult {
-        if chat.snapshot.signInRequired, !signedIn { return .kept }
         chat.send(text)
         return .sent
     }

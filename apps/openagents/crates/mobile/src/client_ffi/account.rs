@@ -2,6 +2,7 @@
 use super::{ClientListener, CoreClient, CoreConfig, CoreError, CoreResult, ListenerBridge};
 use openagents_account::{
     Controller, Phase, PlatformStore,
+    identity::{Identities, Identity},
     openagents::{Client, CredentialStore, Deployment},
 };
 use std::{
@@ -80,11 +81,33 @@ pub struct CoreAccount {
     clients: Clients,
     cache: Mutex<Option<PathBuf>>,
     cancel: CancellationToken,
+    /// Where the 12 words live (#11995).
+    pub(crate) identities: Arc<Identities>,
+    /// The identity once loaded or made on launch.
+    pub(crate) identity: Arc<Mutex<Option<Arc<Identity>>>>,
+    /// This device's name, sent with each key sign-in.
+    pub(crate) device_name: Arc<Mutex<String>>,
 }
 impl CoreAccount {
+    /// An account with no identity store, for tests: the words are never
+    /// read from or written to a real Keychain.
     pub(crate) fn from_store(
         client: Client,
         store: Arc<dyn CredentialStore + Send + Sync>,
+        data_dir: PathBuf,
+        listener: Arc<dyn AccountListener>,
+    ) -> Arc<Self> {
+        let identities = Identities::new(
+            Arc::new(super::identity::NoVault),
+            Arc::new(openagents_account::identity::NoWallet),
+            &data_dir.join("identity"),
+        );
+        Self::from_parts(client, store, identities, data_dir, listener)
+    }
+    pub(crate) fn from_parts(
+        client: Client,
+        store: Arc<dyn CredentialStore + Send + Sync>,
+        identities: Identities,
         data_dir: PathBuf,
         listener: Arc<dyn AccountListener>,
     ) -> Arc<Self> {
@@ -97,6 +120,8 @@ impl CoreAccount {
         );
         let cancel = CancellationToken::new();
         let clients: Clients = Arc::default();
+        let identity: Arc<Mutex<Option<Arc<Identity>>>> = Arc::default();
+        let device_name = Arc::new(Mutex::new(String::from("Phone")));
         let this = Arc::new(Self {
             controller: controller.clone(),
             store,
@@ -105,7 +130,11 @@ impl CoreAccount {
             clients: clients.clone(),
             cache: Mutex::new(None),
             cancel: cancel.clone(),
+            identities: Arc::new(identities),
+            identity: identity.clone(),
+            device_name: device_name.clone(),
         });
+        let renewing = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let mut updates = controller.watch();
         openagents_client::runtime::shared().spawn(async move {
             listener.on_account_changed(controller.snapshot().into());
@@ -129,8 +158,23 @@ impl CoreAccount {
                                 || checked.elapsed() >= Duration::from_secs(15))
                         {
                             checked = Instant::now();
-                            let controller = controller.clone();
-                            openagents_client::runtime::shared().spawn(controller.revalidate());
+                            let key = identity.lock().unwrap().clone();
+                            // Sign in again with the key before the session
+                            // ends (#11995); otherwise check it still works.
+                            if let Some(key) = key.filter(|_| controller.renewal_due()) {
+                                if !renewing.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                                    let renew = controller
+                                        .renew_with_key(key, device_name.lock().unwrap().clone());
+                                    let renewing = renewing.clone();
+                                    openagents_client::runtime::shared().spawn(async move {
+                                        renew.await;
+                                        renewing.store(false, std::sync::atomic::Ordering::SeqCst);
+                                    });
+                                }
+                            } else {
+                                let controller = controller.clone();
+                                openagents_client::runtime::shared().spawn(controller.revalidate());
+                            }
                         }
                     }
                 }
@@ -222,11 +266,10 @@ impl CoreAccount {
         #[cfg(not(target_os = "ios"))]
         let store = PlatformStore::new("com.openagents.app.account".into(), data_dir.clone());
         let store = Arc::new(store);
-        Ok(Self::from_store(
-            client,
-            store,
-            PathBuf::from(data_dir),
-            listener,
+        let data_dir = PathBuf::from(data_dir);
+        let identities = Identities::phone(&data_dir);
+        Ok(Self::from_parts(
+            client, store, identities, data_dir, listener,
         ))
     }
     pub fn snapshot(&self) -> AccountSnapshot {
@@ -240,11 +283,6 @@ impl CoreAccount {
     /// Resume account checks without cancelling a device-code approval in progress.
     pub fn revalidate(&self) {
         openagents_client::runtime::shared().spawn(self.controller.clone().revalidate());
-    }
-    pub fn sign_in(&self, device_name: String) {
-        let task = self.controller.sign_in(device_name);
-        close_clients(&self.clients, None);
-        openagents_client::runtime::shared().spawn(task);
     }
     /// Explicit credentials are checked by the same SDK and stored by the same controller.
     pub fn sign_in_with_credential(&self, credential: String) {
@@ -334,6 +372,13 @@ impl Drop for CoreAccount {
 #[cfg(feature = "account-fixture")]
 #[uniffi::export]
 impl CoreAccount {
+    /// Test-only device-code sign-in for the account fixture's tests. The
+    /// app itself signs in with its key and never shows a code (#11995).
+    pub fn sign_in(&self, device_name: String) {
+        let task = self.controller.sign_in(device_name);
+        close_clients(&self.clients, None);
+        openagents_client::runtime::shared().spawn(task);
+    }
     /// Test-only loopback delivery keeps the credential out of Swift and Xcode logs.
     pub fn sign_in_from_fixture(&self, url: String) {
         let controller = self.controller.clone();
