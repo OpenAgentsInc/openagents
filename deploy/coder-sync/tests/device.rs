@@ -456,6 +456,7 @@ impl Drop for Engine {
 #[ignore = "Requires OPENAGENTS_TEST_HEADLESS_BIN built from apps/openagents"]
 async fn pinned_headless_engine_folder_listing_and_queue_roundtrip() {
     let binary = std::env::var("OPENAGENTS_TEST_HEADLESS_BIN")
+        .or_else(|_| std::env::var("ZERON_TEST_HEADLESS_BIN"))
         .expect("Build pinned openagents, set OPENAGENTS_TEST_HEADLESS_BIN");
     let s = Server::start().await;
     let scratch = tempfile::Builder::new()
