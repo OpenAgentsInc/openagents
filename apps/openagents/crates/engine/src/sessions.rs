@@ -41,6 +41,7 @@ use crate::{EngineError, new_id, now_ms};
 
 mod keepers;
 pub use keepers::set_keeper_launch;
+pub mod move_cloud;
 
 /// One journaled event: the durable seq plus the event, as broadcast to subscribers.
 #[derive(Debug, Clone)]

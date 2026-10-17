@@ -16,6 +16,8 @@ coder-host = { path = "../../../../crates/coder-host" }
 coder-service = { path = "../../../../crates/coder-service" }
 openagents-connect = { path = "../../../../crates/openagents-connect" }
 chat-home = { path = "../../../../crates/chat-home" }
+# Moving chats to a cloud computer (#11932).
+openagents-sdk = { path = "../../../../crates/openagents-sdk" }
 openagents-account.workspace = true
 openagents-brand.workspace = true
 openagents-preview.workspace = true
@@ -61,6 +63,7 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Securit
 futures-util = "0.3"
 nostr = { path = "../../../../crates/nostr" }
 axum = "0.8"
+oa-copy = { path = "../../../../crates/oa-copy" }
 tracing-subscriber.workspace = true
 openagents-mcp.workspace = true
 openagents-harness = { workspace = true, features = ["installer-fixture"] }

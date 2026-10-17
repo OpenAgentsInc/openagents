@@ -206,6 +206,16 @@ links remain readable. Upstream fixes now require manual ports.
     `scenario:kept` scenarios.
   The other native drivers don't start under keepers yet.
 
+- [OpenAgents #11932](https://github.com/OpenAgentsInc/openagents/issues/11932):
+  move a chat to a cloud computer at a turn boundary. Our module is
+  `crates/engine/src/sessions/move_cloud.rs`: a durable record per chat, the
+  hidden-ref capture (`refs/openagents/move/<chat>`, pushed or bundled), the
+  session file upload in pieces of 4 MiB or less, the same-path or seeded
+  restore, and the resume with the login by credential reference. Hooks:
+  - `crates/engine/src/sessions.rs`: `pub mod move_cloud`.
+  - `crates/engine/Cargo.toml`: the `openagents-sdk` dependency, and `oa-copy`
+    for tests.
+
 - [OpenAgents #11931](https://github.com/OpenAgentsInc/openagents/issues/11931):
   the background engine by default. On launch the app starts this data
   folder's service (a LaunchAgent on macOS, a systemd user unit on Linux, each
