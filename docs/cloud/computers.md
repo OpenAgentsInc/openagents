@@ -196,7 +196,9 @@ Existing service processes are checked without running their startup commands.
 An unknown command result on a memory-preserving computer keeps the active turn
 fenced. Follow-ups and stop cannot snapshot that possibly live command or claim
 it ended. A legacy command interrupted by API loss reports the same uncertainty
-without starting it again. Explicit deletion removes the provider resource first,
+without starting it again. SPACE output observed before a disconnect is bounded
+to 256 KiB per stream and saved during execution; recovery keeps those partial
+bytes and does not invent an exit result. Explicit deletion removes the provider resource first,
 without taking a memory checkpoint, then completes lifecycle cleanup. Identified
 commands on supported backends still observe process-group exit after cancellation.
 SPACE's public identified-command capability remains unsupported.
