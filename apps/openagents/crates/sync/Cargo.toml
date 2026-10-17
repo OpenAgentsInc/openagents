@@ -12,8 +12,6 @@ coder-reach = { path = "../../../../crates/coder-reach" }
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 coder-access = { path = "../../../../crates/coder-access", default-features = false }
 coder-host = { path = "../../../../crates/coder-host", default-features = false }
-# Connect a computer: what a scanned code is, and its account-link request.
-coder-computers = { path = "../../../../crates/coder-computers", default-features = false }
 base64 = "0.22"
 async-trait.workspace = true
 openagents-brand.workspace = true
