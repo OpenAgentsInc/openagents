@@ -190,6 +190,9 @@ pub struct Requirements {
     /// Input classes required by this job, in addition to the version's assets.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub asset_classes: Vec<AssetClass>,
+    /// Explicit use of inputs by a model; absent for ordinary rendering.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_use: Option<ModelUse>,
 }
 
 fn is_zero(value: &u64) -> bool {

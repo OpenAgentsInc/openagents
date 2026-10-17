@@ -172,14 +172,7 @@ pub struct Page<T> {
     pub next: Option<u64>,
 }
 pub use lab_kit::api::Event;
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct Lease {
-    pub job: JobState,
-    pub worker: String,
-    pub attempt: u64,
-    pub expires_unix_ms: u64,
-    pub started: bool,
-}
+pub use lab_kit::worker::Lease;
 #[derive(Clone, Debug)]
 pub struct ArtifactInput {
     pub version: Reference,
@@ -481,6 +474,38 @@ impl Store {
         let key = file_key(version, name)?;
         self.update(|state| {
             state.reference(version)?;
+            let value = state.artifacts.get(artifact).ok_or(Error::NotFound)?;
+            require(
+                value.version == *version,
+                "Choose a file from this version.",
+            )?;
+            state.files.insert(key.clone(), artifact.into());
+            Ok(())
+        })
+        .await
+    }
+    /// Publishing a job output's display name needs the same active lease as
+    /// writing its artifact. A cancelled child cannot attach a late output.
+    pub async fn name_job_artifact(
+        &self,
+        lease: &Lease,
+        version: &Reference,
+        name: &str,
+        artifact: &str,
+        now: u64,
+    ) -> Result<()> {
+        let key = file_key(version, name)?;
+        let clock = std::time::Instant::now();
+        self.update(|state| {
+            let current = state.leased(
+                lease,
+                now.saturating_add(clock.elapsed().as_millis().try_into().unwrap_or(u64::MAX)),
+            )?;
+            require(
+                current.lease.as_ref().is_some_and(|l| l.started)
+                    && current.state.spec.version == *version,
+                "Start this job before saving its output.",
+            )?;
             let value = state.artifacts.get(artifact).ok_or(Error::NotFound)?;
             require(
                 value.version == *version,
@@ -857,6 +882,18 @@ impl LabStore for Store {
             !v.has_private_local() || spec.requirements.private_local,
             "Run this work on a computer that has its files.",
         )?;
+        for purpose in [
+            spec.requirements.model_use,
+            manifest
+                .job_requirements
+                .get(&spec.job_type)
+                .and_then(|r| r.model_use),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            lab_kit::check_model_use(&v, &[], purpose)?;
+        }
         let id = digest(&json!({"version":spec.version, "key":spec.key(&v.content_sha256)}));
         self.update(|s| {
             let d = s.document(&spec.version.document)?;

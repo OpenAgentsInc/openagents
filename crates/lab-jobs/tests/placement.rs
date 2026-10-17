@@ -120,3 +120,59 @@ fn no_training_is_inherited_without_requiring_local_placement() {
     assert!(r.no_training && !r.private_local);
     assert!(r.eligible(&worker("cloud", Placement::Cloud)));
 }
+
+#[test]
+fn model_uses_reject_protected_inputs_even_with_an_old_false_output_flag() {
+    let mut v = version();
+    v.assets.push(AssetEntry {
+        location: "local/private".into(),
+        sha256: "b".repeat(64),
+        class: AssetClass::PrivateLocal,
+    });
+    let artifact = lab_kit::Artifact {
+        id: "old-output".into(),
+        version: v.reference(),
+        role: lab_kit::ArtifactRole::Build,
+        media_type: "text/plain".into(),
+        sha256: "a".repeat(64),
+        size: 1,
+        class: AssetClass::Public,
+        no_training: false,
+    };
+    for purpose in [
+        lab_kit::ModelUse::Training,
+        lab_kit::ModelUse::Evaluation,
+        lab_kit::ModelUse::Trace,
+    ] {
+        assert_eq!(
+            lab_kit::check_model_use(&v, std::slice::from_ref(&artifact), purpose)
+                .unwrap_err()
+                .code,
+            "no_training"
+        );
+        let mut public = version();
+        let mut marked = artifact.clone();
+        marked.no_training = true;
+        assert!(lab_kit::check_model_use(&public, &[marked], purpose).is_err());
+        public.assets.push(AssetEntry {
+            location: "public/limited".into(),
+            sha256: "b".repeat(64),
+            class: AssetClass::NoTraining,
+        });
+        assert!(lab_kit::check_model_use(&public, &[], purpose).is_err());
+    }
+    let mut manifest = Echo::manifest();
+    manifest.job_requirements.insert(
+        "shout".into(),
+        Requirements {
+            model_use: Some(lab_kit::ModelUse::Evaluation),
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        EffectiveRequirements::for_job(&spec(&v), &v, &manifest)
+            .unwrap_err()
+            .code,
+        "no_training"
+    );
+}

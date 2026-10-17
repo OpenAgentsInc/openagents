@@ -113,6 +113,9 @@ fn save(path: &Path, value: &impl Serialize) -> Result<()> {
         .map_err(|_| Error("Save the worker result."))
 }
 fn file_hash(path: &Path) -> Result<String> {
+    if !fs::metadata(path).is_ok_and(|m| m.is_file()) {
+        return Err(Error("Choose a private input file."));
+    }
     let mut file = File::open(path).map_err(|_| Error("A private input is missing."))?;
     if !file
         .metadata()
@@ -157,13 +160,30 @@ impl Worker {
             return Err(Error("Choose the OpenAgents HTTPS address."));
         }
         config.origin = url.origin().ascii_serialization();
-        fs::create_dir_all(&config.state)
-            .map_err(|_| Error("Create the worker state directory."))?;
+        if !config.state.exists() {
+            let mut builder = fs::DirBuilder::new();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+                builder.mode(0o700);
+            }
+            builder.create(&config.state).map_err(|_| {
+                Error("Create a private worker state directory under an existing directory.")
+            })?;
+        }
+        let state_metadata = fs::symlink_metadata(&config.state)
+            .map_err(|_| Error("Read the worker state directory."))?;
+        if !state_metadata.is_dir() || state_metadata.file_type().is_symlink() {
+            return Err(Error("Choose a private worker state directory."));
+        }
         #[cfg(unix)]
         {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&config.state, fs::Permissions::from_mode(0o700))
-                .map_err(|_| Error("Keep worker state private."))?;
+            use std::os::unix::fs::{MetadataExt, PermissionsExt};
+            if state_metadata.permissions().mode() & 0o077 != 0
+                || state_metadata.uid() != unsafe { libc::geteuid() }
+            {
+                return Err(Error("Choose a state directory private to this user."));
+            }
         }
         let lock = OpenOptions::new()
             .read(true)
@@ -267,6 +287,19 @@ impl Worker {
         }
         serde_json::from_slice(&bytes).map_err(|_| Error("Read the worker response."))
     }
+    fn bound_work(&self, work: &protocol::Work, attempt: Option<&protocol::Attempt>) -> bool {
+        let lease = &work.assignment.lease;
+        lease.worker == self.credential.worker.id
+            && lease.expires_unix_ms > now()
+            && lease.job.spec.version == work.version.reference()
+            && work.version.content_sha256 == lab_kit::digest(&work.version.content)
+            && work.requirements.job
+                == format!("{}/{}", lease.job.spec.kind, lease.job.spec.job_type)
+            && work
+                .requirements
+                .eligible(&self.credential.worker.capabilities)
+            && attempt.is_none_or(|a| a.job == lease.job.id && a.attempt == lease.attempt)
+    }
     fn pending_path(&self) -> PathBuf {
         self.config.state.join("job.json")
     }
@@ -288,6 +321,12 @@ impl Worker {
     pub async fn run_once(&self) -> Result<bool> {
         if self.pending_path().exists() {
             let mut pending: Pending = read_json(&self.pending_path())?;
+            if !pending.execution_marked && pending.result.is_none() {
+                // The start request cannot have been sent before this marker.
+                // Its unused claim may expire and be safely offered again.
+                self.forget()?;
+                return Ok(false);
+            }
             if pending.result.is_none() {
                 pending.result = Some(protocol::Finish {
                     job: pending.work.assignment.lease.job.id.clone(),
@@ -306,10 +345,7 @@ impl Worker {
         let Some(work) = available.work else {
             return Ok(false);
         };
-        if !work
-            .requirements
-            .eligible(&self.credential.worker.capabilities)
-        {
+        if !self.bound_work(&work, None) {
             return Err(Error("This computer cannot run that job."));
         }
         for hash in &work.requirements.local_assets {
@@ -336,6 +372,9 @@ impl Worker {
         pending.execution_marked = true;
         save(&self.pending_path(), &pending)?;
         let work: protocol::Work = self.call("start", &attempt).await?;
+        if !self.bound_work(&work, Some(&attempt)) || !work.assignment.lease.started {
+            return Err(Error("Check this worker's job assignment."));
+        }
         pending.work = work;
         save(&self.pending_path(), &pending)?;
         let result = self.execute(&pending.work, &attempt).await;
@@ -406,9 +445,11 @@ impl Worker {
             work.requirements.memory_bytes,
             work.requirements.max_seconds,
         )?;
-        let mut child = command
-            .spawn()
-            .map_err(|_| Error("Start the job's handler."))?;
+        let mut child = ChildGuard(
+            command
+                .spawn()
+                .map_err(|_| Error("Start the job's handler."))?,
+        );
         let stdin = child.stdin.take().ok_or(Error("Write the job's inputs."))?;
         let writer = std::thread::spawn(move || {
             let mut stdin = stdin;
@@ -432,9 +473,18 @@ impl Worker {
                 break None;
             }
             if Instant::now() >= next_heartbeat {
-                match self.call::<_, protocol::Work>("heartbeat", attempt).await {
-                    Ok(current) => lease_until = current.assignment.lease.expires_unix_ms,
-                    Err(_) => break None,
+                let remaining = Duration::from_millis(lease_until.saturating_sub(now()))
+                    .min(deadline.saturating_duration_since(Instant::now()));
+                match tokio::time::timeout(
+                    remaining,
+                    self.call::<_, protocol::Work>("heartbeat", attempt),
+                )
+                .await
+                {
+                    Ok(Ok(current)) if self.bound_work(&current, Some(attempt)) => {
+                        lease_until = current.assignment.lease.expires_unix_ms
+                    }
+                    _ => break None,
                 }
                 next_heartbeat = Instant::now() + Duration::from_secs(5);
             }
@@ -485,6 +535,7 @@ fn bounded_read(mut source: impl Read, limit: u64) -> Result<Vec<u8>> {
 fn limits(command: &mut Command, memory: u64, seconds: u64) -> Result<()> {
     use std::os::unix::process::CommandExt;
     // Only async-signal-safe syscalls run after fork. No allocator or locks.
+    let parent = unsafe { libc::getpid() };
     unsafe {
         command.pre_exec(move || {
             if libc::setpgid(0, 0) != 0 {
@@ -493,6 +544,10 @@ fn limits(command: &mut Command, memory: u64, seconds: u64) -> Result<()> {
             #[cfg(target_os = "linux")]
             if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
                 return Err(std::io::Error::last_os_error());
+            }
+            #[cfg(target_os = "linux")]
+            if libc::getppid() != parent {
+                return Err(std::io::Error::other("The worker stopped."));
             }
             for (resource, value) in [
                 (libc::RLIMIT_AS, memory),
@@ -515,6 +570,24 @@ fn limits(command: &mut Command, memory: u64, seconds: u64) -> Result<()> {
 #[cfg(not(unix))]
 fn limits(_: &mut Command, _: u64, _: u64) -> Result<()> {
     Err(Error("This worker needs a Unix host for process limits."))
+}
+struct ChildGuard(Child);
+impl std::ops::Deref for ChildGuard {
+    type Target = Child;
+    fn deref(&self) -> &Child {
+        &self.0
+    }
+}
+impl std::ops::DerefMut for ChildGuard {
+    fn deref_mut(&mut self) -> &mut Child {
+        &mut self.0
+    }
+}
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        kill_group(&mut self.0);
+        let _ = self.0.wait();
+    }
 }
 fn kill_group(child: &mut Child) {
     #[cfg(unix)]

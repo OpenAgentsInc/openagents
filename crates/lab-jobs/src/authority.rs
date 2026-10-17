@@ -8,60 +8,13 @@ use serde_json::json;
 use std::{collections::BTreeMap, sync::Arc};
 use uuid::Uuid;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Usage {
-    pub job: String,
-    pub attempt: u64,
-    pub worker: String,
-    pub account: String,
-    pub space: SpaceRef,
-    pub placement: crate::Placement,
-    pub started_unix_ms: Option<u64>,
-    pub observed_until_unix_ms: u64,
-    /// Time between service observations, not CPU usage or provider billable time.
-    pub observed_wall_ms: Option<u64>,
-    pub outcome: lab_kit::JobStatus,
-    pub charge: Option<u64>,
-}
+pub use lab_kit::worker::{Assignment, Enrolled, Usage, Worker};
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Completion {
     pub result: lab_kit::JobState,
     pub fingerprint: String,
     pub usage: Usage,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Worker {
-    pub id: String,
-    pub account: String,
-    pub space: SpaceRef,
-    pub capabilities: Capabilities,
-    pub expires_unix_ms: u64,
-    pub revoked: bool,
-    /// The issuing app/login-key session reference, never its bearer token.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub issuer_session: Option<String>,
-}
-
-/// Returned once to the enrolling account. Debug output never contains the key.
-#[derive(Serialize, Deserialize)]
-pub struct Enrolled {
-    pub worker: Worker,
-    pub token: String,
-}
-impl std::fmt::Debug for Enrolled {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Enrolled")
-            .field("worker", &self.worker)
-            .finish_non_exhaustive()
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Assignment {
-    pub lease: Lease,
-    /// The service records this before returning permission to execute.
-    pub started_unix_ms: Option<u64>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
