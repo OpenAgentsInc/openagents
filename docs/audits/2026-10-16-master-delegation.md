@@ -316,9 +316,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Status:** the foundations are in `cca7f94ebe`.
 - **Remains:** the "Runs on" control, computer-to-cloud continuation through the #11893 path, paired and cloud computer choice, one conversation row across web, terminal, desktop, and phone, and the web, Mac, then cloud round trip on a test account. The cloud computer choice needs #11852.
 
-**#11911 Computer sharing: owner-approved project-scoped access over NIP-HOST.** Lane 7, after #11817.
-- **Status:** investigated only. Today's rights are host-wide, and the pairing preset grants access administration.
-- **Remains:** a host-verified project scope (recipient device and account, roots, rights, expiry, revocation) enforced on list, read, file, task, terminal, and sync paths. Refuse old hosts. Then the sharing controls on mobile and the recipient's view.
+**#11911 Computer sharing: owner-approved project-scoped access over NIP-HOST.** Lane 7, claimed by Codex.
+- **Status:** `72a0bc730c` adds owner-approved project invitations pinned to the recipient account/device, roots resolved from host configuration, absolute expiry, and revocation of one share without advancing the device epoch or revoking unrelated scopes. Scoped guests still cannot use broad task/read/terminal/app RPC paths. Host sharing advertises `project-sharing-v1`; old hosts refuse. Checks: access library 123, host library 118, and signed direct/relay adapter checks 3.
+- **Remains:** the native owner sharing controls and recipient account view, with account-isolated device keys and saved grants. Map only implemented project operations into that view; project membership alone grants no host permission. Coordinate with lane 8's app device-channel integration. The issue stays open while that code remains.
 
 **#11929 Agent Lab: run tests for agents that don't need a project copy.** Lane 9, not started.
 - **Decided (owner, 2026-10-16):** option 1, an experiment-level "no project files" choice that runs the trial in an empty folder. The report says the agent had no project files.
