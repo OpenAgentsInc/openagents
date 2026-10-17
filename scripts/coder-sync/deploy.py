@@ -101,12 +101,49 @@ def revision():
     return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
 
 
-# What the image build needs (deploy/coder-sync/Dockerfile copies the same
-# paths): the server, the SDK, and the sync clients from apps/openagents.
-BUILD_PATHS = ["Cargo.toml", "Cargo.lock", "crates/coder-sync", "crates/openagents-sdk", "crates/openagents-login",
-               "crates/agent-contract", "crates/agent-lab", "crates/lab-kit", "crates/openagents-dashboard",
-               "crates/nostr", "crates/nostr-transport", "crates/push-gateway",
-               "deploy/coder-sync", "apps/openagents/Cargo.toml"] + [
+# The Dockerfile copies these exported source trees. Include the shared host
+# client's dependencies as well as the server and app sync clients.
+BUILD_PATHS = ["Cargo.toml", "Cargo.lock", "deploy/coder-sync", "apps/openagents/Cargo.toml"] + [
+    f"crates/{name}" for name in (
+        'agent-contract',
+        'agent-lab',
+        'atif',
+        'chat-home',
+        'coder-access',
+        'coder-boundary',
+        'coder-connect',
+        'coder-engine-status',
+        'coder-history',
+        'coder-host',
+        'coder-host-wire',
+        'coder-link',
+        'coder-pty',
+        'coder-reach',
+        'github-actions',
+        'jev',
+        'lab-kit',
+        'markdown-stream',
+        'model-access',
+        'nostr',
+        'nostr-transport',
+        'openagents-chat',
+        'openagents-connect',
+        'openagents-dashboard',
+        'openagents-login',
+        'openagents-sdk',
+        'openui-lang',
+        'paper-mono',
+        'playtest',
+        'push-gateway',
+        'receipts',
+        'robot-description',
+        'robot-lab',
+        'route-contract',
+        'rust-native',
+        'secret-screen',
+        'user-home',
+        'workbench',
+)] + [
     f"apps/openagents/crates/{name}" for name in ("brand", "client", "doc", "orb", "proto", "rpc", "sync", "voice-session")]
 
 
