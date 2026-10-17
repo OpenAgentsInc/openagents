@@ -1,10 +1,10 @@
 # Agent Lab: build, test, and improve your agents
 
-Status: product and implementation plan, 2026-10-16. The
-[custom-agent SDK and mobile flow](../custom-agents.md) are implemented;
-Agent Lab is the next workbench over them. TestFlight build 1004 includes agent
-creation and delegation, not this proposed Lab UI. The shared hosted Labs API,
-storage, history cards, and app views still have delivery dependencies in the
+Status: implemented on `main`, 2026-10-16. The
+[custom-agent SDK and mobile flow](../custom-agents.md) provide the execution
+path. The [first implementation](#first-implementation) below describes the
+shipped provider and its limits; the earlier design sections describe the
+broader direction. Shared-platform work remains in the
 [Labs roadmap](../labs/README.md#roadmap-and-issues).
 
 Agent Lab lets you create an agent, try it on representative work, inspect what
@@ -255,7 +255,13 @@ benchmark performance.
 ## First implementation
 
 Track delivery in [#11914](https://github.com/OpenAgentsInc/openagents/issues/11914)
-and its children [#11915–#11921](https://github.com/OpenAgentsInc/openagents/issues/11915).
+and its children: [documents #11915](https://github.com/OpenAgentsInc/openagents/issues/11915),
+[trials #11916](https://github.com/OpenAgentsInc/openagents/issues/11916),
+[API #11917](https://github.com/OpenAgentsInc/openagents/issues/11917),
+[workbench #11918](https://github.com/OpenAgentsInc/openagents/issues/11918),
+[comparisons #11919](https://github.com/OpenAgentsInc/openagents/issues/11919),
+[components #11920](https://github.com/OpenAgentsInc/openagents/issues/11920), and
+[qualification #11921](https://github.com/OpenAgentsInc/openagents/issues/11921).
 The first provider implements Agent Lab on the common `/v1/labs/agent` route family;
 the broader shared-platform migrations remain separate issues.
 
