@@ -34,7 +34,7 @@ This document governs how the remaining work is split. Read it with the [big-ban
 | Signet observers for #11862, #11863, #11770 | `oa-lnd-builder` (us-central1-a); status with `bash /tmp/sigstatus.sh` | 10 | Read only. Never add funding or restart a controller. |
 | LayerTree primary TDX tree, 24-hour soak, scheduled deletion | `oa-layertree-signet-tdx`, mirrors `oa-layertree-mirror-0/1/2` | 10 | The clean window can first qualify at **2026-10-17 13:34:53 UTC (08:35 CDT)**. The observer then deletes the VM itself. |
 | #11794 followers | `oa-lnd-builder`, `~/layertree-followers-11794-d9e41513b5/` | 10 | Stop time `1792877280` (Unix). |
-| Production web | `coder-web-7e9a650072-20261017015537` at 100% | 0 | Has Foreman, Our cloud server, and the earlier Labs API. |
+| Production web | `coder-web-51e2d77b5a-20261017033819` at 100% | 0 | Image `sha256:51e2d77b…202a7` from `646d5fb6bd`: CAD, the agents door, and cloud inference. Production smoke passed 66/0/2. |
 | Staging web | `openagents-web-1-staging-646d5fb6bd-032744` at 100% | 0 | Image `sha256:51e2d77b…202a7` from `646d5fb6bd`: CAD, the agents door, and cloud inference. Standard staging smoke passed 99/0/2. |
 | Production Computers and Boat | Computers `c50225e11b`, Boat `76d096ef26` | 6 | From #11815's last deploy. |
 
@@ -66,7 +66,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 0: release and deploys (one agent, the only one that deploys or releases)
 
-**Taken 2026-10-16 22:04 CDT** by Codex working deploys and releases for #11875, #11934, #11852 in `~/work/openagents-bang-lane`.
+**Taken 2026-10-16 22:04 CDT** by Codex working deploys and releases for #11875, #11934, #11852, #11936, and the after-close follow-up #11938 in `~/work/openagents-bang-lane`.
 
 - **Owns:** every web deploy (staging and production shifts), every release candidate cut, the final 1.0.0 publish, the project boards, and `NEEDS_OWNER.md` hygiene. Other lanes ask lane 0 to deploy. They never shift traffic themselves.
 - **Tonight:**
@@ -409,9 +409,9 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 | Issue (closed or closing) | Check | Status |
 | --- | --- | --- |
 | #11934 | Deploy the agents door. Run `ask_foreman_cli.py` and `openagents agents ask Foreman …` with test account `acct_500d3e1d125b7782`. Land the web door's switch to `place` (in the issue's patch). | to do |
-| #11936 | Redeploy the SPACE candidate with explicit zero-length framing and verify suspend and wake through Cloud Run. | to do |
+| #11936 | Redeploy the SPACE candidate with explicit zero-length framing and verify suspend and wake through Cloud Run. | Deployed `oa-space-service-computers-00002-pch`, image `sha256:f469151c…f717`, measured 2 vCPUs/1024 MiB. Lane 6 has the revision for the encrypted lifecycle check. |
 | #11814 | Promote the checked cleanup images, install eleven measurements and nine alert policies, then run encrypted lifecycle, worker replacement, concurrent wakes, drain/rollback/placement disable, guest denial, retention, and fixture cleanup. Use the [private service runbook](../../deploy/space-service/README.md) and [receipt](../cloud/evidence/2026-10-16-space-private-foundation.json). | to do; source checks passed 50/0 |
-| #11875 | The dedicated-account CAD run on staging and then production: fan bracket, picked face, 5 mm thicker, project versions, STEP download, cleanup. | Closed. Standard staging smoke passed 99/0/2 on `646d5fb6bd`. CAD staging passed 18 checks, isolated browser face selection, and cleanup after #11937; evidence in `docs/sdk/labs-cad-staging-handoff.json`. Production pending. |
+| #11875 | The dedicated-account CAD run on staging and then production: fan bracket, picked face, 5 mm thicker, project versions, STEP download, cleanup. | Closed. Staging passed 18 CAD checks, browser selection, and cleanup. Production smoke passed 66/0/2; CAD operations and browser selection passed, but API project cleanup failed (#11938). The leftover test project was removed through the website. Evidence: `docs/sdk/labs-cad-staging-handoff.json`. |
 | #11876 | Run the Git-pinned `examples/sdk-labs` CAD flow against production with the dedicated account, including ranged GLB, notes, events, and deletion. | External build and iOS account-client check passed; evidence: `docs/sdk/labs-client-evidence.json`. Live run: to do. |
 | #11877 | A CAD chat's card through `/v1/history`, re-rendered in a second browser session. | to do |
 | #11878 | Deploy the account-service worker routes before the web worker routes. Run dedicated-account Echo on server, disposable enrolled, and cloud placements; prove private input bytes and paths stay local, retire scoped keys, and observe cloud computer deletion. The cloud environment needs the pinned `labs-worker` and trusted handlers installed. | to do; owner Mac installation is in `NEEDS_OWNER.md` |

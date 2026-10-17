@@ -36,9 +36,9 @@
     "staging_percent": 100,
     "kept_existing_gateway_and_storage": true,
     "cad_live_qualification_performed": true,
-    "production_promotion_performed": false,
-    "production_shift_performed": false,
-    "next_step": "Promote the tested image, run the production smoke, then work through After-close checks.",
+    "production_promotion_performed": true,
+    "production_shift_performed": true,
+    "next_step": "Fix the sign-in-key API identity lookup in #11938, then repeat the production CAD check and continue After-close checks.",
     "standard_staging_smoke": {
       "passed": 99,
       "failed": 0,
@@ -82,6 +82,27 @@
       "cleanup_verified": true,
       "browser_capture_sha256": "58c841b54c977fd882fb78b64797d781082d9f802a52cc9b51f124216a15b16f"
     },
-    "cad_smoke_authentication_followup": 11937
+    "cad_smoke_authentication_followup": 11937,
+    "production_revision": "coder-web-51e2d77b5a-20261017033819",
+    "candidate_smoke": {
+      "passed": 58,
+      "failed": 0,
+      "skipped": 2,
+      "waiting_for_traffic": 8
+    },
+    "production_smoke": {
+      "passed": 66,
+      "failed": 0,
+      "skipped": 2,
+      "seconds": 66
+    },
+    "cad_production_check": {
+      "passed_operations": 18,
+      "isolated_browser_face_pick": true,
+      "api_project_cleanup_passed": false,
+      "manual_cleanup_verified": true,
+      "removed_project": "prj_d6b7b58481a6a32b",
+      "followup_issue": 11938
+    }
   }
 }
