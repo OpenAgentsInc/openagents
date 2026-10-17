@@ -89,6 +89,16 @@ fn operation(c: &Computer, action: &str) -> String {
     )
 }
 
+fn health_probe(service: &ServiceDecl) -> String {
+    match &service.health {
+        Health::Http { port, path } => format!(
+            "curl -fsS -o /dev/null http://127.0.0.1:{port}{}",
+            quote(path)
+        ),
+        Health::Command { command } => command.clone(),
+    }
+}
+
 fn quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
@@ -160,7 +170,7 @@ impl<D: Driver> Provider for OnDriver<D> {
             .map(|()| format!("resumed:{resource}"))
     }
 
-    async fn apply_credentials(&self, _c: &Computer, resource: &str) -> Outcome<String> {
+    async fn apply_credentials(&self, c: &Computer, resource: &str) -> Outcome<String> {
         // Nothing to apply per boot; this is where a fresh boot is awaited.
         if let other @ (Outcome::Failed { .. } | Outcome::Unknown { .. }) =
             self.reach(resource, State::Running).await
@@ -170,10 +180,25 @@ impl<D: Driver> Provider for OnDriver<D> {
         if !self.driver.capabilities().memory_suspend {
             return Outcome::done("applied:".into());
         }
-        match self.sh(resource, ":".into(), 30).await {
-            Outcome::Done { value: 0 } => Outcome::done("command service ready".into()),
-            _ => Outcome::unknown("The computer is running, but commands aren't ready yet."),
+        if !matches!(
+            self.sh(resource, ":".into(), 30).await,
+            Outcome::Done { value: 0 }
+        ) {
+            return Outcome::unknown("The computer is running, but commands aren't ready yet.");
         }
+        if c.boot()
+            .is_some_and(|boot| matches!(boot.origin, BootOrigin::Restored { .. }))
+        {
+            for service in &c.services {
+                if !matches!(
+                    self.sh(resource, health_probe(service), 30).await,
+                    Outcome::Done { value: 0 }
+                ) {
+                    return Outcome::unknown(format!("{} isn't ready after wake.", service.name));
+                }
+            }
+        }
+        Outcome::done("command service ready".into())
     }
 
     async fn start_service(
@@ -198,15 +223,7 @@ impl<D: Driver> Provider for OnDriver<D> {
                 other => return other.map(|_| String::new()),
             }
         }
-        let probe = match &s.health {
-            Health::Http { port, path } => {
-                format!(
-                    "curl -fsS -o /dev/null http://127.0.0.1:{port}{}",
-                    quote(path)
-                )
-            }
-            Health::Command { command } => command.clone(),
-        };
+        let probe = health_probe(s);
         let until =
             tokio::time::Instant::now() + Duration::from_secs(s.ready_within_seconds.into());
         loop {

@@ -382,3 +382,59 @@ async fn memory_idle_and_absolute_bounds_survive_restart_without_an_automatic_wa
         assert!(memory.inner.live().is_empty());
     }
 }
+
+#[tokio::test]
+async fn a_restored_service_must_answer_before_dispatch_without_rerunning_startup() {
+    use std::sync::{Arc, Mutex, atomic::AtomicBool};
+    let dir = tempfile::tempdir().unwrap();
+    let memory = MemoryDriver {
+        inner: FakeDriver::new(dir.path().join("machines")).boot_observations(0),
+        complete: Arc::new(AtomicBool::new(true)),
+        operations: Arc::new(Mutex::new(Default::default())),
+    };
+    let store = Store::under(dir.path().join("records"));
+    let mut request = spec();
+    request.services.push(ServiceDecl {
+        name: "app".into(),
+        command: "printf 'startup\\n' >> starts".into(),
+        cwd: ".".into(),
+        health: Health::Command {
+            command: "test ! -e unhealthy".into(),
+        },
+        ready_within_seconds: 1,
+    });
+    store.create(&Computer::new(request, 1).unwrap()).unwrap();
+    let driver = Driver::new(store, fast(memory.clone()));
+    let first = driver.prompt("computer-1", 10).await.unwrap();
+    let resource = first.computer().resource().unwrap().to_owned();
+    assert!(
+        memory
+            .inner
+            .exec(&resource, &Exec::new("touch unhealthy"))
+            .await
+            .is_done()
+    );
+    driver.turn_finished("computer-1", 1, 20).await.unwrap();
+    let unavailable = driver.prompt("computer-1", 30).await.unwrap();
+    assert_eq!(unavailable.computer().phase, Phase::Booting);
+    assert_eq!(unavailable.computer().turn.dispatched, 1);
+    assert!(
+        memory
+            .inner
+            .exec(&resource, &Exec::new("rm unhealthy"))
+            .await
+            .is_done()
+    );
+    let ready = driver.prompt("computer-1", 31).await.unwrap();
+    assert!(matches!(ready, Settled::Dispatch { generation: 2, .. }));
+    let output = memory
+        .inner
+        .exec(&resource, &Exec::new("cat starts"))
+        .await
+        .value()
+        .unwrap();
+    assert_eq!(output.stdout, "startup\n");
+    driver.turn_finished("computer-1", 2, 40).await.unwrap();
+    driver.delete("computer-1", 50).await.unwrap();
+    assert!(memory.inner.live().is_empty());
+}
