@@ -190,6 +190,20 @@ async fn command(mut socket: WebSocket, m: Mock, session: String) {
         let _ = socket.close().await;
         return;
     }
+    if mode == "partial" {
+        send(
+            &mut socket,
+            json!({"type":"stdout","data_base64":BASE64.encode(b"early output")}),
+        )
+        .await;
+        send(
+            &mut socket,
+            json!({"type":"stderr","data_base64":BASE64.encode(b"early error")}),
+        )
+        .await;
+        let _ = socket.close().await;
+        return;
+    }
     if mode == "error" {
         send(
             &mut socket,
@@ -537,6 +551,36 @@ async fn saved_provider_operations_survive_mapping_expiry_and_lost_replies_never
         Outcome::Unknown { .. }
     ));
     assert!(mock.records.lock().unwrap().lifecycle.is_empty());
+    assert!(driver.delete(&id).await.is_done());
+    task.abort();
+}
+
+#[tokio::test]
+async fn interrupted_space_commands_keep_bounded_partial_output_without_claiming_exit() {
+    let (driver, mock, task) = setup().await;
+    let id = driver
+        .create(&CreateRequest {
+            operation: "partial-output".into(),
+            ..Default::default()
+        })
+        .await
+        .value()
+        .unwrap();
+    mock.records.lock().unwrap().stream_mode = "partial";
+    let exec = Exec::new("printf early");
+    assert!(matches!(
+        driver.exec(&id, &exec).await,
+        Outcome::Unknown { .. }
+    ));
+    assert_eq!(
+        exec.output.read(),
+        (b"early output".to_vec(), b"early error".to_vec())
+    );
+    exec.output.append(false, &vec![b'x'; 512 * 1024]);
+    let (output, _) = exec.output.read();
+    assert_eq!(output.len(), 256 * 1024);
+    assert!(output.starts_with(b"early output"));
+    assert!(!format!("{:?}", exec.output).contains("early output"));
     assert!(driver.delete(&id).await.is_done());
     task.abort();
 }
