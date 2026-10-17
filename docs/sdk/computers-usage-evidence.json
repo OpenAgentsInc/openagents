@@ -604,6 +604,14 @@
         "validation_image": "previous published candidate; not an operator qualification",
         "job_absence_http_status": 404
       }
+    },
+    "secondary_live_follow_up": {
+      "evidence": "docs/cloud/evidence/2026-10-16-space-private-foundation.json",
+      "section": "after_close_secondary_cycle",
+      "same_worker_memory_continuity": true,
+      "protected_endpoint_denials_passed": 7,
+      "final_state": "stopped",
+      "primary_rejected_operation_recovery": "pending lane 0 deployment and explicit operator authorization"
     }
   }
 }

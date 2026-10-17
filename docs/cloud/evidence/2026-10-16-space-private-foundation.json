@@ -310,7 +310,7 @@
     "synthetic_owner": "space-qualification-11814",
     "first_create": "initial QA quota rejected pause container resource requests; no native sandbox or pod. Failed CWC fixture preserved before isolated DB reset. Fresh run underway with corrected pods-only quota."
   },
-  "progress_updated_at": "2026-10-17T03:49:13.582743+00:00",
+  "progress_updated_at": "2026-10-17T04:51:10.479716+00:00",
   "runtime_qualification": {
     "clean_lifecycle_complete": false,
     "first_computer": "cmp_b8f7afec9373c5144126",
@@ -343,10 +343,11 @@
       "candidate_build": "9e1c6796-f61c-4381-8b67-750d8939ef41",
       "candidate_build_status": "success",
       "candidate_digest": "sha256:f469151c6f77e2327aa7e3feec2654ad1576fb7fa88a8aaa8ea1b00fc1a4f717",
-      "candidate_deploy": "requested_from_lane_0",
+      "candidate_deploy": "oa-space-service-computers-00002-pch",
       "deployment_request": "https://github.com/OpenAgentsInc/openagents/issues/11936#issuecomment-6228933851",
       "issue_closed_before_live_check": true,
-      "after_close_checks": "docs/audits/2026-10-16-master-delegation.md#after-close-checks"
+      "after_close_checks": "docs/audits/2026-10-16-master-delegation.md#after-close-checks",
+      "live_secondary_cycle": "passed; same resource woke, ran the witness, checkpointed, resumed unchanged memory, passed seven denials, and stopped cleanly"
     },
     "synthetic_org_encryption_enabled": true,
     "encrypted_lifecycle_complete": false,
@@ -558,5 +559,105 @@
     "includes_soft_deleted_objects": false,
     "mutations_performed": 0,
     "credential_output": false
+  },
+  "after_close_secondary_cycle": {
+    "scope": "Private Computers service, existing secondary synthetic fixture, same worker.",
+    "candidate_revision": "oa-space-service-computers-00002-pch",
+    "image_source": "0492600d791e873b51d4eab5edb2d1ef373db28d",
+    "account": "space-qualification-11814",
+    "computer": "cmp_bb774103e230da7a2d16",
+    "sandbox": "sbx_01a147e7-64e1-73e9-8aac-88b4a0a339b5",
+    "checkpoint": {
+      "computer": "cmp_bb774103e230da7a2d16",
+      "phase": "checkpoint",
+      "memory": {
+        "boot_id": "ec375944-8c88-4cc8-9133-6eaa84ebae9f",
+        "pid": 308,
+        "start_ticks": 458195,
+        "canary_sha256": "8debf9b09efc6cc82952416c34ce91c6f232ca2314fb32699eda5f2709702fd2"
+      },
+      "observed_unix": 1792212324,
+      "helper_sha256": "ff47754dafb23ce436e112942a71f586a37c7b36bb6e7fdde223b0474181bbba"
+    },
+    "resume": {
+      "computer": "cmp_bb774103e230da7a2d16",
+      "phase": "resume",
+      "memory": {
+        "boot_id": "ec375944-8c88-4cc8-9133-6eaa84ebae9f",
+        "pid": 308,
+        "start_ticks": 458195,
+        "canary_sha256": "8debf9b09efc6cc82952416c34ce91c6f232ca2314fb32699eda5f2709702fd2"
+      },
+      "observed_unix": 1792212413,
+      "helper_sha256": "ff47754dafb23ce436e112942a71f586a37c7b36bb6e7fdde223b0474181bbba"
+    },
+    "network": {
+      "computer": "cmp_bb774103e230da7a2d16",
+      "phase": "network",
+      "denials": [
+        {
+          "host": "10.219.14.10",
+          "port": 6443,
+          "denied": true
+        },
+        {
+          "host": "10.219.14.10",
+          "port": 8443,
+          "denied": true
+        },
+        {
+          "host": "10.219.14.10",
+          "port": 9810,
+          "denied": true
+        },
+        {
+          "host": "10.219.14.11",
+          "port": 9800,
+          "denied": true
+        },
+        {
+          "host": "10.220.1.1",
+          "port": 9800,
+          "denied": true
+        },
+        {
+          "host": "10.219.16.3",
+          "port": 5432,
+          "denied": true
+        },
+        {
+          "metadata": "unreachable",
+          "denied": true
+        }
+      ],
+      "observed_unix": 1792212522,
+      "helper_sha256": "ff47754dafb23ce436e112942a71f586a37c7b36bb6e7fdde223b0474181bbba"
+    },
+    "final": {
+      "id": "cmp_bb774103e230da7a2d16",
+      "state": "stopped",
+      "desired": "stopped",
+      "resource": "sbx_01a147e7-64e1-73e9-8aac-88b4a0a339b5",
+      "turns": 3,
+      "attempts": 0,
+      "last_error": null
+    },
+    "memory_witness_identical": true,
+    "protected_endpoint_denials_passed": 7,
+    "primary_rejected_receipt_modified": false,
+    "new_allocation_created": false,
+    "secondary_volume_encryption_metadata_inspected": false,
+    "public_sdk_web_flow_qualified": false,
+    "cross_worker_recovery_qualified": false,
+    "latency_distribution_qualified": false,
+    "helper_derivation": {
+      "source": "deploy/space-service/qualification_lifecycle.py",
+      "substitutions": {
+        "encrypted-1": "capacity-2",
+        "cmp_ef8caf1babae3b48ed87": "cmp_bb774103e230da7a2d16"
+      },
+      "sha256": "ff47754dafb23ce436e112942a71f586a37c7b36bb6e7fdde223b0474181bbba"
+    },
+    "fixture_custody": "Lane 0 retains the stopped fixture and memory witness for worker-replacement qualification and final cleanup."
   }
 }
