@@ -282,16 +282,9 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
                 alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
                 present(alert, animated: true)
             } else {
-                let alert = UIAlertController(title: "Pair this computer", message: "Paste the connect code shown on this computer. This connection lasts until you sign out or close the app.", preferredStyle: .alert)
-                alert.addTextField { field in
-                    field.placeholder = "Connect code"
-                    field.autocapitalizationType = .none
-                    field.autocorrectionType = .no
-                    field.isSecureTextEntry = true
-                    field.accessibilityIdentifier = "device-connect-code"
-                }
-                alert.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self, weak alert] _ in
-                    guard let code = alert?.textFields?.first?.text, !code.isEmpty else { return }
+                let alert = UIAlertController(title: "Pair this computer", message: "Copy the connect code from this computer, then paste it here. This connection lasts until you sign out or close the app.", preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "Paste connect code", style: .default) { [weak self] _ in
+                    let code = UIPasteboard.general.string ?? ""
                     Task { @MainActor [weak self] in
                         do { try await client.pairDeviceChannel(deviceId: device, code: code) }
                         catch {

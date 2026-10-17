@@ -306,7 +306,18 @@ mod tests {
         assert!(
             openagents_sync::paired_device::pair_with_policy(
                 &invite(),
+                "fixture-app",
+                &"0".repeat(64),
+                RelayPolicy::LoopbackTest
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            openagents_sync::paired_device::pair_with_policy(
+                &invite(),
                 "another-app",
+                hosted.host().host_key(),
                 RelayPolicy::LoopbackTest
             )
             .await
@@ -315,6 +326,7 @@ mod tests {
         let channel = openagents_sync::paired_device::pair_with_policy(
             &invite(),
             "fixture-app",
+            hosted.host().host_key(),
             RelayPolicy::LoopbackTest,
         )
         .await

@@ -547,9 +547,38 @@ impl Client {
                 "Connect a signed-in computer first.".into(),
             ));
         };
+        let url = format!(
+            "{}/device/{}/key",
+            self.inner.config.edge_base(),
+            crate::live::urls::encode(device_id)
+        );
+        let token = self.inner.tokens.bearer().await?;
+        let response = crate::auth::http()
+            .get(url)
+            .bearer_auth(token)
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+            .map_err(|_| {
+                ClientError::HostUnavailable("Couldn't check this computer's device key.".into())
+            })?;
+        if !response.status().is_success() {
+            return Err(ClientError::Unsupported(
+                "This computer isn't ready for a device connection.".into(),
+            ));
+        }
+        let key: serde_json::Value = response.json().await.map_err(|_| {
+            ClientError::HostError("Couldn't check this computer's device key.".into())
+        })?;
+        let key = key["publicKey"]
+            .as_str()
+            .filter(|key| key.len() == 64)
+            .ok_or_else(|| {
+                ClientError::HostError("Couldn't check this computer's device key.".into())
+            })?;
         let channel = tokio::select! {
             _ = self.inner.cancel.cancelled() => return Err(ClientError::HostError("You're signed out.".into())),
-            result = openagents_sync::paired_device::pair(code, device_id) => result.map_err(|_| ClientError::HostError("Couldn't pair this computer. Check the code and try again.".into()))?,
+            result = openagents_sync::paired_device::pair(code, device_id, key) => result.map_err(|_| ClientError::HostError("Couldn't pair this computer. Check the code and try again.".into()))?,
         };
         let mut channels = lock(&live.relay.device_channels);
         if self.inner.cancel.is_cancelled() {
@@ -1632,6 +1661,79 @@ pub struct PushPrefs {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Default)]
+    struct ProofRecorder(Mutex<Vec<openagents_sync::device_channel::Intent>>);
+    #[async_trait::async_trait]
+    impl openagents_sync::device_channel::HostLink for ProofRecorder {
+        async fn app_call(
+            &self,
+            _: openagents_sync::device_channel::Request,
+        ) -> std::result::Result<
+            openagents_sync::device_channel::Answer,
+            openagents_sync::device_channel::HostError,
+        > {
+            unreachable!("This fixture only signs socket requests");
+        }
+        async fn proof_headers(
+            &self,
+            intent: openagents_sync::device_channel::Intent,
+            _: &str,
+        ) -> std::result::Result<Vec<(String, String)>, openagents_sync::device_channel::HostError>
+        {
+            assert!(!intent.url.contains("fixture-session"));
+            lock(&self.0).push(intent);
+            Ok(vec![])
+        }
+    }
+
+    #[tokio::test]
+    async fn paired_sockets_keep_the_account_token_out_of_the_host_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let client = Client::new(
+            ClientConfig::new("http://127.0.0.1:1", dir.path()),
+            Credentials::Dev {
+                user_id: "fixture".into(),
+                org_id: "fixture".into(),
+            },
+            Arc::new(crate::events::NullListener),
+        )
+        .unwrap();
+        let recorder = Arc::new(ProofRecorder::default());
+        let channel = Arc::new(openagents_sync::device_channel::DeviceChannel::new(
+            recorder.clone(),
+            true,
+            &[openagents_sync::device_channel::CAPABILITY.into()],
+        ));
+        lock(&client.inner.live().unwrap().relay.device_channels).insert("desktop".into(), channel);
+        let bearer = crate::live::Bearer(Arc::downgrade(&client.inner));
+        let original =
+            "wss://sync.example/device/desktop/ws?token=fixture-session&role=client&device=phone";
+        let (url, headers) = bearer.proved_socket("desktop", original).await.unwrap();
+        assert_eq!(
+            url,
+            "wss://sync.example/device/desktop/ws?role=client&device=phone"
+        );
+        assert_eq!(
+            headers,
+            [("authorization".into(), "Bearer fixture-session".into())]
+        );
+        assert_eq!(
+            lock(&recorder.0)[0].url,
+            "https://sync.example/device/desktop/ws?role=client&device=phone"
+        );
+        client.disable_device_channel("desktop");
+        assert_eq!(
+            bearer.proved_socket("desktop", original).await.unwrap(),
+            (original.into(), vec![])
+        );
+        client.shutdown();
+        assert!(matches!(
+            bearer.proved_socket("desktop", original).await,
+            Err(openagents_sync::SyncError::Closed)
+        ));
+        assert_eq!(lock(&recorder.0).len(), 1);
+    }
 
     #[test]
     fn demo_replica_is_local_only_and_never_queues() {

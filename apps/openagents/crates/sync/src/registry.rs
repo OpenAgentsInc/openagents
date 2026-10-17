@@ -164,8 +164,7 @@ impl TextConnector for WsTextConnector {
     fn connect(&self) -> BoxFuture<'static, Result<TextPipe, SyncError>> {
         let provider = self.url.clone();
         Box::pin(async move {
-            let url = provider.url().await?;
-            let headers = provider.headers(&url).await?;
+            let (url, headers) = provider.request().await?;
             let ws = crate::dial::connect_ws_headers(&url, &headers)
                 .await
                 .map_err(|e| SyncError::WebSocket(e.to_string()))?;

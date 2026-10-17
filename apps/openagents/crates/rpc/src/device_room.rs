@@ -245,12 +245,12 @@ impl From<TokenError> for openagents_sync::SyncError {
 #[async_trait]
 pub trait TokenSource: Send + Sync + 'static {
     async fn token(&self) -> Result<String, TokenError>;
-    async fn device_headers(
+    async fn device_request(
         &self,
         _device: &str,
-        _url: &str,
-    ) -> Result<Vec<(String, String)>, TokenError> {
-        Ok(vec![])
+        url: &str,
+    ) -> Result<(String, Vec<(String, String)>), TokenError> {
+        Ok((url.into(), vec![]))
     }
 
     /// Changes whenever credentials become available or are replaced. Long-lived
@@ -1069,10 +1069,10 @@ impl LinkCache {
         // under `forward()` — a wedged edge socket hung callers indefinitely
         // and only the UI's own per-call timers saved them (silently).
         const DIAL_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
-        let headers = self
+        let (url, headers) = self
             .config
             .token
-            .device_headers(device_id, &url)
+            .device_request(device_id, &url)
             .await
             .map_err(|e| RpcError::Transport(e.to_string()))?;
         let link = tokio::time::timeout(

@@ -39,6 +39,9 @@ impl Intent {
             || !url.username().is_empty()
             || url.password().is_some()
             || url.fragment().is_some()
+            || url
+                .query_pairs()
+                .any(|(key, value)| key == "token" && !value.is_empty())
             || !matches!(self.method.as_str(), "GET" | "POST" | "PUT" | "DELETE")
             || self.payload.len() != 64
             || !self
@@ -145,6 +148,14 @@ mod tests {
             assert!(verify(&proof, &other, 100).is_err());
         }
         assert!(verify(&proof, &intent, 161).is_err());
+        assert!(
+            Intent::new(
+                "https://sync.example/chat2/a/ws?token=fixture-session",
+                "GET",
+                b""
+            )
+            .is_err()
+        );
         let mut changed = signed.clone();
         changed.pubkey = "a".repeat(64);
         assert!(verify(&header(&changed).unwrap(), &intent, 100).is_err());

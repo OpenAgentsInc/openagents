@@ -32,8 +32,9 @@ pub enum SyncError {
 /// Return [`SyncError::Auth`] when no valid credential is available (signed
 /// out); the reconnect loop backs off and retries.
 pub trait UrlProvider: Send + Sync + 'static {
-    fn headers(&self, _url: &str) -> BoxFuture<'static, Result<Vec<(String, String)>, SyncError>> {
-        Box::pin(async { Ok(vec![]) })
+    fn request(&self) -> BoxFuture<'static, Result<(String, Vec<(String, String)>), SyncError>> {
+        let url = self.url();
+        Box::pin(async move { Ok((url.await?, vec![])) })
     }
     fn url(&self) -> BoxFuture<'static, Result<String, SyncError>>;
 }

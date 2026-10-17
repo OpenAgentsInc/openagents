@@ -310,11 +310,11 @@ pub(crate) struct ChatUrl {
 }
 
 impl UrlProvider for ChatUrl {
-    fn headers(&self, url: &str) -> BoxFuture<'static, Result<Vec<(String, String)>, SyncError>> {
+    fn request(&self) -> BoxFuture<'static, Result<(String, Vec<(String, String)>), SyncError>> {
+        let url = self.url();
         let bearer = self.bearer.clone();
         let host = self.host_device_id.clone();
-        let url = url.to_owned();
-        Box::pin(async move { bearer.device_proofs(&host, &url, "GET", b"").await })
+        Box::pin(async move { bearer.proved_socket(&host, &url.await?).await })
     }
 
     fn url(&self) -> BoxFuture<'static, Result<String, SyncError>> {

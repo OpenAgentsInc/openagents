@@ -93,19 +93,48 @@ fn refused(message: &str) -> HostError {
 
 /// Redeem an explicit connect code and verify the selected app computer.
 /// Pairing is intentionally memory-only until a protected platform store is supplied.
-pub async fn pair(code: &str, expected_device: &str) -> Result<DeviceChannel, HostError> {
-    pair_with_policy(code, expected_device, RelayPolicy::Production).await
+pub async fn pair(
+    code: &str,
+    expected_device: &str,
+    expected_host: &str,
+) -> Result<DeviceChannel, HostError> {
+    pair_with_policy(
+        code,
+        expected_device,
+        expected_host,
+        RelayPolicy::Production,
+    )
+    .await
 }
 
 pub async fn pair_with_policy(
     code: &str,
     expected_device: &str,
+    expected_host: &str,
     policy: RelayPolicy,
 ) -> Result<DeviceChannel, HostError> {
+    let invitation =
+        coder_access::protocol::HostInvitation::parse(code, coder_access::unix_time()?, policy)?;
+    if invitation.host() != expected_host {
+        return Err(refused("This code belongs to another computer."));
+    }
     let secret = SecretKey::new(&mut secp256k1::rand::rng());
     let access = coder_access::client::redeem(code, &secret, policy).await?;
     let device = Arc::new(Device::new(access, secret, policy)?);
-    let reach = coder_host::client::fetch_reach(&device, device.relay()).await?;
+    // Enrollment commits before the next presence publication for this device.
+    let reach = tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            match coder_host::client::fetch_reach(&device, device.relay()).await {
+                Ok(reach) => return Ok(reach),
+                Err(HostError::Reach(error)) if error.code == coder_reach::Refusal::Stale => {
+                    tokio::time::sleep(Duration::from_millis(250)).await
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    })
+    .await
+    .map_err(|_| refused("This computer hasn't published its device connection yet."))??;
     let capabilities = reach.presence.presence.capabilities;
     if !capabilities
         .iter()

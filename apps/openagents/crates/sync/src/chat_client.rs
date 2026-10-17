@@ -236,8 +236,7 @@ impl BinConnector for WsBinConnector {
         Box::pin(async move {
             let socket_permit = crate::budget::shared().socket().await?;
             let dial_permit = crate::budget::shared().dial().await?;
-            let url = provider.url().await?;
-            let headers = provider.headers(&url).await?;
+            let (url, headers) = provider.request().await?;
             let ws = crate::dial::connect_ws_headers(&url, &headers)
                 .await
                 .map_err(|e| {

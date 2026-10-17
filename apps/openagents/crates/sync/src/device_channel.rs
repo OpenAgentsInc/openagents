@@ -1,4 +1,5 @@
 //! Opt-in unary app RPC on a route proved by the host connector.
+pub use coder_access::http_proof::Intent;
 pub use coder_access::{
     Code,
     app_rpc::{Answer, CAPABILITY, Request},

@@ -67,12 +67,16 @@ async fn connect_ws_inner(url: &str, headers: &[(String, String)]) -> Result<WsS
                         "Invalid request header.",
                     ))
                 })?;
-        let value = value.parse().map_err(|_| {
-            WsError::Io(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Invalid request header.",
-            ))
-        })?;
+        let mut value: tokio_tungstenite::tungstenite::http::HeaderValue =
+            value.parse().map_err(|_| {
+                WsError::Io(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Invalid request header.",
+                ))
+            })?;
+        if key == tokio_tungstenite::tungstenite::http::header::AUTHORIZATION {
+            value.set_sensitive(true);
+        }
         request.headers_mut().insert(key, value);
     }
     let uri = request.uri();
