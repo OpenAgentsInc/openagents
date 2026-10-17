@@ -13016,7 +13016,7 @@
             }
           }
         },
-        "description": "Owner-only transition of an idle source to a new computer part. The host first creates its normal session, then calls with that session ID and its device home. A changed source refuses; the same destination is retry-safe, while another destination refuses. The source becomes read-only and records continued_by before execution starts. The host records continues in its document and registry and passes the bounded seed through its existing harness path. This endpoint never starts a harness or creates execution authority. Computer targets only in this version. Older terminal sources use stable legacy-{chat-id} computer references until their original computer can be identified."
+        "description": "Owner-only transition of an idle source to a new cloud or computer part. The host first creates its normal session, then calls with that session ID and its device home. A changed source refuses; the same destination is retry-safe, while another destination refuses. The source becomes read-only and records continued_by before execution starts. The host records continues in its document and registry and passes the bounded seed through its existing harness path. This endpoint never starts a harness or creates execution authority. Computer sources supply a bounded seed after freezing their local command queue. Cloud targets are created with that context outside the visible transcript; the normal cloud send route starts their turns. Older terminal sources use stable legacy-{chat-id} computer references until their original computer can be identified."
       }
     },
     "/v1/history/sessions": {
@@ -13781,6 +13781,103 @@
             }
           }
         }
+      }
+    },
+    "/v1/history/sessions/computers/{device}/moves": {
+      "get": {
+        "operationId": "readSessionMoveRequests",
+        "tags": [
+          "Saved history"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "device",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9._-]{1,128}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Requests for this computer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistorySessionMoves"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid, signed out, missing, transcript off, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Account-owned requests to continue on the web, plus existing cloud destinations whose local metadata may need repair. The owning computer freezes its old part before claiming the destination through continueChatOnComputer."
       }
     },
     "/v1/keys": {
@@ -29999,8 +30096,8 @@
               "string",
               "null"
             ],
-            "maxLength": 4096,
-            "description": "At most 4,096 UTF-8 bytes; no NUL."
+            "maxLength": 16384,
+            "description": "At most 16,384 UTF-8 bytes; no NUL."
           }
         }
       },
@@ -30068,7 +30165,7 @@
               "string",
               "null"
             ],
-            "maxLength": 4096
+            "maxLength": 16384
           },
           "archived": {
             "type": "boolean"
@@ -30407,6 +30504,9 @@
           },
           "target": {
             "$ref": "#/components/schemas/ChatPartRef"
+          },
+          "seed": {
+            "$ref": "#/components/schemas/ChatContext"
           }
         }
       },
@@ -30518,6 +30618,16 @@
             ],
             "description": "Opens the chat in the OpenAgents app."
           },
+          "continues": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChatPartRef"
+              }
+            ]
+          },
           "continued_by": {
             "oneOf": [
               {
@@ -30527,6 +30637,10 @@
                 "$ref": "#/components/schemas/ChatPartRef"
               }
             ]
+          },
+          "home_transfer": {
+            "type": "boolean",
+            "description": "This computer can move a chat through its normal continuation path."
           }
         },
         "description": "A computer session's summary. It holds no transcript."
@@ -30658,6 +30772,12 @@
                     "null"
                   ],
                   "pattern": "^[0-9a-f]{16}$"
+                },
+                "continues": {
+                  "$ref": "#/components/schemas/ChatPartRef"
+                },
+                "home_transfer": {
+                  "type": "boolean"
                 }
               }
             }
@@ -30687,6 +30807,39 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/HistorySessionMessage"
+            }
+          }
+        }
+      },
+      "HistorySessionMoves": {
+        "type": "object",
+        "required": [
+          "moves"
+        ],
+        "properties": {
+          "moves": {
+            "type": "array",
+            "maxItems": 200,
+            "items": {
+              "type": "object",
+              "required": [
+                "source",
+                "target",
+                "expires_unix"
+              ],
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "target": {
+                  "$ref": "#/components/schemas/ChatPartRef"
+                },
+                "expires_unix": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
             }
           }
         }
