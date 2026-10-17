@@ -235,6 +235,7 @@ mod tests {
                     subject: "Add home".into(),
                     width: 1179,
                     height: 2556,
+                    app: true,
                 }],
             }],
         };

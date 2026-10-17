@@ -12,7 +12,7 @@
 pub mod kind;
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -53,6 +53,10 @@ pub struct ScreenVersion {
     pub width: u32,
     #[serde(default)]
     pub height: u32,
+    /// Part of the current mobile app: committed under its folder, or in the
+    /// history it was imported with.
+    #[serde(default)]
+    pub app: bool,
 }
 
 impl Board {
@@ -84,6 +88,14 @@ fn strip_date(word: &str) -> &str {
         && b[8..10].iter().all(u8::is_ascii_digit)
         && b[10] == b'-';
     if dated { &word[11..] } else { word }
+}
+
+/// True when a path names the phone itself, not only a screenshot set.
+pub fn names_the_phone(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower
+        .split(['/', '-', '_', '.', ' '])
+        .any(|w| ["mobile", "ios", "iphone", "phone", "android"].contains(&w))
 }
 
 /// The screen a path belongs to: its file name without a date, an order
@@ -149,7 +161,11 @@ struct Change {
     commit: String,
     unix: u64,
     subject: String,
+    app: bool,
 }
+
+/// Where the current mobile app lives in the repository.
+pub const APP_DIR: &str = "apps/openagents";
 
 fn git(repo: &Path) -> Command {
     let mut command = Command::new("git");
@@ -157,8 +173,42 @@ fn git(repo: &Path) -> Command {
     command
 }
 
+/// Commits of histories imported into `dir` by a merge: a merge parent
+/// whose tree has no `dir` brought the folder in with its own history.
+fn imported(repo: &Path, dir: &str) -> Result<BTreeSet<String>, String> {
+    let out = git(repo)
+        .args(["log", "--merges", "--format=%P", "--", dir])
+        .output()
+        .map_err(|e| format!("can't run git ({e})"))?;
+    let mut commits = BTreeSet::new();
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        for parent in line.split(' ').skip(1) {
+            let has_dir = git(repo)
+                .args(["cat-file", "-e", &format!("{parent}:{dir}")])
+                .stderr(Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success());
+            if has_dir {
+                continue;
+            }
+            let list = git(repo)
+                .args(["rev-list", parent])
+                .output()
+                .map_err(|e| format!("can't run git ({e})"))?;
+            commits.extend(
+                String::from_utf8_lossy(&list.stdout)
+                    .lines()
+                    .map(str::to_string),
+            );
+        }
+    }
+    Ok(commits)
+}
+
 /// Every added or changed phone screenshot on the current branch's history.
 fn changes(repo: &Path) -> Result<Vec<Change>, String> {
+    let app_commits = imported(repo, APP_DIR)?;
+    let app_prefix = format!("{APP_DIR}/");
     let out = git(repo)
         .args([
             "log",
@@ -192,6 +242,10 @@ fn changes(repo: &Path) -> Result<Vec<Change>, String> {
                 continue;
             };
             let blob = meta.split(' ').nth(3).unwrap_or_default();
+            // The app's own folder holds desktop captures too; only paths that
+            // name the phone are its phone screens.
+            let app = (path.starts_with(&app_prefix) || app_commits.contains(&commit))
+                && names_the_phone(path);
             if blob.is_empty() || !is_phone_screenshot(path) {
                 continue;
             }
@@ -201,6 +255,7 @@ fn changes(repo: &Path) -> Result<Vec<Change>, String> {
                 commit: commit.clone(),
                 unix,
                 subject: subject.clone(),
+                app,
             });
         }
     }
@@ -269,7 +324,8 @@ pub fn scan(repo: &Path) -> Result<Board, String> {
             versions: Vec::new(),
         });
         // The same picture copied to a second place is one version.
-        if screen.versions.iter().any(|v| v.blob == change.blob) {
+        if let Some(same) = screen.versions.iter_mut().find(|v| v.blob == change.blob) {
+            same.app |= change.app;
             continue;
         }
         screen.versions.push(ScreenVersion {
@@ -280,6 +336,7 @@ pub fn scan(repo: &Path) -> Result<Board, String> {
             subject: change.subject,
             width,
             height,
+            app: change.app,
         });
     }
     let mut screens: Vec<Screen> = screens.into_values().collect();
@@ -332,6 +389,12 @@ mod tests {
             "apps/ios/OpenAgents/Assets.xcassets/AppIcon.appiconset/a.png"
         ));
         assert!(!is_phone_screenshot("docs/mobile/notes.md"));
+        assert!(names_the_phone(
+            "docs/screenshots/appshots/appshots-ios-lightbox.png"
+        ));
+        assert!(!names_the_phone(
+            "docs/screenshots/appshots/appshots-chat-light-390.png"
+        ));
     }
 
     #[test]

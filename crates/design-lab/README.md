@@ -13,6 +13,13 @@ cargo run -p design-lab -- export /tmp/board   # static index.html + board.json 
   `mobile`, `ios`, `iphone`, `phone`, `android` or `appshots` in it) is a
   version of that screen. Screens deleted from the tree keep their past
   versions. Icons and images under 200 px are skipped.
+- **Current mobile app (the default view).** The board opens on the phone
+  screens of the app in `apps/openagents/`: images committed under that
+  folder, plus the history it was imported with (a merge parent without the
+  folder is an import, and its commits count). Only paths that name the
+  phone (`mobile`, `ios`, `iphone`, `phone`, `android`) count, since the
+  folder also holds desktop captures. **Show → All phone captures** (or
+  `#show=all`) brings back every older and prototype phone capture.
 - **Screens and areas.** A screen is the file name without a date, an order
   number or a trailing width (`appshots-chat-light-390.png` and `-1100.png`
   are two versions of one screen). Its area is the capture folder, without a

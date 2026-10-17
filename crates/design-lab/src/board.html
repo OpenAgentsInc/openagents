@@ -34,7 +34,7 @@
   #search { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 7px 11px;
     color: inherit; font: inherit; width: 240px; outline: none; }
   #search:focus { border-color: #0d99ff; }
-  #areas { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 6px 8px;
+  #source, #areas { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 6px 8px;
     color: inherit; font: inherit; max-width: 220px; }
   .spacer { flex: 1; }
   button { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 7px 11px;
@@ -62,6 +62,10 @@
 <div id="bar">
   <span class="chip"><span id="title">Design Lab</span> <span id="count"></span></span>
   <input id="search" type="search" placeholder="Find a screen" autocomplete="off">
+  <select id="source">
+    <option value="app">Current mobile app</option>
+    <option value="all">All phone captures</option>
+  </select>
   <select id="areas"><option value="">All areas</option></select>
   <span class="spacer"></span>
   <button id="out" title="Zoom out (-)">−</button>
@@ -133,11 +137,15 @@ function section(area, screens) {
 function layout() {
   const q = document.getElementById("search").value.trim().toLowerCase();
   const only = document.getElementById("areas").value;
+  const appOnly = document.getElementById("source").value === "app";
   world.textContent = "";
   frames = [];
   const byArea = new Map();
   let shown = 0, versions = 0;
-  for (const screen of board.screens) {
+  for (const all of board.screens) {
+    // Showing the current app keeps only its versions, and drops screens with none.
+    const screen = appOnly ? { ...all, versions: all.versions.filter((v) => v.app) } : all;
+    if (!screen.versions.length) continue;
     if (only && screen.area !== only) continue;
     const hay = (screen.title + " " + screen.id + " " + screen.area).toLowerCase();
     if (q && !hay.includes(q)) continue;
@@ -285,6 +293,22 @@ document.getElementById("out").onclick = () => zoomAt(innerWidth / 2, innerHeigh
 document.getElementById("fit").onclick = fit;
 document.getElementById("search").addEventListener("input", () => { layout(); fit(); });
 document.getElementById("areas").addEventListener("change", () => { layout(); fit(); });
+document.getElementById("source").addEventListener("change", () => { areas(); layout(); fit(); });
+
+// The area list follows what the Show choice keeps.
+function areas() {
+  const select = document.getElementById("areas");
+  const keep = select.value;
+  const appOnly = document.getElementById("source").value === "app";
+  select.length = 1;
+  const names = board.screens.filter((s) => !appOnly || s.versions.some((v) => v.app)).map((s) => s.area);
+  for (const a of [...new Set(names)]) {
+    const o = document.createElement("option");
+    o.value = a; o.textContent = a;
+    select.appendChild(o);
+  }
+  select.value = names.includes(keep) ? keep : "";
+}
 
 // The open screen and version.
 let current = null;
@@ -342,15 +366,12 @@ fetch("board.json").then((r) => r.json()).then((b) => {
   board = b;
   document.getElementById("title").textContent = b.name;
   document.title = b.name + " · Design Lab";
-  const select = document.getElementById("areas");
-  for (const a of [...new Set(b.screens.map((s) => s.area))]) {
-    const o = document.createElement("option");
-    o.value = a; o.textContent = a;
-    select.appendChild(o);
-  }
-  // `#q=words` opens the board already searched, so a view can be linked.
-  const q = new URLSearchParams(location.hash.slice(1)).get("q");
-  if (q) document.getElementById("search").value = q;
+  // `#q=words` opens the board already searched, `#show=all` with every
+  // phone capture, so a view can be linked.
+  const hash = new URLSearchParams(location.hash.slice(1));
+  if (hash.get("q")) document.getElementById("search").value = hash.get("q");
+  if (hash.get("show") === "all") document.getElementById("source").value = "all";
+  areas();
   layout();
   fit();
 });
