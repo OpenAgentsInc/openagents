@@ -238,7 +238,7 @@ fn render_systemd_unit(exe: &Path, env: &[(String, String)]) -> String {
         unit.push_str(&format!("Environment=\"{key}={value}\"\n"));
     }
     unit.push_str(&format!(
-        "ExecStart={} headless\nRestart=on-failure\nRestartSec=5\nEnvironmentFile=-%h/.openagents/env\n\n[Install]\nWantedBy=default.target\n",
+        "ExecStart={} headless\nRestart=on-failure\nRestartSec=5\nEnvironmentFile=-%h/.openagents/env\n# Agents and terminals under keepers run in this unit;\n# restarting the engine must not end them.\nKillMode=process\n\n[Install]\nWantedBy=default.target\n",
         systemd_exec_path(exe)
     ));
     unit
@@ -407,6 +407,8 @@ mod tests {
         assert!(!unit.contains("session.json"));
         assert!(!unit.contains("ConditionPathExists"));
         assert!(unit.contains("EnvironmentFile=-%h/.openagents/env"));
+        // A restart stops only the engine, so keepers' agents carry on.
+        assert!(unit.contains("\nKillMode=process\n"));
         assert!(unit.contains("WantedBy=default.target"));
     }
 
@@ -418,6 +420,7 @@ mod tests {
         assert!(!installer.contains("session.json"));
         assert!(installer.contains("StartLimitIntervalSec=60\n"));
         assert!(installer.contains("StartLimitBurst=5\n"));
+        assert!(installer.contains("\nKillMode=process\n"));
         assert!(installer.contains("systemctl --user enable openagents"));
         assert!(installer.contains("systemctl --user restart openagents"));
     }

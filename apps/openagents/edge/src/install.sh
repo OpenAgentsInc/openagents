@@ -156,6 +156,9 @@ ExecStart=%h/.openagents/app/current/openagents headless
 Restart=on-failure
 RestartSec=5
 EnvironmentFile=-%h/.openagents/env
+# Agents and terminals under keepers run in this unit; restarting the engine
+# must not end them.
+KillMode=process
 
 [Install]
 WantedBy=default.target

@@ -11,7 +11,9 @@
 //!
 //! - The `openagents daemon` service, which `Updater::restart_when_superseded`
 //!   restarts through launchd or systemd. Its quiet check is
-//!   [`quiescent_check`].
+//!   [`quiescent_check`]. On Linux, its unit leaves keepers running once it
+//!   is installed with `KillMode=process`; before that, it waits for every
+//!   run to end.
 //! - The desktop app's background engine (#11931), one service per data
 //!   folder. [`superseded`] notices the newer binary, and the engine exits
 //!   with [`RESTART_EXIT_CODE`] so the service manager starts the new one.
@@ -103,15 +105,40 @@ pub fn running_as_background_service() -> bool {
 /// Whether restarting this engine's service leaves its keepers running.
 /// Keepers start sessions of their own, which launchd leaves alone. systemd
 /// stops every process in the unit unless the unit says otherwise: the
-/// background engine's unit does, the `openagents daemon` unit doesn't.
+/// background engine's unit does, and the `openagents daemon` unit does once
+/// it is installed with `KillMode=process` (#11951).
 fn keepers_survive_restart() -> bool {
     if cfg!(target_os = "linux") {
         std::fs::read_to_string("/proc/self/cgroup")
-            .map(|cgroups| keepers_survive_in(&cgroups))
+            .map(|cgroups| keepers_survive_in(&cgroups, daemon_unit_kill_mode))
             .unwrap_or(true)
     } else {
         true
     }
+}
+
+/// The installed `openagents daemon` unit's `KillMode`, as systemd loaded it.
+fn daemon_unit_kill_mode() -> Option<String> {
+    let output = std::process::Command::new("systemctl")
+        .args([
+            "--user",
+            "show",
+            "--property=KillMode",
+            "--value",
+            openagents_brand::SYSTEMD_UNIT,
+        ])
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+/// Whether a unit with this `KillMode` leaves its other processes running
+/// when it stops.
+fn kill_mode_keeps_others(mode: &str) -> bool {
+    matches!(mode.trim(), "process" | "none")
 }
 
 fn background_label(label: &str) -> bool {
@@ -127,9 +154,14 @@ fn background_cgroup(cgroups: &str) -> bool {
     })
 }
 
-fn keepers_survive_in(cgroups: &str) -> bool {
-    background_cgroup(cgroups)
-        || !cgroup_parts(cgroups).any(|part| part == openagents_brand::SYSTEMD_UNIT)
+fn keepers_survive_in(cgroups: &str, daemon_kill_mode: impl FnOnce() -> Option<String>) -> bool {
+    if background_cgroup(cgroups) {
+        return true;
+    }
+    if !cgroup_parts(cgroups).any(|part| part == openagents_brand::SYSTEMD_UNIT) {
+        return true;
+    }
+    daemon_kill_mode().is_some_and(|mode| kill_mode_keeps_others(&mode))
 }
 
 fn cgroup_parts(cgroups: &str) -> impl Iterator<Item = &str> {
@@ -166,9 +198,16 @@ mod tests {
         assert!(!background_cgroup(&daemon));
         assert!(!background_cgroup(shell));
 
-        // The daemon unit stops every process in it when it restarts.
-        assert!(keepers_survive_in(&background));
-        assert!(!keepers_survive_in(&daemon));
-        assert!(keepers_survive_in(shell));
+        // The background unit and other places never stop keepers.
+        let unasked = || -> Option<String> { panic!("only the daemon unit is asked") };
+        assert!(keepers_survive_in(&background, unasked));
+        assert!(keepers_survive_in(shell, unasked));
+        // The daemon unit stops every process in it when it restarts, unless
+        // it is installed with KillMode=process.
+        assert!(!keepers_survive_in(&daemon, || Some("control-group".into())));
+        assert!(!keepers_survive_in(&daemon, || None));
+        assert!(keepers_survive_in(&daemon, || Some("process\n".into())));
+        assert!(keepers_survive_in(&daemon, || Some("none".into())));
+        assert!(!kill_mode_keeps_others("mixed"));
     }
 }
