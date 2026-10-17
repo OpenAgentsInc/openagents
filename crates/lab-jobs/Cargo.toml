@@ -8,6 +8,7 @@ description = "Lab job placement, scoped workers, and bounded execution"
 
 [features]
 schema = ["dep:schemars", "lab-kit/schema"]
+cloud = ["dep:openagents-sdk"]
 
 [dependencies]
 base64 = "0.22"
@@ -15,6 +16,7 @@ fs2 = "0.4"
 libc = "0.2"
 lab-kit = { path = "../lab-kit" }
 lab-store = { path = "../lab-store" }
+openagents-sdk = { path = "../openagents-sdk", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = { version = "1", optional = true }
