@@ -1,4 +1,4 @@
-//! Claude Code and Codex under a keeper (#11930).
+//! Claude Code, Codex, and ACP agents under a keeper (#11930).
 //!
 //! The drivers keep speaking their own protocols over what looks like the
 //! agent's stdio: [`launch`] starts the agent under a keeper, and [`attach`]
@@ -17,7 +17,8 @@
 //!   frames the earlier engine acknowledged are dropped, requests that were
 //!   already answered are skipped, and writes that repeat ones the journal
 //!   has (Codex's handshake, already-written answers) are not sent again.
-//!   Codex request ids continue after the highest one the journal has.
+//!   Codex and ACP request ids continue after the highest one the journal
+//!   has.
 //! - **Leaving.** When the engine quits on purpose ([`super::Detach`]), the
 //!   driver's stop and its writes don't reach the agent, so it keeps running.
 
@@ -48,6 +49,15 @@ pub const ENV: &str = "OPENAGENTS_KEEPERS";
 /// The method of the marker the Codex relay passes to the session loop.
 const MARK: &str = "openagents/keeperMark";
 
+/// The method of the marker that ends a [`Kept::flush`].
+const FLUSHED: &str = "openagents/keeperFlushed";
+
+/// Whether an incoming notification is one of the relay's markers, which a
+/// session loop skips.
+pub(crate) fn is_marker(method: &str) -> bool {
+    method == MARK || method == FLUSHED
+}
+
 /// Whether the environment allows keepers.
 pub fn allowed_by_env() -> bool {
     allows(std::env::var(ENV).ok().as_deref())
@@ -65,16 +75,24 @@ fn allows(value: Option<&str>) -> bool {
 pub(crate) enum Wire {
     Claude,
     Codex,
+    /// Agent Client Protocol: JSON-RPC 2.0 like Codex, with no
+    /// `initialized` notification, and a turn that ends with the response
+    /// to its long-lived `session/prompt`.
+    Acp,
 }
 
 impl Wire {
+    fn json_rpc(self) -> bool {
+        matches!(self, Wire::Codex | Wire::Acp)
+    }
+
     /// A stdout line the agent waits on an answer to.
     fn request_key(self, line: &Value) -> Option<String> {
         match self {
             Wire::Claude => (line["type"] == "control_request")
                 .then(|| line["request_id"].as_str().map(str::to_owned))
                 .flatten(),
-            Wire::Codex => {
+            Wire::Codex | Wire::Acp => {
                 (line["method"].is_string() && is_id(&line["id"])).then(|| line["id"].to_string())
             }
         }
@@ -86,38 +104,38 @@ impl Wire {
             Wire::Claude => (line["type"] == "control_response")
                 .then(|| line["response"]["request_id"].as_str().map(str::to_owned))
                 .flatten(),
-            Wire::Codex => (line.get("method").is_none()
+            Wire::Codex | Wire::Acp => (line.get("method").is_none()
                 && is_id(&line["id"])
                 && (line.get("result").is_some() || line.get("error").is_some()))
             .then(|| line["id"].to_string()),
         }
     }
 
-    /// A request the driver sends (Codex), by its numeric id.
+    /// A request the driver sends (Codex, ACP), by its numeric id.
     fn request_id(self, line: &Value) -> Option<i64> {
         match self {
             Wire::Claude => None,
-            Wire::Codex => line["method"]
+            Wire::Codex | Wire::Acp => line["method"]
                 .is_string()
                 .then(|| line["id"].as_i64())
                 .flatten(),
         }
     }
 
-    /// A response to one of the driver's requests (Codex), by its id.
+    /// A response to one of the driver's requests (Codex, ACP), by its id.
     fn response_id(self, line: &Value) -> Option<i64> {
         match self {
             Wire::Claude => None,
-            Wire::Codex => (line.get("method").is_none()
+            Wire::Codex | Wire::Acp => (line.get("method").is_none()
                 && (line.get("result").is_some() || line.get("error").is_some()))
             .then(|| response_id(&line["id"]))
             .flatten(),
         }
     }
 
-    /// A stdout line the Codex reader passes to the session loop.
+    /// A stdout line the Codex or ACP reader passes to the session loop.
     fn queued(self, line: &Value) -> bool {
-        self == Wire::Codex
+        self.json_rpc()
             && line.is_object()
             && line.get("jsonrpc").is_none_or(|v| v == "2.0")
             && line["method"].is_string()
@@ -220,6 +238,8 @@ async fn attach(link: Link, wire: Wire) -> io::Result<RuntimeChild> {
 struct Scan {
     answered: HashSet<String>,
     max_request_id: i64,
+    /// The last request of each method, with its id and params.
+    requests: HashMap<String, (i64, Value)>,
 }
 
 impl Scan {
@@ -244,6 +264,10 @@ impl Scan {
             }
             if let Some(id) = wire.request_id(&value) {
                 scan.max_request_id = scan.max_request_id.max(id);
+                if let Some(method) = value["method"].as_str() {
+                    scan.requests
+                        .insert(method.to_owned(), (id, value["params"].clone()));
+                }
             }
         }
         scan
@@ -291,6 +315,8 @@ struct State {
     repeat_ids_through: Option<i64>,
     /// The highest request id the driver has written (or repeated).
     written_id: i64,
+    /// Adopting: the highest request id in the journal's frames so far.
+    journal_id: i64,
     /// Adopting Codex: the handshake's `initialized` was already sent.
     initialized_repeated: bool,
 }
@@ -307,6 +333,10 @@ pub(crate) struct Kept {
     written: Notify,
     /// Asks the Codex relay for a marker.
     poke: Notify,
+    /// Asks the relay to pass every message it holds now ([`Kept::flush`]).
+    flush: Notify,
+    /// Adopting: the last request of each method the journal has.
+    journaled: HashMap<String, (i64, Value)>,
 }
 
 impl Kept {
@@ -319,12 +349,14 @@ impl Kept {
         let pid = link.pid;
         let (sender, frames) = link.into_parts();
         let mut state = State::default();
+        let mut journaled = HashMap::new();
         if let Some((acked, scan)) = adopting {
             state.replay_through = (acked > 0).then_some(acked);
             state.answered = scan.answered;
-            if wire == Wire::Codex {
+            if wire.json_rpc() {
                 state.repeat_ids_through = Some(scan.max_request_id);
             }
+            journaled = scan.requests;
         }
         let (exit_tx, exit) = watch::channel(None);
         let kept = Arc::new(Kept {
@@ -336,6 +368,8 @@ impl Kept {
             exit,
             written: Notify::new(),
             poke: Notify::new(),
+            flush: Notify::new(),
+            journaled,
         });
         let (out_tx, out_rx) = mpsc::unbounded_channel();
         let (err_tx, err_rx) = mpsc::unbounded_channel();
@@ -446,12 +480,50 @@ impl Kept {
         rx
     }
 
-    /// Adopting Codex: the handshake is replayed; new request ids follow the
-    /// journal's. Returns the highest id the journal has.
+    /// Adopting Codex or ACP: the handshake is replayed; new request ids
+    /// follow the journal's. Returns the highest id the journal has.
     pub(crate) fn handshake_replayed(&self) -> Option<i64> {
         let through = self.lock().repeat_ids_through.take();
         self.written.notify_waiters();
         through
+    }
+
+    /// Wait until the driver's writes reached request id `id`: a JSON-RPC
+    /// client writes from a task of its own.
+    pub(crate) async fn written_through(&self, id: i64) {
+        loop {
+            let written = self.written.notified();
+            if self.lock().written_id >= id || self.exit.borrow().is_some() {
+                return;
+            }
+            written.await;
+        }
+    }
+
+    /// Adopting: the last `method` request an earlier engine sent, with its
+    /// id and params.
+    pub(crate) fn journaled(&self, method: &str) -> Option<(i64, Value)> {
+        self.journaled.get(method).cloned()
+    }
+
+    /// Every message the reader had queued for the session loop before now,
+    /// in order. The relay hands messages over one at a time, so a loop that
+    /// drains its channel with `try_recv` (ACP, when a response ends a turn)
+    /// takes these first. Markers are skipped.
+    pub(crate) async fn flush(
+        &self,
+        incoming: &mut mpsc::Receiver<Incoming>,
+    ) -> VecDeque<Incoming> {
+        self.flush.notify_one();
+        let mut queued = VecDeque::new();
+        while let Some(message) = incoming.recv().await {
+            match &message {
+                Incoming::Notification { method, .. } if method == FLUSHED => break,
+                Incoming::Notification { method, .. } if method == MARK => {}
+                _ => queued.push_back(message),
+            }
+        }
+        queued
     }
 
     /// Frames handled in order, from the front: acknowledge the last one
@@ -570,22 +642,23 @@ async fn pump(
         match frame.body {
             FrameBody::Stdout { line } => {
                 let value = serde_json::from_str::<Value>(line.trim()).ok();
-                // Adopting Codex: a response waits until the replayed
-                // handshake has sent its request, so the reply finds it.
-                if let Some(id) = value.as_ref().and_then(|v| kept.wire.response_id(v)) {
-                    loop {
-                        let written = kept.written.notified();
+                // Adopting Codex or ACP: what the agent wrote after a request
+                // waits until the replayed handshake has sent that request,
+                // so a reply finds it and the driver reads the rest in the
+                // state the earlier engine read it in (an ACP update that
+                // arrived while the driver was still setting up would be
+                // dropped as replayed history).
+                loop {
+                    let written = kept.written.notified();
+                    {
+                        let state = kept.lock();
+                        if state.repeat_ids_through.is_none()
+                            || state.written_id >= state.journal_id
                         {
-                            let state = kept.lock();
-                            if state
-                                .repeat_ids_through
-                                .is_none_or(|through| id > through || state.written_id >= id)
-                            {
-                                break;
-                            }
+                            break;
                         }
-                        written.await;
                     }
+                    written.await;
                 }
                 let request = value.as_ref().and_then(|v| kept.wire.request_key(v));
                 let gate = match &value {
@@ -641,8 +714,15 @@ async fn pump(
                 bytes.push(b'\n');
                 let _ = err.send((seq, bytes));
             }
-            FrameBody::Stdin { .. } => {
+            FrameBody::Stdin { line } => {
                 let mut state = kept.lock();
+                if state.repeat_ids_through.is_some()
+                    && let Some(id) = serde_json::from_str::<Value>(&line)
+                        .ok()
+                        .and_then(|v| kept.wire.request_id(&v))
+                {
+                    state.journal_id = state.journal_id.max(id);
+                }
                 state.entries.push_back(Entry {
                     seq,
                     gate: Gate::Read,
@@ -672,38 +752,63 @@ async fn pump(
     // Closing both channels ends the driver's reads.
 }
 
-/// The Codex session loop's messages, each followed by a marker. The loop
-/// takes the marker only after it has handled the message before it.
+/// The session loop's messages, each followed by a marker. The loop takes
+/// the marker only after it has handled the message before it.
 async fn relay(kept: Arc<Kept>, mut from: mpsc::Receiver<Incoming>, to: mpsc::Sender<Incoming>) {
     let mut passed = 0u64;
     loop {
         let message = tokio::select! {
             message = from.recv() => message,
             _ = kept.poke.notified() => {
-                if !mark(&to).await {
+                if !mark(&to, MARK).await {
                     return;
                 }
                 kept.marker_taken(None);
                 continue;
             }
+            _ = kept.flush.notified() => {
+                for _ in 0..from.len() {
+                    let Ok(message) = from.try_recv() else { break };
+                    if !pass(&kept, &to, message, &mut passed).await {
+                        return;
+                    }
+                }
+                if !mark(&to, FLUSHED).await {
+                    return;
+                }
+                continue;
+            }
         };
         let Some(message) = message else { return };
-        let end = matches!(message, Incoming::Eof);
-        if to.send(message).await.is_err() || end {
+        if !pass(&kept, &to, message, &mut passed).await {
             return;
         }
-        passed += 1;
-        if !mark(&to).await {
-            return;
-        }
-        kept.marker_taken(Some(passed));
     }
 }
 
+/// Pass one message and its marker; false once the relay is done.
+async fn pass(
+    kept: &Kept,
+    to: &mpsc::Sender<Incoming>,
+    message: Incoming,
+    passed: &mut u64,
+) -> bool {
+    let end = matches!(message, Incoming::Eof);
+    if to.send(message).await.is_err() || end {
+        return false;
+    }
+    *passed += 1;
+    if !mark(to, MARK).await {
+        return false;
+    }
+    kept.marker_taken(Some(*passed));
+    true
+}
+
 /// Send a marker and wait until the loop has taken it.
-async fn mark(to: &mpsc::Sender<Incoming>) -> bool {
+async fn mark(to: &mpsc::Sender<Incoming>, method: &str) -> bool {
     let marker = Incoming::Notification {
-        method: MARK.into(),
+        method: method.into(),
         params: Value::Null,
     };
     to.send(marker).await.is_ok() && to.reserve().await.is_ok()
@@ -814,5 +919,15 @@ mod tests {
         assert_eq!(Wire::Codex.response_id(&answer), Some(0));
         assert!(Wire::Codex.queued(&ask));
         assert!(!Wire::Codex.queued(&answer));
+
+        let ask = json!({"jsonrpc":"2.0","id":3,"method":"session/request_permission"});
+        let answer = json!({"jsonrpc":"2.0","id":3,"result":{"outcome":{}}});
+        let prompt = json!({"jsonrpc":"2.0","id":5,"method":"session/prompt","params":{}});
+        let settled = json!({"jsonrpc":"2.0","id":5,"result":{"stopReason":"end_turn"}});
+        assert_eq!(Wire::Acp.request_key(&ask), Wire::Acp.answer_key(&answer));
+        assert_eq!(Wire::Acp.request_id(&prompt), Some(5));
+        assert_eq!(Wire::Acp.response_id(&settled), Some(5));
+        assert!(Wire::Acp.queued(&ask));
+        assert!(!Wire::Acp.queued(&settled));
     }
 }

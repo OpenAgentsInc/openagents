@@ -1,7 +1,7 @@
-//! Claude Code and Codex under keepers (#11930), against the fake CLIs in
-//! `tests/fixtures`: an engine dies mid-turn, and a new engine picks the run
-//! up with no gap or duplicate, asks a pending question again, and steers the
-//! same process. No real `claude` or `codex` binary is involved.
+//! Claude Code, Codex, and ACP agents under keepers (#11930), against the
+//! fake CLIs in `tests/fixtures`: an engine dies mid-turn, and a new engine
+//! picks the run up with no gap or duplicate, asks a pending question again,
+//! and steers the same process. No real agent binary is involved.
 #![cfg(unix)]
 
 use std::ffi::OsString;
@@ -13,7 +13,7 @@ use futures::StreamExt;
 use futures::stream::BoxStream;
 use openagents_harness::keeper::{self, Detach, KeeperScope};
 use openagents_harness::{
-    CancellationToken, ClaudeHarness, CodexHarness, Harness, HarnessError, RunControls,
+    AcpHarness, CancellationToken, ClaudeHarness, CodexHarness, Harness, HarnessError, RunControls,
     SteerMessage, TurnControl,
 };
 use openagents_proto::{
@@ -34,6 +34,8 @@ fn keeper_entry() {
 enum Agent {
     Claude,
     Codex,
+    /// Grok's spec, the ACP driver's most involved one.
+    Acp,
 }
 
 fn fixture(name: &str) -> PathBuf {
@@ -55,6 +57,12 @@ fn harness(agent: Agent, keepers: bool) -> Arc<dyn Harness> {
         Agent::Codex => Arc::new(
             CodexHarness::new()
                 .with_executable(fixture("fake-codex.sh"))
+                .with_keepers(keepers),
+        ),
+        Agent::Acp => Arc::new(
+            AcpHarness::grok()
+                .with_executable(fixture("fake-kept-acp.py"))
+                .with_sessions_root(std::env::temp_dir().join("openagents-kept-acp-none"))
                 .with_keepers(keepers),
         ),
     }
@@ -298,6 +306,7 @@ async fn a_pending_question_comes_back(agent: Agent) {
     let ask = match agent {
         Agent::Claude => "control_request",
         Agent::Codex => "requestApproval",
+        Agent::Acp => "request_permission",
     };
     wait_for("the question", || {
         std::fs::read_to_string(&journal).is_ok_and(|j| j.contains(ask))
@@ -316,6 +325,7 @@ async fn a_pending_question_comes_back(agent: Agent) {
     let (label, word) = match agent {
         Agent::Claude => ("B", "answered B"),
         Agent::Codex => ("Yes", "accepted"),
+        Agent::Acp => ("B", "answered B"),
     };
     answer
         .send(vec![UserInputAnswer {
@@ -373,4 +383,75 @@ async fn claude_code_starts_without_a_keeper_when_turned_off() {
 #[tokio::test]
 async fn codex_starts_without_a_keeper_when_turned_off() {
     the_escape_hatch_starts_without_a_keeper(Agent::Codex).await;
+}
+
+#[tokio::test]
+async fn an_acp_agent_is_picked_up_mid_turn_and_steered() {
+    picks_up_mid_turn_and_steers(Agent::Acp).await;
+}
+
+#[tokio::test]
+async fn a_pending_acp_question_comes_back() {
+    a_pending_question_comes_back(Agent::Acp).await;
+}
+
+#[tokio::test]
+async fn an_acp_agent_starts_without_a_keeper_when_turned_off() {
+    the_escape_hatch_starts_without_a_keeper(Agent::Acp).await;
+}
+
+/// ACP ends a turn with the response to its `session/prompt`. An engine
+/// that dies during a later turn (a steer the earlier engine sent as the
+/// next prompt) leaves that prompt in flight; the new engine owns it, so the
+/// turn still ends.
+#[tokio::test]
+async fn an_acp_agent_is_picked_up_during_a_later_turn() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("keepers");
+    let run = request(dir.path(), 2, None);
+    let first = run.clone();
+    let scope_root = root.clone();
+    let before = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let (events, stream, steer) = runtime.block_on(async {
+            let (controls, steer) = controls(None);
+            let mut stream = keeper::scope(
+                scope(&scope_root),
+                harness(Agent::Acp, true).run(first, controls),
+            )
+            .await
+            .unwrap();
+            let mut events = until_done(&mut stream).await;
+            steer
+                .send(SteerMessage::text("scenario:kept chunks=20 ask=-1"))
+                .await
+                .unwrap();
+            while texts(&events).matches("chunk 3").count() < 1 {
+                events.push(stream.next().await.unwrap().unwrap());
+            }
+            (events, stream, steer)
+        });
+        drop(runtime);
+        drop(stream);
+        drop(steer);
+        events
+    })
+    .join()
+    .unwrap();
+
+    let (mut stream, _steer, _) = adopt(Agent::Acp, &root, run, None).await;
+    let after = until_done(&mut stream).await;
+    let all: Vec<AgentEvent> = before.iter().chain(&after).cloned().collect();
+    assert_eq!(
+        texts(&all),
+        format!("{}{}", chunks(2, None), chunks(20, None))
+    );
+    assert_eq!(count(&all, |e| matches!(e, AgentEvent::Done { .. })), 2);
+    assert!(matches!(
+        after.last(),
+        Some(AgentEvent::Done {
+            status: DoneStatus::Completed,
+            ..
+        })
+    ));
 }

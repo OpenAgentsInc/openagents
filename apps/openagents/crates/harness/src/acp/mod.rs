@@ -28,7 +28,12 @@
 //!   the prompt `cancelled`; the agent and its session take the next prompt.
 //! - Interrupt: `session/cancel`, escalating SIGTERM → SIGKILL; the stream
 //!   always ends with `Done { status: Interrupted }`.
+//! - Keepers (#11930): when the engine lends a [`crate::keeper::KeeperScope`],
+//!   the agent runs under a keeper and outlives the engine; the next engine
+//!   picks the run up with [`Harness::attach`], replaying the handshake from
+//!   the keeper's journal and owning the last `session/prompt` it holds.
 
+mod agent;
 mod antigravity_paths;
 mod devin_models;
 mod normalize;
@@ -40,7 +45,6 @@ use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use crate::process::{ChildStdin, ChildStdout};
 use async_trait::async_trait;
 use futures::StreamExt;
 use futures::future::BoxFuture;
@@ -1249,6 +1253,10 @@ pub struct AcpHarness {
     models_cache: crate::catalog::Catalog,
     workspace_commands: crate::skills::CommandDiscovery,
     devin_models: std::sync::Arc<devin_models::Catalog>,
+    /// Run under a keeper when the engine lends one (#11930); `None` reads
+    /// [`crate::keeper::ENV`].
+    #[cfg(unix)]
+    keepers: Option<bool>,
 }
 
 impl AcpHarness {
@@ -1268,6 +1276,8 @@ impl AcpHarness {
             models_cache: crate::catalog::Catalog::default(),
             workspace_commands: crate::skills::CommandDiscovery::default(),
             devin_models: Default::default(),
+            #[cfg(unix)]
+            keepers: None,
         }
     }
 
@@ -1473,6 +1483,13 @@ impl AcpHarness {
     /// Use a fixed agent binary instead of PATH/known-location resolution.
     pub fn with_executable(mut self, path: impl Into<PathBuf>) -> Self {
         self.executable = Some(path.into());
+        self
+    }
+
+    /// Run under a keeper when the engine lends one, or never.
+    #[cfg(unix)]
+    pub fn with_keepers(mut self, keepers: bool) -> Self {
+        self.keepers = Some(keepers);
         self
     }
 
@@ -1690,6 +1707,104 @@ impl AcpHarness {
         ),
         HarnessError,
     > {
+        let (exe, mut cmd, scratch) = self
+            .agent_command(cwd, block_on_install, extra_args)
+            .await?;
+        let child = cmd.spawn().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                HarnessError::NotInstalled(crate::executable::binary_hint(&exe))
+            } else {
+                HarnessError::Io(e)
+            }
+        })?;
+        let mut child = Child::new(child);
+        let (stderr_tail, sign_in_prompted) = match child.stderr.take() {
+            Some(stderr) => watch_stderr(stderr, self.spec.id),
+            None => Default::default(),
+        };
+        Ok((scratch, child, stderr_tail, sign_in_prompted))
+    }
+
+    /// The agent for a run, with its stdin and stdout: under a keeper when
+    /// the engine lends one, the earlier engine's for `adopt`, else a child
+    /// of this process.
+    async fn start_agent(
+        &self,
+        cwd: &str,
+        #[cfg(unix)] adopt: Option<crate::keeper::Link>,
+    ) -> Result<
+        (
+            Option<ScratchDir>,
+            agent::AgentProcess,
+            crate::process::RuntimeInput,
+            crate::process::RuntimeOutput,
+            crate::StderrTail,
+            CancellationToken,
+        ),
+        HarnessError,
+    > {
+        #[cfg(unix)]
+        {
+            let adopting = adopt.is_some();
+            let (_, cmd, scratch) = self.agent_command(Some(cwd), !adopting, &[]).await?;
+            // An archive adapter's temp root goes with this engine, so it
+            // runs as a child.
+            let enabled =
+                scratch.is_none() && self.keepers.unwrap_or_else(crate::keeper::allowed_by_env);
+            if let Some(mut child) = crate::keeper::kept::child(
+                &cmd,
+                crate::keeper::kept::Wire::Acp,
+                enabled,
+                false,
+                adopt,
+            )
+            .await?
+            {
+                let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+                    return Err(HarnessError::Protocol("agent child has no stdio".into()));
+                };
+                let (stderr_tail, sign_in_prompted) = match child.stderr.take() {
+                    Some(stderr) => watch_stderr(stderr, self.spec.id),
+                    None => Default::default(),
+                };
+                return Ok((
+                    None,
+                    agent::AgentProcess::Kept(child),
+                    stdin,
+                    stdout,
+                    stderr_tail,
+                    sign_in_prompted,
+                ));
+            }
+        }
+        let (scratch, mut child, stderr_tail, sign_in_prompted) =
+            self.spawn_agent(Some(cwd), true, &[], None).await?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| HarnessError::Protocol("agent child has no stdin".into()))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| HarnessError::Protocol("agent child has no stdout".into()))?;
+        Ok((
+            scratch,
+            agent::AgentProcess::Owned(child),
+            Box::new(stdin),
+            Box::new(stdout),
+            stderr_tail,
+            sign_in_prompted,
+        ))
+    }
+
+    /// The command that starts the agent, with the temp root an archive
+    /// adapter unpacks into.
+    async fn agent_command(
+        &self,
+        cwd: Option<&str>,
+        block_on_install: bool,
+        extra_args: &[String],
+    ) -> Result<(PathBuf, Command, Option<ScratchDir>), HarnessError> {
         let (exe, args) = self.resolve_program(block_on_install).await?;
         let mut cmd = Command::new(&exe);
         cmd.args(args);
@@ -1721,33 +1836,7 @@ impl AcpHarness {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        let child = cmd.spawn().map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                HarnessError::NotInstalled(crate::executable::binary_hint(&exe))
-            } else {
-                HarnessError::Io(e)
-            }
-        })?;
-        let mut child = Child::new(child);
-        let stderr_tail = crate::StderrTail::default();
-        let sign_in_prompted = CancellationToken::new();
-        if let Some(stderr) = child.stderr.take() {
-            let tail = stderr_tail.clone();
-            let prompted = sign_in_prompted.clone();
-            let harness = self.spec.id;
-            tokio::spawn(async move {
-                let mut lines = tokio::io::BufReader::new(stderr).lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    tracing::debug!(target: "openagents_harness::acp", "stderr: {line}");
-                    tail.push(&line);
-                    if is_sign_in_prompt(harness, &line) {
-                        prompted.cancel();
-                    }
-                }
-                tail.close();
-            });
-        }
-        Ok((scratch, child, stderr_tail, sign_in_prompted))
+        Ok((exe, cmd, scratch))
     }
 
     /// Short-lived discovery run for [`Harness::commands`]: initialize, scan
@@ -2346,20 +2435,66 @@ impl Harness for AcpHarness {
         request: RunRequest,
         controls: RunControls,
     ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
-        let (scratch, mut child, stderr_tail, sign_in_prompted) = self
-            .spawn_agent(Some(&request.cwd), true, &[], request.mcp.as_ref())
+        self.run_agent(
+            request,
+            controls,
+            #[cfg(unix)]
+            None,
+        )
+        .await
+    }
+
+    #[cfg(unix)]
+    async fn attach(
+        &self,
+        request: RunRequest,
+        controls: RunControls,
+        link: crate::keeper::Link,
+    ) -> Option<Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError>> {
+        Some(self.run_agent(request, controls, Some(link)).await)
+    }
+}
+
+impl AcpHarness {
+    async fn run_agent(
+        &self,
+        request: RunRequest,
+        controls: RunControls,
+        #[cfg(unix)] adopt: Option<crate::keeper::Link>,
+    ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
+        let (scratch, child, stdin, stdout, stderr_tail, sign_in_prompted) = self
+            .start_agent(
+                &request.cwd,
+                #[cfg(unix)]
+                adopt,
+            )
             .await?;
-        let stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| HarnessError::Protocol("agent child has no stdin".into()))?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| HarnessError::Protocol("agent child has no stdout".into()))?;
         let (client, incoming) =
             client_with_sign_in_prompt(stdin, stdout, self.spec.id, &sign_in_prompted);
+        // Under a keeper, the session loop's messages go through a relay
+        // that tells the keeper when each one is handled.
+        #[cfg(unix)]
+        let kept = child.keeper().cloned();
+        #[cfg(unix)]
+        let incoming = match &kept {
+            Some(kept) => kept.relay(incoming),
+            None => incoming,
+        };
         let (event_tx, event_rx) = mpsc::channel::<Result<AgentEvent, HarnessError>>(256);
+        let events = |rx: mpsc::Receiver<_>| {
+            futures::stream::unfold(
+                rx,
+                |mut rx| async move { rx.recv().await.map(|ev| (ev, rx)) },
+            )
+            .boxed()
+        };
+        #[cfg(unix)]
+        let events = match &kept {
+            Some(kept) => kept.events(&event_tx, event_rx),
+            None => events(event_rx),
+        };
+        #[cfg(not(unix))]
+        let events = events(event_rx);
         let devin_catalog = if self.spec.id == HarnessId::Devin {
             let (exe, _) = self.resolve_program(false).await?;
             Some(DevinCatalog {
@@ -2392,7 +2527,7 @@ impl Harness for AcpHarness {
             }
             _ => None,
         };
-        tokio::spawn(run_session(Session {
+        let session = run_session(Session {
             child,
             scratch,
             client,
@@ -2419,12 +2554,14 @@ impl Harness for AcpHarness {
             handshake_timeout: self.handshake_timeout,
             stderr_tail,
             sign_in_prompted,
-        }));
-
-        let events = futures::stream::unfold(event_rx, |mut rx| async move {
-            rx.recv().await.map(|ev| (ev, rx))
-        })
-        .boxed();
+        });
+        #[cfg(unix)]
+        match kept {
+            Some(kept) => tokio::spawn(KEPT.scope(kept, session)),
+            None => tokio::spawn(session),
+        };
+        #[cfg(not(unix))]
+        tokio::spawn(session);
         Ok(if self.spec.id == HarnessId::Antigravity {
             system_message::strip_system_message_echoes(events)
         } else {
@@ -2437,8 +2574,26 @@ impl Harness for AcpHarness {
 // Session
 // ---------------------------------------------------------------------------
 
+#[cfg(unix)]
+tokio::task_local! {
+    /// The keeper holding this session's agent, when one does.
+    static KEPT: std::sync::Arc<crate::keeper::kept::Kept>;
+}
+
+/// The messages the reader had queued before now, ahead of what `try_recv`
+/// drains. Under a keeper the relay hands messages over one at a time, so a
+/// response that ends a turn could otherwise overtake the updates before it.
+async fn queued_now(incoming: &mut mpsc::Receiver<Incoming>) -> VecDeque<Incoming> {
+    #[cfg(unix)]
+    if let Ok(kept) = KEPT.try_with(Clone::clone) {
+        return kept.flush(incoming).await;
+    }
+    let _ = incoming;
+    VecDeque::new()
+}
+
 struct Session {
-    child: Child,
+    child: agent::AgentProcess,
     scratch: Option<ScratchDir>,
     client: RpcClient,
     incoming: mpsc::Receiver<Incoming>,
@@ -3150,9 +3305,33 @@ fn is_sign_in_prompt(harness: HarnessId, line: &str) -> bool {
         && line.contains("Open the following link to authenticate the ACP server")
 }
 
+/// Tail the agent's stderr, and cancel the token when it prints a sign-in
+/// prompt.
+fn watch_stderr(
+    stderr: impl tokio::io::AsyncRead + Unpin + Send + 'static,
+    harness: HarnessId,
+) -> (crate::StderrTail, CancellationToken) {
+    let stderr_tail = crate::StderrTail::default();
+    let sign_in_prompted = CancellationToken::new();
+    let tail = stderr_tail.clone();
+    let prompted = sign_in_prompted.clone();
+    tokio::spawn(async move {
+        let mut lines = tokio::io::BufReader::new(stderr).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            tracing::debug!(target: "openagents_harness::acp", "stderr: {line}");
+            tail.push(&line);
+            if is_sign_in_prompt(harness, &line) {
+                prompted.cancel();
+            }
+        }
+        tail.close();
+    });
+    (stderr_tail, sign_in_prompted)
+}
+
 fn client_with_sign_in_prompt(
-    stdin: ChildStdin,
-    stdout: ChildStdout,
+    stdin: impl tokio::io::AsyncWrite + Send + Sync + Unpin + 'static,
+    stdout: impl tokio::io::AsyncRead + Send + Sync + Unpin + 'static,
     harness: HarnessId,
     sign_in_prompted: &CancellationToken,
 ) -> (RpcClient, mpsc::Receiver<Incoming>) {
@@ -3450,7 +3629,8 @@ async fn request_draining(
     // Responses resolve through the pending map, not the incoming queue, so
     // replay updates the reader forwarded BEFORE the response line may still
     // sit in the buffer — flush them now or they'd leak into the live turn.
-    while let Ok(inc) = incoming.try_recv() {
+    let mut queued = queued_now(incoming).await;
+    while let Some(inc) = queued.pop_front().or_else(|| incoming.try_recv().ok()) {
         handle_incoming(inc);
     }
     // Keep config refreshes even when they race the session response. They
@@ -3968,6 +4148,33 @@ async fn run_session(session: Session) {
             current_prompt_id.clone(),
         )
     });
+    // A picked-up run has replayed its handshake and opening prompt: new
+    // requests take ids after every one the journal has, and the turn in
+    // flight is the last prompt an earlier engine sent.
+    #[cfg(unix)]
+    if let Some(kept) = child.keeper() {
+        let opening = client.last_id();
+        let latest = kept
+            .journaled("session/prompt")
+            .filter(|(id, _)| *id > opening);
+        if let Some((id, params)) = latest {
+            turn = Some(client.expect("session/prompt", id));
+            if let Some(text) = params["prompt"][0]["text"].as_str() {
+                current_prompt_text = text.to_owned();
+            }
+            if let Some(prompt_id) = params["_meta"]["promptId"].as_str() {
+                prompt_seq = prompt_id
+                    .strip_prefix("openagents-p")
+                    .and_then(|n| n.parse().ok())
+                    .unwrap_or(prompt_seq);
+                current_prompt_id = Some(prompt_id.to_owned());
+            }
+        }
+        kept.written_through(opening).await;
+        if let Some(through) = kept.handshake_replayed() {
+            client.skip_ids_through(through);
+        }
+    }
     // Steers waiting for the turn boundary (agents without the extension, or
     // extension steers that lost the turn-end race).
     let mut queued_steers: VecDeque<String> = VecDeque::new();
@@ -4157,7 +4364,8 @@ async fn run_session(session: Session) {
                 // queued in stdout order — fold them into the turn before
                 // closing it (responses bypass the incoming queue).
                 let mut consumer_gone = false;
-                while let Ok(inc) = incoming.try_recv() {
+                let mut queued = queued_now(&mut incoming).await;
+                while let Some(inc) = queued.pop_front().or_else(|| incoming.try_recv().ok()) {
                     match inc {
                         Incoming::Notification { method, params } => {
                             let events =
@@ -4294,6 +4502,10 @@ async fn run_session(session: Session) {
             inc = incoming.recv() => match inc {
                 Some(Incoming::Notification { method, params }) => {
                     if params.get("sessionId").and_then(Value::as_str).is_some_and(|id| id != session_id) {
+                        continue;
+                    }
+                    #[cfg(unix)]
+                    if crate::keeper::kept::is_marker(&method) {
                         continue;
                     }
                     last_update_at = tokio::time::Instant::now();
@@ -4493,7 +4705,10 @@ async fn run_session(session: Session) {
                         // before the injection landed folds after the split —
                         // the transcript attributes it to the reply-to-steer.
                         let mut consumer_gone = false;
-                        while let Ok(inc) = incoming.try_recv() {
+                        let mut queued = queued_now(&mut incoming).await;
+                        while let Some(inc) =
+                            queued.pop_front().or_else(|| incoming.try_recv().ok())
+                        {
                             match inc {
                                 Incoming::Notification { method, params } => {
                                     let events =
@@ -4929,7 +5144,7 @@ async fn run_session(session: Session) {
                     client.notify("session/cancel", Some(json!({ "sessionId": session_id })));
                     // Escalate if the agent doesn't wind down (stopReason
                     // "cancelled") within the grace periods.
-                    if let Some(pid) = crate::process::signal_target(&child) {
+                    if let Some(pid) = child.signal_target() {
                         escalation_target = Some(pid);
                         escalation_deadline = Some(tokio::time::Instant::now() + interrupt_grace);
                     }

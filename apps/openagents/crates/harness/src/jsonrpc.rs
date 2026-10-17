@@ -196,6 +196,44 @@ impl RpcClient {
                 )))
             });
         }
+        Self::response(method, rx)
+    }
+
+    /// Await the response to a request an earlier engine sent with `id`, for
+    /// a run picked up from a keeper. Register it before the response can
+    /// arrive.
+    #[cfg(unix)]
+    pub(crate) fn expect(
+        &self,
+        method: &str,
+        id: i64,
+    ) -> futures::future::BoxFuture<'static, Result<Value, HarnessError>> {
+        let method = method.to_owned();
+        let (tx, rx) = oneshot::channel();
+        {
+            let mut pending = self.pending.lock().expect("pending lock");
+            if self.is_closed() {
+                return Box::pin(async move {
+                    Err(HarnessError::Protocol(format!(
+                        "{method}: app-server exited before responding"
+                    )))
+                });
+            }
+            pending.insert(id, tx);
+        }
+        Self::response(method, rx)
+    }
+
+    /// The id the last request took.
+    #[cfg(unix)]
+    pub(crate) fn last_id(&self) -> i64 {
+        self.next_id.load(Ordering::Relaxed)
+    }
+
+    fn response(
+        method: String,
+        rx: oneshot::Receiver<Result<Value, String>>,
+    ) -> futures::future::BoxFuture<'static, Result<Value, HarnessError>> {
         Box::pin(async move {
             match rx.await {
                 Ok(Ok(result)) => Ok(result),
