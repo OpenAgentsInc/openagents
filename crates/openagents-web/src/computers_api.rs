@@ -8,7 +8,7 @@ pub(crate) mod usage;
 
 use axum::body::Bytes;
 use axum::extract::{Path, State};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::Response;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -80,11 +80,15 @@ pub(crate) async fn identity(app: &App, headers: &HeaderMap) -> Result<Identity,
 }
 
 fn unavailable() -> Response {
-    refused(
+    let mut response = refused(
         StatusCode::SERVICE_UNAVAILABLE,
         "unavailable",
         "Cloud computers aren't available right now. Try again later.",
-    )
+    );
+    response
+        .headers_mut()
+        .insert(header::RETRY_AFTER, HeaderValue::from_static("1"));
+    response
 }
 
 async fn admitted(app: &App, headers: &HeaderMap) -> Result<Identity, Response> {

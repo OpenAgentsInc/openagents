@@ -3,7 +3,7 @@ use axum::{Json, Router, extract::Request, response::IntoResponse, routing::any}
 use std::os::unix::fs::PermissionsExt;
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 mod usage;
@@ -859,4 +859,226 @@ fn service_origins_and_public_paths_are_bounded() {
         })
         .is_err()
     );
+}
+
+struct Handoff {
+    /// Account lookups that still answer as unavailable.
+    down: AtomicUsize,
+    revoked: AtomicBool,
+    lookups: AtomicUsize,
+    calls: Mutex<Vec<(String, String)>>,
+}
+
+async fn handoff_account(State(state): State<Arc<Handoff>>, headers: HeaderMap) -> Response {
+    state.lookups.fetch_add(1, Ordering::SeqCst);
+    let mut down = state.down.load(Ordering::SeqCst);
+    while down > 0 {
+        match state
+            .down
+            .compare_exchange(down, down - 1, Ordering::SeqCst, Ordering::SeqCst)
+        {
+            Ok(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+            Err(current) => down = current,
+        }
+    }
+    let bearer = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    if state.revoked.load(Ordering::SeqCst) || bearer != format!("Bearer {}", token("alice")) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error":"signed_out"})),
+        )
+            .into_response();
+    }
+    Json(json!({"account":{"id":"alice","admin":false},"workspaces":[]})).into_response()
+}
+
+async fn handoff_provider(State(state): State<Arc<Handoff>>, request: Request) -> Response {
+    let owner = request
+        .headers()
+        .get("x-openagents-account")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let method = request.method().to_string();
+    let path = request.uri().path().to_owned();
+    state.calls.lock().unwrap().push((method.clone(), path));
+    assert_eq!(owner, crate::chat_store::account_owner("alice"));
+    let row = json!({"id":ID,"chat":null,"size":"small","desired":"running","state":"awake","turns":0,"created_unix":1,"updated_unix":1});
+    if method == "GET" {
+        (StatusCode::OK, Json(row)).into_response()
+    } else {
+        (StatusCode::ACCEPTED, Json(row)).into_response()
+    }
+}
+
+#[tokio::test]
+async fn account_handoff_retries_a_read_and_does_not_replay_a_delete() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let state = Arc::new(Handoff {
+        down: AtomicUsize::new(1),
+        revoked: AtomicBool::new(false),
+        lookups: AtomicUsize::new(0),
+        calls: Mutex::new(Vec::new()),
+    });
+    let (auth_base, auth_task) = serve(
+        Router::new()
+            .route("/v1/account", axum::routing::get(handoff_account))
+            .with_state(state.clone()),
+    )
+    .await;
+    let (provider_base, provider_task) = serve(
+        Router::new()
+            .fallback(any(handoff_provider))
+            .with_state(state.clone()),
+    )
+    .await;
+    let private = dir.path().canonicalize().unwrap().join("private");
+    std::fs::create_dir(&private).unwrap();
+    std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let key = private.join("csrf");
+    std::fs::write(&key, [9_u8; 32]).unwrap();
+    std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600)).unwrap();
+    std::fs::write(
+        config_path(&private),
+        serde_json::to_vec(&json!({
+            "schema": "openagents.cloud.web-config.v1",
+            "public_origin": "http://127.0.0.1:4300",
+            "account_service": auth_base,
+            "csrf_secret": key
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    std::fs::set_permissions(
+        config_path(&private),
+        std::fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
+    let mut config = crate::Config::development(dir.path().join("tasks"));
+    config.cloud = Some(Arc::new(
+        crate::cloud::session::CloudSession::load(&config_path(&private)).unwrap(),
+    ));
+    config.agent_accounts = vec!["alice".into()];
+    crate::computers::configure(
+        &provider_base,
+        crate::computers::Token::Value("synthetic-service-token".into()),
+    );
+    let app = App(Arc::new(crate::Inner { config }));
+    let (base, task) = serve(crate::phone_api::routes().with_state(app).layer(
+        axum::middleware::from_fn(super::contract_tests::check_response),
+    ))
+    .await;
+    let http = reqwest::Client::new();
+    let read = format!("{base}/v1/computers/{ID}");
+    let remove = format!("{base}/v1/computers/{ID}?kind=cloud");
+
+    let recovered = http
+        .get(&read)
+        .bearer_auth(token("alice"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(recovered.status(), 200);
+    assert_eq!(state.lookups.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        state.calls.lock().unwrap().as_slice(),
+        [("GET".into(), format!("/v1/computers/{ID}"))]
+    );
+
+    state.down.store(2, Ordering::SeqCst);
+    let before = state.calls.lock().unwrap().len();
+    let down = http
+        .get(&read)
+        .bearer_auth(token("alice"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(down.status(), 503);
+    assert_eq!(down.headers()[header::RETRY_AFTER], "1");
+    let body = down.text().await.unwrap();
+    assert!(body.contains("Try again later"));
+    assert_eq!(state.lookups.load(Ordering::SeqCst), 4);
+    assert_eq!(state.calls.lock().unwrap().len(), before);
+
+    state.down.store(0, Ordering::SeqCst);
+    let again = http
+        .get(&read)
+        .bearer_auth(token("alice"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(again.status(), 200);
+    assert_eq!(state.lookups.load(Ordering::SeqCst), 5);
+    assert_eq!(state.calls.lock().unwrap().len(), before + 1);
+
+    state.revoked.store(true, Ordering::SeqCst);
+    let revoked = http
+        .get(&read)
+        .bearer_auth(token("alice"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(revoked.status(), 401);
+    assert_eq!(state.lookups.load(Ordering::SeqCst), 6);
+    assert_eq!(state.calls.lock().unwrap().len(), before + 1);
+    state.revoked.store(false, Ordering::SeqCst);
+
+    let forged = http
+        .get(&read)
+        .bearer_auth(token("charlie"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(forged.status(), 401);
+    assert_eq!(state.lookups.load(Ordering::SeqCst), 7);
+    let shaped = state.lookups.load(Ordering::SeqCst);
+    let garbage = http.get(&read).bearer_auth("forged").send().await.unwrap();
+    assert_eq!(garbage.status(), 401);
+    assert_eq!(state.lookups.load(Ordering::SeqCst), shaped);
+
+    state.down.store(2, Ordering::SeqCst);
+    let missed = http
+        .delete(&remove)
+        .bearer_auth(token("alice"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(missed.status(), 503);
+    assert_eq!(missed.headers()[header::RETRY_AFTER], "1");
+    assert!(
+        state
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|(method, _)| method != "DELETE")
+    );
+
+    state.down.store(0, Ordering::SeqCst);
+    let deleted = http
+        .delete(&remove)
+        .bearer_auth(token("alice"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(deleted.status(), 202);
+    assert_eq!(
+        state
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(method, _)| method == "DELETE")
+            .count(),
+        1
+    );
+
+    task.abort();
+    auth_task.abort();
+    provider_task.abort();
 }

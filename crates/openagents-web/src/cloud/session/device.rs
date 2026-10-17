@@ -95,6 +95,8 @@ impl CloudSession {
     /// Fresh account authority for computer operations. The account service
     /// validates sessions, sign-in keys, and account-scoped API keys; prefixes
     /// alone never grant access, and a decision-only API key is refused there.
+    /// A transport failure or a 5xx is tried once more. A refused session is
+    /// not tried again, and a result is never remembered for a later call.
     pub(crate) async fn computer_account(&self, token: &str) -> Result<(String, bool)> {
         if !(session_token(token) || token.starts_with("oak_"))
             || token.len() > 512
@@ -104,24 +106,33 @@ impl CloudSession {
         {
             return Err(SessionError::Unauthenticated);
         }
-        let answer = self
-            .device_call(reqwest::Method::GET, "/v1/account", Some(token), None)
-            .await?;
-        match answer.status {
-            200 => {
-                let id = answer.body["account"]["id"]
-                    .as_str()
-                    .filter(|id| super::identifier(id))
-                    .ok_or(SessionError::Unavailable)?;
-                Ok((
-                    id.to_owned(),
-                    answer.body["account"]["admin"].as_bool() == Some(true),
-                ))
+        for attempt in 0..2 {
+            match self
+                .device_call(reqwest::Method::GET, "/v1/account", Some(token), None)
+                .await
+            {
+                Ok(answer) => {
+                    return match answer.status {
+                        200 => {
+                            let id = answer.body["account"]["id"]
+                                .as_str()
+                                .filter(|id| super::identifier(id))
+                                .ok_or(SessionError::Unavailable)?;
+                            Ok((
+                                id.to_owned(),
+                                answer.body["account"]["admin"].as_bool() == Some(true),
+                            ))
+                        }
+                        401 => Err(SessionError::Unauthenticated),
+                        403 | 404 => Err(SessionError::Forbidden),
+                        _ => Err(SessionError::Unavailable),
+                    };
+                }
+                Err(SessionError::Unavailable) if attempt == 0 => {}
+                Err(error) => return Err(error),
             }
-            401 => Err(SessionError::Unauthenticated),
-            403 | 404 => Err(SessionError::Forbidden),
-            _ => Err(SessionError::Unavailable),
         }
+        Err(SessionError::Unavailable)
     }
 
     async fn device_call(
