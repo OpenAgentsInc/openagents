@@ -19,6 +19,8 @@ use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
 
 mod client;
+/// Connect your phone: the rotating connect code (#11998).
+pub mod connect_phone;
 pub mod device_room;
 /// Moving running chats to a cloud computer (#11933).
 pub mod moves;
