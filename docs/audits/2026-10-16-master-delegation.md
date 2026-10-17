@@ -138,13 +138,13 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 5: Labs kinds and app views
 
-**#11949 code complete by Codex `codex:01a14140`** in `space-infra-publish`: the hosted player and timeline use the public Labs API. Its checks passed; deployment and real render playback are in After-close checks. #11886 remains in its `lnd-work` checkout; #11948 stays with the active Claude Code session.
+**#11949 closed by Codex `codex:01a14140` in `2945c7608c`** in `space-infra-publish`: the hosted player and timeline use the public Labs API. Its checks passed; deployment and real render playback are in After-close checks. #11886 is also merged and closed; #11948 stays with the active Claude Code session.
 
 **Taken 2026-10-17 01:20 CDT** by a Claude Code subagent working #11948 in ~/work/openagents-11948.
 
 **Released 2026-10-17 01:10 CDT** by a Claude Code subagent. #11942 is closed on code (`e6ebb67e46`, `a3ef319562`). The hosted player and timeline on `/labs/video/{doc}` are #11949. The `~/work/openagents-11942` worktree is removed; target `~/work/openagents-target-agent2` stays warm.
 
-**#11886 code complete by Codex `codex:01a14140`** in `lnd-work`. The desktop timeline and account-bound editor service passed their checks, including the #11943 notes/event integration. #11949 is merged and closed; #11948 stays with its active Claude Code session. Deployment and real native/web render playback stay with lane 0 in After-close checks.
+**#11886 closed by Codex `codex:01a14140` in `052cedc1e2`** in `lnd-work`. The desktop timeline and account-bound editor service passed their checks, including the #11943 notes/event integration. #11949 is merged and closed; #11948 stays with its active Claude Code session. Deployment and real native/web render playback stay with lane 0 in After-close checks.
 
 **Released 2026-10-17 01:05 CDT** by a Claude Code subagent. #11884 and #11943 are closed on code (`29d4e808fd`, `a4c68fd920`, `0e18a669df`); typed Lab rows in live sessions, the version list, and Model3d orbit are #11948, which waits on #11942. #11886 is code complete in the Codex update above. The `~/work/openagents-lane5c` worktree is removed; target `~/work/openagents-target-lane5b-app` stays warm.
 
@@ -156,6 +156,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 - **Order:** #11881 and #11882 as soon as #11878 lands. #11880 after #11877 and #11878. The app views #11883, #11884, and #11886 after #11876 and #11877. Each view renders `lab-ui`'s Rust Native card; don't write a card per shell.
 
 ### Lane 6: Computers and SPACE (the live Codex session)
+
+**Source scope released by Codex `codex:01a14140`.** Its Computers follow-ups and #11886/#11949 are merged, checked, and closed; it holds no unfinished issue claim. Lane 0 owns the listed live checks, and lane 10 keeps every signet observer. The two isolated checkouts and the root/app target caches stay available.
 
 - **Owns:** `crates/coder-working-computer`, `crates/oa-computers` and the SPACE driver, `deploy/space-service`, `deploy/space-credentials`, the Computers routes, and usage and quota code.
 - **Status:** `codex:01a14134` completed #11813 and #11816 and is closing #11800 on source. Its canaries, credentials, workloads, and builder are removed. Lane 0 owns the remaining deployment/live rows and provider-managed empty-network cleanup below. #11823 stays in lane 1.
