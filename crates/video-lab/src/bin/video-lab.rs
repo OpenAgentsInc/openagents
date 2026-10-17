@@ -14,6 +14,11 @@
 //!   `{"action": "vo_captions", "text", "start", "wpm"}`, `{"action": "tools"}`
 //!
 //! A refusal is `{"refused": message, "code"}`; a malformed request is `{"error"}`.
+//!
+//! `video-lab render-job|frames-job|measure-job --ffmpeg PATH --ffprobe PATH
+//! [--quality preview|review]` is a Labs worker's handler for that job
+//! (`video_lab::runner`): the job on stdin, the handler output on stdout, and
+//! exit status 1 with the reason on stderr when it can't run.
 
 use std::io::Read as _;
 
@@ -112,7 +117,55 @@ fn run(input: &Value) -> Result<Value, lab_kit::Refusal> {
     )
 }
 
-fn main() {
+/// A worker handler: `NAME-job` with its tools named by flag.
+fn job(name: &str, args: &[String]) -> std::process::ExitCode {
+    let flag = |key: &str| {
+        args.iter()
+            .position(|a| a == key)
+            .and_then(|i| args.get(i + 1))
+            .map(std::path::PathBuf::from)
+    };
+    let (Some(ffmpeg), Some(ffprobe)) = (flag("--ffmpeg"), flag("--ffprobe")) else {
+        eprintln!("Name ffmpeg and ffprobe with --ffmpeg PATH --ffprobe PATH.");
+        return std::process::ExitCode::from(2);
+    };
+    let quality = match flag("--quality").as_deref().and_then(|q| q.to_str()) {
+        None | Some("preview") => video_lab::runner::Quality::Preview,
+        Some("review") => video_lab::runner::Quality::Review,
+        Some(_) => {
+            eprintln!("Choose --quality preview or review.");
+            return std::process::ExitCode::from(2);
+        }
+    };
+    let tools = video_lab::runner::Tools {
+        ffmpeg,
+        ffprobe,
+        quality,
+    };
+    let mut input = Vec::new();
+    let dir = std::env::current_dir().unwrap_or_else(|_| std::env::temp_dir());
+    let result = std::io::stdin()
+        .take(64 * 1024 * 1024)
+        .read_to_end(&mut input)
+        .map_err(|e| e.to_string())
+        .and_then(|_| video_lab::runner::handle(name, &input, &tools, &dir));
+    match result {
+        Ok(output) => {
+            println!("{output}");
+            std::process::ExitCode::SUCCESS
+        }
+        Err(why) => {
+            eprintln!("{why}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+fn main() -> std::process::ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(name) = args.first().and_then(|a| a.strip_suffix("-job")) {
+        return job(name, &args[1..]);
+    }
     let mut data = String::new();
     let answer = match std::io::stdin()
         .take(64 * 1024 * 1024)
@@ -131,4 +184,5 @@ fn main() {
         },
     };
     println!("{answer}");
+    std::process::ExitCode::SUCCESS
 }

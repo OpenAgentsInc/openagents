@@ -9,7 +9,9 @@
 //! - [`edit`]: the edit pipeline (captions follow their shots, removed shots
 //!   take their captions and music hits, an edit that adds a problem is
 //!   refused), times the chat passes, and voiceover caption pacing;
-//! - [`timeline`]: the magnetic timeline's intents.
+//! - [`timeline`]: the magnetic timeline's intents;
+//! - [`private`]: which files stay on their computer (`lab_private.json`);
+//! - [`runner`]: the Labs worker's `render`, `frames` and `measure` jobs.
 //!
 //! Refusals keep the Lab's exact words. `scripts/film/lab.py` and `cut.py`
 //! call this crate through the `video-lab` program (`src/bin/video-lab.rs`).
@@ -19,6 +21,8 @@ pub mod edit;
 pub mod fmt;
 pub mod measure;
 pub mod patch;
+pub mod private;
+pub mod runner;
 pub mod schema;
 pub mod timeline;
 
@@ -35,6 +39,31 @@ pub use measure::Measured;
 pub const TOOLS: &str = include_str!("../tools.json");
 
 pub struct VideoKind;
+
+/// The job types: `runner` runs the first three; transcription (whisper),
+/// the score (`music.py`) and import still run in `scripts/film`.
+pub const JOB_TYPES: [&str; 6] = [
+    "render",
+    "frames",
+    "measure",
+    "transcribe",
+    "score",
+    "import",
+];
+
+/// The least a worker needs for each job: renders get an hour, the rest ten minutes.
+fn requirements(job: &str) -> Requirements {
+    Requirements {
+        cpu_millis: 2000,
+        memory_bytes: 2 * 1024 * 1024 * 1024,
+        tools: match job {
+            "transcribe" => vec!["whisper-cli".into(), "ffmpeg".into()],
+            _ => vec!["ffmpeg".into()],
+        },
+        max_seconds: if job == "render" { 3600 } else { 600 },
+        ..Requirements::default()
+    }
+}
 
 /// The document kind: `measurements.schema` when given, else from its shape.
 fn kind_of(content: &Value, m: &Value) -> &'static str {
@@ -73,17 +102,11 @@ impl LabKind for VideoKind {
             tool_prefix: "lab_".into(),
             doc_arg: "document".into(),
             tools,
-            job_types: [
-                "render",
-                "frames",
-                "measure",
-                "transcribe",
-                "score",
-                "import",
-            ]
-            .map(String::from)
-            .to_vec(),
-            job_requirements: Default::default(),
+            job_types: JOB_TYPES.map(String::from).to_vec(),
+            job_requirements: JOB_TYPES
+                .iter()
+                .map(|job| ((*job).to_owned(), requirements(job)))
+                .collect(),
             views: vec![View::Video, View::Compare, View::Image],
             limits: Limits {
                 max_doc_bytes: 2 * 1024 * 1024,
@@ -256,5 +279,174 @@ impl LabKind for VideoKind {
             detail: json!({"seconds": edit::length(&version.schema, &version.content),
                 "shots": edit::timeline(&version.content).into_iter().map(|(n, s, e)| json!({"name": n, "start": s, "end": e})).collect::<Vec<_>>()}),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lab_kit::{AssetClass, AssetEntry, Reference};
+
+    fn cut() -> Value {
+        json!({
+            "fps": 30, "size": [320, 180], "out": "~/out.mp4",
+            "timeline": {},
+            "shots": [
+                {"name": "open", "src": "~/clips/a.mp4", "in": 0, "dur": 1.0},
+                {"name": "end", "src": "~/clips/b.mp4", "in": 0, "dur": 1.0}
+            ]
+        })
+    }
+
+    fn version(content: Value, assets: Vec<AssetEntry>) -> Version {
+        Version {
+            document: "film".into(),
+            number: 2,
+            parent: Some(1),
+            author: "test".into(),
+            summary: "First cut".into(),
+            created_unix_ms: 0,
+            schema: "cut.v1".into(),
+            content_sha256: lab_kit::digest(&content),
+            content,
+            report: Report::default(),
+            assets,
+        }
+    }
+
+    /// Placeholders for the clips, as a preview with missing files measures.
+    fn placeholders() -> Value {
+        json!({"allow_missing": true})
+    }
+
+    #[test]
+    fn the_manifest_declares_every_job_with_its_needs() {
+        let m = VideoKind::manifest();
+        assert_eq!(m.kind, "video");
+        assert!(!m.tools.is_empty());
+        assert!(m.tools.iter().all(|t| t.name.starts_with("lab_")));
+        assert_eq!(m.job_types.len(), JOB_TYPES.len());
+        for job in JOB_TYPES {
+            let r = &m.job_requirements[job];
+            assert!(r.tools.contains(&"ffmpeg".to_owned()), "{job}");
+            assert!(r.max_seconds > 0);
+        }
+        assert_eq!(m.job_requirements["render"].max_seconds, 3600);
+    }
+
+    #[test]
+    fn check_refuses_a_broken_document_and_reports_length() {
+        let report = VideoKind::check(&cut(), &placeholders()).unwrap();
+        assert_eq!(report.facts["seconds"], 2.0);
+        let mut broken = cut();
+        broken["shots"][0]["duration"] = json!(4);
+        let refusal = VideoKind::check(&broken, &placeholders()).unwrap_err();
+        assert_eq!(refusal.code, "check");
+    }
+
+    #[test]
+    fn a_timeline_edit_makes_a_checked_draft() {
+        let base = version(cut(), Vec::new());
+        let change = Change::Intent {
+            intent: json!({"intent": "timeline", "command": {"id": "video:open", "op": "speed", "value": 2.0}}),
+        };
+        let draft = VideoKind::apply(&base, &change, " Faster open ", &placeholders()).unwrap();
+        assert_eq!(draft.summary, "Faster open");
+        assert_eq!(draft.content["shots"][0]["speed"], 2.0);
+        assert_eq!(draft.report.facts["seconds"], 1.5);
+
+        let refusal = VideoKind::apply(&base, &change, " ", &placeholders()).unwrap_err();
+        assert_eq!(refusal.code, "video");
+        let bad = Change::Intent {
+            intent: json!({"intent": "timeline", "command": {"id": "video:open", "op": "speed", "value": 9.0}}),
+        };
+        let refusal = VideoKind::apply(&base, &bad, "x", &placeholders()).unwrap_err();
+        assert_eq!(refusal.code, "timeline");
+        assert_eq!(refusal.message, "Choose a speed from 0.25× to 4×.");
+        let other = Change::Intent {
+            intent: json!({"intent": "paint"}),
+        };
+        assert_eq!(
+            VideoKind::apply(&base, &other, "x", &placeholders())
+                .unwrap_err()
+                .code,
+            "unknown_intent"
+        );
+    }
+
+    #[test]
+    fn private_files_keep_jobs_on_their_computer() {
+        let assets = vec![private::entry("~/work/metahuman/a.mp4", &"a".repeat(64))];
+        assert_eq!(assets[0].class, AssetClass::PrivateLocal);
+        let v = version(cut(), assets);
+        let jobs = VideoKind::jobs_for(&v, &Want::Card);
+        assert_eq!(jobs[0].job_type, "render");
+        assert!(jobs[0].requirements.private_local);
+        let public = version(cut(), Vec::new());
+        let jobs = VideoKind::jobs_for(
+            &public,
+            &Want::Job {
+                job_type: "frames".into(),
+                params: Value::Null,
+            },
+        );
+        assert!(!jobs[0].requirements.private_local);
+        assert!(
+            VideoKind::jobs_for(
+                &public,
+                &Want::Job {
+                    job_type: "paint".into(),
+                    params: Value::Null
+                }
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn the_card_plays_the_render_and_says_what_is_happening() {
+        let v = version(cut(), Vec::new());
+        let spec = VideoKind::jobs_for(&v, &Want::Card).remove(0);
+        let running = JobState {
+            id: "j1".into(),
+            spec: spec.clone(),
+            status: JobStatus::Running,
+            message: None,
+            estimate_seconds: Some(90.0),
+            artifacts: Vec::new(),
+        };
+        let card = VideoKind::card(&v, std::slice::from_ref(&running), &[]);
+        assert_eq!(card.title, "film");
+        assert_eq!(card.view, View::Video);
+        assert_eq!(
+            card.state_text.as_deref(),
+            Some("Rendering the preview, about 2 min…")
+        );
+        assert_eq!(card.page.as_deref(), Some("/labs/video/film?v=2"));
+        let artifact = |id: &str, role| Artifact {
+            id: id.into(),
+            version: Reference {
+                document: "film".into(),
+                version: 2,
+            },
+            role,
+            media_type: String::new(),
+            sha256: String::new(),
+            size: 0,
+            class: AssetClass::Public,
+            no_training: false,
+        };
+        let made = [
+            artifact("r", ArtifactRole::Render),
+            artifact("p", ArtifactRole::Poster),
+            artifact("s", ArtifactRole::Strip),
+        ];
+        let card = VideoKind::card(&v, &[running], &made);
+        assert_eq!(card.primary.as_deref(), Some("r"));
+        assert_eq!(card.poster.as_deref(), Some("p"));
+        assert_eq!(card.strip, ["s"]);
+        assert_eq!(card.state, Some(JobStatus::Done));
+        assert_eq!(card.state_text, None);
+        assert_eq!(card.detail["shots"][1]["start"], 1.0);
     }
 }
