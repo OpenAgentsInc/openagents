@@ -1,0 +1,93 @@
+{
+  "schema": "openagents.space.memory_qualification.v1",
+  "issue": 11812,
+  "upstream_commit": "de87b436c35dac056564bdd5b2a113c9046e189b",
+  "api": "Isolated loopback Computers API with disposable PostgreSQL and a synthetic account",
+  "owner_data_accessed": false,
+  "production_space_enabled": false,
+  "initial": {
+    "source_commit": "f0aeae67e0ea14f7e4267ead1da1a8fd0b1e2c6b",
+    "binary_sha256": "1ccaeee1afb2651612ee9eee1ead5ed263f6aee7bb723c421cc82dc4fd6b6b37",
+    "passed": true,
+    "buffer_bytes": 1073741824,
+    "samples": [
+      {
+        "memory_mib": 4096,
+        "vcpu": 4,
+        "cycles": 2,
+        "wake_ready_ms": [
+          46294.85687900023,
+          46022.3312979997
+        ],
+        "wake_to_answer_ms": [
+          58367.6497790002,
+          55339.146790000086
+        ],
+        "same_process_memory_workspace": true,
+        "deleted": true,
+        "private_checkpoint_removed": true
+      },
+      {
+        "memory_mib": 8192,
+        "vcpu": 8,
+        "cycles": 2,
+        "wake_ready_ms": [
+          47452.161259000146,
+          45994.64967699987
+        ],
+        "wake_to_answer_ms": [
+          57431.616923000096,
+          86315.60052099985
+        ],
+        "same_process_memory_workspace": true,
+        "deleted": true,
+        "private_checkpoint_removed": true
+      }
+    ],
+    "timing_conditions": "Every cycle kills and restarts the API. Default 60-second abandoned leases can delay wake after the 15-second stopped observation. Individual timings include this delay, readiness, command dispatch and a fresh full 1 GiB hash."
+  },
+  "failure_retained": {
+    "report": "memory-reconcile-11812.json",
+    "result": "Memory/reconciliation passed; delete timed out after a terminal snapshot-upload conflict remained attached to its failed operation ID.",
+    "native_error": "sandbox has a suspend-snapshot upload in flight; retry the DELETE after the snapshot finalizes",
+    "resource": "sbx_01a14771-109b-77ed-bd39-097363ae84c8",
+    "native_delete_operation": "op_01a14771-d84e-7254-8412-f3d2b1cb9790",
+    "native_state": "failed",
+    "native_code": "conflict",
+    "provider_row_absent_afterward": true,
+    "private_checkpoint_removed_afterward": true
+  },
+  "fixed_retry": {
+    "source_commit": "0ef037a3bedefb838ac60d546b3e54ee751b1fba",
+    "binary_sha256": "9ba425e52584d0ce4fd459b4e9c88a2b0da4615f4f43e5283925fa0639b8717d",
+    "passed": true,
+    "report": "bench/computers/11812/2026-10-16-rust/delete-retry-live.json",
+    "lease_seconds": 6,
+    "revisit_seconds": 1,
+    "observation_seconds": 15,
+    "actual_reconciliation_after_restart": true,
+    "terminal_upload_conflicts": 9,
+    "completion": "Each precise terminal conflict has a separate durable child request/operation; final accepted child succeeded. GET404 alone does not complete the failed parent.",
+    "tests": 104
+  },
+  "limits": [
+    "Production remains on Boat.",
+    "SPACE does not advertise command sessions. An uncertain legacy command keeps the computer awake and its turn fenced.",
+    "No cross-worker or durable host-loss restore is qualified.",
+    "Credential references and general egress policy remain in separately claimed #11813."
+  ],
+  "cleanup": {
+    "computers_api_guests_created": 4,
+    "all_provider_resources_absent": true,
+    "all_private_checkpoint_directories_absent": true,
+    "isolated_api_processes_stopped": true,
+    "isolated_postgres_containers_removed": true,
+    "host": "Shared oa-space-spike-11812 is temporarily reused by active #11876, #11878, and #11894 checks. Root will delete the host and dedicated network resources when those checks end; six-hour automatic expiry remains enabled."
+  },
+  "artifacts": {
+    "archive": "2026-10-16-space-memory.tar.gz",
+    "sha256": "ef1c104285bcdd6b3f6155f40e588a68314bfa58c3c98d2bc81825653835abcd",
+    "rust_verification": "bench/computers/11812/2026-10-16-rust/delete-retry-verification.json",
+    "retry_logs": "bench/computers/11812/2026-10-16-rust/delete-retry-logs.tar.gz"
+  }
+}

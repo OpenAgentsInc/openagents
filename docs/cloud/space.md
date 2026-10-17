@@ -82,8 +82,17 @@ base, and repeat both twenty-sample runs and the conformance and fault checks.
 Retain the evidence before teardown.
 
 Boat remains the production default. The maintained private deployment and
-public SDK rollout remain separate work in #11814 and #11816; durable lifecycle
-recovery remains #11812.
+public SDK rollout remain separate work in #11814 and #11816.
+
+The [memory lifecycle evidence](evidence/2026-10-16-space-memory.json) for #11812
+records two API-restart stop/wake cycles at each of 4096 and 8192 MiB. Both guests
+kept the same workspace, process, PID, and full random 1 GiB buffer hash.
+A short-lease restart check also proves a reconciliation visit before wake.
+Its final deletion passed after nine explicit snapshot-upload conflicts, each
+with a separate saved child operation. Every test guest and private checkpoint
+was removed. Timings include lease expiry, readiness, dispatch, and a fresh hash;
+the raw reports preserve each measurement. The shared disposable build host
+stays up for ongoing Labs and chat checks until the root agent tears it down.
 
 ## Environment artifacts
 
