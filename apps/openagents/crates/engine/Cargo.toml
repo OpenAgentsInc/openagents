@@ -10,6 +10,7 @@ publish.workspace = true
 upstream-workos = []
 
 [dependencies]
+secp256k1 = { version = "0.31.1", features = ["rand"] }
 coder-access = { path = "../../../../crates/coder-access", default-features = false }
 coder-host = { path = "../../../../crates/coder-host" }
 coder-service = { path = "../../../../crates/coder-service" }
@@ -57,6 +58,8 @@ dunce = "1"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_Pipes", "Win32_System_Threading"] }
 
 [dev-dependencies]
+futures-util = "0.3"
+nostr = { path = "../../../../crates/nostr" }
 axum = "0.8"
 tracing-subscriber.workspace = true
 openagents-mcp.workspace = true

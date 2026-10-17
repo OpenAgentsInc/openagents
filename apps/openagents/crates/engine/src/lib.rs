@@ -614,6 +614,26 @@ impl EngineRuntime {
         Ok(())
     }
 
+    /// Create a single-use invitation on this computer only.
+    pub fn device_channel_invitation(&self, relay: &str) -> anyhow::Result<String> {
+        let guard = self
+            .nip_host
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let host = guard
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Turn on the device connection first."))?;
+        Ok(host.host().authority().local(|host, now| {
+            host.invite(
+                relay,
+                coder_access::Rights::pairing(),
+                now,
+                now + 30 * 24 * 3600,
+            )
+            .map(|issued| issued.code)
+        })?)
+    }
+
     pub fn core(&self) -> &EngineCore {
         &self.core
     }
@@ -897,7 +917,7 @@ impl Engine {
         });
         let preview_signaling = edge_enabled.then(|| openagents_preview::signaling::Config {
             edge_url: config.edge_url.clone(),
-            org_id: preview_org,
+            org_id: preview_org.clone(),
             tokens: Arc::new(auth.clone()),
         });
         core.previews.start(projects, preview_signaling).await;
@@ -955,8 +975,46 @@ impl Engine {
             nip_host: std::sync::Mutex::new(None),
         };
         if openagents_brand::env_var("OPENAGENTS_NIP_HOST").as_deref() == Ok("1") {
-            let host = host_rpc::configuration(&nip_host_root, local_device_name(&runtime.core.device_id))?;
+            let host = host_rpc::configuration(
+                &nip_host_root,
+                local_device_name(&runtime.core.device_id),
+            )?;
             runtime.enable_nip_host(host).await?;
+            if edge_enabled {
+                let bearer = auth.access_token().await.map_err(|_| {
+                    anyhow::anyhow!("Sign in before turning on the device connection.")
+                })?;
+                // No other task changes this optional host during assembly.
+                let hosted = runtime
+                    .nip_host
+                    .get_mut()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .as_ref()
+                    .unwrap();
+                hosted
+                    .configure_sync(
+                        runtime.core.rpc_service(),
+                        preview_org.clone(),
+                        runtime.core.device_id.clone(),
+                        config.edge_url.clone(),
+                        bearer,
+                    )
+                    .await?;
+            }
+            if let Ok(path) = openagents_brand::env_var("OPENAGENTS_NIP_HOST_INVITE_FILE") {
+                use std::io::Write;
+                let relay = openagents_brand::env_var("OPENAGENTS_NIP_HOST_RELAY")
+                    .unwrap_or_else(|_| "wss://relay.openagents.com".into());
+                let code = runtime.device_channel_invitation(&relay)?;
+                let mut options = std::fs::OpenOptions::new();
+                options.write(true).create_new(true);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::OpenOptionsExt;
+                    options.mode(0o600);
+                }
+                options.open(path)?.write_all(code.as_bytes())?;
+            }
         }
         Ok(runtime)
     }
