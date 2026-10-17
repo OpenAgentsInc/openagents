@@ -12,6 +12,8 @@
 //! (`snapshot()` / `subscribe()`), never over FFI.
 
 mod account;
+mod account_delete;
+pub use account_delete::*;
 mod agent_lab;
 mod chat_homes;
 mod cloud_chat;

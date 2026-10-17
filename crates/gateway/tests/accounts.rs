@@ -9,6 +9,8 @@
 #[path = "accounts_commercial/mod.rs"]
 mod commercial;
 mod common;
+#[path = "accounts_delete/mod.rs"]
+mod delete;
 #[path = "common/funding_receiver.rs"]
 mod funding_receiver;
 #[path = "accounts_lab_workers/mod.rs"]

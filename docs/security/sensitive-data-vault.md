@@ -85,7 +85,8 @@ The vault starts from this. A survey of `origin/main` on 2026-10-10:
   decrypt everything sealed under it. There is no per-user key.
   `crates/inference/src/seal.rs` and `crates/oa-auth/src/repos.rs` are two
   more single-key AES-GCM sealers.
-- **There is no Cloud KMS, no TEE, no passkey and no account deletion.**
+- **There is no Cloud KMS, no TEE and no passkey.** Account deletion is
+  `DELETE /v1/account` (#12002, `crates/openagents-web/src/account_delete.rs`).
   `docs/decision-models/service/confidential-inference.md` defers
   confidential inference. `docs/auth/README.md` plans passkeys for P3.
 - **`secret-screen`** refuses or redacts credential shapes (private keys,

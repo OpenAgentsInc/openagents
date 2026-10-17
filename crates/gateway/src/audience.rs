@@ -96,7 +96,7 @@ pub const ROUTES: &[Route] = &[
     route("/v1/workspaces/{workspace}/provider-keys", Public, "Account", &[]),
     route("/v1/workspaces/{workspace}/provider-keys/{provider}", Public, "Account", &[]),
     // ---- PUBLIC: account, keys, workspaces.
-    route("/v1/account", Public, "Account", &[op("get", "getAccount", "Your account.")]),
+    route("/v1/account", Public, "Account", &[op("get", "getAccount", "Your account."), op("delete", "deleteAccount", "Delete your account and what it keeps. Send `confirm`.")]),
     route("/v1/account/access", Public, "Account", &[op("get", "getAccountAccess", "What you may do, per workspace.")]),
     route("/v1/workspaces/{workspace}/keys/{key}/copy", Public, "Account", &[op("post", "copyKey", "Make a new key with the same scopes and limits as this one. The secret is shown once.")]),
     route("/v1/workspaces/{workspace}/keys/{key}/pause", Public, "Account", &[op("post", "pauseKey", "Pause a key; its calls are refused until it is resumed.")]),

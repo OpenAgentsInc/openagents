@@ -301,6 +301,24 @@ impl Keys {
         Ok(removed)
     }
 
+    /// Remove every key `workspace` keeps, for an account deletion
+    /// (#12002). Returns how many went.
+    ///
+    /// # Errors
+    ///
+    /// Writing failed.
+    pub fn forget_workspace(&self, workspace: &str) -> Result<usize, String> {
+        let mut removed = 0;
+        for word in self.kept(workspace).into_keys() {
+            if let Some(provider) = provider(&word)
+                && self.delete(workspace, provider)?
+            {
+                removed += 1;
+            }
+        }
+        Ok(removed)
+    }
+
     /// `workspace`'s kept keys, by provider word.
     fn kept(&self, workspace: &str) -> BTreeMap<String, Kept> {
         if let Some(database) = &self.database {

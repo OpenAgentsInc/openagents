@@ -24,8 +24,8 @@ pub use auth::nostr::{
     EventTemplate, HTTP_AUTH_KIND, KeySignIn, LinkedKey, NostrSigner, SignerError,
 };
 pub use auth::{
-    Account, AccountView, CredentialRecord, CredentialStore, Login, Poll, Session, StorageError,
-    Workspace,
+    Account, AccountView, CredentialRecord, CredentialStore, DELETE_ACCOUNT_CONFIRM, Login, Poll,
+    Session, StorageError, Workspace,
 };
 pub use history::{
     AttachmentRef, CaptureState, ChatReader, ChatRef, ChatSource, ChatSummary, FileKind,

@@ -558,6 +558,22 @@ impl CloudSession {
         }
     }
 
+    /// `DELETE /v1/account` as the app's own token (#12002): the account
+    /// service's answer, refusals included, for the website to pass on.
+    /// It is not tried again.
+    pub async fn delete_account(&self, token: &str, body: Value) -> Result<Answer> {
+        if !session_token(token) {
+            return Err(SessionError::Unauthenticated);
+        }
+        self.device_call(
+            reqwest::Method::DELETE,
+            "/v1/account",
+            Some(token),
+            Some(body),
+        )
+        .await
+    }
+
     /// An app signing itself out with its own token.
     pub async fn app_sign_out(&self, token: &str) -> Result<()> {
         if !session_token(token) {

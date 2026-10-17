@@ -469,3 +469,9 @@ links remain readable. Upstream fixes now require manual ports.
   `AppRouter`, a drawer toolbar button, a Settings row, the `-route wallet`
   launch argument, and `WalletModel.shared.open()` at the start of
   `AppModel.init` and in `willEnterForeground`.
+- Delete account (#12002). Our code: `Controller::delete_account` and the
+  deletion strings in `crates/account/src/lib.rs`, the
+  `crates/mobile/src/client_ffi/account_delete.rs` bindings, and the iOS
+  Settings row in `apps/ios/OpenAgents/Shell/MoreViewController.swift`.
+  Hook: the Delete account row and its steps in the desktop account menu,
+  `crates/ui/src/openagents_account.rs`.

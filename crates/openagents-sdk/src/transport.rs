@@ -524,6 +524,11 @@ impl Client {
                 Some("last_key") => Some("last_key"),
                 Some("too_many_keys") => Some("too_many_keys"),
                 Some("nostr_disabled") => Some("nostr_disabled"),
+                // Deleting the account (#12002).
+                Some("confirm_required") => Some("confirm_required"),
+                Some("balance_remaining") => Some("balance_remaining"),
+                Some("shared_workspace") => Some("shared_workspace"),
+                Some("session_required") => Some("session_required"),
                 _ => None,
             };
             return Err(Error::Refused {

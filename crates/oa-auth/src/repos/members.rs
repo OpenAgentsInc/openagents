@@ -630,6 +630,23 @@ pub(crate) fn remove(dir: &Path, account: &str, id: &str) -> Result<(), RepoErro
     })
 }
 
+/// Take `account` out of every project it is in (#12002): the projects it
+/// owns are deleted, and it leaves the ones shared with it.
+pub(crate) fn forget_account(dir: &Path, account: &str) -> Result<(), RepoError> {
+    for held in held_by(dir, account)? {
+        let id = held.shown_to(account).id;
+        match held.role_of(account) {
+            Some(role) if role.owns() => remove(dir, account, &id)?,
+            Some(_) => match leave(dir, account, &id) {
+                Ok(_) | Err(RepoError::NotFound) => {}
+                Err(error) => return Err(error),
+            },
+            None => {}
+        }
+    }
+    Ok(())
+}
+
 /// One member as the members list shows them.
 fn member_body(member: &Member, names: &Names, account: &str) -> Value {
     let (name, login) = names.of(&member.account);

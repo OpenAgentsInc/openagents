@@ -391,6 +391,21 @@ final class AppModel {
         onSignOut?()
     }
 
+    /// Delete the account on the server (#12002). On success the account
+    /// signs out like Sign Out, and this device forgets its local chats.
+    /// The wallet's 12 words aren't touched.
+    @MainActor func deleteAccount(forfeitBalance: Bool) async -> AccountDeletion {
+        guard let account, !isDemo else { return .failed(message: "Sign in first, then delete your account.") }
+        forgetOnSignOut = true
+        let result = await account.deleteAccount(forfeitBalance: forfeitBalance)
+        if case .deleted = result {
+            voice.stop()
+        } else {
+            forgetOnSignOut = false
+        }
+        return result
+    }
+
     /// Set only by a sign-out the user asked for. An expired session keeps its
     /// store (the outbox may hold unsent messages); the `.owner` marker still
     /// keeps a different account out of it.
