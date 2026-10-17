@@ -36,6 +36,8 @@ def main(command,backup):
         operation=cloud('sql','instances','delete',COPY,'--async')
     else:
         if target is None: raise RuntimeError('The recovery copy is absent.')
+        if target['state']!='RUNNABLE':
+            print(json.dumps({'name':COPY,'state':target['state'],'verification':'pending'}));return
         ip=target['settings']['ipConfiguration']
         if ip.get('sslMode')!='ENCRYPTED_ONLY' or ip.get('privateNetwork')!=source['settings']['ipConfiguration']['privateNetwork']: raise RuntimeError('The recovery network or TLS settings differ.')
         print(json.dumps({'name':COPY,'state':target['state'],'private_ip':next(row['ipAddress'] for row in target['ipAddresses'] if row['type']=='PRIVATE'), 'server_ca_pem':target['serverCaCert']['cert'],'maximum_disk_gib':target['settings']['storageAutoResizeLimit']}));return
