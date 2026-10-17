@@ -500,7 +500,7 @@ async fn api(
     let status = response.status();
     let bytes = to_bytes(response.into_body(), 1 << 20).await.unwrap();
     let answer = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
-    schema::assert_response(method, path, status, &answer);
+    schema::assert_response(method, path, status, &body, &answer);
     (status, answer)
 }
 
