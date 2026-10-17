@@ -34,6 +34,13 @@ cd apps/ios
 xcodebuild -project OpenAgents.xcodeproj -scheme OpenAgents -destination 'id=<simulator id>' ARCHS=arm64 CODE_SIGN_IDENTITY=- build
 ```
 
+Tests never build the real macOS platform: AppKit aborts off the main
+thread and opens a crash dialog. Use `openagents-gpui-test` (`crates/gpui-test`):
+`headless_app` and `save_capture` for offscreen screenshots, or
+`#[gpui::test]`. Fixture binaries that show a window go through
+`real_application` and run only with `OPENAGENTS_GPUI_REAL_PLATFORM=1`. A guard
+test in that crate fails on any other use of the platform.
+
 A persistent `CARGO_TARGET_DIR` outside the checkout saves a cold build of
 about 900 crates. `openagents-account` uses the SDK from this repository by path
 (`../../crates/openagents-sdk`), so SDK changes and app changes land in
