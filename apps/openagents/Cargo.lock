@@ -10434,8 +10434,12 @@ version = "0.2.113"
 dependencies = [
  "agent-lab",
  "axum 0.8.9",
+ "base64 0.22.1",
+ "core-foundation 0.10.1",
+ "getrandom 0.3.4",
  "lab-kit",
  "lab-ui",
+ "nostr",
  "oa-copy",
  "openagents-brand",
  "openagents-dashboard",
@@ -10443,7 +10447,9 @@ dependencies = [
  "openagents-proto",
  "openagents-sdk",
  "rust-native",
+ "secp256k1 0.31.1",
  "security-framework",
+ "security-framework-sys",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -10874,6 +10880,7 @@ name = "openagents-sync"
 version = "0.2.113"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "block2 0.6.2",
  "chrono",
  "coder-access",
@@ -10890,6 +10897,7 @@ dependencies = [
  "reqwest 0.12.28",
  "rusqlite",
  "secp256k1 0.31.1",
+ "security-framework",
  "serde",
  "serde_json",
  "tempfile",

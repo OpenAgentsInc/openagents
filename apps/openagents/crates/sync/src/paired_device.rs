@@ -342,7 +342,7 @@ fn host_message(error: &HostError) -> PairError {
 /// for a code to pair with, or the sentence to show for anything else.
 #[must_use]
 pub fn code_problem(text: &str) -> Option<String> {
-    coder_computers::connect::classify(text).err()
+    classify(text).err()
 }
 
 /// A finished scan: the computer to keep and its open connection, over
@@ -365,7 +365,6 @@ pub async fn pair_scanned(
     account: &str,
     policy: RelayPolicy,
 ) -> Result<Scan, PairError> {
-    use coder_computers::connect::{Scanned, classify};
     let scanned = classify(text).map_err(PairError)?;
     let secret = SecretKey::new(&mut secp256k1::rand::rng());
     let (access, route, label) = match scanned {
@@ -657,4 +656,43 @@ mod tests {
             .unwrap();
         assert!(error.0.contains("isn't a code"));
     }
+}
+
+/// What a scanned or pasted computer code is. The same rules as
+/// `coder_computers::connect::classify`, kept here so the phone doesn't link
+/// the Computers screens and their dependencies.
+enum Scanned {
+    /// An `openagents-connect:` code (or its `https://openagents.com/connect#` link).
+    Connect(String),
+    /// A `coder-host:` invitation.
+    HostInvitation(String),
+}
+
+const CONNECT_PREFIX: &str = "openagents-connect:";
+const CONNECT_LINK_PREFIX: &str = "https://openagents.com/connect#";
+use coder_access::protocol::INVITATION_PREFIX;
+const PAIR_PREFIX: &str = "coder-pair:";
+const MAX_CODE_BYTES: usize = 1024;
+
+fn classify(text: &str) -> Result<Scanned, String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err("Paste the code your computer shows.".into());
+    }
+    if text.len() > MAX_CODE_BYTES {
+        return Err("That's too long to be a computer's code. Copy it again.".into());
+    }
+    if text.starts_with(CONNECT_PREFIX) {
+        return Ok(Scanned::Connect(text.to_owned()));
+    }
+    if let Some(payload) = text.strip_prefix(CONNECT_LINK_PREFIX) {
+        return Ok(Scanned::Connect(format!("{CONNECT_PREFIX}{payload}")));
+    }
+    if text.starts_with(INVITATION_PREFIX) {
+        return Ok(Scanned::HostInvitation(text.to_owned()));
+    }
+    if text.starts_with(PAIR_PREFIX) {
+        return Err("This is a Chats pairing code, not a code for connecting a computer.".into());
+    }
+    Err("This isn't a code from OpenAgents on a computer. Scan the code the OpenAgents app on your computer shows.".into())
 }
