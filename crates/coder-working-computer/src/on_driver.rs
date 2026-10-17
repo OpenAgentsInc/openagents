@@ -189,6 +189,23 @@ impl<D: Driver> Provider for OnDriver<D> {
         if c.boot()
             .is_some_and(|boot| matches!(boot.origin, BootOrigin::Restored { .. }))
         {
+            // SPACE refreshes guest time asynchronously after thaw. Wait for
+            // that refresh before commands can use time-bound credentials.
+            let clock = self.driver.exec(resource, &Exec::new("date +%s")).await;
+            let current = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()
+                .map(|time| time.as_secs());
+            let guest = match clock {
+                Outcome::Done { value } if value.code == 0 => {
+                    value.stdout.trim().parse::<u64>().ok()
+                }
+                _ => None,
+            };
+            if !matches!((guest, current), (Some(guest), Some(current)) if guest.abs_diff(current) <= 5)
+            {
+                return Outcome::unknown("The computer's clock isn't ready after wake.");
+            }
             for service in &c.services {
                 if !matches!(
                     self.sh(resource, health_probe(service), 30).await,
