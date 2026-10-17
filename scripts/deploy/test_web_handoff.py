@@ -34,6 +34,9 @@ elif args[:3] == ["run", "services", "update-traffic"]:
     if "--update-tags" in args:
         for pair in value("--update-tags").split(","):
             tag, revision = pair.split("=")
+            if len(tag) + len(args[3]) > 46:
+                save()
+                sys.exit("The traffic tag and service name exceed the Cloud Run limit.")
             state["traffic"].append({"tag": tag, "revisionName": revision})
         save()
         if os.environ.get("HANDOFF_MODE") == "shift-failure":

@@ -574,7 +574,7 @@ outgoing = sorted({entry["revisionName"] for entry in traffic
 if any(not re.fullmatch(r"[a-z][a-z0-9-]{0,62}", revision) for revision in outgoing):
     sys.exit("Cannot identify the outgoing web revisions.")
 used = {entry.get("tag") for entry in traffic}
-prefix = "oa-drain-" + secrets.token_hex(6)
+prefix = "oa-drain-" + secrets.token_hex(5)
 tags = [f"{prefix}-{index}" for index in range(len(outgoing))]
 if used.intersection(tags):
     sys.exit("The temporary web tags already exist. Try again.")
