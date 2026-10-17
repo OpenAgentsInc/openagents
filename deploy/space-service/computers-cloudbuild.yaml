@@ -1,0 +1,25 @@
+# An isolated candidate; this never changes the production Computers service.
+substitutions:
+  _COMMIT: ''
+steps:
+  - name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        git init -q src
+        git -C src fetch -q --depth 1 https://github.com/OpenAgentsInc/openagents.git '${_COMMIT}'
+        git -C src checkout -q FETCH_HEAD
+        test "$$(git -C src rev-parse HEAD)" = '${_COMMIT}'
+        sed -i '/^WORKDIR \/build/a ENV CARGO_BUILD_JOBS=4' src/deploy/oa-computers/Dockerfile
+        sed -i 's/cargo build --release/cargo build --locked --release/' src/deploy/oa-computers/Dockerfile
+        sha256sum src/deploy/oa-computers/Dockerfile
+  - name: gcr.io/cloud-builders/docker
+    dir: src
+    args: ['build', '-f', 'deploy/oa-computers/Dockerfile', '--label', 'com.openagents.source=${_COMMIT}', '-t', 'us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/computers:${_COMMIT}', '.']
+images: ['us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/computers:${_COMMIT}']
+options:
+  machineType: E2_HIGHCPU_8
+  diskSizeGb: 80
+timeout: 1800s
