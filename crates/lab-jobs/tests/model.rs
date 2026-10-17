@@ -112,19 +112,22 @@ impl Model for Jobs {
         vec![
             Property::always(
                 "private inputs stay on an enrolled host with the files",
-                |_, s| !s.unsafe_assignment,
+                |_: &Jobs, s: &State| !s.unsafe_assignment,
             ),
             Property::always(
                 "worker loss and cancellation never repeat effects",
-                |_, s| s.effects <= 1,
+                |_: &Jobs, s: &State| s.effects <= 1,
             ),
-            Property::always("a job completes at most once", |_, s| s.completions <= 1),
-            Property::sometimes("an unused lease can be replaced", |_, s| {
+            Property::always("a job completes at most once", |_: &Jobs, s: &State| {
+                s.completions <= 1
+            }),
+            Property::sometimes("an unused lease can be replaced", |_: &Jobs, s: &State| {
                 s.attempt == 2 && s.phase == 3
             }),
-            Property::sometimes("a started lost worker remains uncertain", |_, s| {
-                s.phase == 5 && s.effects == 1
-            }),
+            Property::sometimes(
+                "a started lost worker remains uncertain",
+                |_: &Jobs, s: &State| s.phase == 5 && s.effects == 1,
+            ),
         ]
     }
 }

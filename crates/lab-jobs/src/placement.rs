@@ -36,10 +36,10 @@ impl Capabilities {
             || self.memory_bytes < 1024 * 1024
             || self.memory_bytes > 16 * 1024_u64.pow(4)
             || !(1..=86_400).contains(&self.max_seconds)
-            || self.tools.len() > 128
+            || self.tools.len() > 64
             || self.jobs.is_empty()
-            || self.jobs.len() > 128
-            || self.local_assets.len() > 10_000
+            || self.jobs.len() > 64
+            || self.local_assets.len() > 512
             || self.tools.iter().any(|s| !identifier(s))
             || self.jobs.iter().any(|s| {
                 s.split_once('/')
@@ -59,7 +59,7 @@ impl Capabilities {
 
 fn identifier(s: &str) -> bool {
     !s.is_empty()
-        && s.len() <= 128
+        && s.len() <= 64
         && s.bytes()
             .all(|b| b.is_ascii_alphanumeric() || b"-_+.".contains(&b))
 }
@@ -70,7 +70,7 @@ fn checksum(s: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EffectiveRequirements {
     pub cpu_millis: u64,
     pub memory_bytes: u64,
@@ -128,7 +128,7 @@ impl EffectiveRequirements {
             .chain(&policy.tools)
             .cloned()
             .collect();
-        if tools.len() > 128 || tools.iter().any(|s| !identifier(s)) {
+        if tools.len() > 64 || tools.iter().any(|s| !identifier(s)) {
             return Err(Refusal::new(
                 "job_tools",
                 "Choose tools this worker supports.",

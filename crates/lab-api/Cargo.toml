@@ -13,6 +13,7 @@ base64 = "0.22"
 futures-util = "0.3"
 percent-encoding = "2"
 lab-kit = { path = "../lab-kit", features = ["schema"] }
+lab-jobs = { path = "../lab-jobs" }
 lab-store = { path = "../lab-store" }
 schemars = "1"
 serde = { version = "1", features = ["derive"] }
