@@ -1,5 +1,15 @@
 # GitHub sign-in (P1)
 
+**Deprecated (#12005, owner 2026-10-17).** GitHub sign-in signs in accounts
+made with it before and makes no new accounts. `POST /v1/sessions/github`
+answers a GitHub user no account holds with `403 signup_disabled` unless the
+gateway's `accounts.github.new_accounts` is `true` (off by default; the local
+fixture's account service leaves it on so fixtures can make accounts). The
+route keeps working for existing accounts and for Coder 1.0.0's website
+approval. The website's `/login` leads with the app and keeps GitHub under
+"Signed up with GitHub before? Sign in here." GitHub stays as a connection
+for repositories, issues, and pull requests.
+
 Part of [OpenAgents authentication](README.md). Code: `crates/oa-auth`
 (flow, GitHub client, account resolution, fake GitHub, local account
 service), `crates/tenancy/src/accounts/identities.rs` (the `github:`

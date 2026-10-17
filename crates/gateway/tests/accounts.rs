@@ -6,8 +6,6 @@
 //! Every test stands up its own directory and listeners; nothing
 //! shares state but the shape of the claims being checked.
 
-#[path = "accounts_apple/mod.rs"]
-mod apple;
 #[path = "accounts_commercial/mod.rs"]
 mod commercial;
 mod common;
@@ -56,7 +54,6 @@ fn account_config(anonymous: Option<config::Anonymous>) -> config::Accounts {
         recovery_ttl_secs: 3_600,
         github: None,
         github_app: None,
-        apple: None,
         invite_only: None,
         store: Default::default(),
         database_url_env: String::new(),
@@ -1868,7 +1865,6 @@ async fn signup_and_anonymous_off_when_not_configured() {
             recovery_ttl_secs: 3_600,
             github: None,
             github_app: None,
-            apple: None,
             invite_only: None,
             store: Default::default(),
             database_url_env: String::new(),
@@ -1987,7 +1983,6 @@ async fn stores_install_under_accounts_config_and_validate() {
             session_ttl_secs: 28_800,
             github: None,
             github_app: None,
-            apple: None,
             invite_only: None,
             store: Default::default(),
             database_url_env: String::new(),
@@ -2332,4 +2327,22 @@ async fn purchases_recheck_customer_price_request_and_current_credential_before_
         StatusCode::CONFLICT
     );
     assert_eq!(approval.quote.context, context);
+}
+
+#[tokio::test]
+async fn apple_sign_in_was_removed_and_answers_gone() {
+    let d = deploy(Some(account_config(None)), true).await;
+    let (status, body) = post(
+        &d,
+        "/v1/sessions/apple",
+        None,
+        &json!({"identity_token": "x", "nonce": "y"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::GONE);
+    assert_eq!(code(&body), "apple_removed");
+    assert_eq!(
+        body["error"]["message"],
+        "Sign in with Apple has been removed."
+    );
 }

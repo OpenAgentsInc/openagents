@@ -31,8 +31,10 @@ struct Inner {
     app: Option<crate::app::AppClient>,
     /// Invite-only sign-in ([`crate::invite`]), when set.
     invite: Option<crate::InviteOnly>,
-    /// Sign in with Apple ([`crate::apple`]), when set.
-    apple: Option<crate::apple::Apple>,
+    /// Whether GitHub sign-in makes an account for a GitHub user no
+    /// account holds. On by default here, so fixtures can make accounts;
+    /// the gateway's default is off (#12005).
+    github_signup: bool,
 }
 
 /// The local account service.
@@ -63,7 +65,7 @@ impl LocalService {
             tenant: tenant.into(),
             app: None,
             invite: None,
-            apple: None,
+            github_signup: true,
         })))
     }
 
@@ -77,7 +79,7 @@ impl LocalService {
             tenant: self.0.tenant.clone(),
             app: Some(app),
             invite: self.0.invite.clone(),
-            apple: self.0.apple.clone(),
+            github_signup: self.0.github_signup,
         }))
     }
 
@@ -90,20 +92,21 @@ impl LocalService {
             tenant: self.0.tenant.clone(),
             app: self.0.app.clone(),
             invite: Some(invite),
-            apple: self.0.apple.clone(),
+            github_signup: self.0.github_signup,
         }))
     }
 
-    /// The same service, with Sign in with Apple checked by `apple`.
+    /// The same service, making no new accounts from GitHub sign-in, as
+    /// the gateway runs by default (#12005).
     #[must_use]
-    pub fn with_apple(self, apple: crate::apple::Apple) -> Self {
+    pub fn without_github_signup(self) -> Self {
         Self(Arc::new(Inner {
             dir: self.0.dir.clone(),
             github: self.0.github.clone(),
             tenant: self.0.tenant.clone(),
             app: self.0.app.clone(),
             invite: self.0.invite.clone(),
-            apple: Some(apple),
+            github_signup: false,
         }))
     }
 
@@ -227,6 +230,7 @@ async fn github_sign_in(
         &state.0.github,
         &state.0.tenant,
         state.0.invite.as_ref(),
+        state.0.github_signup,
         &request,
     )
     .await
@@ -236,43 +240,13 @@ async fn github_sign_in(
     }
 }
 
-/// `POST /v1/sessions/apple`, as the gateway answers it.
-async fn apple_sign_in(State(state): State<LocalService>, request: JsonBody) -> Response {
-    let Some(apple) = state.0.apple.as_ref() else {
-        return refused(
-            StatusCode::NOT_FOUND,
-            "apple_disabled",
-            "Sign in with Apple isn't set up on this service.",
-        );
-    };
-    let Ok(axum::Json(request)) = request else {
-        return refused(
-            StatusCode::BAD_REQUEST,
-            "invalid_request",
-            "Send `identity_token` and `nonce`.",
-        );
-    };
-    let Ok(request) = serde_json::from_value::<crate::apple::AppleRequest>(request) else {
-        return refused(
-            StatusCode::BAD_REQUEST,
-            "invalid_request",
-            "Send `identity_token` and `nonce`.",
-        );
-    };
-    let profile = match apple.verify(&request.identity_token, &request.nonce).await {
-        Ok(profile) => profile,
-        Err(error) => return auth_refused(error),
-    };
-    match crate::apple::sign_in(
-        &state.0.dir,
-        &state.0.tenant,
-        &profile,
-        request.name.as_deref(),
-        request.device.as_ref(),
-    ) {
-        Ok(signed) => body(crate::apple::signed_in_body(&signed)),
-        Err(error) => auth_refused(error),
-    }
+/// `POST /v1/sessions/apple`, as the gateway answers it: removed (#12005).
+async fn apple_sign_in() -> Response {
+    refused(
+        StatusCode::GONE,
+        crate::APPLE_REMOVED_CODE,
+        crate::APPLE_REMOVED_MESSAGE,
+    )
 }
 
 async fn github_link(

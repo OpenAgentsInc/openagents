@@ -11,9 +11,6 @@ use url::Url;
 
 use crate::{CancellationToken, Client, Deployment, Error};
 
-mod apple;
-pub use apple::AppleSignIn;
-
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Account {
     pub id: String,

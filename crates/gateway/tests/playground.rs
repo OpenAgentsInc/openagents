@@ -78,7 +78,6 @@ async fn deploy() -> Deployment {
             anonymous: None,
             github: None,
             github_app: None,
-            apple: None,
             invite_only: None,
             store: Default::default(),
             database_url_env: String::new(),

@@ -12,9 +12,8 @@
 //!   (`authorization_pending`, `slow_down`, `expired_token`,
 //!   `access_denied`, `invalid_grant`) until then.
 //! - `POST /v1/device/sign-out` — the app signs its own token out.
-//! - `POST /v1/device/apple` — `{identity_token, nonce, app, computer,
-//!   name?}` from the phone's Sign in with Apple sheet (#11980). Answers
-//!   what `/v1/device/token` answers once approved.
+//! - `POST /v1/device/apple` — Sign in with Apple was removed (#12005);
+//!   it answers `410 apple_removed`.
 //! - `GET /device?code=…&return=app` — the phone's in-app sign-in sheet.
 //!   Approve or Deny then sends the sheet to `openagents://signed-in`, which
 //!   closes it (#11980). Without `return=app` nothing changes.
@@ -197,7 +196,7 @@ async fn token(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
     }
 }
 
-/// The app-session answer a device poll and an Apple sign-in share.
+/// The app-session answer to a device poll.
 fn app_session(body: &Value) -> Response {
     let now = crate::cloud::session::now();
     let expires = body["session"]["expires_at"]
@@ -215,59 +214,14 @@ fn app_session(body: &Value) -> Response {
     )
 }
 
-/// `POST /v1/device/apple` — `{identity_token, nonce, app, computer,
-/// name?}` (JSON).
-async fn apple(State(app): State<App>, body: Bytes) -> Response {
-    let Some(service) = app.config.cloud.as_deref() else {
-        return unavailable();
-    };
-    let invalid = || {
-        oauth_error(
-            StatusCode::BAD_REQUEST,
-            "invalid_request",
-            "Send the details from Sign in with Apple.",
-        )
-    };
-    if body.len() > 16 * 1024 {
-        return invalid();
-    }
-    let Ok(fields) = serde_json::from_slice::<serde_json::Map<String, Value>>(&body) else {
-        return invalid();
-    };
-    let text = |name: &str| fields.get(name).and_then(Value::as_str).unwrap_or_default();
-    if text("identity_token").is_empty() || text("nonce").is_empty() {
-        return invalid();
-    }
-    let mut request = json!({
-        "identity_token": text("identity_token"),
-        "nonce": text("nonce"),
-        "device": {
-            "app": match text("app") { "" => "OpenAgents", name => name },
-            "computer": text("computer"),
-        },
-    });
-    if !text("name").trim().is_empty() {
-        request["name"] = json!(text("name"));
-    }
-    match service.apple_sign_in(request).await {
-        Ok(answer) if answer.status == 200 => app_session(&answer.body),
-        Ok(answer) if answer.status == 404 => oauth_error(
-            StatusCode::NOT_FOUND,
-            "apple_disabled",
-            "Sign in with Apple isn't set up here.",
-        ),
-        Ok(answer) if answer.status == 403 => oauth_error(
-            StatusCode::FORBIDDEN,
-            answer.code().unwrap_or("access_denied"),
-            answer.body["error"]["message"].as_str().unwrap_or_default(),
-        ),
-        Ok(_) => oauth_error(
-            StatusCode::BAD_REQUEST,
-            "access_denied",
-            "Sign in with Apple didn't go through. Try again.",
-        ),
-        Err(_) => unavailable(),
-    }
+/// `POST /v1/device/apple` — removed with Sign in with Apple (#12005).
+/// It stays so build 1012 gets a plain answer.
+async fn apple() -> Response {
+    oauth_error(
+        StatusCode::GONE,
+        oa_auth::APPLE_REMOVED_CODE,
+        oa_auth::APPLE_REMOVED_MESSAGE,
+    )
 }
 
 /// `POST /device/sign-out` with `Authorization: Bearer sess_…`.

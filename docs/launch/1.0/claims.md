@@ -59,7 +59,7 @@ evidence below exists, and no number goes in without a measurement.
 | An answer in the first minute (time to first answer) | Post 1 | The first-minute counts (install to first answer streamed) from the server for fresh installs (#11983), or a timed run on the installed build | Pending; cut "in the first minute" if not measured by launch |
 | Our cloud starts in N seconds | Not in the copy | First-turn time on a fresh account (#11981); the freeze doc measured about 77 seconds | Left out; add only with a measurement |
 | Sync is free | Post 4; release notes | Owner decision 2026-10-17; no sync charge in any plan file ([docs/pro](../../pro/README.md) lists sync as never gated) | Keep |
-| Sign in with one tap, with GitHub or Apple | Post 2; release notes | Sign in with Apple and the in-app sign-in sheet on the installed build (#11980) | Pending |
+| Sign in with one tap, with GitHub or Apple | Post 2; release notes | None: Sign in with Apple was removed and GitHub sign-in makes no new accounts (#12005) | Cut; the app needs no sign-in once #11993 and #11996 land, so claim that only after a run on the installed build |
 | Drive your computer from the phone: send, queue, steer, stop | Post 3; release notes | #11849 (closed); a test-account run on the installed build | Keep once the run passes |
 
 ## Landing, pricing, film and posts (#11764)

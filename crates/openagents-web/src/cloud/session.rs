@@ -76,6 +76,9 @@ pub enum SessionError {
     Conflict,
     /// Sign-in is invite-only and this GitHub account isn't invited.
     InviteOnly,
+    /// No account holds this GitHub identity, and GitHub sign-in makes no
+    /// new accounts (#12005).
+    SignupClosed,
 }
 
 impl SessionError {
@@ -88,6 +91,7 @@ impl SessionError {
             Self::Csrf => "cloud_request_not_authorized",
             Self::Conflict => "native_account_changed",
             Self::InviteOnly => "invite_only",
+            Self::SignupClosed => "signup_disabled",
         }
     }
 }
@@ -102,6 +106,7 @@ impl fmt::Display for SessionError {
             Self::Csrf => "This page expired. Reload it and try again.",
             Self::Conflict => "Your account changed. Reload the page.",
             Self::InviteOnly => "Login is invite-only for now.",
+            Self::SignupClosed => "New accounts start in the OpenAgents app.",
         })
     }
 }
@@ -385,8 +390,10 @@ impl CloudSession {
 
     /// Finish a GitHub sign-in: hand the authorization code and its PKCE
     /// verifier to the account service, which exchanges them with GitHub,
-    /// finds or creates the account, and issues a session (docs/auth). The
-    /// web server never sees the GitHub token.
+    /// finds the account, and issues a session (docs/auth). The web server
+    /// never sees the GitHub token. GitHub sign-in makes no new accounts
+    /// (#12005): a GitHub user no account holds is
+    /// [`SessionError::SignupClosed`].
     ///
     /// `signup` is the browser's link click (#11698): the source and click
     /// the account service records if this sign-in creates the account. An
@@ -447,11 +454,14 @@ impl CloudSession {
             (status, bytes) = send(plain).await?;
         }
         if !status.is_success() {
-            let invite_only = status.as_u16() == 403
-                && serde_json::from_slice::<serde_json::Value>(&bytes)
-                    .is_ok_and(|body| body["error"]["code"] == "invite_only");
+            let refused = |code: &str| {
+                status.as_u16() == 403
+                    && serde_json::from_slice::<serde_json::Value>(&bytes)
+                        .is_ok_and(|body| body["error"]["code"] == code)
+            };
             return Err(match status.as_u16() {
-                _ if invite_only => SessionError::InviteOnly,
+                _ if refused("invite_only") => SessionError::InviteOnly,
+                _ if refused("signup_disabled") => SessionError::SignupClosed,
                 400 | 401 | 403 => SessionError::Unauthenticated,
                 409 => SessionError::Conflict,
                 _ => SessionError::Unavailable,

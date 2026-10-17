@@ -17,12 +17,12 @@ pub mod rooms;
 pub mod schedules;
 pub mod sessions;
 pub mod terminal_chats;
-pub mod visitor;
 mod transport;
+pub mod visitor;
 
 pub use auth::{
-    Account, AccountView, AppleSignIn, CredentialRecord, CredentialStore, Login, Poll, Session,
-    StorageError, Workspace,
+    Account, AccountView, CredentialRecord, CredentialStore, Login, Poll, Session, StorageError,
+    Workspace,
 };
 pub use history::{
     AttachmentRef, CaptureState, ChatReader, ChatRef, ChatSource, ChatSummary, FileKind,

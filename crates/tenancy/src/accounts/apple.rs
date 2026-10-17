@@ -1,17 +1,17 @@
-//! Sign in with Apple identities (#11980).
+//! Apple identities linked by Sign in with Apple (#11980).
 //!
-//! The account service verifies Apple's identity token (in `oa-auth`) and
-//! hands the verified claims here. The book keeps, under Apple's stable
-//! user id (`sub`), the account it signs in and the address Apple shared,
-//! beside the `apple:<sub>` principal on the account. Validation requires
-//! the two to agree, as it does for GitHub. No Apple token is kept.
+//! Sign in with Apple was removed (#12005), so nothing links a new Apple
+//! identity. The book still holds the ones linked before, under Apple's
+//! stable user id (`sub`): the account and the address Apple shared,
+//! beside the `apple:<sub>` principal on the account, so those accounts
+//! keep their data. Validation requires the two to agree, as it does for
+//! GitHub. No Apple token is kept.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::identities::personal_workspace;
-use super::{Account, Refusal, Store, Trouble, Workspace, fresh};
+use super::{Store, Trouble};
 
 /// The most Apple identities the book holds.
 const MAX_IDENTITIES: usize = 1_000_000;
@@ -78,16 +78,6 @@ pub struct AppleIdentity {
     pub refreshed: String,
 }
 
-/// What an Apple sign-in resolved to.
-#[derive(Clone, Debug)]
-pub struct AppleSignIn {
-    pub account: Account,
-    /// The personal workspace, when this sign-in created the account.
-    pub workspace: Option<Workspace>,
-    /// Whether this sign-in created the account.
-    pub created: bool,
-}
-
 pub(super) fn validate(
     book: &BTreeMap<String, AppleIdentity>,
     store: &Store,
@@ -125,108 +115,9 @@ pub(super) fn validate(
     Ok(())
 }
 
-/// A new account's label: the name the person gave Apple's sheet, else
-/// the shared address's name part (not a private relay's), else a plain
-/// default.
-fn label(profile: &AppleProfile, name: Option<&str>) -> String {
-    let clean = |value: &str| -> String {
-        value
-            .chars()
-            .filter(|c| !c.is_control())
-            .take(256)
-            .collect::<String>()
-            .trim()
-            .to_string()
-    };
-    if let Some(name) = name.map(clean).filter(|n| !n.is_empty()) {
-        return name;
-    }
-    if !profile.private_email {
-        if let Some(local) = profile
-            .email
-            .as_deref()
-            .and_then(|e| e.split('@').next())
-            .map(clean)
-            .filter(|l| !l.is_empty())
-        {
-            return local;
-        }
-    }
-    "OpenAgents user".to_string()
-}
-
 impl super::Accounts {
     /// The Apple identity linked under an Apple user id, when one is.
     pub fn apple_identity(&self, sub: &str) -> Result<Option<AppleIdentity>, Trouble> {
         Ok(super::load(&self.dir)?.identities.apple.get(sub).cloned())
-    }
-
-    /// Sign in with a verified Apple identity: find the account that holds
-    /// `apple:<sub>` and refresh its record, or create the account (labeled
-    /// with `name` when the app sent the one Apple's sheet gave it), its
-    /// personal workspace bound to `tenant`, and the link, in one write.
-    pub fn sign_in_apple(
-        &self,
-        profile: &AppleProfile,
-        name: Option<&str>,
-        tenant: &str,
-    ) -> Result<AppleSignIn, Refusal> {
-        profile
-            .validate()
-            .map_err(|e| Refusal::Store(Trouble::Invalid(e)))?;
-        if tenant.is_empty() {
-            return Err(Refusal::EmptyField("tenant"));
-        }
-        let key = profile.sub.clone();
-        self.mutate(|store, _| {
-            let stamp = crate::registry::now_utc();
-            if let Some(identity) = store.identities.apple.get_mut(&key) {
-                // Apple sends the address only while the person shares it.
-                if profile.email.is_some() {
-                    identity.profile = profile.clone();
-                }
-                identity.refreshed = stamp;
-                let account = store
-                    .accounts
-                    .get(&identity.account)
-                    .cloned()
-                    .ok_or_else(|| Refusal::UnknownAccount(identity.account.clone()))?;
-                return Ok(AppleSignIn {
-                    account,
-                    workspace: None,
-                    created: false,
-                });
-            }
-            let account = Account {
-                id: format!("acct_{}", &fresh().map_err(Refusal::Store)?[..16]),
-                label: label(profile, name),
-                principals: vec![apple_principal(&key)],
-                created: stamp.clone(),
-                agent: None,
-            };
-            let workspace = personal_workspace(&account, tenant, &stamp)?;
-            store
-                .referrals
-                .inherit_workspace(&workspace)
-                .map_err(|error| Refusal::Store(Trouble::Invalid(error.to_string())))?;
-            store.accounts.insert(account.id.clone(), account.clone());
-            store
-                .workspaces
-                .insert(workspace.id.clone(), workspace.clone());
-            store.identities.apple.insert(
-                key,
-                AppleIdentity {
-                    account: account.id.clone(),
-                    profile: profile.clone(),
-                    linked: stamp.clone(),
-                    refreshed: stamp,
-                },
-            );
-            Ok(AppleSignIn {
-                account,
-                workspace: Some(workspace),
-                created: true,
-            })
-        })
     }
 }

@@ -110,12 +110,13 @@ c=$(code -X POST "$ORIGIN/v1/visitors"); echo "  POST /v1/visitors: $c"
 [ "$c" = 201 ] || fail "POST /v1/visitors answered $c"
 # The phone's Apple sign-in goes through the web (the gateway's
 # /v1/sessions/apple is first-party and never forwarded, so it is a 404 from
-# outside); a bad token comes back from the gateway as 400.
+# outside); a bad token comes back from the gateway as 400. Since #12005
+# removed Sign in with Apple, a staging image built after it answers 410.
 c=$(code -X POST -H 'Content-Type: application/json' \
     -d '{"identity_token":"not-a-token","nonce":"check","app":"openagents-mobile","computer":"deploy-check"}' \
     "$ORIGIN/v1/device/apple")
 echo "  POST /v1/device/apple with a bad token: $c"
-[ "$c" = 400 ] || fail "POST /v1/device/apple answered $c"
+[ "$c" = 400 ] || [ "$c" = 410 ] || fail "POST /v1/device/apple answered $c"
 for path in /layertree /layertree/start.js /layertree/layertree_web.js /layertree/layertree_web_bg.wasm; do
     c=$(code "$ORIGIN$path"); echo "  $path: $c"
     [ "$c" = 200 ] || fail "$path answered $c"
