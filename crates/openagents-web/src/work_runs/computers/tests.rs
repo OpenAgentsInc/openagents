@@ -41,7 +41,9 @@ async fn withdrawing_a_live_repository_grant_refuses_before_new_effects() {
     // The private configuration is opened without following links, so
     // name it by its real path (macOS keeps temporary folders under the
     // `/var` link).
-    let private = dir.path().canonicalize().unwrap();
+    let private = dir.path().canonicalize().unwrap().join("private");
+    std::fs::create_dir(&private).unwrap();
+    std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o700)).unwrap();
     let key = private.join("csrf");
     std::fs::write(&key, [9u8; 32]).unwrap();
     std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600)).unwrap();

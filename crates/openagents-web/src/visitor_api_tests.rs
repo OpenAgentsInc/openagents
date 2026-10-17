@@ -43,7 +43,10 @@ async fn call(
         .method(method)
         .uri(path)
         .header(header::HOST, &world.host)
-        .header(header::CONTENT_TYPE, "application/json");
+        .header(header::CONTENT_TYPE, "application/json")
+        // Each call its own address: the hourly visitor limit is shared by
+        // every test in the process, and is checked by its own unit test.
+        .header("x-forwarded-for", next_address());
     if let Some(token) = token {
         request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
     }
@@ -448,4 +451,10 @@ async fn answered_after(world: &crate::projects::tests::World, token: &str, chat
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
     panic!("no answer {n} in {chat}");
+}
+
+fn next_address() -> String {
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    format!("203.0.{}.{}", (n >> 8) & 0xff, n & 0xff)
 }
