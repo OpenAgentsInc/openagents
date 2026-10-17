@@ -3,6 +3,7 @@
 chat edits them with (docs/video-lab/README.md, docs/video-lab/mvp.md).
 
     scripts/film/lab.py serve [--port 8792]          the service the chats call
+                                                     (crates/video-lab-serve when built)
     scripts/film/lab.py import                       repository scenes and existing films
     scripts/film/lab.py list
     scripts/film/lab.py open DOC
@@ -2321,9 +2322,44 @@ class Handler(BaseHTTPRequestHandler):
                 left -= len(chunk)
 
 
+def rust_service() -> Path | None:
+    """The Rust loopback service (crates/video-lab-serve), when it's built and
+    newer than its sources: VIDEO_LAB_SERVE_BIN, else the build in
+    CARGO_TARGET_DIR (default ~/work/openagents-target-videolab)."""
+    if os.environ.get("VIDEO_LAB_PYTHON_SERVE"):
+        return None
+    binary = os.environ.get("VIDEO_LAB_SERVE_BIN")
+    if binary:
+        return Path(binary)
+    target = Path(os.environ.get("CARGO_TARGET_DIR", str(HOME / "work/openagents-target-videolab")))
+    built = target / "debug/video-lab-serve"
+    if not built.exists():
+        return None
+    roots = [REPO / "crates/video-lab-serve", REPO / "crates/video-lab", REPO / "crates/lab-kit"]
+    newest = max((p.stat().st_mtime for r in roots for p in r.rglob("*") if p.is_file()), default=0)
+    return built if built.stat().st_mtime >= newest else None
+
+
 def serve(port: int):
+    """The service the chats call: the Rust service when it's built (it runs
+    this file as its engine), else this file's own server."""
+    rust = rust_service()
+    if rust:
+        os.execv(str(rust), [str(rust), "--port", str(port), "--lab", str(Path(__file__).resolve()),
+                             "--python", sys.executable])
+    engine(port)
+
+
+def engine(port: int, parent: int | None = None):
     global PORT
     PORT = port
+    if parent:
+        def watch():
+            # The Rust service started this engine: stop with it.
+            while os.getppid() == parent:
+                time.sleep(1)
+            os._exit(0)
+        threading.Thread(target=watch, daemon=True).start()
     do_import()
     renders()
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
@@ -2351,6 +2387,8 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("serve")
     p.add_argument("--port", type=int, default=PORT)
+    p = sub.add_parser("engine", help="the tools behind the Rust service (crates/video-lab-serve)")
+    p.add_argument("--port", type=int, required=True)
     sub.add_parser("import")
     sub.add_parser("list")
     sub.add_parser("tools")
@@ -2386,6 +2424,8 @@ def main():
     a = ap.parse_args()
     if a.cmd == "serve":
         return serve(a.port)
+    if a.cmd == "engine":
+        return engine(a.port, parent=os.getppid())
     if a.cmd == "import":
         print("\n".join(do_import()) or "Nothing new to import.")
         return

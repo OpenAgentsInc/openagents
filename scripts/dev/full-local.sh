@@ -31,7 +31,8 @@
 #   coder          $FULL_LOCAL/bin/coder: this checkout's coder-new, pointed at
 #                  the website (OPENAGENTS_ORIGIN) with its own state folder,
 #                  so `coder login` and /sync on never touch your real Coder.
-#   video lab      with --lab: scripts/film/lab.py serve on 127.0.0.1:8792
+#   video lab      with --lab: scripts/film/lab.py serve on 127.0.0.1:8792, which
+#                  runs video-lab-serve with lab.py as its engine
 #                  (VIDEO_LAB_PORT), and the website's chat gets the Lab's tools
 #                  through Gemini (docs/video-lab/mvp.md). The gateway then
 #                  defaults to 8790, since the film review page holds 8791.
@@ -452,6 +453,11 @@ EOF
         if curl -fsS -o /dev/null "$lab_url/healthz" 2>/dev/null; then
             echo "Video Lab is already running on $lab_url."
         else
+            # lab.py serve runs the Rust service (crates/video-lab-serve) when it's built.
+            if [ ! -x "$target/debug/video-lab-serve" ] || [ "$build_first" = 1 ]; then
+                cargo_build -p video-lab -p video-lab-serve >> "$logs/build.log" 2>&1 \
+                    || { echo "The Video Lab build failed; see $logs/build.log" >&2; stop > /dev/null; exit 1; }
+            fi
             VIDEO_LAB_PORT=$lab_port nohup python3 "$root/scripts/film/lab.py" serve --port "$lab_port" \
                 > "$logs/lab.log" 2>&1 &
             echo $! > "$run/lab.pid"

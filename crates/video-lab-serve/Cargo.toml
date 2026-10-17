@@ -1,0 +1,15 @@
+[package]
+name = "video-lab-serve"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Video Lab's loopback service on 127.0.0.1:8792 for the local web chat, Coder and openagents lab"
+
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }
+tiny_http = "0.12"
+video-lab = { path = "../video-lab" }
+
+[lints]
+workspace = true

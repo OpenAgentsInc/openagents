@@ -19923,6 +19923,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "video-lab-serve"
+version = "1.0.0"
+dependencies = [
+ "serde_json",
+ "tiny_http",
+ "video-lab",
+]
+
+[[package]]
 name = "visibility"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
