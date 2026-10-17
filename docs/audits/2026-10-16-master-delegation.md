@@ -130,7 +130,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 7: host authority
 
-**Taken 2026-10-16 22:26 CDT** by Codex resuming #11817, then #11911 in `~/work/openagents-host-finish`; continue through issue closure.
+**Taken 2026-10-16 23:06 CDT** by Codex working #11911 in `~/work/openagents-host-finish`. #11817 is closed; its code is on main through `52ecf579fe`, with deploy checks queued below.
 
 **Released 2026-10-16 22:23 CDT** by Codex; #11817 and #11911 remain. #11817 prerequisites landed in `226ebf63a3` and `1dde3bd99a`; the enrolled adapter and project sharing are unfinished. Worktree: `~/work/openagents-bang-lanes` (removed after handoff).
 
