@@ -11,6 +11,25 @@ METHODS = {'get', 'post', 'put', 'patch', 'delete', 'head', 'options', 'trace'}
 INVENTORY = ROOT / 'docs/sdk/route-inventory.json'
 
 
+def check_history_paths(paths):
+    sessions = {
+        '/v1/history/sessions': {'get'},
+        '/v1/history/sessions/{id}': {'get'},
+        '/v1/history/sessions/computers/{device}': {'put', 'delete'},
+        '/v1/history/sessions/{id}/transcript': {'put'},
+        '/v1/history/sessions/projects/{project}/transcript': {'put'},
+        '/v1/history/sessions/{id}/messages': {'put'},
+    }
+    for path, item in paths.items():
+        if path == '/v1/history/sessions' or path.startswith('/v1/history/sessions/'):
+            assert path in sessions, 'Unknown computer-session route: ' + path
+            assert set(item) == sessions[path], 'Computer-session methods drift: ' + path
+            for operation in item.values():
+                assert operation.get('security') == [{'appBearer': []}], 'Computer-session authority drift: ' + path
+        elif path.startswith('/v1/history'):
+            assert set(item) == {'get'}, 'Saved history must remain read-only'
+
+
 def rules():
     source = (ROOT / 'crates/openagents-web/src/api_alias.rs').read_text()
     table = source.split('const PUBLIC:', 1)[1].split('\n];', 1)[0]
@@ -85,9 +104,7 @@ def check(document, expected_origin=None, complete=True):
         take = thread_paths['/v1/threads/synced/{session}/replies']['post']
         assert 'at most once' in take['description']
         assert 'revision-pinned' in thread_paths['/v1/threads/{id}/messages']['get']['description']
-        for path, item in thread_paths.items():
-            if path.startswith('/v1/history'):
-                assert set(item) == {'get'}, 'Saved history must remain read-only'
+        check_history_paths(thread_paths)
     # Account connection metadata does not grant Google access. Keep its
     # separate credential, availability gate, and source shapes qualified.
     connected = {
@@ -115,6 +132,7 @@ def check(document, expected_origin=None, complete=True):
     ids = set()
     operations = 0
     paths = document['paths']
+    check_history_paths(paths)
     for path, item in paths.items():
         assert path.startswith('/v1/'), 'Mixed path bases: ' + path
         for method, operation in item.items():

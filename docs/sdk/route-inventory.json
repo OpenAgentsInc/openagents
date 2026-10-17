@@ -293,6 +293,11 @@
       "line": 28
     },
     {
+      "path": "/v1/labs/documents/{document}/versions/{version}/timeline",
+      "source": "crates/openagents-web/src/lab_card_view.rs",
+      "line": 21
+    },
+    {
       "path": "/v1/computers/{name}/mac-jobs",
       "source": "crates/openagents-web/src/mac_jobs.rs",
       "line": 108

@@ -96,6 +96,46 @@ class PublicReference(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'component drift'):
             reference.check(document)
 
+    def test_saved_history_does_not_gain_write_operations(self):
+        for path in ('/v1/history', '/v1/history/{id}/messages'):
+            with self.subTest(path=path):
+                document = copy.deepcopy(self.document)
+                document['paths'][path]['post'] = {'operationId': 'writeSavedHistory'}
+                with self.assertRaisesRegex(AssertionError, 'Saved history must remain read-only'):
+                    reference.check(document)
+
+    def test_session_controls_keep_their_methods_and_authority(self):
+        controls = {
+            '/v1/history/sessions/computers/{device}': {'put', 'delete'},
+            '/v1/history/sessions/{id}/transcript': {'put'},
+            '/v1/history/sessions/projects/{project}/transcript': {'put'},
+            '/v1/history/sessions/{id}/messages': {'put'},
+        }
+        for path, methods in controls.items():
+            with self.subTest(path=path):
+                self.assertEqual(set(self.document['paths'][path]), methods)
+                document = copy.deepcopy(self.document)
+                document['paths'][path]['post'] = {'operationId': 'unexpectedSessionMethod'}
+                with self.assertRaisesRegex(AssertionError, 'Computer-session methods drift'):
+                    reference.check(document)
+                for method in methods:
+                    for security in (None, [], [{'connectionBearer': []}]):
+                        document = copy.deepcopy(self.document)
+                        operation = document['paths'][path][method]
+                        if security is None:
+                            del operation['security']
+                        else:
+                            operation['security'] = security
+                        with self.assertRaisesRegex(AssertionError, 'Computer-session authority drift'):
+                            reference.check(document)
+
+    def test_unknown_session_routes_are_refused(self):
+        document = copy.deepcopy(self.document)
+        document['paths']['/v1/history/sessions/{id}/execute'] = {
+            'post': {'operationId': 'executeSession', 'security': [{'appBearer': []}]}}
+        with self.assertRaisesRegex(AssertionError, 'Unknown computer-session route'):
+            reference.check(document)
+
 
 if __name__ == '__main__':
     unittest.main()
