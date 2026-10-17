@@ -84,6 +84,12 @@ def database():
 
 def nodes():
     named_resource(
+        ["compute", "firewall-rules", "describe", f"{PREFIX}-credential-rpc"],
+        ["compute", "firewall-rules", "create", f"{PREFIX}-credential-rpc", f"--network={PREFIX}",
+         "--direction=INGRESS", "--action=ALLOW", "--rules=tcp:9810", "--source-ranges=10.219.14.11/32,10.219.14.12/32",
+         f"--target-tags={PREFIX}-control", f"--description={MARKER}", "--enable-logging"],
+    )
+    named_resource(
         ["compute", "firewall-rules", "describe", f"{PREFIX}-cluster"],
         ["compute", "firewall-rules", "create", f"{PREFIX}-cluster", f"--network={PREFIX}",
          "--direction=INGRESS", "--action=ALLOW", "--rules=tcp:6443,tcp:10250,tcp:9800,udp:51820",

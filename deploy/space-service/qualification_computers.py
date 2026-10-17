@@ -19,7 +19,7 @@ TURNS={'turn':'cwc-turn-start','memory':'cwc-turn-memory','network':'cwc-turn-ne
 def network_command():
     script='''import http.client,json,socket
 results=[]
-for host,port in [("10.219.14.10",6443),("10.219.14.10",8443),("10.219.14.11",9800),("10.220.1.1",9800),("10.219.16.3",5432)]:
+for host,port in [("10.219.14.10",6443),("10.219.14.10",8443),("10.219.14.10",9810),("10.219.14.11",9800),("10.220.1.1",9800),("10.219.16.3",5432)]:
     try:
         with socket.create_connection((host,port),timeout=2): pass
         results.append({"host":host,"port":port,"denied":False})
