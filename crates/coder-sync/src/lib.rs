@@ -49,8 +49,10 @@ pub mod claude_session;
 pub mod mac_jobs;
 pub mod memory;
 pub mod own_runs;
+mod rooms;
 pub mod schedules;
 pub mod traces;
+pub use rooms::Message as RoomMessage;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -314,6 +316,8 @@ pub struct Upload {
     pub digest: String,
     /// How many messages were left out by the secret screen.
     pub left_out: usize,
+    /// Screened text with stable source-step IDs for the shared session doc.
+    pub room_messages: Vec<RoomMessage>,
 }
 
 impl Upload {
@@ -343,12 +347,15 @@ pub fn upload(document: &Value, computer: &str, screen: &Screen) -> Upload {
         }
     };
     let mut messages = Vec::new();
-    for step in document
+    let mut room_messages = Vec::new();
+    for (step_index, step) in document
         .get("steps")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
+        .enumerate()
     {
+        let before = messages.len();
         let text = message_text(step.get("message").unwrap_or(&Value::Null));
         match step.get("source").and_then(Value::as_str) {
             Some("user") if !text.trim().is_empty() => {
@@ -394,6 +401,20 @@ pub fn upload(document: &Value, computer: &str, screen: &Screen) -> Upload {
             }
             _ => {}
         }
+        let step_id = step.get("step_id").cloned().unwrap_or(json!(step_index));
+        for message in &messages[before..] {
+            if matches!(message["role"].as_str(), Some("user" | "assistant")) {
+                let id = format!(
+                    "terminal-{:x}",
+                    Sha256::digest(format!("{step_id}:{}", message["role"]))
+                );
+                room_messages.push(rooms::Message {
+                    id,
+                    user: message["role"] == "user",
+                    text: message["text"].as_str().unwrap_or_default().to_owned(),
+                });
+            }
+        }
     }
     if messages.len() > MAX_MESSAGES {
         messages.drain(..messages.len() - MAX_MESSAGES);
@@ -428,14 +449,27 @@ pub fn upload(document: &Value, computer: &str, screen: &Screen) -> Upload {
         let drop = messages.len().div_ceil(10);
         messages.drain(..drop);
     }
-    let digest = format!(
-        "{:x}",
-        Sha256::digest(serde_json::to_vec(&body).unwrap_or_default())
-    );
+    // Existing saved chats must publish their first Loro room after upgrading.
+    let mut hash = Sha256::new();
+    hash.update(b"openagents.terminal.chat.rooms.v1\0");
+    hash.update(serde_json::to_vec(&body).unwrap_or_default());
+    let digest = format!("{:x}", hash.finalize());
+    let mut room_bytes = 0;
+    room_messages = room_messages
+        .into_iter()
+        .rev()
+        .take(MAX_MESSAGES)
+        .take_while(|m| {
+            room_bytes += m.text.len();
+            room_bytes <= MAX_BODY
+        })
+        .collect();
+    room_messages.reverse();
     Upload {
         body,
         digest,
         left_out,
+        room_messages,
     }
 }
 
@@ -800,6 +834,9 @@ pub async fn put(http: &reqwest::Client, saved: &Saved, session: &str, upload: &
     let Some(path) = session_path(session) else {
         return Answer::Refused("That isn't a Coder session id.".into());
     };
+    if let Some(answer) = rooms::put(saved, session, upload).await {
+        return answer;
+    }
     let named = upload.body.get("repository").is_some();
     let mut body = upload.body.clone();
     if named && NO_REPOSITORY.load(Ordering::Relaxed) {

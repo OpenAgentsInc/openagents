@@ -12,6 +12,11 @@ user-home = { path = "../user-home" }
 atif = { path = "../atif" }
 mac-jobs = { path = "../mac-jobs" }
 openagents-login = { path = "../openagents-login" }
+openagents-sdk = { path = "../openagents-sdk" }
+openagents-doc = { path = "../../apps/openagents/crates/doc" }
+openagents-sync = { path = "../../apps/openagents/crates/sync", default-features = false }
+loro = "=1.13.9"
+futures = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 secret-screen = { path = "../secret-screen" }
 serde = { version = "1", features = ["derive"] }
