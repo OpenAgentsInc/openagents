@@ -471,6 +471,7 @@ fn the_wallet_screen_passes_the_copy_guard() {
         SeedError::Unavailable,
         SeedError::Unreadable,
         SeedError::NotSaved,
+        SeedError::NotYourWords,
     ] {
         seen.push(error.message());
     }
@@ -606,4 +607,46 @@ fn a_locked_identity_makes_no_wallet_and_no_identity_makes_new_words() {
         Err(SeedError::Exists)
     ));
     assert_eq!(store.stored(), Some(made.entropy));
+}
+
+/// With an identity on the phone, the wallet's restore takes only the
+/// identity's words; the account's own restore is what changes them
+/// (#11995).
+#[test]
+fn the_wallet_restore_refuses_words_that_differ_from_the_account() {
+    let (source, _) = identity_source(seed::IdentityEntropy::Found(vec![0; 32]));
+    let home = tempfile::tempdir().unwrap();
+    let store = Arc::new(MemoryStore::default());
+    let seen = Arc::new(Mutex::new(vec![]));
+    let wallet = Wallet::new(
+        home.path().join("spark"),
+        store.clone(),
+        recording(seen.clone()),
+        Arc::new(|| {}),
+    )
+    .with_identity(source.clone());
+    wallet.open();
+    tap(&wallet, "restore-open");
+    type_in(&wallet, "restore-words", TWELVE_ZERO);
+    tap(&wallet, "restore");
+    assert!(texts(&wallet).contains(&seed::NOT_YOUR_WORDS.to_owned()));
+    assert!(store.stored().is_none());
+    assert!(store.adds.lock().unwrap().is_empty());
+    assert!(seen.lock().unwrap().is_empty());
+
+    // The account's own words restore the wallet.
+    type_in(&wallet, "restore-words", TWENTY_FOUR_ZERO);
+    tap(&wallet, "restore");
+    settle(&wallet);
+    assert_eq!(store.stored(), Some(vec![0; 32]));
+    assert_eq!(*seen.lock().unwrap(), vec![TWENTY_FOUR_ZERO.to_owned()]);
+
+    // A locked identity restores nothing.
+    let (locked, _) = identity_source(seed::IdentityEntropy::Unavailable);
+    let empty = MemoryStore::default();
+    assert!(matches!(
+        seed::restore_with(&empty, TWELVE_ZERO, Some(&locked)),
+        Err(SeedError::Unavailable)
+    ));
+    assert!(empty.adds.lock().unwrap().is_empty());
 }
