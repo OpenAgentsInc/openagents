@@ -123,7 +123,8 @@ Configure the broker's optional `certificate_authority` object with `authority`
 (the exact Google CA Service authority resource, using its project number)
 and `caller_token` (the private
 file containing the central authority's token). Give the broker's Google service
-account Certificate Requester on that CA pool only. The service fixes the Google
+account Certificate Requester on that CA pool only. Create a DevOps-tier pool
+for this adapter. The service fixes the Google
 API origin and issuing authority, bounds requests and responses, refuses
 redirects, limits signing concurrency to two, and caps node certificates at seven
 days. Retries in the same UTC day reuse a request ID; Google's deduplication
