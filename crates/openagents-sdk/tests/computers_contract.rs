@@ -26,7 +26,7 @@ fn generated_bindings_pin_the_exact_exported_schema_and_operations() {
             .collect();
         assert_eq!(operation.success, success);
     }
-    assert_eq!(OPERATIONS.len(), 18);
+    assert_eq!(OPERATIONS.len(), 21);
 }
 
 #[test]

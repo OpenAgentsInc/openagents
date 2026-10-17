@@ -710,9 +710,12 @@ deleting files, shutting down the machine, uninstalling the host, or revoking
 unrelated grants. Unsupported suspend/fork/snapshot needs refuse. Core-only host
 support may require API admission changes instead of pretending Suspend works.
 
-New CLI tools and compiled remote launch changes are tracked in [#11823](https://github.com/OpenAgentsInc/openagents/issues/11823) and
-[the next-release list](../coder/next-release.md). Compatible servers can improve
-frozen Coder 1.0.0 now; new binary behavior cannot.
+New CLI tools and compiled remote launch changes are tracked in
+[#11823](https://github.com/OpenAgentsInc/openagents/issues/11823) and
+[the 1.0.0 release scope](../coder/next-release.md). The owner lifted the binary
+freeze on 2026-10-16. Implement client and server changes together under the
+[release brief](../audits/2026-10-16-coder-1.0-big-bang.md); only the release agent
+publishes release candidates and the final build.
 
 ## Usage, rollout, and deferred capabilities
 
