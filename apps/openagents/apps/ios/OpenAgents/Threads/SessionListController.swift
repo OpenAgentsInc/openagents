@@ -41,6 +41,11 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
     }
     /// Headers are disclosure rows that fold their section (front page).
     var collapsible = false
+    /// Long-press drag rearranges sessions (front page): reorder Pinned, or
+    /// move a session into Pinned, a section, or Recent.
+    var dragRearranges: Bool { false }
+    /// While a session is being dragged: an empty Pinned shows as a target.
+    private(set) var showsDropTargets = false
     private(set) var collapsed = Set(UserDefaults.standard.stringArray(forKey: "collapsedSections") ?? [])
     private var headerStates: [String: SectionHeaderCell.State] = [:]
 
@@ -64,6 +69,9 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
         collectionView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         collectionView.backgroundColor = .clear
         collectionView.delegate = self
+        collectionView.dragDelegate = self
+        collectionView.dropDelegate = self
+        collectionView.dragInteractionEnabled = true
         view.addSubview(collectionView)
 
         let sessionReg = UICollectionView.CellRegistration<SessionCell, String> { [weak self] cell, path, id in
@@ -464,11 +472,127 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
     }
 }
 
+// MARK: Drag to rearrange
+
+/// The desktop sidebar's drag: a session can be dropped among the pins (at
+/// that place), into a section, or into Recent. Sections and Recent stay in
+/// recency order, so only Pinned keeps the drop position.
+extension SessionListController: UICollectionViewDragDelegate, UICollectionViewDropDelegate {
+    private enum DropTarget { case pinned(after: String?, before: String?), section(String), recent }
+
+    func collectionView(_ collectionView: UICollectionView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
+        guard dragRearranges, !archivedRows, case let .session(id) = dataSource.itemIdentifier(for: indexPath) else { return [] }
+        let item = UIDragItem(itemProvider: NSItemProvider(object: (sessions[id]?.title ?? "") as NSString))
+        item.localObject = id
+        return [item]
+    }
+
+    func collectionView(_ collectionView: UICollectionView, dragSessionIsRestrictedToDraggingApplication session: UIDragSession) -> Bool { true }
+
+    func collectionView(_ collectionView: UICollectionView, dragPreviewParametersForItemAt indexPath: IndexPath) -> UIDragPreviewParameters? {
+        guard let cell = collectionView.cellForItem(at: indexPath) else { return nil }
+        let parameters = UIDragPreviewParameters()
+        parameters.visiblePath = UIBezierPath(roundedRect: cell.bounds.insetBy(dx: 8, dy: 2), cornerRadius: 14)
+        return parameters
+    }
+
+    func collectionView(_ collectionView: UICollectionView, dragSessionWillBegin session: UIDragSession) {
+        showsDropTargets = true
+        reload(animated: true)
+    }
+
+    func collectionView(_ collectionView: UICollectionView, dragSessionDidEnd session: UIDragSession) {
+        showsDropTargets = false
+        reload(animated: true)
+    }
+
+    func collectionView(_ collectionView: UICollectionView, canHandle session: UIDropSession) -> Bool {
+        dragRearranges && session.localDragSession != nil
+    }
+
+    func collectionView(_ collectionView: UICollectionView, dropSessionDidUpdate session: UIDropSession, withDestinationIndexPath destinationIndexPath: IndexPath?) -> UICollectionViewDropProposal {
+        guard let id = session.localDragSession?.items.first?.localObject as? String,
+              dropTarget(for: id, session: session, at: destinationIndexPath) != nil
+        else { return UICollectionViewDropProposal(operation: .forbidden) }
+        // Over a section's header: into that section, highlighted.
+        let intent: UICollectionViewDropProposal.Intent = headerUnder(session) != nil ? .insertIntoDestinationIndexPath : .insertAtDestinationIndexPath
+        return UICollectionViewDropProposal(operation: .move, intent: intent)
+    }
+
+    func collectionView(_ collectionView: UICollectionView, performDropWith coordinator: UICollectionViewDropCoordinator) {
+        guard let id = coordinator.items.first?.dragItem.localObject as? String,
+              let vm = sessions[id],
+              let target = dropTarget(for: id, session: coordinator.session, at: coordinator.destinationIndexPath)
+        else { return }
+        let section = app.frontPage.folders.first { $0.id != "pinned" && app.sessions(inFolder: $0.id).contains { $0.id == id } }?.id
+        var changed = true
+        switch target {
+        case let .pinned(after, before):
+            let pins = app.sessions(inFolder: "pinned").map(\.id)
+            if vm.pinned, let i = pins.firstIndex(of: id),
+               (i > 0 ? pins[i - 1] : nil) == after, (i + 1 < pins.count ? pins[i + 1] : nil) == before {
+                changed = false
+            } else {
+                if !vm.pinned { app.setPinned(id, true) }
+                app.movePin(id, after: after, before: before)
+            }
+        case let .section(sectionId):
+            if vm.pinned { app.setPinned(id, false) }
+            if vm.pinned || section != sectionId { app.move(id, toSection: sectionId) } else { changed = false }
+        case .recent:
+            if vm.pinned { app.setPinned(id, false) }
+            if section != nil { app.move(id, toSection: nil) } else if !vm.pinned { changed = false }
+        }
+        if changed { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+    }
+
+    /// The section header under the finger, if any.
+    private func headerUnder(_ session: UIDropSession) -> String? {
+        guard let path = collectionView.indexPathForItem(at: session.location(in: collectionView)),
+              case let .header(id) = dataSource.itemIdentifier(for: path) else { return nil }
+        return id
+    }
+
+    /// Where a drop lands: on a header, into that section (Pinned: first);
+    /// otherwise by the insertion point: Pinned (between two pins), a
+    /// section, or Recent. Nil for anything else (search results, saved chats).
+    private func dropTarget(for id: String, session: UIDropSession, at path: IndexPath?) -> DropTarget? {
+        guard dragRearranges else { return nil }
+        if let header = headerUnder(session) {
+            switch header {
+            case "pinned":
+                return .pinned(after: nil, before: app.sessions(inFolder: "pinned").map(\.id).first { $0 != id })
+            case "recent":
+                return .recent
+            default:
+                return app.frontPage.folders.contains { $0.id == header } ? .section(header) : nil
+            }
+        }
+        guard let path else { return nil }
+        let snapshot = dataSource.snapshot()
+        guard path.section < snapshot.numberOfSections else { return nil }
+        let sectionId = snapshot.sectionIdentifiers[path.section]
+        switch sectionId {
+        case "pinned":
+            let items = snapshot.itemIdentifiers(inSection: sectionId).filter { $0 != .session(id) }
+            let lead = items.prefix { if case .session = $0 { return false } else { return true } }.count
+            let pins = items.compactMap { item -> String? in if case let .session(pin) = item { return pin } else { return nil } }
+            let at = max(0, min(path.item - lead, pins.count))
+            return .pinned(after: at > 0 ? pins[at - 1] : nil, before: at < pins.count ? pins[at] : nil)
+        case "recent":
+            return .recent
+        default:
+            return app.frontPage.folders.contains { $0.id == sectionId } ? .section(sectionId) : nil
+        }
+    }
+}
+
 /// Front page, laid out like the desktop sidebar: Pinned and the user's
 /// sections inline as foldable groups, then everything else under Recent.
 /// Fold state persists; long-press a header for its actions.
 class SessionsViewController: SessionListController {
     override var showsSavedChats: Bool { true }
+    override var dragRearranges: Bool { query.trimmingCharacters(in: .whitespaces).isEmpty && !app.groupByProject }
     /// Search from the iPad sidebar: non-empty shows matches instead of sections.
     var query = "" { didSet { if query != oldValue { reload(animated: true) } } }
 
@@ -494,6 +618,10 @@ class SessionsViewController: SessionListController {
         var out: [(id: String, header: String?, folders: [FolderRowVM], sessions: [SessionRowVM])] = []
         for f in app.frontPage.folders {
             out.append((f.id, f.name, [], app.sessions(inFolder: f.id)))
+        }
+        // Dragging with nothing pinned yet: Pinned shows as a place to drop.
+        if showsDropTargets, !out.contains(where: { $0.id == "pinned" }) {
+            out.insert(("pinned", "Pinned", [], []), at: 0)
         }
         if app.groupByProject {
             for g in app.frontPage.projectGroups {

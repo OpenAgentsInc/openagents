@@ -294,6 +294,30 @@ final class SessionFlowTests: XCTestCase {
         XCTAssertTrue((input.value as? String ?? "").contains("@mod.rs"), "token inserted: \(input.value ?? "")")
     }
 
+    /// Long-press drag, as on the desktop sidebar: a pin into a section,
+    /// then a section's session into Pinned.
+    func testDragSessionsBetweenPinnedAndSections() {
+        let app = launch()
+        let pinned = app.cells["section-pinned"]
+        XCTAssertTrue(pinned.waitForExistence(timeout: 10))
+        let veil = app.cells["session-chat-veil"]
+        let mobile = app.cells["section-section-mobile"]
+        XCTAssertTrue(veil.waitForExistence(timeout: 5) && mobile.exists)
+        veil.press(forDuration: 0.5, thenDragTo: mobile, withVelocity: .slow, thenHoldForDuration: 0.5)
+        sleep(1)
+        XCTAssertGreaterThan(veil.frame.minY, mobile.frame.minY, "moved into Mobile")
+        snapshot(app, "drag-into-section")
+
+        let tabs = app.cells["session-chat-tabs"]
+        XCTAssertTrue(tabs.waitForExistence(timeout: 5))
+        tabs.press(forDuration: 0.5, thenDragTo: pinned, withVelocity: .slow, thenHoldForDuration: 0.5)
+        let p0 = app.cells["section-section-p0"]
+        XCTAssertTrue(p0.waitForExistence(timeout: 5))
+        sleep(1)
+        XCTAssertLessThan(tabs.frame.minY, p0.frame.minY, "dropped into Pinned")
+        snapshot(app, "drag-into-pinned")
+    }
+
     func testArchiveWithUndo() {
         let app = launch()
         // Recent sits below the inline sections; bring the row into the

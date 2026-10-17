@@ -6,6 +6,11 @@ and New session in its bottom bar. Tap a session to open it as the page; tap
 or swipe the dimmed page to close the drawer. New session also stays at the
 bottom of Home and Settings.
 
+Long press a session in the drawer and drag it, as on the desktop: drop it
+among the pins to pin it there (or reorder pins), onto a section to move it
+in, or onto Recent to take it out of Pinned and sections. With nothing
+pinned yet, Pinned appears at the top while you drag.
+
 Check opening and closing the drawer during a reply, search in the drawer,
 the left-edge swipe on Home, a session, and Settings (deeper Settings pages
 still swipe back), VoiceOver (the drawer reads on its own; escape closes it),
