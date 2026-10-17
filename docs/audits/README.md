@@ -7,6 +7,7 @@ Use the [master roadmap](../roadmap.md) for current work.
 
 | Document | Recorded topic |
 | --- | --- |
+| [2026-10-17-spark-wallet.md](2026-10-17-spark-wallet.md) | Spark wallet: what the Breez SDK offers at `fc7ae22`, what the phone, CLI, and x402 payer use, the ranked gaps for a full wallet, x402 fit, custody with one seed, and a phased plan |
 | [2026-10-16-coder-desktop-monorepo-merge.md](2026-10-16-coder-desktop-monorepo-merge.md) | Merging the Coder Desktop (Zeron) fork into the monorepo as the OpenAgents desktop and mobile apps: size, conflicts, identity, plan |
 | [2026-10-14-computers-for-chats-audit.md](2026-10-14-computers-for-chats-audit.md) | Computers for chats: your own computers, cloud computers, environments, GPU, Claude setup tokens and Code Graph, against "type in the web app, a computer starts, the work shows on the web" |
 | [2026-10-12-claude-usage-burn/README.md](2026-10-12-claude-usage-burn/README.md) | After-action report: an unattended `claude bg` issue blitz drained the owner's subscription, spawned orphaned processes and cloud VMs, and how to gate, cap, and kill-switch future runs |
