@@ -40,8 +40,8 @@ def main(action):
     if action=='create':
         path=ROOT/'cwc-seed.json'
         if path.exists(): raise RuntimeError('Inspect the saved computer before another create.')
-        save('cwc-seed',{'state':'submission_pending','idempotency_key':'space-11814-seed-medium-1'})
-        value=request('POST','/v1/computers',{'size':'medium','idempotency_key':'space-11814-seed-medium-1'})
+        save('cwc-seed',{'state':'submission_pending','idempotency_key':'space-11814-runtime-small-1'})
+        value=request('POST','/v1/computers',{'size':'small','idempotency_key':'space-11814-runtime-small-1'})
         save('cwc-seed',value);print(json.dumps(value));return
     computer=json.loads((ROOT/'cwc-seed.json').read_text())
     identifier=computer.get('id')
