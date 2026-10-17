@@ -299,7 +299,8 @@ impl<D: Driver> Provider for OnDriver<D> {
     }
 
     async fn stop(&self, c: &Computer, resource: &str) -> Outcome<String> {
-        if let Outcome::Done { value } = self.driver.observe(resource).await
+        if self.driver.capabilities().memory_suspend
+            && let Outcome::Done { value } = self.driver.observe(resource).await
             && value.state == State::Gone
         {
             return Outcome::done(format!("gone:{resource}"));
