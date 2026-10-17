@@ -1,0 +1,232 @@
+{
+  "schema": "openagents.space.upload_cleanup.v1",
+  "resources": [
+    "sbx_01a14768-50ba-705d-b47a-66c688386656",
+    "sbx_01a1476b-5bba-74f8-98fc-44dfe04cf6e6",
+    "sbx_01a14771-109b-77ed-bd39-097363ae84c8",
+    "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5"
+  ],
+  "native_commit": "de87b436c35dac056564bdd5b2a113c9046e189b",
+  "collector_enabled": true,
+  "normal_grace_seconds": 3600,
+  "normal_tick_seconds": 60,
+  "test_one_shot_grace_seconds": null,
+  "before": [
+    {
+      "resource": "sbx_01a14768-50ba-705d-b47a-66c688386656",
+      "location_id": "01a14768-a66d-707d-927a-d9cecd069f9e",
+      "snapshot_id": null,
+      "orphaned_at": "2026-10-17T01:13:00.314176+00:00",
+      "prefix_sha256": "89f76b3da6f9a9523dbbf2f30bcede9acead6147cf5eea2afec1df85cf62c43b",
+      "objects": 4,
+      "bytes": 1110427351
+    },
+    {
+      "resource": "sbx_01a14768-50ba-705d-b47a-66c688386656",
+      "location_id": "01a14769-ca3d-78d5-9c04-601411a37ea5",
+      "snapshot_id": null,
+      "orphaned_at": "2026-10-17T01:13:00.314176+00:00",
+      "prefix_sha256": "7c7a05ae0c17efd63d542520f94233e943bf8d61c03b518ade00efedca724a47",
+      "objects": 4,
+      "bytes": 1111100670
+    },
+    {
+      "resource": "sbx_01a14768-50ba-705d-b47a-66c688386656",
+      "location_id": "01a1476a-e1b0-7c11-98d1-0dd801e855c2",
+      "snapshot_id": null,
+      "orphaned_at": "2026-10-17T01:13:00.314176+00:00",
+      "prefix_sha256": "ba2527e54f108f341aa20562169974a3a11925507944156d644f26f3674b875c",
+      "objects": 4,
+      "bytes": 1111795656
+    },
+    {
+      "resource": "sbx_01a1476b-5bba-74f8-98fc-44dfe04cf6e6",
+      "location_id": "01a1476b-ccb8-760b-8c2d-a7cd22ae417b",
+      "snapshot_id": null,
+      "orphaned_at": "2026-10-17T01:16:57.392106+00:00",
+      "prefix_sha256": "5a03bed64d75a4a581eecf623a90f57cc12ae028eaca0c00accc4ad54c962477",
+      "objects": 4,
+      "bytes": 1113031051
+    },
+    {
+      "resource": "sbx_01a1476b-5bba-74f8-98fc-44dfe04cf6e6",
+      "location_id": "01a1476c-ee0c-7011-8921-681a0aa75424",
+      "snapshot_id": null,
+      "orphaned_at": "2026-10-17T01:16:57.392106+00:00",
+      "prefix_sha256": "7293295ec9b1ab80e71f49338d614f41934fc127f9b5144fa7db23f69ea0823f",
+      "objects": 4,
+      "bytes": 1114250323
+    },
+    {
+      "resource": "sbx_01a1476b-5bba-74f8-98fc-44dfe04cf6e6",
+      "location_id": "01a1476e-7e99-79d3-8f9c-dff426f36d8e",
+      "snapshot_id": null,
+      "orphaned_at": "2026-10-17T01:16:57.392106+00:00",
+      "prefix_sha256": "cda6f62d47a7790f713d3ff398d5b8b70a68fcc953716d49fbae10b79128fe11",
+      "objects": 4,
+      "bytes": 1114862139
+    },
+    {
+      "resource": "sbx_01a14771-109b-77ed-bd39-097363ae84c8",
+      "location_id": "01a14771-696c-7ccc-9424-e1cd351614f0",
+      "snapshot_id": "01a14771-6959-72f9-a6fd-8ed9b7c9b62e",
+      "orphaned_at": null,
+      "prefix_sha256": "0f14b096de4f15197072783268e1820ac7bf32ddd4cd41e3074d53634e5913ae",
+      "objects": 4,
+      "bytes": 1110736057
+    },
+    {
+      "resource": "sbx_01a14771-109b-77ed-bd39-097363ae84c8",
+      "location_id": "01a14771-d108-71ac-9da0-d2cbf02f69de",
+      "snapshot_id": "01a14771-d0f3-7334-8305-f4f430987329",
+      "orphaned_at": null,
+      "prefix_sha256": "ec21ca4bbd80c2383a06d244a72b0b537af4536e31bdbe7080fc8ed442cac399",
+      "objects": 4,
+      "bytes": 1111911447
+    },
+    {
+      "resource": "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5",
+      "location_id": "01a14783-1951-776f-b70c-4e77b30dee06",
+      "snapshot_id": null,
+      "orphaned_at": "2026-10-17T01:39:39.159428+00:00",
+      "prefix_sha256": "ed1f3efe943dae07a219a0d492a0019821fc2cecd679148a368f6022a7501969",
+      "objects": 4,
+      "bytes": 1110739580
+    },
+    {
+      "resource": "sbx_01a14782-8b8d-7743-aa34-19552d9d2fe5",
+      "location_id": "01a14783-8bff-7726-9135-08c88ca97b08",
+      "snapshot_id": null,
+      "orphaned_at": "2026-10-17T01:39:39.159428+00:00",
+      "prefix_sha256": "192295a9d25db04e268fe2815b0e45d453b777dbe47500e38d51dae2724074fc",
+      "objects": 4,
+      "bytes": 1111160168
+    }
+  ],
+  "scope": "Only the four owned test computers; object metadata only; no object payloads or credentials recorded",
+  "cleanup_retry": {
+    "parent_operation": "op_01a14771-d84e-7254-8412-f3d2b1cb9790",
+    "requested": true,
+    "accepted_operation": "op_01a14793-f9f6-77e3-a088-8f9dafa6af78",
+    "state": "failed",
+    "invalid_lifecycle_reported": false
+  },
+  "finalizer_preconditions": {
+    "lifecycle": "deleted",
+    "placement": "unplaced",
+    "active_node_absent": true,
+    "target_node_absent": true,
+    "creating_snapshots": 0,
+    "worker_directory_absent": true
+  },
+  "collector_binary_sha256": "e5ca270f128942a222066120663875d5e272d8477022204ccf990a1c148e9bcb",
+  "collector_result": {
+    "scanned": 4,
+    "deleted": 4,
+    "already_gone": 0,
+    "s3_errors": 0,
+    "db_errors": 0,
+    "skipped_encrypted": 0,
+    "parse_errors": 0,
+    "bucket_out_of_scope": 0,
+    "drift_skips": 0
+  },
+  "after": [
+    {
+      "location_id": "01a14768-a66d-707d-927a-d9cecd069f9e",
+      "prefix_sha256": "89f76b3da6f9a9523dbbf2f30bcede9acead6147cf5eea2afec1df85cf62c43b",
+      "objects": 0,
+      "bytes": 0
+    },
+    {
+      "location_id": "01a14769-ca3d-78d5-9c04-601411a37ea5",
+      "prefix_sha256": "7c7a05ae0c17efd63d542520f94233e943bf8d61c03b518ade00efedca724a47",
+      "objects": 0,
+      "bytes": 0
+    },
+    {
+      "location_id": "01a1476a-e1b0-7c11-98d1-0dd801e855c2",
+      "prefix_sha256": "ba2527e54f108f341aa20562169974a3a11925507944156d644f26f3674b875c",
+      "objects": 0,
+      "bytes": 0
+    },
+    {
+      "location_id": "01a1476b-ccb8-760b-8c2d-a7cd22ae417b",
+      "prefix_sha256": "5a03bed64d75a4a581eecf623a90f57cc12ae028eaca0c00accc4ad54c962477",
+      "objects": 0,
+      "bytes": 0
+    },
+    {
+      "location_id": "01a1476c-ee0c-7011-8921-681a0aa75424",
+      "prefix_sha256": "7293295ec9b1ab80e71f49338d614f41934fc127f9b5144fa7db23f69ea0823f",
+      "objects": 0,
+      "bytes": 0
+    },
+    {
+      "location_id": "01a1476e-7e99-79d3-8f9c-dff426f36d8e",
+      "prefix_sha256": "cda6f62d47a7790f713d3ff398d5b8b70a68fcc953716d49fbae10b79128fe11",
+      "objects": 0,
+      "bytes": 0
+    },
+    {
+      "location_id": "01a14771-696c-7ccc-9424-e1cd351614f0",
+      "prefix_sha256": "0f14b096de4f15197072783268e1820ac7bf32ddd4cd41e3074d53634e5913ae",
+      "objects": 0,
+      "bytes": 0
+    },
+    {
+      "location_id": "01a14771-d108-71ac-9da0-d2cbf02f69de",
+      "prefix_sha256": "ec21ca4bbd80c2383a06d244a72b0b537af4536e31bdbe7080fc8ed442cac399",
+      "objects": 0,
+      "bytes": 0
+    },
+    {
+      "location_id": "01a14783-1951-776f-b70c-4e77b30dee06",
+      "prefix_sha256": "ed1f3efe943dae07a219a0d492a0019821fc2cecd679148a368f6022a7501969",
+      "objects": 0,
+      "bytes": 0
+    },
+    {
+      "location_id": "01a14783-8bff-7726-9135-08c88ca97b08",
+      "prefix_sha256": "192295a9d25db04e268fe2815b0e45d453b777dbe47500e38d51dae2724074fc",
+      "objects": 0,
+      "bytes": 0
+    }
+  ],
+  "remaining_native_rows": {
+    "locations": 0,
+    "old_sandbox": 0
+  },
+  "native_finalizer_for_stale_owned_row": true,
+  "same_store_loopback_endpoint_for_test": true,
+  "passed": true,
+  "cleanup_operation_states_after_collection": [
+    {
+      "id": "op_01a14771-d84e-7254-8412-f3d2b1cb9790",
+      "state": "failed",
+      "terminal_error_kind": "delete_sandbox",
+      "invalid_lifecycle_reported": false
+    },
+    {
+      "id": "op_01a14793-f9f6-77e3-a088-8f9dafa6af78",
+      "state": "failed",
+      "terminal_error_kind": "delete_sandbox",
+      "invalid_lifecycle_reported": false
+    }
+  ],
+  "test_one_shot_skips_normal_grace": true,
+  "service_delete_waits_for_uploaded_object_gc": false,
+  "stale_row_repair_is_test_cleanup_only": true,
+  "cleanup_method": "The pinned native locked finalizer repaired only the stale owned row. The normal collector had already removed six locations; a one-shot native collector restricted to the ten saved IDs removed the four remaining settled orphans. No lifecycle rewrite, bucket-wide purge, or maintained configuration change ran.",
+  "totals": {
+    "before_objects": 40,
+    "before_bytes": 11120014442,
+    "after_objects": 0,
+    "after_bytes": 0
+  },
+  "tools_archive": {
+    "path": "uploaded-checkpoint-cleanup-tools.tar.gz",
+    "sha256": "892ea0730c366f1ac0a848f21e8df073d3341be8ba851008eff56357e4808922",
+    "bytes": 5122
+  }
+}
