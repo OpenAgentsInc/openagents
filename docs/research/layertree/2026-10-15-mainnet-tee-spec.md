@@ -402,8 +402,8 @@ service, launcher, and measurement policy, as well as Intel hardware.
 A client checks that Google-signed token instead of claiming a direct
 Intel-only quote verification. Independent image reproduction, release-log inclusion, sealed-key recovery
 probes, and the confirmed signet output binding are now recorded in the
-[P1 verification report](2026-10-16-signet-verification.md); the 24-hour soak and
-final recovery measurements remain #11793.
+[P1 verification report](2026-10-16-signet-verification.md), with the 24-hour soak,
+the physical VM kill, and both recoveries.
 
 No SNP route on GCP qualified: the raw SNP report measures firmware, the
 captured guest has no SVSM, and Google Cloud Attestation rejects the SNP
@@ -730,16 +730,26 @@ link the exact checked log. A separate negative view changes the expected
 tree ID for a captured token; it is not a live signer failure.
 
 The primary measurement restarted on 2026-10-16 at 13:34:53 UTC after a
-seven-block confirmation gap exceeded the six-block target. Its scheduled
-physical-loss recovery and the signet alarm still require #11793/#11794 results.
+seven-block confirmation gap exceeded the six-block target. The clean 24-hour
+window then completed with 38 heartbeats, none more than 5 blocks apart.
+
+![Five confirmed payouts after the physical VM kill](captures/signet-kill-paid.jpg)
+
+The scheduled deletion removed the enclave VM at height 326763 (2026-10-17
+13:42 UTC; audited, no HALT). The saved escape confirmed at its first valid
+block, **326775**, 12 blocks later, paying all five members exactly 1,000 sats.
+The CPFP child paid 934 sats from outside the tree. Three light clients followed
+the tree for about 29.5 hours through the payout with no alarm, and marked their
+members exited. The [P1 report](2026-10-16-signet-verification.md#primary-tree-physical-loss-recovery)
+links the audit, the 187-event fixture, and the public archive.
 
 ![Five confirmed payouts after the separate guardian HALT](captures/signet-halt-paid.jpg)
 
 The separate guardian HALT run recovered all five exact 1,000-sat payouts at
 height 326616, with 934 sats in external anchor fees. The
 [P1 report](2026-10-16-signet-verification.md) links the checked public package,
-Core reads, and final capture. This completes the separate HALT recovery;
-it does not replace the primary 24-hour soak or physical-loss measurement.
+Core reads, and final capture. Together with the physical kill above, this
+completes both P1 recovery paths.
 
 ## 11. What the sandbox proves, and what it does not
 

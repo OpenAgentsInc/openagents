@@ -1,0 +1,54 @@
+{
+  "name": "layertree-signet-kill-paid",
+  "notes": "Primary tree physical-loss recovery: the scheduled deletion removed the enclave VM at signet block 326763 with no HALT; the saved escape confirmed at block 326775 with five exact 1,000-sat payouts and 934 sats in external fees.",
+  "scene": {
+    "kind": "layer_tree",
+    "events": "crates/layertree-tee-lab/fixtures/events/signet-kill-paid.jsonl",
+    "at": 176,
+    "caption": "Signet VM kill recovery: five confirmed 1,000-sat payouts; block 326775",
+    "play": true,
+    "from": 176,
+    "to": 186,
+    "rate": 1.25
+  },
+  "duration": 8,
+  "fps": 24.0,
+  "width": 1920,
+  "height": 1080,
+  "subframes": 1,
+  "prewarm": 1,
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          6.0,
+          18.0,
+          30.0
+        ],
+        "target": [
+          1.0,
+          8.0,
+          0.0
+        ],
+        "focal_mm": 38.0,
+        "ease": "in_out"
+      },
+      {
+        "t": 8.0,
+        "eye": [
+          -6.0,
+          18.0,
+          30.0
+        ],
+        "target": [
+          1.0,
+          8.0,
+          0.0
+        ],
+        "focal_mm": 38.0
+      }
+    ]
+  },
+  "crf": 12
+}

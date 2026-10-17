@@ -254,6 +254,14 @@ Staged signet theft mined at block 326640: 5,000 sats missing; all three followe
 Source: [crates/layertree-tee-lab/fixtures/events/signet-staged-alarms.jsonl](../../../../crates/layertree-tee-lab/fixtures/events/signet-staged-alarms.jsonl), event 15.
 Signet transaction: `58d597295e136ba6f7bffec2c90a60b214c8b4addad788878a8b4a5ee555f231`.
 
-Normal signet operations, separate guardian HALT recovery, and the staged signet
-alarms are captured above. The primary tree’s physical-loss recovery remains a
-#11793 measurement; its final capture still needs that result.
+## signet kill paid
+
+![Primary tree VM deleted at signet block 326763 with no HALT; the saved escape confirmed at block 326775: 5 exact 1,000-sat payouts; external fee 934 sats.](signet-kill-paid.jpg)
+
+Primary tree VM deleted at signet block 326763 with no HALT; the saved escape confirmed at block 326775: 5 exact 1,000-sat payouts; external fee 934 sats.
+
+Source: [crates/layertree-tee-lab/fixtures/events/signet-kill-paid.jsonl](../../../../crates/layertree-tee-lab/fixtures/events/signet-kill-paid.jsonl), event 186.
+Signet transaction: `43ffd761ae82c6f3a8de5baccb6c06599bd4a08d872523e373e339593e5ee4ec`.
+
+Normal signet operations, the separate guardian HALT recovery, the primary
+tree’s physical VM-kill recovery, and the staged signet alarms are captured above.

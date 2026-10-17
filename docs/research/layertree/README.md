@@ -19,8 +19,9 @@ The [TDX verification report](2026-10-16-signet-verification.md) records real
 signet creation, join, update, exit, and refresh transactions confirmed at
 heights 326595–326599, with Google-backed image/key/channel checks and
 public mirror readbacks. Its linked archive contains the public captures
-and actual confirmation and fee measurements. The 24-hour run and
-physical-loss recovery remains in progress under #11793. The separate
+and actual confirmation and fee measurements. After a clean 24-hour run, the
+scheduled VM deletion's escape paid all five members exactly 1,000 sats at
+signet height 326775 ([capture](captures/signet-kill-paid.jpg)). The separate
 guardian HALT recovered all five exact 1,000-sat payouts at signet height
 326616; see the report and [final capture](captures/signet-halt-paid.jpg).
 

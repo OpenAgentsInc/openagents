@@ -61,9 +61,8 @@ also exercised by the existing `gcp_token_verify` cargo-fuzz target; its
 previous 1,000-run bounded check passed. This change adds capture tests and
 does not change that parser.
 
-The normal transitions are recorded below. The 24 hours of heartbeats,
-deliberate enclave loss, and final public-package recovery remain #11793
-measurements. A confirmed creation output alone does not complete them.
+The normal transitions are recorded below, followed by the 24 hours of
+heartbeats, the deliberate enclave loss, and the public-package recovery.
 
 ## Confirmed normal transitions
 
@@ -129,7 +128,8 @@ five minutes ahead, verifies its target and time, then cancels the October 24
 a scheduling failure leaves heartbeat supervision running. The original task
 and nine-day native VM deadline remain fallbacks until replacement succeeds.
 After deletion, the observer waits for actual endpoint loss and runs the same
-saved-package recovery. No completed soak or primary recovery is claimed yet.
+saved-package recovery. Both happened; see
+[the primary tree's physical-loss recovery](#primary-tree-physical-loss-recovery).
 
 Ten isolated tests cover the duration boundary, state migration, interrupted
 windows, scheduling retries, and deletion target checks. The [24-hour deployment record](evidence/signet-soak-24h-2026-10-16.json)
@@ -139,8 +139,72 @@ are unchanged. The scheduling identity has task permissions only on the research
 queue, read access only to the primary VM, and expiring permission to use its
 deletion identity. A separate October 25 cleanup task disables the scheduling
 identity; its private credential stays in the builder's experiment directory.
-#11793 still requires the elapsed 24 hours, deletion audit evidence, CSV
-maturity, exact payouts, and the separate HALT result.
+
+## Primary tree physical-loss recovery
+
+The clean 24-hour window ran from **2026-10-16 13:34:53 UTC** (height 326612) to
+**2026-10-17 13:34:53 UTC** with no late heartbeat. It holds 38 confirmed
+heartbeats, and none is more than 5 blocks after the previous one, inside the
+6-block (Δ/2) target. The only late heartbeat, a 7-block gap at 326612, came
+before the window and started it. The last refresh,
+`743c402c3cf31140df94caccd205069e31d44102c7c56f802e5bf7e7aa4e6727`, confirmed at
+**326763**.
+
+The observer saw the completed window at 13:34:54 UTC and scheduled deletion for
+13:39:54. Cloud Audit Logs record `v1.compute.instances.delete` on
+`oa-layertree-signet-tdx` (instance `6613632645341139193`) by
+`oa-layertree-kill@`, the deletion identity. It started at 13:39:54.104 UTC and
+completed at 13:42:09.501 UTC with no error; its task name matches the same
+instance. Nobody sent a HALT, restarted the service, or deleted anything by hand.
+The observer recorded endpoint loss at 13:43:05 UTC, after three failed checks.
+The tip was 326763, so the enclave went down 12 blocks before the escape's first
+valid block, **326775**.
+
+The saved escape from the last refresh was refused `non-BIP68-final` at
+326763–326773. At 326774 the observer submitted it with a CPFP child on its
+anchor. Escape `43ffd761ae82c6f3a8de5baccb6c06599bd4a08d872523e373e339593e5ee4ec`
+(314 vB, zero fee) and child
+`b0771b159c103335411a065fa97c27588d34cb676e9df320056c749efb2ca845` (153 vB,
+**934 sats**, 2 sat/vB) both confirmed at **326775**, the first valid block. All
+five members received exactly **1,000 sats** at their original exit scripts
+(outputs 0–4). No member amount funded the fee. From the deletion to the payout
+took 12 blocks and about 2 h 41 min by block time.
+
+`export-signet --kill` (`88103771c2`) rechecks the audited deletion against the
+qualified soak, every member's saved escape, the confirmed escape and child
+bytes against the saved package, CSV timing, the fee, and every payout script and
+amount. It wrote the [187-event fixture](../../../crates/layertree-tee-lab/fixtures/events/signet-kill-paid.jsonl)
+with its [sources](../../../crates/layertree-tee-lab/fixtures/events/signet-kill-paid.sources.json)
+(44 checked tree transactions). The [public archive](evidence/signet-kill-paid-2026-10-17.tar.gz)
+has 503 files and a SHA-256 manifest: 97 public captures, release and Rekor
+proofs, the observer state, the deletion audit, the package, the preflights,
+and Core reads of the last tree output, escape, child, and each payout. Archive
+SHA-256: `0eb1ed220b3d33938d821918daedcfded6221a9ee4db3efb5a6f37366dafd44a`.
+
+![Five exact payouts after the physical VM kill](captures/signet-kill-paid.jpg)
+
+The 1920×1080 still was visually checked. The eight-second, 24 fps, CRF-12 clip
+is `~/work/film-out/verse/layertree-signet-kill-paid.mp4`; `ffprobe` confirmed
+192 frames. A [film shot](../../verse/film/verse-shots/layertree-signet-kill-paid.json)
+and a [Video Lab scene](../../verse/film/layertree-signet-kill-paid-scene.json)
+are committed. Re-render with `scripts/layertree-captures.py --signet-kill-paid`.
+
+With the guardian HALT run below, both P1 recovery paths are measured: a dead
+enclave cost the members a 12-block wait and no money.
+
+## Light-client followers
+
+Three followers (members 0, 2, and 4, deployment `d9e41513b5`) followed the
+primary tree from 2026-10-16 10:46:52 UTC through the payout, about 29.5 hours,
+which covers the owner's 24-hour requirement. Each verified all 44 tree
+transactions as `light_client` `ok`, from genesis
+`4b4a748ca63476360a02e3355c687a626d76fd61a08e7aa7b97ea483eb3aa8b6` at 326595
+to the escape at 326775. Each made about 10,650 scan checks, and each handled
+two chain-tip changes without an alarm. None raised an alarm on the real tree;
+the receiver logged no notifications. All three then reported `exited: true`
+at tip 326775: their members' coins were paid by the escape they had held
+(`unroll_held: true`). The alarm paths fired on the separate staged tree
+described below.
 
 The separate HALT run uses committed `server/halt-service.json`, with fresh
 test keys and 20,000 signet sats. Its image
@@ -191,8 +255,8 @@ and a [Video Lab scene](../../verse/film/layertree-signet-halt-paid-scene.json)
 are committed. Re-render with `scripts/layertree-captures.py --signet-halt-paid`.
 
 This measures guardian HALT followed by public-package recovery. VM cleanup
-follows payout verification; it does not establish the primary tree's
-scheduled physical-loss recovery or its required 24 hours of heartbeats.
+follows payout verification. The primary tree's physical-loss recovery and its
+24 hours of heartbeats are recorded separately above.
 
 After all payout and archive checks passed, GCP deleted only
 `oa-layertree-halt-tdx` (instance ID `4848185565226450307`). A subsequent

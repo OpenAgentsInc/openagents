@@ -250,5 +250,14 @@
     "network": "signet",
     "txid": "58d597295e136ba6f7bffec2c90a60b214c8b4addad788878a8b4a5ee555f231",
     "caption": "Staged signet theft mined at block 326640: 5,000 sats missing; all three followers report OutputMismatch in that block. Software test signer, no hardware attestation."
+  },
+  {
+    "image": "signet-kill-paid.jpg",
+    "log": "crates/layertree-tee-lab/fixtures/events/signet-kill-paid.jsonl",
+    "sha256": "b15f3cdb175a15ec8ebf7e4e50c6e5bbc88d8ed90bf6f5410f9a5e671e184a91",
+    "seq": 186,
+    "network": "signet",
+    "txid": "43ffd761ae82c6f3a8de5baccb6c06599bd4a08d872523e373e339593e5ee4ec",
+    "caption": "Primary tree VM deleted at signet block 326763 with no HALT; the saved escape confirmed at block 326775: 5 exact 1,000-sat payouts; external fee 934 sats."
   }
 ]

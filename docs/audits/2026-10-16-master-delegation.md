@@ -226,6 +226,8 @@ The website agents door uses the shared `place` (`1708f44f49`). Deploy and the F
 
 ### Lane 10: signet and LayerTree (mostly waiting)
 
+**Done 2026-10-17 11:45 CDT** by the Claude Code coordinator (`fd130ab5`). #11862, #11770, #11863, and #11762 closed at 07:55–08:10 CDT, with results in `docs/payments/` (`fdcd7f12b7`). The LayerTree soak qualified at 08:34:53 CDT, and the scheduled deletion removed `oa-layertree-signet-tdx` at 08:42 CDT (audited, no HALT). The escape paid all five members exactly 1,000 sats at 326775 (11:23 CDT), with a 934-sat CPFP. The followers saw the payout with no alarm. Results, fixture, archive, and capture are in `docs/research/layertree/2026-10-16-signet-verification.md`. #11793, #11794, #11799, and #11779 close in that order.
+
 **Taken 2026-10-17 00:42 CDT** by a Claude Code subagent (Opus 5.5) taking over #11863, #11770, #11862, #11793, #11794, #11799, #11762, #11779 in `~/work/openagents-lane10`.
 
 - **Owns:** reading the observers on `oa-lnd-builder` and the LayerTree service, writing the final results into the reports, and closing each issue. It changes no live controller.

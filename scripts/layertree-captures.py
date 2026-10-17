@@ -16,6 +16,7 @@ parser.add_argument("--scratch", required=True, type=Path)
 parser.add_argument("--signet", action="store_true", help="Render the confirmed signet and separate negative-policy views.")
 parser.add_argument("--signet-halt", action="store_true", help="Render the measured guardian HALT while its escape waits for CSV.")
 parser.add_argument("--signet-halt-paid", action="store_true", help="Render confirmed member payouts after the guardian HALT.")
+parser.add_argument("--signet-kill-paid", action="store_true", help="Render confirmed member payouts after the primary tree's physical VM kill.")
 parser.add_argument("--signet-alarm", action="store_true", help="Render the checked three-follower signet software attack.")
 parser.add_argument("--clips", type=Path, default=Path.home() / "work/film-out/verse")
 args = parser.parse_args()
@@ -74,6 +75,18 @@ if args.signet_halt_paid:
     halted = "crates/layertree-tee-lab/fixtures/events/signet-halt-paid.jsonl"
     plans = [("signet-halt-paid", halted, lambda e: e["seq"] == len(read(halted)) - 1,
               "Guardian HALT recovery confirmed at signet block 326616: five exact 1,000-sat payouts; external fee 934 sats.")]
+killed = "crates/layertree-tee-lab/fixtures/events/signet-kill-paid.jsonl"
+if args.signet_kill_paid:
+    kill_events = read(killed)
+    down = next(e for e in kill_events if e["kind"] == "enclave_down")
+    paid = next(e for e in kill_events if e["kind"] == "unroll_confirmed")
+    payouts = [e for e in kill_events if e["kind"] == "payout" and e["seq"] > down["seq"]]
+    fee = next(e["value"] for e in kill_events if e.get("what") == "escape_package_fee")
+    amounts = {p["amount"] for p in payouts}
+    each = f"{amounts.pop():,}-sat " if len(amounts) == 1 else ""
+    plans = [("signet-kill-paid", killed, lambda e: e["seq"] == len(read(killed)) - 1,
+              f"Primary tree VM deleted at signet block {down['height']} with no HALT; the saved escape confirmed at block "
+              f"{paid['height']}: {len(payouts)} exact {each}payouts; external fee {fee:,} sats.")]
 if args.signet_alarm:
     staged = "crates/layertree-tee-lab/fixtures/events/signet-staged-alarms.jsonl"
     plans = [("signet-alarm", staged, lambda e: e["seq"] == len(read(staged)) - 1,
@@ -90,6 +103,7 @@ for name, path, select, caption in plans:
     subprocess.run([str(args.viewer.resolve()), "--events", str(REPO / path), "--at", str(seq),
                     "--size", "1920x1080", "--scale", "1.5", "--caption",
                     ("Signet guardian HALT; escape first valid at block 326616; test coins" if name == "signet-halt-waiting" else
+                     f"Signet: enclave VM deleted, no HALT; escape confirmed at block {event['height']}; test coins" if name == "signet-kill-paid" else
                      "Signet: staged software signer; test coins; theft mined at block 326640" if name == "signet-alarm" else
                      "Negative check: captured signet token; expected tree ID changed" if name == "signet-negative-policy" else
                      f"Signet: confirmed block {event['height']}; test coins; Google-backed TDX" if event["network"] == "signet" else
@@ -98,7 +112,7 @@ for name, path, select, caption in plans:
     subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(png),
                     "-frames:v", "1", "-q:v", "2", "-pix_fmt", "yuvj444p", str(output / f"{name}.jpg")], check=True)
     txid = event.get("txid")
-    if name == "signet-halt-paid":
+    if name in {"signet-halt-paid", "signet-kill-paid"}:
         txid = next(e["txid"] for e in events if e["kind"] == "unroll_confirmed")
     if name == "signet-halt-waiting":
         txid = next(e["outpoint"].split(":")[0] for e in events if e["kind"] == "tree_open")
@@ -123,11 +137,11 @@ for source in sources:
     if source["txid"]:
         lines += [f"{'Signet' if source['network']=='signet' else 'Regtest' if source['network']=='regtest' else 'Illustrative'} transaction: `{source['txid']}`."]
     lines += [""]
-lines += ["Normal signet operations, separate guardian HALT recovery, and the staged signet", "alarms are captured above. The primary tree’s physical-loss recovery remains a", "#11793 measurement; its final capture still needs that result.", ""]
+lines += ["Normal signet operations, the separate guardian HALT recovery, the primary", "tree’s physical VM-kill recovery, and the staged signet alarms are captured above.", ""]
 (output / "README.md").write_text("\n".join(lines))
 if args.film_shot:
     args.clips.mkdir(parents=True, exist_ok=True)
-    names = ["signet-alarm"] if args.signet_alarm else ["signet-halt-paid"] if args.signet_halt_paid else ["signet-halt-waiting"] if args.signet_halt else ["signet-tree", "signet-transitions"] if args.signet else ["tree", "transitions", "alarm", "unroll"]
+    names = ["signet-kill-paid"] if args.signet_kill_paid else ["signet-alarm"] if args.signet_alarm else ["signet-halt-paid"] if args.signet_halt_paid else ["signet-halt-waiting"] if args.signet_halt else ["signet-tree", "signet-transitions"] if args.signet else ["tree", "transitions", "alarm", "unroll"]
     for name in names:
         shot = REPO / f"docs/verse/film/verse-shots/layertree-{name}.json"
         subprocess.run([str(args.film_shot.resolve()), str(shot), "--out", str(args.clips / f"layertree-{name}.mp4")],

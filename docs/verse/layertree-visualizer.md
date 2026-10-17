@@ -203,7 +203,7 @@ scripts/layertree-captures.py --signet \
 The corresponding Video Lab documents are
 `docs/verse/film/layertree-signet-tree-scene.json` and
 `docs/verse/film/layertree-signet-transitions-scene.json`. The staged signet
-alarm is recorded below; the primary unroll still waits for #11793.
+alarm is recorded below, followed by the primary tree's physical-kill unroll.
 
 
 The separate `signet-halt-waiting.jsonl` records the real guardian HALT at
@@ -232,7 +232,11 @@ Video Lab scene are `layertree-signet-halt-paid.json` and
 `layertree-signet-halt-paid-scene.json` under the same film directories.
 The [final recovery report](../research/layertree/2026-10-16-signet-verification.md)
 links the public archive and refusal checks. This is the separate guardian
-HALT experiment; the primary tree's scheduled physical-loss run is still active.
+HALT experiment. The primary tree's physical-loss run is
+`signet-kill-paid.jsonl`: an eight-second clip
+(`~/work/film-out/verse/layertree-signet-kill-paid.mp4`), its still, and
+`layertree-signet-kill-paid-scene.json`. Re-render with
+`scripts/layertree-captures.py --signet-kill-paid`.
 
 The `signet-staged-alarms.jsonl` log records the separate software test tree's
 withheld record, hash mismatch, and mined theft, with nine delivered alarms.

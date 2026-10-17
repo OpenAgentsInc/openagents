@@ -391,7 +391,7 @@ all be checked before calling recovery successful.
 
 This probe accepts no external signing requests. The actual signet
 service, current-chain restoration, attested client channel, and public
-tree runs remain #11789, #11792, and #11793.
+tree runs are #11789, #11792, and #11793.
 
 ## Signet service
 
@@ -533,8 +533,9 @@ Use `followers.py merge --operator FILE --states STATE_0 STATE_2 STATE_5
 --output NEW_FILE.jsonl` for Verse. It preserves operator event order,
 adds follower observations, assigns contiguous sequence numbers, and saves
 input hashes beside the output. The raw journals retain notification IDs,
-detection tips, and times. The week-long signet run and staged signet
-attacks remain required before #11794 can close.
+detection tips, and times. The staged signet attacks and the followers'
+29.5-hour run through the primary tree's unroll are recorded in
+`docs/research/layertree/2026-10-16-signet-verification.md`.
 
 To start from the attestation client's public capture, use the confirmed
 genesis `state-after.json`, its confirmation height, and a JSON file with
