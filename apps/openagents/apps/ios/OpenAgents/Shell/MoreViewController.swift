@@ -201,6 +201,8 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
         if case .signedIn? = app.accountSnapshot?.state {
             s.appendItems([Row(id: "project-sharing", title: "Project sharing", symbol: "person.2")])
         }
+        s.appendSections(["Wallet"])
+        s.appendItems([Row(id: "wallet", title: "Wallet", subtitle: "Bitcoin on this phone", symbol: "bitcoinsign.circle")])
         s.appendSections(["Devices"])
         s.appendItems(app.hostOptions.map { Row(id: "device:\($0.id)", title: $0.name, subtitle: app.client?.deviceChannelEnabled(deviceId: $0.id) == true ? "Device connection" : ($0.online ? "Online" : "Offline"), symbol: "desktopcomputer", accessory: .dot($0.online)) })
         if app.offersCloudHost {
@@ -258,6 +260,7 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             let about = UIAlertController(title: "OpenAgents", message: Bundle.main.url(forResource: "OpenAgents-MIT", withExtension: "txt").flatMap { try? String(contentsOf: $0, encoding: .utf8) }, preferredStyle: .alert)
             about.addAction(UIAlertAction(title: "Done", style: .default))
             present(about, animated: true)
+        case "wallet": router?.showWallet()
         case "voice": navigationController?.pushViewController(VoiceViewController(app: app), animated: true)
         case "cloudhost":
             guard !app.cloudHostBusy else { return }

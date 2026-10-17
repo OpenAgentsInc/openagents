@@ -56,6 +56,15 @@ serde_json.workspace = true
 similar.workspace = true
 openagents-syntax.workspace = true
 thiserror.workspace = true
+# The Wallet screen: the person's Spark wallet (Breez SDK, mainnet), shared
+# with computers (`crates/spark-wallet`). The phone keeps Breez's records in
+# its SQLite store, which needs `libsqlite3-sys` 0.30: this workspace's lock
+# holds it, while the root's `ldk-node` holds 0.28, so the feature is turned
+# on here and never in `crates/spark-wallet` (a lock file resolves every
+# optional dependency of its members).
+openagents-spark = { path = "../../../../crates/spark-wallet" }
+breez-sdk-spark = { git = "https://github.com/breez/spark-sdk", tag = "0.26.0", default-features = false, features = ["sqlite"] }
+bitcoin-amount = { path = "../../../../crates/bitcoin-amount" }
 
 [dev-dependencies]
 oa-copy = { path = "../../../../crates/oa-copy" }

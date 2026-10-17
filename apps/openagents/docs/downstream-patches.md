@@ -453,3 +453,18 @@ links remain readable. Upstream fixes now require manual ports.
   `crates/mcp/src/tools.rs` and one sentence in `crates/mcp/src/jsonrpc.rs`
   `INSTRUCTIONS`. `OPENAGENTS_AGENT_BUILD_GATE=0` turns it off;
   `docs/coder/runtime/leases.md` in the root has the details.
+
+## Phone wallet (#11999)
+
+- The Spark wallet is back on the phone. `crates/mobile/src/wallet/` links
+  the root `crates/spark-wallet` (Breez SDK, mainnet) and turns on Breez's
+  SQLite store here only; the workspace patches `boltz-client` from the
+  root's `vendor/` as the root workspace does. `wallet::seed` reads the
+  earlier app's Keychain item (`com.openagents.app.spark` / `seed-v1`)
+  through the `KeyStore` foreign trait, which can only read and add, and
+  `wallet_seed_words` gives the identity the same words. The screen is a
+  Rust Native view; the iOS shell is `apps/ios/OpenAgents/Wallet/`
+  (Keychain glue, the page, Face ID for the words). Hooks: `showWallet` on
+  `AppRouter`, a drawer toolbar button, a Settings row, the `-route wallet`
+  launch argument, and `WalletModel.shared.open()` at the start of
+  `AppModel.init` and in `willEnterForeground`.

@@ -5,6 +5,8 @@
 //!   (wraps `openagents-markdown` + `openagents-text`).
 //! - [`orb`]: the desktop's voice orb as paintable frames (wraps `openagents-orb`).
 //! - [`caption`]: the voice caption's streaming veil (wraps `openagents-veil`).
+//! - [`wallet`]: the Wallet screen over the shared Spark wallet
+//!   (`crates/spark-wallet`), and the seed rules the identity reads.
 
 #[cfg(all(feature = "account-fixture", not(target_abi = "sim")))]
 compile_error!("The account fixture is only available for the iOS simulator.");
@@ -17,6 +19,7 @@ pub mod layout;
 pub mod orb;
 mod push;
 pub mod visual;
+pub mod wallet;
 pub mod wallpaper;
 
 /// Version handshake: the Swift/Kotlin bindings must match the linked library.

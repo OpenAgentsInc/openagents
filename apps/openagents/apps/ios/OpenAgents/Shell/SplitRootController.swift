@@ -9,6 +9,7 @@ protocol AppRouter: AnyObject {
     func presentNewSession(prompt: String?)
     func showSettings()
     func showSearch()
+    func showWallet()
 }
 
 /// iPad shell: OpenAgents mobile with a sidebar. The sidebar is the phone's
@@ -149,6 +150,14 @@ final class SplitRootController: UISplitViewController, UISplitViewControllerDel
         present(nav, animated: true)
     }
 
+    func showWallet() {
+        guard !isCollapsed else { return tabs.showWallet() }
+        if presentedViewController != nil { dismiss(animated: true) }
+        currentChatId = nil
+        sidebar.currentChatId = nil
+        detail.setViewControllers([WalletViewController(app: app, wallet: WalletModel.shared.wallet)], animated: false)
+    }
+
     func showSearch() {
         guard !isCollapsed else { return tabs.showSearch() }
         if displayMode == .secondaryOnly { show(.primary) }
@@ -263,6 +272,11 @@ final class SidebarViewController: UIViewController, UISearchResultsUpdating {
         })
         settings.accessibilityLabel = "Settings"
         settings.accessibilityIdentifier = "sidebar-settings"
+        let wallet = UIBarButtonItem(image: UIImage(systemName: "bitcoinsign.circle"), primaryAction: UIAction { [weak self] _ in
+            self?.router?.showWallet()
+        })
+        wallet.accessibilityLabel = "Wallet"
+        wallet.accessibilityIdentifier = "sidebar-wallet"
         let options = UIBarButtonItem(image: UIImage(systemName: "ellipsis"), menu: list.optionsMenu())
         options.accessibilityLabel = "Options"
         let compose = UIBarButtonItem(image: UIImage(systemName: "plus"), primaryAction: UIAction { [weak self] _ in
@@ -273,14 +287,14 @@ final class SidebarViewController: UIViewController, UISearchResultsUpdating {
         compose.accessibilityLabel = "New session"
         compose.accessibilityIdentifier = "new-session"
         list.navigationItem.rightBarButtonItem = nil
-        list.toolbarItems = [home, settings, options, .flexibleSpace(), compose]
+        list.toolbarItems = [home, wallet, settings, options, .flexibleSpace(), compose]
         nav.isToolbarHidden = false
         // Voice beside compose, once a host can run it.
         let voiceBar = VoiceBarItem(app: app, host: self)
         self.voiceBar = voiceBar
         let syncVoice = { [weak self, weak voiceBar] in
             guard let self, let voiceBar else { return }
-            let items = voiceBar.visible ? [home, settings, options, .flexibleSpace(), voiceBar.item, compose] : [home, settings, options, .flexibleSpace(), compose]
+            let items = voiceBar.visible ? [home, wallet, settings, options, .flexibleSpace(), voiceBar.item, compose] : [home, wallet, settings, options, .flexibleSpace(), compose]
             if self.list.toolbarItems?.count != items.count {
                 self.list.setToolbarItems(items, animated: self.view.window != nil)
             }
