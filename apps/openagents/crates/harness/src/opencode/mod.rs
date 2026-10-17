@@ -226,6 +226,8 @@ fn free_localhost_port() -> Option<u16> {
 
 pub struct OpencodeHarness {
     executable: Option<PathBuf>,
+    #[cfg(unix)]
+    launch_broker: Option<crate::process::LaunchBroker>,
     /// Test seam: an already-running server (no spawn, no auth unless given).
     base_url: Option<String>,
     interrupt_grace: Duration,
@@ -242,6 +244,8 @@ impl Default for OpencodeHarness {
     fn default() -> Self {
         Self {
             executable: None,
+            #[cfg(unix)]
+            launch_broker: None,
             base_url: None,
             interrupt_grace: Duration::from_secs(2),
             kill_grace: Duration::from_secs(3),
@@ -261,6 +265,13 @@ impl OpencodeHarness {
     /// Use a fixed binary instead of PATH/known-location resolution.
     pub fn with_executable(mut self, path: impl Into<PathBuf>) -> Self {
         self.executable = Some(path.into());
+        self
+    }
+
+    /// Ask the host to wrap each run command before its process starts.
+    #[cfg(unix)]
+    pub fn with_launch_broker(mut self, broker: crate::process::LaunchBroker) -> Self {
+        self.launch_broker = Some(broker);
         self
     }
 
@@ -290,11 +301,34 @@ impl OpencodeHarness {
         cwd: Option<&str>,
         mcp: Option<&openagents_proto::McpServer>,
     ) -> Result<Server, HarnessError> {
+        self.server_with_broker(
+            cwd,
+            mcp,
+            #[cfg(unix)]
+            None,
+        )
+        .await
+    }
+
+    async fn server_with_broker(
+        &self,
+        cwd: Option<&str>,
+        mcp: Option<&openagents_proto::McpServer>,
+        #[cfg(unix)] broker: Option<&crate::process::LaunchBroker>,
+    ) -> Result<Server, HarnessError> {
         if let Some(base) = &self.base_url {
             return Ok(Server::attached(base.clone()));
         }
         let exe = self.resolve_executable()?;
-        Server::spawn(&exe, cwd, self.startup_timeout, mcp).await
+        Server::spawn_with_broker(
+            &exe,
+            cwd,
+            self.startup_timeout,
+            mcp,
+            #[cfg(unix)]
+            broker,
+        )
+        .await
     }
 
     /// One short-lived server answers both discovery calls. Also primes the
@@ -467,7 +501,14 @@ impl Harness for OpencodeHarness {
         let initial_native_command_selected = selected_native_command(&request.prompt, self.id());
         request.prompt = openagents_proto::invocation::harness_prompt(&request.prompt, self.id());
         let cwd = (!request.cwd.is_empty()).then(|| request.cwd.clone());
-        let server = self.server(cwd.as_deref(), request.mcp.as_ref()).await?;
+        let server = self
+            .server_with_broker(
+                cwd.as_deref(),
+                request.mcp.as_ref(),
+                #[cfg(unix)]
+                self.launch_broker.as_ref(),
+            )
+            .await?;
         let (event_tx, event_rx) = mpsc::channel::<Result<AgentEvent, HarnessError>>(256);
         tokio::spawn(run_session(Session {
             server,
@@ -609,11 +650,30 @@ impl Server {
     /// Spawn `opencode serve` on a free loopback port with a per-run Basic
     /// password, and wait for a generation-bearing health answer (which
     /// also resolves [`Protocol`]).
+    #[cfg(test)]
     async fn spawn(
         exe: &std::path::Path,
         cwd: Option<&str>,
         startup: Duration,
         mcp: Option<&openagents_proto::McpServer>,
+    ) -> Result<Self, HarnessError> {
+        Self::spawn_with_broker(
+            exe,
+            cwd,
+            startup,
+            mcp,
+            #[cfg(unix)]
+            None,
+        )
+        .await
+    }
+
+    async fn spawn_with_broker(
+        exe: &std::path::Path,
+        cwd: Option<&str>,
+        startup: Duration,
+        mcp: Option<&openagents_proto::McpServer>,
+        #[cfg(unix)] broker: Option<&crate::process::LaunchBroker>,
     ) -> Result<Self, HarnessError> {
         let port = free_localhost_port().ok_or_else(|| {
             HarnessError::Protocol("no free localhost port for opencode serve".into())
@@ -633,7 +693,13 @@ impl Server {
         if let Some(mcp) = mcp {
             // The config shape differs by generation. If even the cold probe
             // can't tell, run without the OpenAgents MCP server rather than fail.
-            match opencode_version(exe).await {
+            match opencode_version(
+                exe,
+                #[cfg(unix)]
+                broker,
+            )
+            .await?
+            {
                 Some(version) => {
                     let protocol = if version.major >= 2 {
                         Protocol::V2
@@ -643,7 +709,9 @@ impl Server {
                     cmd.env(
                         "OPENCODE_CONFIG_CONTENT",
                         mcp_config(
-                            openagents_brand::env_var("OPENCODE_CONFIG_CONTENT").ok().as_deref(),
+                            openagents_brand::env_var("OPENCODE_CONFIG_CONTENT")
+                                .ok()
+                                .as_deref(),
                             mcp,
                             protocol,
                         )?,
@@ -663,6 +731,13 @@ impl Server {
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        #[cfg(unix)]
+        if let Some(broker) = broker {
+            cmd = broker.prepare(cmd).await?;
+            cmd.stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped());
+        }
         let mut child = cmd.spawn().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 HarnessError::NotInstalled(crate::executable::binary_hint(exe))
@@ -4558,35 +4633,52 @@ const COLD_VERSION_TIMEOUT: Duration = Duration::from_secs(30);
 /// binary's lifetime, so one cold first exec after an upgrade failed every
 /// later run instantly until restart. Retry past that cache with a longer
 /// budget, and on success clear the cached failure for other callers.
-async fn opencode_version(exe: &std::path::Path) -> Option<semver::Version> {
-    let cached_exe = exe.to_path_buf();
-    let cached =
-        tokio::task::spawn_blocking(move || crate::executable::binary_version(&cached_exe))
-            .await
-            .ok()
-            .flatten();
-    if cached.is_some() {
-        return cached;
+async fn opencode_version(
+    exe: &std::path::Path,
+    #[cfg(unix)] broker: Option<&crate::process::LaunchBroker>,
+) -> Result<Option<semver::Version>, HarnessError> {
+    // The shared cache can launch its own version probe. Brokered runs must
+    // ask the host before even a version command executes.
+    #[cfg(unix)]
+    let use_cache = broker.is_none();
+    #[cfg(not(unix))]
+    let use_cache = true;
+    if use_cache {
+        let cached_exe = exe.to_path_buf();
+        let cached =
+            tokio::task::spawn_blocking(move || crate::executable::binary_version(&cached_exe))
+                .await
+                .ok()
+                .flatten();
+        if cached.is_some() {
+            return Ok(cached);
+        }
     }
     let mut cmd = Command::new(exe);
-    cmd.arg("--version")
-        .stdin(Stdio::null())
+    cmd.arg("--version");
+    crate::compose_child_path(&mut cmd, exe);
+    #[cfg(unix)]
+    if let Some(broker) = broker {
+        cmd = broker.prepare(cmd).await?;
+    }
+    cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    let output = tokio::time::timeout(COLD_VERSION_TIMEOUT, cmd.output())
-        .await
-        .ok()?
-        .ok()?;
+    let Ok(Ok(output)) = tokio::time::timeout(COLD_VERSION_TIMEOUT, cmd.output()).await else {
+        return Ok(None);
+    };
     if !output.status.success() {
-        return None;
+        return Ok(None);
     }
     let version = crate::executable::parse_version(&output.stdout)
-        .or_else(|| crate::executable::parse_version(&output.stderr))?;
-    if let Some(stem) = exe.file_stem().and_then(|s| s.to_str()) {
+        .or_else(|| crate::executable::parse_version(&output.stderr));
+    if version.is_some()
+        && let Some(stem) = exe.file_stem().and_then(|s| s.to_str())
+    {
         crate::executable::invalidate_versions(&[stem]);
     }
-    Some(version)
+    Ok(version)
 }
 
 /// Inline config is the final user config layer. Preserve inherited overrides

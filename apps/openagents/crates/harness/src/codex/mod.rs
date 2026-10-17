@@ -141,6 +141,8 @@ pub fn login_command(codex_home: &std::path::Path) -> Result<Command, HarnessErr
 pub struct CodexHarness {
     models_cache: crate::catalog::Catalog,
     executable: Option<PathBuf>,
+    #[cfg(unix)]
+    launch_broker: Option<crate::process::LaunchBroker>,
     /// Grace between `turn/interrupt` and SIGTERM.
     interrupt_grace: Duration,
     /// Grace between SIGTERM and SIGKILL.
@@ -152,6 +154,8 @@ impl Default for CodexHarness {
         Self {
             models_cache: crate::catalog::Catalog::default(),
             executable: None,
+            #[cfg(unix)]
+            launch_broker: None,
             interrupt_grace: Duration::from_secs(2),
             kill_grace: Duration::from_secs(3),
         }
@@ -166,6 +170,13 @@ impl CodexHarness {
     /// Use a fixed CLI binary instead of PATH/known-location resolution.
     pub fn with_executable(mut self, path: impl Into<PathBuf>) -> Self {
         self.executable = Some(path.into());
+        self
+    }
+
+    /// Ask the host to wrap each run command before its process starts.
+    #[cfg(unix)]
+    pub fn with_launch_broker(mut self, broker: crate::process::LaunchBroker) -> Self {
+        self.launch_broker = Some(broker);
         self
     }
 
@@ -791,6 +802,13 @@ impl CodexHarness {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        #[cfg(unix)]
+        if let Some(broker) = &self.launch_broker {
+            cmd = broker.prepare(cmd).await?;
+            cmd.stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+        }
         let mut child = cmd.spawn().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 HarnessError::NotInstalled(crate::executable::binary_hint(&exe))

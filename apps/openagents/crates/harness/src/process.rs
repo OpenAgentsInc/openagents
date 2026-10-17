@@ -173,3 +173,8 @@ mod tests {
 }
 
 pub(crate) mod owned;
+
+#[cfg(unix)]
+mod launch;
+#[cfg(unix)]
+pub use launch::{LaunchBroker, LaunchRequest, LaunchRequests};

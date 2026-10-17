@@ -116,3 +116,8 @@ links remain readable. Upstream fixes now require manual ports.
   check dismisses the keyboard and scrolls within the form before choosing a
   runner, saving, running, and using an agent. Composer buttons keep their
   identity when model choices change, so updates do not close another menu.
+
+- Shared harness launch policy (#11894): the native Claude Code, Codex, and
+  OpenCode run paths accept `process::LaunchBroker`. The host applies its
+  borrowed command wrapper before each launch, including OpenCode's MCP version
+  probe. A refused or cancelled request cannot start an unwrapped process.

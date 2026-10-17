@@ -145,6 +145,8 @@ fn option_is_on(options: &serde_json::Map<String, Value>, key: &str) -> bool {
 /// it at a fake CLI with [`ClaudeHarness::with_executable`].
 pub struct ClaudeHarness {
     executable: Option<PathBuf>,
+    #[cfg(unix)]
+    launch_broker: Option<crate::process::LaunchBroker>,
     /// Grace between the interrupt control request and SIGTERM.
     interrupt_grace: Duration,
     /// Grace between SIGTERM and SIGKILL.
@@ -158,6 +160,8 @@ impl Default for ClaudeHarness {
     fn default() -> Self {
         Self {
             executable: None,
+            #[cfg(unix)]
+            launch_broker: None,
             interrupt_grace: Duration::from_secs(2),
             kill_grace: Duration::from_secs(3),
             initialize: discovery::InitializeCache::default(),
@@ -175,6 +179,13 @@ impl ClaudeHarness {
     /// Use a fixed CLI binary instead of PATH/known-location resolution.
     pub fn with_executable(mut self, path: impl Into<PathBuf>) -> Self {
         self.executable = Some(path.into());
+        self
+    }
+
+    /// Ask the host to wrap each run command before its process starts.
+    #[cfg(unix)]
+    pub fn with_launch_broker(mut self, broker: crate::process::LaunchBroker) -> Self {
+        self.launch_broker = Some(broker);
         self
     }
 
@@ -620,6 +631,13 @@ impl ClaudeHarness {
         } else {
             Normalizer::new()
         };
+        #[cfg(unix)]
+        if let Some(broker) = &self.launch_broker {
+            cmd = broker.prepare(cmd).await?;
+            cmd.stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+        }
         let mut child = cmd.spawn().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 HarnessError::NotInstalled(crate::executable::binary_hint(&exe))
