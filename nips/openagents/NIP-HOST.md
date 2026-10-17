@@ -1597,7 +1597,10 @@ The initial profile supports unary calls:
 | Methods | Required right |
 | --- | --- |
 | `ListHarnesses`, `ListModels`, `ListSkills`, `ListCommands` | `observe` |
-| `QueueCommand`, `RelayCommand` | `operate` |
+| `RelayCommand` | `operate` |
+
+`QueueCommand` stays on its existing transport until it accepts a stable
+client-generated command ID.
 
 The host checks the recipient device, current grant, expiry, revocation, and
 project scope before every dispatch. A method that accepts a path also passes

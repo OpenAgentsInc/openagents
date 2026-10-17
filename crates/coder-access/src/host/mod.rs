@@ -60,6 +60,15 @@ pub struct OperatePrincipal {
 /// Supplies effects and disclosures from other profiles after admission.
 /// `request` is the idempotency key for every effect.
 pub trait Dispatch: Send {
+    fn app_rpc(
+        &mut self,
+        _request: &str,
+        _device: &str,
+        _grant: Option<(&str, u64)>,
+        _app: &crate::app_rpc::Request,
+    ) -> std::result::Result<crate::app_rpc::Answer, Code> {
+        Err(Code::Unsupported)
+    }
     fn cloud(
         &mut self,
         _request: &str,
@@ -445,6 +454,7 @@ impl Recovery {
                 | Operation::EnvironmentSteer { .. }
         ) || matches!(&request.op, Operation::QueueTaskAtRevision { edit, .. } if !matches!(edit, QueueEdit::List {}))
             || request.op.agent_effect()
+            || matches!(&request.op, Operation::AppRpc { app } if !app.method.reads_only())
             || request.op.studio_intent()
             || matches!(&request.op, Operation::DecideMerge { .. });
         let required = request.op.required().unwrap_or(Right::Operate);
@@ -1659,6 +1669,23 @@ impl Host {
                 }
                 Err(code) => Err(Error::new(code, "the host did not keep the image")),
             },
+            Operation::AppRpc { app } => {
+                let grant = p.grant.as_deref().zip(request.epoch);
+                let answer = dispatch
+                    .app_rpc(&request.request, &p.key, grant, app)
+                    .map_err(|code| {
+                        Error::new(code, "The computer couldn't answer this request")
+                    })?;
+                let outcome = Outcome::AppRpc { app: answer };
+                if outcome.validate().is_ok() && outcome.answers(&request.op) {
+                    Ok(outcome)
+                } else {
+                    Err(Error::new(
+                        Code::Unavailable,
+                        "The computer's reply couldn't be read",
+                    ))
+                }
+            }
             Operation::RobotLab { robot } => match dispatch.robot_lab(&p.key, robot) {
                 Ok(answer) => {
                     let outcome = Outcome::RobotLab { robot: answer };

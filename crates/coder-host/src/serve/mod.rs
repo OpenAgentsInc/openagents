@@ -88,8 +88,11 @@ fn terminal_shell(
     Some(hooks)
 }
 
+pub mod app_rpc;
+
 /// State every serving task shares.
 pub(crate) struct Shared {
+    pub(crate) app_rpc: std::sync::Mutex<Option<Arc<dyn app_rpc::Handler>>>,
     /// The shell-integration files terminals start with, kept while the
     /// host runs.
     pub(crate) _shell_hooks: Option<terminal_core::integration::Hooks>,
@@ -273,6 +276,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
     ));
     let sessions = crate::terminal_sessions::Book::beside(&config.access);
     let shared = Arc::new(Shared {
+        app_rpc: std::sync::Mutex::new(None),
         _shell_hooks: shell_hooks,
         local_handoffs: tokio::sync::Mutex::new(()),
         local_tasks: std::sync::Mutex::new(()),
@@ -370,6 +374,15 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
 }
 
 impl Running {
+    /// Install or remove the app's unary dispatcher. No handler means unsupported.
+    pub fn set_app_rpc(&self, handler: Option<Arc<dyn app_rpc::Handler>>) {
+        *self
+            .shared
+            .app_rpc
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = handler;
+    }
+
     /// The bound direct-channel address.
     #[must_use]
     pub fn local_addr(&self) -> SocketAddr {
@@ -726,6 +739,14 @@ fn reach_events(shared: &Shared, device: &str, now: u64) -> Result<Vec<nostr::do
                 .tasks
                 .capabilities()
                 .into_iter()
+                .chain(
+                    shared
+                        .app_rpc
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .is_some()
+                        .then(|| coder_access::app_rpc::CAPABILITY.to_owned()),
+                )
                 .chain(
                     shared
                         .pty

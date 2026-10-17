@@ -553,6 +553,8 @@ pub struct TaskQueue {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
 pub enum Operation {
+    #[serde(rename = "app.rpc")]
+    AppRpc { app: crate::app_rpc::Request },
     #[serde(rename = "robot.lab")]
     RobotLab { robot: robot_lab::remote::Request },
     #[serde(rename = "cloud.projects")]
@@ -1024,6 +1026,9 @@ impl Operation {
     /// exact retry reads again. Its answer changes as the thread does.
     #[must_use]
     pub fn reads_only(&self) -> bool {
+        if let Self::AppRpc { app } = self {
+            return app.method.reads_only();
+        }
         if let Self::RobotLab { robot } = self {
             return robot.reads_only();
         }
@@ -1226,6 +1231,7 @@ impl Operation {
     }
     pub fn name(&self) -> &'static str {
         match self {
+            Self::AppRpc { .. } => "app.rpc",
             Self::CloudProjects { .. } => "cloud.projects",
             Self::ProjectList { .. } => "project.list",
             Self::ProjectRead { .. } => "project.read",
@@ -1331,6 +1337,7 @@ impl Operation {
     /// capability instead of a grant, so it requires none.
     pub fn required(&self) -> Option<Right> {
         match self {
+            Self::AppRpc { app } => Some(app.method.right()),
             Self::RobotLab { robot } => Some(if robot.reads_only() {
                 Right::Observe
             } else {
@@ -1438,6 +1445,7 @@ impl Operation {
     }
     pub fn validate(&self) -> Result<()> {
         match self {
+            Self::AppRpc { app } => app.validate()?,
             Self::CloudProjects { workspace } => crate::cloud::alias(workspace)?,
             Self::ProjectList { workspace } => crate::cloud::alias(workspace)?,
             Self::ProjectRead { query } => query.validate()?,
@@ -1865,6 +1873,9 @@ pub struct Receipt {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Outcome {
+    AppRpc {
+        app: crate::app_rpc::Answer,
+    },
     RobotLab {
         robot: robot_lab::remote::Answer,
     },
@@ -2093,6 +2104,7 @@ impl Outcome {
             crate::task_read::bounded(self, crate::cloud::MAX_REPLY_BYTES)?;
         }
         match self {
+            Self::AppRpc { app } => app.validate()?,
             Self::CloudProjects { projects } => projects.validate()?,
             Self::ProjectList { projects } => projects.validate()?,
             Self::ProjectRead { project } => project.validate()?,
@@ -2141,6 +2153,7 @@ impl Outcome {
                                 | Self::Published { .. }
                                 | Self::Merged { .. }
                                 | Self::RobotLab { .. }
+                                | Self::AppRpc { .. }
                                 | Self::Agent { .. }
                         ) =>
                     {
@@ -2304,6 +2317,7 @@ impl Outcome {
     /// Whether this outcome is the one the operation can produce.
     pub fn answers(&self, op: &Operation) -> bool {
         match (op, self) {
+            (Operation::AppRpc { app: request }, Self::AppRpc { app }) => app.answers(request),
             (Operation::CloudProjects { workspace }, Self::CloudProjects { projects }) => {
                 *workspace == projects.workspace
             }

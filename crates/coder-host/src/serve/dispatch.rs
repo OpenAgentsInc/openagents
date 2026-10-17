@@ -255,6 +255,24 @@ pub(crate) fn chat_invitation(config: &crate::config::Config) -> Result<(String,
 }
 
 impl Dispatch for Dispatcher {
+    fn app_rpc(
+        &mut self,
+        request: &str,
+        device: &str,
+        grant: Option<(&str, u64)>,
+        app: &coder_access::app_rpc::Request,
+    ) -> Result<coder_access::app_rpc::Answer, Code> {
+        let handler = self
+            .shared
+            .app_rpc
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        handler
+            .ok_or(Code::Unsupported)?
+            .call(request, device, grant, app)
+    }
+
     fn cloud(
         &mut self,
         request: &str,

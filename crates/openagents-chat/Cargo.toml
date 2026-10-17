@@ -18,7 +18,7 @@ nostr = { path = "../nostr" }
 model-access = { path = "../model-access" }
 nostr-transport = { path = "../nostr-transport" }
 playtest = { path = "../playtest" }
-rust-native = { path = "../rust-native" }
+rust-native = { path = "../rust-native", default-features = false }
 # The route each message takes, its admission, and its record (`route`, #10207).
 route-contract = { path = "../route-contract" }
 secp256k1 = { version = "0.31.1", features = ["rand"] }

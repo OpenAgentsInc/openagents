@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 pub mod agent;
+pub mod app_rpc;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod cj;
 pub mod client;
