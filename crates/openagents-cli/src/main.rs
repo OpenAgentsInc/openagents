@@ -413,11 +413,17 @@ fn main() -> ExitCode {
     let mut arguments: Vec<String> = std::env::args().skip(1).collect();
     // `--json` is this program's switch only before `--`; after it, the
     // words belong to the command a group runs (`lease`, `boat run`).
-    // `openagents inference MODEL --json BODY`: after `inference`, `--json`
-    // is that command's request body.
+    // After `inference`, `cad tool`, or `lab tool`, `--json` is the
+    // command's request body. Output mode belongs before the group.
     let group = arguments.iter().position(|argument| argument != "--json");
     let end = match group {
-        Some(index) if arguments[index] == "inference" => index,
+        Some(index)
+            if arguments[index] == "inference"
+                || (matches!(arguments[index].as_str(), "cad" | "lab")
+                    && arguments.get(index + 1).is_some_and(|word| word == "tool")) =>
+        {
+            index
+        }
         _ => arguments
             .iter()
             .position(|argument| argument == "--")
