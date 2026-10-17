@@ -150,6 +150,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 8: phone
 
+**Taken 2026-10-17 00:18 CDT** by a Claude Code subagent working #11853 only, in ~/work/openagents-push; #11852 and #11854 stay with the Codex agent.
+
 **Taken 2026-10-16 22:10 CDT** by Codex (GPT-6) working #11852, #11854, #11853 in `~/work/openagents-codex-bang`. #11840 has an existing project claim.
 
 - **Owns:** `apps/openagents/crates/mobile`, the iOS app, `crates/coder-sync` notifications and auth (`auth.rs`, a new `proof.rs`), the push registration, and the NIP-HOST device-channel profile.
