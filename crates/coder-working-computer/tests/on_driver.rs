@@ -492,7 +492,17 @@ async fn missing_resource_does_not_complete_a_pending_delete_after_restart() {
     let first = driver.prompt("computer-1", 10).await.unwrap();
     let resource = first.computer().resource().unwrap().to_owned();
     let pending = driver.delete("computer-1", 20).await.unwrap();
-    assert!(pending.computer().deletion.as_ref().unwrap().is_unknown());
+    assert!(
+        pending
+            .computer()
+            .creates
+            .last()
+            .unwrap()
+            .deletion
+            .as_ref()
+            .unwrap()
+            .is_unknown()
+    );
     assert_ne!(pending.computer().phase, Phase::Deleted);
     assert_eq!(
         memory.inner.observe(&resource).await.value().unwrap().state,
