@@ -207,6 +207,7 @@ final class SavedTranscriptController: UIViewController {
                   transcript.hasMore, case .ready = transcript.state else { return }
             try? self.app.savedHistory?.action(action: .moreMessages)
         }
+        labs.engine = engine
         list.labCells = labs
         images.countLimit = 16
         images.totalCostLimit = 64 * 1024 * 1024

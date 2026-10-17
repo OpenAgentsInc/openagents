@@ -252,10 +252,15 @@ impl VisualSlot {
 /// Reads a file beside the chat (the script, its manifest and assets).
 type Fetch = Arc<dyn Fn(&str) -> Option<Vec<u8>> + Send + Sync>;
 
+/// Told when a visual's script turns out to be a live Lab card (#11948):
+/// its path and the card.
+pub(crate) type FoundLab = Arc<dyn Fn(&str, openagents_account::lab_cards::LiveCard) + Send + Sync>;
+
 #[derive(Clone)]
 struct Source {
     fetch: Fetch,
     pixel_scale: f32,
+    found: Option<FoundLab>,
 }
 
 /// One transcript's visuals: their workers, by visual id.
@@ -267,6 +272,7 @@ pub(crate) struct VisualHub {
     sessions: Mutex<HashMap<String, Arc<VisualSession>>>,
     /// Ask the transcript to remeasure a row (its key).
     changed: Arc<dyn Fn(u64) + Send + Sync>,
+    found: Mutex<Option<FoundLab>>,
 }
 
 impl VisualHub {
@@ -277,7 +283,53 @@ impl VisualHub {
             source: Mutex::new(None),
             sessions: Mutex::new(HashMap::new()),
             changed,
+            found: Mutex::new(None),
         }
+    }
+
+    /// Who hears about visuals that are live Lab cards.
+    pub fn set_found_lab(&self, found: FoundLab) {
+        *self.found.lock().unwrap() = Some(found);
+    }
+
+    /// A visual that turns a Lab card's 3D model (#11948): the model goes
+    /// into the same one-line scene the desktop uses, `height` points tall,
+    /// so dragging orbits it. Not tied to a transcript row; the caller lays
+    /// it out with [`VisualSession::layout`].
+    pub fn lab_model(
+        &self,
+        id: &str,
+        model: Vec<u8>,
+        height: u32,
+        pixel_scale: f32,
+    ) -> Option<Arc<VisualSession>> {
+        if self.closed.load(Ordering::Acquire) || model.is_empty() {
+            return None;
+        }
+        let script = openagents_account::lab_cards::model_script(height).into_bytes();
+        let names = serde_json::to_vec(&[openagents_account::lab_cards::MODEL_ASSET]).ok()?;
+        let asset = format!(
+            "lab-model-asset-{}",
+            openagents_account::lab_cards::MODEL_ASSET
+        );
+        let fetch: Fetch = Arc::new(move |path: &str| match path {
+            "lab-model-visual.luau" => Some(script.clone()),
+            "lab-model-assets.json" => Some(names.clone()),
+            p if p == asset => Some(model.clone()),
+            _ => None,
+        });
+        let slot = VisualSlot::new(id, "lab-model-visual.luau", "3D model");
+        Some(VisualSession::spawn(
+            &self.text,
+            slot,
+            0,
+            Source {
+                fetch,
+                pixel_scale,
+                found: None,
+            },
+            Arc::new(|_| {}),
+        ))
     }
 
     /// Where scripts load from: the chat's host device.
@@ -290,12 +342,20 @@ impl VisualHub {
             .ok()
             .map(|bytes| bytes.as_ref().clone())
         });
-        *self.source.lock().unwrap() = Some(Source { fetch, pixel_scale });
+        *self.source.lock().unwrap() = Some(Source {
+            fetch,
+            pixel_scale,
+            found: None,
+        });
     }
 
     #[cfg(test)]
     pub(crate) fn set_fetch(&self, fetch: Fetch, pixel_scale: f32) {
-        *self.source.lock().unwrap() = Some(Source { fetch, pixel_scale });
+        *self.source.lock().unwrap() = Some(Source {
+            fetch,
+            pixel_scale,
+            found: None,
+        });
     }
 
     /// Start (or keep) a visual's worker and lay it out at `width`.
@@ -303,9 +363,10 @@ impl VisualHub {
         if self.closed.load(Ordering::Acquire) {
             return;
         }
-        let Some(source) = self.source.lock().unwrap().clone() else {
+        let Some(mut source) = self.source.lock().unwrap().clone() else {
             return;
         };
+        source.found = self.found.lock().unwrap().clone();
         let session = self
             .sessions
             .lock()
@@ -452,6 +513,15 @@ impl VisualSession {
 
     pub fn title(&self) -> String {
         self.title.clone()
+    }
+
+    /// Lays a visual out at `width` that no transcript row measures (a Lab
+    /// card's model).
+    pub fn layout(&self, width: f32, text_scale: f32) {
+        self.send(Cmd::Layout {
+            width,
+            scale: text_scale,
+        });
     }
 }
 
@@ -737,6 +807,11 @@ impl Worker {
             return;
         };
         self.retry = None;
+        if let Some(found) = &self.source.found
+            && let Some(live) = openagents_account::lab_cards::live_card_in_script(&script)
+        {
+            found(&self.slot.path, live);
+        }
         // Its files sit beside it, listed in `{id}-assets.json` (absent for
         // a visual without any).
         let mut files = HashMap::new();

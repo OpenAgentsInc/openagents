@@ -59,6 +59,7 @@ pub(crate) struct LabRow {
     pub strip: bool,
     pub open: Option<PText>,
     pub note: PText,
+    pub versions: PText,
 }
 
 const STRIP: f32 = 44.0;
@@ -69,7 +70,13 @@ const PAD: f32 = 14.0;
 /// Prepares a Lab row from `lab-ui`'s card. `None` when the card can't be
 /// drawn, so the row falls back to its title.
 pub(crate) fn prepare(ctx: &mut Ctx, path: &str, input: &LabCardInput) -> Option<LabRow> {
-    let projection = lab_ui::card(&input.card, &input.space, path, 1).ok()?;
+    // A live key holds a file path, which isn't a valid view instance.
+    let instance = if path.starts_with(LIVE_PREFIX) {
+        format!("{LIVE_PREFIX}{:016x}", super::rows::row_key(path))
+    } else {
+        path.to_owned()
+    };
+    let projection = lab_ui::card(&input.card, &input.space, &instance, 1).ok()?;
     let view = projection.view.view();
     let Element::Stack { children, .. } = &view.root.element else {
         return None;
@@ -130,12 +137,14 @@ pub(crate) fn prepare(ctx: &mut Ctx, path: &str, input: &LabCardInput) -> Option
     let strip = !input.card.strip.is_empty()
         && matches!(input.card.view.drawn(), View::Image | View::Video);
     let note = button_text(ctx, "Add a note");
+    let versions = button_text(ctx, "Versions");
     Some(LabRow {
         path: path.to_owned(),
         pieces,
         strip,
         open,
         note,
+        versions,
     })
 }
 
@@ -195,39 +204,47 @@ pub(crate) fn place(
     y += px.v(GAP + 2.0);
     let mut bx = x + pad;
     let bh = px.v(BUTTON);
-    let button = |t: &PText, kind: WidgetKind, bx: &mut f32, out: Option<&mut DisplayBuilder>| {
-        let bw = t.p.max_content_width().ceil() + px.v(24.0);
-        if let Some(out) = out {
-            out.fill(*bx, y, bw, bh, bh / 2.0, ColorRole::ChipBackground);
-            place_text(
-                t,
-                *bx + px.v(12.0),
-                y + (bh - t.lh) / 2.0,
-                bw,
-                Some(&mut *out),
-            );
-            out.widget(kind, (*bx, y, bw, bh), None);
-        }
-        *bx += bw + px.v(GAP);
-    };
+    let mut buttons: Vec<(&PText, WidgetKind)> = Vec::new();
     if let Some(open) = &row.open {
-        button(
+        buttons.push((
             open,
             WidgetKind::LabOpen {
                 card: row.path.clone(),
             },
-            &mut bx,
-            out.as_deref_mut(),
-        );
+        ));
     }
-    button(
+    buttons.push((
         &row.note,
         WidgetKind::LabNote {
             card: row.path.clone(),
         },
-        &mut bx,
-        out.as_deref_mut(),
-    );
+    ));
+    buttons.push((
+        &row.versions,
+        WidgetKind::LabVersions {
+            card: row.path.clone(),
+        },
+    ));
+    for (i, (t, kind)) in buttons.into_iter().enumerate() {
+        let bw = t.p.max_content_width().ceil() + px.v(24.0);
+        // A button that doesn't fit beside the last one starts a new line.
+        if i > 0 && bx + bw > x + pad + inner {
+            bx = x + pad;
+            y += bh + px.v(GAP);
+        }
+        if let Some(out) = out.as_deref_mut() {
+            out.fill(bx, y, bw, bh, bh / 2.0, ColorRole::ChipBackground);
+            place_text(
+                t,
+                bx + px.v(12.0),
+                y + (bh - t.lh) / 2.0,
+                bw,
+                Some(&mut *out),
+            );
+            out.widget(kind, (bx, y, bw, bh), None);
+        }
+        bx += bw + px.v(GAP);
+    }
     y += bh + pad;
     let h = y - top;
     if let (Some(out), Some(start)) = (out, start) {
@@ -248,6 +265,14 @@ pub(crate) fn place(
     }
     h
 }
+
+/// The key a live session's Lab card row goes by (#11948): its visual's
+/// path under `lab-live:`, so it never collides with a saved `lab-card:`.
+pub fn live_key(visual_path: &str) -> String {
+    format!("{LIVE_PREFIX}{visual_path}")
+}
+
+pub const LIVE_PREFIX: &str = "lab-live:";
 
 /// Cards for a transcript, by row path (`Arc` so inputs stay cheap to clone).
 pub type LabCards = Arc<std::collections::HashMap<String, LabCardInput>>;

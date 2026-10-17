@@ -2,11 +2,16 @@
 //! row shows, its page, its notes, and following its document while the row
 //! is visible. Everything goes through the signed-in account's saved-history
 //! reader, which reads only a shown card's own files.
+//!
+//! Live sessions' Lab cards (#11948) go through the same calls under
+//! `lab-live:` keys: each is a [`LabRow`] that reads through the same
+//! account, until it signs out. Either kind lists its document's versions.
 use super::{CoreError, CoreResult, CoreSavedHistory};
 use crate::layout::lab::LabMediaView;
-use openagents_account::lab_cards::{Media, pictures};
+use openagents_account::lab_cards::{LiveCard, Media, VersionItem, pictures};
+use openagents_account::lab_row::LabRow;
 use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tokio_util::sync::CancellationToken;
 
 /// What a Lab card's media cell draws, as artifact ids the cell passes to
@@ -25,8 +30,20 @@ pub struct LabCardFiles {
     pub strip: Vec<String>,
     /// The video that plays in place of the picture.
     pub plays: Option<String>,
+    /// A Model3d card's model, which turns in place of its poster.
+    pub model: Option<String>,
     /// The card has a page to open (models, games, reports).
     pub has_page: bool,
+}
+
+/// One version in a card's version list, newest first.
+#[derive(Clone, Debug, PartialEq, uniffi::Record)]
+pub struct LabVersion {
+    pub number: u64,
+    /// What the list shows: `v3 · Thicker base`.
+    pub label: String,
+    /// The version the row shows now.
+    pub shown: bool,
 }
 
 /// One of a card's files.
@@ -39,7 +56,11 @@ pub enum LabMediaFile {
     Video {
         url: String,
     },
-    /// A file the phone doesn't draw (a model, a build).
+    /// A glTF binary model, for `TranscriptView::lab_model`.
+    Model {
+        bytes: Vec<u8>,
+    },
+    /// A file the phone doesn't draw (a build).
     Other,
     /// Not available: the chat closed, the account changed, or it failed.
     Missing,
@@ -50,6 +71,7 @@ impl From<Option<Media>> for LabMediaFile {
         match media {
             Some(Media::Image(bytes)) => Self::Image { bytes },
             Some(Media::Video(url)) => Self::Video { url },
+            Some(Media::Model(bytes)) => Self::Model { bytes },
             Some(Media::Other) => Self::Other,
             None => Self::Missing,
         }
@@ -79,8 +101,24 @@ pub(crate) fn files(card: &lab_kit::Card, has_page: bool) -> LabCardFiles {
         side_labels,
         strip: p.strip,
         plays: p.plays,
+        model: p.model,
         has_page,
     }
+}
+
+fn versions(items: Vec<VersionItem>, shown: u64) -> Vec<LabVersion> {
+    items
+        .into_iter()
+        .map(|v| LabVersion {
+            number: v.number,
+            label: v.label(),
+            shown: v.number == shown,
+        })
+        .collect()
+}
+
+fn is_live(card: &str) -> bool {
+    card.starts_with(crate::layout::lab::LIVE_PREFIX)
 }
 
 /// The cards a transcript shows, for the layout.
@@ -110,6 +148,8 @@ pub(crate) fn layout_cards(
 pub(crate) struct LabFollow {
     visible: Mutex<HashSet<String>>,
     running: Mutex<HashMap<String, CancellationToken>>,
+    /// Live sessions' cards, by `lab-live:` key.
+    live: Mutex<HashMap<String, Arc<LabRow>>>,
 }
 
 impl LabFollow {
@@ -137,6 +177,17 @@ impl LabFollow {
                 continue;
             }
             let stop = CancellationToken::new();
+            if is_live(&card) {
+                let Some(row) = self.live(&card) else {
+                    continue;
+                };
+                running.insert(card, stop.clone());
+                openagents_client::runtime::shared().spawn(async move {
+                    row.follow(&stop).await;
+                    stop.cancel();
+                });
+                continue;
+            }
             running.insert(card.clone(), stop.clone());
             let reader = reader.clone();
             openagents_client::runtime::shared().spawn(async move {
@@ -155,7 +206,20 @@ impl LabFollow {
         }
     }
 
+    /// A live card's row, while its account can still read it.
+    pub(crate) fn live(&self, key: &str) -> Option<Arc<LabRow>> {
+        let mut live = self.live.lock().unwrap();
+        let row = live.get(key)?.clone();
+        if row.current() {
+            Some(row)
+        } else {
+            live.remove(key);
+            None
+        }
+    }
+
     pub(crate) fn stop(&self) {
+        self.live.lock().unwrap().clear();
         self.visible.lock().unwrap().clear();
         for (_, stop) in self.running.lock().unwrap().drain() {
             stop.cancel();
@@ -168,6 +232,34 @@ impl LabFollow {
     }
 }
 
+impl CoreSavedHistory {
+    /// A row for a live session's Lab card under `key`, read through this
+    /// history's account. `None` when it is signed out or the card names no
+    /// readable document.
+    pub(crate) fn open_live(&self, key: &str, live: LiveCard) -> Option<Arc<LabRow>> {
+        if !self.current_view() || !is_live(key) {
+            return None;
+        }
+        if let Some(row) = self.labs().live(key) {
+            return Some(row);
+        }
+        let row = LabRow::open(self.lease.clone(), live)?;
+        self.labs()
+            .live
+            .lock()
+            .unwrap()
+            .insert(key.to_owned(), row.clone());
+        Some(row)
+    }
+
+    fn live_row(&self, card: &str) -> Option<Arc<LabRow>> {
+        if !self.current_view() {
+            return None;
+        }
+        self.labs().live(card)
+    }
+}
+
 #[uniffi::export]
 impl CoreSavedHistory {
     /// The files a shown Lab card's media cell draws.
@@ -175,12 +267,19 @@ impl CoreSavedHistory {
         if !self.current_view() {
             return None;
         }
+        if is_live(&card) {
+            let row = self.live_row(&card)?;
+            return Some(files(&row.card()?, row.page().is_some()));
+        }
         let saved = self.reader().lab_card(&card)?;
         Some(files(&saved.card, self.reader().lab_page(&card).is_some()))
     }
 
     /// The web page a shown Lab card opens, on the chat's own website.
     pub fn lab_page(&self, card: String) -> Option<String> {
+        if is_live(&card) {
+            return self.live_row(&card)?.page();
+        }
         self.current_view()
             .then(|| self.reader().lab_page(&card))
             .flatten()
@@ -190,6 +289,17 @@ impl CoreSavedHistory {
     pub async fn lab_media(&self, card: String, artifact: String) -> LabMediaFile {
         if !self.current_view() {
             return LabMediaFile::Missing;
+        }
+        if is_live(&card) {
+            let Some(row) = self.live_row(&card) else {
+                return LabMediaFile::Missing;
+            };
+            return openagents_client::runtime::shared()
+                .spawn(async move { row.media(&artifact).await })
+                .await
+                .ok()
+                .flatten()
+                .into();
         }
         let reader = self.reader().clone();
         openagents_client::runtime::shared()
@@ -214,8 +324,15 @@ impl CoreSavedHistory {
             });
         }
         let reader = self.reader().clone();
+        let live = is_live(&card).then(|| self.live_row(&card));
         openagents_client::runtime::shared()
-            .spawn(async move { reader.lab_add_note(&card, seconds, &text).await })
+            .spawn(async move {
+                match live {
+                    Some(Some(row)) => row.add_note(seconds, &text).await,
+                    Some(None) => Err(openagents_account::lab_cards::NoteError::Unavailable),
+                    None => reader.lab_add_note(&card, seconds, &text).await,
+                }
+            })
             .await
             .map_err(|_| CoreError::Network {
                 message: "Couldn't add the note. Try again.".into(),
@@ -231,6 +348,56 @@ impl CoreSavedHistory {
     pub fn lab_visible(&self, card: String, visible: bool) {
         self.labs().set_visible(card, visible);
         self.sync_labs();
+    }
+
+    /// A shown Lab card's document versions, newest first.
+    pub async fn lab_versions(&self, card: String) -> CoreResult<Vec<LabVersion>> {
+        let unavailable = || CoreError::Network {
+            message: openagents_account::lab_cards::VERSIONS_UNAVAILABLE.into(),
+        };
+        if !self.current_view() {
+            return Err(unavailable());
+        }
+        let reader = self.reader().clone();
+        let live = is_live(&card).then(|| self.live_row(&card));
+        openagents_client::runtime::shared()
+            .spawn(async move {
+                match live {
+                    Some(Some(row)) => {
+                        let shown = row.card()?.version;
+                        Some(versions(row.versions().await?, shown))
+                    }
+                    Some(None) => None,
+                    None => {
+                        let shown = reader.lab_card(&card)?.card.version;
+                        Some(versions(reader.lab_versions(&card).await?, shown))
+                    }
+                }
+            })
+            .await
+            .ok()
+            .flatten()
+            .ok_or_else(unavailable)
+    }
+
+    /// Shows version `number` in a shown Lab card's row; following then
+    /// keeps that version current. False when it couldn't be read.
+    pub async fn lab_show_version(&self, card: String, number: u64) -> bool {
+        if !self.current_view() {
+            return false;
+        }
+        let reader = self.reader().clone();
+        let live = is_live(&card).then(|| self.live_row(&card));
+        openagents_client::runtime::shared()
+            .spawn(async move {
+                match live {
+                    Some(Some(row)) => row.show_version(number).await,
+                    Some(None) => false,
+                    None => reader.lab_show_version(&card, number).await,
+                }
+            })
+            .await
+            .unwrap_or(false)
     }
 }
 
@@ -331,5 +498,55 @@ mod tests {
             }
         );
         assert_eq!(LabMediaFile::from(Some(Media::Other)), LabMediaFile::Other);
+        assert_eq!(
+            LabMediaFile::from(Some(Media::Model(vec![1, 2]))),
+            LabMediaFile::Model { bytes: vec![1, 2] }
+        );
+    }
+
+    #[test]
+    fn a_model3d_card_names_its_model_and_lists_versions_newest_first() {
+        let (_, card) = fixtures()
+            .into_iter()
+            .find(|(n, _)| n == "model3d")
+            .unwrap();
+        let f = files(&card, false);
+        assert!(f.model.is_some());
+        assert!(
+            openagents_account::lab_cards::artifacts(&card).contains(f.model.as_ref().unwrap())
+        );
+        let list = versions(
+            vec![
+                VersionItem {
+                    number: 3,
+                    summary: "Thicker base".into(),
+                    created_unix_ms: 0,
+                },
+                VersionItem {
+                    number: 2,
+                    summary: " ".into(),
+                    created_unix_ms: 0,
+                },
+            ],
+            2,
+        );
+        assert_eq!(list[0].label, "v3 · Thicker base");
+        assert_eq!(list[1].label, "v2");
+        assert!(!list[0].shown && list[1].shown);
+    }
+
+    #[test]
+    fn live_keys_need_a_live_row() {
+        assert!(is_live(&crate::layout::lab::live_key(
+            "chat/v1-visual.luau"
+        )));
+        assert!(!is_live("lab-card:1:m1:0"));
+        let follow = LabFollow::default();
+        assert!(follow.live("lab-live:x").is_none());
+        // A visible live card without a row starts no follower.
+        let reader = openagents_account::reader::Reader::new();
+        follow.set_visible("lab-live:x".into(), true);
+        follow.sync(&reader, true);
+        assert_eq!(follow.running(), 0);
     }
 }

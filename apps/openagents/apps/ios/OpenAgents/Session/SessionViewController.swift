@@ -9,6 +9,10 @@ final class SessionViewController: UIViewController, UIGestureRecognizerDelegate
     private lazy var relay = FrameRelay { [weak self] in self?.applyFrame() }
     private lazy var engine = TranscriptView(text: TextEngine.shared, listener: relay)
     private lazy var list = TranscriptListView(engine: engine)
+    /// Lab cards the session's tools returned (#11948), read through the
+    /// signed-in account.
+    private let labs = LabCells()
+    private var labsToken: AnyObject?
     private let composer = ComposerBar()
     private let questions = QuestionPanel()
     private let queue = QueuePanel()
@@ -164,11 +168,26 @@ final class SessionViewController: UIViewController, UIGestureRecognizerDelegate
             jump.bottomAnchor.constraint(equalTo: bottom.topAnchor, constant: -12),
         ])
 
+        labs.engine = engine
+        list.labCells = labs
+        bindLabs()
+        labsToken = app.observe { [weak self] in self?.bindLabs() }
         source.onChange = { [weak self] in self?.render(animated: true) }
         source.attach(engine)
         render(animated: false)
         app.markSeen(chatId)
     }
+
+    /// Lab cards read through the account that is signed in now; signing out
+    /// leaves them the visuals they were sent as.
+    private func bindLabs() {
+        let history = app.savedHistory
+        if labsBound && history === labs.history { return }
+        labsBound = true
+        labs.bind(history)
+        engine.setLabHistory(history: history)
+    }
+    private var labsBound = false
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)

@@ -42,6 +42,7 @@ protocol RowViewDelegate: AnyObject {
     func rowView(_ view: RowView, labMediaFor card: String, view: LabMediaView) -> UIView?
     func rowView(_ view: RowView, openLab card: String)
     func rowView(_ view: RowView, noteLab card: String)
+    func rowView(_ view: RowView, versionsLab card: String)
 }
 
 /// A reusable transcript row: canvas + horizontal scrollers + native widgets.
@@ -314,6 +315,11 @@ final class RowView: UIView {
                 view = labButton("Add a note", id: "lab-note") { [weak self] in
                     guard let self else { return }
                     self.delegate?.rowView(self, noteLab: card)
+                }
+            case let .labVersions(card):
+                view = labButton("Versions", id: "lab-versions") { [weak self] in
+                    guard let self else { return }
+                    self.delegate?.rowView(self, versionsLab: card)
                 }
             }
             view.frame = rect

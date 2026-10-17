@@ -3983,6 +3983,17 @@ public protocol CoreSavedHistoryProtocol: AnyObject, Sendable {
     func labPage(card: String)  -> String?
     
     /**
+     * Shows version `number` in a shown Lab card's row; following then
+     * keeps that version current. False when it couldn't be read.
+     */
+    func labShowVersion(card: String, number: UInt64) async  -> Bool
+    
+    /**
+     * A shown Lab card's document versions, newest first.
+     */
+    func labVersions(card: String) async throws  -> [LabVersion]
+    
+    /**
      * Whether a Lab card row is on screen. A visible card follows its
      * document while the app is in the foreground, so its state and notes
      * stay current.
@@ -4160,6 +4171,46 @@ open func labPage(card: String) -> String?  {
         FfiConverterString.lower(card),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Shows version `number` in a shown Lab card's row; following then
+     * keeps that version current. False when it couldn't be read.
+     */
+open func labShowVersion(card: String, number: UInt64)async  -> Bool  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coresavedhistory_lab_show_version(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(card),FfiConverterUInt64.lower(number)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_i8,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_i8,
+            freeFunc: ffi_openagents_mobile_rust_future_free_i8,
+            liftFunc: FfiConverterBool.lift,
+            errorHandler: nil
+            
+        )
+}
+    
+    /**
+     * A shown Lab card's document versions, newest first.
+     */
+open func labVersions(card: String)async throws  -> [LabVersion]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coresavedhistory_lab_versions(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(card)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeLabVersion.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
 }
     
     /**
@@ -6860,9 +6911,21 @@ public protocol TranscriptViewProtocol: AnyObject, Sendable {
     func frame()  -> LayoutFrame
     
     /**
+     * A visual that turns a Lab card's 3D model by dragging (#11948), for
+     * the card's media cell; `height` in points.
+     */
+    func labModel(id: String, model: Data, height: UInt32, pixelScale: Float)  -> VisualSession?
+    
+    /**
      * Feed markdown fixtures directly (demo screens, benchmarks, tests).
      */
     func setDebugEntries(entries: [DebugEntry], working: Bool) 
+    
+    /**
+     * The account history that reads live Lab card rows (#11948). Without
+     * one, a live Lab card stays the visual it was sent as.
+     */
+    func setLabHistory(history: CoreSavedHistory?) 
     
     func setViewport(width: Float, textScale: Float) 
     
@@ -7001,6 +7064,23 @@ open func frame() -> LayoutFrame  {
 }
     
     /**
+     * A visual that turns a Lab card's 3D model by dragging (#11948), for
+     * the card's media cell; `height` in points.
+     */
+open func labModel(id: String, model: Data, height: UInt32, pixelScale: Float) -> VisualSession?  {
+    return try!  FfiConverterOptionTypeVisualSession.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_transcriptview_lab_model(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),
+        FfiConverterData.lower(model),
+        FfiConverterUInt32.lower(height),
+        FfiConverterFloat.lower(pixelScale),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Feed markdown fixtures directly (demo screens, benchmarks, tests).
      */
 open func setDebugEntries(entries: [DebugEntry], working: Bool)  {try! rustCall() {
@@ -7009,6 +7089,19 @@ open func setDebugEntries(entries: [DebugEntry], working: Bool)  {try! rustCall(
             self.uniffiCloneHandle(),
         FfiConverterSequenceTypeDebugEntry.lower(entries),
         FfiConverterBool.lower(working),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The account history that reads live Lab card rows (#11948). Without
+     * one, a live Lab card stays the visual it was sent as.
+     */
+open func setLabHistory(history: CoreSavedHistory?)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_transcriptview_set_lab_history(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionTypeCoreSavedHistory.lower(history),uniffiCallStatus
     )
 }
 }
@@ -7591,6 +7684,12 @@ public protocol VisualSessionProtocol: AnyObject, Sendable {
     func detach() 
     
     /**
+     * Lays a visual out at `width` that no transcript row measures (a Lab
+     * card's model).
+     */
+    func layout(width: Float, textScale: Float) 
+    
+    /**
      * A touch on a surface, in its coordinates.
      */
     func pointer(surface: UInt64, phase: PointerPhase, x: Float, y: Float) 
@@ -7694,6 +7793,20 @@ open func detach()  {try! rustCall() {
         uniffiCallStatus in
     uniffi_openagents_mobile_fn_method_visualsession_detach(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Lays a visual out at `width` that no transcript row measures (a Lab
+     * card's model).
+     */
+open func layout(width: Float, textScale: Float)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_visualsession_layout(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(width),
+        FfiConverterFloat.lower(textScale),uniffiCallStatus
     )
 }
 }
@@ -10665,6 +10778,10 @@ public struct LabCardFiles: Equatable, Hashable {
      */
     public var plays: String?
     /**
+     * A Model3d card's model, which turns in place of its poster.
+     */
+    public var model: String?
+    /**
      * The card has a page to open (models, games, reports).
      */
     public var hasPage: Bool
@@ -10685,6 +10802,9 @@ public struct LabCardFiles: Equatable, Hashable {
          * The video that plays in place of the picture.
          */plays: String?, 
         /**
+         * A Model3d card's model, which turns in place of its poster.
+         */model: String?, 
+        /**
          * The card has a page to open (models, games, reports).
          */hasPage: Bool) {
         self.title = title
@@ -10695,6 +10815,7 @@ public struct LabCardFiles: Equatable, Hashable {
         self.sideLabels = sideLabels
         self.strip = strip
         self.plays = plays
+        self.model = model
         self.hasPage = hasPage
     }
 
@@ -10722,6 +10843,7 @@ public struct FfiConverterTypeLabCardFiles: FfiConverterRustBuffer {
                 sideLabels: FfiConverterSequenceString.read(from: &buf), 
                 strip: FfiConverterSequenceString.read(from: &buf), 
                 plays: FfiConverterOptionString.read(from: &buf), 
+                model: FfiConverterOptionString.read(from: &buf), 
                 hasPage: FfiConverterBool.read(from: &buf)
         )
     }
@@ -10735,6 +10857,7 @@ public struct FfiConverterTypeLabCardFiles: FfiConverterRustBuffer {
         FfiConverterSequenceString.write(value.sideLabels, into: &buf)
         FfiConverterSequenceString.write(value.strip, into: &buf)
         FfiConverterOptionString.write(value.plays, into: &buf)
+        FfiConverterOptionString.write(value.model, into: &buf)
         FfiConverterBool.write(value.hasPage, into: &buf)
     }
 }
@@ -10752,6 +10875,79 @@ public func FfiConverterTypeLabCardFiles_lift(_ buf: RustBuffer) throws -> LabCa
 #endif
 public func FfiConverterTypeLabCardFiles_lower(_ value: LabCardFiles) -> RustBuffer {
     return FfiConverterTypeLabCardFiles.lower(value)
+}
+
+
+/**
+ * One version in a card's version list, newest first.
+ */
+public struct LabVersion: Equatable, Hashable {
+    public var number: UInt64
+    /**
+     * What the list shows: `v3 · Thicker base`.
+     */
+    public var label: String
+    /**
+     * The version the row shows now.
+     */
+    public var shown: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(number: UInt64, 
+        /**
+         * What the list shows: `v3 · Thicker base`.
+         */label: String, 
+        /**
+         * The version the row shows now.
+         */shown: Bool) {
+        self.number = number
+        self.label = label
+        self.shown = shown
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LabVersion: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLabVersion: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LabVersion {
+        return
+            try LabVersion(
+                number: FfiConverterUInt64.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                shown: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LabVersion, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.number, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterBool.write(value.shown, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLabVersion_lift(_ buf: RustBuffer) throws -> LabVersion {
+    return try FfiConverterTypeLabVersion.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLabVersion_lower(_ value: LabVersion) -> RustBuffer {
+    return FfiConverterTypeLabVersion.lower(value)
 }
 
 
@@ -16837,7 +17033,12 @@ public enum LabMediaFile: Equatable, Hashable {
     case video(url: String
     )
     /**
-     * A file the phone doesn't draw (a model, a build).
+     * A glTF binary model, for `TranscriptView::lab_model`.
+     */
+    case model(bytes: Data
+    )
+    /**
+     * A file the phone doesn't draw (a build).
      */
     case other
     /**
@@ -16871,9 +17072,12 @@ public struct FfiConverterTypeLabMediaFile: FfiConverterRustBuffer {
         case 2: return .video(url: try FfiConverterString.read(from: &buf)
         )
         
-        case 3: return .other
+        case 3: return .model(bytes: try FfiConverterData.read(from: &buf)
+        )
         
-        case 4: return .missing
+        case 4: return .other
+        
+        case 5: return .missing
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -16893,12 +17097,17 @@ public struct FfiConverterTypeLabMediaFile: FfiConverterRustBuffer {
             FfiConverterString.write(url, into: &buf)
             
         
-        case .other:
+        case let .model(bytes):
             writeInt(&buf, Int32(3))
+            FfiConverterData.write(bytes, into: &buf)
+            
+        
+        case .other:
+            writeInt(&buf, Int32(4))
         
         
         case .missing:
-            writeInt(&buf, Int32(4))
+            writeInt(&buf, Int32(5))
         
         }
     }
@@ -19589,6 +19798,11 @@ public enum WidgetKind: Equatable, Hashable {
      */
     case labNote(card: String
     )
+    /**
+     * Lists the Lab card's document versions; picking one shows it.
+     */
+    case labVersions(card: String
+    )
 
 
 
@@ -19653,6 +19867,9 @@ public struct FfiConverterTypeWidgetKind: FfiConverterRustBuffer {
         )
         
         case 16: return .labNote(card: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 17: return .labVersions(card: try FfiConverterString.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -19747,6 +19964,11 @@ public struct FfiConverterTypeWidgetKind: FfiConverterRustBuffer {
         
         case let .labNote(card):
             writeInt(&buf, Int32(16))
+            FfiConverterString.write(card, into: &buf)
+            
+        
+        case let .labVersions(card):
+            writeInt(&buf, Int32(17))
             FfiConverterString.write(card, into: &buf)
             
         }
@@ -19932,6 +20154,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterString.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeCoreSavedHistory: FfiConverterRustBuffer {
+    typealias SwiftType = CoreSavedHistory?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCoreSavedHistory.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCoreSavedHistory.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -20906,6 +21152,31 @@ fileprivate struct FfiConverterSequenceTypeHarnessInfo: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeHarnessInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeLabVersion: FfiConverterRustBuffer {
+    typealias SwiftType = [LabVersion]
+
+    public static func write(_ value: [LabVersion], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLabVersion.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LabVersion] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LabVersion]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLabVersion.read(from: &buf))
         }
         return seq
     }
@@ -22483,6 +22754,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_page() != 53937) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_show_version() != 43041) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_versions() != 47324) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_visible() != 3398) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -22681,7 +22958,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_transcriptview_frame() != 40967) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_transcriptview_lab_model() != 1039) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_transcriptview_set_debug_entries() != 59449) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_transcriptview_set_lab_history() != 6829) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_transcriptview_set_viewport() != 38739) {
@@ -22721,6 +23004,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_visualsession_detach() != 46316) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_visualsession_layout() != 12383) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_visualsession_pointer() != 49040) {

@@ -505,3 +505,116 @@ fn frames_are_premultiplied_for_core_graphics() {
     let image = image_of(2, 1, vec![200, 100, 50, 128, 10, 20, 30, 255]);
     assert_eq!(image.bgra, vec![100, 50, 25, 128, 10, 20, 30, 255]);
 }
+
+#[test]
+fn a_live_lab_card_script_is_reported_and_still_shows_its_title() {
+    let hub = Arc::new(VisualHub::new(
+        crate::layout::tests::text_system(),
+        Arc::new(|_| {}),
+    ));
+    let (found_tx, found) = mpsc::channel();
+    let found_tx = Mutex::new(found_tx);
+    hub.set_found_lab(Arc::new(move |path, live| {
+        let _ = found_tx.lock().unwrap().send((path.to_owned(), live));
+    }));
+    let card = serde_json::json!({"schema": "lab.card.v1", "kind": "video", "document": "film",
+        "version": 2, "title": "Film", "view": "video", "primary": "art_v2"});
+    let script = format!(
+        "{}{}\nreturn ui.text \"Film\"\n",
+        openagents_account::lab_cards::LIVE_MARKER,
+        serde_json::json!({"space": "me", "card": card})
+    );
+    let files: HashMap<String, Vec<u8>> = [(PATH.to_owned(), script.into_bytes())].into();
+    hub.set_fetch(Arc::new(move |path: &str| files.get(path).cloned()), 2.0);
+    let slot = VisualSlot::new("v_1", PATH, "Film");
+    hub.ensure(&slot, 1, 300.0, 1.0);
+    let (path, live) = found
+        .recv_timeout(Duration::from_secs(8))
+        .expect("reported");
+    assert_eq!(path, PATH);
+    assert_eq!(
+        (
+            live.space.as_str(),
+            live.card.document.as_str(),
+            live.card.version
+        ),
+        ("me", "film", 2)
+    );
+    let (tx, events) = mpsc::channel();
+    hub.session("v_1")
+        .unwrap()
+        .attach(Arc::new(Collect(Mutex::new(tx))), false, false);
+    let deadline = Instant::now() + Duration::from_secs(8);
+    loop {
+        if let Event::Display(d) = events
+            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            .expect("a display")
+            && text_of(&d).contains("Film")
+        {
+            break;
+        }
+    }
+}
+
+#[test]
+fn a_lab_model_turns_in_a_scene_that_orbits() {
+    let hub = Arc::new(VisualHub::new(
+        crate::layout::tests::text_system(),
+        Arc::new(|_| {}),
+    ));
+    assert!(
+        hub.lab_model("m", Vec::new(), 200, 2.0).is_none(),
+        "no model, no scene"
+    );
+    let session = hub
+        .lab_model("m", triangle_glb(), 200, 2.0)
+        .expect("a session");
+    session.layout(320.0, 1.0);
+    let (tx, events) = mpsc::channel();
+    session.attach(Arc::new(Collect(Mutex::new(tx))), false, false);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let display = loop {
+        if let Event::Display(d) = events
+            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            .expect("a display")
+            && !d.surfaces.is_empty()
+        {
+            break d;
+        }
+    };
+    assert!((display.height - 200.0).abs() < 1.0, "{}", display.height);
+    assert!(
+        !text_of(&display).contains("error"),
+        "{}",
+        text_of(&display)
+    );
+    // The drawn scene is the model's, and dragging turns it.
+    let laid = lay(&openagents_account::lab_cards::model_script(200), 320.0);
+    assert!(matches!(&laid.surfaces[0].node, SurfaceNode::Scene(s) if s.orbit));
+}
+
+/// A one-triangle glTF binary.
+fn triangle_glb() -> Vec<u8> {
+    let positions: [f32; 9] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+    let bin: Vec<u8> = positions.iter().flat_map(|f| f.to_le_bytes()).collect();
+    let mut json = format!(
+        r#"{{"asset":{{"version":"2.0"}},"scene":0,"scenes":[{{"nodes":[0]}}],"nodes":[{{"mesh":0}}],"meshes":[{{"primitives":[{{"attributes":{{"POSITION":0}}}}]}}],"accessors":[{{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,1,0]}}],"bufferViews":[{{"buffer":0,"byteLength":{len}}}],"buffers":[{{"byteLength":{len}}}]}}"#,
+        len = bin.len()
+    )
+    .into_bytes();
+    while !json.len().is_multiple_of(4) {
+        json.push(b' ');
+    }
+    let total = 12 + 8 + json.len() + 8 + bin.len();
+    let mut glb = Vec::with_capacity(total);
+    glb.extend_from_slice(b"glTF");
+    glb.extend_from_slice(&2u32.to_le_bytes());
+    glb.extend_from_slice(&(total as u32).to_le_bytes());
+    glb.extend_from_slice(&(json.len() as u32).to_le_bytes());
+    glb.extend_from_slice(b"JSON");
+    glb.extend_from_slice(&json);
+    glb.extend_from_slice(&(bin.len() as u32).to_le_bytes());
+    glb.extend_from_slice(b"BIN\0");
+    glb.extend_from_slice(&bin);
+    glb
+}

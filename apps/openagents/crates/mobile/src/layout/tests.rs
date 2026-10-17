@@ -733,6 +733,10 @@ fn every_fixture_lab_card_lays_out_its_view() {
                 assert!(*h > 0.0 && *w <= width, "{name}");
             }
             assert!(d.widgets.iter().any(|w| matches!(&w.kind, WidgetKind::LabNote { .. })), "{name}");
+            assert!(d.widgets.iter().any(|w| matches!(&w.kind, WidgetKind::LabVersions { .. })), "{name}");
+            for w in &d.widgets {
+                assert!(w.x >= 0.0 && w.x + w.w <= width + 0.5, "{name}: {w:?}");
+            }
             assert_eq!(
                 d.widgets.iter().any(|w| matches!(&w.kind, WidgetKind::LabOpen { .. })),
                 card.page.is_some(),
@@ -774,4 +778,64 @@ fn a_lab_card_the_transcript_lacks_shows_its_title() {
     let frame = w.pass();
     assert_eq!(frame.placement(0).unwrap().kind, RowKind::Chip);
     assert!(frame.display(0).unwrap().text.contains(&cards[0].0));
+}
+
+#[test]
+fn a_live_visual_that_is_a_lab_card_becomes_a_lab_row_until_it_goes() {
+    use display::WidgetKind;
+    let (name, card) = lab_fixtures()
+        .into_iter()
+        .find(|(n, _)| n == "video")
+        .unwrap();
+    let path = "chats/c1/v1-visual.luau".to_owned();
+    let mut w = worker(393.0);
+    w.input = TranscriptInput {
+        entries: vec![Arc::new(SessionMessageEntry {
+            id: "m1".into(),
+            role: MessageRole::Assistant,
+            parts: vec![MessagePart::Visual {
+                id: "v1".into(),
+                path: path.clone(),
+                title: name,
+            }],
+            created_at: 0,
+            device_id: String::new(),
+            status: Some(MessageStatus::Complete),
+            continuation_of: None,
+            duration_ms: None,
+        })],
+        ..Default::default()
+    };
+    assert_eq!(w.pass().placement(0).unwrap().kind, RowKind::Visual);
+    // The visual's script carried a platform card that the account can read.
+    let key = lab::live_key(&path);
+    w.live_labs.insert(
+        key.clone(),
+        lab::LabCardInput {
+            space: "me".into(),
+            card: card.clone(),
+        },
+    );
+    w.merge_labs();
+    let frame = w.pass();
+    assert_eq!(frame.placement(0).unwrap().kind, RowKind::Lab);
+    let d = frame.display(0).unwrap();
+    assert!(d.text.contains(&card.title));
+    for kind in &d.widgets {
+        if let WidgetKind::LabMedia { card, .. }
+        | WidgetKind::LabNote { card }
+        | WidgetKind::LabVersions { card } = &kind.kind
+        {
+            assert_eq!(card, &key);
+        }
+    }
+    // A new snapshot keeps it; sign-out drops it back to the visual.
+    let input = w.input.clone();
+    w.lab_cards = Default::default();
+    w.input = input;
+    w.merge_labs();
+    assert_eq!(w.pass().placement(0).unwrap().kind, RowKind::Lab);
+    w.live_labs.remove(&key);
+    w.merge_labs();
+    assert_eq!(w.pass().placement(0).unwrap().kind, RowKind::Visual);
 }

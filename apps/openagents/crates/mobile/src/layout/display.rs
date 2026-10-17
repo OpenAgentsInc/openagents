@@ -202,6 +202,8 @@ pub enum WidgetKind {
     LabOpen { card: String },
     /// Adds a note to the Lab card, at the playing time when it plays.
     LabNote { card: String },
+    /// Lists the Lab card's document versions; picking one shows it.
+    LabVersions { card: String },
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]

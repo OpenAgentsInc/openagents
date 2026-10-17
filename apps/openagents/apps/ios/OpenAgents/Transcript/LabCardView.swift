@@ -5,12 +5,15 @@ import UIKit
 
 /// Lab card rows (#11884). Rust lays the card out from `lab-ui`'s Rust Native
 /// card; these views only fill its media rect with the cell for the card's
-/// standard view and run its open and note buttons. Files come from the
-/// saved history's `labMedia`, which reads only the card's own files through
-/// the signed-in account.
+/// standard view and run its open, note, and versions buttons. Files come
+/// from the saved history's `labMedia`, which reads only the card's own files
+/// through the signed-in account. A live session's Lab cards (#11948) go
+/// through the same history under their `lab-live:` keys.
 @MainActor
 final class LabCells {
     private(set) weak var history: CoreSavedHistory?
+    /// The transcript whose visuals turn a Model3d card's model.
+    weak var engine: TranscriptView?
     private var cells: [String: LabMediaCell] = [:]
     private var observers: [NSObjectProtocol] = []
 
@@ -90,6 +93,46 @@ final class LabCells {
         vc.present(alert, animated: true)
     }
 
+    /// Lists the card's document versions; picking one shows it in the row.
+    func versions(card: String, from view: UIView) {
+        guard let vc = view.findViewController() else { return }
+        Task { @MainActor [weak self, weak view, weak vc] in
+            guard let self, let history = self.history else { return }
+            let list: [LabVersion]
+            do { list = try await history.labVersions(card: card) }
+            catch { Toast.show(LabCells.message(error, else: "Couldn’t load the versions. Try again."), in: view?.window); return }
+            guard let vc, vc.view.window != nil else { return }
+            let sheet = UIAlertController(title: "Versions", message: nil, preferredStyle: .actionSheet)
+            for version in list {
+                let action = UIAlertAction(title: version.label, style: .default) { [weak self, weak view] _ in
+                    Task { @MainActor [weak self, weak view] in
+                        guard let self, let history = self.history else { return }
+                        if await history.labShowVersion(card: card, number: version.number) {
+                            self.reload(card: card)
+                        } else {
+                            Toast.show("Couldn’t show v\(version.number). Try again.", in: view?.window)
+                        }
+                    }
+                }
+                action.isEnabled = !version.shown
+                action.accessibilityIdentifier = "lab-version-\(version.number)"
+                sheet.addAction(action)
+            }
+            sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+            if let pop = sheet.popoverPresentationController, let view {
+                pop.sourceView = view
+                pop.sourceRect = view.bounds
+            }
+            vc.present(sheet, animated: true)
+        }
+    }
+
+    /// Drops a card's cell so the row's next layout draws the version it
+    /// shows now.
+    private func reload(card: String) {
+        cells.removeValue(forKey: card)?.release()
+    }
+
     fileprivate func media(card: String, artifact: String) async -> LabMediaFile {
         guard let history else { return .missing }
         return await history.labMedia(card: card, artifact: artifact)
@@ -105,10 +148,10 @@ final class LabCells {
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
     }
 
-    private static func message(_ error: Error) -> String {
+    private static func message(_ error: Error, else fallback: String = "Couldn’t add the note. Try again.") -> String {
         switch error as? CoreError {
         case let .InvalidArgument(message)?, let .Auth(message)?, let .Network(message)?: message
-        default: "Couldn’t add the note. Try again."
+        default: fallback
         }
     }
 }
@@ -132,6 +175,9 @@ final class LabMediaCell: UIView {
     private var player: AVPlayer?
     private var playerLayer: AVPlayerLayer?
     private var videoURL: URL?
+    /// A Model3d card's model, and the visual that turns it once laid out.
+    private var model: Data?
+    private var modelView: VisualView?
     private var loads: [Task<Void, Never>] = []
     private var released = false
 
@@ -184,7 +230,8 @@ final class LabMediaCell: UIView {
             addSubview(full)
         }
         if view == .model3d || view == .playable {
-            // The phone shows the poster; the model or game opens on its page.
+            // The phone shows the poster until a model turns in its place; a
+            // game, and the model too, opens on its page.
             openOverlay.configuration = .tinted()
             openOverlay.configuration?.title = view == .model3d ? "View model" : "Play"
             openOverlay.configuration?.cornerStyle = .capsule
@@ -257,6 +304,7 @@ final class LabMediaCell: UIView {
             x += iv.frame.width + 6
         }
         strip.contentSize = CGSize(width: max(0, x - 6), height: stripH)
+        layoutModel(in: screen)
         play.frame = CGRect(x: screen.midX - 26, y: screen.midY - 26, width: 52, height: 52)
         full.frame = CGRect(x: screen.maxX - 44, y: screen.maxY - 44, width: 36, height: 36)
         openOverlay.sizeToFit()
@@ -282,6 +330,14 @@ final class LabMediaCell: UIView {
         if let id = files.sideA { picture(id, into: sideA) }
         if let id = files.sideB { picture(id, into: sideB) }
         for (id, iv) in zip(files.strip, stripViews) { picture(id, into: iv) }
+        if view == .model3d, let id = files.model {
+            loads.append(Task { @MainActor [weak self] in
+                guard let self, case let .model(bytes) = await self.cells?.media(card: self.card, artifact: id),
+                      !self.released else { return }
+                self.model = bytes
+                self.setNeedsLayout()
+            })
+        }
         if view == .video, let id = files.plays {
             loads.append(Task { @MainActor [weak self] in
                 guard let self, case let .video(url) = await self.cells?.media(card: self.card, artifact: id),
@@ -292,6 +348,25 @@ final class LabMediaCell: UIView {
             })
         }
         setNeedsLayout()
+    }
+
+    /// Turns the model by dragging, through the transcript's visuals, over
+    /// the poster; sized once the cell has its frame.
+    private func layoutModel(in screen: CGRect) {
+        guard let model, screen.width > 0, screen.height > 0 else { return }
+        if modelView == nil {
+            guard let engine = cells?.engine,
+                  let session = engine.labModel(id: "lab-model-\(card)", model: model, height: UInt32(screen.height.rounded()), pixelScale: Float(max(2, traitCollection.displayScale)))
+            else { return }
+            let view = VisualView(session: session, scale: traitCollection.displayScale)
+            view.accessibilityLabel = files.map { "\($0.title), 3D model" } ?? "3D model"
+            view.accessibilityIdentifier = "lab-model"
+            insertSubview(view, aboveSubview: main)
+            modelView = view
+        }
+        guard let modelView, modelView.frame != screen else { return }
+        modelView.frame = screen
+        modelView.session.layout(width: Float(screen.width), textScale: 1)
     }
 
     private func picture(_ id: String, into iv: UIImageView) {
@@ -354,6 +429,9 @@ final class LabMediaCell: UIView {
         playerLayer = nil
         [main, sideA, sideB].forEach { $0.image = nil }
         stripViews.forEach { $0.image = nil }
+        modelView?.removeFromSuperview()
+        modelView = nil
+        model = nil
         cells?.visible(card: card, false)
     }
 }

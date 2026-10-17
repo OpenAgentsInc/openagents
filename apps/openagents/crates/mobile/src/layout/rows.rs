@@ -312,13 +312,23 @@ impl RowBuilder {
         self.pending.retain(|_, (_, row)| row.key != key);
     }
 
+    /// The Lab card a visual part shows: a saved `lab-card:`, or a live
+    /// session's visual that turned out to be a Lab card (#11948).
+    fn lab_ref(&self, path: &str) -> Option<String> {
+        if openagents_account::lab_cards::is_card_path(path) {
+            return Some(path.to_owned());
+        }
+        let key = super::lab::live_key(path);
+        self.lab_cards.contains_key(&key).then_some(key)
+    }
+
     /// Context outside the entry that changes its rows (gaps only).
     fn entry_sig(&self, entry: &SessionMessageEntry, first: bool, prev: Option<MessageRole>) -> u64 {
         let mut sig = (first as u64) | ((prev.map_or(0, |r| r as u64 + 1)) << 1);
         // A Lab card that changed (a note, a finished job) rebuilds its entry.
         for part in &entry.parts {
             if let MessagePart::Visual { path, .. } = part
-                && let Some(card) = self.lab_cards.get(path)
+                && let Some(card) = self.lab_ref(path).and_then(|r| self.lab_cards.get(&r))
             {
                 sig = sig.rotate_left(7) ^ quick_hash(&format!("{card:?}"));
             }
@@ -429,10 +439,11 @@ impl RowBuilder {
                             });
                             rows.push(Placed { core, gap });
                         }
-                        MessagePart::Visual { id, path, title } if openagents_account::lab_cards::is_card_path(path) => {
+                        MessagePart::Visual { id, path, title } if self.lab_ref(path).is_some() => {
                             let gap = gap_for(&rows, false);
                             let key = row_key(&format!("{}#{}", entry.id, id));
-                            let core = match self.lab_cards.get(path).and_then(|card| super::lab::prepare(ctx, path, card)) {
+                            let card_ref = self.lab_ref(path).unwrap_or_default();
+                            let core = match self.lab_cards.get(&card_ref).and_then(|card| super::lab::prepare(ctx, &card_ref, card)) {
                                 Some(lab) => RowCore {
                                     key,
                                     version: next_version(),

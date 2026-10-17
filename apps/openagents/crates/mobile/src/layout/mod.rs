@@ -356,6 +356,9 @@ enum Msg {
     ToggleDetail { row: u64, detail: u64, open: bool },
     /// A visual row's height changed (its key), or visuals got a source.
     Visual(Option<u64>),
+    /// A live Lab card row (#11948), by its `lab-live:` key: its card, or
+    /// `None` once the account can no longer read it.
+    LiveLab(String, Option<lab::LabCardInput>),
     Shutdown,
 }
 
@@ -371,6 +374,64 @@ pub struct TranscriptView {
     /// Live session subscription (Rust→Rust; rows never cross FFI).
     watch: Mutex<Option<openagents_client::SnapshotWatch>>,
     visuals: Arc<crate::visual::VisualHub>,
+    labs: Arc<LiveLabs>,
+}
+
+/// Live Lab cards a transcript's visuals turned out to be (#11948), and the
+/// account history that reads them.
+#[derive(Default)]
+struct LiveLabs {
+    history: Mutex<Option<std::sync::Weak<crate::client_ffi::CoreSavedHistory>>>,
+    /// Found before a history was set: opened when one is.
+    pending: Mutex<Vec<(String, openagents_account::lab_cards::LiveCard)>>,
+}
+
+impl LiveLabs {
+    fn found(
+        &self,
+        tx: &Mutex<Sender<Msg>>,
+        path: &str,
+        live: openagents_account::lab_cards::LiveCard,
+    ) {
+        let history = self
+            .history
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|h| h.upgrade());
+        let Some(history) = history else {
+            self.pending.lock().unwrap().push((path.to_owned(), live));
+            return;
+        };
+        let key = lab::live_key(path);
+        let Some(row) = history.open_live(&key, live) else {
+            return;
+        };
+        let tx = tx.lock().unwrap().clone();
+        let send = move |row: &openagents_account::lab_row::LabRow| {
+            let input = row.card().map(|card| lab::LabCardInput {
+                space: row.space().to_owned(),
+                card,
+            });
+            let gone = input.is_none();
+            tx.send(Msg::LiveLab(key.clone(), input)).is_err() || gone
+        };
+        if send(&row) {
+            return;
+        }
+        let mut updates = row.watch();
+        openagents_client::runtime::shared().spawn(async move {
+            loop {
+                tokio::select! {
+                    changed = updates.changed() => if changed.is_err() { break },
+                    _ = row.closed() => {}
+                }
+                if send(&row) {
+                    break;
+                }
+            }
+        });
+    }
 }
 
 #[uniffi::export]
@@ -388,6 +449,15 @@ impl TranscriptView {
                 let _ = remeasure.lock().unwrap().send(Msg::Visual(Some(key)));
             }),
         ));
+        let labs = Arc::new(LiveLabs::default());
+        {
+            let (labs, tx) = (Arc::downgrade(&labs), Mutex::new(tx.clone()));
+            visuals.set_found_lab(Arc::new(move |path, live| {
+                if let Some(labs) = labs.upgrade() {
+                    labs.found(&tx, path, live);
+                }
+            }));
+        }
         let worker_shared = shared.clone();
         let worker_visuals = visuals.clone();
         thread::Builder::new()
@@ -399,7 +469,32 @@ impl TranscriptView {
             shared,
             watch: Mutex::new(None),
             visuals,
+            labs,
         })
+    }
+
+    /// The account history that reads live Lab card rows (#11948). Without
+    /// one, a live Lab card stays the visual it was sent as.
+    pub fn set_lab_history(&self, history: Option<Arc<crate::client_ffi::CoreSavedHistory>>) {
+        *self.labs.history.lock().unwrap() = history.as_ref().map(Arc::downgrade);
+        if history.is_some() {
+            let pending = std::mem::take(&mut *self.labs.pending.lock().unwrap());
+            for (path, live) in pending {
+                self.labs.found(&self.tx, &path, live);
+            }
+        }
+    }
+
+    /// A visual that turns a Lab card's 3D model by dragging (#11948), for
+    /// the card's media cell; `height` in points.
+    pub fn lab_model(
+        &self,
+        id: String,
+        model: Vec<u8>,
+        height: u32,
+        pixel_scale: f32,
+    ) -> Option<Arc<crate::visual::VisualSession>> {
+        self.visuals.lab_model(&id, model, height, pixel_scale)
     }
 
     /// Where this transcript's visuals load their scripts from (the chat's
@@ -550,6 +645,9 @@ pub(crate) struct Worker {
     shared: Arc<Shared>,
     listener: Option<Arc<dyn LayoutListener>>,
     visuals: Option<Arc<crate::visual::VisualHub>>,
+    /// The input's own Lab cards, before live ones join them.
+    lab_cards: lab::LabCards,
+    live_labs: HashMap<String, lab::LabCardInput>,
 }
 
 impl Worker {
@@ -570,7 +668,20 @@ impl Worker {
             shared,
             listener: Some(listener),
             visuals,
+            lab_cards: Default::default(),
+            live_labs: HashMap::new(),
         }
+    }
+
+    /// The input's Lab cards and the live ones.
+    fn merge_labs(&mut self) {
+        self.input.lab_cards = if self.live_labs.is_empty() {
+            self.lab_cards.clone()
+        } else {
+            let mut all = (*self.lab_cards).clone();
+            all.extend(self.live_labs.iter().map(|(k, v)| (k.clone(), v.clone())));
+            Arc::new(all)
+        };
     }
 
     fn run(mut self, rx: Receiver<Msg>) {
@@ -581,7 +692,17 @@ impl Worker {
                 match msg {
                     Msg::Shutdown => return,
                     Msg::Input(input) => {
+                        self.lab_cards = input.lab_cards.clone();
                         self.input = input;
+                        self.merge_labs();
+                        dirty = true;
+                    }
+                    Msg::LiveLab(key, input) => {
+                        match input {
+                            Some(input) => self.live_labs.insert(key, input),
+                            None => self.live_labs.remove(&key),
+                        };
+                        self.merge_labs();
                         dirty = true;
                     }
                     Msg::Viewport { width, scale } => {
