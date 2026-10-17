@@ -53,6 +53,13 @@ hardware, electricity, or any other service cost is zero.
 
 ## Implemented public lifecycle
 
+Computer results can include `capabilities` for that computer and its recorded
+`lifecycle_policy`. Both fields are optional and can be null for older backends.
+Use `capabilities.memory_suspend` to distinguish memory preservation from
+disk-only suspension; the Suspend profile alone does not promise memory
+preservation. The policy gives turn-completion behavior and idle/absolute timing
+bounds without exposing provider configuration or credentials.
+
 Deployed on 2026-10-16 for accounts with cloud access. The
 [verification record](computers-lifecycle-evidence.json) pins both running
 images, test results, and the dedicated-account staging workflows. Command

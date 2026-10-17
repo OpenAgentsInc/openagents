@@ -60,6 +60,26 @@ fn future_states_and_fields_survive_decoding_without_becoming_success() {
 }
 
 #[test]
+fn computer_resources_decode_optional_capabilities_without_claiming_legacy_support() {
+    let mut value = fixture()["components"]["schemas"]["AppComputer"]["examples"][0].clone();
+    let current: AppComputer = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(current.capabilities.as_ref().unwrap().memory_suspend, true);
+    assert_eq!(current.lifecycle_policy.as_ref().unwrap().absolute_ms, 5000);
+    value["capabilities"]["memory_suspend"] = json!(false);
+    let disk_only: AppComputer = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(
+        disk_only.capabilities.as_ref().unwrap().memory_suspend,
+        false
+    );
+    for field in ["capabilities", "lifecycle_policy"] {
+        value.as_object_mut().unwrap().remove(field);
+    }
+    let legacy: AppComputer = serde_json::from_value(value).unwrap();
+    assert!(legacy.capabilities.is_none());
+    assert!(legacy.lifecycle_policy.is_none());
+}
+
+#[test]
 fn request_builders_keep_keys_and_raw_path_components_separate() {
     let params: CreateComputerParams = serde_json::from_value(json!({
         "Idempotency-Key":"stable-request", "body":{"size":"small"}

@@ -143,3 +143,60 @@ fn runtime_validation_detects_a_deliberately_changed_contract() {
         .push(json!("deliberate_schema_fault"));
     assert!(!validator(&document, &reference).is_valid(&example));
 }
+
+#[test]
+fn computer_view_preserves_safe_resource_capabilities_and_recorded_policy() {
+    let document = crate::app_openapi::computers_document();
+    let mut raw = document["components"]["schemas"]["AppComputer"]["examples"][0].clone();
+    raw["provider_endpoint"] = json!("https://private.example.test");
+    raw["binding_key"] = json!("private-binding-key");
+    raw["capabilities"] = json!({
+        "driver":"private-driver", "profiles":["core","suspend","private-profile"],
+        "sizes":["small","https://private.example.test"],
+        "shapes":{"small":{"vcpus":2,"memory_mib":1024,"min_disk_gib":4,"provider_key":"private-shape"},"private-size":{"vcpus":100,"memory_mib":100}},
+        "workspace_file_bytes":4194304,"command_sessions":true,
+        "environment_artifacts":["private-artifact"],"default_artifact":"private-artifact"
+    });
+    raw["lifecycle_policy"] = json!({
+        "turn_complete":"suspend","idle_ms":100,"observed_extension_ms":200,
+        "absolute_ms":5000,"absolute_scope":"boot","uncertain_at_absolute_limit":"delete",
+        "provider_key":"private-policy"
+    });
+    let check = validator(
+        &document,
+        &json!({"$ref":"#/components/schemas/AppComputer"}),
+    );
+    for declaration in [Value::Null, json!(false), json!(true)] {
+        if declaration.is_null() {
+            raw["capabilities"]
+                .as_object_mut()
+                .unwrap()
+                .remove("memory_suspend");
+        } else {
+            raw["capabilities"]["memory_suspend"] = declaration.clone();
+        }
+        let public = super::view(&raw);
+        assert_eq!(
+            public["capabilities"]["memory_suspend"],
+            declaration.as_bool().unwrap_or(false)
+        );
+        assert_eq!(
+            public["capabilities"]["profiles"],
+            json!(["core", "suspend"])
+        );
+        assert_eq!(public["capabilities"]["sizes"], json!(["small"]));
+        assert_eq!(
+            public["capabilities"]["shapes"],
+            json!({"small":{"vcpus":2,"memory_mib":1024,"min_disk_gib":4}})
+        );
+        assert_eq!(public["lifecycle_policy"]["absolute_ms"], 5000);
+        assert!(!public.to_string().contains("private"), "{public}");
+        assert!(check.is_valid(&public), "{public}");
+    }
+    raw.as_object_mut().unwrap().remove("capabilities");
+    raw.as_object_mut().unwrap().remove("lifecycle_policy");
+    let legacy = super::view(&raw);
+    assert!(legacy["capabilities"].is_null());
+    assert!(legacy["lifecycle_policy"].is_null());
+    assert!(check.is_valid(&legacy));
+}
