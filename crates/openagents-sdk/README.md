@@ -227,6 +227,12 @@ server or store. Enable `labs-cad` for local CAD previews through the same
 `Cad::check` and `Cad::apply` rules as the server. Preview measurements must
 match the proposed content; the server rebuilds it before saving.
 
+External workspaces enabling `labs-cad` must copy the four public
+`[patch.crates-io]` entries from the
+[standalone Labs example](../../examples/sdk-labs/Cargo.toml) into their own
+workspace manifest. Cargo does not inherit dependency workspace patches. The
+SDK's default features do not need them.
+
 ```rust
 use openagents_sdk::{CancellationToken, Client, Session, labs};
 

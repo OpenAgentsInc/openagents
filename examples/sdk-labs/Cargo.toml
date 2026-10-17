@@ -1,0 +1,21 @@
+[package]
+name = "sdk-labs-example"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+openagents = { package = "openagents-sdk", git = "https://github.com/OpenAgentsInc/openagents.git", rev = "1b55b50ae17dcd47315f803a8238ab7c3c3afe82", features = ["labs-cad"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+
+# Cargo reads patches only from the consuming workspace. Keep these aligned
+# with the optional CAD kernel's fork in the repository root.
+[patch.crates-io]
+truck-shapeops = { git = "https://github.com/bherbruck/solidcraft", rev = "229de1484ce7c4df3c28df5e5c111078ca9e53a3" }
+truck-stepio = { git = "https://github.com/bherbruck/solidcraft", rev = "229de1484ce7c4df3c28df5e5c111078ca9e53a3" }
+truck-meshalgo = { git = "https://github.com/bherbruck/solidcraft", rev = "229de1484ce7c4df3c28df5e5c111078ca9e53a3" }
+matext4cgmath = { git = "https://github.com/bherbruck/solidcraft", rev = "229de1484ce7c4df3c28df5e5c111078ca9e53a3" }
