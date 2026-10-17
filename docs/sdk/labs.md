@@ -68,3 +68,23 @@ checks the reviewed checksum, preserves the original objects, and imports
 the same version numbers and content digests. Retries verify completed
 versions before continuing. [The production review](labs-cad-migration-review.json)
 records the history awaiting approval.
+
+## Rust client
+
+The [`openagents-sdk` Labs module](../../crates/openagents-sdk/README.md#labs)
+uses an authenticated session: `let labs = client.labs(&session)?`. It re-exports
+`lab-kit` resource and request types. Bind writes with `labs.bind(body)`;
+document and job references carry the account, deployment, and space.
+
+Use `edit` to distinguish a saved version from a stale base or a kind refusal.
+Prepare a job with `job_request`, save its serializable record before sending,
+and reuse that record after response loss. `wait` returns the observed job
+state; cancellation stops the local wait. `cancel_job` is a separate remote
+request. Event readers resume from the last delivered cursor, and artifact
+readers support full downloads and exclusive Rust byte ranges such as `0..4`.
+
+Clones share account changes. Call `set_session` or `clear_session` before
+showing another account; old reads and streams then stop. Keep application
+caches separate by account and clear private views on sign-out. The optional
+`labs-cad` feature calls the shared portable checks for previews. It does not
+replace a server rebuild or grant permission to save a design.
