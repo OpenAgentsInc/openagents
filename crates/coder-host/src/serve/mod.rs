@@ -177,6 +177,61 @@ pub struct Running {
     websocket_off: Option<String>,
 }
 
+/// Makes and cancels connect codes for a [`Running`] host, for a window
+/// that shows them (NIP-HOST, showing a connect code). The window decides
+/// when to rotate and cancel; this handle only stores and withdraws
+/// invitations.
+#[derive(Clone, Debug)]
+pub struct ConnectCodes {
+    shared: std::sync::Weak<Shared>,
+}
+
+impl ConnectCodes {
+    fn shared(&self) -> Result<Arc<Shared>> {
+        self.shared
+            .upgrade()
+            .filter(|shared| !shared.closing.load(std::sync::atomic::Ordering::SeqCst))
+            .ok_or_else(|| Error::Config("the host has stopped".into()))
+    }
+
+    /// Store a new invitation with the connect code rights and return its
+    /// code.
+    ///
+    /// # Errors
+    /// The host stopped, serves no iroh endpoint or relay, or its access
+    /// store refused the invitation.
+    pub fn issue(&self) -> Result<crate::control::ConnectInvitation> {
+        let shared = self.shared()?;
+        crate::control::connect_invitation(&shared).map_err(|refusal| refusal.into_error())
+    }
+
+    /// Cancel an invitation a connect code carried, with `invite.cancel`
+    /// semantics. Cancelling one that was redeemed or already cancelled
+    /// is not an error.
+    ///
+    /// # Errors
+    /// The host stopped or its access store failed.
+    pub fn cancel(&self, invitation: &str) -> Result<()> {
+        let shared = self.shared()?;
+        match shared
+            .authority
+            .local(|host, _| host.cancel_invitation(invitation))
+        {
+            Ok(()) => Ok(()),
+            // Already redeemed, or no longer kept: nothing is left to cancel.
+            Err(error)
+                if matches!(
+                    error.code,
+                    coder_access::Code::Conflict | coder_access::Code::Forbidden
+                ) =>
+            {
+                Ok(())
+            }
+            Err(error) => Err(Error::Access(error)),
+        }
+    }
+}
+
 impl std::fmt::Debug for Running {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Running")
@@ -476,6 +531,16 @@ impl Running {
         self.shared.pty.proposal_binding(terminal)
     }
 
+    /// A handle that makes and cancels connect codes for this host while it
+    /// takes requests. Once the host stops taking them, every call is
+    /// refused.
+    #[must_use]
+    pub fn connect_codes(&self) -> ConnectCodes {
+        ConnectCodes {
+            shared: Arc::downgrade(&self.shared),
+        }
+    }
+
     /// The grant store this host serves from.
     #[must_use]
     pub fn authority(&self) -> &Arc<Authority> {
@@ -607,6 +672,9 @@ impl Running {
     }
 
     async fn stop(self, keep_socket: bool) {
+        self.shared
+            .closing
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         #[cfg(unix)]
         self.shared.enrolled.shutdown().await;
         for task in self.tasks.iter().chain(&self.control) {

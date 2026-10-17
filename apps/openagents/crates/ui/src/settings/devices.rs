@@ -45,6 +45,10 @@ pub fn format_last_seen(last_seen: Option<DateTime<Utc>>, now: DateTime<Utc>) ->
     }
 }
 
+const CONNECT_PHONE_TITLE: &str = crate::shell::CONNECT_PHONE_TITLE;
+const CONNECT_PHONE_HINT: &str = "Scan a code with your phone to use this computer from it.";
+const CONNECT_PHONE_ACTION: &str = "Show code";
+
 /// Scope-aware copy: a local registry describes only the active local
 /// workspace and must not imply that account device metadata is already live.
 pub fn devices_subtitle(scope: Option<WorkspaceScope>) -> &'static str {
@@ -388,9 +392,40 @@ impl Render for DevicesPage {
             }
             block
         };
+        // Pairing a phone works in every workspace, signed in or not.
+        let phone_block = widgets::section_card(&theme).mt(px(8.0)).child(
+            widgets::card_row(&theme, true)
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(160.0))
+                        .child(widgets::row_title(&theme, CONNECT_PHONE_TITLE))
+                        .child(widgets::meta_line(
+                            &theme,
+                            vec![
+                                div()
+                                    .child(SharedString::from(CONNECT_PHONE_HINT))
+                                    .into_any_element(),
+                            ],
+                        )),
+                )
+                .child(
+                    widgets::text_action(&theme, widgets::ActionTone::Filled, CONNECT_PHONE_ACTION)
+                        .id("devices-connect-phone")
+                        .tab_index(0)
+                        .role(gpui::Role::Button)
+                        .aria_label(CONNECT_PHONE_TITLE)
+                        .focus_visible(|s| s.border_2().border_color(theme.accent))
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(Box::new(crate::shell::ConnectPhone), cx);
+                        }),
+                ),
+        );
         let card = div()
             .flex()
             .flex_col()
+            .child(widgets::section_label(&theme, "Phone").mt(px(28.0)))
+            .child(phone_block)
             .when_some(local_block, |el, block| {
                 el.child(widgets::section_label(&theme, "This device").mt(px(28.0)))
                     .child(block)
@@ -470,6 +505,17 @@ mod tests {
             format_last_seen(Some(now - TimeDelta::days(2)), now),
             "2d ago"
         );
+    }
+
+    #[test]
+    fn connect_phone_copy_is_plain() {
+        for text in [
+            CONNECT_PHONE_TITLE,
+            CONNECT_PHONE_HINT,
+            CONNECT_PHONE_ACTION,
+        ] {
+            assert!(oa_copy::violations(text, &[]).is_empty(), "{text}");
+        }
     }
 
     #[test]
