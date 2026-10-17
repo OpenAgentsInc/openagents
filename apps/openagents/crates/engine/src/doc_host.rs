@@ -19,6 +19,7 @@
 mod agent_lab;
 mod continuations;
 mod custom_agents;
+mod foreman;
 mod session_index;
 mod transfer;
 
@@ -252,6 +253,8 @@ pub struct DocHostConfig {
 
 struct DocHostInner {
     custom_agents: OnceLock<custom_agents::AgentHost>,
+    /// Foreman's schedule, authority and decision log (#11965).
+    foreman: OnceLock<Arc<crate::foreman::Foreman>>,
     store: Arc<DocsStore>,
     config: DocHostConfig,
     /// Set-once (first wins), cleared by `shutdown_workers`: sessions and
@@ -979,6 +982,7 @@ impl DocHost {
         let host = Self {
             inner: Arc::new(DocHostInner {
                 custom_agents: OnceLock::new(),
+                foreman: OnceLock::new(),
                 store,
                 config,
                 sessions: Mutex::new(None),

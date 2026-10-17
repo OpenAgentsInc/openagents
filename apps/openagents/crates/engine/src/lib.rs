@@ -24,6 +24,7 @@ mod chat_fork;
 mod chat_persistence;
 pub mod diff_sync;
 pub mod doc_host;
+mod foreman;
 mod fs_watch;
 pub mod handoff;
 pub mod harness_updates;
@@ -374,6 +375,8 @@ impl EngineCore {
 
     /// Attach the auth service (before building the RPC service / relays).
     pub fn set_auth(&self, auth: Auth) {
+        self.doc_host
+            .start_foreman(self.agent_lab_root.with_file_name("foreman"));
         self.doc_host.start_custom_agents(
             auth.clone(),
             self.registry.clone(),

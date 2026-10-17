@@ -242,6 +242,19 @@ fn catalog() -> Vec<ToolDef> {
                 "after": { "type": "string", "enum": ["stop", "delete", "keep"], "default": "stop" }
             })),
         },
+        ToolDef {
+            name: RECORD_DECISION,
+            description: "Foreman only: add one entry to Foreman's decision log, which the owner sees in the app and the next check-in reads. Call it once per check-in with what you saw, what you decided and what you did.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "saw": { "type": "string", "description": "What you found, briefly." },
+                    "decided": { "type": "string", "description": "What you decided and why." },
+                    "did": { "type": "string", "description": "What you changed, or \"nothing\"." }
+                },
+                "required": ["saw", "decided", "did"]
+            }),
+        },
     ];
     for (name, single, description) in [
         (
@@ -296,6 +309,7 @@ fn catalog() -> Vec<ToolDef> {
 /// Shows a page in the CALLING chat, so it is offered only to an agent that
 /// OpenAgents launched (`OPENAGENTS_CHAT_ID` set).
 const SHOW_VISUAL: &str = "show_visual";
+const RECORD_DECISION: &str = "record_decision";
 
 const SHOW_VISUAL_DESCRIPTION: &str = "\
 Show an interactive visual (chart, table, dashboard, diagram, simulation, 3D view) inline in this \
@@ -510,6 +524,16 @@ struct BatchArgs {
 #[derive(Deserialize)]
 struct ChatArgs {
     chat: String,
+}
+
+#[derive(Deserialize)]
+struct DecisionArgs {
+    #[serde(default)]
+    saw: String,
+    #[serde(default)]
+    decided: String,
+    #[serde(default)]
+    did: String,
 }
 
 #[derive(Deserialize)]
@@ -742,7 +766,7 @@ impl Tools {
         let in_chat = self.openagents.origin().chat_id.is_some();
         catalog()
             .into_iter()
-            .filter(|tool| in_chat || tool.name != SHOW_VISUAL)
+            .filter(|tool| in_chat || (tool.name != SHOW_VISUAL && tool.name != RECORD_DECISION))
             .chain(crate::video_lab::tools().iter().cloned())
             .collect()
     }
@@ -776,6 +800,7 @@ impl Tools {
             "move_status" => self.move_status(parse(args)?).await,
             "bring_back" => self.bring_back(parse(args)?).await,
             SHOW_VISUAL => self.show_visual(parse(args)?).await,
+            RECORD_DECISION => self.record_decision(parse(args)?).await,
             lab if crate::video_lab::has(lab) => return self.video_lab(lab, args).await,
             other => return Err(format!("unknown tool: {other}")),
         };
@@ -1301,6 +1326,28 @@ impl Tools {
             )
             .await?;
         plan_reply(plan)
+    }
+
+    /// Foreman's decision log lives on its chat's host (#11965).
+    async fn record_decision(&self, args: DecisionArgs) -> anyhow::Result<Value> {
+        let origin = self
+            .openagents
+            .origin()
+            .chat_id
+            .clone()
+            .context("record_decision only works from Foreman's own chat")?;
+        self.openagents
+            .call(
+                openagents_rpc::methods::RECORD_FOREMAN_DECISION,
+                json!({
+                    "originChatId": origin,
+                    "saw": args.saw,
+                    "decided": args.decided,
+                    "did": args.did,
+                }),
+            )
+            .await?;
+        Ok(json!({ "recorded": true }))
     }
 
     async fn show_visual(&self, args: ShowVisualArgs) -> anyhow::Result<Value> {
@@ -1881,6 +1928,13 @@ mod tests {
                         RpcReply::Value(plan)
                     }
                 }
+                methods::RECORD_FOREMAN_DECISION => {
+                    self.writes
+                        .lock()
+                        .unwrap()
+                        .push((method.to_owned(), params));
+                    RpcReply::Value(json!({ "recorded": true }))
+                }
                 methods::MUTATE | methods::QUEUE_COMMAND | methods::QUEUE_MESSAGE => {
                     self.writes
                         .lock()
@@ -2009,6 +2063,40 @@ mod tests {
         assert_eq!(method, methods::PUBLISH_VISUAL);
         assert_eq!(params["chatId"], "chat-alpha-1");
         assert_eq!(params["script"], "return ui.text 'chart'");
+    }
+
+    #[tokio::test]
+    async fn foremans_writes_name_its_chat_and_reach_its_log() {
+        let world = Arc::new(World::default());
+        let outside = tools(world.clone(), Origin::default());
+        assert!(!outside.has("record_decision"));
+        let inside = tools(
+            world.clone(),
+            Origin {
+                chat_id: Some("chat-alpha-1".into()),
+                device_id: Some("dev-local".into()),
+            },
+        );
+        assert!(inside.has("record_decision"));
+        inside
+            .call("interrupt_chat", json!({ "chat": "Beta" }))
+            .await
+            .unwrap();
+        inside
+            .call(
+                "record_decision",
+                json!({ "saw": "Beta idle", "decided": "stop it", "did": "stopped Beta" }),
+            )
+            .await
+            .unwrap();
+        let writes = world.writes.lock().unwrap();
+        let (method, params) = &writes[writes.len() - 2];
+        assert_eq!(method, methods::QUEUE_COMMAND);
+        assert_eq!(params["originChatId"], "chat-alpha-1");
+        let (method, params) = writes.last().unwrap();
+        assert_eq!(method, methods::RECORD_FOREMAN_DECISION);
+        assert_eq!(params["originChatId"], "chat-alpha-1");
+        assert_eq!(params["did"], "stopped Beta");
     }
 
     #[tokio::test]

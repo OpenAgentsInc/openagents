@@ -13,7 +13,7 @@ pub(super) struct AgentHost {
     registry: Arc<HarnessRegistry>,
     lab_root: std::path::PathBuf,
 }
-const ASSIGNMENT: &str = "openagentsAssignment";
+pub(super) const ASSIGNMENT: &str = "openagentsAssignment";
 const INSTRUCTIONS: &str = "openagentsInstructions";
 fn error(message: &str) -> EngineError {
     EngineError::Other(message.into())
@@ -106,6 +106,7 @@ impl DocHost {
                     .agent_lab_tick(&lease, &binding.lab_root, &binding.registry)
                     .await;
                 let _ = host.custom_agent_tick(&lease).await;
+                let _ = host.foreman_tick(&lease).await;
             }
         });
     }

@@ -151,6 +151,10 @@ struct QueueCommandParams {
     /// durably queued — never as a gate in front of it.
     #[serde(default)]
     transfers: Vec<crate::uploads::AttachmentTransfer>,
+    /// The chat whose agent sent this through the app's tools, for
+    /// Foreman's standing authority (#11965).
+    #[serde(default)]
+    origin_chat_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -180,6 +184,8 @@ struct QueueMessageParams {
     /// supports mid-turn steering.
     #[serde(default)]
     hold_for_turn_end: bool,
+    #[serde(default)]
+    origin_chat_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1542,6 +1548,9 @@ fn forwardable(method: &str) -> bool {
             | methods::LIST_FOLDERS
             | methods::GET_WORKTREE_SETTINGS
             | methods::SET_WORKTREE_SETTINGS
+            // Foreman's schedule, authority and log live on its chat's host.
+            | methods::GET_FOREMAN
+            | methods::SET_FOREMAN
             | methods::LIST_DRIVES
             | methods::SEARCH_HOME_FOLDERS
             | methods::RELEASE_HOME_FOLDER_SEARCH
@@ -2014,6 +2023,9 @@ impl RpcService for EngineRpc {
             }
             methods::QUEUE_COMMAND => {
                 let p: QueueCommandParams = parse_params(params)?;
+                self.doc_host
+                    .foreman_admit(p.origin_chat_id.as_deref(), &p.chat_id, Some(&p.command))
+                    .map_err(|e| RpcError::Failed(e.to_string()))?;
                 let command_id = self
                     .doc_host
                     .queue_command_with_transfers(&p.chat_id, p.command, p.transfers)
@@ -2111,6 +2123,9 @@ impl RpcService for EngineRpc {
             }
             methods::QUEUE_MESSAGE => {
                 let p: QueueMessageParams = parse_params(params)?;
+                self.doc_host
+                    .foreman_admit(p.origin_chat_id.as_deref(), &p.chat_id, None)
+                    .map_err(|e| RpcError::Failed(e.to_string()))?;
                 let id = self
                     .doc_host
                     .queue_message_with_behavior(
@@ -3159,6 +3174,22 @@ impl RpcService for EngineRpc {
                 RpcReply::value(&serde_json::json!({ "branch": branch }))
             }
             methods::GET_WORKTREE_SETTINGS => RpcReply::value(&self.repos.worktree_settings()),
+            methods::GET_FOREMAN => RpcReply::value(&self.doc_host.foreman_status()),
+            methods::SET_FOREMAN => {
+                let settings: openagents_proto::foreman::ForemanSettings = parse_params(params)?;
+                let status = self
+                    .doc_host
+                    .set_foreman(settings)
+                    .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&status)
+            }
+            methods::RECORD_FOREMAN_DECISION => {
+                let record: openagents_proto::foreman::RecordDecision = parse_params(params)?;
+                self.doc_host
+                    .record_foreman_decision(record)
+                    .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&serde_json::json!({ "recorded": true }))
+            }
             methods::SET_WORKTREE_SETTINGS => {
                 let settings: openagents_proto::WorktreeSettings = parse_params(params)?;
                 let status = self

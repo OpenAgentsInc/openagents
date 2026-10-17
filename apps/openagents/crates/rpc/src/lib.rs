@@ -169,6 +169,12 @@ pub mod methods {
     pub const LIST_FOLDERS: &str = "ListFolders";
     pub const GET_WORKTREE_SETTINGS: &str = "GetWorktreeSettings";
     pub const SET_WORKTREE_SETTINGS: &str = "SetWorktreeSettings";
+    /// Foreman autonomy (#11965): `ForemanStatus`.
+    pub const GET_FOREMAN: &str = "GetForeman";
+    /// `ForemanSettings` in, `ForemanStatus` out.
+    pub const SET_FOREMAN: &str = "SetForeman";
+    /// `RecordDecision` from Foreman's own chat.
+    pub const RECORD_FOREMAN_DECISION: &str = "RecordForemanDecision";
     /// The device's browse roots: home plus mounted drives/volumes.
     pub const LIST_DRIVES: &str = "ListDrives";
     /// Folders under the host's home by name (new-project picker).

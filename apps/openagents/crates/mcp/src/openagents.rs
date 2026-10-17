@@ -350,7 +350,7 @@ impl OpenAgents {
         let reply = self
             .call(
                 methods::QUEUE_COMMAND,
-                json!({ "chatId": chat_id, "command": command }),
+                json!({ "chatId": chat_id, "command": command, "originChatId": self.origin.chat_id }),
             )
             .await?;
         Ok(reply
@@ -366,7 +366,7 @@ impl OpenAgents {
         let reply = self
             .call(
                 methods::QUEUE_MESSAGE,
-                json!({ "chatId": chat_id, "text": text, "holdForTurnEnd": true }),
+                json!({ "chatId": chat_id, "text": text, "holdForTurnEnd": true, "originChatId": self.origin.chat_id }),
             )
             .await?;
         Ok(reply

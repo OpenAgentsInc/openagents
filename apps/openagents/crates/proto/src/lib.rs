@@ -10,6 +10,7 @@ pub mod chat_mentions;
 pub mod device_paths;
 pub mod entities;
 pub mod file_mentions;
+pub mod foreman;
 pub mod invocation;
 pub mod motion;
 pub mod preview;
