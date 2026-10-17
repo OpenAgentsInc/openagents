@@ -226,14 +226,19 @@ async fn visit(db: &Db, store: &Store, driver: Registry<Simulated>, id: &str) {
         .unwrap()
         .unwrap();
     assert_eq!(entry.id, id);
-    Rc::new(Reconciler {
-        store: store.clone(),
-        driver,
-        settings,
-        turns: Secrets::default(),
+    let store = store.clone();
+    tokio::task::spawn_local(async move {
+        Rc::new(Reconciler {
+            store,
+            driver,
+            settings,
+            turns: Secrets::default(),
+        })
+        .visit(entry)
+        .await;
     })
-    .visit(entry)
-    .await;
+    .await
+    .unwrap();
 }
 async fn phase(
     db: &Db,
