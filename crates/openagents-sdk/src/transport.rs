@@ -444,6 +444,9 @@ impl Client {
                 Some("computer_chat") => Some("computer_chat"),
                 Some("project_role") => Some("project_role"),
                 Some("unsupported_turn") => Some("unsupported_turn"),
+                Some("needs_claude") => Some("needs_claude"),
+                Some("invite_only") => Some("invite_only"),
+                Some("key_refused") => Some("key_refused"),
                 _ => None,
             };
             return Err(Error::Refused {

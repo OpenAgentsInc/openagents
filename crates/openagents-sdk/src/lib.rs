@@ -5,6 +5,7 @@ pub mod agents;
 pub mod agent_lab;
 mod auth;
 pub mod chats;
+pub mod cloud_host;
 pub mod computers;
 pub mod dashboard;
 pub mod generated;
