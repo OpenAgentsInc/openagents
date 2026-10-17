@@ -6,6 +6,8 @@
 //! First-call bonus funding never rewrites settlement shares. Payout callers
 //! use `Ledger::available_shares` to read claims after those transfers.
 
+#![cfg(feature = "sqlite")]
+
 use chrono::{DateTime, Datelike};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::Deserialize;
