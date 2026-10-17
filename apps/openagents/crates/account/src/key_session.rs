@@ -11,15 +11,67 @@
 //! (`POST /v1/device/keys`), so the key's own sign-ins reach the same account
 //! instead of making a new one. A small marker per account and key records
 //! that the link is done.
+//!
+//! A new key's first sign-in may need a sign-up proof (#11994): an App
+//! Attest attestation over the challenge on the phone ([`Attester`]), or a
+//! proof of work everywhere else and when App Attest isn't available. The
+//! controller tries the plain sign-in first, so a key that already has an
+//! account never pays for a proof.
 use crate::identity::Identity;
 use crate::{Controller, Phase, Ticket, cancelled, invalid_login, storage_message};
-use openagents::{CredentialRecord, Error, Session, StorageError};
+use openagents::{CredentialRecord, Error, KeySignIn, Session, StorageError};
 use sha2::{Digest, Sha256};
 use std::{future::Future, path::PathBuf, sync::Arc};
 
 /// Sign in again once a session has less than this left. Sessions last 30
 /// days.
 pub const RENEW_WITHIN: u64 = 7 * 86_400;
+
+/// An App Attest attestation, base64, as the server takes it.
+#[derive(Clone)]
+pub struct Attestation {
+    /// The key id `DCAppAttestService.generateKey` returned.
+    pub key_id: String,
+    /// `attestKey(_:clientDataHash:)` over `SHA-256(challenge)`.
+    pub attestation: String,
+}
+
+/// The phone's App Attest. `attest` is called off the main thread with
+/// `SHA-256(challenge)` and may block while the system answers; `None` when
+/// App Attest isn't supported (the simulator) or refused, and the sign-in
+/// falls back to a proof of work.
+pub trait Attester: Send + Sync {
+    fn attest(&self, client_data_hash: Vec<u8>) -> Option<Attestation>;
+}
+
+fn refused(error: &Error, code: &str) -> bool {
+    matches!(error, Error::Refused { code: Some(c), .. } if *c == code)
+}
+
+/// The sign-up proof's body fields over `challenge`.
+fn prove(
+    attester: Option<Arc<dyn Attester>>,
+    challenge: &str,
+    attest: bool,
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut fields = serde_json::Map::new();
+    if attest {
+        if let Some(a) =
+            attester.and_then(|a| a.attest(Sha256::digest(challenge.as_bytes()).to_vec()))
+        {
+            fields.insert(
+                "app_attest".into(),
+                serde_json::json!({"key_id": a.key_id, "attestation": a.attestation}),
+            );
+            return fields;
+        }
+    }
+    fields.insert(
+        "pow".into(),
+        serde_json::Value::String(openagents::solve_pow(challenge, openagents::POW_BITS)),
+    );
+    fields
+}
 
 fn now() -> u64 {
     std::time::SystemTime::now()
@@ -35,6 +87,51 @@ fn due(session: &Session) -> bool {
 }
 
 impl Controller {
+    /// Use App Attest for a new key's first sign-in on this phone.
+    pub fn set_attester(&self, attester: Arc<dyn Attester>) {
+        *self.attester.lock().unwrap() = Some(attester);
+    }
+
+    /// Sign in with the key; when the server asks a new key for a sign-up
+    /// proof, make one off this thread (App Attest when there is one, or
+    /// else a proof of work) over a fresh challenge and send it.
+    async fn key_sign_in(&self, identity: &Identity, computer: &str) -> Result<KeySignIn, Error> {
+        match self
+            .client
+            .sign_in_with_key(identity, &self.app_name, computer)
+            .await
+        {
+            Err(e) if refused(&e, "proof_required") => {}
+            other => return other,
+        }
+        let mut attest = true;
+        loop {
+            let challenge = self.client.key_challenge().await?;
+            let attester = self.attester.lock().unwrap().clone();
+            let over = challenge.clone();
+            let proof = tokio::task::spawn_blocking(move || prove(attester, &over, attest))
+                .await
+                .map_err(|_| Error::InvalidCredential)?;
+            let sent_attestation = proof.contains_key("app_attest");
+            match self
+                .client
+                .sign_in_with_key_on(identity, &challenge, &self.app_name, computer, proof)
+                .await
+            {
+                // An attestation the server won't take: once more with a
+                // proof of work.
+                Err(e)
+                    if sent_attestation
+                        && (refused(&e, "invalid_attestation")
+                            || refused(&e, "attestation_in_use")) =>
+                {
+                    attest = false;
+                }
+                other => return other,
+            }
+        }
+    }
+
     fn link_marker(&self, account: &str, pubkey: &str) -> PathBuf {
         let digest = Sha256::digest(
             format!(
@@ -179,12 +276,7 @@ impl Controller {
             }
             existing = Some(session);
         }
-        let signed = cancelled(
-            &t.cancel,
-            self.client
-                .sign_in_with_key(identity.as_ref(), &self.app_name, &computer),
-        )
-        .await;
+        let signed = cancelled(&t.cancel, self.key_sign_in(&identity, &computer)).await;
         match signed {
             Ok(signed) => {
                 self.mark_linked(&signed.session.account().id, &pubkey);
@@ -247,11 +339,7 @@ impl Controller {
                     _ => return,
                 }
             };
-            let Ok(signed) = this
-                .client
-                .sign_in_with_key(identity.as_ref(), &this.app_name, &computer)
-                .await
-            else {
+            let Ok(signed) = this.key_sign_in(&identity, &computer).await else {
                 return;
             };
             if signed.session.account().id != current.account().id {
