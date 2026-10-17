@@ -135,6 +135,7 @@ BUILD_PATHS = ["Cargo.toml", "Cargo.lock", "deploy/coder-sync", "apps/openagents
         'paper-mono',
         'playtest',
         'push-gateway',
+        'private-fs',
         'receipts',
         'robot-description',
         'robot-lab',
