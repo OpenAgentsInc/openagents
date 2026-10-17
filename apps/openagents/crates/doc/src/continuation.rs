@@ -4,6 +4,55 @@ use chat_home::Continued;
 use loro::{LoroValue, ValueOrContainer};
 use serde::{Deserialize, Serialize};
 
+const OUTGOING: &str = "openagentsContinuationOutgoing";
+
+/// Persist before contacting the account service. An uncertain response
+/// leaves the source read-only, and a retry uses the same destination.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Outgoing {
+    pub account: String,
+    pub target: chat_home::PartRef,
+    pub revision: u64,
+    pub seed: chat_home::Seed,
+}
+
+pub fn outgoing(doc: &SessionDoc) -> Option<Outgoing> {
+    let ValueOrContainer::Value(LoroValue::String(value)) =
+        doc.doc().get_map("meta").get(OUTGOING)?
+    else {
+        return None;
+    };
+    serde_json::from_str(&value).ok()
+}
+
+pub fn read_only(doc: &SessionDoc) -> bool {
+    doc.doc().get_map("meta").get(OUTGOING).is_some()
+}
+
+pub fn set_outgoing(doc: &SessionDoc, value: &Outgoing) -> Result<(), DocError> {
+    if !value.target.valid()
+        || !value.seed.valid()
+        || value.revision == 0
+        || value.account.is_empty()
+    {
+        return Err(DocError::Schema("Invalid continuation destination".into()));
+    }
+    if read_only(doc) {
+        return if outgoing(doc).as_ref() == Some(value) {
+            Ok(())
+        } else {
+            Err(DocError::Schema(
+                "This chat already continues elsewhere".into(),
+            ))
+        };
+    }
+    doc.doc()
+        .get_map("meta")
+        .insert(OUTGOING, serde_json::to_string(value)?)?;
+    doc.doc().commit();
+    Ok(())
+}
+
 pub fn pending(doc: &SessionDoc) -> Option<chat_home::Source> {
     let ValueOrContainer::Value(LoroValue::String(value)) = doc
         .doc()
@@ -114,6 +163,26 @@ pub fn set(doc: &SessionDoc, value: &Stored) -> Result<(), DocError> {
 mod tests {
     use super::*;
     use crate::{MessagePart, MessageRole, SessionMessageEntry};
+    #[test]
+    fn an_uncertain_outgoing_continuation_is_read_only_and_keeps_its_destination() {
+        let doc = SessionDoc::init("d75ef8a1-16ca-49b6-83be-000000000001").unwrap();
+        let mut value = Outgoing {
+            account: "fixture".into(),
+            target: chat_home::PartRef {
+                id: "d75ef8a1-16ca-49b6-83be-000000000002".into(),
+                home: chat_home::Home::Cloud,
+            },
+            revision: 5,
+            seed: chat_home::Seed::new("Earlier work", [(chat_home::Role::User, "coral orchid")]),
+        };
+        assert!(!read_only(&doc));
+        set_outgoing(&doc, &value).unwrap();
+        assert!(read_only(&doc));
+        set_outgoing(&doc, &value).unwrap();
+        value.target.id = "d75ef8a1-16ca-49b6-83be-000000000003".into();
+        assert!(set_outgoing(&doc, &value).is_err());
+        assert_ne!(outgoing(&doc).unwrap().target, value.target);
+    }
     #[test]
     fn provider_restarts_get_bounded_context_and_source_cannot_be_replaced() {
         let source = "d75ef8a1-16ca-49b6-83be-000000000001";

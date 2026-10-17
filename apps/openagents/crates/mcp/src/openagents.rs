@@ -720,6 +720,7 @@ mod tests {
 
     fn chat(id: &str, title: Option<&str>) -> Chat {
         Chat {
+            links: Default::default(),
             id: id.into(),
             device_id: "dev".into(),
             title: title.map(str::to_owned),

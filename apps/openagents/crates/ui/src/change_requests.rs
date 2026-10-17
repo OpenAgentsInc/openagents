@@ -433,6 +433,7 @@ mod tests {
 
     fn chat(id: &str, device: &str, cwd: Option<&str>, checkout: Option<&str>) -> Chat {
         Chat {
+            links: Default::default(),
             id: id.into(),
             device_id: device.into(),
             title: None,

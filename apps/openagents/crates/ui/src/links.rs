@@ -122,6 +122,7 @@ mod tests {
 
     fn harness_chat(harness: HarnessId) -> Chat {
         Chat {
+            links: Default::default(),
             id: "chat".into(),
             device_id: "device".into(),
             title: None,

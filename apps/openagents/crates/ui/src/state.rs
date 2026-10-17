@@ -1933,7 +1933,7 @@ impl AppState {
     pub fn visible_chats(&self) -> impl Iterator<Item = &Chat> {
         self.chats
             .iter()
-            .filter(|c| !c.archived && c.is_top_level())
+            .filter(|c| !c.archived && c.is_top_level() && c.links.continued_by.is_none())
     }
 
     pub(crate) fn restore_composer_target(
@@ -4065,6 +4065,7 @@ mod tests {
             .unwrap()
             .to_utc();
         Chat {
+            links: Default::default(),
             id: id.into(),
             device_id: "dev".into(),
             title: None,

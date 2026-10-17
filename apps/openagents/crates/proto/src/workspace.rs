@@ -112,6 +112,7 @@ mod tests {
                     "message-queue-edit-lease-v1",
                     "harness-updates-v1",
                     "projectless-scratch-v1",
+                    "openagents-continuations-v1",
                     "voice-client-media-v1"
                 ],
             })

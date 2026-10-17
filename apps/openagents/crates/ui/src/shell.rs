@@ -14289,6 +14289,7 @@ mod tests {
         source: Option<(&str, &str)>,
     ) -> openagents_proto::Chat {
         openagents_proto::Chat {
+            links: Default::default(),
             id: "chat".into(),
             device_id: "remote-device".into(),
             title: None,
@@ -17405,6 +17406,7 @@ mod exit_regressions {
                 shell.state.update(cx, |state, cx| {
                     state.apply_spaces(vec![space("mine", "local"), space("other", "remote")]);
                     state.apply_chats(vec![openagents_proto::Chat {
+                        links: Default::default(),
                         id: "elsewhere".into(),
                         device_id: "remote".into(),
                         title: None,

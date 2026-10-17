@@ -7658,6 +7658,7 @@ mod tests {
 
     fn chat(id: &str) -> openagents_proto::Chat {
         openagents_proto::Chat {
+            links: Default::default(),
             id: id.into(),
             device_id: "device".into(),
             title: None,

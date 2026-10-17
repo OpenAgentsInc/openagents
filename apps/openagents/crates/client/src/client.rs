@@ -846,6 +846,7 @@ impl Client {
             }
         };
         let chat = Chat {
+            links: Default::default(),
             id,
             device_id,
             title: new.title.filter(|t| !t.trim().is_empty()),

@@ -583,6 +583,7 @@ mod tests {
 
     fn chat(id: &str, archived: bool) -> Chat {
         Chat {
+            links: Default::default(),
             id: id.into(),
             device_id: "d".into(),
             title: None,

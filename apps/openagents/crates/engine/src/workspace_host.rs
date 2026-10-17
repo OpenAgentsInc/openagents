@@ -985,6 +985,7 @@ impl WorkspaceHost {
         };
         self.mutate(|doc| {
             doc.upsert_chat(&Chat {
+                links: Default::default(),
                 id: chat_id.to_string(),
                 device_id: host_device.clone(),
                 title: None,
@@ -1187,6 +1188,13 @@ impl WorkspaceHost {
         source: &chat_home::PartRef,
     ) -> Result<bool, EngineError> {
         Ok(self.mutate(|doc| doc.set_chat_continuation(chat, source))?)
+    }
+
+    pub fn chat_continuations(&self) -> std::collections::HashMap<String, chat_home::PartRef> {
+        self.read(|doc| doc.chat_continuations())
+    }
+    pub fn set_chat_destination(&self, chat: &str, target: &chat_home::PartRef) -> Result<bool, EngineError> {
+        Ok(self.mutate(|doc| doc.set_chat_destination(chat, target))?)
     }
 
     /// Tombstone: removes the chats (and session-status) row; the per-chat session

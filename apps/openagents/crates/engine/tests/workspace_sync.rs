@@ -702,6 +702,7 @@ async fn legacy_workspace_doc_migrates_instantly_on_first_boot() {
             .unwrap();
         legacy
             .upsert_chat(&Chat {
+                links: Default::default(),
                 id: "chat-legacy".into(),
                 device_id: "dev-a".into(),
                 title: Some("Migrated chat".into()),

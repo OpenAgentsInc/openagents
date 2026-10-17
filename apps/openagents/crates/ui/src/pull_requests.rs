@@ -3695,6 +3695,7 @@ mod tests {
 
     fn session(space: &str, last_message_at: Option<DateTime<Utc>>) -> openagents_proto::Chat {
         openagents_proto::Chat {
+            links: Default::default(),
             id: "chat".into(),
             device_id: "local".into(),
             title: None,

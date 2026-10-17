@@ -62,6 +62,7 @@ fn host_rows(now: chrono::DateTime<Utc>) -> (Device, Space, Chat) {
         created_at: now,
     };
     let chat = Chat {
+        links: Default::default(),
         id: CHAT.into(),
         device_id: HOST.into(),
         title: Some("Live chat".into()),

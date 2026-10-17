@@ -683,6 +683,8 @@ impl From<RawSpace> for Space {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RawChat {
+    #[serde(default, flatten)]
+    links: chat_home::Links,
     id: String,
     device_id: String,
     #[serde(default)]
@@ -746,6 +748,7 @@ where
 impl From<RawChat> for Chat {
     fn from(raw: RawChat) -> Self {
         Chat {
+            links: raw.links,
             id: raw.id,
             device_id: raw.device_id,
             title: raw.title,
@@ -852,6 +855,7 @@ mod tests {
 
     fn chat(id: &str, device_id: &str) -> Chat {
         Chat {
+            links: Default::default(),
             id: id.into(),
             device_id: device_id.into(),
             title: Some("First chat".into()),

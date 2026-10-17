@@ -558,7 +558,7 @@ pub(crate) fn derive(
     let mut active: Vec<&Chat> = state
         .chats
         .iter()
-        .filter(|c| !c.archived && c.is_top_level())
+        .filter(|c| !c.archived && c.is_top_level() && c.links.continued_by.is_none())
         .filter(|c| {
             c.space_id
                 .as_deref()

@@ -188,6 +188,8 @@ pub struct ConversationSourceContext {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Chat {
+    #[serde(default, flatten)]
+    pub links: chat_home::Links,
     pub id: String,
     /// Owning (host) device.
     pub device_id: String,
