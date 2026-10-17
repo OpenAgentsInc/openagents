@@ -30,6 +30,7 @@ struct Workflow {
     source: String,
     egress_profile: String,
     command: String,
+    revocation_command: Option<String>,
     evidence: PathBuf,
 }
 struct Native {
@@ -208,7 +209,7 @@ async fn the_live_sdk_uses_model_git_and_github_credential_references() {
     let computers = client
         .computers(&primary)
         .unwrap()
-        .with_operation_timeout(Duration::from_secs(30))
+        .with_operation_timeout(Duration::from_secs(180))
         .unwrap();
     let foreign = client.computers(&secondary).unwrap();
     let cancel = CancellationToken::new();
@@ -290,6 +291,37 @@ async fn the_live_sdk_uses_model_git_and_github_credential_references() {
                 ensure(state.data().state=="revoked")?;
             }
             report["checks"].as_array_mut().unwrap().push(json!({"phase":phase,"command":execution.reference().id(),"model_git_github_clients":true,"stable_retry":true,"completion_revoked":true}));
+            if let Some(script) = &workflow.revocation_command {
+                let command = computers.command_request(&reference, CommandOptions {
+                    command: script.clone(), timeout_seconds: Some(60), ..Default::default()
+                })?;
+                let request = computers.credential_request(&command, &workflow.source, "messages", 120)?;
+                let credential = computers.prepare_credential(&request, &cancel).await?;
+                let command = computers.command_with_credential(&command, &credential, "OA_PARAM_MODEL_REF")?;
+                save(&format!("{phase}-stream-command-request.json"), serde_json::to_value(&command).unwrap());
+                let execution = computers.execute(&command, &cancel).await?;
+                let mut reader = computers.output(execution.reference())?;
+                let mut stdout = Vec::new();
+                let mut revoked_at = None;
+                let mut outcome = None;
+                let deadline = Instant::now() + Duration::from_secs(60);
+                while let Some(page) = reader.next_page(&computers, &cancel).await? {
+                    ensure(Instant::now() < deadline && !page.stdout_gap && !page.stderr_gap)?;
+                    stdout.extend_from_slice(&page.stdout);
+                    ensure(stdout.len() <= 65536)?;
+                    outcome = page.command.outcome();
+                    if revoked_at.is_none() && String::from_utf8_lossy(&stdout).contains("STREAM_READY") {
+                        computers.revoke_credential(credential.reference(), &cancel).await?;
+                        revoked_at = Some(Instant::now());
+                    }
+                }
+                let elapsed = revoked_at.ok_or(openagents_sdk::computers::Error::InvalidResponse)?.elapsed();
+                save(&format!("{phase}-stream-output.json"), json!({"stdout":String::from_utf8_lossy(&stdout),"elapsed_after_revoke_ms":elapsed.as_millis()}));
+                ensure(outcome == Some(CommandOutcome::Succeeded) && elapsed <= Duration::from_secs(8))?;
+                ensure(String::from_utf8_lossy(&stdout).contains("STREAM_CLOSED"))?;
+                ensure(computers.get_credential(credential.reference(), &cancel).await?.data().state == "revoked")?;
+                report["checks"].as_array_mut().unwrap().push(json!({"phase":phase,"active_stream_revoked":true,"observed_completion_ms":elapsed.as_millis()}));
+            }
             if phase=="initial" {
                 computers.stop(&reference,&cancel).await?;
                 computers.wait(&reference,WaitFor::Stopped,Duration::from_secs(180),&cancel).await?;
@@ -299,16 +331,18 @@ async fn the_live_sdk_uses_model_git_and_github_credential_references() {
         }
         Ok(())
     }.await;
-    let deleted = computers.delete(&reference, &cancel).await.is_ok()
-        && computers
-            .wait(
-                &reference,
-                WaitFor::Deleted,
-                Duration::from_secs(180),
-                &cancel,
-            )
-            .await
-            .is_ok();
+    let delete_result = computers.delete(&reference, &cancel).await;
+    // A lost mutation response still needs observation using the saved handle.
+    let deleted = computers
+        .wait(
+            &reference,
+            WaitFor::Deleted,
+            Duration::from_secs(180),
+            &cancel,
+        )
+        .await
+        .is_ok();
+    report["delete_reply_uncertain"] = json!(delete_result.is_err());
     report["failure"] = result
         .as_ref()
         .err()
