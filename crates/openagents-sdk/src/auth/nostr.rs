@@ -15,6 +15,9 @@ use sha2::{Digest, Sha256};
 use url::Url;
 
 use super::{CredentialRecord, Session, TokenAnswer};
+
+mod web;
+pub use web::{SCAN_PATH, ScannedLogin, ScannedLoginAbout, ScannedLoginApproved};
 use crate::{Client, Error};
 
 /// The largest sign-in body the server takes (`oa_auth::nostr::BODY_MAX`).

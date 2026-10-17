@@ -1838,3 +1838,5 @@ async fn apple_sign_in_is_refused_until_the_service_offers_it() {
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
     assert_eq!(body["error"], "invalid_request");
 }
+
+mod web_sign_in;

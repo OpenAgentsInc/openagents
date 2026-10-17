@@ -94,8 +94,9 @@ async fn page(app: &App, headers: &HeaderMap, back: Back, signup: bool) -> Respo
 
 /// The sign-in page (`/login`, or `/signup` when `signup`): shadcn's
 /// login block on its own, without the app shell. Our mark and name, a
-/// card with one GitHub button, the way to the other page, and the terms
-/// line under it.
+/// card with the code the phone app scans and the browser-extension
+/// button ([`crate::web_sign_in`]), one GitHub button, the way to the
+/// other page, and the terms line under it.
 pub(crate) fn sign_in_page(
     headers: &HeaderMap,
     signup: bool,
@@ -119,6 +120,8 @@ pub(crate) fn sign_in_page(
         Some(html! { (line) }),
         html! {
             div.oa-auth-login-form data-slot="login-form" {
+                // A key from the phone app or a browser extension (#12001).
+                (crate::web_sign_in::sign_in_block(return_to))
                 @if invite_only {
                     (Alert::new()
                         .color(Color::Info)
