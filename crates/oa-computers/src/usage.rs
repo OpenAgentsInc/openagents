@@ -6,7 +6,7 @@
 //! Provider outages or overruns can exceed the declared runtime allowance.
 
 use crate::{Store, db::DbError, store::Entry};
-use coder_working_computer::{Computer, Phase};
+use coder_working_computer::{Computer, Fact, Phase};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -304,7 +304,18 @@ impl Store {
             .map_or(configured_retention, |policy| {
                 policy.min(configured_retention)
             });
-        if Duration::from_millis(now_ms.saturating_sub(e.record.updated_ms)) < retention {
+        let retention = e
+            .stopped_retention_ms
+            .map(Duration::from_millis)
+            .map_or(retention, |saved| saved.min(retention));
+        let Some(stopped_at) = e.record.boot().and_then(|boot| match &boot.resource_stop {
+            Some(Fact::Done { at_ms, .. }) => Some(*at_ms),
+            _ => None,
+        }) else {
+            return Ok(false);
+        };
+        // Meter and storage observations must not restart a stopped timer.
+        if Duration::from_millis(now_ms.saturating_sub(stopped_at)) < retention {
             return Ok(false);
         }
         tx.execute(

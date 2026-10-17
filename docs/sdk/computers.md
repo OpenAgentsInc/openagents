@@ -31,7 +31,10 @@ Each computer read adds its bound backend's `capabilities` and its saved
 `lifecycle_policy`. `memory_suspend: false` means Suspend keeps disk contents
 without promising process survival; true also requires preserving memory and
 running programs. The policy reports suspend-after-turn, idle and observation
-bounds, and a per-boot absolute limit. An unavailable bound deployment returns
+bounds, a per-boot absolute limit, and `stopped_retention_ms`. New computers save
+a seven-day retention maximum; operator/account limits can shorten it. Legacy
+rows can report a null saved maximum. Retention starts after observed stop;
+later meter reads do not extend it. An unavailable bound deployment returns
 `capabilities: null`; the service never substitutes the default backend.
 
 SPACE lifecycle recovery reads the provider operation ID saved in PostgreSQL
