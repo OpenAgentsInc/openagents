@@ -58,6 +58,15 @@ Both halves read one list (`oa_auth::invite`):
 "invite_only": {"open": true, "github": [{"id": 14167547, "login": "AtlantisPleb", "admin": true}]}
 ```
 
+`admins` marks site admins by account instead of by GitHub (#12003): an
+account ID (`acct_…`) or a Nostr key (`npub1…` or 64 hex digits) that signs
+the account in. A GitHub entry marked `admin` stays a fallback, so the owner
+stays admin until the owner's account ID is added:
+
+```json
+"invite_only": {"open": true, "admins": ["acct_…"], "github": [{"id": 14167547, "login": "AtlantisPleb", "admin": true}]}
+```
+
 `"open": true` lets everyone in (`allows`) while `admin` and `find` keep
 working. Without it (or `"open": false`) the list is closed and only the
 people on it may sign in, as described below.

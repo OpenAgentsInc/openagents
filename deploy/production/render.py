@@ -30,8 +30,18 @@ DATABASE_SECRET = "openagents-production-pg-dsn"
 # GitHub sign-in is open to anyone with a GitHub account (since 2026-10-15);
 # the list only marks site admins: the owner (GitHub AtlantisPleb, id
 # 14167547) (oa_auth::invite, docs/auth/github.md).
+# Site admins by account ID (`acct_…`) or npub (oa_auth::invite, #12003).
+ADMIN_ACCOUNTS: list[str] = []
 INVITE_ONLY = json.dumps(
-    {"open": True, "github": [{"id": 14167547, "login": "AtlantisPleb", "admin": True}]},
+    {
+        "open": True,
+        "github": [{"id": 14167547, "login": "AtlantisPleb", "admin": True}],
+        # Site admins by account ID or npub (#12003), left out while empty
+        # so a binary older than the field still reads the list. GitHub
+        # stays a fallback until the owner's account ID is added
+        # (NEEDS_OWNER.md).
+        **({"admins": ADMIN_ACCOUNTS} if ADMIN_ACCOUNTS else {}),
+    },
     separators=(",", ":"),
 )
 # The retired coder-serve sidecar's own database

@@ -43,8 +43,18 @@ MAC_JOBS_ACTORS = "1"
 # a GitHub account since 2026-10-15; the list only marks site admins (the
 # owner, AtlantisPleb, id 14167547). Both the gateway and the web server
 # read it.
+# Site admins by account ID (`acct_…`) or npub (oa_auth::invite, #12003).
+ADMIN_ACCOUNTS: list[str] = []
 INVITE_ONLY = json.dumps(
-    {"open": True, "github": [{"id": 14167547, "login": "AtlantisPleb", "admin": True}]},
+    {
+        "open": True,
+        "github": [{"id": 14167547, "login": "AtlantisPleb", "admin": True}],
+        # Site admins by account ID or npub (#12003), left out while empty
+        # so a binary older than the field still reads the list. GitHub
+        # stays a fallback until the owner's account ID is added
+        # (NEEDS_OWNER.md).
+        **({"admins": ADMIN_ACCOUNTS} if ADMIN_ACCOUNTS else {}),
+    },
     separators=(",", ":"),
 )
 # Agent work on a public host (#11162, docs/deployment/agent-work.md): site

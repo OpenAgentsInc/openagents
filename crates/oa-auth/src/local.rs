@@ -403,7 +403,7 @@ async fn account(State(state): State<LocalService>, headers: HeaderMap) -> Respo
         })
         .collect();
     body(json!({
-        "account": {"id": record.id, "label": record.label, "principals": record.principals, "created": record.created, "email": store.identities.github_of(&record.id).and_then(|i| i.profile.verified_email().or(i.profile.email.as_deref())), "avatar_url": store.identities.github_of(&record.id).and_then(|i| i.profile.avatar()), "admin": service::site_admin(state.0.invite.as_ref(), store.identities.github_of(&record.id))},
+        "account": {"id": record.id, "label": record.label, "principals": record.principals, "created": record.created, "email": store.identities.email_of(&record.id), "avatar_url": store.identities.github_of(&record.id).and_then(|i| i.profile.avatar()), "admin": service::site_admin(state.0.invite.as_ref(), &record.id, &record.principals, store.identities.github_of(&record.id))},
         "workspaces": workspaces,
     }))
 }

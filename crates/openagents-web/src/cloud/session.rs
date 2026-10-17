@@ -140,12 +140,24 @@ pub struct Viewer {
     pub admin: bool,
     /// The GitHub person the account signed in as (id, login).
     pub github: Option<(u64, String)>,
+    /// The Nostr key that signs the account in, as lowercase hex, when it
+    /// has one (a `nostr:` principal).
+    pub nostr: Option<String>,
     pub workspaces: Vec<Workspace>,
     pub workspace: Option<WorkspaceSelection>,
     pub session_id: String,
     pub expires_at: u64,
     client: jev::Client,
     credential_digest: String,
+}
+
+/// The first `nostr:<hex>` principal's key, lowercase.
+fn nostr_key(principals: &[serde_json::Value]) -> Option<String> {
+    principals.iter().find_map(|principal| {
+        let key = principal.as_str()?.strip_prefix("nostr:")?;
+        (key.len() == 64 && key.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            .then(|| key.to_ascii_lowercase())
+    })
 }
 
 impl Viewer {
@@ -683,6 +695,7 @@ impl CloudSession {
                 .filter(|url| url.starts_with("https://avatars.githubusercontent.com/")),
             admin: details.account.admin,
             github,
+            nostr: nostr_key(&details.account.principals),
             workspaces,
             workspace: selection,
             session_id: session.id,

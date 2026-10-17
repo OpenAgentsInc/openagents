@@ -79,7 +79,6 @@ pub async fn sign_in(
     if !invite::allowed(invite, profile.id, &profile.login) {
         return Err(AuthError::InviteOnly);
     }
-    let admin = invite.is_some_and(|list| list.admin(profile.id, &profile.login));
     let accounts = Accounts::open(dir).map_err(|_| AuthError::Unavailable)?;
     let signup = request
         .acquisition
@@ -88,6 +87,10 @@ pub async fn sign_in(
     let resolved = accounts
         .sign_in_github_acquired(&profile, tenant, signup)
         .map_err(AuthError::from_refusal)?;
+    let admin = invite.is_some_and(|list| {
+        list.admin(profile.id, &profile.login)
+            || list.admin_account(&resolved.account.id, &resolved.account.principals)
+    });
     if resolved.created {
         attribute_signup(&accounts, &resolved.account.id);
     }
@@ -172,14 +175,22 @@ pub async fn link(
     Ok(identity)
 }
 
-/// Whether the account whose linked GitHub identity is `identity` is a
-/// site admin by `invite`. No list, or no GitHub identity, is not admin.
+/// Whether the account `account`, holding `principals` and the linked
+/// GitHub identity `identity`, is a site admin by `invite`: named in its
+/// `admins` by account id or Nostr key, or, as a fallback, by a GitHub
+/// entry marked `admin`. No list is not admin.
 #[must_use]
-pub fn site_admin(invite: Option<&InviteOnly>, identity: Option<&GithubIdentity>) -> bool {
-    match (invite, identity) {
-        (Some(list), Some(identity)) => list.admin(identity.profile.id, &identity.profile.login),
-        _ => false,
-    }
+pub fn site_admin(
+    invite: Option<&InviteOnly>,
+    account: &str,
+    principals: &[String],
+    identity: Option<&GithubIdentity>,
+) -> bool {
+    let Some(list) = invite else {
+        return false;
+    };
+    list.admin_account(account, principals)
+        || identity.is_some_and(|identity| list.admin(identity.profile.id, &identity.profile.login))
 }
 
 /// The JSON a sign-in answers, the same shape `POST /v1/sessions` uses.
@@ -199,4 +210,41 @@ pub fn signed_in_body(signed: &SignedIn) -> serde_json::Value {
         "github": {"id": signed.github.0, "login": signed.github.1},
         "admin": signed.admin,
     })
+}
+
+#[cfg(test)]
+mod site_admin_tests {
+    use super::*;
+
+    #[test]
+    fn an_account_is_admin_by_id_or_nostr_key_and_github_stays_a_fallback() {
+        let hex = "ab".repeat(32);
+        let list: InviteOnly = serde_json::from_value(serde_json::json!({
+            "open": true,
+            "admins": ["acct_0123456789abcdef", hex],
+            "github": [{"id": 14167547, "login": "AtlantisPleb", "admin": true}]
+        }))
+        .unwrap();
+        let invite = Some(&list);
+        assert!(site_admin(invite, "acct_0123456789abcdef", &[], None));
+        assert!(site_admin(
+            invite,
+            "acct_1",
+            &[format!("nostr:{hex}")],
+            None
+        ));
+        assert!(!site_admin(invite, "acct_1", &[], None));
+        assert!(!site_admin(None, "acct_0123456789abcdef", &[], None));
+        let owner = GithubIdentity {
+            account: "acct_2".into(),
+            profile: tenancy::accounts::identities::GithubProfile {
+                id: 14167547,
+                login: "AtlantisPleb".into(),
+                ..Default::default()
+            },
+            linked: String::new(),
+            refreshed: String::new(),
+        };
+        assert!(site_admin(invite, "acct_2", &[], Some(&owner)));
+    }
 }
