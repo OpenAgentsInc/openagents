@@ -964,7 +964,7 @@ impl AppAccount {
     /// A signed-out controller for `data` that never reaches a server.
     pub fn offline_controller(data: &std::path::Path) -> Arc<openagents_account::Controller> {
         use openagents_account::openagents::{Client, Deployment};
-        let deployment = Deployment::new("http://127.0.0.1:1", "http://127.0.0.1:1")
+        let deployment = Deployment::new("http://127.0.0.1:1/v1", "http://127.0.0.1:1")
             .expect("a local deployment");
         openagents_account::Controller::new(
             Client::new(deployment).expect("a client"),
