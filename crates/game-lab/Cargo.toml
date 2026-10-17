@@ -7,6 +7,7 @@ publish.workspace = true
 description = "Game Lab: change a game by talking. Versioned game documents (game.v1), checked edits with seeded bot runs, and the local service the web chat's game tools call."
 
 [dependencies]
+base64 = "0.22"
 icecream-rules = { path = "../icecream-rules" }
 icecream-web = { path = "../icecream-web" }
 lab-kit = { path = "../lab-kit" }

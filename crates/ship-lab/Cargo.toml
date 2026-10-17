@@ -8,6 +8,7 @@ description = "Ship Lab: edit Lagrange 2's spacecraft.v1 document by talking. Ve
 
 [dependencies]
 verse-lagrange2 = { path = "../verse-lagrange2" }
+lab-kit = { path = "../lab-kit" }
 axum = "0.8"
 glam = "0.30.10"
 serde_json = "1"

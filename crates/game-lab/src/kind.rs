@@ -75,6 +75,37 @@ pub fn measurements(content: &Value) -> Result<Measurements, Refusal> {
     Ok(json!({"content_sha256": lab_kit::digest(content), "stats": stats.json()}))
 }
 
+/// What a playtest or build needs: the bot plays 24 runs side by side.
+fn requirements(max_seconds: u64) -> Requirements {
+    Requirements {
+        cpu_millis: 2000,
+        memory_bytes: 512 * 1024 * 1024,
+        tools: vec!["game-lab".into()],
+        max_seconds,
+        ..Requirements::default()
+    }
+}
+
+/// The `playtest` job handler for a Labs worker: reads the job on stdin
+/// (`{"work": ..., "local_assets": ...}`) and returns the handler output,
+/// one JSON artifact holding [`measurements`] for the job's version.
+///
+/// # Errors
+/// The input isn't a job, or the version isn't a valid game.
+pub fn playtest_handler(input: &[u8]) -> Result<Value, String> {
+    use base64::Engine;
+    let input: Value =
+        serde_json::from_slice(input).map_err(|_| "Read the playtest job.".to_owned())?;
+    let content = &input["work"]["version"]["content"];
+    let measured = measurements(content).map_err(|r| r.message)?;
+    let bytes = serde_json::to_vec(&measured).map_err(|e| e.to_string())?;
+    Ok(json!({"outputs": [{
+        "role": "export",
+        "media_type": "application/json",
+        "content_base64": base64::engine::general_purpose::STANDARD.encode(bytes),
+    }]}))
+}
+
 /// The measured stats for exactly `content`, or a refusal to save unplayed content.
 fn measured(content: &Value, m: &Measurements) -> Result<Stats, Refusal> {
     if m["content_sha256"].as_str() == Some(lab_kit::digest(content).as_str())
@@ -137,6 +168,9 @@ impl LabKind for Game {
             doc_arg: "game".into(),
             tools,
             job_types: vec![PLAYTEST.into(), BUILD.into()],
+            job_requirements: [(PLAYTEST, 120), (BUILD, 900)]
+                .map(|(job, max_seconds)| (job.into(), requirements(max_seconds)))
+                .into(),
             views: vec![View::Playable, View::Report],
             limits: Limits::default(),
         }
@@ -203,10 +237,8 @@ impl LabKind for Game {
             version: version.reference(),
             params,
             requirements: Requirements {
-                tools: vec!["game-lab".into()],
-                max_seconds,
                 private_local: version.has_private_local(),
-                ..Requirements::default()
+                ..requirements(max_seconds)
             },
         }]
     }
@@ -367,6 +399,20 @@ mod tests {
             }
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_playtest_handler_measures_the_jobs_version() {
+        use base64::Engine;
+        let content = doc::original();
+        let input = json!({"work": {"version": {"content": content}}, "local_assets": {}});
+        let output = playtest_handler(input.to_string().as_bytes()).unwrap();
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(output["outputs"][0]["content_base64"].as_str().unwrap())
+            .unwrap();
+        let measured: Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(Game::check(&content, &measured).is_ok());
+        assert!(playtest_handler(b"{}").is_err());
     }
 
     #[test]

@@ -13,12 +13,17 @@
 //! An accepted version of the sample tug is also written to
 //! `ROOT/.verse/lagrange2.json`, which the Lagrange 2 zone builds its next
 //! ship from on a computer that has it.
+//!
+//! [`kind`] is the same contract as a Labs platform kind
+//! (`lab_kit::LabKind`).
 
 use std::path::{Path, PathBuf};
 
 use glam::DVec3;
 use serde_json::{Value, json};
 use verse_lagrange2::ship::{Edit, PartKind, Spacecraft};
+
+pub mod kind;
 
 /// The card kind a tool result carries for the chat.
 pub const CARD: &str = "ship_lab";
@@ -192,13 +197,7 @@ impl Lab {
         match ship.edit(&edit) {
             Ok(next) => {
                 let v = self.save(&id, &next, &summary)?;
-                // Parts resized away from their CAD documents.
-                let left_cad: Vec<String> = next
-                    .parts
-                    .iter()
-                    .filter(|p| p.cad.is_none() && ship.part(&p.id).is_some_and(|o| o.cad.is_some()))
-                    .map(|p| format!("{} no longer matches its CAD model; its mass properties now come from its new size", p.id))
-                    .collect();
+                let left_cad = left_cad(&ship, &next);
                 Ok(json!({
                     "doc": id, "version": v, "accepted": true, "summary": summary,
                     "notes": left_cad,
@@ -208,10 +207,7 @@ impl Lab {
             }
             Err(finding) => Ok(json!({
                 "doc": id, "version": n, "accepted": false,
-                "error": format!(
-                    "Refused by the {} check: {}. The ship stays at version {n}.",
-                    finding.requirement, finding.detail
-                ),
+                "error": refused(&finding, n),
                 "requirement": finding.requirement,
                 "card": card(&id, n, &ship, &current, Some(&finding.to_string())),
             })),
@@ -270,6 +266,28 @@ impl Lab {
             "card": card(&id, b, &ship_b, &summary_b, None),
         }))
     }
+}
+
+/// The sentence a refused edit says.
+fn refused(finding: &verse_lagrange2::ship::Finding, n: u64) -> String {
+    format!(
+        "Refused by the {} check: {}. The ship stays at version {n}.",
+        finding.requirement, finding.detail
+    )
+}
+
+/// Parts resized away from their CAD documents, as notes.
+fn left_cad(ship: &Spacecraft, next: &Spacecraft) -> Vec<String> {
+    next.parts
+        .iter()
+        .filter(|p| p.cad.is_none() && ship.part(&p.id).is_some_and(|o| o.cad.is_some()))
+        .map(|p| {
+            format!(
+                "{} no longer matches its CAD model; its mass properties now come from its new size",
+                p.id
+            )
+        })
+        .collect()
 }
 
 fn write(path: &Path, text: &str) -> Result<(), String> {

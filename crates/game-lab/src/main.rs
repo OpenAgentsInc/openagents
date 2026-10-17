@@ -1,6 +1,8 @@
 //! `game-lab serve [--port 8793] [--dir DIR] [--repo CHECKOUT]`: the Game
 //! Lab service on 127.0.0.1 (docs/game-lab/mvp.md).
 //! `game-lab schema`: prints the `game.v1` JSON Schema.
+//! `game-lab playtest-job`: a Labs worker's `playtest` handler; reads the
+//! job on stdin and writes its output on stdout.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,8 +15,7 @@ use axum::{Json, Router};
 use game_lab::lab::{BUILD_FILES, Build, Lab};
 use serde_json::{Value, json};
 
-const USAGE: &str =
-    "usage: game-lab serve [--port PORT] [--dir DIR] [--repo CHECKOUT] | game-lab schema";
+const USAGE: &str = "usage: game-lab serve [--port PORT] [--dir DIR] [--repo CHECKOUT] | game-lab schema | game-lab playtest-job";
 
 fn main() -> std::process::ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -25,6 +26,26 @@ fn main() -> std::process::ExitCode {
                 serde_json::to_string_pretty(&game_lab::doc::schema()).unwrap_or_default()
             );
             std::process::ExitCode::SUCCESS
+        }
+        Some("playtest-job") => {
+            let mut input = Vec::new();
+            let read = std::io::Read::read_to_end(
+                &mut std::io::Read::take(std::io::stdin(), 4 * 1024 * 1024),
+                &mut input,
+            );
+            match read
+                .map_err(|e| e.to_string())
+                .and_then(|_| game_lab::kind::playtest_handler(&input))
+            {
+                Ok(output) => {
+                    println!("{output}");
+                    std::process::ExitCode::SUCCESS
+                }
+                Err(why) => {
+                    eprintln!("game-lab: {why}");
+                    std::process::ExitCode::FAILURE
+                }
+            }
         }
         Some("serve") => match serve(&args[1..]) {
             Ok(()) => std::process::ExitCode::SUCCESS,

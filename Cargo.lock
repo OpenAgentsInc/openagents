@@ -6894,6 +6894,7 @@ name = "game-lab"
 version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
+ "base64 0.22.1",
  "icecream-rules",
  "icecream-web",
  "lab-kit",
@@ -15714,6 +15715,7 @@ version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
  "glam",
+ "lab-kit",
  "serde_json",
  "tempfile",
  "tokio",
