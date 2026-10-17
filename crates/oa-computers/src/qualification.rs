@@ -269,6 +269,7 @@ pub struct Assessment {
     pub failed_cases: Vec<Case>,
     pub invalid_artifacts: Vec<Case>,
     pub blockers: Vec<&'static str>,
+    pub cold: Distribution,
     pub snapshot: Distribution,
     pub wake: Distribution,
     pub observed_error_permille: Option<u64>,
@@ -458,6 +459,7 @@ impl Packet {
         if !invalid_artifacts.is_empty() {
             blockers.push("missing_or_changed_artifacts");
         }
+        let cold = distribution(&self.trials, Kind::Cold);
         let snapshot = distribution(&self.trials, Kind::Snapshot);
         let wake = distribution(&self.trials, Kind::Wake);
         let failures = self.trials.iter().filter(|t| !t.succeeded).count() as u64;
@@ -475,12 +477,16 @@ impl Packet {
             {
                 blockers.push("observation_time_missing_or_expired");
             }
-            if snapshot.successful_samples < limits.minimum_samples as usize
+            if cold.successful_samples < limits.minimum_samples as usize
+                || snapshot.successful_samples < limits.minimum_samples as usize
                 || wake.successful_samples < limits.minimum_samples as usize
             {
                 blockers.push("insufficient_samples");
             }
-            if snapshot.cold_cache_samples == 0
+            if cold.cold_cache_samples == 0
+                || cold.warm_cache_samples == 0
+                || cold.maximum_concurrency < limits.required_concurrency
+                || snapshot.cold_cache_samples == 0
                 || snapshot.warm_cache_samples == 0
                 || wake.cold_cache_samples == 0
                 || wake.warm_cache_samples == 0
@@ -497,6 +503,7 @@ impl Packet {
             }
             if [
                 observed_error_permille,
+                cold.observed_error_permille,
                 snapshot.observed_error_permille,
                 wake.observed_error_permille,
             ]
@@ -527,6 +534,7 @@ impl Packet {
             failed_cases,
             invalid_artifacts,
             blockers,
+            cold,
             snapshot,
             wake,
             observed_error_permille,

@@ -67,7 +67,7 @@ fn complete(root: &Path) -> Packet {
             maximum_age_seconds: 86400,
         }),
         cases: Case::ALL.iter().map(|c| (*c, proof.clone())).collect(),
-        trials: [Kind::Snapshot, Kind::Wake]
+        trials: [Kind::Snapshot, Kind::Wake, Kind::Cold]
             .into_iter()
             .flat_map(|kind| {
                 (0..20).map(move |i| Trial {
