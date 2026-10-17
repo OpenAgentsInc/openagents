@@ -421,5 +421,20 @@
       "result": "limited",
       "started_unix": 1792195425
     }
+  },
+  "production_usage_read_followup_2026_10_17": {
+    "observed_at": "2026-10-17T03:22:01.116969+00:00",
+    "account": "acct_83d16a35955ef908",
+    "identity_http_status": 200,
+    "usage_http_status": 200,
+    "refusal_code": null,
+    "read_only": true,
+    "credential_output": false,
+    "schema": "openagents.computers.usage.v1",
+    "event_count": 100,
+    "pricing": "not_enabled",
+    "customer_charge": null,
+    "scope": "Read-only dedicated test-account check; no resource, entitlement, or pricing change.",
+    "earlier_403": "The earlier check used acct_c76f469572ad3446. The current route and its tests gate usage on the Computers rollout account list. This successful read uses the configured dedicated account, not that earlier account."
   }
 }

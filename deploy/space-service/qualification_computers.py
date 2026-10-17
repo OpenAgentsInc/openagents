@@ -13,7 +13,8 @@ from cluster_secrets import identity,secret
 ROOT=Path('/space/qualification-11814')
 HOST='oa-space-service-computers-ezxz4mgdsq-uc.a.run.app'
 OWNER='space-qualification-11814'
-TURNS={'turn':'cwc-turn-start','memory':'cwc-turn-memory','network':'cwc-turn-network'}
+TURNS={'turn':'cwc-turn-start','memory':'cwc-turn-memory',
+    'memory-replacement':'cwc-turn-memory-replacement','network':'cwc-turn-network'}
 
 
 def network_command():
@@ -97,7 +98,7 @@ def main(action,run):
         if action=='turn':
             canary=secrets.token_hex(32);save('memory-canary',{'sha256':hashlib.sha256(canary.encode()).hexdigest()})
             command="set -eu; env QA_MEMORY_11814="+canary+" setsid sh -c 'while :; do sleep 3600; done' </dev/null >/dev/null 2>&1 & pid=$!; echo $pid >/tmp/oa-11814-memory.pid; cat /proc/sys/kernel/random/boot_id; echo $pid; awk '{print $22}' /proc/$pid/stat; tr '\\0' '\\n' </proc/$pid/environ | sed -n 's/^QA_MEMORY_11814=//p' | tr -d '\\n' | sha256sum"
-        elif action=='memory':
+        elif action in ('memory','memory-replacement'):
             command="set -eu; pid=$(cat /tmp/oa-11814-memory.pid); cat /proc/sys/kernel/random/boot_id; echo $pid; awk '{print $22}' /proc/$pid/stat; tr '\\0' '\\n' </proc/$pid/environ | sed -n 's/^QA_MEMORY_11814=//p' | tr -d '\\n' | sha256sum"
         else: command=network_command()
         save(key,{'state':'submission_pending'})
@@ -109,6 +110,6 @@ def main(action,run):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run',choices=['legacy','encrypted-1','capacity-2','capacity-3'],default='legacy')
-    parser.add_argument('action',choices=['probe','create','recover-create','status','turn','turn-status','memory','memory-status','network','network-status','stop','wake','delete'])
+    parser.add_argument('action',choices=['probe','create','recover-create','status','turn','turn-status','memory','memory-status','memory-replacement','memory-replacement-status','network','network-status','stop','wake','delete'])
     args=parser.parse_args()
     main(args.action,args.run)

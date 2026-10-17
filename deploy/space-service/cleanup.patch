@@ -1,6 +1,6 @@
 --- a/crates/libs/api/src/controllers/sandbox/lifecycle/tests.rs
 +++ b/crates/libs/api/src/controllers/sandbox/lifecycle/tests.rs
-@@ -954,3 +954,60 @@
+@@ -954,3 +954,80 @@
      }
      Ok(())
  }
@@ -22,6 +22,15 @@
 +    ))
 +    .bind(sandbox_id)
 +    .execute(&db.pool)
++    .await?;
++
++    let storage_uri = "s3://test-snapshots/delayed-delete/fixture?region=us-central1";
++    pplx_space_db_test_fixtures::publish_ready_disk_artifact(
++        &db.pool,
++        sandbox_id,
++        pplx_space_common_core::types::LocalArtifactId::new(),
++        storage_uri,
++    )
 +    .await?;
 +
 +    let previous = begin_delete_against_active_fork(&db.pool, sandbox_id).await?;
@@ -50,8 +59,11 @@
 +        pplx_space_feature_flags::FeatureFlagClient::disabled(),
 +    );
 +    let controller = SandboxController::with_cluster_admission(make_substrate(), admission);
++    let sandbox = crate::controllers::sandbox::fetch_sandbox(&db.pool, sandbox_id)
++        .await?
++        .expect("the deleted tombstone still exists");
 +    controller
-+        .delete_control_plane(&db.pool, sandbox_id, None)
++        .delete_control_plane(&db.pool, sandbox_id, Some(&sandbox))
 +        .await?;
 +    let exists: bool =
 +        sqlx::query_scalar(sql!("SELECT EXISTS(SELECT 1 FROM sandboxes WHERE id = $1)"))
@@ -59,6 +71,14 @@
 +            .fetch_one(&db.pool)
 +            .await?;
 +    assert!(!exists);
++    let detached: bool = sqlx::query_scalar(sql!(
++        "SELECT snapshot_id IS NULL AND orphaned_at IS NOT NULL
++         FROM snapshot_storage_locations WHERE storage_connection_string = $1"
++    ))
++    .bind(storage_uri)
++    .fetch_one(&db.pool)
++    .await?;
++    assert!(detached);
 +    Ok(())
 +}
 --- a/crates/libs/api/src/controllers/sandbox/lifecycle.rs

@@ -97,6 +97,12 @@ HTTP and WebSockets without buffering or logging request paths and headers.
 `qualification_native.py` use a separate synthetic account and a four-hour
 admin session. Remove its computers, credentials, session, and owner rows when
 qualification ends. The production Boat deployment remains separate.
+After deploying the corrected Computers candidate, run
+`qualification_lifecycle.py checkpoint`, then `resume` and `network` on the
+control node. Run `replacement` only after replacing the worker. Each phase
+uses saved turn identities, bounded waits, and a process-memory canary; an
+uncertain submission requires inspection before another request. The helper
+leaves the guest stopped for the recovery check.
 
 `cleanup.patch` keeps deleted sandbox tombstones eligible for ordinary final
 cleanup. Its controller settings allow eight snapshot prefixes per sweep, with
