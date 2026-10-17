@@ -118,16 +118,60 @@ pub const UNAVAILABLE: &str = "Your wallet is locked. Unlock your phone, then tr
 pub const UNREADABLE: &str =
     "The wallet saved on this phone can't be read. It has been left as it is.";
 
+/// What the identity's own Keychain item holds (#11995), read only.
+#[derive(Clone, PartialEq, Eq)]
+pub enum IdentityEntropy {
+    /// The identity's BIP-39 entropy.
+    Found(Vec<u8>),
+    /// No identity is stored yet. When one is made later, it takes the
+    /// wallet's words, so there is still one backup.
+    Absent,
+    /// The item couldn't be read now (a locked device).
+    Unavailable,
+}
+
+/// Where the wallet finds the identity's words.
+pub type IdentitySource = std::sync::Arc<dyn Fn() -> IdentityEntropy + Send + Sync>;
+
+/// The phone's identity item, through `openagents_account::identity`.
+pub fn phone_identity() -> IdentitySource {
+    std::sync::Arc::new(|| match openagents_account::identity::phone_entropy() {
+        Ok(Some(entropy)) => IdentityEntropy::Found(entropy),
+        Ok(None) => IdentityEntropy::Absent,
+        Err(_) => IdentityEntropy::Unavailable,
+    })
+}
+
 /// Make a new 12-word seed and store it, but only when the key store says
 /// none exists. When one appeared in the meantime, that one is used.
 pub fn create(store: &dyn KeyStore) -> Result<Seed, SeedError> {
+    create_with(store, None)
+}
+
+/// Make the wallet's seed, only when the key store says none exists: from
+/// the identity's words when the phone has an identity, so the person has
+/// one set of words for both, and new words only when it has none. Neither
+/// item is ever overwritten: the seed is added only where none is stored,
+/// and the identity's item is only read.
+pub fn create_with(
+    store: &dyn KeyStore,
+    identity: Option<&IdentitySource>,
+) -> Result<Seed, SeedError> {
     match read(store) {
         SeedRead::Present(_) => return Err(SeedError::Exists),
         SeedRead::Unavailable => return Err(SeedError::Unavailable),
         SeedRead::Unreadable => return Err(SeedError::Unreadable),
         SeedRead::Absent => {}
     }
-    let seed = Seed::generate().map_err(|_| SeedError::NotSaved)?;
+    let seed = match identity.map(|source| source()) {
+        Some(IdentityEntropy::Found(entropy)) => {
+            Seed::from_entropy(entropy).map_err(|_| SeedError::NotSaved)?
+        }
+        Some(IdentityEntropy::Unavailable) => return Err(SeedError::Unavailable),
+        Some(IdentityEntropy::Absent) | None => {
+            Seed::generate().map_err(|_| SeedError::NotSaved)?
+        }
+    };
     save(store, seed)
 }
 

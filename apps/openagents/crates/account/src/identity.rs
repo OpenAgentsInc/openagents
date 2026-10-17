@@ -71,7 +71,9 @@ impl Identity {
     pub fn nsec(&self) -> String {
         self.key.nsec()
     }
-    pub(crate) fn entropy(&self) -> Vec<u8> {
+    /// The words' BIP-39 entropy, for a wallet made from the same words.
+    /// Keep it no longer than needed.
+    pub fn entropy(&self) -> Vec<u8> {
         self.mnemonic.entropy()
     }
     /// Sign a NIP-01 event, answering it as JSON.
@@ -224,7 +226,7 @@ impl Identities {
     /// wallet seed read as the words when it exists.
     pub fn phone(data_dir: &Path) -> Self {
         Self::new(
-            Arc::new(KeychainVault::new("com.openagents.app.identity")),
+            Arc::new(KeychainVault::new(PHONE_SERVICE)),
             Arc::new(KeychainWallet),
             &data_dir.join("identity"),
         )
@@ -373,6 +375,17 @@ impl Identities {
     fn saved_marker(&self) -> PathBuf {
         self.dir.join("words-saved")
     }
+}
+
+/// The phone identity's Keychain service.
+pub const PHONE_SERVICE: &str = "com.openagents.app.identity";
+
+/// The phone identity's stored entropy, read only: the wallet makes its
+/// seed from it so one set of words backs up both.
+pub fn phone_entropy() -> Result<Option<Vec<u8>>, StorageError> {
+    Ok(KeychainVault::new(PHONE_SERVICE)
+        .load()?
+        .map(|(entropy, _)| entropy))
 }
 
 /// The identity's Keychain item: a generic password with `service` and the
