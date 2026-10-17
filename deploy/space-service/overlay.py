@@ -92,6 +92,16 @@ def metadata_policy():
                  "egress": [{"to": [{"ipBlock": {"cidr": "0.0.0.0/0", "except": ["169.254.0.0/16"]}}]}]}}
 
 
+def pod_proxy_policy():
+    # The shim DNATs the pod proxy to its local bridge. K3s's network-policy
+    # controller checks that return hop as pod egress, including host traffic.
+    return {"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
+        "metadata": {"name": "oa-local-sandbox-proxy", "namespace": "sandboxes", "labels": LABELS},
+        "spec": {"podSelector": {"matchLabels": {"app.kubernetes.io/name": "space-sandbox"}},
+            "policyTypes": ["Egress"], "egress": [{"to": [{"ipBlock": {"cidr": "10.220.1.1/32"}}],
+                "ports": [{"protocol": "TCP", "port": 9800}]}]}}
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input")
@@ -100,5 +110,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     documents = list(transform(yaml.safe_load_all(Path(args.input).read_text())))
     if args.metadata_policy:
-        documents.append(metadata_policy())
+        documents.extend([metadata_policy(), pod_proxy_policy()])
     Path(args.output).write_text(yaml.safe_dump_all(documents, sort_keys=False))

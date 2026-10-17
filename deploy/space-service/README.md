@@ -67,7 +67,11 @@ Install `host-prerequisites.sh` before starting worker services. It uses the
 upstream service identities and bounds the guest cgroup to four CPU cores,
 8 GiB of memory, 4,096 processes, and 64 MiB/s and 2,000 operations/s in each disk
 I/O direction. Control services have one replica each. The worker and builder
-run the same pinned Firecracker, Jailer, kernel, and containerd shim.
+run the same pinned Firecracker, Jailer, kernel, and containerd shim. The shim's
+authenticated proxy needs TCP 9800 to the worker's local bridge, `10.220.1.1`.
+The sandbox network policy permits only that exact hop. Verify the worker's
+bridge address before admitting a replacement with a different Kubernetes pod
+CIDR, and exercise the guest denial check after changing this allowance.
 
 Run the migration Job in grants-only mode, activate its five existing logins
 with `database_roles.py --activate` on the control node, and run
