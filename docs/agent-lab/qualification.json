@@ -1,0 +1,64 @@
+{
+  "date_utc": "2026-10-17",
+  "issues": [
+    11914,
+    11915,
+    11916,
+    11917,
+    11918,
+    11919,
+    11920,
+    11921
+  ],
+  "release": {
+    "build": "1010",
+    "version": "1.0.0",
+    "id": "a0036d88-71f3-49fe-a05d-02344409ef27",
+    "uploaded": "2026-10-16T18:53:28-07:00",
+    "state": "VALID",
+    "internal": "IN_BETA_TESTING",
+    "groups": [
+      "Internal Testers"
+    ],
+    "group_membership_verified": true,
+    "test_notes_verified": true,
+    "source_commit": "29620a0e233ef0e72f4724ffa6841676c849bd62",
+    "signed_archive_verified": true,
+    "fixture_excluded": true,
+    "privacy_and_identity_verified": true,
+    "upload_warning": "The supplied WebRTC framework has no matching dSYM; App Store Connect accepted the upload."
+  },
+  "checks": {
+    "agent_lab_contract_tests": 8,
+    "sdk_tests": 47,
+    "openapi_tests": 5,
+    "agent_lab_api_checks": 2,
+    "focused_host_tests": 3,
+    "staging_smoke_passed": 99,
+    "optimized_simulator_checks": 3,
+    "production_phone_ui_scenarios": 1,
+    "browser_versions_and_promotion": "passed"
+  },
+  "phone": {
+    "test": "OpenAgentsAgentLabTests/testSaveRunInspectAndUseAgent",
+    "account": "dedicated test account",
+    "computer": "isolated host with an installed deterministic Rust runner",
+    "saved": true,
+    "trial_passed": true,
+    "actual_conversation_opened": true,
+    "experiment_reopened": true,
+    "promoted_and_selected_in_picker": true,
+    "signed_out": true,
+    "fresh_keychain_deletion_proof": true,
+    "host_stopped": true,
+    "registry_fixtures_removed": true,
+    "remaining_lab_documents": 0,
+    "remaining_lab_jobs": 0
+  },
+  "api_qualification": {
+    "source_commit": "5b7a69a2fc56db648c07b6c307f4325ad42d80e3",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:b15f48ed304ef73fa613475c6a42689f8de8f20088de585282e875b5d3912523",
+    "authenticated_reads_and_staging_save_version_replay_delete": "passed"
+  },
+  "owner_checks": "../../NEEDS_OWNER.md"
+}

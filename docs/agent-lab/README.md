@@ -1,6 +1,7 @@
 # Agent Lab: build, test, and improve your agents
 
-Status: implemented on `main`, 2026-10-16. The
+Status: implemented on `main`; iOS 1.0.0 (1010) is available to Internal
+Testers. See [qualification and release evidence](qualification.json). The
 [custom-agent SDK and mobile flow](../custom-agents.md) provide the execution
 path. The [first implementation](#first-implementation) below describes the
 shipped provider and its limits; the earlier design sections describe the
