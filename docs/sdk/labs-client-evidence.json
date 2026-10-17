@@ -102,7 +102,7 @@
     "binary_sha256": "96dd89f4ad642e241ba2b36825a465cc6a1b471c30070fbae3638d06fb3f6afe",
     "production_run": {
       "checked_at": "2026-10-17T04:40:25.327028+00:00",
-      "deployment_source_commit": "646d5fb6bd87a0e6c9feb0c5974dad9a59154be8c",
+      "deployment_source_commit": "646d5fb6bd87a0e6c9feb0c5974dad9a59154be8",
       "deployment_image": "sha256:51e2d77b5a4ffc8df0b33aac965b569a7f4a4b8d15237a327baa1b1b682202a7",
       "account": "acct_83d16a35955ef908",
       "test_header": true,
