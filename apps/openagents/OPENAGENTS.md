@@ -41,6 +41,16 @@ thread and opens a crash dialog. Use `openagents-gpui-test` (`crates/gpui-test`)
 `real_application` and run only with `OPENAGENTS_GPUI_REAL_PLATFORM=1`. A guard
 test in that crate fails on any other use of the platform.
 
+Before pushing a UI change, also check that the fixture examples still
+compile. This only builds them; it never runs one or opens a window:
+
+```sh
+cargo check -p openagents-ui --examples --features account-fixture,project-palette-fixture,compact-picker-fixture,browser-fixture,windows-render-fixture,appshots-fixture,pull-request-fixture,fork-chat-fixture,resource-profile
+```
+
+`--all-features` also turns on `upstream-workos`, which OpenAgents builds never
+use. Add a new fixture feature to this list.
+
 A persistent `CARGO_TARGET_DIR` outside the checkout saves a cold build of
 about 900 crates. `openagents-account` uses the SDK from this repository by path
 (`../../crates/openagents-sdk`), so SDK changes and app changes land in

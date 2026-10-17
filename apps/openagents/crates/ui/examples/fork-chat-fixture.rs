@@ -1,7 +1,9 @@
 //! Offscreen captures for #11961–#11963: the session card without "New side
 //! chat", the sidebar footer without the Pull requests button, and a forked
 //! chat listed in Sessions with its "Forked from" link. Renders the
-//! production Shell in a window placed off screen (never focused).
+//! production Shell in a window placed off screen (never focused). It shows
+//! a real window, so it runs only with `OPENAGENTS_GPUI_REAL_PLATFORM=1` and
+//! never on the owner's desktop (see OPENAGENTS.md):
 //!
 //!   cargo run -p openagents-ui --example fork-chat-fixture \
 //!     --features fork-chat-fixture -- <output-dir>
@@ -197,7 +199,7 @@ fn main() -> anyhow::Result<()> {
                         s.selected_chat = Some("fork".into());
                         s.apply_transcript(forked);
                         cx.notify();
-                    })?;
+                    });
                     pause(cx, 1200).await;
                     capture(any, cx, &output, "11963-fork-in-sessions")?;
                     Ok(())
@@ -206,7 +208,7 @@ fn main() -> anyhow::Result<()> {
                 if let Err(error) = &run {
                     eprintln!("fixture failed: {error:#}");
                 }
-                cx.update(|cx| cx.quit()).ok();
+                cx.update(|cx| cx.quit());
             })
             .detach();
         });
