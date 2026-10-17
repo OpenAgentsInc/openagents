@@ -9232,6 +9232,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lab-ui"
+version = "1.0.0"
+dependencies = [
+ "lab-kit",
+ "rust-native",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "labor-roles"
 version = "1.0.0"
 dependencies = [
@@ -12241,6 +12251,7 @@ dependencies = [
  "lab-jobs",
  "lab-kit",
  "lab-store",
+ "lab-ui",
  "libc",
  "lightning-invoice 0.34.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "mac-jobs",

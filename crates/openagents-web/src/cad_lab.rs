@@ -107,6 +107,7 @@ pub(crate) async fn manifest_here() -> Option<crate::labs::Lab> {
             tools,
             documents,
             hosted: None,
+            platform: None,
         }),
         Err(why) => {
             eprintln!("openagents-web: cad lab: not answering at {lab}: {why}");
@@ -146,6 +147,7 @@ pub(crate) async fn manifest_for(
         tools: tools?,
         documents,
         hosted: Some(scope),
+        platform: None,
     })
 }
 

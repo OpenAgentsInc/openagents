@@ -156,13 +156,25 @@ impl SavedCapture {
         self.download.as_ref()
     }
 }
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// A saved Lab card and the account-bound document used to read its media.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SavedLabCard {
+    pub card: lab_kit::Card,
+    document: crate::labs::DocumentRef,
+}
+impl SavedLabCard {
+    pub fn document_ref(&self) -> &crate::labs::DocumentRef {
+        &self.document
+    }
+}
+#[derive(Clone, Debug, PartialEq)]
 pub struct SavedMessage {
     pub id: String,
     pub role: MessageRole,
     pub text: String,
     pub files: Vec<SavedFile>,
     pub tool: Option<ToolDetail>,
+    pub cards: Vec<SavedLabCard>,
     /// Additive content, including future generated-file/artifact objects. It is never fetched automatically.
     pub extra: BTreeMap<String, Value>,
 }
@@ -285,8 +297,38 @@ struct WireMessage {
     files: Vec<WireFile>,
     #[serde(default)]
     tool: Option<ToolDetail>,
+    #[serde(default)]
+    cards: Vec<WireLabCard>,
     #[serde(flatten)]
     extra: BTreeMap<String, Value>,
+}
+#[derive(Deserialize)]
+struct WireLabCard {
+    #[serde(flatten)]
+    card: lab_kit::Card,
+    #[serde(default = "personal_space")]
+    space: String,
+}
+fn personal_space() -> String {
+    "me".into()
+}
+impl WireLabCard {
+    fn convert(mut self, client: &crate::labs::Client) -> Result<SavedLabCard, Error> {
+        if self.card.schema != lab_kit::card::SCHEMA
+            || self.card.version == 0
+            || self.card.kind.is_empty()
+        {
+            return Err(Error::InvalidResponse);
+        }
+        self.card.view = self.card.view.drawn();
+        let document = client
+            .document_ref(&self.space, &self.card.document)
+            .map_err(|_| Error::InvalidResponse)?;
+        Ok(SavedLabCard {
+            card: self.card,
+            document,
+        })
+    }
 }
 #[derive(Deserialize)]
 struct WireTranscript {
@@ -583,6 +625,15 @@ impl TranscriptReader {
             if m.id != format!("msg_{}", self.at + n) {
                 return Err(Error::InvalidCursor);
             }
+            if m.cards.len() > 16 {
+                return Err(Error::InvalidResponse);
+            }
+            let labs = client.labs(session).map_err(|_| Error::InvalidResponse)?;
+            let cards = m
+                .cards
+                .into_iter()
+                .map(|card| card.convert(&labs))
+                .collect::<Result<Vec<_>, _>>()?;
             let files = m
                 .files
                 .into_iter()
@@ -609,6 +660,7 @@ impl TranscriptReader {
                 text: m.text,
                 files,
                 tool: m.tool,
+                cards,
                 extra: m.extra,
             });
         }

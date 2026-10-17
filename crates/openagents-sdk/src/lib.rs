@@ -22,7 +22,7 @@ pub use auth::{
 pub use history::{
     AttachmentRef, CaptureState, ChatReader, ChatRef, ChatSource, ChatSummary, FileKind,
     HistoryIndex, HistoryPage, HistoryProject, MessageRole, ProjectReader, SavedCapture, SavedFile,
-    SavedMessage, ToolDetail, ToolStatus, TranscriptPage, TranscriptReader,
+    SavedLabCard, SavedMessage, ToolDetail, ToolStatus, TranscriptPage, TranscriptReader,
 };
 pub use payment::{MAX_PAYMENT_REQUIRED_HEADER_BYTES, PaymentRequired, PaymentRequiredHeaderError};
 pub use tokio_util::sync::CancellationToken;

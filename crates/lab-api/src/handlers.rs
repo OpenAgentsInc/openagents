@@ -202,7 +202,7 @@ async fn version(
     api.references(&headers, k.as_ref(), &v.content).await?;
     Ok(answer(StatusCode::OK, v))
 }
-async fn card_value(
+pub(crate) async fn card_value(
     api: &Api,
     headers: &HeaderMap,
     space: &str,
@@ -423,7 +423,7 @@ async fn upload(
         .await?;
     Ok(answer(StatusCode::CREATED, a))
 }
-async fn allowed_artifact(
+pub(crate) async fn allowed_artifact(
     api: &Api,
     headers: &HeaderMap,
     space: &str,

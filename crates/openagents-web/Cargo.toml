@@ -13,6 +13,7 @@ async-trait = "0.1"
 lab-api = { path = "../lab-api" }
 lab-jobs = { path = "../lab-jobs", default-features = false }
 lab-kit = { path = "../lab-kit" }
+lab-ui = { path = "../lab-ui" }
 lab-store = { path = "../lab-store" }
 sqlx-postgres = { version = "0.8.6", default-features = false, features = ["json"] }
 agent-contract = { path = "../agent-contract" }

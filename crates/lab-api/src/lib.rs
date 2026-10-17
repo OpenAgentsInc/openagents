@@ -235,8 +235,55 @@ pub struct Api {
     pub registry: Registry,
 }
 impl Api {
+    /// Read a document's latest card under the caller's current authority.
+    pub async fn latest_card(
+        &self,
+        headers: &HeaderMap,
+        space: &str,
+        document: &str,
+    ) -> Result<Card, ApiError> {
+        let (_, store, kind) = self
+            .document(headers, space, Action::Read, document)
+            .await?;
+        let latest = store.document(document).await?.latest;
+        let version = store.version(document, latest).await?;
+        handlers::card_value(self, headers, space, &store, kind.as_ref(), &version).await
+    }
+    /// Read bounded artifact bytes after rechecking its document and references.
+    pub async fn read_artifact(
+        &self,
+        headers: &HeaderMap,
+        space: &str,
+        id: &str,
+        max_bytes: u64,
+    ) -> Result<(Artifact, Vec<u8>), ApiError> {
+        let (store, artifact) = handlers::allowed_artifact(self, headers, space, id).await?;
+        if artifact.size > max_bytes {
+            return Err(ApiError::new(
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "file_limit",
+                "This file is too large to display.",
+            ));
+        }
+        let bytes = store.artifact_bytes(id, None).await?;
+        Ok((artifact, bytes))
+    }
     pub fn router(self: Arc<Self>) -> Router {
         handlers::routes().merge(workers::routes()).with_state(self)
+    }
+    /// Read a saved card with the same access checks as its HTTP route.
+    pub async fn read_card(
+        &self,
+        headers: &HeaderMap,
+        space: &str,
+        document: &str,
+        version: u64,
+    ) -> Result<Card, ApiError> {
+        let (_, store, kind) = self
+            .document(headers, space, Action::Read, document)
+            .await?;
+        let version = store.version(document, version).await?;
+        handlers::card_value(self, headers, space, &store, kind.as_ref(), &version).await
     }
     async fn scoped(
         &self,

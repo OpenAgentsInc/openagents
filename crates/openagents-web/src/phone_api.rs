@@ -466,6 +466,7 @@ async fn reply(
                     text,
                     Vec::new(),
                     cad_plan,
+                    &headers,
                 )
                 .await,
             );
@@ -537,6 +538,7 @@ async fn reply(
             text,
             files,
             cad_plan,
+            &headers,
         )
         .await,
     )
@@ -616,7 +618,18 @@ async fn start(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
         Err(message) => return refused(StatusCode::BAD_REQUEST, "files", message),
     };
     let cad_plan = crate::cad_gate::plan(&app, &headers).await;
-    match start_from_app(&app, &owner, &id, text.to_owned(), files, project, cad_plan).await {
+    match start_from_app(
+        &app,
+        &owner,
+        &id,
+        text.to_owned(),
+        files,
+        project,
+        cad_plan,
+        &headers,
+    )
+    .await
+    {
         AppSent::Answering => answer(
             if existed {
                 StatusCode::OK

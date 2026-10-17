@@ -22,7 +22,7 @@ CAD source checks already passed: CAD57/1ignored plus focused final Lab tests3; 
 
 ## #11877 unfinished work
 
-All current source is committed locally as `115414d5af` on `codex/labs-sequential-11873`. The complete source patch is retained in [2026-10-16-labs-11877-wip.patch](2026-10-16-labs-11877-wip.patch). It is based on SDK source `1b55b50ae17dcd47315f803a8238ab7c3c3afe82`. **The patch is intentionally unapplied on main: its final combined source has not compiled or passed acceptance.** Apply or cherry-pick it in an isolated worktree and finish it before integration.
+The L6 checkpoint `115414d5af` from `codex/labs-sequential-11873` is applied during the big-bang push. The [original patch](https://github.com/OpenAgentsInc/openagents/blob/5b0a95421d/docs/audits/2026-10-16-labs-11877-wip.patch) remains available in Git history; its working copy is removed after integration. Source checks and the remaining live history-card check are recorded in the master delegation.
 
 Implemented in the patch:
 

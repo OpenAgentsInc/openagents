@@ -16,6 +16,9 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+#[path = "history_lab_cards.rs"]
+mod lab_cards;
+
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/v1/history", get(list))
@@ -171,6 +174,33 @@ async fn load(app: &App, headers: &HeaderMap, id: &str) -> Result<Conversation, 
         .ok_or_else(missing)
 }
 
+/// The browser reads the same checked cards as the public history API.
+pub(crate) async fn cards_for_message(
+    app: &App,
+    headers: &HeaderMap,
+    id: &str,
+    at: usize,
+) -> Result<Vec<Value>, Response> {
+    let headers = crate::labs_api::caller_headers(app, headers);
+    let chat = load(app, &headers, id).await?;
+    let message = chat.messages.get(at).ok_or_else(missing)?;
+    let meta = (message.role == crate::chat_store::Role::Assistant)
+        .then(|| {
+            message
+                .request_id
+                .as_ref()
+                .and_then(|id| chat.requests.iter().find(|r| &r.id == id))
+                .and_then(|r| r.reply.as_ref())
+        })
+        .flatten();
+    let owner = crate::coder_sync::owner(app, &headers).await?;
+    let (_, cards) = lab_cards::Reader::new(crate::labs_api::runtime(app), &headers, &owner)
+        .read(meta)
+        .await
+        .map_err(|e| refused(e.status, &e.code, &e.message))?;
+    Ok(cards)
+}
+
 async fn messages(
     State(app): State<App>,
     headers: HeaderMap,
@@ -210,29 +240,38 @@ async fn messages(
             at + 1
         }
     };
-    let data: Vec<_> = chat
-        .messages
-        .iter()
-        .enumerate()
-        .skip(start)
-        .take(limit)
-        .map(|(at, m)| {
-            let files: Vec<_> = crate::chat_files::of_message(&chat, m)
-                .iter()
-                .map(|f| {
-                    json!({
-                        "id": f.id, "name": f.name, "kind": f.kind, "size": f.size,
-                    })
+    let owner = match crate::coder_sync::owner(&app, &headers).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    let mut cards = lab_cards::Reader::new(crate::labs_api::runtime(&app), &headers, &owner);
+    let mut data = Vec::new();
+    for (at, m) in chat.messages.iter().enumerate().skip(start).take(limit) {
+        let files: Vec<_> = crate::chat_files::of_message(&chat, m)
+            .iter()
+            .map(|f| {
+                json!({
+                    "id": f.id, "name": f.name, "kind": f.kind, "size": f.size,
                 })
-                .collect();
-            let tool = chat.terminal.as_ref().and_then(|t| t.steps.get(&at));
-            let reply = (m.role == crate::chat_store::Role::Assistant).then(|| {
-                m.request_id.as_ref().and_then(|id|chat.requests.iter().find(|r|&r.id==id)).and_then(|r|r.reply.as_ref())
-            }).flatten().filter(|m|!m.cards.is_empty()).map(crate::chat_api::display_cards);
-            json!({"id":format!("msg_{at}"),"role":m.role,"text":m.text,"files":files,"tool":tool,"reply":reply,
-            "generated_files":[], "artifacts":[]})
-        })
-        .collect();
+            })
+            .collect();
+        let tool = chat.terminal.as_ref().and_then(|t| t.steps.get(&at));
+        let meta = (m.role == crate::chat_store::Role::Assistant)
+            .then(|| {
+                m.request_id
+                    .as_ref()
+                    .and_then(|id| chat.requests.iter().find(|r| &r.id == id))
+                    .and_then(|r| r.reply.as_ref())
+            })
+            .flatten()
+            .filter(|m| !m.cards.is_empty());
+        let (reply, labs) = match cards.read(meta).await {
+            Ok(cards) => cards,
+            Err(error) => return refused(error.status, &error.code, &error.message),
+        };
+        data.push(json!({"id":format!("msg_{at}"),"role":m.role,"text":m.text,"files":files,"tool":tool,"reply":reply,
+            "generated_files":[], "artifacts":[], "cards": labs}));
+    }
     let next = (start + data.len() < chat.messages.len())
         .then(|| format!("msg_{}", start + data.len() - 1));
     answer(

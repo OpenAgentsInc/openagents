@@ -38,8 +38,6 @@ pub mod attribution;
 mod auth;
 pub mod backend;
 mod chat_api;
-mod continuations;
-mod continuations_openapi;
 mod chat_api_openapi;
 mod chat_export;
 mod chat_files;
@@ -57,6 +55,8 @@ mod computer_runs;
 pub mod computers;
 mod computers_api;
 pub mod connections;
+mod continuations;
+mod continuations_openapi;
 mod custom_agents;
 mod custom_agents_openapi;
 mod dashboard;
@@ -80,6 +80,7 @@ mod history_api;
 mod history_openapi;
 mod key_openapi;
 mod lab;
+mod lab_card_view;
 mod labs;
 pub mod labs_api;
 mod layout;
@@ -617,6 +618,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(phone_api::routes())
         .merge(history_api::routes())
         .merge(labs_api::routes(&app))
+        .merge(lab_card_view::routes())
         .merge(custom_agents::routes())
         .merge(agent_assignments::routes())
         .merge(agent_lab::routes())

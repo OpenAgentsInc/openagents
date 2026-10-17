@@ -469,7 +469,15 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
                 picked.project.as_ref(),
             ),
         );
-        spawn_answer(app.clone(), loaded, admitted_at, repo, instructions, cad);
+        spawn_answer(
+            app.clone(),
+            loaded,
+            admitted_at,
+            repo,
+            instructions,
+            cad,
+            &headers,
+        );
     }
     crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
 }
@@ -491,6 +499,7 @@ pub(crate) async fn start_from_app(
     files: Vec<crate::chat_files::FileRef>,
     project: Option<(oa_auth::repos::Project, Option<String>)>,
     cad_plan: crate::cad_gate::Plan,
+    headers: &HeaderMap,
 ) -> AppSent {
     if text.trim().is_empty() || text.chars().count() > 4_000 || !valid_id(id) {
         return AppSent::Invalid;
@@ -548,7 +557,15 @@ pub(crate) async fn start_from_app(
                     shared.as_ref(),
                 ),
             );
-            spawn_answer(app.clone(), loaded, admitted_at, repo, instructions, cad);
+            spawn_answer(
+                app.clone(),
+                loaded,
+                admitted_at,
+                repo,
+                instructions,
+                cad,
+                headers,
+            );
             AppSent::Answering
         }
         Err(Error::Conflict) => AppSent::Answering,
@@ -1929,6 +1946,7 @@ async fn follow(
             repo,
             instructions,
             cad,
+            &headers,
         );
     }
     accepted(&app, &headers, &loaded.conversation).await
@@ -1962,6 +1980,7 @@ pub(crate) async fn follow_from_app(
     text: &str,
     files: Vec<crate::chat_files::FileRef>,
     cad_plan: crate::cad_gate::Plan,
+    headers: &HeaderMap,
 ) -> AppSent {
     let Some(text) = normalize(text) else {
         return AppSent::Invalid;
@@ -2071,7 +2090,7 @@ pub(crate) async fn follow_from_app(
                     None,
                 ),
             );
-            spawn_answer(app.clone(), saved, admitted_at, None, None, cad);
+            spawn_answer(app.clone(), saved, admitted_at, None, None, cad, headers);
             AppSent::Answering
         }
         Err(e) => {
@@ -2294,9 +2313,11 @@ fn spawn_answer(
     repo: Option<crate::repo_snapshot::RepoRead>,
     instructions: Option<String>,
     cad: crate::cad_gate::TurnCad,
+    headers: &HeaderMap,
 ) {
+    let headers = headers.clone();
     tokio::spawn(async move {
-        answer(app, loaded, admitted_at, repo, instructions, cad).await;
+        answer(app, loaded, admitted_at, repo, instructions, cad, headers).await;
     });
 }
 
@@ -2431,6 +2452,7 @@ async fn answer(
     repo: Option<crate::repo_snapshot::RepoRead>,
     instructions: Option<String>,
     cad: crate::cad_gate::TurnCad,
+    headers: HeaderMap,
 ) {
     let chat = &loaded.conversation;
     let owner = chat.owner.clone();
@@ -2612,6 +2634,7 @@ async fn answer(
                 chat.project.as_deref(),
                 cad,
                 cad_allowed,
+                &headers,
             )
             .await
         }
@@ -3264,6 +3287,7 @@ fn messages_from(
             (crate::cad_lab::thread_entry(&chat.id, crate::suggestions::message_reply(chat, message)))
             // A Ship Lab answer: the Lagrange 2 ship's numbers (#11651).
             (crate::ship_lab::thread_entry(crate::suggestions::message_reply(chat, message)))
+            (crate::lab_card_view::thread_entry(&chat.id, index + start, crate::suggestions::message_reply(chat, message)))
             // A reply the router read as work on code, about an issue: "Work on this issue" (#11258).
             (crate::work_runs::thread_entry(&chat.id, index + start, crate::suggestions::message_reply(chat, message)))
             (work::rows(chat, index + start + 1, links))

@@ -1,0 +1,16 @@
+[package]
+name = "lab-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Shared Rust Native Lab cards and typed navigation"
+
+[dependencies]
+lab-kit = { path = "../lab-kit" }
+rust-native = { path = "../rust-native" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true

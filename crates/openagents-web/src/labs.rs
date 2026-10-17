@@ -35,35 +35,31 @@ const MAX_STEPS: usize = 12;
 pub(crate) const DEADLINE: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// Which Lab a tool, a document or a card belongs to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Kind {
     Video,
     Game,
     Robot,
     Cad,
     Ship,
+    Registered(String),
 }
 
 impl Kind {
     /// The Lab a tool name belongs to, by its typed prefix.
-    fn of_tool(name: &str) -> Option<Kind> {
-        if name.starts_with("lab_") {
-            Some(Kind::Video)
-        } else if name.starts_with("game_") {
-            Some(Kind::Game)
-        } else if name.starts_with("robot_") {
-            Some(Kind::Robot)
-        } else if name.starts_with("cad_") {
-            Some(Kind::Cad)
-        } else if name.starts_with("ship_") {
-            Some(Kind::Ship)
-        } else {
-            None
-        }
+    fn of_tool(labs: &[Lab], name: &str) -> Option<Kind> {
+        labs.iter()
+            .find(|lab| lab.tools.iter().any(|tool| tool["name"] == name))
+            .map(|lab| lab.kind.clone())
     }
 
     /// The Lab a card belongs to, by its card kind.
     fn of_card(card: &Value) -> Option<Kind> {
+        if card["schema"] == lab_kit::card::SCHEMA {
+            return card["kind"]
+                .as_str()
+                .map(|kind| Kind::Registered(kind.into()));
+        }
         match card["card"].as_str()? {
             crate::lab::CARD => Some(Kind::Video),
             crate::game_lab::CARD => Some(Kind::Game),
@@ -74,36 +70,65 @@ impl Kind {
         }
     }
 
-    fn card(self) -> &'static str {
+    fn card(&self) -> &'static str {
         match self {
             Kind::Video => crate::lab::CARD,
             Kind::Game => crate::game_lab::CARD,
             Kind::Robot => crate::robot_lab::CARD,
             Kind::Cad => crate::cad_lab::CARD,
             Kind::Ship => crate::ship_lab::CARD,
+            Kind::Registered(_) => lab_kit::card::SCHEMA,
         }
     }
 
     /// The argument a tool of this Lab names its document by.
-    fn doc_arg(self) -> &'static str {
+    fn doc_arg(&self) -> &'static str {
         match self {
             Kind::Video => "document",
             Kind::Game => "game",
             Kind::Robot => "document",
             Kind::Cad => "doc",
             Kind::Ship => "doc",
+            Kind::Registered(_) => "document",
         }
     }
 
-    fn name(self) -> &'static str {
+    fn name(&self) -> &str {
         match self {
             Kind::Video => "Video Lab",
             Kind::Game => "Game Lab",
             Kind::Robot => "Robot Lab",
             Kind::Cad => "CAD Lab",
             Kind::Ship => "Ship Lab",
+            Kind::Registered(kind) => kind,
         }
     }
+    fn id(&self) -> &str {
+        match self {
+            Self::Video => "video",
+            Self::Game => "game",
+            Self::Robot => "robot",
+            Self::Cad => "cad",
+            Self::Ship => "ship",
+            Self::Registered(kind) => kind,
+        }
+    }
+    fn accepts(&self, card: &Value) -> bool {
+        match self {
+            Self::Registered(kind) => {
+                card["schema"] == lab_kit::card::SCHEMA && card["kind"] == *kind
+            }
+            _ => card["card"] == self.card(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct Platform {
+    manifest: lab_kit::KindManifest,
+    client: openagents_sdk::labs::Client,
+    space: String,
+    owner: String,
 }
 
 /// One Lab this server talks to: where it runs, its tools, its documents.
@@ -116,11 +141,22 @@ pub(crate) struct Lab {
     /// CAD Lab on this site (#11653): the models a turn works on, in place
     /// of a Lab on a Mac.
     pub hosted: Option<crate::cad_web::Scope>,
+    pub platform: Option<Platform>,
 }
 
 impl Lab {
     fn has(&self, id: &str) -> bool {
         self.documents.iter().any(|doc| doc["id"] == id)
+    }
+    fn doc_arg(&self) -> &str {
+        self.platform
+            .as_ref()
+            .map_or_else(|| self.kind.doc_arg(), |p| p.manifest.doc_arg.as_str())
+    }
+    fn name(&self) -> &str {
+        self.platform
+            .as_ref()
+            .map_or_else(|| self.kind.name(), |p| p.manifest.name.as_str())
     }
 }
 
@@ -139,7 +175,10 @@ pub(crate) fn current<'a>(replies: impl DoubleEndedIterator<Item = &'a Meta>) ->
     replies.rev().find_map(|meta| {
         meta.cards.iter().rev().find_map(|card| {
             let kind = Kind::of_card(card)?;
-            let doc = card["doc"].as_str().filter(|d| !d.is_empty())?;
+            let doc = card["document"]
+                .as_str()
+                .or_else(|| card["doc"].as_str())
+                .filter(|d| !d.is_empty())?;
             Some(Current {
                 kind,
                 doc: doc.to_owned(),
@@ -161,6 +200,149 @@ pub(crate) struct LabsDoor {
     pub fallback: Option<Box<dyn Door>>,
 }
 
+async fn platform_labs(
+    app: &App,
+    headers: &axum::http::HeaderMap,
+    project: Option<&str>,
+) -> Result<Vec<Lab>, String> {
+    if app.config.lab_backend.is_none() {
+        return Ok(vec![]);
+    }
+    let cloud = app.config.cloud.as_deref().ok_or("Sign in to use Labs.")?;
+    let headers = crate::labs_api::caller_headers(app, headers);
+    let credential = headers
+        .get("Authorization")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .ok_or("Sign in to use Labs.")?;
+    let deployment =
+        openagents_sdk::Deployment::new(&format!("{}/v1", cloud.origin()), cloud.origin())
+            .map_err(|_| "Labs aren't available right now.")?;
+    let transport =
+        openagents_sdk::Client::with_timeout(deployment, std::time::Duration::from_secs(120))
+            .map_err(|_| "Labs aren't available right now.")?;
+    let session = transport
+        .authenticate(credential)
+        .await
+        .map_err(|_| "Sign in to use Labs.")?;
+    let owner = crate::chat_store::account_owner(&session.account().id);
+    let client = transport
+        .labs(&session)
+        .map_err(|_| "Labs aren't available right now.")?;
+    let space = project.map_or_else(|| "me".into(), |project| format!("project:{project}"));
+    let cancel = openagents_sdk::CancellationToken::new();
+    let manifests = client
+        .kinds(&space, &cancel)
+        .await
+        .map_err(|_| "Labs aren't available right now.")?;
+    let mut labs = vec![];
+    for manifest in manifests.into_iter().take(32) {
+        let page = openagents_sdk::labs::PageOptions {
+            kind: Some(manifest.kind.clone()),
+            limit: 100,
+            ..Default::default()
+        };
+        let documents = client
+            .documents(&space, &page, &cancel)
+            .await
+            .map_err(|_| "We couldn't load your Lab documents.")?;
+        let tools = manifest
+            .tools
+            .iter()
+            .map(serde_json::to_value)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| "We couldn't load the Lab tools.")?;
+        labs.push(Lab {
+            kind: Kind::Registered(manifest.kind.clone()), url: String::new(), tools,
+            documents: documents.data.into_iter().map(|doc| json!({"id":doc.id,"title":doc.title,"kind":doc.schema,"versions":doc.latest})).collect(),
+            hosted: None,
+            platform: Some(Platform { manifest, client: client.clone(), space: space.clone(), owner: owner.clone() }),
+        });
+    }
+    Ok(labs)
+}
+
+impl Platform {
+    async fn invoke(&self, name: &str, arguments: &Value) -> Result<Value, String> {
+        let document = arguments[&self.manifest.doc_arg]
+            .as_str()
+            .filter(|id| !id.is_empty())
+            .ok_or("Choose a document.")?;
+        let reference = self
+            .client
+            .document_ref(&self.space, document)
+            .map_err(|_| "Choose a valid document name.")?;
+        let cancel = openagents_sdk::CancellationToken::new();
+        let base = match self.client.document(&reference, &cancel).await {
+            Ok(meta) if meta.kind == self.manifest.kind => Some(meta.latest),
+            Ok(_) => return Err("Choose a document from this Lab.".into()),
+            Err(error)
+                if error.status() == Some(404)
+                    || matches!(
+                        error,
+                        openagents_sdk::labs::Error::Session(openagents_sdk::Error::NotFound)
+                    ) =>
+            {
+                None
+            }
+            Err(error) => return Err(error.to_string()),
+        };
+        let request = self
+            .client
+            .bind(openagents_sdk::labs::ToolCall {
+                space: self.space.clone(),
+                chat: None,
+                base: arguments["base"].as_u64().or(base),
+                arguments: arguments.clone(),
+            })
+            .map_err(|error| error.to_string())?;
+        let mut result = self
+            .client
+            .invoke(&self.manifest.kind, name, &request, &cancel)
+            .await
+            .map_err(|error| {
+                error
+                    .refusal()
+                    .map_or_else(|| error.to_string(), |refusal| refusal.message.clone())
+            })?
+            .result;
+        if let Some(card) = result.get_mut("card") {
+            if card["schema"] != lab_kit::card::SCHEMA
+                || card["kind"] != self.manifest.kind
+                || card["document"] != document
+            {
+                return Err("This Lab returned a different document. Try again.".into());
+            }
+            card["space"] = json!(self.space);
+            card["_lab"] = json!({"space":self.space,"owner":self.owner});
+        }
+        Ok(result)
+    }
+}
+
+fn registered_guidance(lab: &Lab) -> String {
+    let Some(platform) = &lab.platform else {
+        return String::new();
+    };
+    let manifest = &platform.manifest;
+    let mut out = format!(
+        "\n{}: kind {}, formats {:?}. Its document argument is {}. Use only its listed typed tools. Documents:\n{}\n",
+        manifest.name,
+        manifest.kind,
+        manifest.schemas,
+        manifest.doc_arg,
+        serde_json::to_string(&lab.documents).unwrap_or_default()
+    );
+    if manifest.kind == "cad" {
+        let mut example =
+            cad::doc::new_part("plate", "Mounting plate", cad::doc::DEFAULT_MATERIAL, None);
+        example["features"] =
+            json!([{"id":"body","op":"solid.box","params":{"length":40,"width":40,"height":3}}]);
+        out.push_str(&format!("Use cad_from_json for a new design. Start from this part format and change its id/title/features to suit the request: {}. cad_drag_face takes a picked part, face name, and delta_mm. A tool result alone establishes that a change succeeded.\n", example));
+    }
+    out
+}
+
 /// The Labs door, when at least one Lab is configured and answering and
 /// this server has Gemini. Robot Lab also checks its configured owner and
 /// project before exposing private robot files and tools.
@@ -169,21 +351,35 @@ pub(crate) async fn door(
     current: Option<Current>,
     owner: &str,
     project: Option<&str>,
-    cad: Option<crate::cad_web::Scope>,
+    _cad: Option<crate::cad_web::Scope>,
     cad_allowed: bool,
+    headers: &axum::http::HeaderMap,
 ) -> Option<LabsDoor> {
     let store = &app.config.chat_store;
-    let (video, game, robot, cad, ship) = tokio::join!(
+    let (video, game, robot, cad, ship, platform) = tokio::join!(
         crate::lab::manifest_here(),
         crate::game_lab::manifest_here(),
         crate::robot_lab::manifest_here(owner, project),
-        crate::cad_lab::manifest_for(store, cad, cad_allowed),
-        crate::ship_lab::manifest_here()
+        async {
+            if cad_allowed {
+                crate::cad_lab::manifest_here().await
+            } else {
+                None
+            }
+        },
+        crate::ship_lab::manifest_here(),
+        platform_labs(app, headers, project)
     );
-    let labs: Vec<Lab> = [video, game, robot, cad, ship]
+    let mut labs: Vec<Lab> = [video, game, robot, cad, ship]
         .into_iter()
         .flatten()
         .collect();
+    match platform {
+        Ok(platform) => {
+            labs = with_platform(labs, platform);
+        }
+        Err(_) => eprintln!("openagents-web: Labs registry is unavailable"),
+    }
     if labs.is_empty() {
         return None;
     }
@@ -191,7 +387,7 @@ pub(crate) async fn door(
     // image path keeps its own model.
     let gemini = Gemini::from_env_for(vertex::ARGON)?;
     // A current document only counts while its Lab answers.
-    let current = current.filter(|c| labs.iter().any(|lab| lab.kind == c.kind));
+    let current = current.filter(|c| labs.iter().any(|lab| lab.kind.id() == c.kind.id()));
     Some(LabsDoor {
         gemini,
         labs,
@@ -199,6 +395,16 @@ pub(crate) async fn door(
         current,
         fallback: None,
     })
+}
+
+fn with_platform(mut local: Vec<Lab>, platform: Vec<Lab>) -> Vec<Lab> {
+    local.retain(|lab| {
+        !platform
+            .iter()
+            .any(|hosted| hosted.kind.id() == lab.kind.id())
+    });
+    local.extend(platform);
+    local
 }
 
 /// What the model is told: each Lab's guidance, the route, the rule that
@@ -212,14 +418,11 @@ fn guidance(labs: &[Lab], current: Option<&Current>) -> String {
             Kind::Robot => crate::robot_lab::guidance(&lab.documents),
             Kind::Cad => crate::cad_lab::guidance(&lab.documents, lab.hosted.is_some()),
             Kind::Ship => crate::ship_lab::guidance(&lab.documents),
+            Kind::Registered(_) => registered_guidance(lab),
         });
     }
     out.push_str(
-        "\nFilms, cuts, shots, scenes and videos are Video Lab documents (lab_* tools); games are Game Lab documents \
-(game_* tools); robot scenes and attempts are Robot Lab documents (robot_* tools); parts, assemblies and CAD models are CAD Lab documents (cad_* tools); the Lagrange 2 spacecraft (the tug) is a Ship Lab document (ship_* tools). Never use one Lab's tools on another Lab's document. When the message is about none of these Labs, call \
-general_chat.\nSay only what the tool results in this turn say: every version, time, number and measurement you \
-mention comes from a tool result. When a tool refuses (a document or version that doesn't exist, an edit it won't \
-make), say so plainly in a sentence and don't guess an answer.\n",
+        "\nNever use one Lab's tools on another Lab's document. Choose only a tool listed for that Lab. When the message is outside the available Labs, call general_chat.\nSay only what the tool results in this turn say: every version, time, number and measurement comes from a tool result. When a tool refuses, explain why in plain words and don't invent a result.\n",
     );
     match current {
         Some(c) => out.push_str(&format!(
@@ -242,7 +445,7 @@ fn declarations(labs: &[Lab]) -> Vec<Value> {
     let mut out: Vec<Value> = labs
         .iter()
         .flat_map(|lab| lab.tools.iter())
-        .filter(|tool| tool["name"].as_str().and_then(Kind::of_tool).is_some())
+        .filter(|tool| tool["name"].as_str().is_some_and(|name| !name.is_empty()))
         .map(|tool| {
             json!({
                 "type": "function",
@@ -285,27 +488,20 @@ fn request(instructions: &str, turns: &[Turn], labs: &[Lab]) -> Value {
 /// Why a tool call can't go to its Lab: no such Lab here, or its document
 /// is the other Lab's. `None` when it may go.
 fn misrouted(labs: &[Lab], name: &str, arguments: &Value) -> Option<String> {
-    let Some(kind) = Kind::of_tool(name) else {
-        return Some(format!("{name} isn't a Lab tool."));
+    let Some(lab) = labs
+        .iter()
+        .find(|lab| lab.tools.iter().any(|tool| tool["name"] == name))
+    else {
+        return Some(format!("The tool {name} isn't running here."));
     };
-    if !labs.iter().any(|lab| lab.kind == kind) {
-        return Some(format!("{} isn't running on this Mac.", kind.name()));
-    }
-    let named = arguments[kind.doc_arg()].as_str()?.trim();
-    let other = labs.iter().find(|lab| lab.kind != kind && lab.has(named))?;
-    let own = labs.iter().any(|lab| lab.kind == kind && lab.has(named));
-    (!own).then(|| {
+    let named = arguments[lab.doc_arg()].as_str()?.trim();
+    let other = labs
+        .iter()
+        .find(|other| other.kind.id() != lab.kind.id() && other.has(named))?;
+    (!lab.has(named)).then(|| {
         format!(
-            "{named} is a {} document, not a {} one; nothing was done. Use its own Lab's tools ({}*).",
-            other.kind.name(),
-            kind.name(),
-            match other.kind {
-                Kind::Video => "lab_",
-                Kind::Game => "game_",
-                Kind::Robot => "robot_",
-                Kind::Cad => "cad_",
-                Kind::Ship => "ship_",
-            }
+            "{named} is a {} document; use that Lab's tools.",
+            other.name()
         )
     })
 }
@@ -321,9 +517,13 @@ async fn run_tool(
     }
     let lab = labs
         .iter()
-        .find(|lab| Some(lab.kind) == Kind::of_tool(name))
+        .find(|lab| lab.tools.iter().any(|tool| tool["name"] == name))
         .ok_or("no Lab")?;
+    if let Some(platform) = &lab.platform {
+        return platform.invoke(name, arguments).await;
+    }
     match lab.kind {
+        Kind::Registered(_) => Err("This Lab is unavailable. Try again later.".into()),
         Kind::Video => crate::lab::run_tool(&lab.url, name, arguments).await,
         Kind::Game => crate::game_lab::run_tool(&lab.url, name, arguments).await,
         Kind::Robot => crate::robot_lab::run_tool(&lab.url, name, arguments).await,
@@ -405,11 +605,11 @@ async fn converse(
             };
             let response = match run_tool(store, labs, &name, &arguments).await {
                 Ok(mut result) => {
-                    let kind = Kind::of_tool(&name);
-                    route = kind.or(route);
+                    let kind = Kind::of_tool(labs, &name);
+                    route = kind.clone().or(route);
                     if let Some(found) = result
                         .get("card")
-                        .filter(|c| kind.is_some_and(|k| c["card"] == k.card()))
+                        .filter(|c| kind.as_ref().is_some_and(|k| k.accepts(c)))
                     {
                         card = Some(found.clone());
                     }
@@ -515,6 +715,7 @@ mod tests {
                     json!({"id": "episode-290", "title": "Episode 290", "kind": "cut.v1", "versions": 15}),
                 ],
                 hosted: None,
+                platform: None,
             },
             Lab {
                 kind: Kind::Game,
@@ -524,6 +725,7 @@ mod tests {
                     json!({"id": "the-ice-cream-man", "title": "The Ice Cream Man", "kind": "game.v1", "versions": 3}),
                 ],
                 hosted: None,
+                platform: None,
             },
             Lab {
                 kind: Kind::Robot,
@@ -533,8 +735,110 @@ mod tests {
                     json!({"id":"robot-table","title":"SO-101 table","kind":"robot-scene.v1","versions":2}),
                 ],
                 hosted: None,
+                platform: None,
             },
         ]
+    }
+
+    #[test]
+    fn a_registered_kind_replaces_its_loopback_adapter() {
+        let mut hosted = labs().remove(0);
+        hosted.kind = Kind::Registered("video".into());
+        hosted.url.clear();
+        let combined = with_platform(labs(), vec![hosted]);
+        assert_eq!(combined.len(), 3);
+        let video = combined
+            .iter()
+            .find(|lab| lab.kind.id() == "video")
+            .unwrap();
+        assert!(matches!(video.kind, Kind::Registered(_)));
+        assert!(video.url.is_empty());
+        assert!(combined.iter().any(|lab| lab.kind == Kind::Game));
+    }
+
+    #[tokio::test]
+    async fn a_registered_film_followup_cannot_run_a_game_tool() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        let router = axum::Router::new().route(
+            "/v1/account",
+            axum::routing::get(move || {
+                let seen = seen.clone();
+                async move {
+                    seen.fetch_add(1, Ordering::SeqCst);
+                    axum::Json(
+                        json!({"account":{"id":"fixture-alice","label":"Alice"},"workspaces":[]}),
+                    )
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let client = openagents_sdk::Client::new(
+            openagents_sdk::Deployment::new(&format!("{origin}/v1"), &origin).unwrap(),
+        )
+        .unwrap();
+        let session = client
+            .authenticate(&format!("sess_{}", "a".repeat(64)))
+            .await
+            .unwrap();
+        let client = client.labs(&session).unwrap();
+        let mut registered = labs();
+        for lab in &mut registered {
+            use lab_kit::LabKind;
+            let mut manifest = lab_kit::echo::Echo::manifest();
+            manifest.kind = lab.kind.id().into();
+            manifest.name = lab.kind.name().into();
+            manifest.doc_arg = lab.kind.doc_arg().into();
+            lab.kind = Kind::Registered(manifest.kind.clone());
+            lab.platform = Some(Platform {
+                manifest,
+                client: client.clone(),
+                space: "me".into(),
+                owner: crate::chat_store::account_owner("fixture-alice"),
+            });
+            lab.url.clear();
+        }
+        let replies = [
+            meta(vec![
+                json!({"schema":lab_kit::card::SCHEMA,"kind":"video","document":"episode-290","title":"Episode 290","version":15}),
+            ]),
+            meta(vec![]),
+        ];
+        let current = current(replies.iter()).unwrap();
+        assert_eq!(current.kind, Kind::Registered("video".into()));
+        assert_eq!(current.doc, "episode-290");
+        assert_eq!(
+            Kind::of_tool(&registered, "lab_compare"),
+            Some(current.kind.clone())
+        );
+        assert!(
+            misrouted(
+                &registered,
+                "lab_compare",
+                &json!({"document":"episode-290"})
+            )
+            .is_none()
+        );
+        let root = tempfile::tempdir().unwrap();
+        let store = crate::chat_store::Store::local(root.path().to_path_buf());
+        let before = calls.load(Ordering::SeqCst);
+        let why = run_tool(
+            &store,
+            &registered,
+            "game_compare",
+            &json!({"game":"episode-290","a":2}),
+        )
+        .await
+        .unwrap_err();
+        assert!(why.contains("Video Lab document"), "{why}");
+        assert_eq!(calls.load(Ordering::SeqCst), before);
+        server.abort();
     }
 
     fn meta(cards: Vec<Value>) -> Meta {
@@ -640,8 +944,8 @@ mod tests {
             None
         );
         assert!(misrouted(&labs, "shell_run", &json!({})).is_some());
-        // CAD Lab tools route by their prefix and name their document as doc.
-        assert_eq!(Kind::of_tool("cad_add_feature"), Some(Kind::Cad));
+        // Prefix-like names never add a tool that the registry did not list.
+        assert_eq!(Kind::of_tool(&labs, "cad_add_feature"), None);
         assert!(
             misrouted(&labs, "cad_open", &json!({"doc": "rover"}))
                 .unwrap()

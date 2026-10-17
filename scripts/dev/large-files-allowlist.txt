@@ -15,6 +15,9 @@ bins/*
 *.woff
 *.woff2
 
+# Generated app API contract used by clients and the embedded schema test.
+docs/sdk/openapi.app.json
+
 # Files already over 1 MB on 2026-10-09 (#11110), so edits to them pass.
 crates/gym/results/support-v2-three-way.jsonl
 crates/gym/suites/coder-turns-v1.json

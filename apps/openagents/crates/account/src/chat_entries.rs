@@ -252,6 +252,7 @@ mod tests {
             text: text.into(),
             files: vec![],
             tool: None,
+            cards: vec![],
             extra: Default::default(),
         }
     }

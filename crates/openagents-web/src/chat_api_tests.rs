@@ -350,3 +350,17 @@ async fn existing_runtime_streams_same_chat_deduplicates_retries_and_stops_only_
     .await;
     assert_eq!(response.status(), 204);
 }
+
+#[test]
+fn lab_scope_stays_saved_but_never_enters_public_card_events() {
+    let meta = openagents_chat::router::Meta {
+        cards: vec![json!({"schema":lab_kit::card::SCHEMA,"kind":"echo",
+            "document":"example","version":1,"view":"report",
+            "_lab":{"space":"me","owner":"private-owner"}})],
+        ..Default::default()
+    };
+    let public = display_cards(&meta);
+    assert!(public["cards"][0].get("_lab").is_none());
+    assert_eq!(public["cards"][0]["document"], "example");
+    assert_eq!(meta.cards[0]["_lab"]["owner"], "private-owner");
+}

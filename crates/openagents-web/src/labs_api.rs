@@ -11,6 +11,23 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 
 struct Accounts(App);
+/// Use the browser's own credential for the same account API checks as apps.
+pub(crate) fn caller_headers(app: &App, headers: &HeaderMap) -> HeaderMap {
+    let mut resolved = headers.clone();
+    if !headers.contains_key("Authorization") {
+        if let Some(token) = app
+            .config
+            .cloud
+            .as_deref()
+            .and_then(|cloud| cloud.browser_token(headers).ok())
+        {
+            if let Ok(value) = format!("Bearer {token}").parse() {
+                resolved.insert("Authorization", value);
+            }
+        }
+    }
+    resolved
+}
 pub(crate) async fn bind_account(app: &App, account: &str) -> lab_store::Result<()> {
     if let Some(backend) = &app.config.lab_backend {
         lab_store::Store::new(
@@ -124,6 +141,8 @@ impl Authorizer for Accounts {
         space: &str,
         action: Action,
     ) -> Result<Access, ApiError> {
+        let resolved = caller_headers(&self.0, headers);
+        let headers = &resolved;
         // Environment- and run-specific computer credentials cannot enter Labs.
         if headers
             .get("Authorization")
@@ -226,6 +245,10 @@ fn echo_tool(name: &str, args: &Value) -> Result<Tool, ApiError> {
 }
 
 pub(crate) fn routes(app: &App) -> Router<App> {
+    runtime(app).router().with_state(())
+}
+
+pub(crate) fn runtime(app: &App) -> Arc<Api> {
     let backend = app
         .config
         .lab_backend
@@ -251,8 +274,6 @@ pub(crate) fn routes(app: &App) -> Router<App> {
         authorizer: Arc::new(Accounts(app.clone())),
         registry,
     })
-    .router()
-    .with_state(())
 }
 struct Unavailable;
 #[async_trait::async_trait]

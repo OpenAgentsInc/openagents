@@ -109,3 +109,14 @@ The [`labs-worker` guide](../../crates/lab-jobs/README.md) describes installatio
 private input checks, process limits, and recovery. Worker messages have a
 12 MiB wire limit, with at most 16 outputs and 8 MiB of decoded output bytes.
 Job usage records report observed time; they do not invent a charge.
+
+## Saved chat cards
+
+History messages include up to 16 typed Lab cards in `cards`. Reading a card
+checks access to its saved document and version again; sharing a chat does not
+grant access to its Lab files. An unavailable document becomes a Report card.
+Artifact reads use the reader's own credential.
+
+The history SDK exposes each card with an account-bound `document_ref()`.
+Unknown card views fall back to Report. The browser composes cards through `lab-ui`'s shared Rust Native view. Desktop, phone, and terminal adapters use the same view as they are added;
+media surfaces resolve its opaque resources through the Labs client.

@@ -101,6 +101,7 @@ pub(crate) async fn manifest_here() -> Option<crate::labs::Lab> {
             tools,
             documents,
             hosted: None,
+            platform: None,
         }),
         Err(why) => {
             eprintln!("openagents-web: video lab: not answering at {lab}: {why}");

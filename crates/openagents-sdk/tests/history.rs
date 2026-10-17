@@ -128,7 +128,8 @@ async fn messages(
         "text":if n==0 && mode==10{"x".repeat(2*1024*1024)}else{format!("Saved {n}")},
         "files":if n==0{vec![json!({"id":if mode==9{"../unsafe"}else{FILE},"name":"fixture.bin","kind":"future-file","size":8,"url":"https://other.example/steal"})]}else{vec![]},
         "tool":if n==1{Some(json!({"name":"read","summary":"Read fixture","status":"future-status","input":"fixture.txt","output":"Full saved output"}))}else{None},
-        "future_content":{"kind":"new-block","value":n},"generated_files":[],"artifacts":[]})).collect();
+        "future_content":{"kind":"new-block","value":n},"generated_files":[],"artifacts":[],
+        "cards":if n==4{vec![json!({"schema":"lab.card.v1","kind":"echo","document":"example","version":1,"title":"Echo","view":"future_view","space":"me"})]}else if n==5{vec![json!({"schema":"lab.card.v1","kind":"cad","document":"plate","version":2,"title":"Plate","view":"model3d","primary":"model","space":"project:prj_0000000000000001"})]}else{vec![]}})).collect();
     Json(json!({"thread":summary(0,405),"revision":1,"data":data,"next":if mode==12{None}else{(end<405).then(||format!("msg_{}",end-1))},
         "captures":[{"id":id(555),"name":"Screenshot","state":"saved","size":3,"media":"text/plain"}]})).into_response()
 }
@@ -241,6 +242,23 @@ async fn complete_transcripts_keep_unknown_roles_tools_content_and_safe_saved_by
     assert_eq!(first.data[2].role, MessageRole::Thinking);
     assert_eq!(first.data[3].role, MessageRole::Other("future-role".into()));
     assert_eq!(first.data[4].extra["future_content"]["value"], 4);
+    assert!(first.data[0].cards.is_empty());
+    assert_eq!(
+        first.data[4].cards[0].card.view,
+        openagents_sdk::labs::View::Report
+    );
+    assert_eq!(
+        first.data[5].cards[0].card.view,
+        openagents_sdk::labs::View::Model3d
+    );
+    assert_eq!(
+        first.data[5].cards[0].document_ref().space(),
+        "project:prj_0000000000000001"
+    );
+    assert_eq!(
+        first.data[5].cards[0].document_ref().account(),
+        session.account().id
+    );
     let download = first.data[0].files[0].download_ref().unwrap();
     assert_eq!(
         client.download(&session, download, &cancel).await.unwrap(),

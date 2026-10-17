@@ -63,7 +63,19 @@ impl TurnError {
 }
 /// Only person-visible card bodies cross the public event/history boundary.
 pub(crate) fn display_cards(meta: &openagents_chat::router::Meta) -> Value {
-    json!({"cards":meta.cards.iter().take(16).collect::<Vec<_>>()})
+    let cards: Vec<_> = meta
+        .cards
+        .iter()
+        .take(16)
+        .map(|card| {
+            let mut card = card.clone();
+            if let Some(object) = card.as_object_mut() {
+                object.remove("_lab");
+            }
+            card
+        })
+        .collect();
+    json!({"cards":cards})
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -2288,6 +2288,7 @@ async fn work_in_a_chat_stays_in_the_chat_with_coder_online() {
         None,
         None,
         crate::cad_gate::TurnCad::Offered(None),
+        HeaderMap::new(),
     )
     .await;
     let chat = store
@@ -2326,6 +2327,7 @@ async fn work_in_a_chat_stays_in_the_chat_with_coder_online() {
         None,
         None,
         crate::cad_gate::TurnCad::Offered(None),
+        HeaderMap::new(),
     )
     .await;
     assert_eq!(
