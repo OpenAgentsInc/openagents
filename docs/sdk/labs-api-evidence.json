@@ -39,7 +39,14 @@
   "deployment": {
     "revision": "coder-web-b15f48ed30-20261017003233",
     "image": "sha256:b15f48ed304ef73fa613475c6a42689f8de8f20088de585282e875b5d3912523",
-    "configuration_commit": "01c533b4624a40ad4b21c114e92b4b692ba9f95e"
+    "configuration_commit": "01c533b4624a40ad4b21c114e92b4b692ba9f95e",
+    "production_site_smoke": {
+      "passed": 66,
+      "failed": 0,
+      "skipped": 2,
+      "released_coder": "1.0.0"
+    },
+    "handoff": "Traffic at 100%; outgoing listener grace period completed; temporary tag removed. Final site smoke ran directly after recovering a bundled-Python cross-process timer issue."
   },
   "staging": {
     "api": "https://staging.openagents.com",
