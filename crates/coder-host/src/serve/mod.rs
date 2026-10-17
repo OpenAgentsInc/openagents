@@ -41,6 +41,7 @@ pub(crate) mod dispatch;
 pub(crate) mod iroh;
 pub mod keys;
 pub(crate) mod nearby;
+mod open_requests;
 mod relay;
 mod standing;
 mod terminal;
@@ -229,6 +230,9 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
     }
     // Shares are sealed to their grantee under the host key.
     terminals.shares = Some(Arc::new(crate::share::Signer(authority.signing_key()?)));
+    terminals.open_requests = Some(Arc::new(open_requests::OpenRequests(
+        config.access.join("terminal-opens"),
+    )));
     let pty = Arc::new(coder_pty::host::Host::new(
         terminals,
         Arc::new(Grants(authority.clone())),

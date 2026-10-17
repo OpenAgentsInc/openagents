@@ -860,6 +860,14 @@ checked by `crates/coder-pty/tests/ext.rs`. They cover:
 
 ## Implementation status
 
+The resident `coder-host` records terminal-open identities before spawning.
+The identity binds the requesting device, request ID, and exact content hash.
+After a restart, an earlier identity refuses as `lost`; a changed body at
+the same identity refuses as `idempotency_conflict`. A launch interrupted
+after its record was saved remains uncertain and is never repeated. These
+records are bounded and never evicted to admit another launch. This does not
+restore terminals, output, or process references after a restart.
+
 [`crates/coder-pty`](../../crates/coder-pty/README.md) implements the host
 and client halves on macOS and Linux: real PTYs through `openpty`, session and
 process-group ownership, the bounded replay buffer, sequence numbers, gaps,

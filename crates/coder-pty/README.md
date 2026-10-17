@@ -118,7 +118,11 @@ host.attach(device, &Attach::new(request2, terminal, Mode::Interact, 0, 64 * 102
   setting close-on-exec could inherit a PTY descriptor.
 - **Process-local state.** Terminals, rings, and deduplication memory live in
   memory. A host restart loses every terminal, which is reported as `lost`,
-  and the deduplication window restarts empty.
+  and the deduplication window restarts empty. A resident host supplies
+  `Config::open_requests` to record launch identities before spawning. Its
+  recorder refuses an earlier launch as `lost`, or changed content as
+  `idempotency_conflict`, so restarting or leaving the in-memory retry window
+  cannot start that command again. It does not restore the terminal.
 - **Wired elsewhere.** This crate includes no NIP-HOST grant store,
   NIP-REACH channel, or `3188` sealing. The resident host in
   [`coder-host`](../coder-host/README.md) fills the traits above with them.

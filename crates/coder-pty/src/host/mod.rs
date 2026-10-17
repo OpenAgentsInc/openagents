@@ -165,6 +165,13 @@ pub trait Rights: Send + Sync {
     fn holds(&self, principal: &str, right: Right) -> bool;
 }
 
+/// Records a terminal launch before spawning its process. A resident host
+/// keeps these identities across restarts; implementations must commit the
+/// identity before returning and refuse an identity they have seen before.
+pub trait OpenRequests: Send + Sync {
+    fn reserve(&self, principal: &str, request: &str, digest: &str) -> Result<(), Refusal>;
+}
+
 /// Signs a share's terms for its grantee. The resident host seals the
 /// grant to the grantee's key under its own, so the grantee can read and
 /// verify its terms; the envelope admits nothing by itself.
@@ -313,6 +320,9 @@ pub struct Config {
     pub emulator: Option<emulator::Factory>,
     /// Signs share grants. When set, the host serves the shares feature.
     pub shares: Option<Arc<dyn Authorize>>,
+    /// Durable launch identities. Without a recorder, retry memory lasts
+    /// only for this host process.
+    pub open_requests: Option<Arc<dyn OpenRequests>>,
 }
 
 impl std::fmt::Debug for Config {
@@ -369,6 +379,7 @@ impl Config {
             wrap: None,
             emulator: None,
             shares: None,
+            open_requests: None,
         }
     }
 
@@ -1196,6 +1207,7 @@ struct Inner {
     terminals: Mutex<BTreeMap<String, Arc<Terminal>>>,
     ended: Mutex<VecDeque<String>>,
     recent: Mutex<VecDeque<Applied>>,
+    opens: Mutex<()>,
     shutting: AtomicBool,
 }
 
@@ -1231,6 +1243,7 @@ impl Host {
             terminals: Mutex::new(BTreeMap::new()),
             ended: Mutex::new(VecDeque::new()),
             recent: Mutex::new(VecDeque::new()),
+            opens: Mutex::new(()),
             shutting: AtomicBool::new(false),
         });
         let weak = Arc::downgrade(&inner);
@@ -1250,11 +1263,17 @@ impl Host {
     /// Opens a terminal.
     pub fn open(&self, principal: &str, request: &Open) -> Outcome {
         request.check()?;
+        let _opening = self
+            .inner
+            .opens
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         self.inner.require(principal, Right::Terminal)?;
         let body = identity(principal, request);
         if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
             return outcome;
         }
+        self.inner.reserve_open(principal, request, &body)?;
         let value = self.inner.open(request, None)?;
         self.inner
             .remember(&key(principal, &request.request), body, value.clone());
@@ -1265,6 +1284,11 @@ impl Host {
     /// Callers must resolve the binding locally; this is not a wire path operation.
     pub fn open_bound(&self, principal: &str, request: &Open, directory: &Path) -> Outcome {
         request.check()?;
+        let _opening = self
+            .inner
+            .opens
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         self.inner.require(principal, Right::Terminal)?;
         if !matches!(request.launch, Launch::Shell) || !request.env.is_empty() {
             return Err(Refusal::malformed(
@@ -1284,6 +1308,7 @@ impl Host {
         if let Some(outcome) = self.inner.retry(&key(principal, &request.request), &body) {
             return outcome;
         }
+        self.inner.reserve_open(principal, request, &body)?;
         let value = self.inner.open(request, Some(directory))?;
         self.inner
             .remember(&key(principal, &request.request), body, value.clone());
@@ -2259,6 +2284,13 @@ impl Drop for Host {
 }
 
 impl Inner {
+    fn reserve_open(&self, principal: &str, request: &Open, digest: &str) -> Result<(), Refusal> {
+        if let Some(recorder) = &self.config.open_requests {
+            recorder.reserve(principal, &request.request, digest)?;
+        }
+        Ok(())
+    }
+
     fn terminals(&self) -> MutexGuard<'_, BTreeMap<String, Arc<Terminal>>> {
         self.terminals
             .lock()

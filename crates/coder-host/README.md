@@ -221,7 +221,12 @@ retained frames in any order after a reconnect, so a client feeds them through
   controls. Execution kinds are ephemeral: a request sent while the host's
   subscription reconnects is lost, and the device retries the same request.
 - Terminal state is process-local. A restart reports every terminal as
-  `lost`.
+  `lost`. Launch identities persist under `terminal-opens/` in the access
+  directory. The host records each device's request ID and content hash
+  before spawning, and never repeats an earlier launch after restart or
+  eviction from the in-memory retry window. An interrupted launch stays
+  uncertain and refuses as `lost`. The record holds 4,096 launches; at the
+  limit, new launches refuse rather than forgetting earlier commands.
 
 ## Tests
 
