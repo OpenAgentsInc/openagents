@@ -57,7 +57,7 @@ final class CoreSessionSource: SessionSource {
         next.subtitle = c.host.name.map { "\(project) @ \($0)" } ?? project
         next.running = c.live.turnRunning
         next.canSteer = c.host.capabilities.midTurnSteering ?? false
-        next.placeholder = "Message \(row?.harnessLabel ?? "the agent")"
+        next.placeholder = "Message \(row?.agentName ?? row?.harnessLabel ?? "the agent")"
         var chips: [ComposerChip] = []
         if let model = row?.modelLabel ?? row?.harnessLabel {
             chips.append(ComposerChip(id: "model", title: model, symbol: nil, icon: BrandMarks.image(for: row?.harness ?? "claude-code", side: 13)))

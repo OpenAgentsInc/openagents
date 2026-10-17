@@ -275,7 +275,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
         // hasn't listed still gets its catalog label.
         let modelTitle = model?.label ?? draft.model.map { modelLabel(harness: draft.harness, model: $0) } ?? fallbackModels(harness: draft.harness).first?.label ?? HarnessNames.label(draft.harness)
         let custom = continuation == nil ? app.customAgents?.snapshot().selected : nil
-        chips.insert(ComposerChip(id: "model", title: custom?.name ?? (continuation == nil && app.customAgents?.selectionActive() == true ? "Choose agent" : modelTitle), symbol: custom == nil ? nil : "person.crop.circle", icon: custom == nil ? BrandMarks.image(for: draft.harness, side: 13) : nil), at: 0)
+        chips.insert(ComposerChip(id: "model", title: custom?.name ?? (continuation == nil && app.customAgents?.selectionActive() == true ? "Choose agent" : modelTitle), symbol: nil, icon: BrandMarks.image(for: custom == nil ? draft.harness : "openagents", side: 13)), at: 0)
         if custom == nil, let efforts = model?.efforts, !efforts.isEmpty {
             chips.append(ComposerChip(id: "effort", title: (draft.effort ?? efforts[efforts.count / 2]).capitalized, symbol: "gauge.with.dots.needle.67percent"))
         }
@@ -287,7 +287,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
             "model": { [weak self] in self?.modelMenu() },
             "effort": { [weak self] in self?.effortMenu() },
         ] }
-        mark.image = custom != nil ? UIImage(systemName: "person.crop.circle") : BrandMarks.image(for: draft.harness, side: 34)
+        mark.image = BrandMarks.image(for: custom != nil ? "openagents" : draft.harness, side: 34)
     }
 
     /// One entry per project — checkouts of one repository, on any device,
@@ -424,7 +424,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
         if continuation == nil, let agents = app.customAgents {
             let snapshot = agents.snapshot()
             let personal = UIMenu(title: "Your agents", options: .displayInline, children: snapshot.rows.map { agent in
-                UIAction(title: agent.name, subtitle: agent.runtime == "sdk" ? "SDK runner" : HarnessNames.label(agent.runtime), state: snapshot.selected?.id == agent.id ? .on : .off) { [weak self] _ in
+                UIAction(title: agent.name, subtitle: HarnessNames.label(agent.runtime), image: BrandMarks.image(for: "openagents", side: 16), state: snapshot.selected?.id == agent.id ? .on : .off) { [weak self] _ in
                     do { try agents.select(id: agent.id); self?.refreshChips() }
                     catch { self?.showAgentError(error.localizedDescription) }
                 }

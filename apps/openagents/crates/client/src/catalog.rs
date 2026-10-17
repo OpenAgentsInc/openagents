@@ -167,6 +167,9 @@ pub fn harness_label(id: &str) -> String {
         "opencode" => "OpenCode",
         "antigravity" => "Antigravity",
         "mock" => "Mock",
+        // Saved agents (#11966): a runner, or the computer's own choice.
+        "sdk" => "SDK runner",
+        "any" => "This computer's default",
         other => return other.to_owned(),
     }
     .to_owned()

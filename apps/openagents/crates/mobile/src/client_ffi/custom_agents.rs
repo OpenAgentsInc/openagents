@@ -5,8 +5,8 @@ use openagents_account::{
     openagents::{
         self,
         agents::{
-            Access, AgentDefinition, AgentRequest, AgentSpec, CreateAgent, DeleteAgent,
-            UpdateAgent,
+            ANY_RUNTIME, Access, AgentDefinition, AgentRequest, AgentSpec, CreateAgent,
+            DeleteAgent, MAX_FALLBACKS, RuntimeChoice, UpdateAgent,
             assignments::{AssignmentSpec, CreateAssignment},
         },
     },
@@ -63,6 +63,8 @@ enum Intent {
     Runner,
     Reload,
     Runtime(String),
+    /// Add a runtime to the end of the fallback order, or remove it.
+    Fallback(String),
     Model(Option<String>),
     Access(Access),
     Save,
@@ -156,6 +158,23 @@ pub struct CoreAgents {
     state: Mutex<State>,
     listener: Arc<dyn CustomAgentsListener>,
 }
+/// Runtimes a saved agent can run on, in the form's order (#11966).
+const RUNTIMES: [(&str, &str); 3] = [
+    ("claude-code", "Claude Code"),
+    ("codex", "Codex"),
+    ("opencode", "OpenCode"),
+];
+/// Add a runtime to the end of the agent's fallback order, or remove it.
+fn toggle_fallback(spec: &mut AgentSpec, runtime: String) {
+    if spec.fallbacks.iter().any(|c| c.runtime == runtime) {
+        spec.fallbacks.retain(|c| c.runtime != runtime);
+    } else if spec.fallbacks.len() < MAX_FALLBACKS && runtime != spec.runtime {
+        spec.fallbacks.push(RuntimeChoice {
+            runtime,
+            model: None,
+        });
+    }
+}
 fn failed(message: &str) -> CoreError {
     CoreError::InvalidArgument {
         message: message.into(),
@@ -236,11 +255,10 @@ fn form_view(
         ),
         text("runtime-label", "Runs with"),
     ];
-    for (id, label) in [
-        ("claude-code", "Claude Code"),
-        ("codex", "Codex"),
+    for (id, label) in RUNTIMES.into_iter().chain([
         ("sdk", "SDK runner"),
-    ] {
+        (ANY_RUNTIME, "This computer's default"),
+    ]) {
         children.push(choice(
             format!("runtime-{id}"),
             label.into(),
@@ -248,6 +266,27 @@ fn form_view(
             editable,
             Intent::Runtime(id.into()),
         ));
+    }
+    // Other runtimes to try, in the order chosen, when the first isn't
+    // ready on the computer. Only runtimes that keep the agent's access.
+    if form.spec.runtime != ANY_RUNTIME && form.spec.access == Access::HostDefault {
+        children.push(text("fallback-label", "If it isn't available, try"));
+        for (id, label) in RUNTIMES {
+            if id == form.spec.runtime {
+                continue;
+            }
+            let place = form.spec.fallbacks.iter().position(|f| f.runtime == id);
+            children.push(choice(
+                format!("fallback-{id}"),
+                match place {
+                    Some(i) => format!("{}. {label}", i + 1),
+                    None => label.into(),
+                },
+                place.is_some(),
+                editable,
+                Intent::Fallback(id.into()),
+            ));
+        }
     }
     if form.spec.runtime == "sdk" {
         children.push(field(
@@ -259,7 +298,7 @@ fn form_view(
             Intent::Runner,
         ));
     }
-    if form.spec.runtime != "sdk" {
+    if form.spec.runtime != "sdk" && form.spec.runtime != ANY_RUNTIME {
         children.push(text("model-label", "Model"));
         children.push(choice(
             "model-default".into(),
@@ -724,7 +763,7 @@ impl CoreAgents {
         state.catalog_ticket += 1;
         let ticket = state.catalog_ticket;
         state.model_device = device_id.clone();
-        state.catalogs = ["claude-code", "codex"]
+        state.catalogs = ["claude-code", "codex", "opencode"]
             .into_iter()
             .map(|h| (h.into(), client.cached_models(&device_id, h)))
             .collect();
@@ -734,7 +773,7 @@ impl CoreAgents {
         if device_id.is_empty() {
             return Ok(());
         }
-        for harness in ["claude-code", "codex"] {
+        for harness in ["claude-code", "codex", "opencode"] {
             let weak = Arc::downgrade(self);
             let client = client.clone();
             let lease = lease.clone();
@@ -919,12 +958,26 @@ impl CoreAgents {
             }
             Intent::Runtime(runtime) => {
                 let f = s.form.as_mut().unwrap();
+                f.spec.fallbacks.retain(|c| c.runtime != runtime);
+                if runtime == ANY_RUNTIME {
+                    f.spec.fallbacks.clear();
+                }
                 f.spec.runtime = runtime;
                 f.spec.model = None;
                 f.spec.access = Access::HostDefault;
             }
+            Intent::Fallback(runtime) => {
+                toggle_fallback(&mut s.form.as_mut().unwrap().spec, runtime)
+            }
             Intent::Model(model) => s.form.as_mut().unwrap().spec.model = model,
-            Intent::Access(access) => s.form.as_mut().unwrap().spec.access = access,
+            Intent::Access(access) => {
+                let f = s.form.as_mut().unwrap();
+                f.spec.access = access;
+                // Only Codex enforces read-only or project-only access.
+                if access != Access::HostDefault {
+                    f.spec.fallbacks.clear();
+                }
+            }
             _ => return Err(failed("Choose a control.")),
         };
         s.bump();
@@ -1281,5 +1334,56 @@ mod tests {
             .unwrap(),
             Intent::Runner
         ));
+    }
+    #[test]
+    fn the_runtime_and_its_fallback_order_are_form_choices() {
+        let mut f = form();
+        f.spec.runtime = "claude-code".into();
+        f.spec.access = Access::HostDefault;
+        let activate = |f: &Form, node: &str| {
+            form_view(f, false, &ModelCatalogs::new())
+                .unwrap()
+                .activate(&Activation {
+                    instance: f.instance.clone(),
+                    revision: f.revision,
+                    node: node.into(),
+                })
+                .map(Clone::clone)
+        };
+        assert!(
+            matches!(activate(&f, "runtime-opencode").unwrap(), Intent::Runtime(r) if r == "opencode")
+        );
+        assert!(
+            activate(&f, "fallback-claude-code").is_err(),
+            "the first choice is not a fallback"
+        );
+        for node in ["fallback-opencode", "fallback-codex"] {
+            let Intent::Fallback(r) = activate(&f, node).unwrap() else {
+                panic!("{node}")
+            };
+            toggle_fallback(&mut f.spec, r);
+        }
+        let order: Vec<_> = f
+            .spec
+            .fallbacks
+            .iter()
+            .map(|c| c.runtime.as_str())
+            .collect();
+        assert_eq!(order, ["opencode", "codex"]);
+        f.spec.validate().unwrap();
+        let json = form_view(&f, false, &ModelCatalogs::new())
+            .unwrap()
+            .to_json()
+            .unwrap();
+        let json = String::from_utf8(json).unwrap();
+        assert!(json.contains("1. OpenCode") && json.contains("2. Codex"));
+        toggle_fallback(&mut f.spec, "opencode".into());
+        assert_eq!(f.spec.fallbacks.len(), 1);
+
+        f.spec.runtime = ANY_RUNTIME.into();
+        f.spec.fallbacks.clear();
+        f.spec.validate().unwrap();
+        assert!(activate(&f, "model-default").is_err());
+        assert!(activate(&f, "fallback-codex").is_err());
     }
 }
