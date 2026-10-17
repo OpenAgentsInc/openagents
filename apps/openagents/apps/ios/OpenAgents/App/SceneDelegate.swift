@@ -28,7 +28,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         app.onSignOut = { [weak self] in
             guard let self else { return }
-            push.signingOut(client: self.app.client)
+            // The demo never registered this phone for notifications.
+            if !self.app.isDemo { push.signingOut(client: self.app.client) }
             self.app.signOutLocally()
             self.showRoot(animated: true)
         }
@@ -123,6 +124,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // the person to sign in (#11996), and the shell's first page is the
         // chat (#12009: there is no Home).
         let root: UIViewController = UIDevice.current.userInterfaceIdiom == .pad ? SplitRootController(app: app) : DrawerShellController(app: app)
+        // The demo's way out, on every page of it (#12011).
+        if app.isDemo { DemoChip.install(on: root, app: app) }
         // Sheets (new session, Settings) belong to the old root: they'd
         // stay on top of the new one.
         if let old = window.rootViewController, old.presentedViewController != nil {

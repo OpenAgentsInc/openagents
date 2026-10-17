@@ -66,11 +66,29 @@ final class AppModel {
     private var account: CoreAccount?
     private lazy var accountBridge = AccountBridge(app: self)
     private(set) var accountSnapshot: AccountSnapshot?
-    /// The chat answered by OpenAgents, signed in or not (#11978).
-    private(set) lazy var cloudChat: CloudChatModel? = account.map(CloudChatModel.init) ?? (isDemo ? CloudChatModel.demo() : nil)
-    /// The own-computer card's record (#11982); the demo's starts fresh each launch.
-    private(set) lazy var ownComputerOffer: CoreOwnComputerOffer? = account?.ownComputerOffer()
-        ?? (isDemo ? CoreOwnComputerOffer.demo(dataDir: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path) : nil)
+    /// The chat answered by OpenAgents, signed in or not (#11978). The demo
+    /// has its own, so nothing typed in the demo reaches the account (#12011).
+    var cloudChat: CloudChatModel? {
+        if isDemo {
+            if demoChat == nil { demoChat = CloudChatModel.demo() }
+            return demoChat
+        }
+        if accountChat == nil, let account { accountChat = CloudChatModel(account: account) }
+        return accountChat
+    }
+    private var accountChat: CloudChatModel?
+    private var demoChat: CloudChatModel?
+    /// The own-computer card's record (#11982); the demo's starts fresh each time.
+    var ownComputerOffer: CoreOwnComputerOffer? {
+        if isDemo {
+            if demoOffer == nil { demoOffer = CoreOwnComputerOffer.demo(dataDir: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path) }
+            return demoOffer
+        }
+        if accountOffer == nil { accountOffer = account?.ownComputerOffer() }
+        return accountOffer
+    }
+    private var accountOffer: CoreOwnComputerOffer?
+    private var demoOffer: CoreOwnComputerOffer?
     /// The first-launch tutorial's record (#11996), or nil when it doesn't
     /// apply: the demo shows it only for `-route onboarding`, and the test
     /// hooks that sign in or out skip it.
@@ -106,7 +124,7 @@ final class AppModel {
         return d
     }() {
         didSet {
-            guard Self.persistsNewSession else { return }
+            guard keepsNewSession else { return }
             AppModel.preferences.set(try? JSONEncoder().encode(lastDraft), forKey: "newSessionDraft")
         }
     }
@@ -115,12 +133,15 @@ final class AppModel {
     /// only: one run's leftovers must not seed the next.
     private static let persistsNewSession = !ProcessInfo.processInfo.arguments.contains("-demo") && !AppModel.isAccountFixture
     private var volatileNewSessionText = ""
+    /// The demo opened from the tutorial keeps its new-session page in
+    /// memory too, so it never overwrites the account's (#12011).
+    private var keepsNewSession: Bool { Self.persistsNewSession && !isDemo }
 
     /// What was typed on the new-session page when it was closed unsent.
     var newSessionText: String {
-        get { Self.persistsNewSession ? Drafts.load(Self.newSessionDraftKey) : volatileNewSessionText }
+        get { keepsNewSession ? Drafts.load(Self.newSessionDraftKey) : volatileNewSessionText }
         set {
-            if Self.persistsNewSession { Drafts.save(Self.newSessionDraftKey, newValue) } else { volatileNewSessionText = newValue }
+            if keepsNewSession { Drafts.save(Self.newSessionDraftKey, newValue) } else { volatileNewSessionText = newValue }
         }
     }
 
@@ -171,9 +192,37 @@ final class AppModel {
         }
     }
 
-    func openDemo() {
-        account?.cancel()
+    /// The tutorial's "See a demo". The account stays saved: the demo only
+    /// sets it aside, and leaving the demo starts it again (#12011).
+    @MainActor func openDemo() {
+        if client != nil { signOutLocally(keepingDrafts: true) }
         if start(.demo(options: Self.demoOptions())) { onSignedIn?() }
+    }
+
+    /// Leaves the offline demo without restarting the app (#12011): the
+    /// demo client stops, everything it saved is forgotten, and this phone's
+    /// own account starts the way it does at launch.
+    @MainActor func exitDemo() {
+        guard isDemo else { return }
+        forgetOnSignOut = true
+        demoChat = nil
+        demoOffer = nil
+        volatileNewSessionText = ""
+        if account == nil {
+            // Launched straight into the demo (`-demo`): no account was opened.
+            account = try? CoreAccount(dataDir: Self.coreDir.path, apiUrl: Self.accountAPI, websiteUrl: Self.accountWebsite, listener: accountBridge)
+        }
+        // Tears the demo down and shows the shell on the account's chat.
+        onSignOut?()
+        // The account's own new-session options, as the demo left them.
+        if Self.persistsNewSession {
+            lastDraft = AppModel.preferences.data(forKey: "newSessionDraft").flatMap { try? JSONDecoder().decode(NewSessionDraft.self, from: $0) } ?? NewSessionDraft()
+        }
+        #if DEBUG
+        // UI tests leave the demo signed out, never on a saved login.
+        if ProcessInfo.processInfo.arguments.contains("-signedout") { account?.signOut(); return }
+        #endif
+        account?.startIdentity()
     }
 
     private static var accountAPI: String {
@@ -383,7 +432,9 @@ final class AppModel {
         #if DEBUG
         fixtureSignOut = true
         #endif
-        if !isDemo { account?.signOut() }
+        // The demo has nothing to sign out of: signing out leaves it (#12011).
+        if isDemo { return exitDemo() }
+        account?.signOut()
         onSignOut?()
     }
 
@@ -392,7 +443,8 @@ final class AppModel {
     /// keeps a different account out of it.
     private var forgetOnSignOut = false
 
-    @MainActor func signOutLocally() {
+    /// `keepingDrafts`: the demo is setting the account aside, not signing out.
+    @MainActor func signOutLocally(keepingDrafts: Bool = false) {
         let wasDemo = isDemo
         voice.stop()
         endDeliveryBackgroundTask()
@@ -407,7 +459,7 @@ final class AppModel {
         if forgetOnSignOut {
             if wasDemo {
                 let demo = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("demo", isDirectory: true)
-                try? FileManager.default.removeItem(at: demo)
+                _ = forgetDemoData(demoDir: demo.path)
             } else if let account { try? account.clearLocalData() }
             else { try? FileManager.default.removeItem(at: Self.coreDir) }
         }
@@ -421,8 +473,13 @@ final class AppModel {
         connectivity = nil
         live = LiveCounts()
         workspaceRevision = 0
-        lastDraft = NewSessionDraft()
-        newSessionText = ""
+        if wasDemo || keepingDrafts {
+            // The account's own new-session page stays as it was (#12011).
+            volatileNewSessionText = ""
+        } else {
+            lastDraft = NewSessionDraft()
+            newSessionText = ""
+        }
         newSessionImages = []
     }
 
