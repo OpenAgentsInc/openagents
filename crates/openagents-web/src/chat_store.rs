@@ -1722,6 +1722,15 @@ fn read_key_disk(path: &Path) -> Result<Option<(Vec<u8>, String)>, Error> {
     Ok(Some((bytes, generation)))
 }
 
+// Account books share this folder. Only UUID-named JSON objects are chats,
+// as in the disk store and the paged GCS history scan.
+fn chat_object_id<'a>(prefix: &str, object: &'a str) -> Result<Option<&'a str>, Error> {
+    let name = object
+        .strip_prefix(prefix)
+        .ok_or(Error::Corrupt("The chat list contains an invalid object."))?;
+    Ok(name.strip_suffix(".json").filter(|id| valid_id(id)))
+}
+
 impl Gcs {
     async fn bearer(&self) -> Result<String, Error> {
         // Only credential refresh holds this lock. Record reads and CAS do not.
@@ -2175,27 +2184,9 @@ impl Gcs {
             let listed: Page = serde_json::from_slice(&limited_body(response, 128 * 1024).await?)
                 .map_err(|_| Error::Corrupt("The chat list is invalid."))?;
             for object in listed.items {
-                if object.name == format!("{prefix}.active.json")
-                    || object.name == format!("{prefix}{COMPUTERS_FILE}")
-                    // The account's other objects, such as its traces
-                    // ([`Store::owner_key`]), sit in folders below.
-                    || object
-                        .name
-                        .strip_prefix(&prefix)
-                        .is_some_and(|rest| rest.contains('/'))
-                {
+                let Some(id) = chat_object_id(&prefix, &object.name)? else {
                     continue;
-                }
-                let Some(id) = object
-                    .name
-                    .strip_prefix(&prefix)
-                    .and_then(|name| name.strip_suffix(".json"))
-                else {
-                    return Err(Error::Corrupt("The chat list contains an invalid object."));
                 };
-                if !valid_id(id) {
-                    return Err(Error::Corrupt("The chat list contains an invalid object."));
-                }
                 ids.push(id.to_owned());
                 if ids.len() > MAX_LIST {
                     return Err(Error::Unavailable("The chat list exceeds its limit."));
@@ -3213,6 +3204,38 @@ mod tests {
             branch: None,
             filed: false,
         }
+    }
+
+    #[test]
+    fn gcs_chat_list_ignores_account_books_and_keeps_chat_ids() {
+        let prefix = "conversations/account-folder/";
+        let objects = [
+            ".coder.json",
+            "agent-assignments.json",
+            "cloud-host.json",
+            "custom-agents.json",
+            "labs-agent.json",
+            ".active.json",
+            COMPUTERS_FILE,
+            "test-runs/chats.json",
+            "nested/83e18906-00e2-436c-978b-13a4932f58b0.json",
+            "",
+            "readme.txt",
+            "83e18906-00e2-436c-978b-13a4932f58b0.json",
+        ];
+        let objects: Vec<_> = objects
+            .iter()
+            .map(|name| format!("{prefix}{name}"))
+            .collect();
+        let ids: Vec<_> = objects
+            .iter()
+            .filter_map(|name| chat_object_id(prefix, name).transpose())
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(ids, [ID]);
+        assert!(
+            chat_object_id(prefix, &format!("conversations/another-account/{ID}.json")).is_err()
+        );
     }
 
     #[test]
