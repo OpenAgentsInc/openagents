@@ -80,6 +80,7 @@ const LEFT_OUT: &str = "(Left out: this looked like it held a password or key.)"
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .merge(crate::chat_api::routes())
+        .merge(crate::cloud_host::routes())
         .route("/v1/threads", get(threads).post(start))
         .route(
             "/v1/threads/{id}",

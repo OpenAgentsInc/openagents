@@ -691,6 +691,15 @@ impl Studio {
         Config::secret(&self.config.claude_key).is_some()
     }
 
+    /// The server's Claude credential, for runs whose account saved none.
+    pub fn claude_key(&self) -> Option<claude::Key> {
+        Config::secret(&self.config.claude_key).and_then(|value| {
+            let name = coder_cloud::claude::detect(&value)
+                .map_or(coder_cloud::claude::API_KEY, |class| class.name());
+            claude::Key::new(name, value).ok()
+        })
+    }
+
     /// A receiver that changes whenever any environment's conversation
     /// grows.
     pub fn watch(&self) -> tokio::sync::watch::Receiver<u64> {

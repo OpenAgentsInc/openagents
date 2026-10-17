@@ -122,6 +122,12 @@ impl Key {
     pub(crate) fn expose(&self) -> &str {
         &self.value
     }
+
+    /// The name and value, for a process environment outside a saved
+    /// environment's turn (Our cloud's engine). Kept in memory only.
+    pub fn into_env(mut self) -> (String, String) {
+        (self.name.clone(), std::mem::take(&mut self.value))
+    }
 }
 
 impl Drop for Key {

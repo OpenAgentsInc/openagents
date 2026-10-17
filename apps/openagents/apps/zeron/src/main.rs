@@ -41,7 +41,7 @@ enum Command {
     /// Live sync introspection from the running engine: per-room connection
     /// state, last pushed-frame/ack ages, rejoin/probe/resync counters.
     Sync,
-    #[cfg(target_os = "linux")]
+    #[cfg(all(target_os = "linux", feature = "ui"))]
     /// Trigger an Appshot in the running headed instance (desktop shortcut fallback).
     Appshot,
     /// Serve the Zeron MCP (Model Context Protocol) server on stdin/stdout,
@@ -291,7 +291,7 @@ fn main() -> anyhow::Result<()> {
                 .build()?;
             runtime.block_on(zeron_mcp::run(zeron_mcp::McpConfig::from_env()))
         }
-        #[cfg(target_os = "linux")]
+        #[cfg(all(target_os = "linux", feature = "ui"))]
         Some(Command::Appshot) => {
             zeron_ui::appshots::request_running_appshot(&engine_config_from_env().data_dir)
                 .map_err(anyhow::Error::msg)
@@ -308,6 +308,9 @@ fn main() -> anyhow::Result<()> {
             DaemonCommand::Restart => daemon::restart(),
             DaemonCommand::Status => daemon::status(),
         },
+        #[cfg(not(feature = "ui"))]
+        None => anyhow::bail!("This build has no window. Run it with `headless`."),
+        #[cfg(feature = "ui")]
         None => {
             let edge_token = std::env::var("ZERON_EDGE_TOKEN").ok();
             // Headed: the UI probes ZERON_IPC_PORT and connects to a running

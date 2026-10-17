@@ -5,6 +5,12 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# Without `ui` the binary is the headless engine only (no window, no GPU or
+# desktop libraries): the build Our cloud runs on a cloud computer (#11852).
+default = ["ui"]
+ui = ["dep:zeron-ui"]
+
 [[bin]]
 name = "zeron"
 path = "src/main.rs"
@@ -13,7 +19,7 @@ path = "src/main.rs"
 coder-account.workspace = true
 zeron-engine.workspace = true
 zeron-rpc.workspace = true
-zeron-ui.workspace = true
+zeron-ui = { workspace = true, optional = true }
 zeron-update.workspace = true
 zeron-mcp.workspace = true
 coder-brand.workspace = true

@@ -89,3 +89,8 @@ feature keeps forms independent of the app's separate syntax-engine version.
   custom-agent forms use the selected computer's cached and live model choices.
   Rust rejects late replies after switching computers or accounts and preserves
   saved model selections. The bundled Claude list includes Opus 5.5.
+
+- Our cloud engine build (#11852): `apps/zeron` makes `zeron-ui` an optional
+  default feature, `ui`. `cargo zigbuild --release -p zeron --no-default-features
+  --target x86_64-unknown-linux-gnu.2.36` builds the headless engine alone,
+  linking only libc and libm, for the cloud computers that run Our cloud.
