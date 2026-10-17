@@ -544,6 +544,7 @@ mod tests {
             started_at: None,
             updated_at: chrono::Utc::now(),
             running_subagents: 0,
+            background_tasks: 0,
         }
     }
 

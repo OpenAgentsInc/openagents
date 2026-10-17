@@ -435,7 +435,8 @@ impl SessionCore {
             .session(&self.chat_id)
             .map_or((false, None), |row| {
                 (
-                    row.host_indicator == ChatIndicator::Working,
+                    // The working strip shows background work too.
+                    row.indicator == ChatIndicator::Working,
                     row.working_since_ms,
                 )
             });

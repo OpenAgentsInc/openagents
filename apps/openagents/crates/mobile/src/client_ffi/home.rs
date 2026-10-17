@@ -98,6 +98,12 @@ impl CoreHome {
                     host: row.device_name.clone().unwrap_or_else(|| "Computer".into()),
                     state: match report.map(|s| s.status) {
                         Some(openagents_proto::SessionStatus::Working) => "working",
+                        // Background work still running after the turn ended.
+                        Some(openagents_proto::SessionStatus::Idle)
+                            if report.is_some_and(|s| s.background_tasks > 0) =>
+                        {
+                            "working"
+                        }
                         Some(openagents_proto::SessionStatus::AwaitingInput) => "awaiting",
                         Some(openagents_proto::SessionStatus::Errored) => "failed",
                         Some(openagents_proto::SessionStatus::Idle) => {

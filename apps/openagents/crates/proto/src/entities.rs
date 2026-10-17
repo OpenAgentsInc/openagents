@@ -327,6 +327,11 @@ pub struct Session {
     /// has not opened; read it through `view::running_subagents`.
     #[serde(default)]
     pub running_subagents: u32,
+    /// Background tasks (shells, agents) the chat's runtime still runs after
+    /// its turn ended. Rides the session row like `running_subagents`; read it
+    /// through `view::background_working`. Not a turn: sending stays open.
+    #[serde(default)]
+    pub background_tasks: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

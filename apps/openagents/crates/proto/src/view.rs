@@ -72,6 +72,26 @@ pub fn running_subagents(session: Option<&Session>, now: DateTime<Utc>) -> u32 {
         .map_or(0, |s| s.running_subagents)
 }
 
+/// A settled chat whose runtime still runs background work (shells, agents
+/// it started), staleness-checked like [`running_subagents`]. Pure.
+pub fn background_working(session: Option<&Session>, now: DateTime<Utc>) -> bool {
+    session
+        .filter(|s| s.status == SessionStatus::Idle && s.background_tasks > 0)
+        .is_some_and(|s| now.signed_duration_since(s.updated_at).num_milliseconds() <= SESSION_STALE_MS)
+}
+
+/// [`display_status`] for what a user sees on a row or working strip: a chat
+/// whose turn ended while its background work runs still reads Working. Turn
+/// controls (stop, queue/steer) keep using [`display_status`]: sending into
+/// such a chat starts a new turn.
+pub fn shown_status(chat: &Chat, session: Option<&Session>, now: DateTime<Utc>) -> ChatIndicator {
+    match display_status(chat, session, now) {
+        status @ (ChatIndicator::Working | ChatIndicator::AwaitingInput) => status,
+        _ if background_working(session, now) => ChatIndicator::Working,
+        status => status,
+    }
+}
+
 /// The full display status for a chat row / tab dot: live states win, then the
 /// synced seen marker decides completed-vs-idle. Staleness gating rides on
 /// [`effective_indicator`]; the derivation itself is [`crate::chat_indicator`].
@@ -265,7 +285,31 @@ mod gate_tests {
             started_at: None,
             updated_at,
             running_subagents: running,
+            background_tasks: 0,
         }
+    }
+
+    #[test]
+    fn background_work_shows_working_without_holding_the_turn() {
+        let now = Utc::now();
+        let chat: Chat = serde_json::from_value(serde_json::json!({
+            "id": "chat", "deviceId": "dev", "title": "t", "archived": false,
+            "createdAt": now, "updatedAt": now,
+        }))
+        .unwrap();
+        let mut idle = running_session(0, now - chrono::Duration::seconds(5));
+        idle.status = SessionStatus::Idle;
+        idle.background_tasks = 2;
+        assert!(background_working(Some(&idle), now));
+        assert_eq!(shown_status(&chat, Some(&idle), now), ChatIndicator::Working);
+        // Turn controls still see a settled chat: sending starts a new turn.
+        assert_eq!(display_status(&chat, Some(&idle), now), ChatIndicator::Idle);
+        // A dead engine's row stops showing it.
+        idle.updated_at = now - chrono::Duration::milliseconds(SESSION_STALE_MS + 1);
+        assert_eq!(shown_status(&chat, Some(&idle), now), ChatIndicator::Idle);
+        idle.updated_at = now;
+        idle.background_tasks = 0;
+        assert_eq!(shown_status(&chat, Some(&idle), now), ChatIndicator::Idle);
     }
 
     #[test]

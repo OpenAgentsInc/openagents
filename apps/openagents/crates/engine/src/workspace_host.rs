@@ -1971,6 +1971,7 @@ mod tests {
             started_at: None,
             updated_at: at,
             running_subagents: 0,
+            background_tasks: 0,
         }
     }
 

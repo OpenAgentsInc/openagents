@@ -1531,6 +1531,32 @@ impl Inner {
         }
     }
 
+    /// Publish how many background tasks `chat_id`'s runtime still runs, so a
+    /// chat whose turn ended while its shells/agents work reads Working on
+    /// every device. Same mirroring and no-op rules as the subagent count.
+    fn set_background_tasks(&self, chat_id: &str, tasks: usize) {
+        let tasks = u32::try_from(tasks).unwrap_or(u32::MAX);
+        let session = {
+            let mut statuses = lock(&self.statuses);
+            let Some(entry) = statuses.get_mut(chat_id) else {
+                return;
+            };
+            if entry.background_tasks == tasks {
+                return;
+            }
+            entry.background_tasks = tasks;
+            entry.updated_at = Utc::now();
+            let session = entry.clone();
+            let mut list: Vec<Session> = statuses.values().cloned().collect();
+            list.sort_by(|a, b| a.chat_id.cmp(&b.chat_id));
+            self.sessions_tx.send_replace(list);
+            session
+        };
+        if let Some(ws) = self.workspace() {
+            ws.record_session(&session);
+        }
+    }
+
     fn has_pending_steers(&self, chat_id: &str, run_id: &str) -> bool {
         lock(&self.runs)
             .get(chat_id)
@@ -1560,6 +1586,7 @@ impl Inner {
                     started_at: None,
                     updated_at: now,
                     running_subagents: 0,
+                    background_tasks: 0,
                 });
             // `started_at` is the elapsed-timer base and must only ever mean
             // "this turn". Entering Working from a settled state always
@@ -2484,6 +2511,10 @@ async fn drive_run(
     // so the gate still catches real crashes. touch_session throttles at 10s.
     let mut live_heartbeat = tokio::time::interval(std::time::Duration::from_secs(15));
     live_heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    // The runtime's background-task count (reported out of band, no event)
+    // is mirrored onto the session row so it shows as Working.
+    let mut background_poll = tokio::time::interval(std::time::Duration::from_secs(2));
+    background_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     // PERSISTENT SESSION (openagents runsBySession): a completed turn on a
     // steerable harness parks here instead of ending the run — the child and
     // its steering mailbox stay warm, and the next user message (dispatch
@@ -2616,6 +2647,10 @@ async fn drive_run(
                 },
                 _ = live_heartbeat.tick() => {
                     inner.touch_session(&chat_id);
+                    continue;
+                }
+                _ = background_poll.tick() => {
+                    inner.set_background_tasks(&chat_id, turn.background_tasks());
                     continue;
                 }
                 // A hang-up restarts the idle window, however long the call.
@@ -3463,6 +3498,7 @@ async fn drive_run(
         }
     }
     inner.set_running_subagents(&chat_id, 0);
+    inner.set_background_tasks(&chat_id, 0);
 
     // Claim any accepted-but-unconfirmed steers BEFORE the handle goes away:
     // a routed send that raced this exit either finds its entry gone (we own

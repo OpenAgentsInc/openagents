@@ -99,7 +99,12 @@ impl TurnControl {
     /// Host: the runtime reports live background work, so retiring it now
     /// would kill work nobody asked to stop.
     pub fn background_live(&self) -> bool {
-        self.background.load(std::sync::atomic::Ordering::Acquire) > 0
+        self.background_tasks() > 0
+    }
+
+    /// Host: how many background tasks the runtime reports right now.
+    pub fn background_tasks(&self) -> usize {
+        self.background.load(std::sync::atomic::Ordering::Acquire)
     }
 }
 

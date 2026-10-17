@@ -490,6 +490,7 @@ mod tests {
             started_at: Some(now),
             updated_at: now,
             running_subagents: 0,
+            background_tasks: 0,
         }
     }
 

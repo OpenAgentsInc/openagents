@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use openagents_doc::WorkspaceState;
-use openagents_proto::view::{attention_rank, display_status, project_key, representative_space};
+use openagents_proto::view::{attention_rank, display_status, project_key, representative_space, shown_status};
 use openagents_proto::{
     ChangeRequestState, ChangeRequestSummary, Chat, ChatIndicator, CheckoutChangeRequestStatus,
     Device, Session, SidebarPreferences, Space,
@@ -433,7 +433,8 @@ fn build_row(chat: &Chat, rc: &RowContext<'_>, cx: &DeriveContext<'_>) -> Arc<Se
     let session = rc.sessions.get(chat.id.as_str()).copied();
     let send_state = cx.send_states.get(&chat.id).copied();
     let host_indicator = display_status(chat, session, cx.now);
-    let indicator = host_indicator;
+    // Rows show background work as Working; turn controls read host_indicator.
+    let indicator = shown_status(chat, session, cx.now);
     let working_since_ms = match indicator {
         ChatIndicator::Working | ChatIndicator::AwaitingInput => session
             .and_then(|s| s.started_at)
