@@ -486,3 +486,8 @@ links remain readable. Upstream fixes now require manual ports.
 - Voice selection display (#12014). The iOS Talk with Codex voice row shows
   the saved voice name, or Codex default, beside Voice. Its existing next-call
   explanation and call behavior stay the same.
+
+- [OpenAgents #12019](https://github.com/OpenAgentsInc/openagents/issues/12019):
+  The phone's saved-account transcript uses the existing turn activity state
+  for its Working row, including before answer text arrives. The saved
+  message adapter, Lab cards, Stop, and computer sessions keep their paths.

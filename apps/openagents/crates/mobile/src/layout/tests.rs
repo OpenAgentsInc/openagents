@@ -885,3 +885,47 @@ fn image_read_badge_opens_the_image() {
     let hit = &d.links[0];
     assert!((hit.x - badge.x).abs() < 0.5 && (hit.y - badge.y).abs() < 0.5 && (hit.w - badge.w).abs() < 0.5);
 }
+
+#[test]
+fn working_row_follows_turn_activity_even_with_complete_saved_entries() {
+    let mut w = worker(390.0);
+    // An accepted turn can be quiet before the first text snapshot arrives.
+    w.input = TranscriptInput {
+        working: true,
+        ..Default::default()
+    };
+    let frame = w.pass();
+    assert_eq!(frame.row_count(), 1);
+    assert!(matches!(
+        frame.display(0).unwrap().widgets[0].kind,
+        display::WidgetKind::Working {
+            streaming: false,
+            ..
+        }
+    ));
+
+    w.input = debug_input(
+        vec![DebugEntry {
+            id: "saved-answer".into(),
+            user: false,
+            text: "First words".into(),
+            streaming: false,
+        }],
+        false,
+    );
+    w.input.working = true;
+    let frame = w.pass();
+    assert_eq!(frame.row_count(), 2);
+    assert_eq!(frame.display(0).unwrap().text, "First words");
+    assert!(matches!(
+        frame.display(1).unwrap().widgets[0].kind,
+        display::WidgetKind::Working { .. }
+    ));
+
+    w.input.working = false;
+    let frame = w.pass();
+    assert_eq!(frame.row_count(), 1);
+    assert_eq!(frame.display(0).unwrap().text, "First words");
+    w.input = Default::default();
+    assert_eq!(w.pass().row_count(), 0);
+}
