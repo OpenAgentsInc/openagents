@@ -68,7 +68,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 0: release and deploys (one agent, the only one that deploys or releases)
 
-**Taken 2026-10-16 22:04 CDT** by Codex working deploys and releases for #11875, #11934, #11852, #11936, and the after-close follow-ups #11938, #11941, #11950, #11953, #11954, #11955, and #11956 in `~/work/openagents-bang-lane`.
+**Taken 2026-10-16 22:04 CDT** by Codex working deploys and releases for #11875, #11934, #11852, #11936, and the after-close follow-ups #11938, #11941, #11950, #11953, #11954, #11955, #11956, and #11957 in `~/work/openagents-bang-lane`.
 
 - **Owns:** every web deploy (staging and production shifts), every release candidate cut, the final 1.0.0 publish, the project boards, and `NEEDS_OWNER.md` hygiene. Other lanes ask lane 0 to deploy. They never shift traffic themselves.
 - **Tonight:**
