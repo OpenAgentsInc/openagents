@@ -150,10 +150,11 @@ impl Client {
         body: Option<Value>,
         attempt: Option<&str>,
     ) -> Result<(u16, Value), String> {
-        self.call_with(method, path, account, body, attempt, false)
+        self.call_with(method, path, account, body, attempt, None)
             .await
     }
-    /// `free`: create under the service's free cloud allowance (#11981).
+    /// `allowance`: create under the service's free cloud allowance
+    /// (#11981): `free`, or `free-attested` for the smaller tier (#11994).
     pub(crate) async fn call_with(
         &self,
         method: reqwest::Method,
@@ -161,7 +162,7 @@ impl Client {
         account: &str,
         body: Option<Value>,
         attempt: Option<&str>,
-        free: bool,
+        allowance: Option<&str>,
     ) -> Result<(u16, Value), String> {
         let empty_post = method == reqwest::Method::POST && body.is_none();
         let mut request = self
@@ -172,8 +173,8 @@ impl Client {
         if let Some(attempt) = attempt {
             request = request.header("X-OpenAgents-Environment-Attempt", attempt);
         }
-        if free {
-            request = request.header("X-OpenAgents-Allowance", "free");
+        if let Some(allowance) = allowance {
+            request = request.header("X-OpenAgents-Allowance", allowance);
         }
         if let Some(body) = body {
             request = request.json(&body);

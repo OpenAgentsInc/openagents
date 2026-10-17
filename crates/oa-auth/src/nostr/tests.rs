@@ -391,3 +391,82 @@ fn keys_parse_as_hex_or_npub() {
     assert_eq!(parse_pubkey(&npub), Some(hex_key));
     assert_eq!(parse_pubkey("npub1nope"), None);
 }
+
+/// A gate that refuses, recording what it saw (#11994).
+#[derive(Default)]
+struct Refusing {
+    challenges: Vec<String>,
+    made: Vec<String>,
+    refuse: bool,
+}
+
+impl NewKeyGate for Refusing {
+    fn admit(&mut self, proof: &Proof, _: &Value) -> Result<(), Answer> {
+        self.challenges.push(proof.challenge.clone());
+        if self.refuse {
+            Err(refused(429, "signup_limit", "Not today."))
+        } else {
+            Ok(())
+        }
+    }
+    fn made(&mut self, account: &str) {
+        self.made.push(account.to_string());
+    }
+}
+
+fn gated_sign_in(auth: &NostrAuth, key: &RelaySigner, gate: &mut Refusing) -> (Answer, String) {
+    let now = now();
+    let (challenge, _) = auth.issue(Purpose::SignIn, now);
+    let header = Request {
+        signer: key,
+        created_at: now,
+        url: SIGN_IN,
+        method: "POST",
+        challenge: Some(&challenge),
+        payload: Some(BODY),
+    }
+    .header();
+    (
+        auth.sign_in_gated(None, "signup", Some(&header), BODY, now, gate),
+        challenge,
+    )
+}
+
+#[test]
+fn the_gate_decides_new_keys_only() {
+    let (dir, auth) = world();
+    let key = signer(9);
+    let mut gate = Refusing {
+        refuse: true,
+        ..Refusing::default()
+    };
+    let (answer, challenge) = gated_sign_in(&auth, &key, &mut gate);
+    assert_eq!(answer.status, 429);
+    assert_eq!(gate.challenges, vec![challenge]);
+    assert!(gate.made.is_empty());
+    let accounts = tenancy::Accounts::open(dir.path()).unwrap();
+    assert_eq!(
+        accounts
+            .account_of_principal(&nostr_principal(&key.pubkey()))
+            .unwrap(),
+        None,
+        "a refused key makes no account"
+    );
+
+    let mut gate = Refusing::default();
+    let (answer, _) = gated_sign_in(&auth, &key, &mut gate);
+    assert_eq!(answer.status, 200, "{}", answer.body);
+    assert_eq!(
+        gate.made,
+        vec![answer.body["account"]["id"].as_str().unwrap().to_string()]
+    );
+
+    // A key with its account signs in whatever the gate says.
+    let mut gate = Refusing {
+        refuse: true,
+        ..Refusing::default()
+    };
+    let (answer, _) = gated_sign_in(&auth, &key, &mut gate);
+    assert_eq!(answer.status, 200, "{}", answer.body);
+    assert!(gate.challenges.is_empty());
+}

@@ -222,6 +222,7 @@ async fn deploy_with(requests_per_day: Option<u64>, door: Option<&str>) -> Deplo
             database_url_env: String::new(),
             import_files: false,
             agents: None,
+            key_accounts: Default::default(),
             anonymous: None,
         }),
         billing: None,

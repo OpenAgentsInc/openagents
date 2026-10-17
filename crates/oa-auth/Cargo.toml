@@ -31,6 +31,7 @@ subtle = "2"
 tenancy = { path = "../tenancy" }
 tokio = { version = "1", features = ["net", "rt", "sync", "time"] }
 url = "2"
+x509-parser = { version = "0.18", features = ["verify"] }
 
 [dev-dependencies]
 oa-auth = { path = ".", features = ["fake", "local"] }

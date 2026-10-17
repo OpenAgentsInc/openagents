@@ -290,6 +290,7 @@ async fn deploy_with(pay: Pay, refuse: bool) -> Deployment {
             database_url_env: String::new(),
             import_files: false,
             agents: None,
+            key_accounts: Default::default(),
             anonymous: None,
         }),
         billing: None,

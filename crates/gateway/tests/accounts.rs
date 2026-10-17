@@ -63,6 +63,11 @@ fn account_config(anonymous: Option<config::Anonymous>) -> config::Accounts {
         database_url_env: String::new(),
         import_files: false,
         agents: None,
+        // No proof of work, so tests sign in new keys at once (#11994).
+        key_accounts: gateway::key_accounts::KeyAccounts {
+            difficulty_bits: 0,
+            ..Default::default()
+        },
         anonymous,
     }
 }
@@ -1874,6 +1879,7 @@ async fn signup_and_anonymous_off_when_not_configured() {
             database_url_env: String::new(),
             import_files: false,
             agents: None,
+            key_accounts: Default::default(),
             anonymous: None,
         }),
         false,
@@ -1992,6 +1998,7 @@ async fn stores_install_under_accounts_config_and_validate() {
             database_url_env: String::new(),
             import_files: false,
             agents: None,
+            key_accounts: Default::default(),
             recovery_ttl_secs: 3_600,
             anonymous: Some(config::Anonymous {
                 workspace: "public".to_string(),

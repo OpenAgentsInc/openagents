@@ -89,6 +89,7 @@ fn account_config() -> config::Accounts {
         database_url_env: String::new(),
         import_files: false,
         agents: None,
+        key_accounts: Default::default(),
         anonymous: None,
     }
 }

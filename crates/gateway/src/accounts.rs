@@ -1481,6 +1481,11 @@ async fn account_view(State(state): State<Arc<ServeState>>, headers: HeaderMap) 
         Ok(store) => store,
         Err(trouble) => return unavailable("accounts_unavailable", trouble.to_string()),
     };
+    drop(accounts);
+    // Which free cloud allowance the account gets (#11994).
+    let free_cloud = crate::key_accounts::standing_in(&state, &store, &account)
+        .await
+        .free_cloud();
     let record = match store.accounts.get(&account) {
         Some(record) => record,
         None => {
@@ -1528,6 +1533,7 @@ async fn account_view(State(state): State<Arc<ServeState>>, headers: HeaderMap) 
                     &record.principals,
                     store.identities.github_of(&record.id),
                 ),
+                "free_cloud": free_cloud,
             },
             "workspaces": workspaces,
         }),

@@ -2856,3 +2856,11 @@ When your active work finishes, rebuild OpenAgents Dev from current `main`
 to see the darker Coder Noir sidebar (`#050505`) beside the main area
 (`#0a0a0a`). Follow `apps/openagents/OPENAGENTS.md` and keep the existing
 data directory. The running app has not been relaunched.
+
+## Turn on App Attest for the phone app (#11994)
+
+In the Apple Developer portal, enable the App Attest capability for the App
+ID `com.openagents.app` (team `HQWSG26L43`), then regenerate the provisioning
+profiles. The app's entitlements need `com.apple.developer.devicecheck.appattest-environment`
+set to `production`. The server already checks attestations against Apple's
+root; without the capability, phone sign-ups fall back to the proof of work.

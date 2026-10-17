@@ -479,6 +479,7 @@ pub(crate) async fn identity(
         permitted: true,
         admin: false,
         environment_attempt: None,
+        free_cloud: crate::computers_api::FreeCloud::Full,
     })
 }
 

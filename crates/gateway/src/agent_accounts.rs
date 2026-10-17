@@ -470,7 +470,7 @@ pub fn leading_zero_bits(digest: &[u8]) -> u32 {
 }
 
 /// An address's network: an IPv4 /24 or an IPv6 /48.
-fn network(ip: IpAddr) -> String {
+pub(crate) fn network(ip: IpAddr) -> String {
     match ip {
         IpAddr::V4(v4) => {
             let [a, b, c, _] = v4.octets();
@@ -485,7 +485,7 @@ fn network(ip: IpAddr) -> String {
 
 /// The caller's address: the `X-Forwarded-For` entry `hops` places from
 /// the right (each trusted proxy appends the address it saw).
-fn caller_ip(headers: &HeaderMap, hops: usize) -> Option<IpAddr> {
+pub(crate) fn caller_ip(headers: &HeaderMap, hops: usize) -> Option<IpAddr> {
     let value = headers.get("x-forwarded-for")?.to_str().ok()?;
     let entries: Vec<&str> = value.split(',').map(str::trim).collect();
     let index = entries.len().checked_sub(hops.max(1))?;

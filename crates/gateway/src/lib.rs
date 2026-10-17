@@ -72,6 +72,8 @@ pub mod inference_state;
 pub mod inference_status;
 pub mod inference_x402;
 pub mod jobs;
+#[allow(clippy::result_large_err)]
+pub mod key_accounts;
 mod lab_workers;
 pub mod money;
 mod nostr_sign_in;

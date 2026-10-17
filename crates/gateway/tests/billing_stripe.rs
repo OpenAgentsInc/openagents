@@ -170,6 +170,7 @@ async fn deploy() -> Deployment {
             database_url_env: String::new(),
             import_files: false,
             agents: None,
+            key_accounts: Default::default(),
             anonymous: None,
         }),
         billing: Some(config::Billing {

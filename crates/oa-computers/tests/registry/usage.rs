@@ -574,6 +574,7 @@ async fn the_free_allowance_bounds_enrolled_accounts_and_yields_to_their_own_pol
                 .set_free_allowance(Some(FreeAllowance {
                     computer_count: 1,
                     boot_cpu_ms: one_boot,
+                    attested_boot_cpu_ms: one_boot / 2,
                 }))
                 .await
                 .unwrap();
@@ -602,6 +603,35 @@ async fn the_free_allowance_bounds_enrolled_accounts_and_yields_to_their_own_pol
             assert_eq!(usage["free_allowance"]["cpu_ms"], one_boot);
             assert_eq!(usage["free_allowance"]["counted_cpu_ms"], one_boot);
             assert_eq!(usage["free_allowance"]["computer_count"], 1);
+            assert_eq!(usage["free_allowance"]["tier"], "full");
+            // The attested tier (#11994) gets the smaller allowance and only
+            // moves up.
+            use oa_computers::usage::FreeTier;
+            assert!(
+                store
+                    .enroll_free_tier("kim", FreeTier::Attested)
+                    .await
+                    .unwrap()
+            );
+            let cpu = |usage: Value| usage["free_allowance"]["cpu_ms"].clone();
+            assert_eq!(cpu(store.usage("kim", 0, 1).await.unwrap()), one_boot / 2);
+            assert_eq!(
+                store.usage("kim", 0, 1).await.unwrap()["free_allowance"]["tier"],
+                "attested"
+            );
+            assert!(store.enroll_free_tier("kim", FreeTier::Full).await.unwrap());
+            assert_eq!(cpu(store.usage("kim", 0, 1).await.unwrap()), one_boot);
+            assert!(
+                store
+                    .enroll_free_tier("kim", FreeTier::Attested)
+                    .await
+                    .unwrap()
+            );
+            assert_eq!(
+                cpu(store.usage("kim", 0, 1).await.unwrap()),
+                one_boot,
+                "a full account never drops back"
+            );
             let id = &made.id;
             phase(&db, &store, &driver, id, "awake").await;
             store
@@ -685,6 +715,7 @@ async fn the_front_door_enrolls_free_accounts_only_when_the_allowance_is_on() {
         .set_free_allowance(Some(FreeAllowance {
             computer_count: 1,
             boot_cpu_ms: 120_000_000,
+            attested_boot_cpu_ms: 40_000_000,
         }))
         .await
         .unwrap();
@@ -696,5 +727,6 @@ async fn the_front_door_enrolls_free_accounts_only_when_the_allowance_is_on() {
         store.usage("free-http", 0, 1).await.unwrap()["free_allowance"]["cpu_ms"],
         120_000_000
     );
+    assert_eq!(create("odd", "free-paid").await.0, 400);
     task.abort();
 }

@@ -2,6 +2,9 @@
 //!
 //! - [`app`]: the GitHub App: its key and JWT, installation tokens and
 //!   their cache (#11056).
+//! - [`attest`]: App Attest for key accounts made on the iPhone: Apple's
+//!   attestation and assertion checks, and which account each attested key
+//!   belongs to (#11994).
 //! - [`config`]: the OAuth App settings and the private credentials file.
 //! - [`flow`]: the browser half (state, PKCE verifier, `return_to`), used
 //!   by the web server's `/auth/github` and `/auth/github/callback`.
@@ -22,6 +25,7 @@
 //! - `local` (feature): a small account service for local fixtures.
 
 pub mod app;
+pub mod attest;
 pub mod cache;
 pub mod config;
 pub mod device;

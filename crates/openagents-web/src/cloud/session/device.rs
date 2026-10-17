@@ -97,7 +97,12 @@ impl CloudSession {
     /// alone never grant access, and a decision-only API key is refused there.
     /// A transport failure or a 5xx is tried once more. A refused session is
     /// not tried again, and a result is never remembered for a later call.
-    pub(crate) async fn computer_account(&self, token: &str) -> Result<(String, bool)> {
+    /// The account, whether it is a site admin, and its free cloud
+    /// allowance (#11994).
+    pub(crate) async fn computer_account(
+        &self,
+        token: &str,
+    ) -> Result<(String, bool, crate::computers_api::FreeCloud)> {
         if !(session_token(token) || token.starts_with("oak_"))
             || token.len() > 512
             || token
@@ -121,6 +126,9 @@ impl CloudSession {
                             Ok((
                                 id.to_owned(),
                                 answer.body["account"]["admin"].as_bool() == Some(true),
+                                crate::computers_api::FreeCloud::of(
+                                    answer.body["account"]["free_cloud"].as_str(),
+                                ),
                             ))
                         }
                         401 => Err(SessionError::Unauthenticated),
