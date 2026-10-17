@@ -1578,3 +1578,59 @@ another one. Stopping saves partial evidence at a simulation-step boundary.
 Closing or hiding a device card releases viewing resources and subscriptions;
 a batch continues. An interactive view it owns explicitly requests pause on
 close. This profile supplies no physical robot, wallet, or approval authority.
+
+## OpenAgents app device channel (#11854, draft)
+
+This optional profile carries the OpenAgents app's device RPC over a current
+NIP-HOST grant. Chat documents and their updates stay in `coder-sync` rooms.
+Enabling this profile grants no account access, project access, or additional
+host rights. A host advertises the profile only after its app dispatcher runs.
+
+A request uses the existing encrypted, signed NIP-HOST request envelope and
+its request identity, expiry, grant, and epoch. Its operation is `app.rpc`,
+with `method` and `params` from `openagents_rpc::methods`. The app dispatcher
+accepts only explicitly implemented methods. An unknown method returns
+`unsupported` before dispatch; a caller cannot select a different right.
+
+The initial profile supports unary calls:
+
+| Methods | Required right |
+| --- | --- |
+| `ListHarnesses`, `ListModels`, `ListSkills`, `ListCommands` | `observe` |
+| `QueueCommand`, `RelayCommand` | `operate` |
+
+The host checks the recipient device, current grant, expiry, revocation, and
+project scope before every dispatch. A method that accepts a path also passes
+through the host's workspace and symlink checks. An app service cannot turn a
+host-wide grant into a project-scoped grant or widen a narrower project grant.
+The reply uses the existing signed reply envelope and the original request
+identity. Requests and replies are limited to 64 KiB. Larger file and chat
+content uses its existing transfer path.
+
+Commands retain the app's client-generated command ID and its existing durable
+command ledger. Reconnecting or changing transport never generates a new command
+ID. Cancelling a transport request does not cancel a running turn. Session
+steering, stopping a turn, and approvals remain explicit app commands.
+
+The phone opts in per paired computer and uses `coder-host::client::Connector`
+to prove the host and establish its route. The WebSocket device room remains
+available for stream methods and hosts that do not offer this profile. A signed
+revocation or permission refusal ends the operation on every route. After a
+command may have reached a host, transport failure is an unknown outcome: the
+phone checks the existing command ID rather than submitting a new command over
+the fallback. Only failure before dispatch or an explicit `unsupported` reply
+permits choosing the WebSocket path for that operation.
+
+### HTTP device proofs
+
+A NIP-98 device proof supplements the signed-in account session on `coder-sync`;
+it never replaces the session or authorizes joining another account's room.
+The proof names the exact public request URL, including its query, and HTTP
+method, and hashes the exact body for requests with a body. Its signer must
+match the device key registered to that account. The service verifies the
+signature, a timestamp within 60 seconds, and a fresh event ID before accepting
+the request. Requests with an invalid supplied proof never fall back to bearer
+access. A revoked device key cannot register itself again without a new pairing.
+Legacy clients keep the existing account-session path while this profile is
+opt-in. A latency comparison must name the tested revisions, routes, sample
+counts, and failures before this profile becomes the default.
