@@ -39,6 +39,10 @@ name = "tool-progress-capture"
 required-features = ["account-fixture"]
 
 [[example]]
+name = "agent-identity-fixture"
+required-features = ["account-fixture"]
+
+[[example]]
 name = "macos-resource-profile"
 required-features = ["resource-profile"]
 
