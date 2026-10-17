@@ -89,7 +89,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 2: sessions on the web
 
-**Taken 2026-10-16 22:41 CDT** by a Claude Code subagent working #11897 in `~/work/openagents-lane2`.
+**Done 2026-10-16 23:30 CDT** by a Claude Code subagent. #11897 is closed (`f00ff8f121`, `59251e460b`); its deploy and live check are in After-close checks. The `~/work/openagents-lane2` worktree is removed.
 
 - **Owns:** a new session index in `crates/openagents-web` (history list, summary page) and the publishing hook in `apps/openagents/crates/engine` or `crates/coder-sync`'s registry read.
 - **Order:** #11897 alone. It builds on `cca7f94ebe`'s `chat-home` types without changing them. Ask lane 1 before you edit `chat-home`.
