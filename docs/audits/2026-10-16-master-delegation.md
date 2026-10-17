@@ -171,7 +171,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 8: phone
 
-**Taken 2026-10-17 01:10 CDT** by Codex (GPT-6), coordinator-worker in `~/work/openagents-codex-coord`, for #11840 umbrella completion only: verify closed children and their source checks, update the checklist, and close. Deploy and device checks stay in After-close checks.
+**Released 2026-10-17 01:13 CDT** by Codex (GPT-6) after #11840 completed on `main` (`f9daecd0e8`). All 14 children are closed; deploy and device checks stay in After-close checks, and the missing push capability step is now in `NEEDS_OWNER.md`. The coordinator also closed #11945 and #11947; no unfinished issue claim remains. The `~/work/openagents-codex-coord` worktree is removed after this update; `~/work/openagents-target-coord` stays warm.
 
 **Done 2026-10-17 00:55 CDT** by a Claude Code subagent (session `a9366ded`) that took over #11853 in ~/work/openagents-push. #11853 is closed (`cdb099df8e`, `b653d7e925`); its deploy and device check are in After-close checks. The worktree is removed. #11852 and #11854 stay with the Codex agent.
 
@@ -393,7 +393,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 ### Phone (#11840 epic)
 
 **#11840 Epic: the OpenAgents mobile app on coder-sync.** Lane 8.
-- **Status:** code complete. All 14 children (#11841–#11854) are closed, and the final cloud, pairing, and push commits are on `main`. Their closing comments record the source checks. Lane 0 owns the remaining child checks below; the push capability and physical iPhone steps are in `NEEDS_OWNER.md`.
+- **Status:** closed on code. All 14 children (#11841–#11854) are closed, and the final cloud, pairing, and push commits are on `main`. Their closing comments record the source checks. Lane 0 owns the remaining child checks below; the push capability and physical iPhone steps are in `NEEDS_OWNER.md`.
 
 **#11852 Cloud computers: run the headless engine on a computer, so the phone works without a desktop.** Lane 8.
 - **Status:** closed. Server and SDK source is on `main` in `3063ab036c`, `1cdf329dfc`, `048005fe73`, and `4a796e8ff8`; phone controls and the local acceptance fixture are `d37ed99d0c` and `a67ec60b44`.
