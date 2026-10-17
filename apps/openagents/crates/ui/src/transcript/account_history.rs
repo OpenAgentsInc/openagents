@@ -173,11 +173,18 @@ impl Transcript {
         let Some(source) = self.account_history.as_mut() else {
             return Some(div().into_any_element());
         };
-        let view = match source.labs.get(row_id) {
+        // A followed chat's card changes as its job runs: draw the new one.
+        let saved = source.model.lab_card(path);
+        let cached = source.labs.get(row_id).filter(|view| {
+            saved
+                .as_ref()
+                .is_some_and(|saved| view.read(cx).card() == &saved.card)
+        });
+        let view = match cached {
             Some(view) => view.clone(),
             None => {
                 let model = source.model.clone();
-                let Some(saved) = model.lab_card(path) else {
+                let Some(saved) = saved else {
                     return Some(div().into_any_element());
                 };
                 let page = model.lab_page(path);

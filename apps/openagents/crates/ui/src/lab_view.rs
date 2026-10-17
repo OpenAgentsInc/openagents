@@ -160,6 +160,11 @@ impl LabView {
         crate::image_media::release_media(images.collect::<Vec<_>>(), cx);
     }
 
+    /// The card this row draws.
+    pub fn card(&self) -> &Card {
+        &self.card
+    }
+
     /// Whether the row still shows anything: false once the account changed.
     pub fn showing(&self) -> bool {
         !self.released
