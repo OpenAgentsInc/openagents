@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use crate::{CancellationToken, ChatRef, Client, Error, Session};
 
+/// A terminal chat to save: its computer, title, and messages.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Snapshot {
@@ -18,6 +19,7 @@ pub struct Snapshot {
     pub active_unix: Option<u64>,
 }
 
+/// Who wrote a terminal chat message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
@@ -27,6 +29,7 @@ pub enum Role {
     Tool,
 }
 
+/// One message of a terminal chat.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Message {
@@ -36,6 +39,7 @@ pub struct Message {
     pub step: Option<Value>,
 }
 
+/// The saved chat, and whether this save changed it.
 #[derive(Clone, Debug)]
 pub struct Saved {
     pub chat: ChatRef,

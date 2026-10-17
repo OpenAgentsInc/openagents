@@ -40,6 +40,14 @@ pub fn document() -> Value {
                 "503": response("OAuthError", "Sign-in is temporarily unavailable.")
             }
         });
+        operation["description"] = json!(match id {
+            "startAppLogin" => {
+                "Start signing an app in. Show the person the returned code and address, then poll for the session."
+            }
+            _ => {
+                "Poll for the session of a sign-in you started. Wait the returned interval between polls."
+            }
+        });
         if request.is_empty() {
             operation["security"] = json!([{"appBearer": []}]);
             operation["responses"]["401"] = response("OAuthError", "Invalid app credential.");

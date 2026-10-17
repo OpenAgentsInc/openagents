@@ -31,6 +31,9 @@ sha2 = "0.10"
 base64 = "0.22"
 
 [dev-dependencies]
+# The SDK reference extractor (tests/reference.rs, #12007).
+syn = { version = "2", features = ["full", "visit"] }
+prettyplease = "0.2"
 async-trait = "0.1"
 lab-api = { path = "../lab-api" }
 lab-store = { path = "../lab-store" }

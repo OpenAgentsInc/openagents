@@ -25,6 +25,7 @@ pub struct CloudHost {
 }
 
 impl CloudHost {
+    /// Whether the engine is running.
     pub fn running(&self) -> bool {
         self.engine == "running"
     }

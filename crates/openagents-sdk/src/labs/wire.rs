@@ -1,3 +1,4 @@
+//! Labs HTTP requests for kinds, tools, documents, versions, jobs, notes, and uploads.
 use super::*;
 use lab_kit::api::{Data, Deleted, ErrorBody, Saved};
 use reqwest::{Method, Response, header};
@@ -157,6 +158,7 @@ impl Client {
         valid_id(&job.id)?;
         self.bound(&job.binding)
     }
+    /// Lists the lab kinds available in a space.
     pub async fn kinds(
         &self,
         space: &str,
@@ -175,6 +177,7 @@ impl Client {
             .await?;
         Ok(response.data)
     }
+    /// Lists the tools a lab kind offers in a space.
     pub async fn tools(
         &self,
         space: &str,
@@ -195,6 +198,7 @@ impl Client {
             .await?;
         Ok(response.data)
     }
+    /// Calls a lab kind's tool and returns its result.
     pub async fn invoke(
         &self,
         kind: &str,
@@ -216,6 +220,7 @@ impl Client {
         )
         .await
     }
+    /// Returns a page of documents in a space.
     pub async fn documents(
         &self,
         space: &str,
@@ -233,6 +238,7 @@ impl Client {
         )
         .await
     }
+    /// Creates a document and returns its first version.
     pub async fn create_document(
         &self,
         request: &Request<CreateDocument>,
@@ -255,6 +261,7 @@ impl Client {
         check_version(&version, &request.body.id, None)?;
         Ok(version)
     }
+    /// Returns a document's details.
     pub async fn document(
         &self,
         document: &DocumentRef,
@@ -276,6 +283,7 @@ impl Client {
         }
         Ok(value)
     }
+    /// Deletes a document and returns whether it was deleted.
     pub async fn delete_document(
         &self,
         document: &DocumentRef,
@@ -297,6 +305,7 @@ impl Client {
         }
         Ok(value.deleted)
     }
+    /// Returns a page of a document's versions.
     pub async fn versions(
         &self,
         document: &DocumentRef,
@@ -322,6 +331,7 @@ impl Client {
         }
         Ok(values)
     }
+    /// Returns one version of a document by number.
     pub async fn version(
         &self,
         document: &DocumentRef,
@@ -351,6 +361,7 @@ impl Client {
         check_version(&version, &document.id, Some(number))?;
         Ok(version)
     }
+    /// Proposes a new version of a document and reports whether it was created, out of date, or refused.
     pub async fn edit(
         &self,
         document: &DocumentRef,
@@ -393,6 +404,7 @@ impl Client {
             Err(e) => Err(e),
         }
     }
+    /// Returns the card for one version of a document.
     pub async fn card(
         &self,
         document: &DocumentRef,
@@ -425,6 +437,7 @@ impl Client {
         }
         Ok(card)
     }
+    /// Starts a job, retrying with the same key after network errors or busy responses.
     pub async fn create_job(
         &self,
         request: &JobRequest,
@@ -483,6 +496,7 @@ impl Client {
             }
         }
     }
+    /// Returns a page of a document's jobs.
     pub async fn jobs(
         &self,
         document: &DocumentRef,
@@ -512,9 +526,11 @@ impl Client {
         }
         Ok(jobs)
     }
+    /// Returns a job's current state.
     pub async fn job(&self, job: &JobRef, cancel: &CancellationToken) -> Result<JobState, Error> {
         self.read_job(job, Method::GET, cancel).await
     }
+    /// Cancels a job and returns its state.
     pub async fn cancel_job(
         &self,
         job: &JobRef,
@@ -544,6 +560,7 @@ impl Client {
         }
         Ok(value)
     }
+    /// Checks a job until it finishes or the wait times out.
     pub async fn wait(
         &self,
         job: &JobRef,
@@ -574,6 +591,7 @@ impl Client {
         })
         .await
     }
+    /// Returns a page of a document's notes.
     pub async fn notes(
         &self,
         document: &DocumentRef,
@@ -591,6 +609,7 @@ impl Client {
         )
         .await
     }
+    /// Adds a note to a document version.
     pub async fn add_note(
         &self,
         document: &DocumentRef,
@@ -617,6 +636,7 @@ impl Client {
         }
         Ok(())
     }
+    /// Uploads a file to a space and returns its details.
     pub async fn upload(
         &self,
         request: &Request<Upload>,
@@ -637,6 +657,7 @@ impl Client {
         )
         .await
     }
+    /// Returns up to `limit` document events after a cursor, without a live stream.
     pub async fn events_since(
         &self,
         document: &DocumentRef,

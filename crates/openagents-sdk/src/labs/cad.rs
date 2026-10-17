@@ -5,9 +5,11 @@ pub use ::cad::lab::{Cad, Intent, changed_content, measurements};
 use lab_kit::{Change, Draft, LabKind, Measurements, Refusal, Report, Version};
 use serde_json::Value;
 
+/// Checks CAD content against its measurements with the server's rules.
 pub fn check(content: &Value, measurements: &Measurements) -> Result<Report, Refusal> {
     Cad::check(content, measurements)
 }
+/// Applies a change to a CAD version and returns the draft the server would accept.
 pub fn apply(
     base: &Version,
     change: &Change,

@@ -1,6 +1,7 @@
 //! Prepare credentials for a saved command without carrying their values.
 use super::*;
 
+/// A saved request to prepare a credential for a command.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CredentialRequest {
     v: String,
@@ -9,22 +10,27 @@ pub struct CredentialRequest {
     body: generated::AppPrepareComputerCredentialReference,
 }
 impl CredentialRequest {
+    /// Returns the key that identifies this request.
     pub fn key(&self) -> &RequestKey {
         &self.key
     }
+    /// Returns the computer the credential is for.
     pub fn computer(&self) -> &ComputerRef {
         &self.computer
     }
 }
+/// Identifies one prepared credential on a cloud computer.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CredentialRef {
     computer: ComputerRef,
     id: String,
 }
 impl CredentialRef {
+    /// Returns the credential's ID.
     pub fn id(&self) -> &str {
         &self.id
     }
+    /// Returns the computer the credential is for.
     pub fn computer(&self) -> &ComputerRef {
         &self.computer
     }
@@ -33,15 +39,18 @@ impl CredentialRef {
         format!("oa-ref:{}", self.id)
     }
 }
+/// A prepared credential as the service last reported it.
 #[derive(Clone)]
 pub struct Credential {
     reference: CredentialRef,
     data: generated::AppComputerCredentialReference,
 }
 impl Credential {
+    /// Returns the reference to this credential.
     pub fn reference(&self) -> &CredentialRef {
         &self.reference
     }
+    /// Returns the credential's details as the service sent them.
     pub fn data(&self) -> &generated::AppComputerCredentialReference {
         &self.data
     }
@@ -97,6 +106,7 @@ impl Computers<'_> {
             key,
         })
     }
+    /// Returns a reference to the credential with this ID on a computer.
     pub fn credential_reference(
         &self,
         computer: &ComputerRef,
@@ -158,6 +168,7 @@ impl Computers<'_> {
         Ok(result)
     }
 
+    /// Sends a saved request to prepare a credential.
     pub async fn prepare_credential(
         &self,
         request: &CredentialRequest,
@@ -193,6 +204,7 @@ impl Computers<'_> {
             cause: Box::new(cause),
         })
     }
+    /// Gets the current state of a prepared credential.
     pub async fn get_credential(
         &self,
         reference: &CredentialRef,
@@ -209,6 +221,7 @@ impl Computers<'_> {
         let data = self.json(plan, cancel).await?;
         self.credential(&reference.computer, data, Some(&reference.id))
     }
+    /// Revokes a prepared credential so no command can use it.
     pub async fn revoke_credential(
         &self,
         reference: &CredentialRef,

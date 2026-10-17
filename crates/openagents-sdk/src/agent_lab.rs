@@ -3,17 +3,20 @@ use crate::{CancellationToken, Client, Deployment, Error, Session};
 pub use ::agent_lab::{api::*, *};
 use reqwest::Method;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+/// An Agent Lab request body tied to one account and deployment. Keep it across retries.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Request<T> {
     account: String,
     deployment: Deployment,
     pub body: T,
 }
+/// Calls the Agent Lab routes for one signed-in session.
 pub struct AgentLabClient<'a> {
     client: &'a Client,
     session: &'a Session,
 }
 impl Client {
+    /// Returns the Agent Lab client for `session`, or an error if the session belongs to another deployment.
     pub fn agent_lab<'a>(&'a self, session: &'a Session) -> Result<AgentLabClient<'a>, Error> {
         self.check_session(session)?;
         Ok(AgentLabClient {
@@ -23,6 +26,7 @@ impl Client {
     }
 }
 impl AgentLabClient<'_> {
+    /// Ties `body` to this session's account and deployment.
     pub fn bind<T>(&self, body: T) -> Request<T> {
         Request {
             account: self.session.account().id.clone(),
@@ -50,6 +54,7 @@ impl AgentLabClient<'_> {
         self.client.check_session(self.session)?;
         tokio::select! {biased;_=cancel.cancelled()=>Err(Error::Cancelled),r=self.client.request(method,path,query,body,Some(self.session.token()))=>r}
     }
+    /// Deletes the Agent Lab document `id`.
     pub async fn delete_document(
         &self,
         id: &str,
@@ -65,10 +70,12 @@ impl AgentLabClient<'_> {
         )
         .await
     }
+    /// Lists the computers that can run Agent Lab experiments.
     pub async fn hosts(&self, cancel: &CancellationToken) -> Result<Vec<Host>, Error> {
         self.send(Method::GET, &["labs", "agent", "hosts"], &[], None, cancel)
             .await
     }
+    /// Reports that `host` is online and returns the saved host record.
     pub async fn heartbeat(&self, host: &Host, cancel: &CancellationToken) -> Result<Host, Error> {
         self.send(
             Method::POST,
@@ -79,6 +86,7 @@ impl AgentLabClient<'_> {
         )
         .await
     }
+    /// Lists Agent Lab documents, starting after the cursor `after`.
     pub async fn documents(
         &self,
         after: Option<&str>,
@@ -93,6 +101,7 @@ impl AgentLabClient<'_> {
         )
         .await
     }
+    /// Fetches the Agent Lab document `id`.
     pub async fn document(&self, id: &str, cancel: &CancellationToken) -> Result<Document, Error> {
         self.send(
             Method::GET,
@@ -103,6 +112,7 @@ impl AgentLabClient<'_> {
         )
         .await
     }
+    /// Saves a document: updates `id` when given, or creates a new document otherwise.
     pub async fn save(
         &self,
         id: Option<&str>,
@@ -126,6 +136,7 @@ impl AgentLabClient<'_> {
         )
         .await
     }
+    /// Starts a run of a version of the document `id`.
     pub async fn start(
         &self,
         id: &str,
@@ -141,6 +152,7 @@ impl AgentLabClient<'_> {
         )
         .await
     }
+    /// Lists runs, optionally for one host, starting after the cursor `after`.
     pub async fn runs(
         &self,
         host: Option<&str>,
@@ -163,6 +175,7 @@ impl AgentLabClient<'_> {
         )
         .await
     }
+    /// Fetches the run `id`.
     pub async fn run(&self, id: &str, cancel: &CancellationToken) -> Result<Run, Error> {
         self.send(
             Method::GET,
@@ -173,6 +186,7 @@ impl AgentLabClient<'_> {
         )
         .await
     }
+    /// Applies a user action, such as stop, to the run `id`.
     pub async fn change(
         &self,
         id: &str,
@@ -188,6 +202,7 @@ impl AgentLabClient<'_> {
         )
         .await
     }
+    /// Reports a host's progress on the run `id`.
     pub async fn host_update(
         &self,
         id: &str,
@@ -203,6 +218,7 @@ impl AgentLabClient<'_> {
         )
         .await
     }
+    /// Saves a version of the document `id` as an agent definition.
     pub async fn promote(
         &self,
         id: &str,

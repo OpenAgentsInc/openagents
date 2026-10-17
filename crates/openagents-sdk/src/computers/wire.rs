@@ -1,3 +1,4 @@
+//! Sends cloud computer requests and retries the ones that are safe to retry.
 use super::*;
 use generated::{Authority, Request, RequestBody};
 use reqwest::{

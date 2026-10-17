@@ -2,7 +2,7 @@
 
 use serde_json::Value;
 
-const CONTRACT: &str = include_str!("../../../docs/sdk/openapi.systemone.json");
+pub(crate) const CONTRACT: &str = include_str!("../../../docs/sdk/openapi.systemone.json");
 
 pub(crate) fn extend(document: &mut Value) -> Result<(), &'static str> {
     let slice: Value = serde_json::from_str(CONTRACT).map_err(|_| "Invalid System One slice")?;

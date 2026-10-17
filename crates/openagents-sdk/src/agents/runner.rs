@@ -4,10 +4,14 @@ use super::AgentSpec;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Read, Write};
 
+/// The schema version a runner request must carry.
 pub const VERSION: &str = "openagents.agent.runner.v1";
+/// The largest request or result line, in bytes.
 pub const MAX_FRAME: usize = 96 * 1024;
+/// The most output a runner may produce, in bytes.
 pub const MAX_OUTPUT: usize = 1024 * 1024;
 
+/// One request to a runner: the assignment, the agent, the task, and the working folder.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Turn {
@@ -19,6 +23,7 @@ pub struct Turn {
     pub cwd: String,
 }
 impl Turn {
+    /// Checks the request and returns a message for the user when it is not valid.
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.schema != VERSION || !super::valid_id(&self.assignment) {
             return Err("Unsupported runner request.");
@@ -39,6 +44,7 @@ impl Turn {
         Ok(())
     }
 }
+/// A message a runner writes back: progress text or a final result.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Event {
@@ -47,6 +53,7 @@ pub enum Event {
     Failed { message: String },
 }
 impl Event {
+    /// Returns the event's text, result, or error message.
     pub fn text(&self) -> &str {
         match self {
             Self::Text { text } => text,
@@ -54,6 +61,7 @@ impl Event {
             Self::Failed { message } => message,
         }
     }
+    /// Returns true when the event ends the turn.
     pub fn terminal(&self) -> bool {
         !matches!(self, Self::Text { .. })
     }

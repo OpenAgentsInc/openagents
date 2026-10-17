@@ -4,6 +4,7 @@ use crate::{CancellationToken, Error};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
+/// What to run: an agent revision, the computer and optional project, and the task text.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AssignmentSpec {
@@ -14,6 +15,7 @@ pub struct AssignmentSpec {
     pub task: String,
 }
 impl AssignmentSpec {
+    /// Checks the fields and returns a message for the user when one is not valid.
     pub fn validate(&self) -> Result<(), &'static str> {
         if !valid_id(&self.agent) || self.agent_revision == 0 {
             return Err("Choose an agent again.");
@@ -42,12 +44,14 @@ impl AssignmentSpec {
         Ok(())
     }
 }
+/// The request body that assigns a task to an agent.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateAssignment {
     pub request_id: String,
     pub spec: AssignmentSpec,
 }
+/// Where an assignment is in its life.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AssignmentState {
@@ -59,6 +63,7 @@ pub enum AssignmentState {
     #[serde(other)]
     Unknown,
 }
+/// A user action on an assignment.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AssignmentAction {
@@ -66,12 +71,14 @@ pub enum AssignmentAction {
     Stop,
     Archive,
 }
+/// A user action on an assignment with its request ID.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AssignmentCommand {
     pub request_id: String,
     pub action: AssignmentAction,
 }
+/// A task assigned to an agent on a computer, with its chat, state, and result.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Assignment {
     pub id: String,
@@ -89,11 +96,13 @@ pub struct Assignment {
     #[serde(default)]
     pub after_seq: u64,
 }
+/// One page of assignments and the cursor for the next page.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AssignmentPage {
     pub data: Vec<Assignment>,
     pub next: Option<String>,
 }
+/// The request body a computer sends to report an assignment's state and result.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AssignmentReport {
@@ -106,6 +115,7 @@ pub struct AssignmentReport {
     pub result: Option<String>,
 }
 impl Agents<'_> {
+    /// Checks `spec` and prepares a request that creates an assignment.
     pub fn assignment_request(
         &self,
         spec: AssignmentSpec,
@@ -116,6 +126,7 @@ impl Agents<'_> {
             spec,
         }))
     }
+    /// Checks `action` and prepares a request that sends it to an assignment.
     pub fn command_request(
         &self,
         action: AssignmentAction,
@@ -130,6 +141,7 @@ impl Agents<'_> {
             action,
         }))
     }
+    /// Prepares a request a computer uses to report an assignment's state.
     pub fn report_request(
         &self,
         host: String,
@@ -149,6 +161,7 @@ impl Agents<'_> {
             result,
         }))
     }
+    /// Creates an assignment from a prepared request.
     pub async fn assign(
         &self,
         request: &AgentRequest<CreateAssignment>,
@@ -163,6 +176,7 @@ impl Agents<'_> {
         )
         .await
     }
+    /// Fetches the assignment `id`.
     pub async fn assignment(
         &self,
         id: &str,
@@ -174,6 +188,7 @@ impl Agents<'_> {
         self.send(Method::GET, &["agent-assignments", id], &[], None, cancel)
             .await
     }
+    /// Lists assignments, optionally for one computer, starting after the cursor `after`.
     pub async fn assignments(
         &self,
         host: Option<&str>,
@@ -190,6 +205,7 @@ impl Agents<'_> {
         self.send(Method::GET, &["agent-assignments"], &q, None, cancel)
             .await
     }
+    /// Sends a prepared user action to the assignment `id`.
     pub async fn command(
         &self,
         id: &str,
@@ -208,6 +224,7 @@ impl Agents<'_> {
         )
         .await
     }
+    /// Sends a prepared state report for the assignment `id`.
     pub async fn report(
         &self,
         id: &str,

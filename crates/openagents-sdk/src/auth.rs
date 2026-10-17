@@ -1,3 +1,5 @@
+//! Sign-in: device logins, saved credentials, and the signed-in account.
+
 use std::fmt;
 use std::time::Duration;
 
@@ -13,6 +15,7 @@ use crate::{CancellationToken, Client, Deployment, Error};
 
 pub(crate) mod nostr;
 
+/// A signed-in account: its ID, display label, and optional email and avatar.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Account {
     pub id: String,
@@ -23,6 +26,7 @@ pub struct Account {
     pub avatar_url: Option<String>,
 }
 
+/// A workspace the account belongs to, with the account's role in it.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Workspace {
     pub id: String,
@@ -34,6 +38,7 @@ pub struct Workspace {
     pub tenant: String,
 }
 
+/// The account and its current workspaces, as [`Client::account`] returns them.
 #[derive(Clone, Debug, Deserialize)]
 pub struct AccountView {
     pub account: Account,
@@ -63,15 +68,19 @@ impl fmt::Debug for CredentialRecord {
 }
 
 impl CredentialRecord {
+    /// The deployment this record belongs to.
     pub fn deployment(&self) -> &Deployment {
         &self.deployment
     }
+    /// The account this record signs in.
     pub fn account(&self) -> &Account {
         &self.account
     }
+    /// When the credential expires, in Unix seconds, or `None` when it has no set expiry.
     pub fn expires_at(&self) -> Option<u64> {
         self.expires_at
     }
+    /// Whether the credential has expired at `now`, in Unix seconds.
     pub fn expired(&self, now: u64) -> bool {
         self.expires_at.is_some_and(|expiry| expiry <= now)
     }
@@ -84,12 +93,15 @@ pub struct Session {
 }
 
 impl Session {
+    /// The signed-in account.
     pub fn account(&self) -> &Account {
         &self.record.account
     }
+    /// When the session expires, in Unix seconds, or `None` when it has no set expiry.
     pub fn expires_at(&self) -> Option<u64> {
         self.record.expires_at
     }
+    /// The deployment this session belongs to.
     pub fn deployment(&self) -> &Deployment {
         &self.record.deployment
     }
@@ -107,6 +119,7 @@ impl Session {
     }
 }
 
+/// Why a credential store couldn't load, save, or clear a login.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StorageError {
     Denied,
@@ -125,8 +138,11 @@ impl std::error::Error for StorageError {}
 
 /// Caller-owned persistence. Implement with Keychain, another OS store, or memory.
 pub trait CredentialStore {
+    /// Loads the login saved for `deployment`, if there is one.
     fn load(&self, deployment: &Deployment) -> Result<Option<CredentialRecord>, StorageError>;
+    /// Saves `record`, replacing any login saved for its deployment.
     fn save(&self, record: &CredentialRecord) -> Result<(), StorageError>;
+    /// Removes the login saved for `deployment`.
     fn clear(&self, deployment: &Deployment) -> Result<(), StorageError>;
 }
 
@@ -150,6 +166,7 @@ impl fmt::Debug for Login {
 }
 
 impl Login {
+    /// The code the person confirms on the website.
     pub fn user_code(&self) -> &str {
         &self.started.user_code
     }
@@ -157,17 +174,21 @@ impl Login {
     pub fn verification_url(&self) -> &Url {
         &self.verification
     }
+    /// The time left before this login code expires.
     pub fn expires_in(&self) -> Duration {
         self.deadline.saturating_duration_since(Instant::now())
     }
+    /// The time to wait before the next poll.
     pub fn next_poll_in(&self) -> Duration {
         self.next_poll.saturating_duration_since(Instant::now())
     }
+    /// Stops this login. Later polls return `Error::FinishedLogin`.
     pub fn cancel(&mut self) {
         self.finished = true;
     }
 }
 
+/// The result of one login poll: keep waiting, slow down, or signed in.
 #[derive(Debug)]
 pub enum Poll {
     Pending { retry_after: Duration },

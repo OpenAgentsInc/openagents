@@ -99,6 +99,8 @@ pulldown-cmark = { version = "0.13.4", default-features = false, features = ["ht
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The SDK docs read the decision API contract (docs/agents/openapi.yaml, #12007).
+serde_yaml_ng = "0.10"
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 secret-screen = { path = "../secret-screen" }
 sha2 = "0.10"

@@ -1,3 +1,5 @@
+//! Deployments, the HTTP client, and the errors SDK calls return.
+
 use std::fmt;
 use std::time::{Duration, SystemTime};
 
@@ -38,6 +40,9 @@ pub(crate) fn allowed_origin(url: &Url) -> bool {
 }
 
 impl Deployment {
+    /// Creates a deployment from its API base, such as `https://api.openagents.com/v1`,
+    /// and its website address. Refuses an address that isn't HTTPS, except HTTP to
+    /// this computer.
     pub fn new(api_base: &str, website: &str) -> Result<Self, Error> {
         let mut api = Url::parse(api_base).map_err(|_| Error::InvalidDeployment)?;
         let website = Url::parse(website).map_err(|_| Error::InvalidDeployment)?;
@@ -49,6 +54,7 @@ impl Deployment {
         Ok(deployment)
     }
 
+    /// The OpenAgents production deployment.
     #[must_use]
     pub fn production() -> Self {
         Self::new("https://api.openagents.com/v1", "https://openagents.com")
@@ -67,9 +73,11 @@ impl Deployment {
         }
     }
 
+    /// The API base address, ending in `/v1/`.
     pub fn api_base(&self) -> &Url {
         &self.api
     }
+    /// The website address.
     pub fn website(&self) -> &Url {
         &self.website
     }
@@ -137,6 +145,7 @@ pub enum Error {
 }
 
 impl Error {
+    /// The HTTP 402 challenge, when this error is a payment request.
     pub fn payment_required(&self) -> Option<&crate::PaymentRequired> {
         match self {
             Self::PaymentRequired(challenge) => Some(challenge),
@@ -196,14 +205,20 @@ impl fmt::Debug for Client {
 }
 
 impl Client {
+    /// Creates a client for `deployment` with a 20-second request timeout.
     pub fn new(deployment: Deployment) -> Result<Self, Error> {
         Self::with_timeout(deployment, Duration::from_secs(20))
     }
 
+    /// Creates a client with a request timeout of `timeout`. The connection timeout
+    /// is the shorter of `timeout` and 10 seconds.
     pub fn with_timeout(deployment: Deployment, timeout: Duration) -> Result<Self, Error> {
         Self::with_timeouts(deployment, timeout.min(Duration::from_secs(10)), timeout)
     }
 
+    /// Creates a client with separate connection and request timeouts. Refuses a
+    /// timeout that is zero or over two minutes, or a connection timeout longer than
+    /// the request timeout.
     pub fn with_timeouts(
         deployment: Deployment,
         connect_timeout: Duration,
@@ -259,6 +274,7 @@ impl Client {
         Ok(Self { deployment, http })
     }
 
+    /// The deployment this client talks to.
     pub fn deployment(&self) -> &Deployment {
         &self.deployment
     }

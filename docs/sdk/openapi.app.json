@@ -49,6 +49,7 @@
             }
           }
         },
+        "description": "Start signing an app in. Show the person the returned code and address, then poll for the session.",
         "requestBody": {
           "required": true,
           "content": {
@@ -105,6 +106,7 @@
             }
           }
         },
+        "description": "Poll for the session of a sign-in you started. Wait the returned interval between polls.",
         "requestBody": {
           "required": true,
           "content": {
@@ -247,6 +249,7 @@
     "/v1/history": {
       "get": {
         "operationId": "listSavedChats",
+        "description": "List your saved chats, newest first, or the chats of one shared project.",
         "tags": [
           "Saved history"
         ],
@@ -370,6 +373,7 @@
     "/v1/history/projects": {
       "get": {
         "operationId": "listHistoryProjects",
+        "description": "List the projects your saved chats belong to.",
         "tags": [
           "Saved history"
         ],
@@ -485,6 +489,7 @@
     "/v1/history/{id}/messages": {
       "get": {
         "operationId": "readSavedMessages",
+        "description": "Read one saved chat's messages, oldest first, a page at a time.",
         "tags": [
           "Saved history"
         ],
@@ -618,6 +623,7 @@
     "/v1/history/{id}/files/{file}": {
       "get": {
         "operationId": "readSavedFile",
+        "description": "Download a file attached to a saved chat.",
         "tags": [
           "Saved history"
         ],
@@ -734,6 +740,7 @@
     "/v1/history/{id}/captures/{capture}": {
       "get": {
         "operationId": "readSavedCapture",
+        "description": "Download a screen capture saved with a chat.",
         "tags": [
           "Saved history"
         ],

@@ -24,15 +24,36 @@ pub(crate) fn extend(doc: &mut Value) {
         .as_object_mut()
         .unwrap()
         .extend(schemas.as_object().unwrap().clone());
-    for (path, id, schema) in [
-        ("/v1/history", "listSavedChats", "List"),
-        ("/v1/history/projects", "listHistoryProjects", "Projects"),
-        ("/v1/history/{id}/messages", "readSavedMessages", "Messages"),
-        ("/v1/history/{id}/files/{file}", "readSavedFile", ""),
+    for (path, id, schema, description) in [
+        (
+            "/v1/history",
+            "listSavedChats",
+            "List",
+            "List your saved chats, newest first, or the chats of one shared project.",
+        ),
+        (
+            "/v1/history/projects",
+            "listHistoryProjects",
+            "Projects",
+            "List the projects your saved chats belong to.",
+        ),
+        (
+            "/v1/history/{id}/messages",
+            "readSavedMessages",
+            "Messages",
+            "Read one saved chat's messages, oldest first, a page at a time.",
+        ),
+        (
+            "/v1/history/{id}/files/{file}",
+            "readSavedFile",
+            "",
+            "Download a file attached to a saved chat.",
+        ),
         (
             "/v1/history/{id}/captures/{capture}",
             "readSavedCapture",
             "",
+            "Download a screen capture saved with a chat.",
         ),
     ] {
         let mut parameters = vec![];
@@ -62,6 +83,6 @@ pub(crate) fn extend(doc: &mut Value) {
         for status in ["400", "401", "403", "404", "409", "429", "503"] {
             responses[status] = json!({"description":"Invalid page, signed out, denied, missing, changed, throttled, or unavailable. A failure is never an empty success.","content":{"application/json":{"schema":{"$ref":"#/components/schemas/AppAccountError"}}}});
         }
-        doc["paths"][path] = json!({"get":{"operationId":id,"tags":["Saved history"],"security":[{"appBearer":[]}],"parameters":parameters,"responses":responses}});
+        doc["paths"][path] = json!({"get":{"operationId":id,"description":description,"tags":["Saved history"],"security":[{"appBearer":[]}],"parameters":parameters,"responses":responses}});
     }
 }
