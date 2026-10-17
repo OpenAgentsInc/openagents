@@ -68,7 +68,7 @@ use openagents_proto::{
 };
 
 use crate::jsonrpc::{Incoming, RpcClient};
-use crate::process::{Child, Command, Stdio};
+use crate::process::{Command, Stdio};
 use crate::{Harness, HarnessError, RunControls};
 use catalog::{REASONING_LEVELS, sandbox_mode, sandbox_policy_value, static_models, to_effort};
 use normalize::{
@@ -803,14 +803,14 @@ impl CodexHarness {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        #[cfg(unix)]
-        if let Some(broker) = &self.launch_broker {
-            cmd = broker.prepare(cmd).await?;
-            cmd.stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-        }
-        let mut child = cmd.spawn().map_err(|e| {
+        let mut child = crate::process::RuntimeChild::launch(
+            cmd,
+            #[cfg(unix)]
+            self.launch_broker.as_ref(),
+            crate::process::RuntimePipes::Interactive,
+        )
+        .await
+        .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 HarnessError::NotInstalled(crate::executable::binary_hint(&exe))
             } else {
@@ -870,7 +870,7 @@ struct Session {
     executable: PathBuf,
     title_only: bool,
     idle: bool,
-    child: Child,
+    child: crate::process::RuntimeChild,
     client: RpcClient,
     incoming: mpsc::Receiver<Incoming>,
     event_tx: mpsc::Sender<Result<AgentEvent, HarnessError>>,
@@ -1253,7 +1253,7 @@ async fn run_session(session: Session) {
                         session_id: None,
                     }))
                     .await;
-                shutdown_child(&mut child, kill_grace).await;
+                child.shutdown(Vec::new(), kill_grace).await;
                 return;
             }
         },
@@ -1266,7 +1266,7 @@ async fn run_session(session: Session) {
                     session_id: None,
                 }))
                 .await;
-            shutdown_child(&mut child, kill_grace).await;
+            child.shutdown(Vec::new(), kill_grace).await;
             return;
         }
     };
@@ -1312,7 +1312,7 @@ async fn run_session(session: Session) {
     )
     .await
     {
-        shutdown_child(&mut child, kill_grace).await;
+        child.shutdown(Vec::new(), kill_grace).await;
         return;
     }
 
@@ -1341,7 +1341,7 @@ async fn run_session(session: Session) {
                         session_id: Some(thread_id.clone()),
                     }))
                     .await;
-                shutdown_child(&mut child, kill_grace).await;
+                child.shutdown(Vec::new(), kill_grace).await;
                 return;
             }
         }
@@ -1930,7 +1930,7 @@ async fn run_session(session: Session) {
                     });
                     // Escalate if the app server doesn't wind down (turn/aborted)
                     // within the grace periods: SIGTERM, then SIGKILL.
-                    if let Some(pid) = crate::process::signal_target(&child) {
+                    if let Some(pid) = child.signal_target() {
                         escalation = Some(tokio::spawn(async move {
                             tokio::time::sleep(interrupt_grace).await;
                             send_signal(&pid, Signal::Term);
@@ -1992,7 +1992,7 @@ async fn run_session(session: Session) {
         }
     }
 
-    crate::shutdown_agent(&mut child, torn_down, kill_grace).await;
+    child.shutdown(torn_down, kill_grace).await;
     if let Some(handle) = escalation {
         handle.abort();
     }

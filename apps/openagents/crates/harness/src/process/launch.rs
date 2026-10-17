@@ -8,7 +8,11 @@ use super::Command;
 
 /// Sends each prepared run command to the host before anything starts.
 #[derive(Clone)]
-pub struct LaunchBroker(mpsc::UnboundedSender<LaunchRequest>);
+pub struct LaunchBroker {
+    sender: mpsc::UnboundedSender<LaunchRequest>,
+    #[cfg(feature = "supervised")]
+    pub(crate) supervision: Option<super::Supervision>,
+}
 
 /// The host receives launch requests while polling the harness's run future.
 pub type LaunchRequests = mpsc::UnboundedReceiver<LaunchRequest>;
@@ -23,12 +27,26 @@ impl LaunchBroker {
     /// The receiver stays with the host; only the sender enters the harness.
     pub fn channel() -> (Self, LaunchRequests) {
         let (tx, rx) = mpsc::unbounded_channel();
-        (Self(tx), rx)
+        (
+            Self {
+                sender: tx,
+                #[cfg(feature = "supervised")]
+                supervision: None,
+            },
+            rx,
+        )
+    }
+
+    /// Keep the host's process supervisor around the native protocol driver.
+    #[cfg(feature = "supervised")]
+    pub fn supervised(mut self, supervision: super::Supervision) -> Self {
+        self.supervision = Some(supervision);
+        self
     }
 
     pub(crate) async fn prepare(&self, command: Command) -> io::Result<Command> {
         let (reply, response) = oneshot::channel();
-        self.0
+        self.sender
             .send(LaunchRequest {
                 command: command.into_std(),
                 reply,

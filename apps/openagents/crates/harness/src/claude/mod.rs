@@ -64,7 +64,7 @@ use openagents_proto::{
     SteeringMode, UserInputAnswer, UserInputQuestion,
 };
 
-use crate::process::{Child, ChildStdin, Command, Stdio};
+use crate::process::{Command, Stdio};
 use crate::{Harness, HarnessError, RunControls, Signal, send_signal, shutdown_child};
 use catalog::{apply_ultrathink, to_effort};
 use normalize::Normalizer;
@@ -631,14 +631,14 @@ impl ClaudeHarness {
         } else {
             Normalizer::new()
         };
-        #[cfg(unix)]
-        if let Some(broker) = &self.launch_broker {
-            cmd = broker.prepare(cmd).await?;
-            cmd.stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped());
-        }
-        let mut child = cmd.spawn().map_err(|e| {
+        let mut child = crate::process::RuntimeChild::launch(
+            cmd,
+            #[cfg(unix)]
+            self.launch_broker.as_ref(),
+            crate::process::RuntimePipes::Interactive,
+        )
+        .await
+        .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 HarnessError::NotInstalled(crate::executable::binary_hint(&exe))
             } else {
@@ -794,7 +794,10 @@ async fn load_image_blocks(paths: &[String]) -> Vec<wire::ImageBlock> {
 
 /// Owns the child's stdin; a write failure (EPIPE after the child died) is
 /// tolerated and logged.
-async fn stdin_writer(mut stdin: ChildStdin, mut rx: mpsc::UnboundedReceiver<StdinMsg>) {
+async fn stdin_writer(
+    mut stdin: crate::process::RuntimeInput,
+    mut rx: mpsc::UnboundedReceiver<StdinMsg>,
+) {
     while let Some(msg) = rx.recv().await {
         match msg {
             StdinMsg::Line(line) => {
@@ -819,8 +822,8 @@ async fn stdin_writer(mut stdin: ChildStdin, mut rx: mpsc::UnboundedReceiver<Std
 struct Session {
     normalizer: Normalizer,
     title_only: bool,
-    child: Child,
-    stdout_lines: tokio::io::Lines<BufReader<crate::process::ChildStdout>>,
+    child: crate::process::RuntimeChild,
+    stdout_lines: tokio::io::Lines<BufReader<crate::process::RuntimeOutput>>,
     /// The uuid the opening prompt was written with.
     first_command: String,
     stdin_tx: mpsc::UnboundedSender<StdinMsg>,
@@ -1183,7 +1186,7 @@ async fn run_session(session: Session) {
                 // Escalate if the CLI doesn't wind down within the grace
                 // periods: SIGTERM (kills bash trees, runs SessionEnd hooks),
                 // then SIGKILL. Aborted once the child is reaped.
-                if let Some(pid) = crate::process::signal_target(&child) {
+                if let Some(pid) = child.signal_target() {
                     escalation = Some(tokio::spawn(async move {
                         tokio::time::sleep(interrupt_grace).await;
                         send_signal(&pid, Signal::Term);
@@ -1248,7 +1251,7 @@ async fn run_session(session: Session) {
         }
     }
 
-    crate::shutdown_agent(&mut child, torn_down, kill_grace).await;
+    child.shutdown(torn_down, kill_grace).await;
     if let Some(handle) = escalation {
         handle.abort();
     }

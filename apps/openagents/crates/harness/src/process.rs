@@ -178,3 +178,8 @@ pub(crate) mod owned;
 mod launch;
 #[cfg(unix)]
 pub use launch::{LaunchBroker, LaunchRequest, LaunchRequests};
+
+mod runtime;
+pub(crate) use runtime::{RuntimeChild, RuntimeInput, RuntimeOutput, RuntimePipes};
+#[cfg(all(unix, feature = "supervised"))]
+pub use runtime::{SupervisedEvent, Supervision};

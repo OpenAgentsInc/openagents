@@ -20,7 +20,8 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::HarnessError;
-use crate::process::{ChildStdin, ChildStdout};
+use crate::process::{RuntimeInput, RuntimeOutput};
+use tokio::io::{AsyncRead, AsyncWrite};
 
 /// A non-response line from the app server, in stdout order.
 #[derive(Debug)]
@@ -63,23 +64,26 @@ pub(crate) struct RpcClient {
 impl RpcClient {
     /// Spawn the writer + reader tasks over the child's stdio; returns the
     /// client and the incoming (notification/request) channel.
-    pub fn new(stdin: ChildStdin, stdout: ChildStdout) -> (Self, mpsc::Receiver<Incoming>) {
+    pub fn new(
+        stdin: impl AsyncWrite + Send + Sync + Unpin + 'static,
+        stdout: impl AsyncRead + Send + Sync + Unpin + 'static,
+    ) -> (Self, mpsc::Receiver<Incoming>) {
         Self::with_stdout_observer(stdin, stdout, None)
     }
 
     pub(crate) fn with_stdout_observer(
-        stdin: ChildStdin,
-        stdout: ChildStdout,
+        stdin: impl AsyncWrite + Send + Sync + Unpin + 'static,
+        stdout: impl AsyncRead + Send + Sync + Unpin + 'static,
         observer: Option<StdoutObserver>,
     ) -> (Self, mpsc::Receiver<Incoming>) {
         let (writer_tx, writer_rx) = mpsc::unbounded_channel::<String>();
-        tokio::spawn(write_loop(stdin, writer_rx));
+        tokio::spawn(write_loop(Box::new(stdin), writer_rx));
         let pending: Pending = Arc::default();
         let (incoming_tx, incoming_rx) = mpsc::channel(256);
         let closed = Arc::new(AtomicBool::new(false));
         let voice_router = Arc::default();
         tokio::spawn(read_loop(
-            stdout,
+            Box::new(stdout),
             Arc::clone(&pending),
             incoming_tx,
             closed.clone(),
@@ -209,7 +213,7 @@ impl RpcClient {
 
 /// Owns the child's stdin; a write failure (EPIPE after the child died) is
 /// tolerated and logged.
-async fn write_loop(mut stdin: ChildStdin, mut rx: mpsc::UnboundedReceiver<String>) {
+async fn write_loop(mut stdin: RuntimeInput, mut rx: mpsc::UnboundedReceiver<String>) {
     while let Some(line) = rx.recv().await {
         let write = async {
             stdin.write_all(line.as_bytes()).await?;
@@ -263,7 +267,7 @@ fn response_error(error: &Value) -> String {
 /// forwarded in order. Non-JSON noise is skipped; on EOF all pending requests
 /// fail (their senders drop) and one final [`Incoming::Eof`] is delivered.
 async fn read_loop(
-    stdout: ChildStdout,
+    stdout: RuntimeOutput,
     pending: Pending,
     tx: mpsc::Sender<Incoming>,
     closed: Arc<AtomicBool>,

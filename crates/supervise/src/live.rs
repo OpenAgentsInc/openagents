@@ -295,6 +295,12 @@ impl Live {
             .take()
     }
 
+    /// Hands the input pipe to a protocol driver. The caller owns its lifetime;
+    /// stopping or dropping this job still terminates the supervised process.
+    pub fn take_input(&mut self) -> Option<ChildStdin> {
+        self.stdin.take()
+    }
+
     /// Writes `bytes` to the job's standard input and flushes it.
     ///
     /// # Errors

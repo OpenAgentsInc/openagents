@@ -71,7 +71,7 @@ use openagents_proto::{
     UserInputQuestion,
 };
 
-use crate::process::{Child, Command, Stdio};
+use crate::process::{Command, Stdio};
 use crate::{Harness, HarnessError, RunControls};
 
 /// opencode loads plugins and MCP config before the server answers; cold
@@ -532,7 +532,7 @@ impl Harness for OpencodeHarness {
 // ---------------------------------------------------------------------------
 
 struct Server {
-    child: Option<Child>,
+    child: Option<crate::process::RuntimeChild>,
     base: String,
     /// `Authorization` header value (`Basic <b64>`), when we own the process.
     auth: Option<String>,
@@ -731,14 +731,14 @@ impl Server {
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
-        #[cfg(unix)]
-        if let Some(broker) = broker {
-            cmd = broker.prepare(cmd).await?;
-            cmd.stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::piped());
-        }
-        let mut child = cmd.spawn().map_err(|e| {
+        let mut child = crate::process::RuntimeChild::launch(
+            cmd,
+            #[cfg(unix)]
+            broker,
+            crate::process::RuntimePipes::Server,
+        )
+        .await
+        .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 HarnessError::NotInstalled(crate::executable::binary_hint(exe))
             } else {
@@ -940,7 +940,7 @@ impl Server {
     async fn shutdown(&mut self, kill_grace: Duration) {
         if let Some(child) = self.child.as_mut() {
             // The server and every command it started.
-            crate::shutdown_agent(child, Vec::new(), kill_grace).await;
+            child.shutdown(Vec::new(), kill_grace).await;
         }
     }
 
@@ -4657,15 +4657,15 @@ async fn opencode_version(
     let mut cmd = Command::new(exe);
     cmd.arg("--version");
     crate::compose_child_path(&mut cmd, exe);
-    #[cfg(unix)]
-    if let Some(broker) = broker {
-        cmd = broker.prepare(cmd).await?;
-    }
-    cmd.stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    let Ok(Ok(output)) = tokio::time::timeout(COLD_VERSION_TIMEOUT, cmd.output()).await else {
+    let child = crate::process::RuntimeChild::launch(
+        cmd,
+        #[cfg(unix)]
+        broker,
+        crate::process::RuntimePipes::Probe,
+    )
+    .await?;
+    let Ok(Ok(output)) = tokio::time::timeout(COLD_VERSION_TIMEOUT, child.wait_with_output()).await
+    else {
         return Ok(None);
     };
     if !output.status.success() {

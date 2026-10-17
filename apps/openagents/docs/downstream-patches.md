@@ -130,3 +130,9 @@ links remain readable. Upstream fixes now require manual ports.
   probe. A refused or cancelled request cannot start an unwrapped process.
   `default-features = false` builds text drivers without the app voice transport
   and SQLite, so root workspace callers can link them.
+
+- Shared harness supervision (#11894): the optional `supervised` feature keeps
+  Coder's `supervise` process ownership around the native protocol drivers.
+  `LaunchBroker::supervised` carries the host's bounds and output observer.
+  Protocol I/O stops on missing output, and cleanup finishes before the host
+  receives the process result.

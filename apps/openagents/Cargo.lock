@@ -7347,6 +7347,7 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "sha2",
+ "supervise",
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
@@ -10875,6 +10876,15 @@ dependencies = [
  "heapless 0.9.3",
  "log",
  "rayon",
+]
+
+[[package]]
+name = "supervise"
+version = "1.0.0"
+dependencies = [
+ "libc",
+ "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
