@@ -447,10 +447,28 @@ impl SessionBook {
             .clone()
             .expect("an approved grant names its account");
         let label = grant.label.clone();
+        let issued = self.issue_app(account.clone(), label, now)?;
+        let grant = self.devices.get_mut(&id).expect("still here");
+        grant.state = DeviceState::Redeemed;
+        grant.last_poll = Some(now);
+        grant.session = Some(issued.session.id.clone());
+        Ok(DevicePoll::Issued(issued, account))
+    }
+
+    /// Issue an app session (labeled, standing [`APP_SESSION_TTL`]) for
+    /// a user the caller already authenticated another way, such as a
+    /// verified Sign in with Apple token (#11980). The same kind of
+    /// session a device sign-in issues, so the app stores it the same way.
+    pub fn issue_app(
+        &mut self,
+        user: UserId,
+        label: AppLabel,
+        now: u64,
+    ) -> Result<Issued, Refusal> {
         let token = format!("sess_{}", fresh()?);
         let session = Session {
             id: SessionId(digest_secret(&token)),
-            user: account.clone(),
+            user,
             kind: SessionKind::User,
             created_at: now,
             expires_at: now + APP_SESSION_TTL,
@@ -459,18 +477,11 @@ impl SessionBook {
             app: Some(label),
             key: None,
         };
-        let grant = self.devices.get_mut(&id).expect("still here");
-        grant.state = DeviceState::Redeemed;
-        grant.last_poll = Some(now);
-        grant.session = Some(session.id.clone());
         self.sessions.insert(session.id.clone(), session.clone());
-        Ok(DevicePoll::Issued(
-            Issued {
-                session,
-                once: token,
-            },
-            account,
-        ))
+        Ok(Issued {
+            session,
+            once: token,
+        })
     }
 
     /// The account's active app sessions, newest first.

@@ -1746,3 +1746,95 @@ async fn an_affiliate_click_then_sign_up_is_attributed_to_the_affiliate() {
     let raw = std::fs::read_to_string(world.root.path().join("accounts/accounts.json")).unwrap();
     assert!(!raw.contains(&link.token));
 }
+
+/// The phone's in-app sign-in sheet (#11980): `return=app` carries through
+/// the approval page, the form may land on `openagents:`, and Approve sends
+/// the sheet to `openagents://signed-in`; the app's poll then signs in.
+#[tokio::test]
+async fn the_phone_sheet_approval_returns_to_the_app() {
+    let world = world(true).await;
+    let mut browser = Browser::default();
+    browser
+        .through_github(&world, "%2F", "login=octo-local")
+        .await;
+    let (_, started) = public_call(
+        &world,
+        "POST",
+        "/v1/device/code",
+        json!({"app":"OpenAgents", "computer":"Pat's iPhone"}),
+        None,
+    )
+    .await;
+    let code = started["user_code"].as_str().unwrap();
+    let page = browser
+        .get(&world, &format!("/device?code={code}&return=app"))
+        .await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    assert_eq!(form_field(&page.body, "/device", "return"), "app");
+    let policy = page.headers[header::CONTENT_SECURITY_POLICY]
+        .to_str()
+        .unwrap();
+    assert!(
+        policy.contains("form-action 'self' openagents:"),
+        "{policy}"
+    );
+    let csrf = form_field(&page.body, "/device", "csrf");
+    let decided = browser
+        .post(
+            &world,
+            "/device",
+            &[
+                ("csrf", csrf.as_str()),
+                ("code", code),
+                ("decision", "approve"),
+                ("return", "app"),
+            ],
+        )
+        .await;
+    assert_eq!(decided.status, StatusCode::SEE_OTHER, "{}", decided.body);
+    assert_eq!(decided.location(), "openagents://signed-in");
+    let (status, signed) = public_call(
+        &world,
+        "POST",
+        "/v1/device/token",
+        json!({"device_code": started["device_code"]}),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{signed}");
+
+    // Without `return=app` the page and its answer are what they were.
+    let (_, plain) = public_call(
+        &world,
+        "POST",
+        "/v1/device/code",
+        json!({"app":"OpenAgents", "computer":"Pat's iPhone"}),
+        None,
+    )
+    .await;
+    let code = plain["user_code"].as_str().unwrap();
+    let page = browser.get(&world, &format!("/device?code={code}")).await;
+    assert!(!page.body.contains("name=\"return\""));
+    let decided = device_decide(&world, &mut browser, code, "approve").await;
+    assert_eq!(decided.status, StatusCode::OK);
+}
+
+/// `POST /v1/device/apple` answers plainly when the account service has
+/// no Apple sign-in, and refuses a body without its fields.
+#[tokio::test]
+async fn apple_sign_in_is_refused_until_the_service_offers_it() {
+    let world = world(true).await;
+    let (status, body) = public_call(
+        &world,
+        "POST",
+        "/v1/device/apple",
+        json!({"identity_token": "a.b.c", "nonce": "n", "computer": "iPhone"}),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(body["error"], "apple_disabled");
+    let (status, body) = public_call(&world, "POST", "/v1/device/apple", json!({}), None).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(body["error"], "invalid_request");
+}

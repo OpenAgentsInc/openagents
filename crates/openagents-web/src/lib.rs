@@ -144,7 +144,7 @@ use crate::backend::{Backend, Development};
 
 /// The policy every page is served under unless it sets a stricter one:
 /// no script from anywhere, styles and images from this site only.
-const SITE_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; \
+pub(crate) const SITE_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; \
      base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 /// The Environments studio, shared by every clone of [`Config`] and filled

@@ -90,8 +90,8 @@ Every table below names one class.
 ## The model at a glance
 
 ```
-identity.accounts ─┬─< identity.principals            (key:…, nostr:…, github:…, sso:…)
-                   ├─< identity.linked_identities     (the GitHub profile behind github:…)
+identity.accounts ─┬─< identity.principals            (key:…, nostr:…, github:…, apple:…, sso:…)
+                   ├─< identity.linked_identities     (the GitHub profile behind github:…, the Apple identity behind apple:…)
                    ├─< identity.account_sessions ──── identity.device_sign_ins
                    ├── identity.github_access          (sealed GitHub user token, App installs)
                    └─< workspace.memberships >── workspace.workspaces ── tenant (registry)
@@ -115,7 +115,7 @@ What a person is and how they prove it.
 | --- | --- | --- | --- | --- |
 | `accounts` | An account: a stable `acct_` id, label, created time | `id` primary key | Account | Until the account is deleted |
 | `principals` | One principal an account signs in with (`key:<id>`, `nostr:<hex>`, `github:<id>`, `sso:<hex>`) | `principal` primary key: one principal belongs to one account, the invariant `Store::validate` checks today | Account | With the account |
-| `linked_identities` | The profile a provider returned for a principal (today GitHub's `/user` and `/user/emails`), refreshed at each sign-in. Never a token | (`provider`, `provider_id`) primary key; `account_id` | Account | With the account |
+| `linked_identities` | The profile a provider returned for a principal (GitHub's `/user` and `/user/emails`; Apple's `sub` and shared address, provider `apple`, #11980), refreshed at each sign-in. Never a token | (`provider`, `provider_id`) primary key; `account_id` | Account | With the account |
 | `account_sessions` | An account session (`sess_`), web, app or anonymous, stored by token digest, with its state, expiry and the app and computer it was signed in from | `id` = SHA-256 of the token | Digest | Ended sessions 30 days, then deleted |
 | `device_sign_ins` | A device sign-in grant (`coder login`, the desktop app): device-code digest, user code, state, the account that approved it | `id` = device-code digest; `user_code` unique | Digest | 1 day after it ends |
 | `recoveries` | A recovery token's digest and state | `id` = token digest | Digest | 1 day after it ends |

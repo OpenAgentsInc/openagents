@@ -31,6 +31,8 @@ struct Inner {
     app: Option<crate::app::AppClient>,
     /// Invite-only sign-in ([`crate::invite`]), when set.
     invite: Option<crate::InviteOnly>,
+    /// Sign in with Apple ([`crate::apple`]), when set.
+    apple: Option<crate::apple::Apple>,
 }
 
 /// The local account service.
@@ -61,6 +63,7 @@ impl LocalService {
             tenant: tenant.into(),
             app: None,
             invite: None,
+            apple: None,
         })))
     }
 
@@ -74,6 +77,7 @@ impl LocalService {
             tenant: self.0.tenant.clone(),
             app: Some(app),
             invite: self.0.invite.clone(),
+            apple: self.0.apple.clone(),
         }))
     }
 
@@ -86,6 +90,20 @@ impl LocalService {
             tenant: self.0.tenant.clone(),
             app: self.0.app.clone(),
             invite: Some(invite),
+            apple: self.0.apple.clone(),
+        }))
+    }
+
+    /// The same service, with Sign in with Apple checked by `apple`.
+    #[must_use]
+    pub fn with_apple(self, apple: crate::apple::Apple) -> Self {
+        Self(Arc::new(Inner {
+            dir: self.0.dir.clone(),
+            github: self.0.github.clone(),
+            tenant: self.0.tenant.clone(),
+            app: self.0.app.clone(),
+            invite: self.0.invite.clone(),
+            apple: Some(apple),
         }))
     }
 
@@ -98,6 +116,7 @@ impl LocalService {
         Router::new()
             .route("/v1/sessions/github", post(github_sign_in))
             .route("/v1/account/identities/github", post(github_link))
+            .route("/v1/sessions/apple", post(apple_sign_in))
             .route("/v1/sessions/device", post(device_start))
             .route("/v1/sessions/device/poll", post(device_poll))
             .route("/v1/sessions/device/lookup", post(device_lookup))
@@ -213,6 +232,45 @@ async fn github_sign_in(
     .await
     {
         Ok(signed) => axum::Json(service::signed_in_body(&signed)).into_response(),
+        Err(error) => auth_refused(error),
+    }
+}
+
+/// `POST /v1/sessions/apple`, as the gateway answers it.
+async fn apple_sign_in(State(state): State<LocalService>, request: JsonBody) -> Response {
+    let Some(apple) = state.0.apple.as_ref() else {
+        return refused(
+            StatusCode::NOT_FOUND,
+            "apple_disabled",
+            "Sign in with Apple isn't set up on this service.",
+        );
+    };
+    let Ok(axum::Json(request)) = request else {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Send `identity_token` and `nonce`.",
+        );
+    };
+    let Ok(request) = serde_json::from_value::<crate::apple::AppleRequest>(request) else {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Send `identity_token` and `nonce`.",
+        );
+    };
+    let profile = match apple.verify(&request.identity_token, &request.nonce).await {
+        Ok(profile) => profile,
+        Err(error) => return auth_refused(error),
+    };
+    match crate::apple::sign_in(
+        &state.0.dir,
+        &state.0.tenant,
+        &profile,
+        request.name.as_deref(),
+        request.device.as_ref(),
+    ) {
+        Ok(signed) => body(crate::apple::signed_in_body(&signed)),
         Err(error) => auth_refused(error),
     }
 }

@@ -198,12 +198,16 @@ pub struct Book {
     /// GitHub user id (decimal) to identity.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub github: BTreeMap<String, GithubIdentity>,
+    /// Apple's stable user id (`sub`) to identity (#11980). Absent from
+    /// stores written before it.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub apple: BTreeMap<String, super::apple::AppleIdentity>,
 }
 
 impl Book {
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.github.is_empty()
+        self.github.is_empty() && self.apple.is_empty()
     }
 
     /// The GitHub identity linked to `account`, if any.
@@ -248,7 +252,7 @@ impl Book {
                 return Err("an account holds more than one GitHub identity".into());
             }
         }
-        Ok(())
+        super::apple::validate(&self.apple, store)
     }
 }
 
@@ -450,7 +454,11 @@ impl super::Accounts {
 }
 
 /// A new personal workspace owned by `account`, named after it.
-fn personal_workspace(account: &Account, tenant: &str, stamp: &str) -> Result<Workspace, Refusal> {
+pub(super) fn personal_workspace(
+    account: &Account,
+    tenant: &str,
+    stamp: &str,
+) -> Result<Workspace, Refusal> {
     let mut members = BTreeMap::new();
     members.insert(
         account.id.clone(),

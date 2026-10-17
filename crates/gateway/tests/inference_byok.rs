@@ -217,6 +217,7 @@ async fn deploy_with(requests_per_day: Option<u64>, door: Option<&str>) -> Deplo
             recovery_ttl_secs: 3_600,
             github: None,
             github_app: None,
+            apple: None,
             invite_only: None,
             store: Default::default(),
             database_url_env: String::new(),

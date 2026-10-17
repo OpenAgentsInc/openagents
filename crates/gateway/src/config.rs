@@ -627,6 +627,12 @@ pub struct Accounts {
     /// repository access on the OAuth App.
     #[serde(default)]
     pub github_app: Option<GithubSignIn>,
+    /// Sign in with Apple for the phone (#11980, `oa_auth::apple`): the
+    /// bundle ids an identity token must be issued to. Absent leaves
+    /// `POST /v1/sessions/apple` answering `404 apple_disabled`. New
+    /// accounts land on `signup_tenant`, which must be set too.
+    #[serde(default)]
+    pub apple: Option<AppleSignIn>,
     /// Invite-only sign-in (`oa_auth::invite`): the GitHub people who may
     /// sign in or link GitHub, and which of them are site admins. Unless
     /// the list is `"open": true`, anyone else's GitHub sign-in is refused
@@ -824,6 +830,19 @@ pub struct GithubSignIn {
     /// The callback URL registered with the OAuth App, for example
     /// `https://openagents.com/auth/github/callback`.
     pub redirect_url: String,
+}
+
+/// Sign in with Apple's settings.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AppleSignIn {
+    /// The bundle ids an identity token's `aud` may name, for example
+    /// `com.openagents.app`.
+    pub audiences: Vec<String>,
+    /// Where Apple's keys are fetched. Absent means Apple's own
+    /// (`https://appleid.apple.com/auth/keys`); tests name a local one.
+    #[serde(default)]
+    pub keys_url: Option<String>,
 }
 
 /// The operator-funded anonymous budget: a stated bound the public

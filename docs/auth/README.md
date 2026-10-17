@@ -68,6 +68,7 @@ names exactly one account, enforced by the store's validation.
 | Nostr key | `nostr:<64 hex pubkey>` | signed event (NIP-98 style challenge) | exists in the store; web sign-in P2 |
 | Enterprise SSO | `sso:<64 hex>` | OIDC token (REV-50) | exists |
 | GitHub | `github:<numeric user id>` | OAuth code + PKCE | **P1** |
+| Apple | `apple:<Apple sub>` | Sign in with Apple identity token (RS256, Apple's keys) + nonce | built for the phone (#11980) |
 | Google | `google:<sub>` | OIDC code + PKCE | P2 |
 | Email | `email:<sha256 of normalized address>` | one-time code or link | P2 |
 | Passkey | `passkey:<credential id digest>` | WebAuthn assertion | P3 |
@@ -455,3 +456,27 @@ transient service failure is not a successful check or proof of logout.
 
 For staging/local use the matching explicit API and website origins. Keep the
 app credential in its own OS storage; never adopt CLI or Zeron credentials.
+
+## Sign in with Apple on the phone (#11980)
+
+The phone's **Sign in with Apple** button shows Apple's native sheet with a
+random nonce (its SHA-256 goes to Apple). The app sends the identity token
+and the raw nonce to `POST /v1/device/apple` on the API host, which forwards
+to the account service's `POST /v1/sessions/apple`
+(`oa_auth::apple`). That checks the token's RS256 signature against Apple's
+published keys (`https://appleid.apple.com/auth/keys`, cached an hour,
+fetched with a five-second bound), `iss` `https://appleid.apple.com`, `aud`
+one of the configured bundle ids (`accounts.apple.audiences`, rendered as
+`com.openagents.app` by `deploy/staging/gateway.sh`), `exp`, and the nonce.
+It finds or creates the account holding `apple:<sub>` (a new one gets a
+personal workspace on the sign-up tenant) and issues the same 30-day app
+session a device sign-in issues, so the phone stores it unchanged. Without
+`accounts.apple` the route answers `404 apple_disabled`; with a closed
+invite list it answers `403 invite_only`, since the list names GitHub
+people.
+
+The device-code flow stays, and the phone opens its approval page in an
+in-app sheet (`ASWebAuthenticationSession`) with `return=app`: the page
+then lets its form land on `openagents:`, and Approve or Deny sends the
+sheet to `openagents://signed-in` (`?denied=1`), which closes it. Without
+`return=app` the page is unchanged.

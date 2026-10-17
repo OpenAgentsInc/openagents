@@ -230,6 +230,7 @@ pub const ROUTES: &[Route] = &[
     route("/healthz", Internal, "", &[]),
     route("/v1/accounts", Internal, "", &[]),
     route("/v1/sessions/github", Internal, "", &[]),
+    route("/v1/sessions/apple", Internal, "", &[]),
     route("/v1/sessions/device/lookup", Internal, "", &[]),
     route("/v1/account/lab-workers", Internal, "", &[]),
     route("/v1/account/lab-workers/{id}", Internal, "", &[]),

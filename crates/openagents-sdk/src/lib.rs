@@ -21,8 +21,8 @@ pub mod visitor;
 mod transport;
 
 pub use auth::{
-    Account, AccountView, CredentialRecord, CredentialStore, Login, Poll, Session, StorageError,
-    Workspace,
+    Account, AccountView, AppleSignIn, CredentialRecord, CredentialStore, Login, Poll, Session,
+    StorageError, Workspace,
 };
 pub use history::{
     AttachmentRef, CaptureState, ChatReader, ChatRef, ChatSource, ChatSummary, FileKind,

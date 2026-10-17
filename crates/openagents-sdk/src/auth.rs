@@ -11,6 +11,9 @@ use url::Url;
 
 use crate::{CancellationToken, Client, Deployment, Error};
 
+mod apple;
+pub use apple::AppleSignIn;
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Account {
     pub id: String,
@@ -177,6 +180,22 @@ struct TokenAnswer {
     account: Account,
 }
 
+impl TokenAnswer {
+    /// The answer, when it is a bounded app session for a named account.
+    fn checked(&self) -> Result<&Self, Error> {
+        if self.token_type != "Bearer"
+            || !openagents_login::is_sign_in_token(&self.access_token)
+            || !self.access_token.starts_with("sess_")
+            || self.account.id.is_empty()
+            || self.expires_in == 0
+            || self.expires_in > 30 * 86400
+        {
+            return Err(Error::InvalidResponse);
+        }
+        Ok(self)
+    }
+}
+
 impl Client {
     /// Import a job credential issued by the work service. This credential
     /// authorizes only that job's computer operations, not account or chat access.
@@ -324,15 +343,7 @@ impl Client {
                 login.finished = true;
                 let answer: TokenAnswer =
                     serde_json::from_value(body).map_err(|_| Error::InvalidResponse)?;
-                if answer.token_type != "Bearer"
-                    || !openagents_login::is_sign_in_token(&answer.access_token)
-                    || !answer.access_token.starts_with("sess_")
-                    || answer.account.id.is_empty()
-                    || answer.expires_in == 0
-                    || answer.expires_in > 30 * 86400
-                {
-                    return Err(Error::InvalidResponse);
-                }
+                answer.checked()?;
                 let session = Session {
                     record: CredentialRecord {
                         deployment: self.deployment.clone(),

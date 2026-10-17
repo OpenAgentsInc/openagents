@@ -12,6 +12,12 @@
 //!   (`authorization_pending`, `slow_down`, `expired_token`,
 //!   `access_denied`, `invalid_grant`) until then.
 //! - `POST /v1/device/sign-out` — the app signs its own token out.
+//! - `POST /v1/device/apple` — `{identity_token, nonce, app, computer,
+//!   name?}` from the phone's Sign in with Apple sheet (#11980). Answers
+//!   what `/v1/device/token` answers once approved.
+//! - `GET /device?code=…&return=app` — the phone's in-app sign-in sheet.
+//!   Approve or Deny then sends the sheet to `openagents://signed-in`, which
+//!   closes it (#11980). Without `return=app` nothing changes.
 //! - The older `/device/code`, `/device/token`, and `/device/sign-out`
 //!   answer the same, marked deprecated (#11158, [`crate::older_paths`]).
 //! - Settings' Computers section lists signed-in apps with Remove
@@ -44,6 +50,10 @@ pub(crate) const PAGE: &str = "/device";
 const CODE: &str = "/v1/device/code";
 const TOKEN: &str = "/v1/device/token";
 const SIGN_OUT: &str = "/v1/device/sign-out";
+const APPLE: &str = "/v1/device/apple";
+/// Where an approval made in the phone's sign-in sheet returns: the scheme
+/// the sheet waits for, so it closes by itself.
+pub(crate) const APP_RETURN: &str = "openagents://signed-in";
 const REMOVE: &str = "/settings/computers/remove";
 /// The app routes' older prefix (#11158), still answered.
 const OLDER: &str = "/device/";
@@ -56,6 +66,7 @@ pub(crate) fn routes() -> Router<App> {
         .route(CODE, post(start))
         .route(TOKEN, post(token))
         .route(SIGN_OUT, post(sign_out))
+        .route(APPLE, post(apple))
         .route("/device/code", deprecated(post(start), OLDER, NEWER))
         .route("/device/token", deprecated(post(token), OLDER, NEWER))
         .route("/device/sign-out", deprecated(post(sign_out), OLDER, NEWER))
@@ -166,22 +177,7 @@ async fn token(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
         .and_then(Value::as_str)
         .unwrap_or_default();
     match service.device_poll(code).await {
-        Ok(answer) if answer.status == 200 => {
-            let now = crate::cloud::session::now();
-            let expires = answer.body["session"]["expires_at"]
-                .as_u64()
-                .unwrap_or(now)
-                .saturating_sub(now);
-            protect(
-                axum::Json(json!({
-                    "access_token": answer.body["token"],
-                    "token_type": "Bearer",
-                    "expires_in": expires,
-                    "account": answer.body["account"],
-                }))
-                .into_response(),
-            )
-        }
+        Ok(answer) if answer.status == 200 => app_session(&answer.body),
         Ok(answer) => {
             let mut response = json!({
                 "error": answer.code().unwrap_or("invalid_grant"),
@@ -196,6 +192,79 @@ async fn token(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
             StatusCode::BAD_REQUEST,
             "invalid_grant",
             "Send the device_code from /device/code.",
+        ),
+        Err(_) => unavailable(),
+    }
+}
+
+/// The app-session answer a device poll and an Apple sign-in share.
+fn app_session(body: &Value) -> Response {
+    let now = crate::cloud::session::now();
+    let expires = body["session"]["expires_at"]
+        .as_u64()
+        .unwrap_or(now)
+        .saturating_sub(now);
+    protect(
+        axum::Json(json!({
+            "access_token": body["token"],
+            "token_type": "Bearer",
+            "expires_in": expires,
+            "account": body["account"],
+        }))
+        .into_response(),
+    )
+}
+
+/// `POST /v1/device/apple` — `{identity_token, nonce, app, computer,
+/// name?}` (JSON).
+async fn apple(State(app): State<App>, body: Bytes) -> Response {
+    let Some(service) = app.config.cloud.as_deref() else {
+        return unavailable();
+    };
+    let invalid = || {
+        oauth_error(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Send the details from Sign in with Apple.",
+        )
+    };
+    if body.len() > 16 * 1024 {
+        return invalid();
+    }
+    let Ok(fields) = serde_json::from_slice::<serde_json::Map<String, Value>>(&body) else {
+        return invalid();
+    };
+    let text = |name: &str| fields.get(name).and_then(Value::as_str).unwrap_or_default();
+    if text("identity_token").is_empty() || text("nonce").is_empty() {
+        return invalid();
+    }
+    let mut request = json!({
+        "identity_token": text("identity_token"),
+        "nonce": text("nonce"),
+        "device": {
+            "app": match text("app") { "" => "OpenAgents", name => name },
+            "computer": text("computer"),
+        },
+    });
+    if !text("name").trim().is_empty() {
+        request["name"] = json!(text("name"));
+    }
+    match service.apple_sign_in(request).await {
+        Ok(answer) if answer.status == 200 => app_session(&answer.body),
+        Ok(answer) if answer.status == 404 => oauth_error(
+            StatusCode::NOT_FOUND,
+            "apple_disabled",
+            "Sign in with Apple isn't set up here.",
+        ),
+        Ok(answer) if answer.status == 403 => oauth_error(
+            StatusCode::FORBIDDEN,
+            answer.code().unwrap_or("access_denied"),
+            answer.body["error"]["message"].as_str().unwrap_or_default(),
+        ),
+        Ok(_) => oauth_error(
+            StatusCode::BAD_REQUEST,
+            "access_denied",
+            "Sign in with Apple didn't go through. Try again.",
         ),
         Err(_) => unavailable(),
     }
@@ -225,6 +294,32 @@ async fn sign_out(State(app): State<App>, headers: HeaderMap) -> Response {
 #[derive(Deserialize)]
 struct CodeQuery {
     code: Option<String>,
+    /// `app` when the phone's sign-in sheet opened the page.
+    #[serde(rename = "return")]
+    back: Option<String>,
+}
+
+/// Let the approval form's answer land on the app's address: the page's
+/// own policy with `openagents:` added to `form-action`, as the OAuth
+/// consent page adds its client's redirect.
+fn allow_app_return(mut response: Response) -> Response {
+    let widened = response
+        .headers()
+        .get(header::CONTENT_SECURITY_POLICY)
+        .and_then(|policy| policy.to_str().ok())
+        .unwrap_or(crate::SITE_POLICY)
+        .replace("form-action 'self'", "form-action 'self' openagents:");
+    if let Ok(policy) = axum::http::HeaderValue::from_str(&widened) {
+        response
+            .headers_mut()
+            .insert(header::CONTENT_SECURITY_POLICY, policy);
+    }
+    response
+}
+
+/// Whether the phone's sign-in sheet asked to be sent back.
+fn returns_to_app(value: Option<&str>) -> bool {
+    value == Some("app")
 }
 
 /// The signed-in viewer, or a trip through sign-in that comes back to
@@ -312,6 +407,18 @@ pub(crate) fn code_form(typed: &str, problem: Option<&str>) -> Markup {
 /// "Sign in to Coder on <computer>?": the code shown large, what's
 /// asking, and Deny and Approve.
 pub(crate) fn approve_form(code: &str, app: &str, computer: &str, csrf: &str) -> Markup {
+    approve_form_returning(code, app, computer, csrf, false)
+}
+
+/// [`approve_form`], carrying the phone sheet's `return=app` through the
+/// decision when `to_app`.
+pub(crate) fn approve_form_returning(
+    code: &str,
+    app: &str,
+    computer: &str,
+    csrf: &str,
+    to_app: bool,
+) -> Markup {
     let icon = if app == "Coder" {
         Icon::Terminal
     } else {
@@ -340,6 +447,9 @@ pub(crate) fn approve_form(code: &str, app: &str, computer: &str, csrf: &str) ->
             form.oa-device-decide method="post" action=(PAGE) {
                 input type="hidden" name="csrf" value=(csrf);
                 input type="hidden" name="code" value=(code);
+                @if to_app {
+                    input type="hidden" name="return" value="app";
+                }
                 div.oa-auth-actions {
                     (Button::new("Deny")
                         .kind(ButtonType::Submit)
@@ -367,17 +477,21 @@ async fn page(
     headers: HeaderMap,
     query: Result<Query<CodeQuery>, axum::extract::rejection::QueryRejection>,
 ) -> Response {
+    let query = query.ok().map(|q| q.0);
+    let to_app = returns_to_app(query.as_ref().and_then(|q| q.back.as_deref()));
     let typed = query
-        .ok()
-        .and_then(|q| q.0.code)
+        .and_then(|q| q.code)
         .unwrap_or_default()
         .chars()
         .take(32)
         .collect::<String>();
-    let back = match oa_auth::device::normalize_user_code(&typed) {
+    let mut back = match oa_auth::device::normalize_user_code(&typed) {
         Some(code) => format!("{PAGE}?code={}-{}", &code[..4], &code[4..]),
         None => PAGE.to_string(),
     };
+    if to_app && back.contains('?') {
+        back.push_str("&return=app");
+    }
     let (service, viewer) = match viewer(&app, &headers, &back).await {
         Ok(found) => found,
         Err(response) => return response,
@@ -412,8 +526,14 @@ async fn page(
                 Err(error) => return refused(error),
             };
             let title = format!("Log in to {} on {}?", request.app, request.computer);
-            let body = approve_form(&shown, &request.app, &request.computer, &csrf);
-            respond(&headers, service, &viewer, StatusCode::OK, &title, body)
+            let body =
+                approve_form_returning(&shown, &request.app, &request.computer, &csrf, to_app);
+            let response = respond(&headers, service, &viewer, StatusCode::OK, &title, body);
+            if to_app {
+                allow_app_return(response)
+            } else {
+                response
+            }
         }
         Ok(Err(problem)) => {
             let body = code_form(&shown, Some(problem_text(&problem)));
@@ -436,6 +556,9 @@ struct DecideForm {
     csrf: String,
     code: String,
     decision: String,
+    /// `app` from the phone's sign-in sheet.
+    #[serde(default, rename = "return")]
+    back: Option<String>,
 }
 
 /// `POST /device` — Approve or Deny.
@@ -466,6 +589,18 @@ async fn decide(
         Ok(decided) => decided,
         Err(error) => return refused(error),
     };
+    // The phone's sheet closes when it reaches the app's address.
+    if returns_to_app(form.back.as_deref()) {
+        match &decided {
+            Ok(_) if approve => {
+                return protect(Redirect::to(APP_RETURN).into_response());
+            }
+            Ok(_) => {
+                return protect(Redirect::to(&format!("{APP_RETURN}?denied=1")).into_response());
+            }
+            Err(_) => {}
+        }
+    }
     let body = match decided {
         Ok(request) if approve => empty_state(
             EmptyMedia::Icon(Icon::CheckCircle),

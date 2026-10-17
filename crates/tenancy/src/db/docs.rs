@@ -515,6 +515,12 @@ pub const ACCOUNTS: Layout = Layout {
             keys: &["provider_id"],
             fixed: &[("provider", "github")],
         },
+        Collection {
+            table: "identity.linked_identities",
+            path: &[Seg::Field("identities"), Seg::Field("apple")],
+            keys: &["provider_id"],
+            fixed: &[("provider", "apple")],
+        },
     ],
 };
 

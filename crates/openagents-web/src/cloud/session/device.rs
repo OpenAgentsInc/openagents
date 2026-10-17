@@ -266,6 +266,19 @@ impl CloudSession {
         .await
     }
 
+    /// Sign in with Apple (#11980): the app's identity token, nonce, label,
+    /// and first-time name, checked by the account service, which answers
+    /// a device poll's `{session, token, account}`.
+    pub async fn apple_sign_in(&self, body: Value) -> Result<Answer> {
+        self.device_call(
+            reqwest::Method::POST,
+            "/v1/sessions/apple",
+            None,
+            Some(body),
+        )
+        .await
+    }
+
     /// The waiting sign-in a typed code names, as the signed-in viewer.
     pub async fn device_lookup(
         &self,

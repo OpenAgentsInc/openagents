@@ -402,6 +402,52 @@ impl Controller {
             }
         }
     }
+    /// Sign in with an identity token from the native Sign in with Apple
+    /// sheet (#11980). The server issues the same app session a device
+    /// sign-in does, and it is stored and checked the same way.
+    pub fn sign_in_with_apple(
+        self: &Arc<Self>,
+        request: openagents::AppleSignIn,
+    ) -> impl Future<Output = ()> + Send + 'static {
+        let this = self.clone();
+        let ticket = self.begin(Phase::Starting);
+        async move {
+            if let Some(previous) = this.saved_for_sign_out(&ticket).await {
+                let _ = this.client.sign_out_record(&previous).await;
+            }
+            if this.forget(&ticket).await.is_err() {
+                this.publish(
+                    &ticket,
+                    Phase::Failed {
+                        message:
+                            "Couldn't remove the saved login. Unlock your device and try again."
+                                .into(),
+                        can_restore: false,
+                    },
+                    None,
+                );
+                return;
+            }
+            let request = openagents::AppleSignIn {
+                app: this.app_name.clone(),
+                ..request
+            };
+            match cancelled(&ticket.cancel, this.client.sign_in_with_apple(&request)).await {
+                Ok(session) => this.accept_session(ticket, session).await,
+                Err(Error::Cancelled) => {}
+                Err(error) => {
+                    this.publish(
+                        &ticket,
+                        Phase::Failed {
+                            message: error.to_string(),
+                            can_restore: false,
+                        },
+                        None,
+                    );
+                }
+            }
+        }
+    }
     async fn accept_session(&self, t: Ticket, session: Session) {
         // Keep the issued credential recoverable even if account discovery is offline.
         let saved = self.save(&t, session.record()).await;

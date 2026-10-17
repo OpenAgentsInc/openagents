@@ -53,6 +53,7 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
     let mut routes = vec![
         ("/v1/sessions", post(sign_in)),
         ("/v1/sessions/github", post(github_sign_in)),
+        ("/v1/sessions/apple", post(apple_sign_in)),
         ("/v1/account/identities/github", post(github_link)),
         ("/v1/sessions/device", post(device_start)),
         ("/v1/sessions/device/poll", post(device_poll)),
@@ -832,6 +833,67 @@ async fn github_sign_in(State(state): State<Arc<ServeState>>, Json(body): Json<V
     .await
     {
         Ok(signed) => answered(StatusCode::OK, oa_auth::service::signed_in_body(&signed)),
+        Err(error) => auth_refused(error),
+    }
+}
+
+/// `POST /v1/sessions/apple` — `{identity_token, nonce, device?, name?}`
+/// from the phone's Sign in with Apple sheet (#11980). Verifies the token
+/// against Apple's keys (`oa_auth::apple`), finds the account linked to
+/// that Apple user or creates it (with a personal workspace on the sign-up
+/// tenant), and issues an app session like a device sign-in's.
+async fn apple_sign_in(State(state): State<Arc<ServeState>>, body: axum::body::Bytes) -> Response {
+    let Some(config) = accounts_config(&state).apple.clone() else {
+        return refused(
+            StatusCode::NOT_FOUND,
+            "apple_disabled",
+            "Sign in with Apple isn't set up on this service.",
+        );
+    };
+    let Some(tenant) = accounts_config(&state).signup_tenant.clone() else {
+        return refused(
+            StatusCode::FORBIDDEN,
+            "signup_disabled",
+            "This service doesn't offer sign-up.",
+        );
+    };
+    // An invite list names GitHub people; nobody signing in with Apple is
+    // on it.
+    if accounts_config(&state)
+        .invite_only
+        .as_ref()
+        .is_some_and(|list| !list.open)
+    {
+        return auth_refused(oa_auth::AuthError::InviteOnly);
+    }
+    let Ok(request) = serde_json::from_slice::<oa_auth::apple::AppleRequest>(&body) else {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Send `identity_token` and `nonce`.",
+        );
+    };
+    let apple = match oa_auth::apple::Apple::new(config.audiences, config.keys_url) {
+        Ok(apple) => apple,
+        Err(_) => {
+            return unavailable(
+                "apple_unavailable",
+                "Sign in with Apple isn't available right now. Try again later.",
+            );
+        }
+    };
+    let profile = match apple.verify(&request.identity_token, &request.nonce).await {
+        Ok(profile) => profile,
+        Err(error) => return auth_refused(error),
+    };
+    match oa_auth::apple::sign_in(
+        &state.dir,
+        &tenant,
+        &profile,
+        request.name.as_deref(),
+        request.device.as_ref(),
+    ) {
+        Ok(signed) => answered(StatusCode::OK, oa_auth::apple::signed_in_body(&signed)),
         Err(error) => auth_refused(error),
     }
 }

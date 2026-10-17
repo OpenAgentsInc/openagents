@@ -6,6 +6,8 @@
 //! Every test stands up its own directory and listeners; nothing
 //! shares state but the shape of the claims being checked.
 
+#[path = "accounts_apple/mod.rs"]
+mod apple;
 #[path = "accounts_commercial/mod.rs"]
 mod commercial;
 mod common;
@@ -54,6 +56,7 @@ fn account_config(anonymous: Option<config::Anonymous>) -> config::Accounts {
         recovery_ttl_secs: 3_600,
         github: None,
         github_app: None,
+        apple: None,
         invite_only: None,
         store: Default::default(),
         database_url_env: String::new(),
@@ -1865,6 +1868,7 @@ async fn signup_and_anonymous_off_when_not_configured() {
             recovery_ttl_secs: 3_600,
             github: None,
             github_app: None,
+            apple: None,
             invite_only: None,
             store: Default::default(),
             database_url_env: String::new(),
@@ -1983,6 +1987,7 @@ async fn stores_install_under_accounts_config_and_validate() {
             session_ttl_secs: 28_800,
             github: None,
             github_app: None,
+            apple: None,
             invite_only: None,
             store: Default::default(),
             database_url_env: String::new(),

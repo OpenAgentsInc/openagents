@@ -32,6 +32,9 @@
 //! `docs/decision-models/service/workspace-membership.md`, not implemented here.
 
 pub mod agents;
+pub mod apple;
+#[cfg(test)]
+mod apple_tests;
 pub mod commercial;
 pub mod identities;
 #[cfg(test)]
@@ -982,6 +985,8 @@ fn valid_principal(value: &str) -> bool {
         (hex, 64)
     } else if let Some(hex) = value.strip_prefix("sso:") {
         (hex, 64)
+    } else if let Some(sub) = value.strip_prefix("apple:") {
+        return apple::valid_sub(sub);
     } else if let Some(id) = value.strip_prefix("github:") {
         // GitHub's numeric user id, decimal, no leading zero.
         return !id.is_empty()
