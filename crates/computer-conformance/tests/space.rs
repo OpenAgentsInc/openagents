@@ -33,7 +33,13 @@ struct Records {
     operation_states: std::collections::VecDeque<&'static str>,
     operation_reads: usize,
     operation_error: Option<u16>,
+    operation_errors: BTreeMap<String, u16>,
+    operation_results: BTreeMap<String, Value>,
     deletes: usize,
+    delete_requests: usize,
+    delete_conflicts: usize,
+    delete_conflict_removes_resource: bool,
+    lose_child_delete_reply: bool,
 }
 #[derive(Clone)]
 struct Mock {
@@ -68,12 +74,19 @@ async fn api(
     r.requests.push(body.clone());
     if path.starts_with("operations/") && method == Method::GET {
         r.operation_reads += 1;
+        let id = path.strip_prefix("operations/").unwrap();
+        if let Some(status) = r.operation_errors.remove(id) {
+            return StatusCode::from_u16(status).unwrap().into_response();
+        }
         if let Some(status) = r.operation_error.take() {
             return (
                 StatusCode::from_u16(status).unwrap(),
                 "do-not-echo-this-secret",
             )
                 .into_response();
+        }
+        if let Some(operation) = r.operation_results.get(id) {
+            return reply(operation.clone());
         }
         let state = r.operation_states.pop_front().unwrap_or("succeeded");
         return reply(json!({"state":state,"terminal_error":"do-not-echo-this-secret"}));
@@ -93,6 +106,9 @@ async fn api(
         return StatusCode::NOT_FOUND.into_response();
     };
     let id = tail.split(['/', ':']).next().unwrap();
+    if method == Method::DELETE && !tail.contains('/') {
+        r.delete_requests += 1;
+    }
     if !r.machines.contains_key(id) {
         return StatusCode::NOT_FOUND.into_response();
     }
@@ -116,8 +132,25 @@ async fn api(
     if !tail.contains('/') {
         if method == Method::DELETE {
             r.deletes += 1;
+            let operation = if r.deletes == 1 {
+                "op_delete".to_owned()
+            } else {
+                format!("op_delete_{}", r.deletes)
+            };
+            if r.delete_conflicts > 0 {
+                r.delete_conflicts -= 1;
+                r.operation_results
+                    .insert(operation.clone(), upload_conflict(&operation));
+                if r.delete_conflict_removes_resource {
+                    r.machines.remove(id);
+                }
+                return reply(json!({"operation_id":operation}));
+            }
             r.machines.remove(id);
-            return reply(json!({"operation_id":"op_delete"}));
+            if r.lose_child_delete_reply && r.deletes > 1 {
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+            return reply(json!({"operation_id":operation}));
         }
         return reply(json!({"id":id, "state":r.machines[id]}));
     }
@@ -153,6 +186,13 @@ async fn api(
         return bytes[start..end].to_vec().into_response();
     }
     StatusCode::NOT_FOUND.into_response()
+}
+
+fn upload_conflict(operation: &str) -> Value {
+    json!({"state":"failed","terminal_error":{
+        "kind":"delete_sandbox", "operation_id":operation,
+        "message":"sandbox has a suspend-snapshot upload in flight; retry the DELETE after the snapshot finalizes"
+    }})
 }
 
 async fn attach(
@@ -632,4 +672,199 @@ async fn deletion_waits_for_the_saved_operation_even_after_the_resource_disappea
     ));
     assert_eq!(mock.records.lock().unwrap().deletes, 1);
     task.abort();
+}
+
+#[tokio::test]
+async fn retry_safe_delete_conflict_keeps_parent_and_child_across_restart() {
+    let (driver, mock, task) = setup().await;
+    let id = driver
+        .create(&CreateRequest {
+            operation: "delete-retry-fixture".into(),
+            ..Default::default()
+        })
+        .await
+        .value()
+        .unwrap();
+    let journal = Arc::new(JournalFixture::default());
+    let driver = driver.with_lifecycle_journal(journal.clone());
+    {
+        let mut records = mock.records.lock().unwrap();
+        records.delete_conflicts = 1;
+        records.operation_errors.insert("op_delete_2".into(), 404);
+    }
+    assert!(matches!(driver.delete(&id).await, Outcome::Unknown { .. }));
+    assert_eq!(mock.records.lock().unwrap().deletes, 2);
+    let saved: Vec<_> = journal
+        .0
+        .lock()
+        .unwrap()
+        .values()
+        .map(|row| row.2.clone().unwrap())
+        .collect();
+    assert!(saved.contains(&"op_delete".to_owned()));
+    assert!(saved.contains(&"op_delete_2".to_owned()));
+
+    let restarted = driver.clone().with_lifecycle_journal(journal);
+    // Concurrent recovery traverses the same saved child, even with the
+    // sandbox already absent. Neither caller sends another DELETE.
+    let (first, second) = tokio::join!(restarted.delete(&id), restarted.delete(&id));
+    assert!(first.is_done() && second.is_done());
+    assert_eq!(mock.records.lock().unwrap().deletes, 2);
+    task.abort();
+}
+
+#[tokio::test]
+async fn retry_safe_delete_conflict_accepts_only_a_new_authoritative_missing_delete() {
+    let (driver, mock, task) = setup().await;
+    let id = driver
+        .create(&CreateRequest {
+            operation: "delete-retry-fixture".into(),
+            ..Default::default()
+        })
+        .await
+        .value()
+        .unwrap();
+    let journal = Arc::new(JournalFixture::default());
+    let driver = driver.with_lifecycle_journal(journal.clone());
+    {
+        let mut records = mock.records.lock().unwrap();
+        records.delete_conflicts = 1;
+        records.delete_conflict_removes_resource = true;
+    }
+    assert!(driver.delete(&id).await.is_done());
+    let rows = journal.0.lock().unwrap();
+    assert_eq!(mock.records.lock().unwrap().delete_requests, 2);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows.values().filter(|row| row.2.is_some()).count(), 1);
+    task.abort();
+}
+
+#[tokio::test]
+async fn retry_safe_delete_child_with_a_lost_reply_is_never_sent_again() {
+    let (driver, mock, task) = setup().await;
+    let id = driver
+        .create(&CreateRequest {
+            operation: "delete-retry-fixture".into(),
+            ..Default::default()
+        })
+        .await
+        .value()
+        .unwrap();
+    let journal = Arc::new(JournalFixture::default());
+    let driver = driver.with_lifecycle_journal(journal.clone());
+    {
+        let mut records = mock.records.lock().unwrap();
+        records.delete_conflicts = 1;
+        records.lose_child_delete_reply = true;
+    }
+    assert!(matches!(driver.delete(&id).await, Outcome::Unknown { .. }));
+    let restarted = driver.clone().with_lifecycle_journal(journal);
+    assert!(matches!(
+        restarted.delete(&id).await,
+        Outcome::Unknown { .. }
+    ));
+    assert_eq!(mock.records.lock().unwrap().deletes, 2);
+    task.abort();
+}
+
+#[tokio::test]
+async fn concurrent_delete_recovery_claims_the_same_retry_child_once() {
+    let (driver, mock, task) = setup().await;
+    let id = driver
+        .create(&CreateRequest {
+            operation: "concurrent-delete-retry".into(),
+            ..Default::default()
+        })
+        .await
+        .value()
+        .unwrap();
+    let journal = Arc::new(JournalFixture::default());
+    let driver = driver.with_lifecycle_journal(journal.clone());
+    {
+        let mut records = mock.records.lock().unwrap();
+        records.delete_conflicts = 1;
+        records.operation_errors.insert("op_delete".into(), 404);
+    }
+    assert!(matches!(driver.delete(&id).await, Outcome::Unknown { .. }));
+    assert_eq!(mock.records.lock().unwrap().deletes, 1);
+    let restarted = driver.clone().with_lifecycle_journal(journal);
+    let (first, second) = tokio::join!(restarted.delete(&id), restarted.delete(&id));
+    assert!(first.is_done() || second.is_done());
+    assert!(restarted.delete(&id).await.is_done());
+    assert_eq!(mock.records.lock().unwrap().deletes, 2);
+    assert_eq!(mock.records.lock().unwrap().delete_requests, 2);
+    task.abort();
+}
+
+#[tokio::test]
+async fn failed_delete_does_not_retry_for_another_error_or_operation() {
+    for changed in ["kind", "message", "operation_id", "state"] {
+        let (driver, mock, task) = setup().await;
+        let id = driver
+            .create(&CreateRequest {
+                operation: "delete-failure-fixture".into(),
+                ..Default::default()
+            })
+            .await
+            .value()
+            .unwrap();
+        let driver = driver.with_lifecycle_journal(Arc::new(JournalFixture::default()));
+        let mut response = upload_conflict("op_delete");
+        if changed == "state" {
+            response[changed] = json!("canceled");
+        } else {
+            response["terminal_error"][changed] = json!("another-value");
+        }
+        mock.records
+            .lock()
+            .unwrap()
+            .operation_results
+            .insert("op_delete".into(), response);
+        assert!(matches!(driver.delete(&id).await, Outcome::Unknown { .. }));
+        assert_eq!(
+            driver.observe(&id).await.value().unwrap().state,
+            computer_driver::State::Gone
+        );
+        assert!(matches!(driver.delete(&id).await, Outcome::Unknown { .. }));
+        assert_eq!(mock.records.lock().unwrap().deletes, 1);
+        task.abort();
+    }
+}
+
+#[tokio::test]
+async fn retry_safe_delete_child_still_has_a_bounded_wait() {
+    let (driver, mock, server) = setup().await;
+    let id = driver
+        .create(&CreateRequest {
+            operation: "bounded-delete-retry".into(),
+            ..Default::default()
+        })
+        .await
+        .value()
+        .unwrap();
+    let driver = driver.with_lifecycle_journal(Arc::new(JournalFixture::default()));
+    {
+        let mut records = mock.records.lock().unwrap();
+        records.delete_conflicts = 1;
+        records
+            .operation_results
+            .insert("op_delete_2".into(), json!({"state":"queued"}));
+    }
+    let deletion = tokio::spawn(async move { driver.delete(&id).await });
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while mock.records.lock().unwrap().operation_reads < 3 {
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .unwrap();
+    // Advance after the HTTP exchange reaches the pending child. Network
+    // setup uses real time; only the accepted operation's wait is accelerated.
+    tokio::time::pause();
+    tokio::time::advance(std::time::Duration::from_secs(601)).await;
+    let result = deletion.await.unwrap();
+    assert!(matches!(result, Outcome::Unknown { .. }));
+    assert!(format!("{result:?}").contains("deadline"));
+    assert_eq!(mock.records.lock().unwrap().deletes, 2);
+    server.abort();
 }
