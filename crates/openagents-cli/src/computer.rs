@@ -72,6 +72,33 @@ pub(crate) const USAGE: &str = "usage: openagents computer COMMAND [OPTIONS]
   journal [HOST] [--lines N]
                             What exec, watch, and tail ran, from this device's log.
   client-only               Record that this machine runs no local host.
+  cloud list [--limit N] [--after CURSOR]
+                            Your account's cloud computers on openagents.com.
+  cloud capabilities        The sizes, placements, and file limits you can use.
+  cloud show ID             One cloud computer: its state and what it supports.
+  cloud create [--size NAME] [--placement auto|our-cloud|fast-sandbox] [--environment ID --version N] [--key KEY] [--wait SECONDS]
+                            Start a cloud computer. The request is saved before it
+                            is sent; after a lost answer, rerun with only --key KEY
+                            to get the same computer, never a second one. A
+                            placement that can't be met refuses; it never moves.
+  cloud exec ID [--cwd DIR] [--timeout SECONDS] [--key KEY] [--wait SECONDS] -- CMD...
+                            Run a command in the computer's workspace and print
+                            its output. --wait (default 60) only bounds the wait:
+                            the command keeps running after it. Rerun with only
+                            --key KEY to reach the same command. Don't put
+                            secrets in the command, --cwd, or its settings.
+  cloud output ID COMMAND [--stdout N] [--stderr N]
+                            One page of a command's output from those byte offsets.
+  cloud cancel ID COMMAND   Stop a running command.
+  cloud read ID PATH --out FILE [--overwrite]
+                            Copy a workspace file (at most 4 MiB) to FILE here.
+  cloud write ID LOCAL PATH [--overwrite]
+                            Copy a file (at most 4 MiB) into the workspace; it
+                            replaces a different file only with --overwrite.
+  cloud stop ID [--wait SECONDS]
+  cloud wake ID [--wait SECONDS]
+  cloud delete ID [--wait SECONDS]
+                            Stop, wake, or delete a cloud computer.
 Options: --store DIR (default ~/.openagents/coder-computers), --wait SECONDS
 (how long to wait for the host's link; default 15), --same-machine
 (hosts run on this computer; allows loopback routes), --loopback-test.";
@@ -117,6 +144,19 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::device("alias", Effect::LocalWrite),
     Declared::device("journal", Effect::ReadOnly),
     Declared::device("client-only", Effect::LocalWrite),
+    Declared::device("cloud list", Effect::ReadOnly),
+    Declared::device("cloud capabilities", Effect::ReadOnly),
+    Declared::device("cloud show", Effect::ReadOnly),
+    // Starting a cloud computer uses the account's computer allowance.
+    Declared::device("cloud create", Effect::Spends),
+    Declared::device("cloud exec", Effect::Publishes),
+    Declared::device("cloud output", Effect::ReadOnly),
+    Declared::device("cloud cancel", Effect::Publishes),
+    Declared::device("cloud read", Effect::LocalWrite),
+    Declared::device("cloud write", Effect::Publishes),
+    Declared::device("cloud stop", Effect::Publishes),
+    Declared::device("cloud wake", Effect::Spends),
+    Declared::device("cloud delete", Effect::Publishes),
 ];
 
 fn now() -> u64 {
@@ -343,6 +383,11 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     // this device's link, so no host or device key is opened.
     if command == "remove" {
         return remove(output, rest);
+    }
+    // Cloud computers go through the public Computers API (#11823), not a
+    // host link.
+    if command == "cloud" {
+        return crate::computer_cloud::run(output, rest);
     }
     let args = match Args::parse(
         rest,

@@ -894,7 +894,33 @@ Exit codes: 0 success, 1 refused or failed, 64 invalid usage.";
         assert_eq!(admit("version", &[]), Ok(()));
         assert_eq!(admit("computer", &words(&["list"])), Ok(()));
         assert_eq!(admit("computer", &words(&["exec", "--help"])), Ok(()));
+        // Cloud computers (#11823): reads only; nothing that starts,
+        // runs, copies, stops, or deletes.
+        for read in [
+            &["cloud", "list"][..],
+            &["cloud", "show", "cmp_0123456789abcdef0123"],
+        ] {
+            assert_eq!(admit("computer", &words(read)), Ok(()), "{read:?}");
+        }
         for (group, args) in [
+            ("computer", &["cloud", "create"][..]),
+            (
+                "computer",
+                &["cloud", "exec", "cmp_0123456789abcdef0123", "--", "ls"][..],
+            ),
+            (
+                "computer",
+                &["cloud", "write", "cmp_0123456789abcdef0123", "a", "b"][..],
+            ),
+            (
+                "computer",
+                &["cloud", "wake", "cmp_0123456789abcdef0123"][..],
+            ),
+            (
+                "computer",
+                &["cloud", "delete", "cmp_0123456789abcdef0123"][..],
+            ),
+            ("computer", &["cloud", "show", "delete"][..]),
             ("wallet", &["send", "lnbc1", "--yes"][..]),
             ("wallet", &["balance"][..]),
             ("pay", &["--help"][..]),

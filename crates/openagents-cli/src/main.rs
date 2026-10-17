@@ -36,6 +36,7 @@ mod chamber;
 mod chat;
 mod cloud;
 mod computer;
+mod computer_cloud;
 #[cfg(unix)]
 mod connect;
 mod connections;

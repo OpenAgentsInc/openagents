@@ -2366,6 +2366,569 @@
             "effect": "local_write",
             "runs_on": "this_device"
           }
+        },
+        {
+          "name": "cloud",
+          "children": [
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "computer",
+                  "cloud",
+                  "list"
+                ],
+                "usage": [
+                  "cloud list [--limit N] [--after CURSOR]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "cloud"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "limit",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "after",
+                        "value": "CURSOR",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Your account's cloud computers on openagents.com.",
+                "effect": "read_only",
+                "runs_on": "this_device"
+              }
+            },
+            {
+              "name": "capabilities",
+              "leaf": {
+                "path": [
+                  "computer",
+                  "cloud",
+                  "capabilities"
+                ],
+                "usage": [
+                  "cloud capabilities"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "cloud"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "capabilities"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "The sizes, placements, and file limits you can use.",
+                "effect": "read_only",
+                "runs_on": "this_device"
+              }
+            },
+            {
+              "name": "show",
+              "leaf": {
+                "path": [
+                  "computer",
+                  "cloud",
+                  "show"
+                ],
+                "usage": [
+                  "cloud show ID"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "cloud"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "show"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "One cloud computer: its state and what it supports.",
+                "effect": "read_only",
+                "runs_on": "this_device"
+              }
+            },
+            {
+              "name": "create",
+              "leaf": {
+                "path": [
+                  "computer",
+                  "cloud",
+                  "create"
+                ],
+                "usage": [
+                  "cloud create [--size NAME] [--placement auto|our-cloud|fast-sandbox] [--environment ID --version N] [--key KEY] [--wait SECONDS]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "cloud"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "create"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "size",
+                        "value": "NAME",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "placement",
+                        "value": "auto|our-cloud|fast-sandbox",
+                        "choices": [
+                          "auto",
+                          "our-cloud",
+                          "fast-sandbox"
+                        ],
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "environment",
+                        "value": "ID",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "version",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "key",
+                        "value": "KEY",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "wait",
+                        "value": "SECONDS",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Start a cloud computer. The request is saved before it is sent; after a lost answer, rerun with only --key KEY to get the same computer, never a second one. A placement that can't be met refuses; it never moves.",
+                "effect": "spends",
+                "runs_on": "this_device"
+              }
+            },
+            {
+              "name": "exec",
+              "leaf": {
+                "path": [
+                  "computer",
+                  "cloud",
+                  "exec"
+                ],
+                "usage": [
+                  "cloud exec ID [--cwd DIR] [--timeout SECONDS] [--key KEY] [--wait SECONDS] -- CMD..."
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "cloud"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "exec"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "cwd",
+                        "value": "DIR",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "timeout",
+                        "value": "SECONDS",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "key",
+                        "value": "KEY",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "wait",
+                        "value": "SECONDS",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "rest"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Run a command in the computer's workspace and print its output. --wait (default 60) only bounds the wait: the command keeps running after it. Rerun with only --key KEY to reach the same command. Don't put secrets in the command, --cwd, or its settings.",
+                "effect": "publishes",
+                "runs_on": "this_device"
+              }
+            },
+            {
+              "name": "output",
+              "leaf": {
+                "path": [
+                  "computer",
+                  "cloud",
+                  "output"
+                ],
+                "usage": [
+                  "cloud output ID COMMAND [--stdout N] [--stderr N]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "cloud"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "output"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "COMMAND"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "stdout",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "stderr",
+                        "value": "N",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "One page of a command's output from those byte offsets.",
+                "effect": "read_only",
+                "runs_on": "this_device"
+              }
+            },
+            {
+              "name": "cancel",
+              "leaf": {
+                "path": [
+                  "computer",
+                  "cloud",
+                  "cancel"
+                ],
+                "usage": [
+                  "cloud cancel ID COMMAND"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "cloud"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "cancel"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "COMMAND"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Stop a running command.",
+                "effect": "publishes",
+                "runs_on": "this_device"
+              }
+            },
+            {
+              "name": "read",
+              "leaf": {
+                "path": [
+                  "computer",
+                  "cloud",
+                  "read"
+                ],
+                "usage": [
+                  "cloud read ID PATH --out FILE [--overwrite]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "cloud"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "read"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PATH"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "out",
+                        "value": "FILE",
+                        "open": true
+                      },
+                      {
+                        "kind": "option",
+                        "name": "overwrite",
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Copy a workspace file (at most 4 MiB) to FILE here.",
+                "effect": "local_write",
+                "runs_on": "this_device"
+              }
+            },
+            {
+              "name": "write",
+              "leaf": {
+                "path": [
+                  "computer",
+                  "cloud",
+                  "write"
+                ],
+                "usage": [
+                  "cloud write ID LOCAL PATH [--overwrite]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "cloud"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "write"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "LOCAL"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "PATH"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "overwrite",
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Copy a file (at most 4 MiB) into the workspace; it replaces a different file only with --overwrite.",
+                "effect": "publishes",
+                "runs_on": "this_device"
+              }
+            },
+            {
+              "name": "stop",
+              "leaf": {
+                "path": [
+                  "computer",
+                  "cloud",
+                  "stop"
+                ],
+                "usage": [
+                  "cloud stop ID [--wait SECONDS]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "cloud"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "stop"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "wait",
+                        "value": "SECONDS",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "publishes",
+                "runs_on": "this_device"
+              }
+            },
+            {
+              "name": "wake",
+              "leaf": {
+                "path": [
+                  "computer",
+                  "cloud",
+                  "wake"
+                ],
+                "usage": [
+                  "cloud wake ID [--wait SECONDS]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "cloud"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "wake"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "wait",
+                        "value": "SECONDS",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "",
+                "effect": "spends",
+                "runs_on": "this_device"
+              }
+            },
+            {
+              "name": "delete",
+              "leaf": {
+                "path": [
+                  "computer",
+                  "cloud",
+                  "delete"
+                ],
+                "usage": [
+                  "cloud delete ID [--wait SECONDS]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "cloud"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "delete"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ID"
+                      },
+                      {
+                        "kind": "option",
+                        "name": "wait",
+                        "value": "SECONDS",
+                        "open": true,
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Stop, wake, or delete a cloud computer.",
+                "effect": "publishes",
+                "runs_on": "this_device"
+              }
+            }
+          ]
         }
       ],
       "options": [
@@ -2587,6 +3150,90 @@
         {
           "kind": "option",
           "name": "max-bytes",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "limit",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "after",
+          "value": "CURSOR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "size",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "placement",
+          "value": "auto|our-cloud|fast-sandbox",
+          "choices": [
+            "auto",
+            "our-cloud",
+            "fast-sandbox"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "environment",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "version",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "key",
+          "value": "KEY",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "cwd",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "stdout",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "stderr",
           "value": "N",
           "open": true,
           "optional": true,

@@ -129,7 +129,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
 
 /// The signed-in account through the OpenAgents SDK, at the site this
 /// computer is signed in to.
-fn connect() -> Result<(Client, Session), String> {
+pub(crate) fn connect() -> Result<(Client, Session), String> {
     let site = crate::keys::Site::open(None)?;
     let origin = site.saved.origin.trim_end_matches('/').to_owned();
     let deployment = if origin == "https://openagents.com" {
