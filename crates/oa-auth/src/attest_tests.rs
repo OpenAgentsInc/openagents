@@ -35,19 +35,29 @@ fn fixture() -> Fixture {
 #[test]
 fn a_real_attestation_verifies_against_apples_root() {
     let f = fixture();
-    let attested = Verifier::apple(&f.app_id, false)
+    let attested = Verifier::apple(&f.app_id, true)
         .attestation(&f.attestation, &f.key_id, &f.attestation_hash, f.at)
         .unwrap();
     assert_eq!(attested.public_key, f.public_key);
     assert_eq!(attested.key_id, f.key_id);
-    assert_eq!(attested.environment, Environment::Production);
+    // The fixture comes from a development build.
+    assert_eq!(attested.environment, Environment::Development);
     assert!(!attested.receipt.is_empty());
+}
+
+#[test]
+fn a_development_key_is_refused_unless_allowed() {
+    let f = fixture();
+    let refused = Verifier::apple(&f.app_id, false)
+        .attestation(&f.attestation, &f.key_id, &f.attestation_hash, f.at)
+        .unwrap_err();
+    assert_eq!(refused, AttestError::Environment);
 }
 
 #[test]
 fn an_attestation_for_another_app_is_refused() {
     let f = fixture();
-    let refused = Verifier::apple(APP_ID, false)
+    let refused = Verifier::apple(APP_ID, true)
         .attestation(&f.attestation, &f.key_id, &f.attestation_hash, f.at)
         .unwrap_err();
     assert_eq!(refused, AttestError::AppId);
@@ -56,7 +66,7 @@ fn an_attestation_for_another_app_is_refused() {
 #[test]
 fn an_attestation_out_of_date_is_refused() {
     let f = fixture();
-    let refused = Verifier::apple(&f.app_id, false)
+    let refused = Verifier::apple(&f.app_id, true)
         .attestation(
             &f.attestation,
             &f.key_id,
@@ -70,7 +80,7 @@ fn an_attestation_out_of_date_is_refused() {
 #[test]
 fn an_attestation_over_another_challenge_is_refused() {
     let f = fixture();
-    let refused = Verifier::apple(&f.app_id, false)
+    let refused = Verifier::apple(&f.app_id, true)
         .attestation(
             &f.attestation,
             &f.key_id,
@@ -86,7 +96,7 @@ fn an_attestation_naming_another_key_is_refused() {
     let f = fixture();
     let mut key_id = f.key_id.clone();
     key_id[0] ^= 1;
-    let refused = Verifier::apple(&f.app_id, false)
+    let refused = Verifier::apple(&f.app_id, true)
         .attestation(&f.attestation, &key_id, &f.attestation_hash, f.at)
         .unwrap_err();
     assert_eq!(refused, AttestError::KeyId);
@@ -105,7 +115,7 @@ fn an_attestation_under_an_untrusted_root_is_refused() {
 #[test]
 fn a_damaged_attestation_is_refused() {
     let f = fixture();
-    let verifier = Verifier::apple(&f.app_id, false);
+    let verifier = Verifier::apple(&f.app_id, true);
     // Flip a byte in the credential certificate, the intermediate, and the
     // authenticator data at the end: every change is refused. (Apple's
     // receipt, between them, isn't checked here.)
@@ -135,7 +145,7 @@ fn a_damaged_attestation_is_refused() {
 #[test]
 fn a_real_assertion_verifies_and_advances_the_counter() {
     let f = fixture();
-    let verifier = Verifier::apple(&f.app_id, false);
+    let verifier = Verifier::apple(&f.app_id, true);
     let counter = verifier
         .assertion(&f.assertion, &f.assertion_hash, &f.public_key, 0)
         .unwrap();
@@ -153,13 +163,13 @@ fn a_real_assertion_verifies_and_advances_the_counter() {
 fn an_assertion_over_other_data_or_for_another_app_is_refused() {
     let f = fixture();
     assert_eq!(
-        Verifier::apple(&f.app_id, false)
+        Verifier::apple(&f.app_id, true)
             .assertion(&f.assertion, &client_data_hash(b"x"), &f.public_key, 0)
             .unwrap_err(),
         AttestError::Signature
     );
     assert_eq!(
-        Verifier::apple(APP_ID, false)
+        Verifier::apple(APP_ID, true)
             .assertion(&f.assertion, &f.assertion_hash, &f.public_key, 0)
             .unwrap_err(),
         AttestError::AppId
@@ -169,7 +179,7 @@ fn an_assertion_over_other_data_or_for_another_app_is_refused() {
 #[test]
 fn the_book_binds_one_install_to_one_account() {
     let f = fixture();
-    let attested = Verifier::apple(&f.app_id, false)
+    let attested = Verifier::apple(&f.app_id, true)
         .attestation(&f.attestation, &f.key_id, &f.attestation_hash, f.at)
         .unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -193,7 +203,7 @@ fn the_book_binds_one_install_to_one_account() {
     let record = book.key(&f.key_id).unwrap();
     assert_eq!(record.counter, 3);
     assert_eq!(record.attested_at, 10);
-    assert_eq!(record.environment, Environment::Production);
+    assert_eq!(record.environment, Environment::Development);
 }
 
 #[test]

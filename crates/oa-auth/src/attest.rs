@@ -421,7 +421,9 @@ impl<'a> AuthData<'a> {
         let flags = bytes[32];
         let counter = u32::from_be_bytes(bytes[33..37].try_into().map_err(|_| bad)?);
         let (mut aaguid, mut credential_id) = (None, None);
-        if flags & 0x40 != 0 {
+        // App Attest sets the attested-data flag on assertions too, whose
+        // data stops after the counter, so read it only when it is there.
+        if flags & 0x40 != 0 && bytes.len() > 37 {
             if bytes.len() < 55 {
                 return Err(bad);
             }
