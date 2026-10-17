@@ -190,8 +190,10 @@ how long SPACE keeps retry keys. A lost response before the ID is saved remains
 unknown and is never sent again. The service waits for operation completion and
 observed state before dispatch, including after an accepted operation's lookup
 fails.
-A restored guest must also answer a harmless command before becoming ready.
-Existing service processes are checked without running their startup commands.
+A restored guest must also answer a harmless command, report current wall time,
+and pass the declared service checks before becoming ready. SPACE refreshes the
+guest clock asynchronously; the service waits until its observed time is within
+five seconds of the API process. Existing service processes are checked without running their startup commands.
 
 An unknown command result on a memory-preserving computer keeps the active turn
 fenced. Follow-ups and stop cannot snapshot that possibly live command or claim
