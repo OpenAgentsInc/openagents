@@ -203,6 +203,43 @@ impl<D: Driver> Driver for BoundDriver<D> {
         }
         self.inner.resume(computer).await
     }
+    async fn suspend_operation(&self, computer: &str, operation: &str) -> Outcome<String> {
+        if !self.caps.supports(Profile::Suspend)
+            || !self.deleting
+                && self
+                    .binding
+                    .as_ref()
+                    .is_some_and(|b| b.needs.memory_suspend)
+                && !self.caps.memory_suspend
+        {
+            return Outcome::failed(
+                "unsupported: This computer cannot keep running programs when stopped.",
+            );
+        }
+        let operation = self
+            .binding
+            .as_ref()
+            .map_or_else(|| operation.into(), |b| b.operation(operation));
+        self.inner.suspend_operation(computer, &operation).await
+    }
+    async fn resume_operation(&self, computer: &str, operation: &str) -> Outcome<String> {
+        if !self.caps.supports(Profile::Suspend)
+            || self
+                .binding
+                .as_ref()
+                .is_some_and(|b| b.needs.memory_suspend)
+                && !self.caps.memory_suspend
+        {
+            return Outcome::failed(
+                "unsupported: This computer cannot restore its running programs.",
+            );
+        }
+        let operation = self
+            .binding
+            .as_ref()
+            .map_or_else(|| operation.into(), |b| b.operation(operation));
+        self.inner.resume_operation(computer, &operation).await
+    }
     async fn snapshot(&self, computer: &str, name: &str) -> Outcome<String> {
         if !self.caps.supports(Profile::Snapshot) {
             return Outcome::failed("unsupported: This computer cannot save disk images.");
