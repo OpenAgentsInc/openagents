@@ -24,6 +24,7 @@ use crate::cloud::session::{CloudSession, SessionError, Viewer, now};
 use crate::cloud::{default_workspace, default_workspace_cookies, protect, refused, service};
 use crate::ui_page::{UiPage, action_link};
 
+pub(crate) mod link;
 pub(crate) mod subscription;
 
 pub(crate) const PAGE: &str = "/settings";
@@ -33,6 +34,7 @@ const CLAUDE_REMOVE: &str = "/settings/claude/remove";
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(PAGE, get(settings))
+        .route(link::PAGE, link::route())
         .route(CLAUDE, get(claude).post(add))
         .route(CLAUDE_REMOVE, post(remove))
         .route(
@@ -199,6 +201,7 @@ async fn settings(
     let affiliate = affiliate_section(&app, service, &headers).await;
     let body = html! {
         (settings_content(&viewer.account_label, claude, chats, plan))
+        (link::row())
         (affiliate)
         (crate::connections::settings_row(&app, &viewer))
         (computers)

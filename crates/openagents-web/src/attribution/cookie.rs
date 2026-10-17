@@ -62,7 +62,9 @@ impl Ticket {
         use tenancy::accounts::referrals::{campaign_word, click_id};
         let link_ok = match (&self.code, &self.token) {
             (Some(code), None) => super::codes::find(code).is_some(),
-            (None, Some(token)) => super::affiliate_token(token),
+            (None, Some(token)) => {
+                super::affiliate_token(token) || tenancy::accounts::referrals::handle_word(token)
+            }
             _ => false,
         };
         link_ok && self.series.as_deref().is_none_or(campaign_word) && click_id(&self.click)
@@ -101,6 +103,39 @@ impl Ticket {
             },
         )
     }
+
+    /// The consented click to keep with a contact request. The link token
+    /// stays out; a short hash is enough to match an affiliate on the
+    /// scoreboard.
+    pub fn contact(&self) -> ContactClick {
+        ContactClick {
+            link: self.link().name().to_owned(),
+            code: self.code.clone(),
+            series: self.series.clone(),
+            click: self.click.clone(),
+            basis: match self.basis {
+                Basis::Consent => "consent",
+                Basis::Notice => "notice",
+            }
+            .to_owned(),
+            affiliate: self.token.as_deref().map(affiliate_key),
+        }
+    }
+}
+
+/// A consented click stored with a contact request. It never holds the
+/// affiliate's link token.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContactClick {
+    pub link: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub series: Option<String>,
+    pub click: String,
+    pub basis: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub affiliate: Option<String>,
 }
 
 /// `aff-` and the first 16 hex digits of the token's SHA-256. The

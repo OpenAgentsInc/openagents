@@ -153,3 +153,64 @@ async fn referral_link_survives_signup_without_private_cross_account_reads() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     d.server.abort();
 }
+
+#[tokio::test]
+async fn an_owned_short_handle_resolves_beside_the_token() {
+    let d = deploy(Some(account_config(None)), true).await;
+    let alice = join(&d, "Handle owner").await;
+    let (status, created) = post(
+        &d,
+        "/v1/account/referrers",
+        Some(&alice.session_token),
+        &json!({"kind":"person","label":"Ada"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{created}");
+    let id = created["referral"]["id"].as_str().unwrap();
+    let (status, missing) =
+        exchange(reqwest::Client::new().get(format!("{}/join?ref=ada", d.address))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{missing}");
+    let (status, claimed) = post(
+        &d,
+        &format!("/v1/account/referrers/{id}/handle"),
+        Some(&alice.session_token),
+        &json!({"handle":"ada"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{claimed}");
+    assert_eq!(claimed["referral"]["path"], "/r/ada");
+    assert!(!claimed.to_string().contains(&alice.account));
+    let (status, live) =
+        exchange(reqwest::Client::new().get(format!("{}/join?ref=ada", d.address))).await;
+    assert_eq!(status, StatusCode::OK, "{live}");
+    assert!(!live.to_string().contains(&alice.account));
+    let (status, signup) = post(
+        &d,
+        "/v1/accounts",
+        None,
+        &json!({"label":"Introduced","acquisition":{"request":"handle-signup","token":"ada","consent":true,"consent_version":CONSENT}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{signup}");
+    assert_eq!(signup["acquisition"]["outcome"], "captured");
+    assert_eq!(signup["acquisition"]["referrer"]["id"], id);
+    let bob = join(&d, "Other owner").await;
+    let (status, other) = post(
+        &d,
+        "/v1/account/referrers",
+        Some(&bob.session_token),
+        &json!({"kind":"person","label":"Bob"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{other}");
+    let other_id = other["referral"]["id"].as_str().unwrap();
+    let (status, clash) = post(
+        &d,
+        &format!("/v1/account/referrers/{other_id}/handle"),
+        Some(&bob.session_token),
+        &json!({"handle":"ada"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{clash}");
+    d.server.abort();
+}

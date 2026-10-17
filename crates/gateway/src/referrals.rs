@@ -36,6 +36,7 @@ pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
             "/v1/account/referrers/{referrer}/link",
             post(link).delete(disable),
         ),
+        ("/v1/account/referrers/{referrer}/handle", post(claim)),
         ("/v1/account/referrers/{referrer}/migration", post(migrate)),
         (
             "/v1/account/referrers/{referrer}/migration/accept",
@@ -314,13 +315,21 @@ struct Join {
     token: String,
 }
 /// Public source lookup material grants no account access or payout right.
-async fn join(Query(input): Query<Join>) -> Response {
-    if !input.token.strip_prefix("rfr_").is_some_and(|hex| {
+/// A random token is accepted by shape. A short name is accepted only when
+/// someone owns it and it is still on.
+async fn join(State(state): State<Arc<ServeState>>, Query(input): Query<Join>) -> Response {
+    let token_ok = input.token.strip_prefix("rfr_").is_some_and(|hex| {
         hex.len() == 64
             && hex
                 .bytes()
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    }) {
+    });
+    let handle_ok = referrals::handle_word(&input.token)
+        && accounts::accounts_store(&state)
+            .ok()
+            .and_then(|store| store.active_referral(&input.token).ok())
+            .unwrap_or(false);
+    if !(token_ok || handle_ok) {
         return refused(Error::Invalid);
     }
     answer(
@@ -361,6 +370,30 @@ async fn show(
         Err(e) => return e,
     };
     match store.referrer(&account, &id) {
+        Ok(v) => answer(v),
+        Err(e) => refused(e),
+    }
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HandleName {
+    handle: String,
+}
+async fn claim(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<Value>,
+) -> Response {
+    let (store, account) = match actor(&state, &headers).await {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    let input: HandleName = match serde_json::from_value(body) {
+        Ok(v) => v,
+        Err(_) => return refused(Error::Invalid),
+    };
+    match store.claim_handle(&account, &id, &input.handle) {
         Ok(v) => answer(v),
         Err(e) => refused(e),
     }

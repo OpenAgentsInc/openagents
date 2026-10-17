@@ -115,6 +115,10 @@ pub(crate) struct Request {
     pub(crate) created_unix: u64,
     /// Whether the mail to us went out.
     pub(crate) mailed: bool,
+    /// The consented link click this browser held, when it had one.
+    /// Absent when there was no cookie. Never the link token.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) attribution: Option<crate::attribution::cookie::ContactClick>,
 }
 
 async fn page(headers: HeaderMap, Query(query): Query<TopicQuery>) -> Response {
@@ -287,6 +291,7 @@ async fn send(
         message: form.message.trim().to_owned(),
         created_unix: crate::chat_store::now_unix(),
         mailed: false,
+        attribution: crate::attribution::ticket(&app, &headers).map(|ticket| ticket.contact()),
     };
     request.mailed = mail(&request).await;
     if let Err(error) = keep(&app.config.chat_store, &request).await {
@@ -347,13 +352,18 @@ fn mail_body(request: &Request) -> serde_json::Value {
     } else {
         format!(" ({})", request.company)
     };
+    let came = request
+        .attribution
+        .as_ref()
+        .map(came_through)
+        .unwrap_or_default();
     json!({
         "from": FROM,
         "to": [TO],
         "reply_to": request.email,
         "subject": format!("{}: {}{company}", label_of(&request.topic), request.name),
         "text": format!(
-            "{}\n\nFrom: {} <{}>\nCompany: {}\nTopic: {}\nRequest: {}\n",
+            "{}\n\nFrom: {} <{}>\nCompany: {}\nTopic: {}\nRequest: {}\n{came}",
             request.message,
             request.name,
             request.email,
@@ -362,6 +372,17 @@ fn mail_body(request: &Request) -> serde_json::Value {
             request.id,
         ),
     })
+}
+
+/// One plain line for the mail, when the sender followed a link.
+fn came_through(click: &crate::attribution::cookie::ContactClick) -> String {
+    if let Some(code) = &click.code {
+        format!("Came through our {code} link.\n")
+    } else if let Some(reference) = &click.affiliate {
+        format!("Came through an affiliate link.\nReference: {reference}\n")
+    } else {
+        "Came through a shared link.\n".to_owned()
+    }
 }
 
 /// Mail `request` to us; false when there is no key or Resend refused.
@@ -453,6 +474,7 @@ mod tests {
             message: "Hello".into(),
             created_unix: 1_792_000_000,
             mailed: false,
+            attribution: None,
         };
         let mail = mail_body(&request);
         assert_eq!(mail["to"][0], TO);
@@ -462,6 +484,57 @@ mod tests {
         assert!(key_of(&request).starts_with("contact-requests/2026-"));
         assert_eq!(month_of(0), "1970-01");
         assert_eq!(month_of(1_792_000_000), "2026-10");
+    }
+
+    #[test]
+    fn a_contact_request_keeps_the_consented_click_and_not_the_token() {
+        use crate::attribution::cookie::{Basis, ContactClick, Ticket};
+        let token = "rfr_00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+        let ticket = Ticket {
+            code: None,
+            token: Some(token.into()),
+            series: Some("launch".into()),
+            click: format!("clk_{}", "ab".repeat(16)),
+            at: 1_700_000_000,
+            basis: Basis::Consent,
+        };
+        let click = ticket.contact();
+        assert!(click.affiliate.as_ref().unwrap().starts_with("aff-"));
+        let mut request = Request {
+            id: "ctr_a".into(),
+            topic: "sales".into(),
+            name: "Ada".into(),
+            email: "ada@example.com".into(),
+            company: String::new(),
+            message: "Hello".into(),
+            created_unix: 1_792_000_000,
+            mailed: false,
+            attribution: Some(click),
+        };
+        let stored = serde_json::to_string(&request).unwrap();
+        assert!(!stored.contains(token));
+        assert!(stored.contains("affiliate"));
+        let mail = mail_body(&request)["text"].as_str().unwrap().to_owned();
+        assert!(mail.contains("Came through an affiliate link."));
+        assert!(mail.contains("Reference: aff-"));
+        assert!(!mail.contains(token));
+        request.attribution = Some(ContactClick {
+            link: "go".into(),
+            code: Some("yt-cost".into()),
+            series: None,
+            click: format!("clk_{}", "cd".repeat(16)),
+            basis: "notice".into(),
+            affiliate: None,
+        });
+        assert!(
+            mail_body(&request)["text"]
+                .as_str()
+                .unwrap()
+                .contains("Came through our yt-cost link.")
+        );
+        let older = r#"{"id":"ctr_old","topic":"sales","name":"A","email":"a@b.co","company":"","message":"Hi","created_unix":1,"mailed":false}"#;
+        let decoded: Request = serde_json::from_str(older).unwrap();
+        assert!(decoded.attribution.is_none());
     }
 
     #[test]
@@ -486,6 +559,7 @@ mod tests {
             message: "Hi".into(),
             created_unix: crate::chat_store::now_unix(),
             mailed: false,
+            attribution: None,
         };
         keep(&store, &request).await.unwrap();
         let (bytes, _) = store.read_key(&key_of(&request)).await.unwrap().unwrap();

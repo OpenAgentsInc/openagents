@@ -169,6 +169,47 @@ impl CloudSession {
         Ok(Answer { status, body })
     }
 
+    /// One account-service call as the browser's session. It is not tried
+    /// again: a create or a link issue must not run twice.
+    pub(crate) async fn account_json(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        headers: &HeaderMap,
+        body: Option<Value>,
+    ) -> Result<Value> {
+        let token = self.browser_token(headers)?;
+        let answer = self.device_call(method, path, Some(&token), body).await?;
+        match answer.status {
+            200 | 201 => Ok(answer.body),
+            400 => Err(SessionError::InvalidRequest),
+            401 => Err(SessionError::Unauthenticated),
+            403 => Err(SessionError::Forbidden),
+            409 => Err(SessionError::Conflict),
+            _ => Err(SessionError::Unavailable),
+        }
+    }
+
+    /// Whether the account service still has this short referral name.
+    /// A failure is a no, so an unconfirmed name sets nothing.
+    pub(crate) async fn referral_handle_active(&self, handle: &str) -> bool {
+        if !tenancy::accounts::referrals::handle_word(handle) {
+            return false;
+        }
+        let url = format!("{}/join", self.account_service.trim_end_matches('/'));
+        match self
+            .http
+            .get(url)
+            .query(&[("ref", handle)])
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+        {
+            Ok(response) => response.status().is_success(),
+            Err(_) => false,
+        }
+    }
+
     /// The browser's own session token, for calls made as the viewer.
     pub(crate) fn browser_token(&self, headers: &HeaderMap) -> Result<String> {
         self.request_host(headers)?;

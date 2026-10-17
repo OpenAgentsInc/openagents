@@ -201,6 +201,7 @@ pub const ROUTES: &[Route] = &[
     route("/v1/account/referrers/{referrer}/lineage", FirstParty, "Referrals", &[op("get", "getReferrerLineage", "A referral identity's history.")]),
     route("/v1/account/referrers/{referrer}", FirstParty, "Referrals", &[op("get", "getReferrer", "One referral identity.")]),
     route("/v1/account/referrers/{referrer}/link", FirstParty, "Referrals", &[op("post", "enableReferralLink", "Turn a referral link on."), op("delete", "disableReferralLink", "Turn a referral link off.")]),
+    route("/v1/account/referrers/{referrer}/handle", FirstParty, "Referrals", &[op("post", "claimReferralHandle", "Claim a short referral name.")]),
     route("/v1/account/referrers/{referrer}/migration", FirstParty, "Referrals", &[op("post", "migrateReferrer", "Move a referral identity.")]),
     route("/v1/account/referrers/{referrer}/migration/accept", FirstParty, "Referrals", &[op("post", "acceptReferrerMigration", "Accept a referral identity's move.")]),
     // ---- FIRST-PARTY: the older skills directory and team reports.

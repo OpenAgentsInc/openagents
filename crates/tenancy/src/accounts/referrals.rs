@@ -189,6 +189,9 @@ struct Link {
     referrer: String,
     version: u64,
     active: bool,
+    /// A chosen public name. A new random token does not turn it off.
+    #[serde(default)]
+    durable: bool,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct Recorded {
@@ -256,6 +259,12 @@ fn token(value: &str) -> bool {
                 .bytes()
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     })
+}
+
+/// A public short name for `/r/{handle}`: lowercase letters, digits and
+/// `-`, 3 to 48 characters, not a token prefix.
+pub fn handle_word(value: &str) -> bool {
+    value.len() >= 3 && !value.starts_with("rfr") && campaign_word(value)
 }
 fn hash(value: &[u8]) -> String {
     format!("{:x}", Sha256::digest(value))
@@ -365,7 +374,7 @@ impl Book {
         let outcome = match input.token.as_deref() {
             None => Outcome::Missing,
             Some(_) if !input.consent => Outcome::Declined,
-            Some(value) if !token(value) => Outcome::Malformed,
+            Some(value) if !(token(value) || handle_word(value)) => Outcome::Malformed,
             Some(value) => match self.links.get(&hash(value.as_bytes())) {
                 None => Outcome::Unknown,
                 Some(link) if !link.active => Outcome::Disabled,
@@ -547,7 +556,7 @@ impl Accounts {
                 .referrals
                 .links
                 .values_mut()
-                .filter(|l| l.referrer == id)
+                .filter(|link| link.referrer == id && !link.durable)
             {
                 link.active = false;
             }
@@ -558,6 +567,7 @@ impl Accounts {
                     referrer: id.into(),
                     version: record.version,
                     active: true,
+                    durable: false,
                 },
             );
             Ok((
@@ -569,6 +579,77 @@ impl Accounts {
                 true,
             ))
         })
+    }
+    /// Claim one public `/r/{handle}` for this referrer. A new random token
+    /// leaves it on. Another referrer's live name is refused.
+    pub fn claim_handle(&self, actor: &str, id: &str, handle: &str) -> Result<Issued, Error> {
+        if !handle_word(handle) {
+            return Err(Error::Invalid);
+        }
+        self.referral_write(|store, _| {
+            let version = {
+                let record = store
+                    .referrals
+                    .referrers
+                    .get(id)
+                    .ok_or(Error::Unavailable)?;
+                if record.owner != actor {
+                    return Err(Error::Unauthorized);
+                }
+                record.version
+            };
+            let digest = hash(handle.as_bytes());
+            if store
+                .referrals
+                .links
+                .get(&digest)
+                .is_some_and(|link| link.active && link.referrer != id)
+            {
+                return Err(Error::Conflict);
+            }
+            store
+                .referrals
+                .links
+                .retain(|key, link| !(link.referrer == id && link.durable && key != &digest));
+            let count = store
+                .referrals
+                .links
+                .values()
+                .filter(|link| link.referrer == id)
+                .count();
+            if count >= LINKS && !store.referrals.links.contains_key(&digest) {
+                return Err(Error::Bound);
+            }
+            store.referrals.links.insert(
+                digest,
+                Link {
+                    referrer: id.into(),
+                    version,
+                    active: true,
+                    durable: true,
+                },
+            );
+            Ok((
+                Issued {
+                    referrer: id.into(),
+                    path: format!("/r/{handle}"),
+                    token: handle.into(),
+                },
+                true,
+            ))
+        })
+    }
+    /// Whether `value` is a live token or short name. The answer names no one.
+    pub fn active_referral(&self, value: &str) -> Result<bool, Error> {
+        if !(token(value) || handle_word(value)) {
+            return Ok(false);
+        }
+        let store = load(&self.dir).map_err(storage)?;
+        Ok(store
+            .referrals
+            .links
+            .get(&hash(value.as_bytes()))
+            .is_some_and(|link| link.active))
     }
     pub fn disable_referral_links(&self, actor: &str, id: &str) -> Result<(), Error> {
         self.referral_write(|store, _| {
@@ -667,7 +748,7 @@ impl Accounts {
                 .referrals
                 .links
                 .values_mut()
-                .filter(|link| link.referrer == id)
+                .filter(|link| link.referrer == id && !link.durable)
             {
                 link.active = false;
             }

@@ -8,9 +8,10 @@
 //!   checked-in list in [`codes`] (`{channel}-{series}`, each with a fixed
 //!   destination). `GET /r/{token}` and `/r/{token}/{series}` follow an
 //!   affiliate's referral link: the token the referral system issued
-//!   (`rfr_…`, `tenancy::accounts::referrals`). An unknown code or a
-//!   malformed token goes to `/` and is counted only as `unknown`; what
-//!   was typed is never kept.
+//!   (`rfr_…`, `tenancy::accounts::referrals`), or a short name that
+//!   referrer owns (`/r/{handle}`). An unknown code, a malformed token, or
+//!   a short name nobody owns goes to `/` and is counted only as
+//!   `unknown`; what was typed is never kept.
 //! - A person's click (never an agent's or a crawler's,
 //!   [`crate::analytics::Traffic`]) sets one first-party cookie, `oa_ref`:
 //!   signed, `HttpOnly`, `SameSite=Lax`, for 30 days, holding the link
@@ -520,16 +521,39 @@ pub(crate) fn affiliate_token(token: &str) -> bool {
 }
 
 fn affiliate_target(token: &str, series: Option<&str>) -> Option<Target> {
-    affiliate_token(token).then(|| Target {
+    if affiliate_token(token) || tenancy::accounts::referrals::handle_word(token) {
+        Some(named_target(token, series))
+    } else {
+        None
+    }
+}
+
+fn named_target(name: &str, series: Option<&str>) -> Target {
+    Target {
         link: Link::Affiliate,
         code: None,
-        token: Some(token.to_owned()),
+        token: Some(name.to_owned()),
         // A series that isn't a plain word is ignored, never kept.
         series: series
             .filter(|s| tenancy::accounts::referrals::campaign_word(s))
             .map(str::to_owned),
         destination: AFFILIATE_DESTINATION.to_owned(),
-    })
+    }
+}
+
+/// A random token is accepted by shape. A short name is accepted only when
+/// the account service says someone still owns it.
+async fn accept_name(app: &App, name: &str) -> bool {
+    if affiliate_token(name) {
+        return true;
+    }
+    if !tenancy::accounts::referrals::handle_word(name) {
+        return false;
+    }
+    match app.config.cloud.as_deref() {
+        Some(cloud) => cloud.referral_handle_active(name).await,
+        None => false,
+    }
 }
 
 async fn go(State(app): State<App>, headers: HeaderMap, Path(code): Path<String>) -> Response {
@@ -544,9 +568,12 @@ async fn affiliate(
     headers: HeaderMap,
     Path(token): Path<String>,
 ) -> Response {
-    match affiliate_target(&token, None) {
-        Some(target) => land(&app, &headers, &target),
-        None => unknown(&app, Link::Affiliate),
+    if accept_name(&app, &token).await
+        && let Some(target) = affiliate_target(&token, None)
+    {
+        land(&app, &headers, &target)
+    } else {
+        unknown(&app, Link::Affiliate)
     }
 }
 
@@ -555,9 +582,12 @@ async fn affiliate_series(
     headers: HeaderMap,
     Path((token, series)): Path<(String, String)>,
 ) -> Response {
-    match affiliate_target(&token, Some(&series)) {
-        Some(target) => land(&app, &headers, &target),
-        None => unknown(&app, Link::Affiliate),
+    if accept_name(&app, &token).await
+        && let Some(target) = affiliate_target(&token, Some(&series))
+    {
+        land(&app, &headers, &target)
+    } else {
+        unknown(&app, Link::Affiliate)
     }
 }
 
@@ -584,9 +614,12 @@ async fn affiliate_consent(
     Path(token): Path<String>,
     form: Result<Form<Choice>, FormRejection>,
 ) -> Response {
-    match affiliate_target(&token, None) {
-        Some(target) => decide(&app, &headers, &target, form.ok()),
-        None => unknown(&app, Link::Affiliate),
+    if accept_name(&app, &token).await
+        && let Some(target) = affiliate_target(&token, None)
+    {
+        decide(&app, &headers, &target, form.ok())
+    } else {
+        unknown(&app, Link::Affiliate)
     }
 }
 
@@ -596,9 +629,12 @@ async fn affiliate_series_consent(
     Path((token, series)): Path<(String, String)>,
     form: Result<Form<Choice>, FormRejection>,
 ) -> Response {
-    match affiliate_target(&token, Some(&series)) {
-        Some(target) => decide(&app, &headers, &target, form.ok()),
-        None => unknown(&app, Link::Affiliate),
+    if accept_name(&app, &token).await
+        && let Some(target) = affiliate_target(&token, Some(&series))
+    {
+        decide(&app, &headers, &target, form.ok())
+    } else {
+        unknown(&app, Link::Affiliate)
     }
 }
 

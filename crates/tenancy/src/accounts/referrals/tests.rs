@@ -254,3 +254,61 @@ fn current_principal_rotation_keeps_manager_and_source_identity() {
     // Introduction capture remains inert, including self-introductions. Abuse
     // and commercial eligibility belong to the later commission contract.
 }
+
+#[test]
+fn an_owned_handle_survives_a_new_token_and_names_the_same_person() {
+    crate::files_only!();
+    let (_dir, accounts, alice, bob) = setup();
+    let record = accounts
+        .create_referrer(&alice.id, Kind::Person, "Ada")
+        .unwrap();
+    let handle = accounts.claim_handle(&alice.id, &record.id, "ada").unwrap();
+    assert_eq!(handle.path, "/r/ada");
+    assert_eq!(handle.token, "ada");
+    assert!(accounts.active_referral("ada").unwrap());
+    let issued = accounts.issue_referral_link(&alice.id, &record.id).unwrap();
+    assert!(accounts.active_referral("ada").unwrap());
+    assert!(accounts.active_referral(&issued.token).unwrap());
+    let (_, source) = accounts
+        .create_account_acquired("Buyer", &capture("by-handle", Some("ada"), true))
+        .unwrap();
+    assert_eq!(source.outcome, Outcome::Captured);
+    assert_eq!(source.referrer.unwrap().id, record.id);
+    let other = accounts
+        .create_referrer(&bob.id, Kind::Person, "Bob")
+        .unwrap();
+    assert_eq!(
+        accounts
+            .claim_handle(&bob.id, &other.id, "ada")
+            .unwrap_err(),
+        Error::Conflict
+    );
+    assert_eq!(
+        accounts
+            .claim_handle(&bob.id, &record.id, "ada-two")
+            .unwrap_err(),
+        Error::Unauthorized
+    );
+    assert_eq!(
+        accounts
+            .claim_handle(&alice.id, &record.id, "ab")
+            .unwrap_err(),
+        Error::Invalid
+    );
+    assert_eq!(
+        accounts
+            .claim_handle(&alice.id, &record.id, "rfr-ada")
+            .unwrap_err(),
+        Error::Invalid
+    );
+    accounts
+        .disable_referral_links(&alice.id, &record.id)
+        .unwrap();
+    assert!(!accounts.active_referral("ada").unwrap());
+    assert!(!accounts.active_referral(&issued.token).unwrap());
+    let (_, disabled) = accounts
+        .create_account_acquired("Later", &capture("disabled-handle", Some("ada"), true))
+        .unwrap();
+    assert_eq!(disabled.outcome, Outcome::Disabled);
+    assert!(!accounts.active_referral("not-a-token").unwrap());
+}
