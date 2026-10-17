@@ -15,7 +15,7 @@ import time
 
 HOME = Path.home()
 ISSUE = os.environ.get('SPACE_SPIKE_ISSUE', '11810')
-assert ISSUE in ('11810', '11811')
+assert ISSUE in ('11810', '11811', '11812')
 assert socket.gethostname().split('.')[0] == 'oa-space-spike-' + ISSUE
 assert HOME == Path('/var/lib/space-spike/home')
 builder = os.environ.get('SPACE_PREPARE_BUILDER', '0')
