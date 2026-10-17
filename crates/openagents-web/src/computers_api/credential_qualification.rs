@@ -217,12 +217,16 @@ async fn the_live_sdk_uses_model_git_and_github_credential_references() {
             size: Some("small".into()),
             placement: Some("fast-sandbox".into()),
             egress_profile: Some(workflow.egress_profile.clone()),
-            needs: Some(openagents_sdk::generated::computers::AppComputerNeeds {
-                profiles: Some(vec!["core".into(), "suspend".into()]),
-                credential_proxy: Some(true),
-                command_sessions: Some(true),
-                ..Default::default()
-            }),
+            needs: Some(
+                openagents_sdk::generated::computers::AppCreateComputerNeeds::Variant0(
+                    openagents_sdk::generated::computers::AppComputerNeeds {
+                        profiles: Some(vec!["core".into(), "suspend".into()]),
+                        credential_proxy: Some(true),
+                        command_sessions: Some(true),
+                        ..Default::default()
+                    },
+                ),
+            ),
             ..Default::default()
         })
         .unwrap();

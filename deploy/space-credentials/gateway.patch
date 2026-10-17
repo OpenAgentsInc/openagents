@@ -812,10 +812,10 @@ index 3794908..e7fb339 100644
      refreshing.abort();
 diff --git a/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/tests/credential_broker.rs b/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/tests/credential_broker.rs
 new file mode 100644
-index 0000000..8ee54dd
+index 0000000..08dd3e3
 --- /dev/null
 +++ b/crates/libs/net/gateway/server/src/tcp_proxy/tls_http/tests/credential_broker.rs
-@@ -0,0 +1,184 @@
+@@ -0,0 +1,191 @@
 +//! Exercise the maintained adapter across real verified HTTPS and HTTP/2.
 +use super::*;
 +use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -927,6 +927,13 @@ index 0000000..8ee54dd
 +    );
 +    let policy: pplx_space_net_common::NetworkPolicyV1 =
 +        serde_json::from_value(profile.space_policy().unwrap()).unwrap();
++    let mut returned_policy = serde_json::to_value(&policy).unwrap();
++    for name in ["network_credential_rules", "tls_interception_exemptions"] {
++        if returned_policy.get(name).is_none() {
++            returned_policy[name] = serde_json::json!([]);
++        }
++    }
++    assert_eq!(returned_policy, profile.space_policy().unwrap());
 +    let (_, _, provider) = crate::certificates::local_provider_with_policy(
 +        state.clone(),
 +        policy.clone(),
