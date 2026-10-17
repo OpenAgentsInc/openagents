@@ -10,6 +10,26 @@ use std::{
 };
 
 const STAGING: &str = "https://openagents-web-1-staging-ezxz4mgdsq-uc.a.run.app";
+fn failure_kind(error: &openagents_sdk::computers::Error) -> &'static str {
+    use openagents_sdk::computers::Error;
+    match error {
+        Error::Uncertain { cause, .. } => failure_kind(cause),
+        Error::Network { timeout: true } => "network_timeout",
+        Error::Network { timeout: false } => "network",
+        Error::InvalidResponse => "invalid_response",
+        Error::InvalidInput => "invalid_input",
+        Error::WaitTimedOut => "wait_timeout",
+        Error::Session(_) => "session",
+        Error::Api { .. } => "api",
+        Error::Cancelled => "cancelled",
+        Error::TooLarge => "too_large",
+        Error::Redirect => "redirect",
+        Error::PaymentRequired(_) => "payment_required",
+        Error::Unsupported => "unsupported",
+        Error::RandomUnavailable => "random_unavailable",
+    }
+}
+
 #[derive(Deserialize)]
 struct Account {
     id: String,
@@ -244,7 +264,7 @@ async fn the_live_sdk_uses_model_git_and_github_credential_references() {
     let reference = created.reference().clone();
     save("computer.json", serde_json::to_value(&reference).unwrap());
     let mut report = json!({"schema":"openagents.computers.credential-client-qualification.v1",
-        "computer":reference.id(),"account":primary.account().id,"checks":[],"cleanup":false});
+        "computer":reference.id(),"account":primary.account().id,"checks":[],"cleanup":false,"stage":"created"});
     let result: Result<(), openagents_sdk::computers::Error> = async {
         let ensure = |condition: bool| if condition { Ok(()) } else { Err(openagents_sdk::computers::Error::InvalidResponse) };
         computers.wait(&reference,WaitFor::Awake,Duration::from_secs(180),&cancel).await?;
@@ -261,6 +281,7 @@ async fn the_live_sdk_uses_model_git_and_github_credential_references() {
             for (rule,env) in [("messages","OA_PARAM_MODEL_REF"),("git","OA_PARAM_GIT_REF"),("github-api","OA_PARAM_GH_REF")] {
                 let request = computers.credential_request(&command,&workflow.source,rule,300)?;
                 save(&format!("{phase}-{rule}-request.json"),serde_json::to_value(&request).unwrap());
+                report["stage"] = json!(format!("{phase}:prepare:{rule}"));
                 let prepared = computers.prepare_credential(&request,&cancel).await?;
                 let retry = computers.prepare_credential(&request,&cancel).await?;
                 ensure(prepared.reference()==retry.reference())?;
@@ -269,6 +290,7 @@ async fn the_live_sdk_uses_model_git_and_github_credential_references() {
                 credentials.push(prepared);
             }
             save(&format!("{phase}-command-request.json"),serde_json::to_value(&command).unwrap());
+            report["stage"] = json!(format!("{phase}:clients"));
             let execution = computers.execute(&command,&cancel).await?;
             let retry = computers.execute(&command,&cancel).await?;
             ensure(execution.reference()==retry.reference())?;
@@ -323,6 +345,7 @@ async fn the_live_sdk_uses_model_git_and_github_credential_references() {
                 report["checks"].as_array_mut().unwrap().push(json!({"phase":phase,"active_stream_revoked":true,"observed_completion_ms":elapsed.as_millis()}));
             }
             if phase=="initial" {
+                report["stage"] = json!("suspend_wake");
                 computers.stop(&reference,&cancel).await?;
                 computers.wait(&reference,WaitFor::Stopped,Duration::from_secs(180),&cancel).await?;
                 computers.wake(&reference,&cancel).await?;
@@ -346,7 +369,7 @@ async fn the_live_sdk_uses_model_git_and_github_credential_references() {
     report["failure"] = result
         .as_ref()
         .err()
-        .map(|e| json!({"status":e.status(),"code":e.code()}))
+        .map(|e| json!({"status":e.status(),"code":e.code(),"kind":failure_kind(e)}))
         .unwrap_or(Value::Null);
     report["cleanup"] = json!(deleted);
     report["passed"] = json!(result.is_ok());
