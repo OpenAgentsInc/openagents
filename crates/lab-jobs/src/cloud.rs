@@ -431,6 +431,13 @@ impl Launcher {
                 let computer = next.computer.as_ref().ok_or(Error::Storage)?;
                 let deleted = match computers.get(computer, cancel).await {
                     Ok(value) => {
+                        if value.data().desired != "deleted" {
+                            // Recover a crash after saving intent but before POST.
+                            // DELETE sets the same desired state on this one cloud
+                            // computer; a pending accepted intent is only observed.
+                            next.stage = Stage::Deleting { sent: false };
+                            self.save(next.clone())?;
+                        }
                         value.data().state == "deleted" && value.data().desired == "deleted"
                     }
                     Err(error) if error.status() == Some(404) => true,

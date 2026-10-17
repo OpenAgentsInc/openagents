@@ -168,7 +168,11 @@ async fn serve(State(fixture): State<Fixture>, request: Request<Body>) -> Respon
         } else {
             false
         };
-        computer(deleted)
+        let mut observed = computer(deleted);
+        if state.deletes > 0 {
+            observed["desired"] = json!("deleted");
+        }
+        observed
     } else {
         panic!("unexpected route: {path}")
     };
@@ -352,6 +356,35 @@ async fn cleanup_before_create_and_expired_unsent_run_have_no_remote_effect() {
         Progress::Finished { .. }
     ));
     assert!(server.fixture.0.lock().unwrap().creates.is_empty());
+}
+
+#[tokio::test]
+async fn restart_after_saving_delete_intent_but_before_post_repairs_the_same_computer() {
+    let server = server().await;
+    let root = tempfile::tempdir().unwrap();
+    let guest = tempfile::tempdir().unwrap();
+    let directory = root.path().join("run");
+    let mut launcher = prepare(&directory, guest.path(), &server);
+    step(&mut launcher, &server).await;
+    drop(launcher);
+    let state = directory.join("state.json");
+    let mut saved: Value = serde_json::from_slice(&fs::read(&state).unwrap()).unwrap();
+    saved["stage"] = json!({"Deleting":{"sent":true}});
+    saved["cleanup_requested"] = json!(true);
+    fs::write(&state, serde_json::to_vec(&saved).unwrap()).unwrap();
+    let mut launcher = Launcher::open(&directory).unwrap();
+    assert_eq!(step(&mut launcher, &server).await, Progress::Cleaning);
+    assert_eq!(server.fixture.0.lock().unwrap().deletes, 0);
+    assert_eq!(step(&mut launcher, &server).await, Progress::Cleaning);
+    assert_eq!(server.fixture.0.lock().unwrap().deletes, 1);
+    assert_eq!(step(&mut launcher, &server).await, Progress::Cleaning);
+    assert!(matches!(
+        step(&mut launcher, &server).await,
+        Progress::Finished { .. }
+    ));
+    let seen = server.fixture.0.lock().unwrap();
+    assert_eq!(seen.creates.len(), 1);
+    assert_eq!(seen.effects, 0);
 }
 
 #[tokio::test]
