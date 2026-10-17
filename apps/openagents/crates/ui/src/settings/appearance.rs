@@ -4283,11 +4283,13 @@ mod tests {
             registry
                 .variants_for(openagents_theme::Appearance::Light)
                 .count(),
-            10
+            11
         );
         assert_eq!(
-            registry.variants_for(openagents_theme::Appearance::Dark).count(),
-            20
+            registry
+                .variants_for(openagents_theme::Appearance::Dark)
+                .count(),
+            21
         );
     }
 

@@ -1067,7 +1067,7 @@ mod tests {
         let (host, cx) = cx.add_window_view(|_, cx| {
             OrbHost(cx.new(|cx| {
                 let state = cx.new(|_| AppState::new());
-                let shell = Shell::new(
+                let mut shell = Shell::new(
                     state,
                     EngineBootConfig {
                         data_dir: dir.path().into(),
@@ -1080,6 +1080,7 @@ mod tests {
                     },
                     cx,
                 );
+                shell.route = Route::Chat;
                 shell.voice.update(cx, |voice, _| {
                     voice.phase = VoicePhase::Active;
                     voice.chat_id = Some(orchestrator.clone());

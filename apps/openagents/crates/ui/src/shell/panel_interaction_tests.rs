@@ -53,6 +53,7 @@ fn setup(cx: &mut TestAppContext) -> (tempfile::TempDir, Entity<Shell>, &mut Vis
             },
             cx,
         );
+        shell.route = Route::Chat;
         shell.debug_gate = Some(GatePhase::Ready);
         shell.splash = SplashPhase::Gone;
         shell.active_chat = "a".into();

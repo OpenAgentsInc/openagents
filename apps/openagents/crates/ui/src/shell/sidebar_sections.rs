@@ -722,6 +722,7 @@ mod tests {
         window
             .update(cx, |shell, _, cx| {
                 prepare(shell, cx);
+                shell.route = Route::Chat;
                 shell.debug_gate = Some(super::GatePhase::Ready);
                 shell.settings.sidebar_collapsed = true;
                 shell

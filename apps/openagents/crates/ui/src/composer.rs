@@ -14729,7 +14729,7 @@ mod tests {
                         .failure
                         .as_deref()
                         .unwrap()
-                        .contains("Update the selected device")
+                        .contains("Update OpenAgents on the selected device")
                 );
                 assert_eq!(composer.input.read(cx).text(), draft);
                 assert_eq!(composer.staged()[0].id, attachment_id);

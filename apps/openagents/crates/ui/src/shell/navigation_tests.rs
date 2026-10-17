@@ -88,6 +88,7 @@ fn setup(cx: &mut TestAppContext) -> (Entity<Shell>, &mut VisualTestContext) {
                 },
                 cx,
             );
+            shell.route = Route::Chat;
             shell.settings.sidebar_organization = SidebarOrganization::InOneList;
             shell.state.update(cx, |state, _| {
                 state.workspace_scope = Some(WorkspaceScope::Local);

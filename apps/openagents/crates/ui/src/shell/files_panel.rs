@@ -642,6 +642,7 @@ mod tests {
         });
         window
             .update(cx, |shell, window, cx| {
+                shell.route = Route::Chat;
                 shell.add_files_surface(window, cx);
                 assert!(
                     shell.files.is_empty(),
@@ -708,6 +709,7 @@ mod tests {
         });
         window
             .update(cx, |shell, window, cx| {
+                shell.route = Route::Chat;
                 shell.active_chat = "chat".into();
                 // Widths settle immediately so the assertions see end states.
                 shell.reduced_motion = true;

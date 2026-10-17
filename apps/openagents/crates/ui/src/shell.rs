@@ -15954,6 +15954,7 @@ mod exit_regressions {
         });
         window
             .update(cx, |shell, _, cx| {
+                shell.route = Route::Chat;
                 let duration = RESIZE.total().mul_f32(motion::speed_scale());
                 let started = std::time::Instant::now() - duration.mul_f32(2.);
                 let tween = Some(WidthTween {
@@ -16505,6 +16506,7 @@ mod exit_regressions {
             }))
         });
         let shell = host.read_with(cx, |host, _| host.0.clone());
+        shell.update(cx, |shell, _| shell.route = Route::Chat);
         for expect_open in [true, false] {
             cx.update(|window, cx| window.draw(cx).clear());
             assert!(cx.debug_bounds("user-menu-label").is_some());
@@ -16628,7 +16630,10 @@ mod exit_regressions {
                 cx,
             )
         });
-        shell.update(cx, |shell, _| shell.debug_gate = Some(GatePhase::Ready));
+        shell.update(cx, |shell, _| {
+            shell.route = Route::Chat;
+            shell.debug_gate = Some(GatePhase::Ready);
+        });
         (shell, cx, dir)
     }
 
@@ -16889,6 +16894,7 @@ mod exit_regressions {
             )
         });
         shell.update(cx, |shell, cx| {
+            shell.route = Route::Chat;
             shell.debug_gate = Some(GatePhase::Ready);
             shell.active_chat = "chat".into();
             shell
@@ -18079,6 +18085,7 @@ mod exit_regressions {
         });
         window
             .update(cx, |shell, window, cx| {
+                shell.route = Route::Chat;
                 shell.active_chat = "session".into();
                 shell.toggle_right_pane(cx);
                 assert!(shell.right_pane_open(cx));
@@ -18868,6 +18875,7 @@ mod settings_modal_regressions {
         });
         window
             .update(cx, |shell, _, cx| {
+                shell.route = Route::Chat;
                 let history = shell.nav.current().clone();
                 let selected = shell.state.read(cx).selected_chat.clone();
                 for section in SettingsSection::ALL {
@@ -18918,7 +18926,7 @@ mod settings_modal_regressions {
 
     fn test_shell(dir: &std::path::Path, cx: &mut Context<Shell>) -> Shell {
         let state = cx.new(|_| AppState::new());
-        Shell::new(
+        let mut shell = Shell::new(
             state,
             EngineBootConfig {
                 data_dir: dir.into(),
@@ -18930,7 +18938,9 @@ mod settings_modal_regressions {
                 default_harness: openagents_proto::HarnessId::Mock,
             },
             cx,
-        )
+        );
+        shell.route = Route::Chat;
+        shell
     }
 
     #[test]

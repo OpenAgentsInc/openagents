@@ -4128,6 +4128,8 @@ mod tests {
         let runtime = fixture::runtime();
         let _guard = runtime.enter();
         let _settings = fixture::settings(cx, crate::settings::UiSettings::default());
+        // Compare scrolling after the popup has reached its final geometry.
+        cx.update(|cx| crate::motion::set_reduced_motion(cx, true));
         let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let release = std::sync::Arc::new(tokio::sync::Notify::new());
         let rpc = ScriptedRpc::new({

@@ -110,6 +110,7 @@ fn setup_with_shell(
                 },
                 cx,
             );
+            shell.route = Route::Chat;
             // This fixture has no engine. Keep state notifications from
             // invoking the shell's disconnect cleanup of all side chats.
             shell._state_observation = cx.observe(&shell.state, |_, _, _| {});
