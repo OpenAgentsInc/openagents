@@ -3561,6 +3561,34 @@ public func FfiConverterTypeCoreHome_lower(_ value: CoreHome) -> UInt64 {
 
 public protocol CoreSavedHistoryProtocol: AnyObject, Sendable {
     
+    /**
+     * Adds a note to a shown Lab card, at `seconds` into its video when it
+     * plays.
+     */
+    func labAddNote(card: String, seconds: Double?, text: String) async throws 
+    
+    /**
+     * The files a shown Lab card's media cell draws.
+     */
+    func labCard(card: String)  -> LabCardFiles?
+    
+    /**
+     * One of a shown Lab card's files.
+     */
+    func labMedia(card: String, artifact: String) async  -> LabMediaFile
+    
+    /**
+     * The web page a shown Lab card opens, on the chat's own website.
+     */
+    func labPage(card: String)  -> String?
+    
+    /**
+     * Whether a Lab card row is on screen. A visible card follows its
+     * document while the app is in the foreground, so its state and notes
+     * stay current.
+     */
+    func labVisible(card: String, visible: Bool) 
+    
     func action(action: SavedHistoryAction) throws 
     
     /**
@@ -3645,6 +3673,87 @@ open class CoreSavedHistory: CoreSavedHistoryProtocol, @unchecked Sendable {
 
     
 
+    
+    /**
+     * Adds a note to a shown Lab card, at `seconds` into its video when it
+     * plays.
+     */
+open func labAddNote(card: String, seconds: Double?, text: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coresavedhistory_lab_add_note(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(card),FfiConverterOptionDouble.lower(seconds),FfiConverterString.lower(text)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
+     * The files a shown Lab card's media cell draws.
+     */
+open func labCard(card: String) -> LabCardFiles?  {
+    return try!  FfiConverterOptionTypeLabCardFiles.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coresavedhistory_lab_card(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(card),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * One of a shown Lab card's files.
+     */
+open func labMedia(card: String, artifact: String)async  -> LabMediaFile  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coresavedhistory_lab_media(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(card),FfiConverterString.lower(artifact)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeLabMediaFile_lift,
+            errorHandler: nil
+            
+        )
+}
+    
+    /**
+     * The web page a shown Lab card opens, on the chat's own website.
+     */
+open func labPage(card: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coresavedhistory_lab_page(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(card),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Whether a Lab card row is on screen. A visible card follows its
+     * document while the app is in the foreground, so its state and notes
+     * stay current.
+     */
+open func labVisible(card: String, visible: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coresavedhistory_lab_visible(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(card),
+        FfiConverterBool.lower(visible),uniffiCallStatus
+    )
+}
+}
     
 open func action(action: SavedHistoryAction)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
         uniffiCallStatus in
@@ -10109,6 +10218,122 @@ public func FfiConverterTypeInputRequest_lower(_ value: InputRequest) -> RustBuf
 
 
 /**
+ * What a Lab card's media cell draws, as artifact ids the cell passes to
+ * `lab_media`.
+ */
+public struct LabCardFiles: Equatable, Hashable {
+    public var title: String
+    public var view: LabMediaView?
+    /**
+     * The large picture: an image, or a video's, model's, or game's poster.
+     */
+    public var main: String?
+    /**
+     * A compare's two sides, and their version labels.
+     */
+    public var sideA: String?
+    public var sideB: String?
+    public var sideLabels: [String]
+    /**
+     * Frames shown in a row under the picture.
+     */
+    public var strip: [String]
+    /**
+     * The video that plays in place of the picture.
+     */
+    public var plays: String?
+    /**
+     * The card has a page to open (models, games, reports).
+     */
+    public var hasPage: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(title: String, view: LabMediaView?, 
+        /**
+         * The large picture: an image, or a video's, model's, or game's poster.
+         */main: String?, 
+        /**
+         * A compare's two sides, and their version labels.
+         */sideA: String?, sideB: String?, sideLabels: [String], 
+        /**
+         * Frames shown in a row under the picture.
+         */strip: [String], 
+        /**
+         * The video that plays in place of the picture.
+         */plays: String?, 
+        /**
+         * The card has a page to open (models, games, reports).
+         */hasPage: Bool) {
+        self.title = title
+        self.view = view
+        self.main = main
+        self.sideA = sideA
+        self.sideB = sideB
+        self.sideLabels = sideLabels
+        self.strip = strip
+        self.plays = plays
+        self.hasPage = hasPage
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LabCardFiles: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLabCardFiles: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LabCardFiles {
+        return
+            try LabCardFiles(
+                title: FfiConverterString.read(from: &buf), 
+                view: FfiConverterOptionTypeLabMediaView.read(from: &buf), 
+                main: FfiConverterOptionString.read(from: &buf), 
+                sideA: FfiConverterOptionString.read(from: &buf), 
+                sideB: FfiConverterOptionString.read(from: &buf), 
+                sideLabels: FfiConverterSequenceString.read(from: &buf), 
+                strip: FfiConverterSequenceString.read(from: &buf), 
+                plays: FfiConverterOptionString.read(from: &buf), 
+                hasPage: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LabCardFiles, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterOptionTypeLabMediaView.write(value.view, into: &buf)
+        FfiConverterOptionString.write(value.main, into: &buf)
+        FfiConverterOptionString.write(value.sideA, into: &buf)
+        FfiConverterOptionString.write(value.sideB, into: &buf)
+        FfiConverterSequenceString.write(value.sideLabels, into: &buf)
+        FfiConverterSequenceString.write(value.strip, into: &buf)
+        FfiConverterOptionString.write(value.plays, into: &buf)
+        FfiConverterBool.write(value.hasPage, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLabCardFiles_lift(_ buf: RustBuffer) throws -> LabCardFiles {
+    return try FfiConverterTypeLabCardFiles.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLabCardFiles_lower(_ value: LabCardFiles) -> RustBuffer {
+    return FfiConverterTypeLabCardFiles.lower(value)
+}
+
+
+/**
  * A tappable link region (one per fragment; multi-line links repeat).
  */
 public struct LinkHit: Equatable, Hashable {
@@ -16091,6 +16316,194 @@ public func FfiConverterTypeFadeEdge_lower(_ value: FadeEdge) -> RustBuffer {
 
 
 /**
+ * One of a card's files.
+ */
+
+public enum LabMediaFile: Equatable, Hashable {
+    
+    case image(bytes: Data
+    )
+    /**
+     * A signed link that carries no account credential.
+     */
+    case video(url: String
+    )
+    /**
+     * A file the phone doesn't draw (a model, a build).
+     */
+    case other
+    /**
+     * Not available: the chat closed, the account changed, or it failed.
+     */
+    case missing
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension LabMediaFile: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLabMediaFile: FfiConverterRustBuffer {
+    typealias SwiftType = LabMediaFile
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LabMediaFile {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .image(bytes: try FfiConverterData.read(from: &buf)
+        )
+        
+        case 2: return .video(url: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .other
+        
+        case 4: return .missing
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LabMediaFile, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .image(bytes):
+            writeInt(&buf, Int32(1))
+            FfiConverterData.write(bytes, into: &buf)
+            
+        
+        case let .video(url):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(url, into: &buf)
+            
+        
+        case .other:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .missing:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLabMediaFile_lift(_ buf: RustBuffer) throws -> LabMediaFile {
+    return try FfiConverterTypeLabMediaFile.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLabMediaFile_lower(_ value: LabMediaFile) -> RustBuffer {
+    return FfiConverterTypeLabMediaFile.lower(value)
+}
+
+
+
+/**
+ * The standard view a Lab card's media cell draws.
+ */
+
+public enum LabMediaView: Equatable, Hashable {
+    
+    case video
+    case image
+    case compare
+    case model3d
+    case playable
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension LabMediaView: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLabMediaView: FfiConverterRustBuffer {
+    typealias SwiftType = LabMediaView
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LabMediaView {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .video
+        
+        case 2: return .image
+        
+        case 3: return .compare
+        
+        case 4: return .model3d
+        
+        case 5: return .playable
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LabMediaView, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .video:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .image:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .compare:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .model3d:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .playable:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLabMediaView_lift(_ buf: RustBuffer) throws -> LabMediaView {
+    return try FfiConverterTypeLabMediaView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLabMediaView_lower(_ value: LabMediaView) -> RustBuffer {
+    return FfiConverterTypeLabMediaView.lower(value)
+}
+
+
+
+/**
  * The four tuned size presets (inline 20, avatar 64, large 96, hero 128).
  */
 
@@ -16762,6 +17175,10 @@ public enum RowKind: Equatable, Hashable {
     case image
     case working
     case visual
+    /**
+     * A Lab card (#11884).
+     */
+    case lab
 
 
 
@@ -16797,6 +17214,8 @@ public struct FfiConverterTypeRowKind: FfiConverterRustBuffer {
         
         case 7: return .visual
         
+        case 8: return .lab
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -16831,6 +17250,10 @@ public struct FfiConverterTypeRowKind: FfiConverterRustBuffer {
         
         case .visual:
             writeInt(&buf, Int32(7))
+        
+        
+        case .lab:
+            writeInt(&buf, Int32(8))
         
         }
     }
@@ -18642,6 +19065,22 @@ public enum WidgetKind: Equatable, Hashable {
      */
     case visual(id: String
     )
+    /**
+     * A Lab card's picture, drawn by the cell for `view`; the saved
+     * history's `lab_card(card)` names its files.
+     */
+    case labMedia(card: String, view: LabMediaView
+    )
+    /**
+     * Opens the Lab card's page.
+     */
+    case labOpen(card: String
+    )
+    /**
+     * Adds a note to the Lab card, at the playing time when it plays.
+     */
+    case labNote(card: String
+    )
 
 
 
@@ -18697,6 +19136,15 @@ public struct FfiConverterTypeWidgetKind: FfiConverterRustBuffer {
         case 12: return .shimmer
         
         case 13: return .visual(id: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 14: return .labMedia(card: try FfiConverterString.read(from: &buf), view: try FfiConverterTypeLabMediaView.read(from: &buf)
+        )
+        
+        case 15: return .labOpen(card: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 16: return .labNote(card: try FfiConverterString.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -18776,6 +19224,22 @@ public struct FfiConverterTypeWidgetKind: FfiConverterRustBuffer {
         case let .visual(id):
             writeInt(&buf, Int32(13))
             FfiConverterString.write(id, into: &buf)
+            
+        
+        case let .labMedia(card,view):
+            writeInt(&buf, Int32(14))
+            FfiConverterString.write(card, into: &buf)
+            FfiConverterTypeLabMediaView.write(view, into: &buf)
+            
+        
+        case let .labOpen(card):
+            writeInt(&buf, Int32(15))
+            FfiConverterString.write(card, into: &buf)
+            
+        
+        case let .labNote(card):
+            writeInt(&buf, Int32(16))
+            FfiConverterString.write(card, into: &buf)
             
         }
     }
@@ -19208,6 +19672,30 @@ fileprivate struct FfiConverterOptionTypeInputRequest: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeLabCardFiles: FfiConverterRustBuffer {
+    typealias SwiftType = LabCardFiles?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeLabCardFiles.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeLabCardFiles.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeProjectRef: FfiConverterRustBuffer {
     typealias SwiftType = ProjectRef?
 
@@ -19416,6 +19904,30 @@ fileprivate struct FfiConverterOptionTypeAuthCallback: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeAuthCallback.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeLabMediaView: FfiConverterRustBuffer {
+    typealias SwiftType = LabMediaView?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeLabMediaView.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeLabMediaView.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -21407,6 +21919,21 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_homelistener_on_home_changed() != 46399) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_add_note() != 38454) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_card() != 56048) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_media() != 9561) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_page() != 53937) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_visible() != 3398) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coresavedhistory_action() != 4715) {

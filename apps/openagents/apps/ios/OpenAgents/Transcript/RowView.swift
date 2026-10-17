@@ -38,6 +38,10 @@ protocol RowViewDelegate: AnyObject {
     func rowView(_ view: RowView, imageFor reference: String, into imageView: UIImageView)
     /// The live view for an agent visual (kept across row reuse).
     func rowView(_ view: RowView, visualFor id: String) -> UIView?
+    /// The live cell for a Lab card's picture (kept across row reuse).
+    func rowView(_ view: RowView, labMediaFor card: String, view: LabMediaView) -> UIView?
+    func rowView(_ view: RowView, openLab card: String)
+    func rowView(_ view: RowView, noteLab card: String)
 }
 
 /// A reusable transcript row: canvas + horizontal scrollers + native widgets.
@@ -55,7 +59,7 @@ final class RowView: UIView {
             textElement?.accessibilityFrameInContainerSpace = bounds
             // Controls and links first: accessibility hit-testing takes the
             // first match, and the row's text element spans the whole row.
-            return widgetViews.filter { $0 is UIControl || $0 is VisualView || $0.gestureRecognizers?.isEmpty == false }
+            return widgetViews.filter { $0 is UIControl || $0 is VisualView || $0 is LabMediaCell || $0.gestureRecognizers?.isEmpty == false }
                 + positionedLinkElements()
                 + (textElement.map { [$0] } ?? [])
         }
@@ -164,6 +168,7 @@ final class RowView: UIView {
         case .image: "row-image"
         case .working: "row-working"
         case .visual: "row-visual"
+        case .lab: "row-lab"
         }
         element.accessibilityTraits = .staticText
         element.accessibilityFrameInContainerSpace = bounds
@@ -298,11 +303,33 @@ final class RowView: UIView {
             case let .visual(id):
                 view = delegate?.rowView(self, visualFor: id) ?? UIView()
                 (view as? VisualView)?.active = !isHidden
+            case let .labMedia(card, kind):
+                view = delegate?.rowView(self, labMediaFor: card, view: kind) ?? UIView()
+            case let .labOpen(card):
+                view = labButton("Open document", id: "lab-open") { [weak self] in
+                    guard let self else { return }
+                    self.delegate?.rowView(self, openLab: card)
+                }
+            case let .labNote(card):
+                view = labButton("Add a note", id: "lab-note") { [weak self] in
+                    guard let self else { return }
+                    self.delegate?.rowView(self, noteLab: card)
+                }
             }
             view.frame = rect
             host.addSubview(view)
             widgetViews.append(view)
         }
+    }
+
+    /// A tap target over a Lab card button Rust painted.
+    private func labButton(_ label: String, id: String, _ action: @escaping () -> Void) -> UIControl {
+        let b = UIControl()
+        b.accessibilityLabel = label
+        b.accessibilityTraits = .button
+        b.accessibilityIdentifier = id
+        b.addAction(UIAction { _ in action() }, for: .touchUpInside)
+        return b
     }
 
     private static var assets: [String: UIImage?] = [:]

@@ -185,6 +185,7 @@ final class SavedTranscriptController: UIViewController {
     private var submitted = ""
     private let status = UIButton(type: .system)
     private let images = NSCache<NSString, UIImage>()
+    private let labs = LabCells()
     private var token: AnyObject?
 
     init(app: AppModel) {
@@ -205,6 +206,7 @@ final class SavedTranscriptController: UIViewController {
                   transcript.hasMore, case .ready = transcript.state else { return }
             try? self.app.savedHistory?.action(action: .moreMessages)
         }
+        list.labCells = labs
         images.countLimit = 16
         images.totalCostLimit = 64 * 1024 * 1024
         list.imageLoader = { [weak self] path, imageView in
@@ -292,11 +294,12 @@ final class SavedTranscriptController: UIViewController {
     }
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        if isMovingFromParent || navigationController == nil { engine.close() }
+        if isMovingFromParent || navigationController == nil { labs.clear(); engine.close() }
     }
     private func applyFrame() { list.apply(engine.frame()) }
     private func reload() {
         guard let snapshot = app.savedSnapshot, snapshot.signedIn else {
+            labs.bind(nil)
             engine.clear()
             images.removeAllObjects()
             title = "Chat"
@@ -306,6 +309,7 @@ final class SavedTranscriptController: UIViewController {
             status.isHidden = true
             return
         }
+        labs.bind(app.savedHistory)
         let transcript = snapshot.transcript
         title = transcript.title ?? "Chat"
         composer.isHidden = !transcript.canReply

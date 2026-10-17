@@ -43,6 +43,8 @@ final class TranscriptListView: UIScrollView, RowViewDelegate, UIScrollViewDeleg
     var imageLoader: ((String, UIImageView) -> Void)?
     /// An attachment's picture, for an image chip opened full size.
     var imageFetcher: ((String) async -> UIImage?)?
+    /// Lab card cells (#11884), for a saved chat.
+    var labCells: LabCells?
 
     // MARK: Runway (desktop transcript.rs `OwnTurnAnchor`)
     //
@@ -610,6 +612,18 @@ final class TranscriptListView: UIScrollView, RowViewDelegate, UIScrollViewDeleg
         }
         visuals[id] = live
         return live
+    }
+
+    func rowView(_ view: RowView, labMediaFor card: String, view kind: LabMediaView) -> UIView? {
+        labCells?.cell(card: card, view: kind)
+    }
+
+    func rowView(_ view: RowView, openLab card: String) {
+        labCells?.open(card: card, from: view)
+    }
+
+    func rowView(_ view: RowView, noteLab card: String) {
+        labCells?.note(card: card, from: view)
     }
 
     fileprivate func row(at point: CGPoint) -> RowView? {
