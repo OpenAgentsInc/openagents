@@ -1,0 +1,71 @@
+{
+  "archive": "grid-stop-checkpoints-2026-10-17.tar.gz",
+  "bytes": 612923,
+  "sha256": "2511534813100a97152391b4f9c9156f635d3b0c9f76123b5e1d2dfb79ae21df",
+  "format": "openagents.grid.stop-handoff.v1",
+  "main_at_archive": "bb3fe7c578311ecdd0fe12a03327b17976d6839c",
+  "owner_order": "STOP; preserve work and consolidate into one agent.",
+  "warning": "Unapplied incomplete snapshots. Baselines overlap main and each other; do not apply as a sequence. Use named commits and review against current main. No release qualification is implied.",
+  "checkpoints": [
+    {
+      "issue": "11878",
+      "branch": "codex/11878-jobs-placement",
+      "commit": "0021970e87358ac66cfc5f939fc860b78c33f1d3",
+      "patch_base": "605b90e4a3a15b6669bbbdac57dbcfd616060fd1",
+      "patch": "11878-placement.patch",
+      "sha256": "f6e21aefd441b29d93866d05b3bc446bced95620627b37479765dcd33370e614",
+      "bytes": 441347
+    },
+    {
+      "issue": "11876",
+      "branch": "codex/11876-labs-sdk",
+      "commit": "6281e709f3ef2c93b0efe3451d4b23a99f44a9a1",
+      "patch_base": "94730f4e646acd733825d8b83ceb62c48d35e047",
+      "patch": "11876-sdk-example.patch",
+      "sha256": "324d7e747a8c9ee9513776f5d71ff63762a5fe24af82aedfc15b4988e94aa0ad",
+      "bytes": 573571
+    },
+    {
+      "issue": "11878",
+      "branch": "codex/11878-sdk-worker",
+      "commit": "1a7e7d952f9f2838c34f9241168e7e6c70e913af",
+      "patch_base": "a5683cb71e3398c5294d65e55e03f180cf6bcb8e",
+      "patch": "11878-worker-sdk.patch",
+      "sha256": "077db40234034e05f8830bcf6ff7b8cde88b18eeb2af43f1831b5a64250395d7",
+      "bytes": 303679
+    },
+    {
+      "issue": "11878",
+      "branch": "codex/11878-cloud-launcher",
+      "commit": "f54f35cdd5d85af5fcad907aa737f2f697d15bb6",
+      "patch_base": "a5683cb71e3398c5294d65e55e03f180cf6bcb8e",
+      "patch": "11878-cloud.patch",
+      "sha256": "0e8ebf45d56a8017a05b654d7d9ea076d0333a438cd07f8bd3246e1e6304a05b",
+      "bytes": 208079
+    },
+    {
+      "issue": "11878",
+      "branch": "codex/agent-lab-model-use-20261017",
+      "commit": "fc82b8786da6c5f553887be35dcd32b207cbd704",
+      "patch_base": "6c8df90ee9714f031cc22331faf5f6197c06acf5",
+      "patch": "11878-agent-lab.patch",
+      "sha256": "78eff9bcfe59b6410397a79f1c6e55cd386e3847088367662826aab4f4ac204c",
+      "bytes": 29120
+    }
+  ],
+  "limits": [
+    "L5 external labs-cad build failed with18 Truck/solidcraft errors because dependency-workspace patches do not propagate.",
+    "Placement core earlier46 passed; subsequent Uncertain client fix is committed but unrerun. Final lock regeneration and consumer/auth/cloud acceptance remain.",
+    "Cloud module23 tests passed; real cloud Echo/image/artifact acceptance not run.",
+    "Agent Lab dependent pair has formatting-only qualification; portable/server/engine checks not completed."
+  ],
+  "main_delivered": [
+    "11899 rename",
+    "11868 connected sources and11857 schema parent",
+    "11812 scoped lifecycle/deploy/cleanup",
+    "11819-11822 policy specifications",
+    "11876 source client and exact-source receipt",
+    "11878 independently tested model-use primitive only"
+  ],
+  "resources": "Disposable spike host and dedicated network resources require final teardown or explicit consolidation handover. Test guests/uploaded snapshot objects are gone."
+}
