@@ -97,8 +97,8 @@ use std::path::PathBuf;
 use futures::{FutureExt as _, StreamExt as _};
 use gpui::{App, AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
 
-pub use state::EngineBootConfig;
 pub use openagents_proto::HarnessId;
+pub use state::EngineBootConfig;
 
 /// Everything the headed binary passes in (config/env resolution lives in
 /// `apps/openagents`, not here).
@@ -224,7 +224,8 @@ pub fn run_app(config: UiConfig) {
         #[cfg(target_os = "macos")]
         openagents_account::AppAccount::init(data_dir.clone(), cx);
         app_update::AppUpdate::init(config.boot().edge_url, data_dir.clone(), cx);
-        cx.register_url_scheme(openagents_brand::URL_SCHEME).detach();
+        cx.register_url_scheme(openagents_brand::URL_SCHEME)
+            .detach();
 
         let state = cx.new(|cx| {
             let mut state = state::AppState::new();
