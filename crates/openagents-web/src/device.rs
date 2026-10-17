@@ -15,6 +15,8 @@
 //! - `POST /v1/device/apple` — `{identity_token, nonce, app, computer,
 //!   name?}` from the phone's Sign in with Apple sheet (#11980). Answers
 //!   what `/v1/device/token` answers once approved.
+//! - `/v1/device/nostr` and `/v1/device/keys`: signing in with a Nostr
+//!   key and the account's keys (#11993, [`crate::device_nostr`]).
 //! - `GET /device?code=…&return=app` — the phone's in-app sign-in sheet.
 //!   Approve or Deny then sends the sheet to `openagents://signed-in`, which
 //!   closes it (#11980). Without `return=app` nothing changes.
@@ -71,6 +73,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/device/token", deprecated(post(token), OLDER, NEWER))
         .route("/device/sign-out", deprecated(post(sign_out), OLDER, NEWER))
         .route(REMOVE, post(remove))
+        .merge(crate::device_nostr::routes())
 }
 
 /// A JSON or form body as a flat map of strings.

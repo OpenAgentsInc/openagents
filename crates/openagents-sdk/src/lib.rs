@@ -20,6 +20,9 @@ pub mod terminal_chats;
 pub mod visitor;
 mod transport;
 
+pub use auth::nostr::{
+    EventTemplate, HTTP_AUTH_KIND, KeySignIn, LinkedKey, NostrSigner, SignerError,
+};
 pub use auth::{
     Account, AccountView, AppleSignIn, CredentialRecord, CredentialStore, Login, Poll, Session,
     StorageError, Workspace,

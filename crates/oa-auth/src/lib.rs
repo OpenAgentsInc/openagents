@@ -10,6 +10,9 @@
 //!   by the web server's `/auth/github` and `/auth/github/callback`.
 //! - [`github`]: the account-service half: code + verifier to profile.
 //! - [`invite`]: invite-only sign-in, the GitHub people a deployment lets in.
+//! - [`nostr`]: sign in with a Nostr key: a signed NIP-98 event becomes
+//!   the same app session a device sign-in issues, and the account's keys
+//!   are listed, added, and removed (#11993).
 //! - [`repos`]: connected repositories and projects, with the token kept
 //!   encrypted.
 //! - [`service`]: the account service's GitHub routes over the tenancy
@@ -33,6 +36,7 @@ pub mod github;
 pub mod invite;
 #[cfg(feature = "local")]
 pub mod local;
+pub mod nostr;
 pub mod repos;
 pub mod service;
 pub mod sign_in_keys;

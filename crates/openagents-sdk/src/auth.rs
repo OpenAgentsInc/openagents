@@ -13,6 +13,7 @@ use crate::{CancellationToken, Client, Deployment, Error};
 
 mod apple;
 pub use apple::AppleSignIn;
+pub(crate) mod nostr;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Account {

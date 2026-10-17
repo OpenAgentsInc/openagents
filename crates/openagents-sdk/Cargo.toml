@@ -34,6 +34,7 @@ base64 = "0.22"
 async-trait = "0.1"
 lab-api = { path = "../lab-api" }
 lab-store = { path = "../lab-store" }
+nostr = { path = "../nostr" }
 futures-util = "0.3"
 oa-copy = { path = "../oa-copy" }
 axum = "0.8"

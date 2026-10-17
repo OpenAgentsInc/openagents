@@ -39,6 +39,7 @@ pub mod commercial;
 pub mod identities;
 #[cfg(test)]
 mod identities_tests;
+pub mod nostr;
 pub mod sso;
 #[cfg(test)]
 mod sso_tests;
