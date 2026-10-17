@@ -8,7 +8,9 @@ use url::Url;
 
 use crate::{CancellationToken, Client, Error, Session};
 
+/// The largest checkpoint or row page a room read accepts, in bytes.
 pub const MAX_CHECKPOINT_BYTES: usize = 32 * 1024 * 1024;
+/// The largest row a push accepts, in bytes.
 pub const MAX_ROW_BYTES: usize = 1024 * 1024 - 4096;
 
 /// One explicitly trusted sync service, bound to an authenticated account.
@@ -37,6 +39,7 @@ fn identifier(value: &str) -> bool {
 }
 
 impl Service {
+    /// Connects to a sync service at `base` for the session's account.
     pub fn new(
         client: Client,
         session: Session,
@@ -56,6 +59,7 @@ impl Service {
         })
     }
 
+    /// Returns the room with this ID.
     pub fn room(&self, id: &str) -> Result<Room, Error> {
         if !identifier(id) {
             return Err(Error::InvalidReference);
@@ -127,10 +131,12 @@ pub struct Room {
 }
 
 impl Room {
+    /// Returns the room's ID.
     pub fn id(&self) -> &str {
         &self.id
     }
 
+    /// Returns the WebSocket address that connects `device` to this room.
     pub fn socket(&self, device: &str) -> Result<String, Error> {
         self.service.socket(&["chat2", &self.id, "ws"], device)
     }
@@ -139,6 +145,7 @@ impl Room {
         self.service.url(&["chat2", &self.id, leaf])
     }
 
+    /// Downloads the room's latest checkpoint.
     pub async fn checkpoint(&self) -> Result<Vec<u8>, Error> {
         self.service
             .request(
@@ -151,6 +158,7 @@ impl Room {
             .await
     }
 
+    /// Downloads the room's rows after the row number `after`.
     pub async fn rows(&self, after: u64) -> Result<Vec<u8>, Error> {
         let mut url = self.url("rows")?;
         url.query_pairs_mut()
@@ -167,6 +175,7 @@ impl Room {
             .await
     }
 
+    /// Uploads one row from `device` as batch `batch` and returns the service's reply.
     pub async fn push(&self, device: &str, batch: &str, bytes: Vec<u8>) -> Result<String, Error> {
         if !identifier(device) || !identifier(batch) {
             return Err(Error::InvalidReference);

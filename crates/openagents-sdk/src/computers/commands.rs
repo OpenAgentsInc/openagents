@@ -1,7 +1,9 @@
+//! Runs commands on a cloud computer and reads their output.
 use super::*;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use tokio::time::Instant;
 
+/// Reads a command's output page by page; save it to continue reading later.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct OutputReader {
     v: String,
@@ -10,6 +12,7 @@ pub struct OutputReader {
     stderr: u64,
     ended: bool,
 }
+/// One page of a command's output.
 pub struct Output {
     pub command: Command,
     pub stdout: Vec<u8>,
@@ -20,9 +23,11 @@ pub struct Output {
     pub has_more: bool,
 }
 impl OutputReader {
+    /// Returns the command whose output this reads.
     pub fn command(&self) -> &CommandRef {
         &self.command
     }
+    /// Reads the next page of output, or returns `None` after the last page.
     pub async fn next_page(
         &mut self,
         computers: &Computers<'_>,
@@ -105,6 +110,7 @@ impl OutputReader {
     }
 }
 impl Computers<'_> {
+    /// Builds a request to run a command; save it before you send it.
     pub fn command_request(
         &self,
         computer: &ComputerRef,
@@ -123,6 +129,7 @@ impl Computers<'_> {
             body: options,
         })
     }
+    /// Runs a saved command request on its computer.
     pub async fn execute(
         &self,
         request: &CommandRequest,
@@ -148,6 +155,7 @@ impl Computers<'_> {
                 cause: Box::new(cause),
             })
     }
+    /// Gets the current state of a command.
     pub async fn get_command(
         &self,
         reference: &CommandRef,
@@ -167,6 +175,7 @@ impl Computers<'_> {
             Some(&reference.id),
         )
     }
+    /// Asks the computer to cancel a command.
     pub async fn cancel_command(
         &self,
         reference: &CommandRef,
@@ -191,6 +200,7 @@ impl Computers<'_> {
             cause: Box::new(cause),
         })
     }
+    /// Returns a reader for a command's output from the start.
     pub fn output(&self, reference: &CommandRef) -> Result<OutputReader, Error> {
         self.output_at(reference, 0, 0)
     }
@@ -214,6 +224,7 @@ impl Computers<'_> {
             ended: false,
         })
     }
+    /// Waits until a command finishes, the timeout ends, or the call is canceled.
     pub async fn wait_command(
         &self,
         reference: &CommandRef,

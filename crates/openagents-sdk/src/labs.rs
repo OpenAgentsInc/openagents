@@ -21,6 +21,7 @@ pub mod worker;
 pub use artifacts::{ArtifactDownload, ArtifactHandle};
 pub use events::Events;
 
+/// An error from a Labs request.
 #[derive(Clone)]
 pub enum Error {
     Session(crate::Error),
@@ -38,24 +39,28 @@ pub enum Error {
     },
 }
 impl Error {
+    /// Returns the payment details when the request needs payment first.
     pub fn payment_required(&self) -> Option<&crate::PaymentRequired> {
         match self {
             Self::Session(error) => error.payment_required(),
             _ => None,
         }
     }
+    /// Returns the server's refusal, if the server refused the request.
     pub fn refusal(&self) -> Option<&Refusal> {
         match self {
             Self::Refused { refusal, .. } => Some(refusal),
             _ => None,
         }
     }
+    /// Returns the HTTP status of a refused request.
     pub fn status(&self) -> Option<u16> {
         match self {
             Self::Refused { status, .. } => Some(*status),
             _ => None,
         }
     }
+    /// Returns how long the server asked you to wait before trying again.
     pub fn retry_after(&self) -> Option<Duration> {
         match self {
             Self::Refused { retry_after, .. } => *retry_after,
@@ -99,12 +104,14 @@ struct Binding {
     account: String,
     deployment: Deployment,
 }
+/// A request body tied to the account and deployment that made it.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Request<T> {
     binding: Binding,
     body: T,
 }
 impl<T> Request<T> {
+    /// Returns the request body.
     pub fn body(&self) -> &T {
         &self.body
     }
@@ -117,6 +124,7 @@ impl<T> fmt::Debug for Request<T> {
 
 macro_rules! reference {
     ($name:ident) => {
+        /// A checked reference to a Labs item in a space, tied to the account that made it.
         #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
         pub struct $name {
             binding: Binding,
@@ -124,12 +132,15 @@ macro_rules! reference {
             id: String,
         }
         impl $name {
+            /// Returns the item's ID.
             pub fn id(&self) -> &str {
                 &self.id
             }
+            /// Returns the space that holds the item.
             pub fn space(&self) -> &str {
                 &self.space
             }
+            /// Returns the ID of the account the reference belongs to.
             pub fn account(&self) -> &str {
                 &self.binding.account
             }
@@ -145,15 +156,18 @@ reference!(DocumentRef);
 reference!(JobRef);
 reference!(WorkerRef);
 
+/// A key that lets the server recognize a repeated job request.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct RequestKey(String);
 impl RequestKey {
+    /// Creates a random key.
     pub fn generate() -> Result<Self, Error> {
         let mut bytes = [0u8; 16];
         getrandom::fill(&mut bytes).map_err(|_| Error::InvalidInput)?;
         Self::try_from(bytes.iter().map(|b| format!("{b:02x}")).collect::<String>())
     }
+    /// Returns the key as a string.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -182,6 +196,7 @@ impl fmt::Debug for RequestKey {
         f.write_str("LabRequestKey(..)")
     }
 }
+/// A job request with its key, ready to save before you send it.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct JobRequest {
     schema: String,
@@ -189,9 +204,11 @@ pub struct JobRequest {
     key: RequestKey,
 }
 impl JobRequest {
+    /// Returns the request's key.
     pub fn key(&self) -> &RequestKey {
         &self.key
     }
+    /// Returns the job to create.
     pub fn body(&self) -> &CreateJob {
         self.request.body()
     }
@@ -202,6 +219,7 @@ impl fmt::Debug for JobRequest {
     }
 }
 
+/// The outcome of a document edit.
 pub enum EditResult {
     Created(Version),
     Stale,
@@ -216,6 +234,7 @@ impl fmt::Debug for EditResult {
         })
     }
 }
+/// Paging and filter options for list reads.
 #[derive(Clone, Debug)]
 pub struct PageOptions {
     pub after: u64,
@@ -231,6 +250,7 @@ impl Default for PageOptions {
         }
     }
 }
+/// How many times and how often a client retries a failed read.
 #[derive(Clone, Copy, Debug)]
 pub struct RetryPolicy {
     pub max_retries: u8,
@@ -246,6 +266,7 @@ impl Default for RetryPolicy {
         }
     }
 }
+/// How long to wait for a job and how often to check it.
 #[derive(Clone, Copy, Debug)]
 pub struct WaitOptions {
     pub timeout: Duration,
@@ -291,6 +312,7 @@ impl fmt::Debug for Client {
     }
 }
 impl crate::Client {
+    /// Returns a Labs client for a session on this deployment.
     pub fn labs(&self, session: &Session) -> Result<Client, Error> {
         self.check_session(session)?;
         Ok(Client {
@@ -304,6 +326,7 @@ impl crate::Client {
     }
 }
 impl Client {
+    /// Switches the client to another session and cancels reads in progress.
     pub fn set_session(&self, session: &Session) -> Result<(), Error> {
         self.transport.check_session(session)?;
         let mut active = self.active.write().map_err(|_| Error::InvalidResponse)?;
@@ -314,12 +337,14 @@ impl Client {
         };
         Ok(())
     }
+    /// Signs the client out and cancels reads in progress.
     pub fn clear_session(&self) {
         if let Ok(mut active) = self.active.write() {
             active.invalidated.cancel();
             active.session = None;
         }
     }
+    /// Sets the retry policy, refusing values outside the allowed range.
     pub fn with_retries(mut self, retries: RetryPolicy) -> Result<Self, Error> {
         if retries.max_retries > 5
             || retries.initial_delay.is_zero()
@@ -350,12 +375,14 @@ impl Client {
         }
         Ok(snapshot)
     }
+    /// Ties a request body to the current account and deployment.
     pub fn bind<T>(&self, body: T) -> Result<Request<T>, Error> {
         Ok(Request {
             binding: self.snapshot()?.binding(),
             body,
         })
     }
+    /// Checks a space and ID and returns a document reference.
     pub fn document_ref(&self, space: &str, id: &str) -> Result<DocumentRef, Error> {
         valid_space(space)?;
         valid_id(id)?;
@@ -365,6 +392,7 @@ impl Client {
             id: id.into(),
         })
     }
+    /// Checks a space and ID and returns a job reference.
     pub fn job_ref(&self, space: &str, id: &str) -> Result<JobRef, Error> {
         valid_space(space)?;
         valid_id(id)?;
@@ -374,9 +402,11 @@ impl Client {
             id: id.into(),
         })
     }
+    /// Builds a job request with a new random key.
     pub fn job_request(&self, body: CreateJob) -> Result<JobRequest, Error> {
         self.job_request_with_key(body, RequestKey::generate()?)
     }
+    /// Builds a job request with a key you supply, such as a saved one.
     pub fn job_request_with_key(
         &self,
         body: CreateJob,

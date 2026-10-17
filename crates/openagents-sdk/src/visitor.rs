@@ -43,6 +43,7 @@ impl Visitor {
     pub fn token(&self) -> &str {
         &self.token
     }
+    /// The deployment the visitor belongs to.
     pub fn deployment(&self) -> &Deployment {
         &self.deployment
     }
@@ -110,12 +111,15 @@ impl Message {
         }
         self
     }
+    /// The chat this message is in.
     pub fn chat(&self) -> &str {
         &self.chat
     }
+    /// The message's request ID.
     pub fn request_id(&self) -> &str {
         &self.request_id
     }
+    /// The message text.
     pub fn text(&self) -> &str {
         &self.text
     }

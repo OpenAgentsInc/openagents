@@ -9,12 +9,14 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 pub use agent_contract::{
     ANY_RUNTIME, Access, AgentDefinition, AgentSpec, MAX_FALLBACKS, Profile, RuntimeChoice, valid_id,
 };
+/// The request body that saves a new agent definition.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateAgent {
     pub request_id: String,
     pub spec: AgentSpec,
 }
+/// The request body that replaces an agent definition at an expected revision.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UpdateAgent {
@@ -22,12 +24,14 @@ pub struct UpdateAgent {
     pub expected_revision: u64,
     pub spec: AgentSpec,
 }
+/// The request body that deletes an agent definition at an expected revision.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeleteAgent {
     pub request_id: String,
     pub expected_revision: u64,
 }
+/// One page of agent definitions and the cursor for the next page.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AgentPage {
     pub data: Vec<AgentDefinition>,
@@ -42,17 +46,20 @@ pub struct AgentRequest<T> {
     pub body: T,
 }
 
+/// Returns a new random request ID as 64 hexadecimal characters.
 pub fn request_id() -> Result<String, Error> {
     let mut bytes = [0_u8; 32];
     getrandom::fill(&mut bytes).map_err(|_| Error::InvalidReference)?;
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
+/// Calls the agent definition and assignment routes for one signed-in session.
 pub struct Agents<'a> {
     client: &'a Client,
     session: &'a Session,
 }
 impl Client {
+    /// Returns the agents client for `session`, or an error if the session belongs to another deployment.
     pub fn agents<'a>(&'a self, session: &'a Session) -> Result<Agents<'a>, Error> {
         self.check_session(session)?;
         Ok(Agents {
@@ -62,6 +69,7 @@ impl Client {
     }
 }
 impl Agents<'_> {
+    /// Checks `spec` and prepares a request that saves it as a new agent.
     pub fn create_request(&self, spec: AgentSpec) -> Result<AgentRequest<CreateAgent>, Error> {
         spec.validate().map_err(|_| Error::InvalidReference)?;
         Ok(self.bind(CreateAgent {
@@ -69,6 +77,7 @@ impl Agents<'_> {
             spec,
         }))
     }
+    /// Checks `spec` and prepares a request that replaces the agent at `expected_revision`.
     pub fn update_request(
         &self,
         expected_revision: u64,
@@ -81,6 +90,7 @@ impl Agents<'_> {
             spec,
         }))
     }
+    /// Prepares a request that deletes the agent at `expected_revision`.
     pub fn delete_request(
         &self,
         expected_revision: u64,
@@ -120,6 +130,7 @@ impl Agents<'_> {
         }
         serde_json::to_value(&request.body).map_err(|_| Error::InvalidReference)
     }
+    /// Lists up to `limit` agent definitions (1 to 100), starting after the cursor `after`.
     pub async fn list(
         &self,
         after: Option<&str>,
@@ -136,6 +147,7 @@ impl Agents<'_> {
         self.send(Method::GET, &["agent-definitions"], &q, None, cancel)
             .await
     }
+    /// Fetches one agent definition, at `revision` when given or the latest otherwise.
     pub async fn get(
         &self,
         id: &str,
@@ -151,6 +163,7 @@ impl Agents<'_> {
         self.send(Method::GET, &["agent-definitions", id], &q, None, cancel)
             .await
     }
+    /// Saves a new agent definition from a prepared request.
     pub async fn create(
         &self,
         request: &AgentRequest<CreateAgent>,
@@ -165,6 +178,7 @@ impl Agents<'_> {
         )
         .await
     }
+    /// Replaces the agent definition `id` from a prepared request.
     pub async fn update(
         &self,
         id: &str,
@@ -183,6 +197,7 @@ impl Agents<'_> {
         )
         .await
     }
+    /// Deletes the agent definition `id` from a prepared request.
     pub async fn delete(
         &self,
         id: &str,

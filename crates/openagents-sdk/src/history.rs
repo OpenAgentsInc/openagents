@@ -6,10 +6,14 @@ use serde_json::Value;
 use std::{collections::BTreeMap, future::Future};
 
 macro_rules! open_enum {
-    ($name:ident { $($variant:ident => $wire:literal),+ $(,)? }) => {
+    ($(#[$meta:meta])* $name:ident { $($variant:ident => $wire:literal),+ $(,)? }) => {
+        $(#[$meta])*
         #[derive(Clone,Debug,PartialEq,Eq)]
         pub enum $name { $($variant,)+ Other(String) }
-        impl $name { pub fn as_str(&self)->&str { match self {$(Self::$variant=>$wire,)+Self::Other(s)=>s} } }
+        impl $name {
+            /// The value as the service writes it.
+            pub fn as_str(&self)->&str { match self {$(Self::$variant=>$wire,)+Self::Other(s)=>s} }
+        }
         impl<'de> Deserialize<'de> for $name {
             fn deserialize<D:serde::Deserializer<'de>>(d:D)->Result<Self,D::Error> {
                 Ok(match String::deserialize(d)?.as_str() { $($wire=>Self::$variant,)+s=>Self::Other(s.to_owned()) })
@@ -17,11 +21,21 @@ macro_rules! open_enum {
         }
     }
 }
-open_enum!(ChatSource { Web=>"web", Terminal=>"terminal", Phone=>"phone" });
-open_enum!(MessageRole { User=>"user", Assistant=>"assistant", Tool=>"tool", Thinking=>"thinking" });
-open_enum!(ToolStatus { Running=>"running", Done=>"done", Failed=>"failed" });
-open_enum!(FileKind { Png=>"png", Jpeg=>"jpeg", Gif=>"gif", Webp=>"webp", Pdf=>"pdf", Text=>"text", Step=>"step", Stl=>"stl" });
-open_enum!(CaptureState { Saved=>"saved", Unavailable=>"unavailable", NotSaved=>"not_saved" });
+open_enum!(
+    /// Where a chat started. `Other` holds a value this SDK doesn't know.
+    ChatSource { Web=>"web", Terminal=>"terminal", Phone=>"phone" });
+open_enum!(
+    /// Who wrote a saved message. `Other` holds a value this SDK doesn't know.
+    MessageRole { User=>"user", Assistant=>"assistant", Tool=>"tool", Thinking=>"thinking" });
+open_enum!(
+    /// Whether a tool call is running, done, or failed.
+    ToolStatus { Running=>"running", Done=>"done", Failed=>"failed" });
+open_enum!(
+    /// The type of a saved file.
+    FileKind { Png=>"png", Jpeg=>"jpeg", Gif=>"gif", Webp=>"webp", Pdf=>"pdf", Text=>"text", Step=>"step", Stl=>"stl" });
+open_enum!(
+    /// Whether a capture's media was saved.
+    CaptureState { Saved=>"saved", Unavailable=>"unavailable", NotSaved=>"not_saved" });
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Context {
@@ -53,17 +67,21 @@ pub struct ChatRef {
     id: String,
 }
 impl ChatRef {
+    /// The chat's ID.
     pub fn id(&self) -> &str {
         &self.id
     }
+    /// The account the chat belongs to.
     pub fn account(&self) -> &str {
         &self.context.account
     }
+    /// The deployment the chat is on.
     pub fn deployment(&self) -> &Deployment {
         &self.context.deployment
     }
 }
 
+/// One chat in the account's history list.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChatSummary {
     pub home: chat_home::Home,
@@ -78,6 +96,7 @@ pub struct ChatSummary {
     pub source: ChatSource,
     pub messages: usize,
 }
+/// A project in the account's history, which may be shared.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HistoryProject {
     context: Context,
@@ -86,17 +105,21 @@ pub struct HistoryProject {
     pub shared: bool,
 }
 impl HistoryProject {
+    /// The project's ID.
     pub fn id(&self) -> &str {
         &self.id
     }
+    /// The account the project belongs to.
     pub fn account(&self) -> &str {
         &self.context.account
     }
+    /// The deployment the project is on.
     pub fn deployment(&self) -> &Deployment {
         &self.context.deployment
     }
 }
 
+/// A tool call in a saved message: its name, status, input, and output.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct ToolDetail {
     pub name: String,
@@ -119,16 +142,20 @@ pub struct AttachmentRef {
     size: u64,
 }
 impl AttachmentRef {
+    /// The chat the attachment belongs to.
     pub fn chat(&self) -> &ChatRef {
         &self.chat
     }
+    /// The attachment's ID.
     pub fn id(&self) -> &str {
         &self.id
     }
+    /// The attachment's size in bytes.
     pub fn size(&self) -> u64 {
         self.size
     }
 }
+/// A file attached to a saved message.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SavedFile {
     pub id: String,
@@ -138,10 +165,12 @@ pub struct SavedFile {
     download: Option<AttachmentRef>,
 }
 impl SavedFile {
+    /// The reference to download the file with, when it can be downloaded.
     pub fn download_ref(&self) -> Option<&AttachmentRef> {
         self.download.as_ref()
     }
 }
+/// A capture saved with a chat transcript.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SavedCapture {
     pub id: String,
@@ -152,6 +181,7 @@ pub struct SavedCapture {
     download: Option<AttachmentRef>,
 }
 impl SavedCapture {
+    /// The reference to download the capture with, when it can be downloaded.
     pub fn download_ref(&self) -> Option<&AttachmentRef> {
         self.download.as_ref()
     }
@@ -163,10 +193,12 @@ pub struct SavedLabCard {
     document: crate::labs::DocumentRef,
 }
 impl SavedLabCard {
+    /// The document used to read the card's media.
     pub fn document_ref(&self) -> &crate::labs::DocumentRef {
         &self.document
     }
 }
+/// One message in a saved chat transcript.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SavedMessage {
     pub id: String,
@@ -178,6 +210,7 @@ pub struct SavedMessage {
     /// Additive content, including future generated-file/artifact objects. It is never fetched automatically.
     pub extra: BTreeMap<String, Value>,
 }
+/// One page of a history list.
 #[derive(Clone, Debug)]
 pub struct HistoryPage<T> {
     pub data: Vec<T>,
@@ -187,6 +220,7 @@ pub struct HistoryPage<T> {
     /// account's store, so they never join `data` or its paging.
     pub sessions: Vec<crate::sessions::SessionSummary>,
 }
+/// One page of a chat transcript, with the chat's summary and captures.
 #[derive(Clone, Debug)]
 pub struct TranscriptPage {
     pub thread: ChatSummary,
@@ -473,13 +507,16 @@ impl ListReader {
         Ok(Some(page))
     }
 }
+/// Reads the account's chat list a page at a time.
 #[derive(Clone, Debug)]
 pub struct ChatReader(ListReader);
 impl ChatReader {
+    /// Sets how many chats each page holds, from 1 to 200.
     pub fn with_page_size(mut self, limit: usize) -> Result<Self, Error> {
         self.0.limit = size(limit)?;
         Ok(self)
     }
+    /// Reads the next page of chats. Returns `None` after the last page.
     pub async fn next_page(
         &mut self,
         client: &Client,
@@ -511,13 +548,16 @@ impl ChatReader {
         }))
     }
 }
+/// Reads the account's projects a page at a time.
 #[derive(Clone, Debug)]
 pub struct ProjectReader(ListReader);
 impl ProjectReader {
+    /// Sets how many projects each page holds, from 1 to 200.
     pub fn with_page_size(mut self, limit: usize) -> Result<Self, Error> {
         self.0.limit = size(limit)?;
         Ok(self)
     }
+    /// Reads the next page of projects. Returns `None` after the last page.
     pub async fn next_page(
         &mut self,
         client: &Client,
@@ -544,6 +584,7 @@ impl ProjectReader {
     }
 }
 
+/// Reads a chat's messages a page at a time.
 #[derive(Clone, Debug)]
 pub struct TranscriptReader {
     chat: ChatRef,
@@ -554,6 +595,7 @@ pub struct TranscriptReader {
     failed: Option<Error>,
 }
 impl TranscriptReader {
+    /// Sets how many messages each page holds, from 1 to 200.
     pub fn with_page_size(mut self, limit: usize) -> Result<Self, Error> {
         self.limit = size(limit)?;
         Ok(self)
@@ -569,9 +611,11 @@ impl TranscriptReader {
         self.failed = None;
         Ok(self)
     }
+    /// The chat being read.
     pub fn chat(&self) -> &ChatRef {
         &self.chat
     }
+    /// Reads the next page of messages. Returns `None` after the last page.
     pub async fn next_page(
         &mut self,
         client: &Client,
@@ -731,14 +775,17 @@ impl Client {
             id: id.to_owned(),
         })
     }
+    /// Starts reading the account's chat list.
     pub fn history(&self, session: &Session) -> Result<ChatReader, Error> {
         self.check_session(session)?;
         Ok(ChatReader(ListReader::new(session, None, false)))
     }
+    /// Starts reading the account's projects.
     pub fn history_projects(&self, session: &Session) -> Result<ProjectReader, Error> {
         self.check_session(session)?;
         Ok(ProjectReader(ListReader::new(session, None, true)))
     }
+    /// Starts reading the chats in a shared project. Refuses a project that isn't shared.
     pub fn shared_history(
         &self,
         session: &Session,
@@ -754,6 +801,7 @@ impl Client {
             false,
         )))
     }
+    /// Starts reading a chat's messages from the first one.
     pub fn transcript(&self, session: &Session, chat: &ChatRef) -> Result<TranscriptReader, Error> {
         chat.context.check(self, session)?;
         Ok(TranscriptReader {
@@ -801,6 +849,8 @@ pub struct HistoryIndex {
     rows: BTreeMap<String, ChatSummary>,
 }
 impl HistoryIndex {
+    /// Adds rows to the index, keeping the newest revision of each chat. Refuses rows
+    /// from another account or deployment.
     pub fn extend(&mut self, rows: impl IntoIterator<Item = ChatSummary>) -> Result<(), Error> {
         let rows: Vec<_> = rows.into_iter().collect();
         for row in &rows {
@@ -822,18 +872,23 @@ impl HistoryIndex {
         }
         Ok(())
     }
+    /// The number of chats in the index.
     pub fn len(&self) -> usize {
         self.rows.len()
     }
+    /// Whether the index is empty.
     pub fn is_empty(&self) -> bool {
         self.rows.is_empty()
     }
+    /// Removes every chat from the index.
     pub fn clear(&mut self) {
         self.rows.clear();
     }
+    /// The chat with this ID, if the index holds it.
     pub fn get(&self, id: &str) -> Option<&ChatSummary> {
         self.rows.get(id)
     }
+    /// The archived or unarchived chats, pinned first, then the most recently updated.
     pub fn sorted(&self, archived: bool) -> Vec<&ChatSummary> {
         let mut rows: Vec<_> = self
             .rows
@@ -852,6 +907,7 @@ impl HistoryIndex {
     }
 }
 impl Client {
+    /// Creates an empty history index for the signed-in account.
     pub fn history_index(&self, session: &Session) -> Result<HistoryIndex, Error> {
         self.check_session(session)?;
         Ok(HistoryIndex {

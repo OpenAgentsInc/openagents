@@ -4,6 +4,7 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+/// Why the service refused or ended a turn.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RefusalCode {
@@ -17,12 +18,14 @@ pub enum RefusalCode {
     #[serde(untagged)]
     Other(String),
 }
+/// A refused turn: its code, a message to show, and when to try again.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Refusal {
     pub code: RefusalCode,
     pub message: String,
     pub retry_after_ms: Option<u64>,
 }
+/// One event of a turn's stream: message text, tool output, cards, the end, or an error.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Event {
@@ -55,6 +58,7 @@ pub enum Event {
     },
 }
 impl Event {
+    /// The request this event belongs to.
     pub fn request_id(&self) -> &str {
         match self {
             Self::Text { request_id, .. }
@@ -72,15 +76,18 @@ pub struct Turn {
     request_id: String,
 }
 impl Turn {
+    /// Names a turn by its chat and request ID. Refuses a request ID that isn't a UUID.
     pub fn new(chat: ChatRef, request_id: String) -> Result<Self, Error> {
         if !uuid(&request_id) {
             return Err(Error::InvalidReference);
         }
         Ok(Self { chat, request_id })
     }
+    /// The chat the turn is in.
     pub fn chat(&self) -> &ChatRef {
         &self.chat
     }
+    /// The turn's request ID.
     pub fn request_id(&self) -> &str {
         &self.request_id
     }
@@ -95,6 +102,7 @@ impl Turn {
         Ok(())
     }
 }
+/// The latest turn in a chat, its outcome, and whether it's still working.
 pub struct Current {
     pub turn: Turn,
     pub outcome: String,
@@ -146,6 +154,8 @@ pub struct Send {
     text: String,
 }
 impl Send {
+    /// Creates a message for `chat` with a new request ID. Refuses empty text or text
+    /// over 4,000 characters.
     pub fn new(chat: ChatRef, text: String) -> Result<Self, Error> {
         Self::with_id(chat, new_id()?, text)
     }
@@ -167,18 +177,22 @@ impl Send {
             text,
         })
     }
+    /// The turn this message starts.
     pub fn turn(&self) -> Turn {
         Turn {
             chat: self.chat.clone(),
             request_id: self.request_id.clone(),
         }
     }
+    /// The message's request ID. Keep it to retry the same message.
     pub fn request_id(&self) -> &str {
         &self.request_id
     }
+    /// The chat the message goes to.
     pub fn chat(&self) -> &ChatRef {
         &self.chat
     }
+    /// The message text.
     pub fn text(&self) -> &str {
         &self.text
     }
@@ -273,6 +287,7 @@ pub async fn send(
     }
     Ok(())
 }
+/// The service's answer to a stop request.
 #[derive(Clone, Debug, Deserialize)]
 pub struct Stopped {
     pub request_id: String,
@@ -357,6 +372,7 @@ pub(crate) async fn events(
         ended: false,
     })
 }
+/// The events of one turn, read in order with [`Stream::next`].
 pub struct Stream {
     response: reqwest::Response,
     buffer: Vec<u8>,
@@ -365,6 +381,7 @@ pub struct Stream {
     ended: bool,
 }
 impl Stream {
+    /// Reads the next event. Returns `None` after the turn's last event.
     pub async fn next(&mut self) -> Result<Option<Event>, Error> {
         if self.cancel.is_cancelled() {
             self.buffer.fill(0);

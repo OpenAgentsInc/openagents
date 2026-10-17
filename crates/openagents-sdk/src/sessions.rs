@@ -26,6 +26,7 @@ pub enum SessionStatus {
     Other(String),
 }
 impl SessionStatus {
+    /// The status as the service writes it.
     pub fn as_str(&self) -> &str {
         match self {
             Self::Idle => "idle",
@@ -168,6 +169,7 @@ pub async fn pending_moves(
     Ok(moves.into_iter().filter(|r| r.valid(now)).collect())
 }
 
+/// Who wrote a message in a transcript copy.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CopiedRole {

@@ -5,6 +5,7 @@ pub use chat_home::{
 };
 use reqwest::Method;
 
+/// The part that continues `source`, if one does.
 pub async fn destination(
     client: &Client,
     session: &Session,
@@ -51,6 +52,8 @@ pub async fn destination(
     Ok(part)
 }
 
+/// Continues `source` in the claimed part, using the chat history the service
+/// already holds.
 pub async fn claim(
     client: &Client,
     session: &Session,

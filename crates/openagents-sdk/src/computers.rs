@@ -27,15 +27,18 @@ pub use credentials::{Credential, CredentialRef, CredentialRequest};
 pub use files::{File, WriteIntent, WriteReceipt};
 pub use lifecycle::WaitFor;
 
+/// A key that lets the service recognize a resent request as the same request.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct RequestKey(String);
 impl RequestKey {
+    /// Creates a new random key.
     pub fn generate() -> Result<Self, Error> {
         let mut bytes = [0u8; 16];
         getrandom::fill(&mut bytes).map_err(|_| Error::RandomUnavailable)?;
         Self::try_from(bytes.iter().map(|b| format!("{b:02x}")).collect::<String>())
     }
+    /// Returns the key as text.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -61,6 +64,7 @@ impl From<RequestKey> for String {
     }
 }
 
+/// Identifies one cloud computer on one account and deployment.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ComputerRef {
     account: String,
@@ -68,30 +72,37 @@ pub struct ComputerRef {
     id: String,
 }
 impl ComputerRef {
+    /// Returns the computer's ID.
     pub fn id(&self) -> &str {
         &self.id
     }
+    /// Returns the ID of the account that owns the computer.
     pub fn account(&self) -> &str {
         &self.account
     }
+    /// Returns the deployment the computer belongs to.
     pub fn deployment(&self) -> &Deployment {
         &self.deployment
     }
 }
+/// Identifies one command on one cloud computer.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommandRef {
     computer: ComputerRef,
     id: String,
 }
 impl CommandRef {
+    /// Returns the command's ID.
     pub fn id(&self) -> &str {
         &self.id
     }
+    /// Returns the computer the command runs on.
     pub fn computer(&self) -> &ComputerRef {
         &self.computer
     }
 }
 
+/// A saved request to create a cloud computer, safe to resend after a lost response.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CreateRequest {
     v: String,
@@ -101,10 +112,12 @@ pub struct CreateRequest {
     body: CreateOptions,
 }
 impl CreateRequest {
+    /// Returns the key that identifies this request.
     pub fn key(&self) -> &RequestKey {
         &self.key
     }
 }
+/// A saved request to run a command, safe to resend after a lost response.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CommandRequest {
     v: String,
@@ -117,45 +130,56 @@ impl CommandRequest {
     pub fn options(&self) -> &CommandOptions {
         &self.body
     }
+    /// Returns the key that identifies this request.
     pub fn key(&self) -> &RequestKey {
         &self.key
     }
+    /// Returns the computer the command runs on.
     pub fn computer(&self) -> &ComputerRef {
         &self.computer
     }
 }
 
+/// A cloud computer as the service last reported it.
 #[derive(Clone)]
 pub struct Computer {
     reference: ComputerRef,
     data: generated::AppComputer,
 }
 impl Computer {
+    /// Returns the reference to this computer.
     pub fn reference(&self) -> &ComputerRef {
         &self.reference
     }
+    /// Returns the computer's details as the service sent them.
     pub fn data(&self) -> &generated::AppComputer {
         &self.data
     }
+    /// Returns whether the computer is running and online.
     pub fn awake(&self) -> bool {
         self.data.state == "awake" && self.data.online && self.data.desired == "running"
     }
+    /// Returns whether the computer is stopped and offline.
     pub fn stopped(&self) -> bool {
         self.data.state == "stopped" && !self.data.online && self.data.desired == "stopped"
     }
 }
+/// A command as the service last reported it.
 #[derive(Clone)]
 pub struct Command {
     reference: CommandRef,
     data: generated::AppCommand,
 }
 impl Command {
+    /// Returns the reference to this command.
     pub fn reference(&self) -> &CommandRef {
         &self.reference
     }
+    /// Returns the command's details as the service sent them.
     pub fn data(&self) -> &generated::AppCommand {
         &self.data
     }
+    /// Returns how the command ended, or `None` while it still runs.
     pub fn outcome(&self) -> Option<CommandOutcome> {
         match self.data.state.as_str() {
             "succeeded" if self.data.exit_code == Some(0) => Some(CommandOutcome::Succeeded),
@@ -167,6 +191,7 @@ impl Command {
         }
     }
 }
+/// How a finished command ended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CommandOutcome {
     Succeeded,
@@ -175,11 +200,13 @@ pub enum CommandOutcome {
     TimedOut,
     Unknown,
 }
+/// One page of cloud computers from a list call.
 pub struct ComputerPage {
     pub computers: Vec<Computer>,
     pub next_cursor: Option<String>,
 }
 
+/// How many times, and how long apart, to retry a failed request.
 #[derive(Clone, Copy, Debug)]
 pub struct RetryPolicy {
     pub max_retries: u8,
@@ -196,6 +223,7 @@ impl Default for RetryPolicy {
     }
 }
 impl RetryPolicy {
+    /// Returns a policy that never retries.
     pub fn none() -> Self {
         Self {
             max_retries: 0,
@@ -229,6 +257,7 @@ pub enum Refusal {
     Other,
 }
 
+/// An error from a cloud computer call.
 #[derive(Clone)]
 pub enum Error {
     Session(crate::Error),
@@ -258,6 +287,7 @@ pub enum Error {
     },
 }
 impl Error {
+    /// Returns the kind of refusal, when the service refused the request.
     pub fn refusal(&self) -> Option<Refusal> {
         match self {
             Self::Unsupported => Some(Refusal::Unsupported),
@@ -277,6 +307,7 @@ impl Error {
             _ => None,
         }
     }
+    /// Returns the HTTP status code, when the service sent one.
     pub fn status(&self) -> Option<u16> {
         match self {
             Self::Api { status, .. } => Some(*status),
@@ -285,6 +316,7 @@ impl Error {
             _ => None,
         }
     }
+    /// Returns the service's error code, when it sent one.
     pub fn code(&self) -> Option<&str> {
         match self {
             Self::Api { code, .. } => code.as_deref(),
@@ -292,6 +324,7 @@ impl Error {
             _ => None,
         }
     }
+    /// Returns how long the service asked you to wait before trying again.
     pub fn retry_after(&self) -> Option<Duration> {
         match self {
             Self::Api { retry_after, .. } => *retry_after,
@@ -299,6 +332,7 @@ impl Error {
             _ => None,
         }
     }
+    /// Returns the payment request, when the call needs payment.
     pub fn payment_required(&self) -> Option<&crate::PaymentRequired> {
         match self {
             Self::PaymentRequired(challenge) => Some(challenge),
@@ -385,6 +419,7 @@ impl fmt::Debug for Computers<'_> {
     }
 }
 impl Client {
+    /// Returns a client for the cloud computers on the session's account.
     pub fn computers<'a>(&'a self, session: &'a Session) -> Result<Computers<'a>, Error> {
         self.check_session(session)?;
         Ok(Computers {
@@ -396,10 +431,12 @@ impl Client {
     }
 }
 impl Computers<'_> {
+    /// Sets how failed requests are retried.
     pub fn with_retries(mut self, policy: RetryPolicy) -> Result<Self, Error> {
         self.retries = policy.validate()?;
         Ok(self)
     }
+    /// Sets how long one call may take, up to 10 minutes.
     pub fn with_operation_timeout(mut self, timeout: Duration) -> Result<Self, Error> {
         if timeout.is_zero() || timeout > Duration::from_secs(600) {
             return Err(Error::InvalidInput);
@@ -417,6 +454,7 @@ impl Computers<'_> {
         }
         cloud_identity(&reference.id)
     }
+    /// Returns a reference to the computer with this ID on the session's account.
     pub fn reference(&self, id: &str) -> Result<ComputerRef, Error> {
         self.client.check_session(self.session)?;
         cloud_identity(id)?;
@@ -426,6 +464,7 @@ impl Computers<'_> {
             id: id.into(),
         })
     }
+    /// Returns a reference to the command with this ID on a computer.
     pub fn command_reference(&self, computer: &ComputerRef, id: &str) -> Result<CommandRef, Error> {
         self.check(computer)?;
         identity(id)?;

@@ -342,7 +342,8 @@ plugins, and the Gym.</p>",
     }
     body.push_str(
         "<h2 id=\"api\">API</h2><p class=\"oa-page-meta\">Use our models from your own code. Beta.</p>\
-<ol class=\"oa-item-list\"><li><a href=\"/docs/api\">API docs</a></li></ol>\
+<ol class=\"oa-item-list\"><li><a href=\"/docs/api\">API docs</a></li>\
+<li><a href=\"/docs/sdk\">SDK and API reference</a></li></ol>\
 <h2 id=\"agents\">For agents</h2><p class=\"oa-page-meta\">Sign up as an agent, pay in bitcoin, \
 and use our API, MCP server, and command.</p><ol class=\"oa-item-list\">\
 <li><a href=\"/docs/agents/start-here\">Start here</a></li>\

@@ -19,6 +19,7 @@ const MAX_INPUTS: usize = 32 * 1024 * 1024;
 /// The largest input file the service returns in one read.
 pub const MAX_INPUT_FILE: usize = 64 * 1024 * 1024;
 
+/// A worker's saved key and the deployment it belongs to.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CredentialRecord {
     deployment: Deployment,
@@ -72,6 +73,7 @@ impl crate::Client {
             timeout: Duration::from_secs(30),
         })
     }
+    /// Restores a worker client from a saved credential for this deployment.
     pub fn restore_labs_worker(&self, record: &CredentialRecord) -> Result<Client, Error> {
         if record.deployment != *self.deployment() {
             return Err(crate::Error::WrongDeployment.into());
@@ -80,6 +82,7 @@ impl crate::Client {
     }
 }
 impl super::Client {
+    /// Checks a space and ID and returns a worker reference.
     pub fn worker_ref(&self, space: &str, id: &str) -> Result<WorkerRef, Error> {
         valid_space(space)?;
         valid_id(id)?;
@@ -89,6 +92,7 @@ impl super::Client {
             id: id.into(),
         })
     }
+    /// Enrolls a worker for the account and returns its job-only key.
     pub async fn enroll_worker(
         &self,
         request: &Request<Enroll>,
@@ -125,6 +129,7 @@ impl super::Client {
         }
         Ok(enrolled)
     }
+    /// Revokes a worker's key and returns whether it was revoked.
     pub async fn revoke_worker(
         &self,
         worker: &WorkerRef,
@@ -145,6 +150,7 @@ impl super::Client {
             .await?;
         Ok(result.revoked)
     }
+    /// Returns the usage that workers recorded for a job.
     pub async fn job_usage(
         &self,
         job: &JobRef,
@@ -211,9 +217,11 @@ fn work(value: &Work, expected: Option<&Attempt>) -> Result<(), Error> {
     Ok(())
 }
 impl Client {
+    /// Returns the credential to save so you can restore this client later.
     pub fn record(&self) -> CredentialRecord {
         self.record.clone()
     }
+    /// Returns this worker's ID.
     pub fn worker_id(&self) -> &str {
         &self.record.token[5..37]
     }
@@ -222,6 +230,7 @@ impl Client {
     pub fn clear_credential(&self) {
         self.invalidated.cancel();
     }
+    /// Sets the request timeout, up to two minutes.
     pub fn with_timeout(mut self, timeout: Duration) -> Result<Self, Error> {
         if timeout.is_zero() || timeout > Duration::from_secs(120) {
             return Err(Error::InvalidInput);
@@ -359,6 +368,7 @@ impl Client {
         }
         Ok(bytes)
     }
+    /// Asks for work, waiting up to 25 seconds for an assignment.
     pub async fn poll(
         &self,
         request: &Poll,
@@ -383,6 +393,7 @@ impl Client {
         }
         Ok(response)
     }
+    /// Marks an assigned attempt as started and returns its work.
     pub async fn start(
         &self,
         request: &Attempt,
@@ -394,6 +405,7 @@ impl Client {
         }
         Ok(work)
     }
+    /// Tells the service the attempt is still running and returns its work.
     pub async fn heartbeat(
         &self,
         request: &Attempt,
@@ -468,6 +480,7 @@ impl Client {
         }
         Ok(value)
     }
+    /// Revokes this worker's key and stops the client if the revoke succeeds.
     pub async fn retire(&self, cancel: &CancellationToken) -> Result<bool, Error> {
         let result: Revoked = self
             .send(Method::DELETE, &[self.worker_id()], None, cancel)

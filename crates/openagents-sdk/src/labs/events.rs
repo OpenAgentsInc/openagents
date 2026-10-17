@@ -1,9 +1,11 @@
+//! A live stream of a lab document's events that reconnects after network drops.
 use super::*;
 use reqwest::{Method, Response, header};
 use serde::Deserialize;
 use std::collections::VecDeque;
 
 const MAX_EVENT_BYTES: usize = 1024 * 1024;
+/// A live stream of one document's events, read in order.
 pub struct Events {
     client: Client,
     document: DocumentRef,
@@ -22,6 +24,7 @@ impl fmt::Debug for Events {
     }
 }
 impl Client {
+    /// Opens an event stream for a document, starting after the given cursor.
     pub fn events(&self, document: &DocumentRef, since: u64) -> Result<Events, Error> {
         valid_space(&document.space)?;
         valid_id(&document.id)?;
@@ -42,6 +45,7 @@ impl Events {
     pub fn cursor(&self) -> u64 {
         self.cursor
     }
+    /// Waits for and returns the next event, reconnecting if the connection drops.
     pub async fn next(&mut self, cancel: &CancellationToken) -> Result<Event, Error> {
         loop {
             if self.snapshot.invalidated.is_cancelled() {

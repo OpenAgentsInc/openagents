@@ -12,6 +12,7 @@ pub const PREFIX: &str = "prompt-";
 pub const MAX_PROMPT_BYTES: usize = 4000;
 /// The shortest and longest interval the site keeps.
 pub const MIN_EVERY_SECS: u64 = 60;
+/// The longest interval the site keeps.
 pub const MAX_EVERY_SECS: u64 = 30 * 24 * 3600;
 
 /// One scheduled prompt, or the record that it was deleted. Either a time
@@ -91,12 +92,14 @@ struct Listing {
     schedules: Vec<Schedule>,
 }
 
+/// A client for the scheduled prompts on one account.
 pub struct Schedules<'a> {
     client: &'a Client,
     session: &'a Session,
 }
 
 impl Client {
+    /// Returns a client for the scheduled prompts on the session's account.
     pub fn schedules<'a>(&'a self, session: &'a Session) -> Result<Schedules<'a>, Error> {
         self.check_session(session)?;
         Ok(Schedules {

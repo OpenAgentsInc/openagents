@@ -863,6 +863,7 @@ pub(crate) fn public_paths() -> Vec<String> {
     .collect();
     paths.extend(DOCS.iter().map(|(slug, _)| format!("/docs/{slug}")));
     paths.extend(API_DOCS.iter().map(|(slug, _)| format!("/docs/api/{slug}")));
+    paths.extend(crate::pages::sdk_docs::paths());
     paths.extend(
         AGENT_DOCS
             .iter()

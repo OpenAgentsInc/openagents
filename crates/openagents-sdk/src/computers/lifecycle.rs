@@ -1,6 +1,8 @@
+//! Creates, lists, stops, wakes, and deletes cloud computers.
 use super::*;
 use tokio::time::Instant;
 
+/// The computer state that `wait` waits for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WaitFor {
     Awake,
@@ -24,6 +26,7 @@ impl Computers<'_> {
         })
     }
 
+    /// Creates a cloud computer from a saved request.
     pub async fn create(
         &self,
         request: &CreateRequest,
@@ -55,6 +58,7 @@ impl Computers<'_> {
         })
     }
 
+    /// Gets the current state of a cloud computer.
     pub async fn get(
         &self,
         reference: &ComputerRef,
@@ -69,6 +73,7 @@ impl Computers<'_> {
         self.computer(self.json(plan, cancel).await?, Some(&reference.id))
     }
 
+    /// Lists up to `limit` cloud computers, starting after a cursor.
     pub async fn list(
         &self,
         limit: u16,
@@ -108,6 +113,7 @@ impl Computers<'_> {
         })
     }
 
+    /// Returns what cloud computers on this deployment support.
     pub async fn capabilities(&self, cancel: &CancellationToken) -> Result<Capabilities, Error> {
         self.json(
             generated::GetComputerCapabilitiesParams {}
@@ -143,6 +149,7 @@ impl Computers<'_> {
             cause: Box::new(cause),
         })
     }
+    /// Starts a stopped cloud computer.
     pub async fn wake(
         &self,
         reference: &ComputerRef,

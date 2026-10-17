@@ -1,8 +1,10 @@
+//! Lab file metadata and checked file downloads.
 use super::*;
 use reqwest::{Method, Response, header};
 use sha2::{Digest, Sha256};
 use std::ops::Range;
 
+/// A lab file's details and its download link.
 pub struct ArtifactHandle {
     binding: Binding,
     space: String,
@@ -11,6 +13,7 @@ pub struct ArtifactHandle {
     received: tokio::time::Instant,
 }
 impl ArtifactHandle {
+    /// Returns the file's details, such as its name, size, and checksum.
     pub fn metadata(&self) -> &Artifact {
         &self.link.artifact
     }
@@ -18,6 +21,7 @@ impl ArtifactHandle {
     pub fn signed_url(&self) -> Option<&str> {
         self.link.expires_seconds.map(|_| self.link.url.as_str())
     }
+    /// Returns how many seconds the signed link stays valid, if it is signed.
     pub fn expires_seconds(&self) -> Option<u32> {
         self.link.expires_seconds
     }
@@ -45,6 +49,7 @@ impl fmt::Debug for ArtifactDownload {
     }
 }
 impl ArtifactDownload {
+    /// Reads the next part of the file, or `None` when the whole file has arrived.
     pub async fn next_chunk(
         &mut self,
         cancel: &CancellationToken,
@@ -93,6 +98,7 @@ impl ArtifactDownload {
     }
 }
 impl Client {
+    /// Looks up a lab file in a space and returns its details and link.
     pub async fn artifact(
         &self,
         space: &str,
@@ -130,6 +136,7 @@ impl Client {
             received: tokio::time::Instant::now(),
         })
     }
+    /// Starts downloading a lab file, or only a byte range of it.
     pub async fn download(
         &self,
         artifact: &ArtifactHandle,

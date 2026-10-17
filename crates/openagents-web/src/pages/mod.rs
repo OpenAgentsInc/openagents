@@ -23,6 +23,7 @@ mod landing;
 mod layertree;
 pub(crate) mod live;
 mod pricing;
+pub(crate) mod sdk_docs;
 pub(crate) mod profile;
 mod snap;
 mod snap_shares;
@@ -95,6 +96,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(cad::routes())
         .merge(content::routes())
         .merge(api_docs::routes())
+        .merge(sdk_docs::routes())
         .merge(agent_docs::routes())
         .merge(blog::routes())
         .merge(download::routes())

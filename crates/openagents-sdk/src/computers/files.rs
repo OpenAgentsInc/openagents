@@ -1,3 +1,4 @@
+//! Reads and writes files on a cloud computer.
 use super::*;
 use sha2::{Digest, Sha256};
 
@@ -18,27 +19,34 @@ impl WriteIntent {
         self.overwrite = true;
         self
     }
+    /// Returns whether the write may replace an existing file.
     pub fn overwrites(&self) -> bool {
         self.overwrite
     }
+    /// Returns the computer the file is written to.
     pub fn computer(&self) -> &ComputerRef {
         &self.computer
     }
+    /// Returns the file's path on the computer.
     pub fn path(&self) -> &str {
         &self.path
     }
+    /// Returns the file's size in bytes.
     pub fn size(&self) -> u64 {
         self.size
     }
+    /// Returns the file's SHA-256 hash as hexadecimal text.
     pub fn sha256(&self) -> &str {
         &self.sha256
     }
 }
+/// A file read from a cloud computer.
 pub struct File {
     pub bytes: Vec<u8>,
     pub sha256: String,
     pub etag: String,
 }
+/// Confirms that a file on the computer has the expected bytes.
 #[derive(Clone)]
 pub struct WriteReceipt {
     pub intent: WriteIntent,
@@ -57,6 +65,7 @@ fn path_valid(path: &str) -> bool {
         && path.split('/').all(|p| !matches!(p, "" | "." | ".."))
 }
 impl Computers<'_> {
+    /// Builds a write request for a file of up to 4 MiB; save it before you send it.
     pub fn write_intent(
         &self,
         computer: &ComputerRef,
@@ -96,6 +105,7 @@ impl Computers<'_> {
         }
         Ok((files.max_bytes as usize).min(4 * 1024 * 1024))
     }
+    /// Reads a file from a cloud computer and checks its hash.
     pub async fn read_file(
         &self,
         computer: &ComputerRef,

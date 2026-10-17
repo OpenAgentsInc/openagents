@@ -4404,6 +4404,7 @@
     },
     "/v1/device/code": {
       "post": {
+        "description": "Start signing an app in. Show the person the returned code and address, then poll for the session.",
         "operationId": "startAppLogin",
         "requestBody": {
           "content": {
@@ -4516,6 +4517,7 @@
     },
     "/v1/device/token": {
       "post": {
+        "description": "Poll for the session of a sign-in you started. Wait the returned interval between polls.",
         "operationId": "pollAppLogin",
         "requestBody": {
           "content": {
