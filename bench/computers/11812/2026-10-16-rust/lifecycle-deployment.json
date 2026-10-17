@@ -1,0 +1,117 @@
+{
+  "schema": "openagents.computers.deployment_verification.v1",
+  "issue": 11812,
+  "deployed_commit": "25bb5cc281e928b527420cf0830fd209c2b2d52d",
+  "tested_commit": "0ef037a3bedefb838ac60d546b3e54ee751b1fba",
+  "tested_package_trees_unchanged": [
+    "crates/computer-driver",
+    "crates/computer-conformance",
+    "crates/coder-working-computer",
+    "crates/oa-computers"
+  ],
+  "cloud_build": "cd451582-8b45-410a-97da-a9001d97eb77",
+  "image_digest": "sha256:b4d626e984c024b5185035773d9540fb292641071423bb4f3a0b24b5da80e78d",
+  "default_boat_preserved": true,
+  "space_publicly_enabled": false,
+  "services": [
+    {
+      "environment": "staging",
+      "before_revision": "oa-computers-staging-registry-c50225e11b-235443",
+      "serving_revision": "oa-computers-staging-registry-25bb5cc281-020229",
+      "traffic_percent": 100,
+      "health_http_status": 200,
+      "mapping": {
+        "OA_COMPUTERS_DRIVER": "boat",
+        "BOAT_API_BASE": "https://oa-boat-157437760789.us-central1.run.app/api/v1",
+        "OA_COMPUTERS_LEGACY_DEPLOYMENT": "oa-boat-primary",
+        "OA_COMPUTERS_REGISTRY_FILE": null
+      },
+      "migrations": {
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13
+        ],
+        "lifecycle_table": true,
+        "retention_column": true,
+        "delete_operation_constraint": true,
+        "lifecycle_identity_trigger": true
+      },
+      "public_contract_operations": 18,
+      "public_contract_sha256": "54ce0866363235441d42f6a4d1748bce2c8b88ca9514906de16d2b45f52dc72c",
+      "dedicated_account_verified": true,
+      "workflow_passed": true,
+      "test_computer_deleted_and_absent_from_list": true,
+      "elapsed_seconds": 200.852
+    },
+    {
+      "environment": "production",
+      "before_revision": "oa-computers-registry-c50225e11b-000038",
+      "serving_revision": "oa-computers-registry-25bb5cc281-020703",
+      "traffic_percent": 100,
+      "health_http_status": 200,
+      "mapping": {
+        "OA_COMPUTERS_DRIVER": "boat",
+        "BOAT_API_BASE": "https://oa-boat-157437760789.us-central1.run.app/api/v1",
+        "OA_COMPUTERS_LEGACY_DEPLOYMENT": "oa-boat-primary",
+        "OA_COMPUTERS_REGISTRY_FILE": null
+      },
+      "migrations": {
+        "versions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13
+        ],
+        "lifecycle_table": true,
+        "retention_column": true,
+        "delete_operation_constraint": true,
+        "lifecycle_identity_trigger": true
+      },
+      "public_contract_operations": 18,
+      "public_contract_sha256": "54ce0866363235441d42f6a4d1748bce2c8b88ca9514906de16d2b45f52dc72c",
+      "dedicated_account_verified": true,
+      "workflow_passed": true,
+      "test_computer_deleted_and_absent_from_list": true,
+      "elapsed_seconds": 178.584
+    }
+  ],
+  "workflow_commands": [
+    "python3 scripts/api/check_computers_public.py --mode staging --live --evidence FILE",
+    "python3 scripts/api/check_computers_public.py --mode production --live --evidence FILE"
+  ],
+  "evidence_archive": {
+    "path": "deployment-public-workflows.tar.gz",
+    "sha256": "7287f8dd3b472b01636b87349097c5d648d8e2994a0a967de8088004eb2d511d",
+    "account_and_request_key_removed": true
+  },
+  "withdrawn_binary_diagnostic": {
+    "version": "1.0.0",
+    "commit": "3230ded51181aa438656825da8245cea6c8e717c",
+    "installed_with_published_installer_in_scratch_home": true,
+    "archive_sha256": "7777e2d63bfb4a5d9dc2f3823c96328b6cd5da93dcd48b55a4eaaaf74812835b",
+    "cloud_computers_command_available": false,
+    "account_request_made": false,
+    "release_gate": false
+  },
+  "scope": "No owner account, host, or credentials used; schema metadata and dedicated-account workflows only. Uploaded native checkpoint cleanup is reported separately."
+}
