@@ -12,6 +12,23 @@ Sources: fork `origin/main` `57c13158` (23 commits on top of upstream
 `FORK.md` and `docs/downstream-patches.md`, and the closed issues
 #11824–#11832, #11840–#11851 and #11855.
 
+## Harness decision for Coder 1.0.0 (2026-10-16)
+
+For [the big-bang release](2026-10-16-coder-1.0-big-bang.md),
+`crates/coder-delegate` calls `apps/openagents/crates/harness`
+(`openagents-harness`). The app harness owns engine arguments, provider
+protocols, session resume, steering, approvals, and event decoding. Coder keeps
+policy, leases, deadlines, budget enforcement, and terminal event adaptation;
+shared launch hooks must preserve its execution boundaries. The harness must
+build in both Cargo workspaces without a UI dependency. Switch the terminal
+adapters and delete their duplicate Claude Code, Codex, and OpenCode drivers in
+the same integration push. Do not retain a second executable driver as a fallback.
+
+Terminal chats use the same SDK, Loro rooms on `coder-sync`, NIP-HOST grants,
+chat list, and linked continuations as the apps and website. The earlier
+assessment's unchanged-terminal scope and deferred harness convergence are
+superseded by this decision. #11894 owns this integration under #11896.
+
 ## Summary
 
 It is feasible and mostly mechanical for the first step, then real product
