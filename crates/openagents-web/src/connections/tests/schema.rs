@@ -2,7 +2,13 @@
 
 use super::*;
 
-pub(super) fn assert_response(method: &str, path: &str, status: StatusCode, answer: &Value) {
+pub(super) fn assert_response(
+    method: &str,
+    path: &str,
+    status: StatusCode,
+    input: &Value,
+    answer: &Value,
+) {
     let path = path.split('?').next().unwrap();
     let template = if path.starts_with("/v1/projects/") && path.contains("/sources") {
         if path.ends_with("/sources") {
@@ -24,6 +30,17 @@ pub(super) fn assert_response(method: &str, path: &str, status: StatusCode, answ
     {
         return;
     }
+    if status.is_success() && !input.is_null() {
+        let mut schema = operation["requestBody"]["content"]["application/json"]["schema"].clone();
+        if schema.is_object() {
+            schema["components"] = document["components"].clone();
+            let validator = jsonschema::validator_for(&schema).unwrap();
+            assert!(
+                validator.is_valid(input),
+                "successful {method} {path} input does not match its schema: {input}"
+            );
+        }
+    }
     let mut schema = operation["responses"][status.as_u16().to_string()]["content"]
         ["application/json"]["schema"]
         .clone();
@@ -41,6 +58,24 @@ pub(super) fn assert_response(method: &str, path: &str, status: StatusCode, answ
             .map(|e| e.to_string())
             .collect::<Vec<_>>()
     );
+}
+
+#[test]
+fn source_schema_examples_match_the_implemented_serializers() {
+    let document = crate::app_openapi::document();
+    for (name, component) in document["components"]["schemas"].as_object().unwrap() {
+        if !name.starts_with("AppConnection") {
+            continue;
+        }
+        let mut schema = component.clone();
+        schema["components"] = document["components"].clone();
+        let validator = jsonschema::validator_for(&schema).unwrap();
+        if let Some(examples) = component["examples"].as_array() {
+            for example in examples {
+                assert!(validator.is_valid(example), "{name}: {example}");
+            }
+        }
+    }
 }
 
 async fn setup(
