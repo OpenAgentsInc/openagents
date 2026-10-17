@@ -14,3 +14,6 @@ Related docs elsewhere:
   behaviour works without React.
 - [../coder/rust-native/README.md](../coder/rust-native/README.md): the
   Rust Native semantic view tree used by desktop and mobile.
+
+- [Design knowledge base](../design/README.md): interaction principles, wallet
+  flows, and reviewed Bitcoin Design and WalletUI references.

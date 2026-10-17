@@ -12,6 +12,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Reach every surface from one command | [The `openagents` command](cli/README.md) |
 | Use the terminal and follow the workbench release | [Terminal user guide](terminal/README.md), [Grid/standalone and Everglade roadmap](terminal/workbench-roadmap.md), [issue directory and project](terminal/issue-roadmap.md), [smart terminal specification](terminal/smart-terminal.md) |
 | Use or develop Coder | [Coder](coder/README.md), [installation](coder/guides/install.md), [task commands](coder/guides/tasks.md) |
+| Design consistent interfaces and the Bitcoin wallet experience | [Design knowledge base](design/README.md) |
 | See every UI system and component across platforms | [UI inventory](ui/inventory.md) |
 | Build shared terminal, native, and web interfaces | [Rust Native](../crates/rust-native/README.md), [styling](coder/rust-native/styling-design.md), [adoption plan](coder/rust-native/adoption.md) |
 | See the whole OpenAgents 1.0 product and every promise from the videos | [Project Kitchen Sink spec](kitchen-sink/README.md), [promise ledger](kitchen-sink/ledger.md) |

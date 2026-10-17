@@ -316,6 +316,15 @@ files are included below.
 | [decision-models/service/usage-dashboard.md](decision-models/service/usage-dashboard.md) | Guide / contract | Usage, activity, and the dashboard |
 | [decision-models/service/workspace-membership.md](decision-models/service/workspace-membership.md) | Guide / contract | Workspace membership |
 
+## Design knowledge base
+
+| Document | Role | Topic |
+| --- | --- | --- |
+| [design/README.md](design/README.md) | Index | Internal design guidance |
+| [design/principles.md](design/principles.md) | Design guidance | Hierarchy, copy, amounts, accessibility, and shared UI |
+| [design/wallet.md](design/wallet.md) | Design guidance | Bitcoin wallet flows adapted to Lightning and Spark |
+| [design/sources.md](design/sources.md) | Reference review | WalletUI details, Bitcoin Design, Figma, and the Spark audit |
+
 ## deployment
 
 | Document | Role | Topic |
