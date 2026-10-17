@@ -19,7 +19,7 @@ def request(admin, method, path, data=None):
         headers = {'Authorization': 'Bearer ' + fixture['admin_session']}
     else:
         connection = http.client.HTTPSConnection('oa-space-service-api-ezxz4mgdsq-uc.a.run.app', timeout=30)
-        headers = {'X-API-Key': fixture['api_key']}
+        headers = {'X-API-Key': fixture['api_key'], 'Authorization': 'Bearer ' + fixture['api_key']}
     headers['Content-Type'] = 'application/json'
     try:
         connection.request(method, path, body=json.dumps(data).encode() if data is not None else None, headers=headers)
