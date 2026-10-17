@@ -126,6 +126,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 5: Labs kinds and app views
 
+**Taken 2026-10-17 00:44 CDT** by a Claude Code subagent working #11942 in ~/work/openagents-11942.
+
 **#11886 taken 2026-10-17 00:30 CDT** by Codex `codex:01a14140` in its `lnd-work` checkout. It owns a separate desktop timeline module and account-side editor service, with additive card-opening hooks coordinated under #11943. The active lane 5 session keeps #11884 and #11943.
 
 **Taken 2026-10-17 00:20 CDT** by a Claude Code subagent working #11884, then #11943 in ~/work/openagents-lane5c.
