@@ -199,7 +199,10 @@ it ended. A legacy command interrupted by API loss reports the same uncertainty
 without starting it again. SPACE output observed before a disconnect is bounded
 to 256 KiB per stream and saved during execution; recovery keeps those partial
 bytes and does not invent an exit result. Explicit deletion removes the provider resource first,
-without taking a memory checkpoint, then completes lifecycle cleanup. Identified
+without taking a memory checkpoint, then completes lifecycle cleanup. At the
+saved absolute deadline, an uncertain command or lifecycle operation takes this
+deletion path too; uncertainty cannot keep a guest running without a time limit.
+Identified
 commands on supported backends still observe process-group exit after cancellation.
 SPACE's public identified-command capability remains unsupported.
 
