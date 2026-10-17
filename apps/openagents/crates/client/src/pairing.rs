@@ -137,7 +137,8 @@ impl Client {
     /// QR"): get a challenge for this account from `api_base`
     /// (`https://api.openagents.com/v1/`), have the computer sign it over
     /// its device connection, check the proof, and send it with this
-    /// account's session, which is the phone's approval. `own` is this
+    /// account's session, which is the phone's approval, then tell the
+    /// computer it landed so it signs in. `own` is this
     /// phone's account key, which is never linked again. Answers the
     /// computer's key.
     ///
@@ -190,6 +191,11 @@ impl Client {
             .await
             .map_err(|_| failed())?;
         if response.status().is_success() {
+            // Tell the computer the link landed so it signs in now. If it
+            // doesn't hear, it offers its key again; the link stands.
+            if let Err(error) = account_link::confirm(&channel, &proof.key).await {
+                tracing::debug!(%error, "computer didn't take the link confirmation");
+            }
             return Ok(proof.key);
         }
         let status = response.status().as_u16();
