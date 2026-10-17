@@ -217,3 +217,56 @@ to 16 MiB so full version histories remain readable.
 See [Agent Lab](../../docs/agent-lab/README.md) and
 [`examples/agent_lab.rs`](examples/agent_lab.rs). These additions require a commit
 containing Agent Lab; the older Computers-only pin above does not include them.
+
+## Labs
+
+`Client::labs(&session)` creates an account-bound `labs::Client` for kinds,
+tools, documents, versions, cards, jobs, artifacts, notes, and events. The module
+re-exports `lab-kit` types. Normal client dependencies do not include a Labs
+server or store. Enable `labs-cad` for local CAD previews through the same
+`Cad::check` and `Cad::apply` rules as the server. Preview measurements must
+match the proposed content; the server rebuilds it before saving.
+
+```rust
+use openagents_sdk::{CancellationToken, Client, Session, labs};
+
+async fn observe(client: &Client, session: &Session) -> Result<(), labs::Error> {
+    let labs = client.labs(session)?;
+    let cancel = CancellationToken::new();
+    let document = labs.document_ref("me", "bracket")?;
+    let version = labs.version(&document, 1, &cancel).await?;
+    let request = labs.job_request(labs::CreateJob {
+        space: "me".into(),
+        version: version.reference(),
+        want: labs::Want::Job { job_type: "rebuild".into(), params: serde_json::json!({}) },
+    })?;
+    // Save this account-bound request privately before the first send.
+    let job = labs.create_job(&request, &cancel).await?;
+    let job = labs.job_ref("me", &job.id)?;
+    let result = labs.wait(&job, labs::WaitOptions::default(), &cancel).await?;
+    // Check result.status; an uncertain job does not mean success.
+    Ok(())
+}
+```
+
+Edits return `EditResult::Created`, `Stale`, or `Refused`. Other failures expose
+bounded typed details through `Error::refusal`, `status`, and `retry_after`;
+diagnostics omit document content. Jobs retry eligible failures with the same
+saved key and exact body. Local cancellation and wait deadlines do not cancel
+remote jobs; call `cancel_job` explicitly. Other writes are sent once.
+
+Cloned Labs clients share their active account. Call `set_session` or
+`clear_session` on account changes; outstanding requests, file readers, and
+event readers then discard old results. Old document and job references cannot
+be used for another account or deployment. Clear your private UI and caches at
+the same time. The client does not store credentials or document content. JSON requests are
+limited to 1 MiB and responses to 16 MiB; use smaller pages for large versions.
+
+`events` reconnects with the last event delivered to the caller. Save `cursor()`
+after applying an event and pass it to a new reader after restart. File metadata
+provides short-lived signed links or an authenticated API fallback. `download`
+streams full or byte-range reads without following redirects; it sends no account
+credential to signed URLs. Full reads check the file hash at EOF, and range
+reads check the exact requested byte count. Refresh metadata after link expiry.
+Private-local uploads are refused before a request is sent. See the
+[Labs API](../../docs/sdk/labs.md) for route limits and authorization.

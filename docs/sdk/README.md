@@ -8,6 +8,10 @@ publication, external providers, additional language packages, and automatic
 payments have separate activation conditions. This document does not claim
 those surfaces are already implemented or published.
 
+The [Labs client](labs.md) provides typed documents, checked edits, jobs, files,
+notes, and resumable change events through `openagents::labs`. Its optional
+`labs-cad` feature shares CAD preview checks with the server.
+
 The [Home dashboard client](dashboard.md) supplies mobile and desktop widgets,
 account layouts, and reusable layout packages (#11912).
 

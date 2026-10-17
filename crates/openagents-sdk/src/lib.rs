@@ -1,8 +1,8 @@
 //! Public OpenAgents HTTP client. Authentication is supplied explicitly; this
 //! client never adopts CLI credentials, launches a browser, or loads a host.
 
-pub mod agents;
 pub mod agent_lab;
+pub mod agents;
 mod auth;
 pub mod chats;
 pub mod cloud_host;
@@ -10,6 +10,7 @@ pub mod computers;
 pub mod dashboard;
 pub mod generated;
 pub mod history;
+pub mod labs;
 mod payment;
 mod transport;
 
