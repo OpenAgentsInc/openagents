@@ -7,7 +7,7 @@ from broker import PROJECT, PREFIX, cloud
 
 
 def ssh(role, command, data=None):
-    zone = "us-central1-a" if role == "control" else "us-central1-b"
+    zone = {"control": "us-central1-a", "worker": "us-central1-b", "builder": "us-central1-c"}[role]
     result = subprocess.run(["gcloud", "compute", "ssh", f"{PREFIX}-{role}", f"--project={PROJECT}", f"--zone={zone}",
         "--tunnel-through-iap", "--quiet", "--ssh-flag=-T", "--command=" + command],
         input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
@@ -23,7 +23,7 @@ def initialize(role):
     subprocess.run(["git", "fetch", "-q", "origin", "main"], check=True)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     subprocess.run(["git", "merge-base", "--is-ancestor", commit, "origin/main"], check=True)
-    zone = "us-central1-a" if role == "control" else "us-central1-b"
+    zone = {"control": "us-central1-a", "worker": "us-central1-b", "builder": "us-central1-c"}[role]
     instance = cloud("compute", "instances", "describe", f"{PREFIX}-{role}", f"--zone={zone}")
     if instance.get("labels", {}).get("openagents-issue") != "11814":
         raise RuntimeError("This node belongs to another deployment.")

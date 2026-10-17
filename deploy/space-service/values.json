@@ -21,7 +21,6 @@
       "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
       "pullPolicy": "IfNotPresent"
     },
-    "replicaCount": 1,
     "nodeSelector": {
       "space.pplx.net/infra": "true"
     },
@@ -48,6 +47,12 @@
     },
     "redis": {
       "url": ""
+    },
+    "replicas": 1,
+    "autoscaling": {
+      "enabled": true,
+      "minReplicas": 1,
+      "maxReplicas": 1
     }
   },
   "space-internal-api-local": {
@@ -56,7 +61,6 @@
       "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
       "pullPolicy": "IfNotPresent"
     },
-    "replicaCount": 1,
     "nodeSelector": {
       "space.pplx.net/infra": "true"
     },
@@ -75,7 +79,8 @@
       "secretName": "space-postgres",
       "rolesSecretName": "space-db-roles",
       "poolMaxConnections": 4
-    }
+    },
+    "replicas": 1
   },
   "space-credmgr-authority-local": {
     "image": {
@@ -83,7 +88,6 @@
       "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
       "pullPolicy": "IfNotPresent"
     },
-    "replicaCount": 1,
     "nodeSelector": {
       "space.pplx.net/infra": "true"
     },
@@ -109,7 +113,8 @@
       "caSecretName": "space-key-broker-ca",
       "tenantNamespace": "urn:openagents:space:org",
       "grantScheme": "urn:openagents:space:grant:v1"
-    }
+    },
+    "replicas": 1
   },
   "space-data-plane-local": {
     "image": {
@@ -117,7 +122,6 @@
       "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
       "pullPolicy": "IfNotPresent"
     },
-    "replicaCount": 1,
     "nodeSelector": {
       "space.pplx.net/infra": "true"
     },
@@ -130,6 +134,12 @@
         "cpu": "1",
         "memory": "1Gi"
       }
+    },
+    "replicas": 1,
+    "autoscaling": {
+      "enabled": true,
+      "minReplicas": 1,
+      "maxReplicas": 1
     }
   },
   "space-cluster-controller-local": {
@@ -138,7 +148,6 @@
       "tag": "de87b436c35dac056564bdd5b2a113c9046e189b",
       "pullPolicy": "IfNotPresent"
     },
-    "replicaCount": 1,
     "nodeSelector": {
       "space.pplx.net/infra": "true"
     },
@@ -186,7 +195,8 @@
       "warmPool": {
         "env": {}
       }
-    }
+    },
+    "replicas": 1
   },
   "space-node-manager-local": {
     "image": {
