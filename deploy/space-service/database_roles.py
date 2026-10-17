@@ -75,12 +75,44 @@ COMMIT;
     print(json.dumps({'computer_count':2,'running_vcpus':4,'running_memory_mib':8192,'turn_seconds':60,'stopped_retention_seconds':3600,'scope':['service','qualification account']}))
 
 
+def reset_candidate():
+    from pathlib import Path
+    value=credential()
+    environment={**os.environ,'PGHOST':value['private_ip'],'PGDATABASE':'space_computers','PGUSER':value['bootstrap_login'],
+        'PGPASSWORD':value['bootstrap_password'],'PGSSLMODE':'verify-ca','PGSSLROOTCERT':'/space/config/postgres-ca.crt','PGCONNECT_TIMEOUT':'5','PSQL_HISTORY':'/dev/null'}
+    command=['psql','--no-psqlrc','--no-password','--tuples-only','--no-align','--set=ON_ERROR_STOP=1']
+    pods=subprocess.run(['/usr/local/bin/k3s','kubectl','-n','sandboxes','get','pods','-o','name'],capture_output=True,check=True,timeout=10)
+    if pods.stdout.strip(): raise RuntimeError('Remove qualification guests before resetting its test database.')
+    query="SELECT json_agg(to_jsonb(c)) FROM computers.computers c;"
+    result=subprocess.run(command+['--command',query],env=environment,capture_output=True,check=True,timeout=15)
+    rows=json.loads(result.stdout)
+    if len(rows)!=1 or rows[0]['id']!='cmp_d41155677d28b9350b57' or rows[0]['owner']!='space-qualification-11814' or rows[0]['phase']!='unknown' or rows[0]['record']['boots']:
+        raise RuntimeError('Reset is limited to the confirmed, unallocated quota-failure fixture.')
+    query="SELECT count(*) FROM sandboxes WHERE id='01a147a7-dc46-71f2-9a6c-f4e700574986';"
+    absent=subprocess.run(command+['--command',query],env={**environment,'PGDATABASE':'space'},capture_output=True,check=True,timeout=15)
+    if absent.stdout.strip()!=b'0': raise RuntimeError('The failed native sandbox still exists.')
+    path=Path('/space/qualification-11814/quota-failure-computer-record.json')
+    path.write_text(json.dumps(rows,indent=2)+'\n');path.chmod(0o600)
+    sql="""DROP DATABASE space_computers WITH (FORCE);
+CREATE DATABASE space_computers OWNER space_computers;
+REVOKE CONNECT ON DATABASE space_computers FROM PUBLIC;
+GRANT CONNECT ON DATABASE space_computers TO space_computers,space_bootstrap;
+"""
+    reset=subprocess.run(command,input=sql.encode(),env={**environment,'PGDATABASE':'postgres'},capture_output=True,timeout=25)
+    if reset.returncode: raise RuntimeError('The isolated fixture reset failed: '+reset.stderr.decode()[:512])
+    saved=Path('/space/qualification-11814/cwc-seed.json')
+    saved.rename(saved.with_name('cwc-quota-failure.json'))
+    print(json.dumps({'isolated_candidate_reset':True,'failed_record_preserved':str(path),'native_sandbox_absent':True,'guest_pods':0}))
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--activate", action="store_true")
     parser.add_argument("--candidate",action="store_true")
     parser.add_argument("--candidate-limits",action="store_true")
+    parser.add_argument("--reset-candidate",action="store_true")
     args=parser.parse_args()
-    if args.candidate_limits: candidate_limits()
+    if args.reset_candidate: reset_candidate()
+    elif args.candidate_limits: candidate_limits()
     elif args.candidate: candidate()
     else: main(args.activate)
