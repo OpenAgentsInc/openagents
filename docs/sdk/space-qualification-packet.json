@@ -1,0 +1,152 @@
+{
+  "schema": "openagents.computers.space-qualification.v1",
+  "identity": null,
+  "observed_unix": null,
+  "advertised": null,
+  "accounts": [],
+  "dedicated_test_accounts": true,
+  "private_management": false,
+  "rollback_ready": false,
+  "pricing_enabled": false,
+  "limits": null,
+  "cases": {
+    "public_sdk": {
+      "status": "pending",
+      "artifact": null
+    },
+    "web_task_and_followup": {
+      "status": "pending",
+      "artifact": null
+    },
+    "account_isolation": {
+      "status": "pending",
+      "artifact": null
+    },
+    "actual_boot_and_shape": {
+      "status": "pending",
+      "artifact": null
+    },
+    "stage_timings": {
+      "status": "pending",
+      "artifact": null
+    },
+    "memory_and_workspace": {
+      "status": "pending",
+      "artifact": null
+    },
+    "cancellation_and_children": {
+      "status": "pending",
+      "artifact": null
+    },
+    "api_restart": {
+      "status": "pending",
+      "artifact": null
+    },
+    "reconciler_restart": {
+      "status": "pending",
+      "artifact": null
+    },
+    "lost_create_reply": {
+      "status": "pending",
+      "artifact": null
+    },
+    "lost_command_reply": {
+      "status": "pending",
+      "artifact": null
+    },
+    "attach_interruption": {
+      "status": "pending",
+      "artifact": null
+    },
+    "duplicate_delivery": {
+      "status": "pending",
+      "artifact": null
+    },
+    "delayed_lifecycle": {
+      "status": "pending",
+      "artifact": null
+    },
+    "worker_loss_and_single_writer": {
+      "status": "pending",
+      "artifact": null
+    },
+    "cross_host_memory_restore": {
+      "status": "pending",
+      "artifact": null
+    },
+    "checkpoint_recovery": {
+      "status": "pending",
+      "artifact": null
+    },
+    "database_restore": {
+      "status": "pending",
+      "artifact": null
+    },
+    "storage_outage": {
+      "status": "pending",
+      "artifact": null
+    },
+    "provider_outage": {
+      "status": "pending",
+      "artifact": null
+    },
+    "credential_revocation": {
+      "status": "pending",
+      "artifact": null
+    },
+    "egress_bypass": {
+      "status": "pending",
+      "artifact": null
+    },
+    "capacity_exhaustion": {
+      "status": "pending",
+      "artifact": null
+    },
+    "concurrent_wake": {
+      "status": "pending",
+      "artifact": null
+    },
+    "quotas_and_accounting": {
+      "status": "pending",
+      "artifact": null
+    },
+    "retention": {
+      "status": "pending",
+      "artifact": null
+    },
+    "account_deletion": {
+      "status": "pending",
+      "artifact": null
+    },
+    "orphan_cleanup": {
+      "status": "pending",
+      "artifact": null
+    },
+    "upgrade_and_rollback": {
+      "status": "pending",
+      "artifact": null
+    },
+    "disabled_placement": {
+      "status": "pending",
+      "artifact": null
+    },
+    "legacy_boat": {
+      "status": "pending",
+      "artifact": null
+    },
+    "unsupported_controls": {
+      "status": "pending",
+      "artifact": null
+    },
+    "monitoring": {
+      "status": "pending",
+      "artifact": null
+    },
+    "fixture_cleanup": {
+      "status": "pending",
+      "artifact": null
+    }
+  },
+  "trials": [],
+  "economics": null
+}

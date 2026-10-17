@@ -89,6 +89,11 @@ Optional settings include `data_plane_url`, digest-pinned `template`, `scope`,
 trusted `shapes`, and explicit `legacy`. Credentials stay in environment variables.
 Boat remains the default. SPACE needs the server's `space` feature and an admitted
 configuration; this change does not enable SPACE in production.
+For an admission rollback, retain `enabled: true`, set `admit_new: false`, keep
+the old deployment connection, and restore the previous default. Existing bound
+computers remain manageable; disabling the whole connection also prevents that.
+The [SPACE qualification runbook](../sdk/space-qualification.md) defines the
+finite test-account and named-group stages and their evidence checks.
 The [registry deployment evidence](../sdk/computers-registry-evidence.json) records
 the scoped tests, staging and production checks, and compatibility with the
 released clients.

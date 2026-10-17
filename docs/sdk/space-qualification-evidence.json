@@ -1,0 +1,118 @@
+{
+  "schema": "openagents.computers.space-qualification-delivery.v1",
+  "date": "2026-10-17",
+  "issue": 11816,
+  "status": "source_complete_live_qualification_pending",
+  "customer_ready": false,
+  "named_group_qualified": false,
+  "broad_admission": false,
+  "pricing_enabled": false,
+  "public_default": "Boat",
+  "runbook": "space-qualification.md",
+  "packet": "space-qualification-packet.json",
+  "assessment": "space-qualification-assessment.json",
+  "implementation": {
+    "operator_commands": [
+      "oa-computers-usage qualification-template",
+      "oa-computers-usage qualify FILE --test-accounts",
+      "oa-computers-usage qualify FILE"
+    ],
+    "deployment_changes_by_checker": false,
+    "network_requests_by_checker": false,
+    "maximum_named_accounts": 8,
+    "maximum_dedicated_test_accounts": 2,
+    "required_cases": 34,
+    "cross_host_case_conditional_on_advertisement": true,
+    "passed_case_requires": [
+      "exact deployment identity",
+      "dated case receipt",
+      "SHA-256 of receipt",
+      "SHA-256 of scrubbed raw source"
+    ],
+    "minimum_successful_samples_per_cold_snapshot_wake_bucket": 20,
+    "timing_scope": "Public create through upload and independently checked file checksum; separate stages retained. Repository/model stages require separate observations.",
+    "resumed_sdk_checkpoint_eligible_as_fresh_latency_sample": false,
+    "rollback": {
+      "stop_new_placement": "admit_new=false",
+      "keep_existing_connection": "enabled=true",
+      "restore_default": "previous Boat deployment",
+      "regression": "stopping_new_space_placement_keeps_existing_space_and_boat_bindings"
+    }
+  },
+  "checks": {
+    "integrated_source_commit": "52deaa5d9ba19bc1ead8f936e497f9cfd545af35",
+    "changed_source_sha256": {
+      "crates/oa-computers/src/bin/oa-computers-usage.rs": "3e13f7d99c7b120330cd5c0820d2faf89cccb8b1ad3c595e5a9342b5f6776798",
+      "crates/oa-computers/src/lib.rs": "a50ef111a60e16901b94165c11e1d7dc0ade7213569776ca0bb6fa594ccadc40",
+      "crates/oa-computers/src/qualification.rs": "18aa5740fa5b292e74e557fcd5e640bba78c6f9d26854121a7cf55671144c8ef",
+      "crates/oa-computers/src/qualification/tests.rs": "02eaece90ec74cee30f773e374562db678676c9d00b6a67c2a430d1d43b1b89d",
+      "crates/oa-computers/src/registry.rs": "0e2364b298dfa4214d6e6fd3ca2c70cec3756db1ed3f7d3f1bd93d3658c7f4d9",
+      "crates/openagents-sdk/examples/computers.rs": "115c0647ab08506ac52b615a1e07f287f6bc00ba7d5c5ec34340ed61cc93457f"
+    },
+    "known_flake": {
+      "test": "terminal_result_finishes_its_generation_before_a_later_command",
+      "source": "crates/oa-computers/tests/command_recovery.rs:283",
+      "observed": "One integrated run observed Turn { generation: 2 } immediately after the second visit where the fixture expected Stopped. The preceding full database run passed.",
+      "fixture_changed": false,
+      "recheck": "The same-source full Computers database suite passed on the next run; both passing and failing logs are retained."
+    },
+    "commands": [
+      "cargo test -p oa-computers --features space",
+      "cargo test -p openagents-sdk",
+      "cargo build -p oa-computers --features space --bin oa-computers-usage",
+      "cargo build -p openagents-sdk --example computers",
+      "cargo fmt -p oa-computers -p openagents-sdk --check"
+    ],
+    "oa_computers_passed": 88,
+    "disposable_postgresql": true,
+    "sdk_passed": 69,
+    "operator_and_example_built": true,
+    "formatting": true,
+    "pending_template_rejected_for_dedicated_tests": true,
+    "pending_template_rejected_for_named_group": true,
+    "unknown_latencies_and_economics_remain_null": true,
+    "local_document_links_checked": true,
+    "archive": "evidence/space-qualification-checks-2026-10-17.tar.gz",
+    "archive_sha256": "1a031ef5ad42e1271f40dc2e125764ecce7888a6b3374dfeccf0d1f441234fe2"
+  },
+  "prior_observations": [
+    {
+      "artifact": "../cloud/evidence/2026-10-16-space-computers.json",
+      "scope": "Earlier driver timing through loopback proxies, warm template artifacts. Not the combined public SDK/web workflow.",
+      "snapshot_samples": 20,
+      "snapshot_failures": 0,
+      "snapshot_p50_ms": 750.54013,
+      "snapshot_p90_ms": 811.16949,
+      "qualifies_public_workflow": false
+    },
+    {
+      "artifact": "../cloud/evidence/2026-10-16-space-private-foundation.json",
+      "scope": "Private same-worker encrypted lifecycle and seven protected endpoint denials. Lane 0 retains stopped fixtures.",
+      "qualifies_public_workflow": false,
+      "qualifies_cross_worker_recovery": false
+    },
+    {
+      "artifact": "computers-credential-evidence.json",
+      "scope": "Scoped credential source checks and provider probes. Full supported-client workflow remains unqualified.",
+      "qualifies_public_workflow": false
+    }
+  ],
+  "after_close": {
+    "owner": "Lane 0 in docs/audits/2026-10-16-master-delegation.md",
+    "cases": "All combined-deployment cases remain pending in the packet; prior narrow observations are not relabeled as this qualification.",
+    "required": [
+      "Deploy the combined checked native, broker, Computers, and web images with finite dedicated-test-account admission and approved synthetic sources.",
+      "Complete public SDK and useful web task/follow-up with account isolation and actual runtime/template/shape observations.",
+      "Complete interruption, cancellation, worker-loss, checkpoint/database recovery, and storage/provider outage fault cases.",
+      "Complete credential/egress, capacity/usage/quotas, retention/deletion/orphans, upgrade/rollback, and legacy Boat cases.",
+      "Collect fresh cold/snapshot/wake latency/error/cache/concurrency and complete service-cost measurements, then assess explicit budgets.",
+      "Delete all fixtures and verify provider/object inventory. Obtain owner approval separately for broader entitlement and pricing."
+    ]
+  },
+  "cleanup": {
+    "new_live_computers_or_accounts_created_for_11816": 0,
+    "checks": "Synthetic unit fixtures, temporary HOME, and disposable PostgreSQL only; no owner account or real host used.",
+    "reused_builder": "oa-sdk-build-11800, finite deletion schedule; removed after this lane finishes.",
+    "prior_11813": "All probe workloads, computers, secret sources, identities, and CA pool deleted; provider-managed serverless reservation still holds the otherwise empty owned subnet/VPC."
+  }
+}
