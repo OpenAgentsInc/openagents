@@ -76,12 +76,20 @@ pub(crate) fn rows(
     states: &[Session],
     spaces: &[Space],
     workspace: Option<&str>,
+    continuations: &HashMap<String, chat_home::PartRef>,
+    moves: &HashMap<String, chat_home::PartRef>,
     now_ms: i64,
 ) -> Vec<PublishedSession> {
     let mut mine: Vec<&Chat> = chats
         .iter()
         .filter(|c| {
-            c.device_id == device && !c.archived && c.is_top_level() && chat_home::valid_id(&c.id)
+            c.device_id == device
+                && (!c.archived || moves.contains_key(&c.id))
+                && c.is_top_level()
+                && chat_home::valid_id(&c.id)
+                && !c.config.as_ref().is_some_and(|config| {
+                    config.model_options.contains_key(chat_home::REQUEST_OPTION)
+                })
         })
         .collect();
     let active = |c: &Chat| c.last_message_at.unwrap_or(c.created_at).timestamp();
@@ -104,8 +112,8 @@ pub(crate) fn rows(
                 });
             PublishedSession {
                 id: chat.id.clone(),
-                continues: None,
-                home_transfer: false,
+                home_transfer: true,
+                continues: continuations.get(&chat.id).cloned(),
                 title: chat.title.clone().unwrap_or_default(),
                 project: None,
                 folder,
@@ -177,6 +185,8 @@ impl DocHost {
             &workspace.read_sessions()?,
             &workspace.read_spaces()?,
             locator(auth).as_deref(),
+            &workspace.chat_continuations(),
+            &workspace.chat_move_targets(),
             now,
         );
         let body = serde_json::to_string(&(&name, &rows)).unwrap_or_default();
@@ -255,9 +265,23 @@ mod tests {
             chat(two, "mac", 20),
             chat("a1000000-0000-4000-8000-000000000003", "phone", 30),
         ];
-        let rows = rows("mac", &chats, &[], &[], Some("0123456789abcdef"), 0);
+        let source = chat_home::PartRef {
+            id: "a1000000-0000-4000-8000-000000000004".into(),
+            home: chat_home::Home::Cloud,
+        };
+        let rows = rows(
+            "mac",
+            &chats,
+            &[],
+            &[],
+            Some("0123456789abcdef"),
+            &HashMap::from([(two.into(), source.clone())]),
+            &HashMap::new(),
+            0,
+        );
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].id, two);
+        assert_eq!(rows[0].continues.as_ref(), Some(&source));
         assert_eq!(rows[0].status, Wire::Idle);
         assert_eq!(rows[0].last_activity_unix, 20);
         assert!(rows.iter().all(|r| r.recap.is_empty()));
@@ -265,6 +289,29 @@ mod tests {
             !serde_json::to_string(&rows)
                 .unwrap()
                 .contains("secret text")
+        );
+    }
+
+    #[test]
+    fn pending_continuations_do_not_publish_a_second_conversation() {
+        let mut pending = chat("a1000000-0000-4000-8000-000000000001", "mac", 10);
+        pending.config = Some(serde_json::from_value(serde_json::json!({
+            "harness": "mock", "sandbox": "workspace-write", "modelOptions": {"openagentsContinuation": {
+                "account": "fixture", "chat": "a1000000-0000-4000-8000-000000000002", "revision": 1
+            }}
+        })).unwrap());
+        assert!(
+            rows(
+                "mac",
+                &[pending],
+                &[],
+                &[],
+                None,
+                &HashMap::new(),
+                &HashMap::new(),
+                0
+            )
+            .is_empty()
         );
     }
 

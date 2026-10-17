@@ -19,6 +19,7 @@ pub mod capabilities {
     /// (`crate::projectless`) when it runs; older hosts only know `~`.
     pub const PROJECTLESS_SCRATCH_V1: &str = "projectless-scratch-v1";
     pub const OPENAGENTS_CONTINUATIONS_V1: &str = "openagents-continuations-v1";
+    pub const CHAT_HOME_TRANSFER_V1: &str = "chat-home-transfer-v1";
 
     pub const CURRENT: &[&str] = &[
         COMPOSER_REFERENCES_V1,
@@ -30,6 +31,7 @@ pub mod capabilities {
         HARNESS_UPDATES_V1,
         PROJECTLESS_SCRATCH_V1,
         OPENAGENTS_CONTINUATIONS_V1,
+        CHAT_HOME_TRANSFER_V1,
         crate::voice::remote::CAPABILITY,
     ];
 
@@ -113,6 +115,7 @@ mod tests {
                     "harness-updates-v1",
                     "projectless-scratch-v1",
                     "openagents-continuations-v1",
+                    "chat-home-transfer-v1",
                     "voice-client-media-v1"
                 ],
             })

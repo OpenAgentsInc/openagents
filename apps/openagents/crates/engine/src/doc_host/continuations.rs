@@ -16,6 +16,10 @@ fn claim_error(error: openagents_account::openagents::Error) -> EngineError {
         Error::Refused {
             code: Some("busy"), ..
         } => "Stop the current answer before continuing elsewhere.",
+        Error::Refused {
+            code: Some("context_required"),
+            ..
+        } => "Open this chat on its computer before continuing elsewhere.",
         Error::Refused { status: 401, .. } | Error::WrongAccount => {
             "Sign in to the same account before continuing."
         }
@@ -284,7 +288,7 @@ impl DocHost {
             .client()
             .deployment()
             .website()
-            .join(&format!("chat/{}", source.chat))
+            .join(&format!("{}/{}", if matches!(&continued.source.home, Home::Computer(device) if !device.starts_with("legacy-")) {"chat/sessions"} else {"chat"}, source.chat))
             .map_err(|_| EngineError::Other("The earlier chat could not be opened.".into()))?
             .to_string();
         let stored = openagents_doc::continuation::Stored {

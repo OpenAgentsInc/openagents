@@ -130,7 +130,13 @@ impl DeviceChannel {
             }
             _ if method.reads_only() => Err(Failure::Unavailable),
             _ => Err(Failure::Uncertain {
-                command_id: request.params["entry"]["id"].as_str().unwrap().into(),
+                command_id: if method == Method::PrepareContinuation {
+                    request.params["chatId"].as_str().unwrap().into()
+                } else if method == Method::ContinueChat {
+                    request.params["target"]["id"].as_str().unwrap().into()
+                } else {
+                    request.params["entry"]["id"].as_str().unwrap().into()
+                },
             }),
         }
     }
@@ -198,6 +204,27 @@ mod tests {
             unavailable.call("RelayCommand", params).await,
             Err(Failure::Uncertain {
                 command_id: "original-command".into()
+            })
+        );
+        assert_eq!(link.calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn an_unanswered_move_keeps_its_destination_and_does_not_fall_back() {
+        let (channel, link) = channel(Code::Unavailable, true, true);
+        let id = "a1000000-0000-4000-8000-000000000001";
+        assert_eq!(
+            channel
+                .call(
+                    "ContinueChat",
+                    json!({
+                        "account": "fixture", "chatId": "a1000000-0000-4000-8000-000000000002",
+                        "target": {"id": id, "home": "cloud"}
+                    })
+                )
+                .await,
+            Err(Failure::Uncertain {
+                command_id: id.into()
             })
         );
         assert_eq!(link.calls.load(Ordering::Relaxed), 1);

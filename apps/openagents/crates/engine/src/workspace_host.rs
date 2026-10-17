@@ -1193,8 +1193,29 @@ impl WorkspaceHost {
     pub fn chat_continuations(&self) -> std::collections::HashMap<String, chat_home::PartRef> {
         self.read(|doc| doc.chat_continuations())
     }
-    pub fn set_chat_destination(&self, chat: &str, target: &chat_home::PartRef) -> Result<bool, EngineError> {
+    pub fn chat_move_targets(&self) -> std::collections::HashMap<String, chat_home::PartRef> {
+        self.read(|doc| doc.chat_move_targets())
+    }
+    pub fn set_chat_move_target(
+        &self,
+        chat: &str,
+        target: &chat_home::PartRef,
+    ) -> Result<bool, EngineError> {
+        let changed = self.mutate(|doc| doc.set_chat_move_target(chat, target))?;
+        if changed {
+            self.persist_continuation()?;
+        }
+        Ok(changed)
+    }
+    pub fn set_chat_destination(
+        &self,
+        chat: &str,
+        target: &chat_home::PartRef,
+    ) -> Result<bool, EngineError> {
         Ok(self.mutate(|doc| doc.set_chat_destination(chat, target))?)
+    }
+    pub(crate) fn persist_continuation(&self) -> Result<(), EngineError> {
+        self.inner.persist_snapshot().map(|_| ())
     }
 
     /// Tombstone: removes the chats (and session-status) row; the per-chat session

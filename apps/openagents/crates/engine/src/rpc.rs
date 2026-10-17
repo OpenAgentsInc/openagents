@@ -1098,7 +1098,7 @@ impl EngineRpc {
         &self,
         target: &str,
         method: &str,
-        params: serde_json::Value,
+        mut params: serde_json::Value,
     ) -> Result<RpcReply, RpcError> {
         let Some(links) = &self.links else {
             return Err(RpcError::Failed(format!(
@@ -1106,6 +1106,14 @@ impl EngineRpc {
             )));
         };
         let client = links.client(target).await?;
+        if matches!(
+            method,
+            methods::CONTINUE_CHAT | methods::PREPARE_CONTINUATION
+        ) {
+            if let Some(object) = params.as_object_mut() {
+                object.remove("targetDeviceId");
+            }
+        }
         if is_stream_method(method) {
             // Streams are unbounded by design (a quiet WATCH_* is healthy);
             // only unary calls below get the reply deadline.
@@ -1185,6 +1193,9 @@ impl EngineRpc {
     > {
         use openagents_proto::voice::VoiceRejection;
         // Without Codex here a retry can never connect: ask for an install.
+        self.doc_host
+            .ensure_editable(chat)
+            .map_err(|_| VoiceRejection::Unsupported)?;
         if !self
             .registry
             .resolve(HarnessId::Codex)
@@ -1220,6 +1231,9 @@ impl EngineRpc {
                 cwd,
                 parent_chat_id,
             } => {
+                let continuation = config
+                    .as_ref()
+                    .is_some_and(|c| c.model_options.contains_key(chat_home::REQUEST_OPTION));
                 // A voice orchestrator is hidden, so the chats it creates are
                 // the user's top-level sessions rather than its side chats.
                 let parent_chat_id = parent_chat_id
@@ -1238,6 +1252,9 @@ impl EngineRpc {
                     self.workspace
                         .set_chat_branch(&chat_id, branch)
                         .map_err(failed)?;
+                }
+                if continuation {
+                    self.workspace.persist_continuation().map_err(failed)?;
                 }
                 Ok(())
             }
@@ -1491,6 +1508,8 @@ fn forwardable(method: &str) -> bool {
     matches!(
         method,
         methods::FORK_SIDE_CHAT
+            | methods::CONTINUE_CHAT
+            | methods::PREPARE_CONTINUATION
             | methods::LIST_HARNESSES
             | methods::INSTALL_HARNESS
             | methods::CANCEL_INSTALL
@@ -2594,6 +2613,37 @@ impl RpcService for EngineRpc {
                     }));
                 }
                 RpcReply::value(&serde_json::json!({ "ok": true }))
+            }
+            methods::PREPARE_CONTINUATION => {
+                #[derive(Deserialize)]
+                #[serde(rename_all = "camelCase")]
+                struct Prepare {
+                    chat_id: String,
+                    source: chat_home::Source,
+                }
+                let p: Prepare = parse_params(params)?;
+                let target = self
+                    .doc_host
+                    .prepare_destination(&p.chat_id, &p.source)
+                    .await
+                    .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&target)
+            }
+            methods::CONTINUE_CHAT => {
+                #[derive(Deserialize)]
+                #[serde(rename_all = "camelCase")]
+                struct Continue {
+                    account: String,
+                    chat_id: String,
+                    target: chat_home::PartRef,
+                }
+                let p: Continue = parse_params(params)?;
+                let continued = self
+                    .doc_host
+                    .continue_on(&p.account, &p.chat_id, p.target)
+                    .await
+                    .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&continued)
             }
             methods::WATCH_CHECKOUT_DIFFS => {
                 Ok(RpcReply::Stream(watch_stream(self.diff_sync.watch_diffs())))

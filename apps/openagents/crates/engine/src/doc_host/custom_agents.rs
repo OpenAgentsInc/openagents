@@ -80,6 +80,7 @@ impl DocHost {
                 let _ = host
                     .publish_session_index(&lease, &binding.auth.state().to_proto())
                     .await;
+                let _ = host.process_web_moves(&lease).await;
                 // Failures leave the original requests queued; an outage never starts another run.
                 let _ = host
                     .agent_lab_tick(&lease, &binding.lab_root, &binding.registry)

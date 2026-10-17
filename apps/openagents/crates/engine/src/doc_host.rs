@@ -17,9 +17,10 @@
 //! the host's relay receives it and warm-opens the doc, which drains the queue.
 
 mod agent_lab;
-mod custom_agents;
 mod continuations;
+mod custom_agents;
 mod session_index;
+mod transfer;
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -580,6 +581,7 @@ pub struct ChatDocHandle {
     drain_lock: tokio::sync::Mutex<()>,
     /// Serialize prompt commands while still allowing interrupt/input controls.
     command_drain_lock: tokio::sync::Mutex<()>,
+    home_transfer_lock: tokio::sync::Mutex<()>,
     /// Queue rows held as explicit steers for a turn-boundary agent. They
     /// lead ordinary queued rows, in the order they were steered.
     steered_rows: Mutex<Vec<String>>,
@@ -1602,6 +1604,7 @@ impl DocHost {
             queue_tx,
             drain_lock: tokio::sync::Mutex::new(()),
             command_drain_lock: tokio::sync::Mutex::new(()),
+            home_transfer_lock: tokio::sync::Mutex::new(()),
             steered_rows: Mutex::new(Vec::new()),
             held_sends: Mutex::new(HashMap::new()),
             stopped_by: Mutex::new(None),
@@ -5349,6 +5352,12 @@ impl DocHost {
         entry: &SessionCommandEntry,
     ) -> Result<(SessionCommandStatus, Option<String>), EngineError> {
         let chat_id = &handle.chat_id;
+        if matches!(
+            entry.payload,
+            SessionCommandPayload::Run { .. } | SessionCommandPayload::Steer { .. }
+        ) {
+            self.ensure_editable(chat_id)?;
+        }
         if let Some(message_id) = self.cancelled_by_stop(handle, entry) {
             // Still the user's message: it stays in the transcript, unrun.
             let prompt = match &entry.payload {
@@ -5766,6 +5775,9 @@ impl DocHost {
         request: openagents_proto::RunRequest,
         message_id: Option<String>,
     ) -> Result<String, EngineError> {
+        let handle = self.open(chat_id)?;
+        let _home = handle.home_transfer_lock.lock().await;
+        self.ensure_editable(chat_id)?;
         if let Some(workspace) = self.workspace()
             && let Some(context) = self.capture_source_context(&request.cwd).await
             && let Err(err) = workspace.set_chat_source_context(chat_id, &context)
