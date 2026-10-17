@@ -7,9 +7,11 @@
 //! rules crate's bot plays seeded runs with it ([`sim`]): an edit nobody
 //! can win is refused. Versions play as data on one build of the game.
 //! `game-lab serve` is the local service the web chat's `game_*` tools,
-//! its inline card and `openagents game` call.
+//! its inline card and `openagents game` call. [`kind`] is the same
+//! contract as a Labs platform kind (`lab_kit::LabKind`).
 
 pub mod doc;
+pub mod kind;
 pub mod lab;
 pub mod patch;
 pub mod sim;

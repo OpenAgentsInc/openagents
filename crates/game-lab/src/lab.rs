@@ -556,32 +556,13 @@ impl Lab {
             json!({"refused": true, "saved": false, "reason": reason, "version": base,
                    "text": "Nothing was saved."})
         };
-        let after = match patch::apply(&before, &ops) {
-            Ok(after) => after,
-            Err(why) => return Ok(refuse(why)),
+        let (after, changes, checked) = match crate::kind::propose(&before, &ops) {
+            Ok(proposed) => proposed,
+            Err((_, why)) => return Ok(refuse(why)),
         };
-        let changes = doc::changes(&before, &after);
-        if changes.is_empty() && after == before {
-            return Ok(refuse("That edit changes nothing.".into()));
-        }
-        let checked = match doc::read(&after) {
-            Ok(checked) => checked,
-            Err(problems) => return Ok(refuse(problems.join(" "))),
-        };
-        let broken = doc::rule_problems(&checked);
-        if !broken.is_empty() {
-            return Ok(refuse(broken.join(" ")));
-        }
         let measured = sim::measure(checked.tuning, checked.seed);
-        if measured.wins() == 0 {
-            let was = stats_of(&record["stats"]).map_or(String::new(), |s| {
-                format!(" Before the edit it won {} of {}.", s.wins(), s.runs)
-            });
-            return Ok(refuse(format!(
-                "That would make the game unwinnable: in {} seeded runs of up to {} minutes the bot never escaped or melted him.{was}",
-                measured.runs,
-                sim::LIMIT / 60
-            )));
+        if let Some(why) = crate::kind::unwinnable(&measured, &record["stats"]) {
+            return Ok(refuse(why));
         }
         let author = args["author"].as_str().unwrap_or("the chat");
         let (n, saved) = self.save(game, &after, summary, author, Some(base))?;
@@ -791,7 +772,7 @@ fn ready(dir: &Path) -> bool {
     BUILD_FILES.iter().all(|f| dir.join(f).is_file())
 }
 
-fn short(value: &Value) -> String {
+pub(crate) fn short(value: &Value) -> String {
     match value {
         Value::String(s) => format!("\"{s}\""),
         Value::Null => "nothing".into(),
@@ -799,7 +780,7 @@ fn short(value: &Value) -> String {
     }
 }
 
-fn stats_of(value: &Value) -> Option<Stats> {
+pub(crate) fn stats_of(value: &Value) -> Option<Stats> {
     Some(Stats {
         runs: value["runs"].as_u64()? as u32,
         escaped: value["escaped"].as_u64()? as u32,
