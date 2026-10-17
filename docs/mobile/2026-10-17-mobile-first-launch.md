@@ -1,8 +1,9 @@
 # Mobile first: the phone as the face of 1.0
 
-Status: **proposal, 2026-10-17.** Written for the owner. Nothing here has
-been built, posted, or decided yet; the decisions it needs are in
-[Decisions for the owner](#decisions-for-the-owner).
+Status: **decided 2026-10-17; in progress** (epic
+[#11977](https://github.com/OpenAgentsInc/openagents/issues/11977)). The
+owner's answers are in [Decisions](#decisions), and each piece of work is an
+issue in [The work, in order](#the-work-in-order).
 
 Read with: the [1.0 launch plan](../launch/1.0/README.md), the
 [big-bang release brief](../audits/2026-10-16-coder-1.0-big-bang.md), the
@@ -86,9 +87,11 @@ From the code at `a6ff2c6a8a`:
    says it plainly: "No agent runs on the phone." The **Run on** menu lists
    paired computers and, when signed in, **Start Our cloud**
    (`Session/NewSessionViewController.swift`).
-4. **Our cloud can refuse the first try.** Its messages include "Add your
-   Claude key in Settings on openagents.com to run Claude Code on Our cloud"
-   and "Our cloud isn't available for this account yet"
+4. **Our cloud is closed to new accounts.** It runs on our own models
+   (opencode on the OpenAgents API), so no Claude key is needed unless the
+   person picks Claude Code. But cloud computers are open only to admins and
+   a listed set of accounts (`computers_api::identity`), so everyone else
+   reads "Our cloud isn't available for this account yet"
    (`crates/mobile/src/client_ffi/cloud_host.rs`). It also takes time to
    start ("Starting Our cloud. Choose it under Run on when it's ready.").
 5. **Try the demo is offline.** It opens a fixture workspace with streaming
@@ -146,10 +149,9 @@ no computer and no key, and a real coding task started in under 3 minutes.**
 - **Coding with no computer goes to Our cloud**, started for the person when
   they ask for a coding task, with a visible "Starting a computer for this…"
   row in the chat instead of a toast and a second trip to the menu.
-- **Our cloud must work without the person's Claude key.** Default it to our
-  gateway models (Coder on Auto), and offer "Use your Claude or ChatGPT
-  subscription" as an upgrade, not a precondition. The `needs_claude`
-  refusal should never be the first thing someone sees.
+- **Our cloud must be open to every account.** It already defaults to our
+  gateway models; what's missing is admission. A free cloud allowance worth a
+  few dollars, kept by the Computers service, bounds it (#11981).
 - **Start time is the hardest number here.** The freeze doc measured about
   77 seconds for a cloud computer's first turn; the SPACE work (#11728,
   #11800 series) aims under 2 seconds to create. For launch, a warm pool of
@@ -212,7 +214,7 @@ The [Pro proposal](../pro/README.md) (2026-10-13) already draws this line,
 and it disagrees with one part of the idea above: it makes **sync free** and
 lists "your data: export, sync" under "What is not gated, ever".
 
-**Recommendation: keep sync free, and put the cloud behind Pro.** Sync is the
+**Decided: sync stays free, all of it, for now.** Sync is the
 reason someone installs the desktop app after the phone, so it's the growth
 loop, not the upsell. Gating it would also break "one chat list everywhere"
 (#11895) for free accounts. What costs us money is the cloud, and that's what
@@ -223,16 +225,14 @@ Pro already covers:
 | The phone app, sign-in, chats on our models | Yes, with the free daily allowance | More allowance (proposed $5 a month included) |
 | Drive your own computers from the phone | **Yes, unlimited** | Yes |
 | Same chats on web, desktop, terminal, phone | **Yes** | Yes |
-| Our cloud (coding with no computer) | **A taste: proposed 1 machine-hour a month** | 100 machine-hours a month |
+| Our cloud (coding with no computer) | **A few dollars of free cloud credit** (#11981) | 100 machine-hours a month |
 | Cloud agents that keep running with your laptop closed | No | Yes |
 | Photos and files in chats | Proposed: photos yes, files Pro | Yes, 5 GB project storage |
 | Push notifications | Yes | Yes |
 
-The "taste" row is new and needs the owner's decision. Without it, shot 2 is
-a Pro feature and the first-minute promise ("real coding with no computer")
-is only true after a card is entered. With it, the free tier's cloud cost is
-bounded (1 hour × free accounts) and the trial still has a reason to exist.
-The Pro trial (3 days, card up front) stays as proposed.
+The owner chose the free cloud credit, so shot 2 ("real coding with no
+computer") is true for a new account with no card, and the free tier's cloud
+cost is bounded per account.
 
 Two things Pro needs before the phone can sell it: the Stripe side (the Pro
 spec's Stripe section is unfilled), and an Apple answer. **A digital
@@ -296,24 +296,31 @@ dedicated-account runs go to After-close checks, per the current rules.
 
 Items 1–5 decide whether the pitch is true. Items 6–11 make it visible.
 
-## Decisions for the owner
+## Decisions
 
-1. **Lead the launch with the phone?** This changes the launch plan written
-   2026-10-11 to 2026-10-15, which left the phone out.
-2. **Sign-in at the first send (recommended), or a signed-out allowance like
-   the old app?**
-3. **Sync free (recommended, matches the Pro proposal), or Pro?**
-4. **A free taste of Our cloud** (proposed 1 machine-hour a month), or Our
-   cloud Pro-only?
-5. **Sign in with Apple** now (needed before any App Store submission that
-   offers GitHub sign-in), or later?
-6. **A TestFlight build and external review this weekend.** The standing rule
-   is no TestFlight builds until you ask; this plan needs one by Saturday night
-   for a Monday link.
-7. **Monday or later for the phone.** If items 1–5 aren't done and checked on
-   a real phone by Sunday, the honest options are: launch Monday on web and
-   terminal as planned and lead with the phone a week later, or launch Monday
-   with the phone and only the shots that are true (3, 5, 6, 7, 8).
+The owner's answers (2026-10-17):
+
+1. **Lead the launch with the phone: yes.**
+2. **Signed out: a limited free chat.** A few messages, answered by our Gemini
+   through our gateway (the OpenAgents chat worker), then the app asks the
+   person to sign in, and their chats move to the account (#11978).
+3. **Sync: free, all of it, for now.**
+4. **Free cloud: a few dollars of credit** for Our cloud (#11981).
+5. **Sign in with Apple: yes** (#11980).
+
+The work is filed under the epic #11977:
+
+| Issue | What |
+| --- | --- |
+| #11978 | Signed-out chat on our Gemini, then sign in |
+| #11979 | Open on a chat; a cloud chat with no computer |
+| #11980 | One-tap sign-in, and Sign in with Apple |
+| #11981 | Our cloud for every account, with free cloud credit |
+| #11982 | "Run this on your own computer" card |
+| #11983 | First-minute counts |
+| #11984 | Re-takeable marketing screenshots |
+| #11985 | Launch files lead with the phone |
+| #11986 | External TestFlight build |
 
 ## Risks
 
