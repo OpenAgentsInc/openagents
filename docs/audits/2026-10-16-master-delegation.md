@@ -77,6 +77,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 1: harness and chats (critical path)
 
+**Taken 2026-10-16 22:01 CDT** by Codex working #11894, #11898, #11823 in `~/work/openagents-push-lane`.
+
 - **Owns:** `crates/coder-delegate`, `crates/coder` (turn and delegate door), `crates/chat-home`, the Coder-facing API of `apps/openagents/crates/harness`, the continuation routes in `crates/openagents-web`, and `crates/openagents-sdk` history and continuation methods.
 - **Order:** #11894 first, because the bridge unblocks #11898, the keepers in lane 3, and terminal chats in the one list. Then #11898, then #11823.
 - **Watch for:** `Wrap` is borrowed and isn't `Send`, `Sync`, or `'static`. Apply it before each process spawns, or add an explicit launch broker. Never bypass it. The harness must build in both Cargo workspaces (root on Rust 1.97.1, `apps/openagents` on 1.98.1).
