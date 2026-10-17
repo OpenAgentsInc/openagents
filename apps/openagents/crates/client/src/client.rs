@@ -6,9 +6,9 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
 use chrono::{TimeZone, Utc};
+use tokio_util::sync::CancellationToken;
 use openagents_doc::RegistryDoc;
 use openagents_proto::{Chat, ChatConfig, SidebarPinChange, SidebarSectionChange};
-use tokio_util::sync::CancellationToken;
 
 use crate::attachments::{self, AttachmentCache};
 use crate::auth::TokenProvider;

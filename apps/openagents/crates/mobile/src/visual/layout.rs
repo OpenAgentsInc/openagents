@@ -561,12 +561,7 @@ impl Layouter<'_, '_> {
     }
 
     /// Lefts for `widths` from x, with justify spreading `leftover`.
-    fn justify(
-        stack: &openagents_visual::Stack,
-        x: f32,
-        widths: &[f32],
-        leftover: f32,
-    ) -> Vec<f32> {
+    fn justify(stack: &openagents_visual::Stack, x: f32, widths: &[f32], leftover: f32) -> Vec<f32> {
         let n = widths.len();
         let (mut at, between) = match stack.justify {
             Justify::Start => (x, 0.0),
@@ -585,14 +580,7 @@ impl Layouter<'_, '_> {
             .collect()
     }
 
-    fn row(
-        &mut self,
-        stack: &openagents_visual::Stack,
-        path: &str,
-        x: f32,
-        y: f32,
-        width: f32,
-    ) -> f32 {
+    fn row(&mut self, stack: &openagents_visual::Stack, path: &str, x: f32, y: f32, width: f32) -> f32 {
         let n = stack.children.len();
         if n == 0 {
             return 0.0;

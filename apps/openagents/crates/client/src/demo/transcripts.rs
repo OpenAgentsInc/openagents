@@ -107,12 +107,7 @@ pub(crate) const DEMO_IMAGES: &[(&str, u32, u32, u32)] = &[
         540,
         1,
     ),
-    (
-        "/Users/dev/.openagents/uploads/scroll-tall.png",
-        400,
-        800,
-        2,
-    ),
+    ("/Users/dev/.openagents/uploads/scroll-tall.png", 400, 800, 2),
     ("/Users/dev/.openagents/uploads/square.png", 600, 600, 3),
 ];
 
@@ -516,9 +511,7 @@ override func layoutSubviews() {
                 ),
                 tool(
                     "k1",
-                    exec(
-                        "xcodebuild test -only-testing:OpenAgentsTests/TranscriptScrollMatrixTests",
-                    ),
+                    exec("xcodebuild test -only-testing:OpenAgentsTests/TranscriptScrollMatrixTests"),
                     false,
                     Some("Executed 36 tests, with 0 failures"),
                 ),

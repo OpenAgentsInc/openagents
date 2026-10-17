@@ -13,13 +13,13 @@ use std::time::Duration;
 
 use futures::future::BoxFuture;
 use loro::VersionVector;
+use tokio::sync::Notify;
+use tokio_util::sync::CancellationToken;
 use openagents_doc::SessionDoc;
 use openagents_sync::chat_client::{ChatTransport, RowImportOutcome};
 use openagents_sync::{
     ChatClient, ChatDocSink, ChatEvent, CheckpointFetcher, DocsStore, SyncError, UrlProvider,
 };
-use tokio::sync::Notify;
-use tokio_util::sync::CancellationToken;
 
 use super::{Bearer, JOIN_RETRY_BASE, JOIN_RETRY_CAP, urls};
 use crate::lock;
@@ -247,8 +247,7 @@ impl ChatDocSink for ViewerSink {
             .map_err(|e| e.to_string())?
             .into_iter()
             .filter(|(id, bytes)| {
-                !rejected.contains(id)
-                    && bytes.len() <= openagents_sync::chat_client::MAX_PUSH_BYTES
+                !rejected.contains(id) && bytes.len() <= openagents_sync::chat_client::MAX_PUSH_BYTES
             })
             .collect())
     }
