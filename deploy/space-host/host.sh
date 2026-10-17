@@ -10,6 +10,7 @@ case "$ISSUE" in
   11728) SUBNET_RANGE=10.217.28.0/24 ;;
   11810) SUBNET_RANGE=10.218.10.0/24 ;;
   11811) SUBNET_RANGE=10.218.11.0/24 ;;
+  11812) SUBNET_RANGE=10.218.12.0/24 ;;
   *) echo 'Choose a supported SPACE spike issue.' >&2; exit 2 ;;
 esac
 NAME=oa-space-spike-$ISSUE

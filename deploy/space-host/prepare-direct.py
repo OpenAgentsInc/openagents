@@ -17,7 +17,7 @@ import uuid
 
 HOME = Path.home()
 ISSUE = os.environ.get('SPACE_SPIKE_ISSUE', '11810')
-assert ISSUE in ('11810', '11811')
+assert ISSUE in ('11810', '11811', '11812')
 assert socket.gethostname().split('.')[0] == 'oa-space-spike-' + ISSUE
 assert HOME == Path('/var/lib/space-spike/home')
 assert (HOME / 'install.log').read_text().rstrip().endswith('SPACE installation and first sandbox passed.')
