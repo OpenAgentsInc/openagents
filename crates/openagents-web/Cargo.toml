@@ -33,6 +33,10 @@ snap-rules = { path = "../snap-rules" }
 qrcodegen = "1.8"
 zip = { version = "3", default-features = false, features = ["deflate"] }
 robot-lab = { path = "../robot-lab" }
+# Hosted Labs kinds (labs_kinds.rs).
+game-lab = { path = "../game-lab" }
+ship-lab = { path = "../ship-lab" }
+video-lab = { path = "../video-lab" }
 user-home = { path = "../user-home" }
 sand-garden = { path = "../sand-garden" }
 openagents-ui = { path = "../openagents-ui" }
@@ -104,6 +108,7 @@ url = "2"
 workbench = { path = "../workbench" }
 
 [dev-dependencies]
+verse-lagrange2 = { path = "../verse-lagrange2" }
 jsonschema = { version = "0.33", default-features = false }
 lightning-invoice = "0.34.1"
 bitcoin = "0.32"

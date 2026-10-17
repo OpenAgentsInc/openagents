@@ -84,6 +84,7 @@ mod lab;
 mod lab_card_view;
 mod labs;
 pub mod labs_api;
+pub(crate) mod labs_kinds;
 mod layout;
 mod link_preview;
 pub mod mac_jobs;

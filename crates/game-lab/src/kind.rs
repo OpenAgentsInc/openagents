@@ -96,8 +96,18 @@ pub fn playtest_handler(input: &[u8]) -> Result<Value, String> {
     use base64::Engine;
     let input: Value =
         serde_json::from_slice(input).map_err(|_| "Read the playtest job.".to_owned())?;
-    let content = &input["work"]["version"]["content"];
-    let measured = measurements(content).map_err(|r| r.message)?;
+    let base = &input["work"]["version"]["content"];
+    // A hosted edit asks the bot to play the base version with its patch
+    // applied, before that content is saved as a version.
+    let patch = &input["work"]["assignment"]["lease"]["job"]["spec"]["params"]["patch"];
+    let measured = if patch.is_array() {
+        let ops = patch.as_array().cloned().unwrap_or_default();
+        let (after, _, _) = propose(base, &ops).map_err(|(_, why)| why)?;
+        measurements(&after)
+    } else {
+        measurements(base)
+    }
+    .map_err(|r| r.message)?;
     let bytes = serde_json::to_vec(&measured).map_err(|e| e.to_string())?;
     Ok(json!({"outputs": [{
         "role": "export",
@@ -129,7 +139,11 @@ fn checked(content: &Value) -> Result<doc::Game, Refusal> {
     }
 }
 
-fn ops_of(change: &Change) -> Result<Vec<Value>, Refusal> {
+/// The JSON Patch operations a change makes to a game.
+///
+/// # Errors
+/// The change isn't an edit, or its patch can't be read.
+pub fn ops_of(change: &Change) -> Result<Vec<Value>, Refusal> {
     match change {
         Change::Patch { ops } => ops
             .iter()
@@ -413,6 +427,18 @@ mod tests {
         let measured: Value = serde_json::from_slice(&bytes).unwrap();
         assert!(Game::check(&content, &measured).is_ok());
         assert!(playtest_handler(b"{}").is_err());
+
+        // A hosted edit's playtest plays the base with the patch applied.
+        let patch = json!([{"op": "replace", "path": "/man/man_chase", "value": 6.2}]);
+        let input = json!({"work": {"version": {"content": content},
+            "assignment": {"lease": {"job": {"spec": {"params": {"patch": patch}}}}}}});
+        let output = playtest_handler(input.to_string().as_bytes()).unwrap();
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(output["outputs"][0]["content_base64"].as_str().unwrap())
+            .unwrap();
+        let measured: Value = serde_json::from_slice(&bytes).unwrap();
+        let (after, _, _) = propose(&content, patch.as_array().unwrap()).unwrap();
+        assert_eq!(measured["content_sha256"], lab_kit::digest(&after));
     }
 
     #[test]

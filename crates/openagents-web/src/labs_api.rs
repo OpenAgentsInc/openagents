@@ -268,6 +268,15 @@ pub(crate) fn runtime(app: &App) -> Arc<Api> {
                 Gate::Experimental,
             )
             .expect("Unique fixture kind");
+        registry
+            .register(Arc::new(crate::labs_kinds::GameApi), Gate::Experimental)
+            .expect("Unique Game kind");
+        registry
+            .register(Arc::new(crate::labs_kinds::ship()), Gate::Experimental)
+            .expect("Unique Ship kind");
+        registry
+            .register(Arc::new(crate::labs_kinds::video()), Gate::Experimental)
+            .expect("Unique Video kind");
     }
     Arc::new(Api {
         backend,

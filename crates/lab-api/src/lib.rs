@@ -196,6 +196,7 @@ pub struct KindAdapter<K> {
     tool: fn(&str, &Value) -> Result<Tool, ApiError>,
     tools: Option<&'static [&'static str]>,
     pins: Option<PinsFn>,
+    measurements: Value,
     marker: std::marker::PhantomData<K>,
 }
 impl<K> KindAdapter<K> {
@@ -204,6 +205,7 @@ impl<K> KindAdapter<K> {
             tool,
             tools: None,
             pins: None,
+            measurements: Value::Null,
             marker: Default::default(),
         }
     }
@@ -211,6 +213,13 @@ impl<K> KindAdapter<K> {
     #[must_use]
     pub fn with_tools(mut self, tools: &'static [&'static str]) -> Self {
         self.tools = Some(tools);
+        self
+    }
+    /// The measurements every hosted check gets, for a kind whose checks
+    /// accept a stated default (Video's `allow_missing`).
+    #[must_use]
+    pub fn with_measurements(mut self, measurements: Value) -> Self {
+        self.measurements = measurements;
         self
     }
     #[must_use]
@@ -242,7 +251,7 @@ impl<K: LabKind + Send + Sync> Kind for KindAdapter<K> {
         summary: &str,
     ) -> lab_store::Result<CheckedDraft> {
         let _ = (store, document);
-        CheckedDraft::initial::<K>(schema, content, summary, &Value::Null)
+        CheckedDraft::initial::<K>(schema, content, summary, &self.measurements)
     }
     async fn change(
         &self,
@@ -252,7 +261,7 @@ impl<K: LabKind + Send + Sync> Kind for KindAdapter<K> {
         summary: &str,
     ) -> lab_store::Result<CheckedDraft> {
         let _ = store;
-        CheckedDraft::change::<K>(base, change, summary, &Value::Null)
+        CheckedDraft::change::<K>(base, change, summary, &self.measurements)
     }
     fn jobs(&self, version: &Version, want: &Want) -> Vec<JobSpec> {
         K::jobs_for(version, want)
