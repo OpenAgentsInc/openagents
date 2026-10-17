@@ -60,6 +60,17 @@ fn claude() -> Arc<dyn Harness> {
     Arc::new(openagents_harness::ClaudeHarness::new().with_executable(fixture))
 }
 
+/// OpenCode's driver over a fake 1.x `opencode serve`.
+fn opencode() -> Arc<dyn Harness> {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../harness/tests/fixtures/fake-kept-opencode.py");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&fixture, std::fs::Permissions::from_mode(0o755));
+    }
+    Arc::new(openagents_harness::OpencodeHarness::new().with_executable(fixture))
+}
+
 fn assemble_with(dir: &Path, harness: Arc<dyn Harness>) -> EngineCore {
     let id = harness.id();
     openagents_engine::set_keeper_launch(
@@ -306,6 +317,18 @@ fn a_pending_question_is_asked_again_after_the_engine_restarts() {
 
 #[test]
 fn a_restarted_engine_picks_up_claude_code_mid_turn() {
+    picks_up_a_driver_mid_turn(claude, HarnessId::ClaudeCode);
+}
+
+/// OpenCode reconnects to its server instead of replaying a journal: the
+/// engine tells it what of the turn was handed over, and it catches up from
+/// the session's messages.
+#[test]
+fn a_restarted_engine_picks_up_opencode_mid_turn() {
+    picks_up_a_driver_mid_turn(opencode, HarnessId::Opencode);
+}
+
+fn picks_up_a_driver_mid_turn(driver: fn() -> Arc<dyn Harness>, id: HarnessId) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().to_path_buf();
     let mut run = request(dir.path());
@@ -315,11 +338,8 @@ fn a_restarted_engine_picks_up_claude_code_mid_turn() {
         move || {
             let runtime = tokio::runtime::Runtime::new().unwrap();
             let core = runtime.block_on(async {
-                let core = assemble_with(&path, claude());
-                core.sessions
-                    .dispatch(CHAT, HarnessId::ClaudeCode, run, None)
-                    .await
-                    .unwrap();
+                let core = assemble_with(&path, driver());
+                core.sessions.dispatch(CHAT, id, run, None).await.unwrap();
                 core
             });
             wait_for("the first engine to see output", || {
@@ -335,7 +355,7 @@ fn a_restarted_engine_picks_up_claude_code_mid_turn() {
 
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let _guard = runtime.enter();
-    let core = assemble_with(dir.path(), claude());
+    let core = assemble_with(dir.path(), driver());
     wait_for("the run to finish", || {
         matches!(journal(dir.path()).last(), Some(AgentEvent::Done { .. }))
     });

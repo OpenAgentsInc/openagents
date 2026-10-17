@@ -385,11 +385,17 @@ pub(super) async fn start(
         // Only a binary that registered itself runs keepers; any other
         // host (a test, a tool) starts its agents directly.
         let launch = LAUNCH.get().cloned();
+        let mut meta = serde_json::to_value(&meta).unwrap_or_default();
+        // A driver that reconnects to its agent, rather than replaying its
+        // journal, learns what of the turn the earlier engine handed over.
+        if adopted.is_some() {
+            meta["handed"] = handed(&inner.journal, chat_id);
+        }
         let scope = launch.map(|(keeper_exe, keeper_args)| keeper::KeeperScope {
             root: keepers.root.clone(),
             keeper_exe,
             keeper_args,
-            meta: serde_json::to_value(&meta).unwrap_or_default(),
+            meta,
             orphan_after: keeper::ORPHAN_AFTER,
             detach: keepers.detach.clone(),
         });
@@ -423,6 +429,44 @@ pub(super) async fn start(
     } else {
         harness.run(request, controls).await
     }
+}
+
+/// What the run journal has of the chat's current turn: its text and
+/// reasoning, the tool calls and results, and whether the turn had ended.
+fn handed(journal: &RunJournal, chat_id: &str) -> serde_json::Value {
+    let mut events = Vec::new();
+    let mut between_turns = None;
+    if let Ok(rev) = journal.events_rev(chat_id) {
+        for event in rev.flatten() {
+            if matches!(
+                event.1,
+                AgentEvent::Done { .. } | AgentEvent::Steered { .. }
+            ) {
+                between_turns.get_or_insert(matches!(event.1, AgentEvent::Done { .. }));
+                break;
+            }
+            between_turns.get_or_insert(false);
+            events.push(event.1);
+        }
+    }
+    let (mut text, mut reasoning) = (String::new(), String::new());
+    let (mut tools, mut results) = (Vec::new(), Vec::new());
+    for event in events.iter().rev() {
+        match event {
+            AgentEvent::TextDelta { text: delta } => text.push_str(delta),
+            AgentEvent::ReasoningDelta { text: delta } => reasoning.push_str(delta),
+            AgentEvent::ToolCall { id, .. } => tools.push(id.clone()),
+            AgentEvent::ToolResult { id, .. } => results.push(id.clone()),
+            _ => {}
+        }
+    }
+    serde_json::json!({
+        "text": text,
+        "reasoning": reasoning,
+        "tools": tools,
+        "results": results,
+        "betweenTurns": between_turns.unwrap_or(false),
+    })
 }
 
 /// Where a run that picks up a kept agent continues its transcript.
