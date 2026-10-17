@@ -196,7 +196,7 @@
         "env": {}
       }
     },
-    "replicas": 1
+    "replicaCount": 1
   },
   "space-node-manager-local": {
     "image": {

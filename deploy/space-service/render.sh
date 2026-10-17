@@ -32,8 +32,10 @@ for filename in ('worker.yaml','builder.yaml','migrate.yaml'):
         key=(doc['kind'],doc['metadata'].get('namespace'),doc['metadata']['name'])
         assert key not in seen, 'A resource is owned by two renders.'
         seen.add(key)
+        if doc['kind']=='HorizontalPodAutoscaler': assert doc['spec']['minReplicas']==doc['spec']['maxReplicas']==1
         if doc['kind'] not in ('Deployment','DaemonSet','Job'): continue
         workloads+=1
+        if doc['kind']=='Deployment': assert doc['spec'].get('replicas',1)==1
         pod=doc['spec']['template']['spec']
         assert pod['imagePullSecrets']==[{'name':'space-image-reader'}]
         for container in pod.get('containers',[])+pod.get('initContainers',[]):
