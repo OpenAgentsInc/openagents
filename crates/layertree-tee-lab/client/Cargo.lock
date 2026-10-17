@@ -3,6 +3,13 @@
 version = 4
 
 [[package]]
+name = "agent-contract"
+version = "1.0.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "arrayvec"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -976,6 +983,7 @@ dependencies = [
 name = "nostr"
 version = "1.0.0"
 dependencies = [
+ "agent-contract",
  "ryu-js",
  "secp256k1 0.31.1",
  "serde",

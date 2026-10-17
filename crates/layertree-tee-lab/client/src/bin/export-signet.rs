@@ -95,26 +95,15 @@ fn transaction_fee(core: &Core, tx: &bitcoin::Transaction) -> Result<u64> {
         .checked_sub(outputs)
         .ok_or("negative transaction fee".into())
 }
-fn halt_events(root: &Path, core: &Core, tip: u32, writer: &mut Writer) -> Result<Value> {
+/// The tree a recovery spends and its saved escape, checked for every member.
+struct Recovery {
+    params: layertree_tee_lab::rules::TreeParams,
+    state: layertree_tee_lab::rules::TreeState,
+    package: layertree_tee_lab::unroll::UnrollPackage,
+}
+fn recovery(root: &Path, point_text: &str) -> Result<Recovery> {
     use layertree_tee_lab::{output::TreeOutput, rules::TreeState, unroll::UnrollPackage};
-    let path = root.join("halt-observer-state.json");
-    let status: Value = read(&path)?;
-    let point_text = status["halted_state"]["outpoint"]
-        .as_str()
-        .ok_or("missing halted output")?;
     let point = rpc::outpoint(point_text)?;
-    let halted = u32::try_from(
-        status["halted_at_height"]
-            .as_u64()
-            .ok_or("missing HALT height")?,
-    )
-    .map_err(|_| "invalid HALT height")?;
-    if status["halted_state"]["halted"] != true
-        || status["signing_refusal"] != "Halted"
-        || halted > tip
-    {
-        return Err("missing observed HALT and exact signing refusal".into());
-    }
     let snapshot: rpc::Snapshot = read(recorded(root, point_text)?.join("state-before.json"))?;
     let params = snapshot.params.params()?;
     let tree = rpc::tree(params.depth, &snapshot.leaves)?;
@@ -152,6 +141,36 @@ fn halt_events(root: &Path, core: &Core, tip: u32, writer: &mut Writer) -> Resul
     if package.txs.len() != 1 {
         return Err("this experiment requires a flat escape package".into());
     }
+    Ok(Recovery {
+        params,
+        state,
+        package,
+    })
+}
+fn halt_events(root: &Path, core: &Core, tip: u32, writer: &mut Writer) -> Result<Value> {
+    let path = root.join("halt-observer-state.json");
+    let status: Value = read(&path)?;
+    let point_text = status["halted_state"]["outpoint"]
+        .as_str()
+        .ok_or("missing halted output")?;
+    let point = rpc::outpoint(point_text)?;
+    let halted = u32::try_from(
+        status["halted_at_height"]
+            .as_u64()
+            .ok_or("missing HALT height")?,
+    )
+    .map_err(|_| "invalid HALT height")?;
+    if status["halted_state"]["halted"] != true
+        || status["signing_refusal"] != "Halted"
+        || halted > tip
+    {
+        return Err("missing observed HALT and exact signing refusal".into());
+    }
+    let Recovery {
+        params,
+        state,
+        package,
+    } = recovery(root, point_text)?;
     let (_, opened) = confirmed(core, &point.txid.to_string())?;
     let first = opened
         .checked_add(u32::from(params.unroll_delay))
@@ -206,6 +225,19 @@ fn halt_events(root: &Path, core: &Core, tip: u32, writer: &mut Writer) -> Resul
         result["observed_tip"] = tip.into();
         return Ok(result);
     }
+    paid_events(root, core, writer, &state, parent, first, result)
+}
+/// The confirmed escape and its fee child: exact payouts to every member.
+fn paid_events(
+    root: &Path,
+    core: &Core,
+    writer: &mut Writer,
+    state: &layertree_tee_lab::rules::TreeState,
+    parent: &bitcoin::Transaction,
+    first: u32,
+    mut result: Value,
+) -> Result<Value> {
+    let parent_id = parent.compute_txid().to_string();
     let plan: Value = read(root.join("unroll-package.json"))?;
     let (actual, paid) = confirmed(core, &parent_id)?;
     let child_id = plan["child_txid"].as_str().ok_or("missing CPFP child")?;
@@ -282,12 +314,125 @@ fn halt_events(root: &Path, core: &Core, tip: u32, writer: &mut Writer) -> Resul
     result["payouts"] = payouts.into();
     Ok(result)
 }
+/// The highest block whose header time is at or before `unix`.
+fn height_at(core: &Core, tip: u32, unix: u64) -> Result<u32> {
+    let mut height = tip;
+    loop {
+        let hash = core.call("getblockhash", json!([height]))?;
+        let header = core.call("getblockheader", json!([hash]))?;
+        if header["time"].as_u64().ok_or("missing block time")? <= unix {
+            return Ok(height);
+        }
+        height = height.checked_sub(1).ok_or("no block before the kill")?;
+    }
+}
+/// The deliberate physical kill (#11793): the scheduled deletion removes the
+/// enclave's VM with no HALT, after the qualified soak, and members recover
+/// through the saved escape alone.
+fn kill_events(root: &Path, core: &Core, tip: u32, writer: &mut Writer) -> Result<Value> {
+    let path = root.join("observer-state.json");
+    let status: Value = read(&path)?;
+    let audit_path = root.join("vm-deletion-audit.json");
+    let audit: Value = read(&audit_path)?;
+    let progress: Value = read(root.join("progress.json"))?;
+    let last = progress["last_transaction"]
+        .as_str()
+        .ok_or("missing last tree transaction")?;
+    let point_text = format!("{last}:0");
+    let point = rpc::outpoint(&point_text)?;
+    let time = |value: &Value, what: &str| value.as_f64().ok_or(format!("missing {what}"));
+    let soak_end = time(&status["soak_ends_at_unix"], "soak end")?;
+    let qualified = time(&status["elapsed_soak_observed_at_unix"], "qualified soak")?;
+    let scheduled = time(&status["qualified_kill_at_unix"], "scheduled kill")?;
+    let lost = time(&status["endpoint_lost_at_unix"], "observed endpoint loss")?;
+    let started = time(&audit["started_at_unix"], "deletion start")?;
+    let deleted = time(&audit["completed_at_unix"], "deletion completion")?;
+    if !matches!(status["phase"].as_str(), Some("unroll" | "paid"))
+        || status["late_heartbeats"].as_array().is_some_and(|late| {
+            late.iter()
+                .any(|row| row["height"].as_u64() > status["soak_began_height"].as_u64())
+        })
+        || qualified < soak_end
+        || scheduled < qualified
+        || started + 5.0 < scheduled
+        || deleted < started
+        || lost < started
+        || audit["method"] != "v1.compute.instances.delete"
+        || audit["resource"]
+            != "projects/openagentsgemini/zones/us-central1-a/instances/oa-layertree-signet-tdx"
+        || audit["error"] != Value::Null
+        || !audit["instance_id"].as_str().is_some_and(|id| {
+            status["qualified_kill_task"]
+                .as_str()
+                .is_some_and(|task| task.ends_with(&format!("/delete-{id}-clean24")))
+        })
+    {
+        return Err("missing an audited scheduled deletion after a clean qualified soak".into());
+    }
+    let Recovery {
+        params,
+        state,
+        package,
+    } = recovery(root, &point_text)?;
+    let (_, opened) = confirmed(core, last)?;
+    let first = opened
+        .checked_add(u32::from(params.unroll_delay))
+        .ok_or("height overflow")?;
+    let killed = height_at(core, tip, deleted as u64)?;
+    if killed < opened || killed >= first {
+        return Err("the kill does not fall inside the last output's CSV window".into());
+    }
+    writer.push(Some(killed), Body::EnclaveDown {});
+    writer.push(
+        Some(killed),
+        Body::Measured {
+            what: "blocks_from_kill_to_first_valid_block".into(),
+            value: u64::from(first - killed),
+            unit: "blocks".into(),
+            level: Some(0),
+        },
+    );
+    let parent = &package.txs[0];
+    let parent_id = parent.compute_txid().to_string();
+    let hash = |path: &Path, what: &str| -> Result<String> {
+        Ok(
+            sha256::Hash::hash(&fs::read(path).map_err(|_| format!("cannot read {what}"))?)
+                .to_string(),
+        )
+    };
+    let mut result = json!({"kind":"physical_vm_kill","physical_vm_kill":true,
+        "deletion_started_at_unix":started,"deletion_completed_at_unix":deleted,
+        "endpoint_lost_at_unix":lost,"kill_height":killed,"tree_confirmation_height":opened,
+        "first_valid_block":first,"observer_state_sha256":hash(&path, "observer state")?,
+        "deletion_audit_sha256":hash(&audit_path, "deletion audit")?,
+        "parent_txid":parent_id,"status":"waiting_csv"});
+    if status["phase"] != "paid" {
+        core.output(point, true)?;
+        let pending = &status["unroll_last_result"];
+        let tests = pending["testmempoolaccept"]
+            .as_array()
+            .ok_or("missing early CSV test")?;
+        if pending["status"] != "waiting_csv"
+            || tip.checked_add(1).ok_or("height overflow")? >= first
+            || tests.len() != 1
+            || tests[0]["txid"] != parent_id
+            || tests[0]["allowed"] != false
+            || tests[0]["reject-reason"] != "non-BIP68-final"
+        {
+            return Err("the early escape was not refused for its actual CSV delay".into());
+        }
+        writer.push(Some(tip), Body::Block { spent: vec![] });
+        result["observed_tip"] = tip.into();
+        return Ok(result);
+    }
+    paid_events(root, core, writer, &state, parent, first, result)
+}
 fn export(
     root: &Path,
     release_dir: &Path,
     output: &Path,
     refusal_output: Option<&Path>,
-    halt: bool,
+    recovery: Option<&str>,
 ) -> Result<Value> {
     let core = Core::new(
         std::env::var_os("LAYERTREE_CHAIN_COOKIE").ok_or("set the scratch signet cookie path")?,
@@ -524,10 +669,10 @@ fn export(
             "capture":capture.file_name().and_then(|s|s.to_str()),"capture_time":now,"source_commit":checked.source_commit,
             "token_sha256":sha256::Hash::hash(token.as_bytes()).to_string(),"fee_sat":fee,"vsize":tx.vsize()}));
     }
-    let recovery = if halt {
-        Some(halt_events(root, &core, tip, &mut writer)?)
-    } else {
-        None
+    let recovery = match recovery {
+        Some("--halt") => Some(halt_events(root, &core, tip, &mut writer)?),
+        Some("--kill") => Some(kill_events(root, &core, tip, &mut writer)?),
+        _ => None,
     };
     let text = writer.to_jsonl();
     let checked = events::read(&text).map_err(|e| format!("exported events refused: {e:?}"))?;
@@ -557,14 +702,14 @@ fn main() {
             Path::new(&args[0]),
             Path::new(&args[1]),
             Path::new(&args[2]),
+            args.get(3).filter(|s| !s.starts_with("--")).map(Path::new),
             args.get(3)
-                .filter(|s| s.as_str() != "--halt")
-                .map(Path::new),
-            args.get(3).map(String::as_str) == Some("--halt"),
+                .map(String::as_str)
+                .filter(|s| s.starts_with("--")),
         )
     } else {
         Err(
-            "use PUBLIC_CAPTURE_DIRECTORY RELEASE_DIRECTORY OUTPUT.jsonl [REFUSAL_VIEW.jsonl|--halt]"
+            "use PUBLIC_CAPTURE_DIRECTORY RELEASE_DIRECTORY OUTPUT.jsonl [REFUSAL_VIEW.jsonl|--halt|--kill]"
                 .into(),
         )
     };
