@@ -60,6 +60,32 @@ fn bounded_text(parts: &[MessagePart]) -> String {
 }
 
 impl DocHost {
+    /// A chat's bounded context, for moving it to a cloud computer (#11933).
+    pub(crate) fn move_seed(&self, chat: &str, title: &str) -> Result<Seed, EngineError> {
+        context(self.open(chat)?.doc(), title)
+    }
+
+    /// The signed-in account's lease, for the Computers API (#11933).
+    pub(crate) fn move_lease(&self) -> Option<openagents_account::Lease> {
+        self.openagents_lease()
+    }
+
+    /// A chat part's current revision in the account's chat index, for
+    /// continuing it on this computer (#11933).
+    pub(crate) async fn part_revision(&self, chat: &str) -> Result<u64, EngineError> {
+        let lease = self
+            .openagents_lease()
+            .ok_or_else(|| EngineError::Other("Sign in to OpenAgents on this computer.".into()))?;
+        let remote = openagents_account::openagents::sessions::get(
+            lease.client(),
+            lease.session(),
+            chat,
+            &lease.cancel,
+        )
+        .await?;
+        Ok(remote.session.last_activity_unix.max(1))
+    }
+
     pub(crate) async fn prepare_destination(
         &self,
         chat: &str,

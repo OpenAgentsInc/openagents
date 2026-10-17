@@ -50,6 +50,7 @@
 //! handlers stay transport-agnostic. This includes the workspace file surface,
 //! whose checkout always lives on the routed target device.
 
+mod moves;
 mod voice_chat;
 mod voice_remote;
 use async_trait::async_trait;
@@ -1901,6 +1902,9 @@ impl RpcService for EngineRpc {
         }
         if voice_remote::handles(method) {
             return self.voice_remote(method, params).await;
+        }
+        if moves::handles(method) {
+            return self.handle_move(method, params).await;
         }
         if AuthRpc::handles(method) {
             return AuthRpc::new(self.auth()?.clone())

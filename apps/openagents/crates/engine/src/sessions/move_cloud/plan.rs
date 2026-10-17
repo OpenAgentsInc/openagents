@@ -276,6 +276,78 @@ impl PlanStore {
             .into_iter()
             .find(|p| p.chat(chat).is_some_and(|c| !c.state.finished())))
     }
+
+    /// The person approved the plan in the app.
+    pub fn approve(&self, id: &str, now: u64) -> Result<MovePlan, PlanError> {
+        let mut plan = self.load(id)?;
+        if plan.approved_unix.is_none() {
+            plan.approved_unix = Some(now);
+            self.save(&plan)?;
+        }
+        Ok(plan)
+    }
+
+    /// Drop a plan that hasn't started.
+    pub fn discard(&self, moves: &MoveStore, id: &str, now: u64) -> Result<(), PlanError> {
+        let plan = self.load(id)?;
+        if plan.approved_unix.is_some() {
+            return Err(PlanError::Started);
+        }
+        for chat in &plan.chats {
+            moves.retire(&chat.chat, now)?;
+        }
+        self.remove(id)
+    }
+
+    /// Ask to bring a moved chat back. It runs once approved.
+    pub fn request_bring_back(
+        &self,
+        chat: &str,
+        after: AfterBringBack,
+        requested_by: Requester,
+    ) -> Result<MovePlan, PlanError> {
+        let mut plan = self
+            .active_for(chat)?
+            .filter(|p| p.chat(chat).is_some_and(|c| c.state.moved()))
+            .ok_or(PlanError::NotMoved)?;
+        let entry = plan.chat_mut(chat).ok_or(PlanError::NotMoved)?;
+        match &mut entry.back {
+            Some(back) if back.approved => {}
+            Some(back) => {
+                back.after = after;
+                back.requested_by = requested_by;
+            }
+            None => {
+                entry.back = Some(BackRecord {
+                    after,
+                    requested_by,
+                    approved: false,
+                    agent_stopped: false,
+                    bundle: None,
+                    branch: None,
+                    continued: false,
+                    computer_done: false,
+                    done: false,
+                })
+            }
+        }
+        self.save(&plan)?;
+        Ok(plan)
+    }
+
+    /// The person approved bringing this chat back.
+    pub fn approve_bring_back(&self, id: &str, chat: &str) -> Result<MovePlan, PlanError> {
+        let mut plan = self.load(id)?;
+        let back = plan
+            .chat_mut(chat)
+            .and_then(|c| c.back.as_mut())
+            .ok_or(PlanError::NotMoved)?;
+        if !back.approved {
+            back.approved = true;
+            self.save(&plan)?;
+        }
+        Ok(plan)
+    }
 }
 
 /// A chat to plan, with what the card shows.
@@ -512,24 +584,12 @@ impl<H: MoveHooks> Planner<'_, H> {
 
     /// The person approved the plan in the app.
     pub fn approve(&self, id: &str, now: u64) -> Result<MovePlan, PlanError> {
-        let mut plan = self.plans.load(id)?;
-        if plan.approved_unix.is_none() {
-            plan.approved_unix = Some(now);
-            self.plans.save(&plan)?;
-        }
-        Ok(plan)
+        self.plans.approve(id, now)
     }
 
     /// Drop a plan that hasn't started.
     pub fn discard(&self, id: &str, now: u64) -> Result<(), PlanError> {
-        let plan = self.plans.load(id)?;
-        if plan.approved_unix.is_some() {
-            return Err(PlanError::Started);
-        }
-        for chat in &plan.chats {
-            self.moves.retire(&chat.chat, now)?;
-        }
-        self.plans.remove(id)
+        self.plans.discard(self.moves, id, now)
     }
 
     /// Run an approved plan, or continue it from where it stopped.
@@ -735,48 +795,12 @@ impl<H: MoveHooks> Planner<'_, H> {
         after: AfterBringBack,
         requested_by: Requester,
     ) -> Result<MovePlan, PlanError> {
-        let mut plan = self
-            .plans
-            .active_for(chat)?
-            .filter(|p| p.chat(chat).is_some_and(|c| c.state.moved()))
-            .ok_or(PlanError::NotMoved)?;
-        let entry = plan.chat_mut(chat).ok_or(PlanError::NotMoved)?;
-        match &mut entry.back {
-            Some(back) if back.approved => {}
-            Some(back) => {
-                back.after = after;
-                back.requested_by = requested_by;
-            }
-            None => {
-                entry.back = Some(BackRecord {
-                    after,
-                    requested_by,
-                    approved: false,
-                    agent_stopped: false,
-                    bundle: None,
-                    branch: None,
-                    continued: false,
-                    computer_done: false,
-                    done: false,
-                })
-            }
-        }
-        self.plans.save(&plan)?;
-        Ok(plan)
+        self.plans.request_bring_back(chat, after, requested_by)
     }
 
     /// The person approved bringing this chat back.
     pub fn approve_bring_back(&self, id: &str, chat: &str) -> Result<MovePlan, PlanError> {
-        let mut plan = self.plans.load(id)?;
-        let back = plan
-            .chat_mut(chat)
-            .and_then(|c| c.back.as_mut())
-            .ok_or(PlanError::NotMoved)?;
-        if !back.approved {
-            back.approved = true;
-            self.plans.save(&plan)?;
-        }
-        Ok(plan)
+        self.plans.approve_bring_back(id, chat)
     }
 
     /// Bring an approved chat back: stop the cloud agent, fetch the cloud

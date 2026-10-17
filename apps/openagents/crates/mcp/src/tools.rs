@@ -197,6 +197,45 @@ fn catalog() -> Vec<ToolDef> {
                 "archived": { "type": "boolean", "default": true }
             })),
         },
+        ToolDef {
+            name: "plan_move",
+            description: "Plan moving running chats to a cloud computer so they keep running while this computer restarts or updates. Omit chats to plan every agent running on this computer. Returns the plan with each chat's state and the estimated paid cloud computer time. Nothing moves until the person approves the plan in the OpenAgents app; tell them what it will cost and ask them to approve it.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "chats": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Chat ids, unique id prefixes, or exact titles. Omit for every running agent."
+                    },
+                    "computer": { "type": "string", "description": "An existing cloud computer's id. Omit for a new one." }
+                }
+            }),
+        },
+        ToolDef {
+            name: "start_move",
+            description: "Start an approved move plan, or continue one that stopped partway. A retry never makes a second computer or a second continuation. Refused while the plan waits for the person's approval in the OpenAgents app.",
+            input_schema: json!({
+                "type": "object",
+                "properties": { "plan_id": { "type": "string" } },
+                "required": ["plan_id"]
+            }),
+        },
+        ToolDef {
+            name: "move_status",
+            description: "Read move plans, newest first, or one plan: each chat's state (planned, pausing, captured, provisioned, restored, continued, released, stays_here, brought_back), the reason when a chat stays on this computer, and any Bring back.",
+            input_schema: json!({
+                "type": "object",
+                "properties": { "plan_id": { "type": "string" } }
+            }),
+        },
+        ToolDef {
+            name: "bring_back",
+            description: "Ask to bring a chat that moved to a cloud computer back to this computer: its work is fetched onto a local branch, the chat continues here, and the cloud computer is stopped (default), deleted, or kept. It runs once the person approves it in the OpenAgents app.",
+            input_schema: chat_key_schema(json!({
+                "after": { "type": "string", "enum": ["stop", "delete", "keep"], "default": "stop" }
+            })),
+        },
     ];
     for (name, single, description) in [
         (
@@ -562,6 +601,39 @@ struct ArchiveArgs {
 }
 
 #[derive(Deserialize)]
+struct PlanMoveArgs {
+    #[serde(default)]
+    chats: Vec<String>,
+    computer: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PlanIdArgs {
+    plan_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct BringBackArgs {
+    chat: String,
+    #[serde(default)]
+    after: Option<openagents_rpc::moves::AfterBringBack>,
+}
+
+/// What the agent tells the person when a move waits for them.
+const APPROVE_IN_APP: &str = "Waiting for approval: the person using this computer approves moves and Bring backs in the OpenAgents app.";
+
+/// A plan as the tools return it, with the next step in words.
+fn plan_reply(plan: Value) -> anyhow::Result<Value> {
+    let view: openagents_rpc::moves::PlanView = serde_json::from_value(plan.clone())?;
+    let mut reply = plan;
+    reply["estimate"] = json!(openagents_rpc::moves::estimate_label(view.estimate_minutes));
+    if view.needs_approval() {
+        reply["next"] = json!(APPROVE_IN_APP);
+    }
+    Ok(reply)
+}
+
+#[derive(Deserialize)]
 struct RespondArgs {
     chat: String,
     request_id: Option<String>,
@@ -699,6 +771,10 @@ impl Tools {
             "interrupt_chat" => self.interrupt_chat(parse(args)?).await,
             "respond_to_input" => self.respond_to_input(parse(args)?).await,
             "archive_chat" => self.archive_chat(parse(args)?).await,
+            "plan_move" => self.plan_move(parse(args)?).await,
+            "start_move" => self.start_move(parse(args)?).await,
+            "move_status" => self.move_status(parse(args)?).await,
+            "bring_back" => self.bring_back(parse(args)?).await,
             SHOW_VISUAL => self.show_visual(parse(args)?).await,
             lab if crate::video_lab::has(lab) => return self.video_lab(lab, args).await,
             other => return Err(format!("unknown tool: {other}")),
@@ -1213,6 +1289,63 @@ impl Tools {
         Ok(json!({ "chatId": chat.id, "title": chat.title, "archived": archived }))
     }
 
+    async fn plan_move(&self, args: PlanMoveArgs) -> anyhow::Result<Value> {
+        let mut chats = Vec::new();
+        for key in &args.chats {
+            chats.push(self.openagents.resolve_chat(key).await?.id);
+        }
+        let plan = self
+            .openagents
+            .call(
+                openagents_rpc::moves::PLAN_MOVE,
+                json!({ "chats": chats, "computer": args.computer, "requestedBy": "agent" }),
+            )
+            .await?;
+        plan_reply(plan)
+    }
+
+    async fn start_move(&self, args: PlanIdArgs) -> anyhow::Result<Value> {
+        let plan_id = args.plan_id.context("plan_id is required")?;
+        let plan = self
+            .openagents
+            .call(
+                openagents_rpc::moves::START_MOVE,
+                json!({ "planId": plan_id }),
+            )
+            .await?;
+        plan_reply(plan)
+    }
+
+    async fn move_status(&self, args: PlanIdArgs) -> anyhow::Result<Value> {
+        let status = self
+            .openagents
+            .call(
+                openagents_rpc::moves::MOVE_STATUS,
+                json!({ "planId": args.plan_id }),
+            )
+            .await?;
+        let plans = status["plans"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .map(plan_reply)
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        Ok(json!({ "plans": plans }))
+    }
+
+    async fn bring_back(&self, args: BringBackArgs) -> anyhow::Result<Value> {
+        let chat = self.openagents.resolve_chat(&args.chat).await?;
+        let plan = self
+            .openagents
+            .call(
+                openagents_rpc::moves::BRING_BACK,
+                json!({ "chat": chat.id, "after": args.after.unwrap_or_default(), "requestedBy": "agent" }),
+            )
+            .await?;
+        plan_reply(plan)
+    }
+
     async fn show_visual(&self, args: ShowVisualArgs) -> anyhow::Result<Value> {
         let chat_id = self
             .openagents
@@ -1684,6 +1817,31 @@ mod tests {
                         .push((method.to_owned(), params.clone()));
                     RpcReply::Value(json!({ "id": "v:1", "title": params["title"] }))
                 }
+                openagents_rpc::moves::START_MOVE => {
+                    return Err(RpcError::Failed(
+                        "This move isn't approved yet. The person using this computer can approve it in the OpenAgents app.".into(),
+                    ));
+                }
+                openagents_rpc::moves::PLAN_MOVE
+                | openagents_rpc::moves::MOVE_STATUS
+                | openagents_rpc::moves::BRING_BACK => {
+                    self.writes
+                        .lock()
+                        .unwrap()
+                        .push((method.to_owned(), params.clone()));
+                    let plan = json!({
+                        "id": "plan-0123456789abcdef", "createdUnix": 1, "requestedBy": "agent",
+                        "approved": false, "computer": null, "destination": "A new cloud computer",
+                        "estimateMinutes": 67,
+                        "chats": [{ "chat": "chat-alpha-1", "title": "Alpha", "agent": "Claude Code",
+                                    "state": "planned", "reason": null, "bringBack": null }]
+                    });
+                    if method == openagents_rpc::moves::MOVE_STATUS {
+                        RpcReply::Value(json!({ "plans": [plan] }))
+                    } else {
+                        RpcReply::Value(plan)
+                    }
+                }
                 methods::MUTATE | methods::QUEUE_COMMAND | methods::QUEUE_MESSAGE => {
                     self.writes
                         .lock()
@@ -1719,6 +1877,46 @@ mod tests {
             assert_eq!(def.input_schema["type"], "object", "{}", def.name);
             assert!(!def.description.is_empty());
         }
+    }
+
+    #[tokio::test]
+    async fn move_tools_plan_as_the_agent_and_never_approve() {
+        let world = Arc::new(World::default());
+        let tools = tools(world.clone(), Origin::default());
+        assert!(
+            !catalog().iter().any(|t| t.name.contains("approve")),
+            "only the app approves a move"
+        );
+        let plan = tools
+            .call("plan_move", json!({ "chats": ["Alpha"] }))
+            .await
+            .unwrap();
+        assert_eq!(plan["estimate"], "About 1 hr 7 min of cloud computer time");
+        assert_eq!(plan["next"], APPROVE_IN_APP);
+        let (method, params) = world.writes.lock().unwrap().last().cloned().unwrap();
+        assert_eq!(method, openagents_rpc::moves::PLAN_MOVE);
+        assert_eq!(params["chats"], json!(["chat-alpha-1"]));
+        assert_eq!(params["requestedBy"], "agent");
+
+        let refused = tools
+            .call("start_move", json!({ "plan_id": "plan-0123456789abcdef" }))
+            .await
+            .unwrap_err();
+        assert!(
+            refused.contains("approve it in the OpenAgents app"),
+            "{refused}"
+        );
+
+        tools
+            .call("bring_back", json!({ "chat": "Alpha", "after": "delete" }))
+            .await
+            .unwrap();
+        let (_, params) = world.writes.lock().unwrap().last().cloned().unwrap();
+        assert_eq!(params["after"], "delete");
+        assert_eq!(params["requestedBy"], "agent");
+
+        let status = tools.call("move_status", json!({})).await.unwrap();
+        assert_eq!(status["plans"][0]["next"], APPROVE_IN_APP);
     }
 
     #[test]
