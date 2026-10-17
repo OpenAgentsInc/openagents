@@ -29184,7 +29184,7 @@
             }
           }
         },
-        "description": "Stored status is not a live grant check. A later Drive request can discover a revoked grant. No refresh or access token is returned. Tools may include other separately qualified Google features."
+        "description": "Stored status is not a live grant check. A later Drive request can discover a revoked grant. No refresh or access token is returned. Tools may include other Google features."
       },
       "AppConnectionConnect": {
         "type": "object",
