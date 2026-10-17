@@ -25,5 +25,20 @@
   "cad_live_qualification_performed": false,
   "production_promotion_performed": false,
   "production_shift_performed": false,
-  "stopped_by_owner": true
+  "stopped_by_owner": true,
+  "lane0_followup": {
+    "observed_at": "2026-10-17T03:31:01.381048+00:00",
+    "source_commit": "646d5fb6bd87a0e6c9feb0c5974dad9a59154be8",
+    "image_digest": "sha256:51e2d77b5a4ffc8df0b33aac965b569a7f4a4b8d15237a327baa1b1b682202a7",
+    "cloud_build": "84be4e6b-2dd8-4ed4-9f64-63226e813010",
+    "cloud_build_passed": true,
+    "staging_revision": "openagents-web-1-staging-646d5fb6bd-032744",
+    "staging_percent": 100,
+    "kept_existing_gateway_and_storage": true,
+    "standard_staging_smoke_pending": true,
+    "cad_live_qualification_performed": false,
+    "production_promotion_performed": false,
+    "production_shift_performed": false,
+    "next_step": "Lane 4 dedicated-account CAD staging qualification, then lane 0 production promotion and smoke."
+  }
 }
