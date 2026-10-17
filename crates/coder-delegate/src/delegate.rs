@@ -2072,11 +2072,11 @@ pub struct Cli {
     /// for the child. `None` removes any inherited value, so the child runs
     /// the CLI's default.
     pub prompt_cache_ttl: Option<String>,
-    /// Codex settings a watched session ([`Cli::live_command`]) passes as
+    /// Codex settings the shared harness passes as
     /// `-c key=value`, such as `service_tier="default"`; empty for every
     /// other agent and for [`Cli::command`].
     pub codex_config: Vec<String>,
-    /// The host's hook bridge a watched session ([`Cli::live_command`])
+    /// The host's hook bridge the shared harness
     /// runs before every tool (#11509): the session's registry on the
     /// host's socket, answering Claude Code's and Codex's command hooks.
     /// `None` runs no hooks.
@@ -2112,60 +2112,7 @@ pub const HOOK_TIMEOUT_SECS: u64 = 600;
 /// CLI's own `PreToolUse` command hook, so the host's registry (the floors
 /// first) answers every tool call Claude Code or Codex makes. OpenCode's
 /// `run` takes no command hooks; its calls are only seen afterwards.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HookBridge {
-    pub program: PathBuf,
-    /// The words before `--format`, such as `["coder-hook"]`.
-    pub args: Vec<String>,
-    /// The host's socket.
-    pub socket: PathBuf,
-}
-
-impl HookBridge {
-    /// The hook's shell command in `format` (`claude` or `codex`).
-    #[must_use]
-    pub fn command(&self, format: &str) -> String {
-        let mut words = vec![shell_word(&self.program.display().to_string())];
-        words.extend(self.args.iter().map(|arg| shell_word(arg)));
-        words.extend(["--format".to_owned(), shell_word(format)]);
-        words.join(" ")
-    }
-
-    /// Claude Code's `--settings`: the bridge as a `PreToolUse` hook on
-    /// every tool.
-    #[must_use]
-    pub fn claude_settings(&self) -> String {
-        serde_json::json!({"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [
-            {"type": "command", "command": self.command("claude"), "timeout": HOOK_TIMEOUT_SECS}
-        ]}]}})
-        .to_string()
-    }
-
-    /// Codex's `-c hooks.PreToolUse=...`, run without a trust prompt (the
-    /// host installed it itself).
-    #[must_use]
-    pub fn codex_args(&self) -> Vec<String> {
-        let command = serde_json::to_string(&self.command("codex")).unwrap_or_default();
-        vec![
-            "-c".into(),
-            format!("hooks.PreToolUse=[{{hooks=[{{type=\"command\",command={command}}}]}}]"),
-            "--dangerously-bypass-hook-trust".into(),
-        ]
-    }
-}
-
-/// One shell word, single-quoted unless it is plain.
-fn shell_word(text: &str) -> String {
-    if !text.is_empty()
-        && text
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '-' | '_'))
-    {
-        text.to_owned()
-    } else {
-        format!("'{}'", text.replace('\'', "'\\''"))
-    }
-}
+pub use openagents_harness::host::HookBridge;
 
 /// How [`Cli`] runs its session beyond starting it.
 #[derive(Clone, Default)]
@@ -2211,7 +2158,7 @@ impl Cli {
         if self.agent == Agent::Codex && variant.policy.mode == crate::system::Mode::Append {
             return Ok(());
         }
-        // `opencode run` takes no system prompt; OpenCode keeps its own.
+        // OpenCode keeps its own system prompt.
         if self.agent == Agent::OpenCode {
             return Ok(());
         }
@@ -2220,81 +2167,9 @@ impl Cli {
             .map_err(|error| format!("cannot write {}: {error}", path.display()))
     }
 
-    /// The two system prompt arguments the command script reads: the
-    /// replacing one and the appending one, empty when unused.
-    fn system_args(&self) -> (String, String) {
-        use crate::system::Mode as SystemMode;
-        let Some(variant) = &self.system else {
-            return (String::new(), String::new());
-        };
-        let path = self.system_path().to_string_lossy().into_owned();
-        // A JSON string is a TOML basic string, so Codex's `-c` reads the
-        // value as the string it is, whatever it holds.
-        let toml = |text: &str| serde_json::to_string(text).unwrap_or_default();
-        match (self.agent, variant.policy.mode) {
-            (Agent::ClaudeCode, SystemMode::Replace) => (path, String::new()),
-            (Agent::ClaudeCode, SystemMode::Append) => (String::new(), path),
-            (Agent::Codex | Agent::Microluna, SystemMode::Replace) => (
-                format!("model_instructions_file={}", toml(&path)),
-                String::new(),
-            ),
-            (Agent::Codex | Agent::Microluna, SystemMode::Append) => (
-                String::new(),
-                format!("developer_instructions={}", toml(&variant.text())),
-            ),
-            (Agent::OpenCode, _) => (String::new(), String::new()),
-        }
-    }
-
-    /// The command one run invokes: `binary` through `sh`, with the
-    /// briefing redirected in and the stream out, and the child's
-    /// environment set from the resolved configuration.
-    #[must_use]
-    pub fn command(&self, binary: &Path, briefing: &Path, stream: &Path) -> std::process::Command {
-        // The supervisor gives the child a null standard input, so a shell
-        // redirects the briefing in and the stream out to a file: the
-        // stream's last event is the result, and a capped pipe would lose it.
-        let script = match self.agent {
-            Agent::ClaudeCode => {
-                "exec \"$0\" -p --output-format stream-json --verbose --model \"$1\" \
-                 --permission-mode bypassPermissions ${4:+--tools \"$4\"} ${5:+--effort \"$5\"} \
-                 ${6:+--system-prompt-file \"$6\"} ${7:+--append-system-prompt-file \"$7\"} \
-                 < \"$2\" > \"$3\""
-            }
-            // The task container or the fresh clone is the boundary, so
-            // Codex runs without its own sandbox or approval prompts.
-            Agent::Codex | Agent::Microluna => {
-                "exec \"$0\" exec --json --skip-git-repo-check -m \"$1\" \
-                 ${5:+-c \"model_reasoning_effort=$5\"} ${6:+-c \"$6\"} ${7:+-c \"$7\"} \
-                 --dangerously-bypass-approvals-and-sandbox - < \"$2\" > \"$3\""
-            }
-            // The same boundary holds OpenCode, so it approves its own
-            // permission requests (`--auto`). The briefing is its input:
-            // `opencode run` quotes a positional message.
-            Agent::OpenCode => {
-                "exec \"$0\" run --format json ${1:+-m \"$1\"} ${5:+--variant \"$5\"} \
-                 --auto < \"$2\" > \"$3\""
-            }
-        };
-        let mut command = std::process::Command::new("sh");
-        command
-            .arg("-c")
-            .arg(script)
-            .arg(binary)
-            .arg(&self.model)
-            .arg(briefing)
-            .arg(stream)
-            .arg(self.tools.as_deref().unwrap_or_default())
-            .arg(self.effort.as_deref().unwrap_or_default());
-        let (replace, append) = self.system_args();
-        command.arg(replace).arg(append);
-        self.environ(&mut command);
-        command
-    }
-
     /// Sets the child's working directory and environment from the
     /// resolved configuration.
-    fn environ(&self, command: &mut std::process::Command) {
+    pub fn configure_command(&self, command: &mut std::process::Command) {
         command
             .current_dir(&self.workdir)
             // A parent Claude Code session's marker makes the CLI refuse to
@@ -2346,127 +2221,6 @@ impl Cli {
             command.env(name, value);
         }
     }
-
-    /// The command a watched session runs: `binary` itself, with no shell,
-    /// reading its input from the host and writing its stream to the host.
-    /// [`crate::adapter`] owns both ends.
-    #[must_use]
-    pub fn live_command(&self, binary: &Path, launch: &Launch) -> std::process::Command {
-        // An npm `.cmd` shim runs as Node and its script, never through
-        // `cmd.exe` (#11645).
-        let mut command = acp_client::process::command(binary);
-        command.args(self.live_args(launch));
-        self.environ(&mut command);
-        command
-    }
-
-    /// The arguments of [`Cli::live_command`].
-    #[must_use]
-    pub fn live_args(&self, launch: &Launch) -> Vec<String> {
-        let (replace, append) = self.system_args();
-        let mut args = Vec::new();
-        match self.agent {
-            Agent::ClaudeCode => {
-                args.extend(
-                    ["-p", "--output-format", "stream-json", "--verbose"].map(str::to_string),
-                );
-                if launch.steerable {
-                    args.extend(["--input-format", "stream-json"].map(str::to_string));
-                }
-                match &launch.session {
-                    SessionArg::New(Some(id)) => {
-                        args.extend(["--session-id".to_string(), id.clone()]);
-                    }
-                    SessionArg::New(None) => {}
-                    SessionArg::Resume(id) => args.extend(["--resume".to_string(), id.clone()]),
-                }
-                args.extend([
-                    "--model".to_string(),
-                    self.model.clone(),
-                    "--permission-mode".to_string(),
-                    "bypassPermissions".to_string(),
-                ]);
-                if let Some(tools) = &self.tools {
-                    args.extend(["--tools".to_string(), tools.clone()]);
-                }
-                if let Some(effort) = &self.effort {
-                    args.extend(["--effort".to_string(), effort.clone()]);
-                }
-                if !replace.is_empty() {
-                    args.extend(["--system-prompt-file".to_string(), replace]);
-                }
-                if !append.is_empty() {
-                    args.extend(["--append-system-prompt-file".to_string(), append]);
-                }
-                if let Some(hooks) = &self.hooks {
-                    args.extend(["--settings".to_string(), hooks.claude_settings()]);
-                }
-            }
-            Agent::Codex | Agent::Microluna => {
-                args.push("exec".to_string());
-                if let SessionArg::Resume(id) = &launch.session {
-                    args.extend(["resume".to_string(), id.clone()]);
-                }
-                args.extend([
-                    "--json".to_string(),
-                    "--skip-git-repo-check".to_string(),
-                    "-m".to_string(),
-                    self.model.clone(),
-                ]);
-                if let Some(effort) = &self.effort {
-                    args.extend(["-c".to_string(), format!("model_reasoning_effort={effort}")]);
-                }
-                for setting in [replace, append] {
-                    if !setting.is_empty() {
-                        args.extend(["-c".to_string(), setting]);
-                    }
-                }
-                for setting in &self.codex_config {
-                    args.extend(["-c".to_string(), setting.clone()]);
-                }
-                if let Some(hooks) = &self.hooks {
-                    args.extend(hooks.codex_args());
-                }
-                args.extend([
-                    "--dangerously-bypass-approvals-and-sandbox".to_string(),
-                    "-".to_string(),
-                ]);
-            }
-            // The message is the process's input, never an argument.
-            Agent::OpenCode => {
-                args.extend(["run", "--format", "json"].map(str::to_string));
-                if let SessionArg::Resume(id) = &launch.session {
-                    args.extend(["--session".to_string(), id.clone()]);
-                }
-                if !self.model.is_empty() {
-                    args.extend(["-m".to_string(), self.model.clone()]);
-                }
-                if let Some(effort) = &self.effort {
-                    args.extend(["--variant".to_string(), effort.clone()]);
-                }
-                args.push("--auto".to_string());
-            }
-        }
-        args
-    }
-}
-
-/// Which session a watched process belongs to.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum SessionArg {
-    /// A new session, with the ID the host chose when the CLI takes one.
-    New(Option<String>),
-    /// A resume of the session with this ID.
-    Resume(String),
-}
-
-/// How [`Cli::live_command`] launches a process.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Launch {
-    pub session: SessionArg,
-    /// Whether the process keeps reading messages after the first:
-    /// Claude Code's `--input-format stream-json`.
-    pub steerable: bool,
 }
 
 impl Executor for Cli {

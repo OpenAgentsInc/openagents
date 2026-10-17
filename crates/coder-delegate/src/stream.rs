@@ -53,6 +53,13 @@ impl Format {
             let Ok(event) = serde_json::from_str::<Value>(line) else {
                 continue;
             };
+            if event["type"] == "openagents.harness" {
+                return match event["agent"].as_str() {
+                    Some("claude-code") => Some(Format::Claude),
+                    Some("opencode") => Some(Format::OpenCode),
+                    _ => Some(Format::Codex),
+                };
+            }
             if event.get("sessionID").is_some() && event.get("timestamp").is_some() {
                 return Some(Format::OpenCode);
             }
@@ -152,14 +159,19 @@ pub fn normalize_line(format: Format, text: &str, line: usize, seq: &mut u64) ->
     let Ok(event) = serde_json::from_str::<Value>(text) else {
         return Vec::new();
     };
-    let mut kinds = match format {
-        Format::Codex => codex(&event),
-        Format::Claude => claude(&event),
-        Format::OpenCode => opencode(&event),
+    let shared = event["type"] == "openagents.harness";
+    let mut kinds = if shared {
+        serde_json::from_value::<Vec<Kind>>(event["kinds"].clone()).unwrap_or_default()
+    } else {
+        match format {
+            Format::Codex => codex(&event),
+            Format::Claude => claude(&event),
+            Format::OpenCode => opencode(&event),
+        }
     };
     // Every OpenCode line names its session and none announces it, so a
     // stream's first event is the session's start.
-    if format == Format::OpenCode && *seq == 0 {
+    if !shared && format == Format::OpenCode && *seq == 0 {
         kinds.insert(
             0,
             Kind::SessionStarted {
@@ -443,7 +455,27 @@ pub fn writes(format: Format, stream: &str) -> Vec<Write> {
         let Ok(event) = serde_json::from_str::<Value>(text) else {
             continue;
         };
-        match format {
+        let shared = event["type"] == "openagents.harness";
+        if shared && event["event"]["type"] == "toolResult" {
+            for kind in
+                serde_json::from_value::<Vec<Kind>>(event["kinds"].clone()).unwrap_or_default()
+            {
+                if let Kind::ArtifactChanged { path, .. } = kind {
+                    out.push(Write {
+                        line: i + 1,
+                        path,
+                        content: String::new(),
+                        how: UNKNOWN.into(),
+                    });
+                }
+            }
+        }
+        let event = if shared {
+            shared_tool_record(&event).unwrap_or(Value::Null)
+        } else {
+            event
+        };
+        match if shared { Format::Claude } else { format } {
             Format::Codex => {
                 if event.get("type").and_then(Value::as_str) == Some("item.completed")
                     && event.pointer("/item/type").and_then(Value::as_str)
@@ -577,7 +609,12 @@ pub fn writes(format: Format, stream: &str) -> Vec<Write> {
                                     for edit in &edits {
                                         let old = text_of(edit, "old_string")?;
                                         let new = text_of(edit, "new_string").unwrap_or_default();
-                                        if old.is_empty() || !content.contains(&old) {
+                                        if old.is_empty()
+                                            || !content.contains(&old)
+                                            || (shared
+                                                && input.get("replace_all").is_none()
+                                                && content.matches(&old).count() > 1)
+                                        {
                                             return None;
                                         }
                                         content =
@@ -617,6 +654,34 @@ pub fn writes(format: Format, stream: &str) -> Vec<Write> {
     out
 }
 
+// Convert shared tool semantics for the existing retained-file recovery code.
+fn shared_tool_record(record: &Value) -> Option<Value> {
+    use openagents_proto::{AgentEvent, ToolCall};
+    let AgentEvent::ToolCall { call, .. } = serde_json::from_value(record["event"].clone()).ok()?
+    else {
+        return None;
+    };
+    let (name, input) = match call {
+        ToolCall::Exec { command } => ("Bash".to_string(), json!({"command":command})),
+        ToolCall::WriteFile { path, content } => {
+            ("Write".into(), json!({"file_path":path,"content":content}))
+        }
+        ToolCall::EditFile {
+            path,
+            old_string,
+            new_string,
+        } => (
+            "Edit".into(),
+            json!({"file_path":path,"old_string":old_string,"new_string":new_string}),
+        ),
+        ToolCall::Unknown { name, input } => (name, input.unwrap_or(Value::Null)),
+        _ => return None,
+    };
+    Some(
+        json!({"type":"assistant","message":{"content":[{"type":"tool_use","name":name,"input":input}]}}),
+    )
+}
+
 /// How a [`Write`] marks a file an edit changed in a way the stream can't
 /// replay: its content is unknown from that point.
 pub const UNKNOWN: &str = "unknown";
@@ -643,6 +708,11 @@ pub fn programs(stream: &str) -> Vec<Program> {
     for (i, text) in stream.lines().enumerate() {
         let Ok(event) = serde_json::from_str::<Value>(text) else {
             continue;
+        };
+        let event = if event["type"] == "openagents.harness" {
+            shared_tool_record(&event).unwrap_or(Value::Null)
+        } else {
+            event
         };
         // Each command the line carries, with its output when known.
         let mut commands: Vec<(String, Option<String>, Option<i64>)> = Vec::new();
@@ -916,6 +986,111 @@ pub fn tally(events: &[Event]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_harness_records_replay_and_recover_files_and_programs() {
+        use openagents_proto::{AgentEvent, ToolCall};
+        let event = |event, kinds| {
+            json!({"type":"openagents.harness","agent":"claude-code","event":event,"kinds":kinds})
+                .to_string()
+        };
+        let stream = [
+            event(
+                AgentEvent::ToolCall {
+                    id: "w".into(),
+                    call: ToolCall::WriteFile {
+                        path: "a.py".into(),
+                        content: Some("print(1)".into()),
+                    },
+                },
+                vec![Kind::ArtifactChanged {
+                    path: "a.py".into(),
+                    change: "write".into(),
+                }],
+            ),
+            event(
+                AgentEvent::ToolCall {
+                    id: "e".into(),
+                    call: ToolCall::EditFile {
+                        path: "a.py".into(),
+                        old_string: Some("1".into()),
+                        new_string: Some("2".into()),
+                    },
+                },
+                Vec::new(),
+            ),
+            event(
+                AgentEvent::ToolCall {
+                    id: "c".into(),
+                    call: ToolCall::Exec {
+                        command: "python3 - <<'PY'\nprint(3)\nPY".into(),
+                    },
+                },
+                vec![Kind::CommandStarted {
+                    command: "python3 -".into(),
+                }],
+            ),
+        ]
+        .join("\n");
+        assert_eq!(Format::detect(&stream), Some(Format::Claude));
+        let recovered = final_files(&writes(Format::Claude, &stream));
+        assert_eq!(recovered[0].content, "print(2)");
+        assert_eq!(programs(&stream)[0].source, "print(3)\n");
+        assert_eq!(normalize(Format::Claude, &stream).len(), 2);
+    }
+
+    #[test]
+    fn a_shared_patch_invalidates_earlier_content_and_ambiguous_edits_stay_unknown() {
+        use openagents_proto::{AgentEvent, ToolCall};
+        let record = |event, kinds| {
+            json!({"type":"openagents.harness","agent":"codex","event":event,"kinds":kinds})
+                .to_string()
+        };
+        let written = record(
+            AgentEvent::ToolCall {
+                id: "w".into(),
+                call: ToolCall::WriteFile {
+                    path: "a".into(),
+                    content: Some("xx".into()),
+                },
+            },
+            Vec::<Kind>::new(),
+        );
+        let edit = record(
+            AgentEvent::ToolCall {
+                id: "e".into(),
+                call: ToolCall::EditFile {
+                    path: "a".into(),
+                    old_string: Some("x".into()),
+                    new_string: Some("z".into()),
+                },
+            },
+            Vec::new(),
+        );
+        let files = final_files(&writes(Format::Codex, &format!("{written}\n{edit}")));
+        assert_eq!(files[0].how, UNKNOWN);
+        let patched = record(
+            AgentEvent::ToolResult {
+                id: "patch".into(),
+                is_error: false,
+                output: None,
+                diff: None,
+            },
+            vec![
+                Kind::ArtifactChanged {
+                    path: "a".into(),
+                    change: "update".into(),
+                },
+                Kind::ArtifactChanged {
+                    path: "b".into(),
+                    change: "add".into(),
+                },
+            ],
+        );
+        let files = final_files(&writes(Format::Codex, &format!("{written}\n{patched}")));
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().all(|file| file.how == UNKNOWN));
+    }
 
     #[test]
     fn shell_words_follow_posix_quoting() {

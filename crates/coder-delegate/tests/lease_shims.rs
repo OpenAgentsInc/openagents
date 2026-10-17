@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use coder_delegate::delegate::{Agent, Cli, Control, Credential, Launch, SessionArg};
+use coder_delegate::delegate::{Agent, Cli, Control, Credential};
 
 fn cli(agent: Agent, dir: &Path) -> Cli {
     Cli {
@@ -34,6 +34,12 @@ fn cli(agent: Agent, dir: &Path) -> Cli {
     }
 }
 
+fn configured(cli: &Cli, binary: &Path) -> std::process::Command {
+    let mut command = std::process::Command::new(binary);
+    cli.configure_command(&mut command);
+    command
+}
+
 fn first_on_path(command: &std::process::Command) -> Option<PathBuf> {
     let path = command
         .get_envs()
@@ -46,14 +52,10 @@ fn first_on_path(command: &std::process::Command) -> Option<PathBuf> {
 fn a_delegation_gets_the_shim_directory_first_on_path() {
     let dir = tempfile::tempdir().unwrap();
     let shims = dir.path().join("lease-shims");
-    let launch = Launch {
-        session: SessionArg::New(None),
-        steerable: false,
-    };
     let claude = cli(Agent::ClaudeCode, dir.path());
     let binary = dir.path().join("agent");
     assert_ne!(
-        first_on_path(&claude.live_command(&binary, &launch)),
+        first_on_path(&configured(&claude, &binary)),
         Some(shims.clone())
     );
 
@@ -61,10 +63,8 @@ fn a_delegation_gets_the_shim_directory_first_on_path() {
     assert!(shims.join("screencapture").is_file());
     for agent in [Agent::ClaudeCode, Agent::Codex, Agent::OpenCode] {
         let cli = cli(agent, dir.path());
-        let live = cli.live_command(&binary, &launch);
+        let live = configured(&cli, &binary);
         assert_eq!(first_on_path(&live), Some(shims.clone()), "{agent:?}");
-        let batch = cli.command(&binary, &dir.path().join("b"), &dir.path().join("s"));
-        assert_eq!(first_on_path(&batch), Some(shims.clone()), "{agent:?}");
     }
     coder_lease::shim::disable();
 }
@@ -83,10 +83,6 @@ fn a_delegation_gets_durable_scratch_and_its_briefing_names_it() {
         conclusion: "Nothing explored.".to_string(),
         directions: "Work here.".to_string(),
     };
-    let launch = Launch {
-        session: SessionArg::New(None),
-        steerable: false,
-    };
     let binary = dir.path().join("agent");
     let scratch_of = |command: &std::process::Command| {
         command
@@ -96,7 +92,7 @@ fn a_delegation_gets_durable_scratch_and_its_briefing_names_it() {
     };
     coder_lease::scratch::disable();
     let claude = cli(Agent::ClaudeCode, dir.path());
-    assert_eq!(scratch_of(&claude.live_command(&binary, &launch)), None);
+    assert_eq!(scratch_of(&configured(&claude, &binary)), None);
     assert!(
         !Briefing::build(&inputs, BRIEFING_CAP)
             .text
@@ -109,7 +105,7 @@ fn a_delegation_gets_durable_scratch_and_its_briefing_names_it() {
     for agent in [Agent::ClaudeCode, Agent::Codex, Agent::OpenCode] {
         let cli = cli(agent, dir.path());
         assert_eq!(
-            scratch_of(&cli.live_command(&binary, &launch)),
+            scratch_of(&configured(&cli, &binary)),
             Some(made.clone()),
             "{agent:?}"
         );

@@ -1298,7 +1298,7 @@ mod tests {
         assert_eq!(claude, Capabilities::all());
         assert!(!note.is_empty());
         let (codex, _) = cli_capabilities(Agent::Codex);
-        assert!(codex.resume && !codex.steer);
+        assert!(codex.resume && codex.steer);
         let record = Capabilities::all().record("scripted", "every capability");
         assert_eq!(record["capabilities"]["steer"], json!(true));
     }

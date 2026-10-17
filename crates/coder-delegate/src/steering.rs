@@ -166,6 +166,26 @@ pub const CLAUDE_CODE: Steering = Steering {
     ],
 };
 
+/// Codex driven through the shared native app-server protocol.
+pub const CODEX_APP_SERVER: Steering = Steering {
+    adapter: "codex",
+    native: Native::MidTurn,
+    emulation: Some(Emulation::CancelAndContinue),
+    acknowledgment: Acknowledgment::TurnAnswer,
+    limitations: &["A native steer is consumed when turn/steer answers for the expected turn."],
+};
+
+/// OpenCode driven through the shared HTTP server protocol.
+pub const OPENCODE_SERVER: Steering = Steering {
+    adapter: "opencode",
+    native: Native::TurnBoundary,
+    emulation: Some(Emulation::CancelAndContinue),
+    acknowledgment: Acknowledgment::NextTurnStart,
+    limitations: &[
+        "Follow-ups wait for the active turn; mid-turn control uses an explicit stop and resume.",
+    ],
+};
+
 /// Codex driven through `codex exec`.
 pub const CODEX_EXEC: Steering = Steering {
     adapter: "codex",

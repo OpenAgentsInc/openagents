@@ -775,8 +775,9 @@ async fn answer_wrapped<X, E: Engine<X>>(
             cli.runs,
         ));
         let lost = resume.is_some()
-            && report.status != Status::Answered
-            && report.summary.result.as_deref().is_none_or(str::is_empty);
+            && matches!(report.status, Status::Failed(_) | Status::Harness(_))
+            && (!report.summary.has_result
+                || report.summary.result.as_deref().is_none_or(str::is_empty));
         if lost {
             crate::say::say!(
                 "delegate ▸ couldn't resume session {} ({}), so starting a new one",
@@ -1072,7 +1073,7 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
         let dir = tempfile::tempdir().unwrap();
         let script = r#"#!/bin/sh
 for arg in "$@"; do
-  if [ "$arg" = --resume ]; then echo "No conversation found" >&2; exit 1; fi
+  if [ "$arg" = --resume ] || [ "$arg" = --resume=gone ]; then echo "No conversation found" >&2; exit 1; fi
 done
 cat >/dev/null
 echo '{"type":"system","subtype":"init","session_id":"fresh","model":"stand-in"}'

@@ -3648,6 +3648,8 @@ dependencies = [
  "jev",
  "jev-hosted",
  "knowledge",
+ "openagents-harness",
+ "openagents-proto",
  "plugin",
  "regex",
  "reqwest 0.12.28",
@@ -4245,7 +4247,7 @@ dependencies = [
  "code-highlight",
  "coder-ui",
  "crossterm",
- "pulldown-cmark",
+ "pulldown-cmark 0.13.4",
  "ratatui",
  "rust-native",
  "tokio",
@@ -4261,7 +4263,7 @@ dependencies = [
  "nostr",
  "oa-copy",
  "oa-tokens",
- "pulldown-cmark",
+ "pulldown-cmark 0.13.4",
  "rust-native",
  "serde",
  "serde_json",
@@ -5595,6 +5597,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "deser-hjson"
+version = "2.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0d49a923edd92dc1ca5819822f540ea83f094ab5ac6940e4044e03c1d8e6576"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "dhruv-conformance"
 version = "1.0.0"
 dependencies = [
@@ -5684,7 +5695,7 @@ version = "1.0.0"
 dependencies = [
  "nostr",
  "paper-mono",
- "pulldown-cmark",
+ "pulldown-cmark 0.13.4",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -7287,6 +7298,15 @@ checksum = "1bd49230192a3797a9a4d6abe9b3eed6f7fa4c8a8a4947977c6f80025f92cbd8"
 dependencies = [
  "rustix 1.1.5",
  "windows-link",
+]
+
+[[package]]
+name = "getopts"
+version = "0.2.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfe4fbac503b8d1f88e6676011885f34b7174f46e59956bba534ba83abded4df"
+dependencies = [
+ "unicode-width",
 ]
 
 [[package]]
@@ -10044,7 +10064,7 @@ dependencies = [
 name = "markdown-stream"
 version = "1.0.0"
 dependencies = [
- "pulldown-cmark",
+ "pulldown-cmark 0.13.4",
 ]
 
 [[package]]
@@ -11868,6 +11888,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
+name = "openagents-brand"
+version = "0.2.113"
+
+[[package]]
 name = "openagents-chat"
 version = "1.0.0"
 dependencies = [
@@ -12145,6 +12169,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-harness"
+version = "0.2.113"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "deser-hjson",
+ "futures",
+ "libc",
+ "openagents-brand",
+ "openagents-proto",
+ "openagents-sdk",
+ "reqwest 0.12.28",
+ "semver 1.0.28",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "sha2 0.10.9",
+ "supervise",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+ "windows-sys 0.61.2",
+ "zip 7.4.0",
+]
+
+[[package]]
 name = "openagents-login"
 version = "1.0.0"
 dependencies = [
@@ -12154,6 +12207,19 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "openagents-proto"
+version = "0.2.113"
+dependencies = [
+ "chat-home",
+ "chrono",
+ "openagents-brand",
+ "pulldown-cmark 0.12.2",
+ "serde",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -12334,7 +12400,7 @@ dependencies = [
  "openagents-wallet",
  "openui-lang",
  "pay-ledger",
- "pulldown-cmark",
+ "pulldown-cmark 0.13.4",
  "qrcodegen",
  "receipts",
  "reqwest 0.12.28",
@@ -13738,6 +13804,19 @@ dependencies = [
 
 [[package]]
 name = "pulldown-cmark"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f86ba2052aebccc42cbbb3ed234b8b13ce76f75c3551a303cb2bcffcff12bb14"
+dependencies = [
+ "bitflags 2.13.2",
+ "getopts",
+ "memchr",
+ "pulldown-cmark-escape",
+ "unicase",
+]
+
+[[package]]
+name = "pulldown-cmark"
 version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
@@ -14960,7 +15039,7 @@ dependencies = [
  "markdown-stream",
  "openui-lang",
  "paper-mono",
- "pulldown-cmark",
+ "pulldown-cmark 0.13.4",
  "serde",
  "serde_json",
  "swash",
@@ -15669,6 +15748,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
+]
+
+[[package]]
+name = "serde_yaml_ng"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b4db627b98b36d4203a7b458cf3573730f2bb591b28871d916dfa9efabfd41f"
+dependencies = [
+ "indexmap 2.14.2",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml",
 ]
 
 [[package]]
@@ -18519,6 +18611,12 @@ dependencies = [
  "crypto-common 0.1.7",
  "subtle",
 ]
+
+[[package]]
+name = "unsafe-libyaml"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
 
 [[package]]
 name = "untrusted"
@@ -21548,6 +21646,19 @@ dependencies = [
  "indexmap 2.14.2",
  "memchr",
  "zopfli",
+]
+
+[[package]]
+name = "zip"
+version = "7.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc12baa6db2b15a140161ce53d72209dacea594230798c24774139b54ecaa980"
+dependencies = [
+ "crc32fast",
+ "flate2",
+ "indexmap 2.14.2",
+ "memchr",
+ "typed-path",
 ]
 
 [[package]]
