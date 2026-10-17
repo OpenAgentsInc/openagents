@@ -12,9 +12,14 @@
 //! - `POST /v1/cloud-host/stop`: end the engine and stop the computer.
 //! - `DELETE /v1/cloud-host`: end the engine and delete the computer.
 //!
+//! Sessions run on OpenAgents inference: the run installs a pinned opencode
+//! configured for the OpenAgents API, so no other model key is needed.
+//! Claude Code also works when the account saved its own Claude key.
+//!
 //! Credentials go by reference ([`crate::computers_api::commands`]): the
-//! engine's account credential is a sign-in key made for this run, and
-//! Claude Code's credential is the account's own (Settings) or the server's.
+//! engine's account credential is a sign-in key made for this run (opencode
+//! uses the same key for inference), and Claude Code's credential is the
+//! account's own (Settings) or the server's.
 //! Both reach the engine's environment in memory and are never written to
 //! the computer's disk or to the record kept here. A new run, stop, or
 //! delete revokes the previous run's key. Usage is recorded by the
@@ -41,6 +46,36 @@ const ENGINE_SECONDS: u64 = 3480;
 pub(crate) const DEVICE_NAME: &str = "Our cloud";
 const KEY_NAME: &str = "OpenAgents cloud computer";
 const KEY_DAYS: u64 = 30;
+/// The opencode the run installs when the computer has none.
+const OPENCODE_VERSION: &str = "1.19.3";
+/// The OpenAgents API opencode calls, and the models it offers.
+const INFERENCE_URL: &str = "https://api.openagents.com/v1";
+const MODELS: [(&str, &str); 4] = [
+    ("openagents/code", "OpenAgents Code"),
+    ("openagents/fast", "OpenAgents Fast"),
+    ("openagents/reason", "OpenAgents Reason"),
+    ("google/gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite"),
+];
+
+/// opencode's configuration: the OpenAgents provider, its key read from the
+/// environment, never written here.
+pub(crate) fn opencode_config() -> String {
+    let models: serde_json::Map<String, Value> = MODELS
+        .iter()
+        .map(|(id, name)| ((*id).to_owned(), json!({ "name": name })))
+        .collect();
+    json!({
+        "$schema": "https://opencode.ai/config.json",
+        "provider": {"openagents": {
+            "npm": "@ai-sdk/openai-compatible",
+            "name": "OpenAgents",
+            "options": {"baseURL": INFERENCE_URL, "apiKey": "{env:OPENAGENTS_API_KEY}"},
+            "models": models,
+        }},
+        "model": "openagents/openagents/fast",
+    })
+    .to_string()
+}
 
 /// The Linux engine the computer runs, pinned by digest. Deployments can
 /// pin another build with `OPENAGENTS_CLOUD_HOST_ENGINE_URL` and
@@ -116,11 +151,18 @@ if [ ! -x "$b" ]; then
   chmod 755 "$t"
   mv "$t" "$b"
 fi
+export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+if ! command -v opencode >/dev/null 2>&1; then
+  npm install --silent --prefix "$HOME/.local" -g 'opencode-ai@{opencode}' >/dev/null 2>&1 || echo 'opencode could not be installed; Claude Code still works with your own key.' >&2
+fi
+mkdir -p "$HOME/.config/opencode"
+cat > "$HOME/.config/opencode/opencode.json" <<'OPENCODE'
+{config}
+OPENCODE
 mkdir -p "$HOME/workspace" "$d/data"
 export OPENAGENTS_DATA_DIR="$d/data" ZERON_DATA_DIR="$d/data"
 export OPENAGENTS_DEVICE_NAME='{name}' ZERON_DEVICE_NAME='{name}'
 export BROWSER=/usr/bin/true NO_OPEN_BROWSER=1
-export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
 cd "$HOME/workspace"
 echo 'OpenAgents engine starting'
 exec timeout -k 30 {seconds} "$b" headless
@@ -129,6 +171,8 @@ exec timeout -k 30 {seconds} "$b" headless
         sha = engine.sha256,
         name = DEVICE_NAME,
         seconds = ENGINE_SECONDS,
+        opencode = OPENCODE_VERSION,
+        config = opencode_config(),
     )
 }
 
@@ -397,13 +441,6 @@ async fn start(State(app): State<App>, headers: HeaderMap) -> Response {
     let claude = claude
         .filter(|key| engine_credential_name(key.name()))
         .map(|key| key.into_env());
-    let Some((claude_name, claude_value)) = claude else {
-        return refused(
-            StatusCode::CONFLICT,
-            "needs_claude",
-            "Add your Claude key in Settings to run Claude Code on Our cloud.",
-        );
-    };
     revoke_key(&app, &caller.token, &mut record).await;
     let made = match service
         .create_sign_in_key(&caller.token, KEY_NAME, Some(KEY_DAYS))
@@ -436,10 +473,11 @@ async fn start(State(app): State<App>, headers: HeaderMap) -> Response {
         Err(_) => return unavailable(),
     };
     let reference = format!("cred_{}", &request["cloud-host-".len()..]);
-    let values = vec![
+    let mut values = vec![
         ("CODER_DESKTOP_CREDENTIAL".to_owned(), made.token.clone()),
-        (claude_name, claude_value),
+        ("OPENAGENTS_API_KEY".to_owned(), made.token.clone()),
     ];
+    values.extend(claude);
     if let Err(message) = crate::computers_api::commands::prepare_web_credentials(
         &caller.owner,
         &computer_id,
@@ -550,6 +588,8 @@ mod tests {
         assert!(text.contains(&"ab".repeat(32)));
         assert!(text.contains("headless"));
         assert!(text.contains("Our cloud"));
+        assert!(text.contains("opencode-ai@1.19.3"));
+        assert!(text.contains("{env:OPENAGENTS_API_KEY}"));
         for secret in [
             "CODER_DESKTOP_CREDENTIAL",
             "ANTHROPIC_API_KEY",
