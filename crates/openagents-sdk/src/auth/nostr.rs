@@ -17,6 +17,40 @@ use url::Url;
 use super::{CredentialRecord, Session, TokenAnswer};
 use crate::{Client, Error};
 
+/// The largest sign-in body the server takes (`oa_auth::nostr::BODY_MAX`).
+pub const KEY_BODY_MAX: usize = 16 * 1024;
+
+/// The proof-of-work difficulty a new key's first sign-in needs by default
+/// (#11994): leading zero bits of `SHA-256(challenge ":" solution)`.
+pub const POW_BITS: u8 = 20;
+
+/// Solve the sign-up proof of work over `challenge`: the first counter, in
+/// decimal, whose `SHA-256(challenge ":" counter)` starts with `bits` zero
+/// bits. About a million hashes at 20 bits: run it off the UI thread.
+pub fn solve_pow(challenge: &str, bits: u8) -> String {
+    let mut counter: u64 = 0;
+    loop {
+        let solution = counter.to_string();
+        let digest = Sha256::digest(format!("{challenge}:{solution}").as_bytes());
+        if leading_zero_bits(&digest) >= u32::from(bits) {
+            return solution;
+        }
+        counter += 1;
+    }
+}
+
+fn leading_zero_bits(bytes: &[u8]) -> u32 {
+    let mut bits = 0;
+    for byte in bytes {
+        if *byte == 0 {
+            bits += 8;
+        } else {
+            return bits + byte.leading_zeros();
+        }
+    }
+    bits
+}
+
 /// The NIP-98 HTTP authorization kind.
 pub const HTTP_AUTH_KIND: u16 = 27_235;
 
@@ -143,22 +177,51 @@ impl Client {
     }
 
     /// Sign in with the key behind `signer`: fetch a challenge, sign one
-    /// request, and receive an app session. A new key makes its account.
-    /// Sends once; the caller stores the session as it stores a device
-    /// sign-in's, and signs in again before it expires.
+    /// request, and receive an app session. A key that already has an
+    /// account signs in this way; a new key may be asked for a sign-up proof
+    /// first (`Refused { code: Some("proof_required"), .. }`, #11994), which
+    /// [`Client::sign_in_with_key_on`] sends. Sends once; the caller stores
+    /// the session as it stores a device sign-in's, and signs in again
+    /// before it expires.
     pub async fn sign_in_with_key(
         &self,
         signer: &dyn NostrSigner,
         app: &str,
         computer: &str,
     ) -> Result<KeySignIn, Error> {
-        let challenge = self
-            .challenge(&["device", "nostr", "challenge"], None)
-            .await?;
+        let challenge = self.key_challenge().await?;
+        self.sign_in_with_key_on(signer, &challenge, app, computer, serde_json::Map::new())
+            .await
+    }
+
+    /// A fresh sign-in challenge, for a sign-in that needs a proof over it.
+    pub async fn key_challenge(&self) -> Result<String, Error> {
+        self.challenge(&["device", "nostr", "challenge"], None)
+            .await
+    }
+
+    /// Sign in over `challenge` (from [`Client::key_challenge`]), adding
+    /// `proof` to the body: `{"pow": solve_pow(challenge, POW_BITS)}`, or
+    /// `{"app_attest": {"key_id", "attestation"}}` from App Attest over
+    /// `SHA-256(challenge)`. The body stays under [`KEY_BODY_MAX`].
+    pub async fn sign_in_with_key_on(
+        &self,
+        signer: &dyn NostrSigner,
+        challenge: &str,
+        app: &str,
+        computer: &str,
+        proof: serde_json::Map<String, Value>,
+    ) -> Result<KeySignIn, Error> {
+        let mut fields = proof;
+        fields.insert("app".into(), json!(app));
+        fields.insert("computer".into(), json!(computer));
         let url = self.api_url(&["device", "nostr"])?;
-        let body = serde_json::to_vec(&json!({"app": app, "computer": computer}))
-            .map_err(|_| Error::InvalidCredential)?;
-        let authorization = Self::http_auth(signer, &url, &challenge, Some(&body))?;
+        let body =
+            serde_json::to_vec(&Value::Object(fields)).map_err(|_| Error::InvalidCredential)?;
+        if body.len() > KEY_BODY_MAX {
+            return Err(Error::InvalidCredential);
+        }
+        let authorization = Self::http_auth(signer, &url, challenge, Some(&body))?;
         let response = self
             .http
             .post(url)
@@ -266,5 +329,19 @@ impl Client {
             )
             .await?;
         Ok(answer.keys)
+    }
+}
+
+#[cfg(test)]
+mod pow_tests {
+    use super::*;
+
+    #[test]
+    fn a_solved_pow_has_the_leading_zero_bits() {
+        let solution = solve_pow("c0ffee", 12);
+        let digest = Sha256::digest(format!("c0ffee:{solution}").as_bytes());
+        assert!(leading_zero_bits(&digest) >= 12);
+        assert!(solution.len() <= 64);
+        assert_eq!(leading_zero_bits(&[0, 0x10]), 11);
     }
 }

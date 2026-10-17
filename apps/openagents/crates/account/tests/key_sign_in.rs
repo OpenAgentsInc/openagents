@@ -67,6 +67,9 @@ struct Server {
     revokes: AtomicUsize,
     /// Seconds each issued session lasts.
     expires_in: AtomicU64,
+    /// New keys need a proof of work (#11994).
+    require_proof: std::sync::atomic::AtomicBool,
+    proofs: AtomicUsize,
 }
 
 impl Server {
@@ -108,7 +111,7 @@ async fn challenge() -> Json<Value> {
     Json(json!({"challenge": "c0ffee"}))
 }
 
-async fn sign_in(State(s): State<Arc<Server>>, h: HeaderMap) -> Response {
+async fn sign_in(State(s): State<Arc<Server>>, h: HeaderMap, body: axum::body::Bytes) -> Response {
     let Some(proof) = h
         .get("authorization")
         .and_then(|v| v.to_str().ok())
@@ -119,6 +122,23 @@ async fn sign_in(State(s): State<Arc<Server>>, h: HeaderMap) -> Response {
     let Some(pubkey) = s.signer(proof, "/v1/device/nostr") else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
+    let fields: Value = serde_json::from_slice(&body).unwrap_or_default();
+    let known = s.keys.lock().unwrap().contains_key(&pubkey);
+    if !known && s.require_proof.load(Ordering::SeqCst) {
+        let solved = fields["pow"].as_str().is_some_and(|pow| {
+            use sha2::Digest;
+            let digest = sha2::Sha256::digest(format!("c0ffee:{pow}").as_bytes());
+            digest[0] == 0 && digest[1] == 0 && digest[2] < 0x10
+        });
+        if !solved {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": {"code": "proof_required"}})),
+            )
+                .into_response();
+        }
+        s.proofs.fetch_add(1, Ordering::SeqCst);
+    }
     s.key_sign_ins.fetch_add(1, Ordering::SeqCst);
     let (account, created) = {
         let mut keys = s.keys.lock().unwrap();
@@ -370,4 +390,22 @@ async fn a_session_near_its_end_is_replaced_by_signing_again() {
     assert_eq!(server.revokes.load(Ordering::SeqCst), revokes + 1);
     // Still one account for the key.
     assert_eq!(server.created.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn a_new_key_asked_for_a_proof_solves_one_and_a_known_key_never_does() {
+    let (server, client) = serve().await;
+    server.require_proof.store(true, Ordering::SeqCst);
+    let identity = Arc::new(Identity::from_words(WORDS).unwrap());
+    let dir = tempfile::tempdir().unwrap();
+    let c = controller(&client, &Arc::default(), dir.path());
+    c.start_with_key(identity.clone(), "Desktop".into()).await;
+    let account = signed_in(&c).await;
+    assert_eq!(server.proofs.load(Ordering::SeqCst), 1);
+
+    let other = tempfile::tempdir().unwrap();
+    let again = controller(&client, &Arc::default(), other.path());
+    again.sign_in_with_key(identity, "Desktop".into()).await;
+    assert_eq!(signed_in(&again).await, account);
+    assert_eq!(server.proofs.load(Ordering::SeqCst), 1);
 }

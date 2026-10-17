@@ -33,6 +33,37 @@ pub struct WordCheck {
     pub word: String,
 }
 
+/// What the phone's App Attest step made: base64 of the key id and of the
+/// attestation.
+#[derive(uniffi::Record, Clone)]
+pub struct AppAttestation {
+    pub key_id: String,
+    pub attestation: String,
+}
+
+/// The phone's App Attest (#11994), implemented in Swift over
+/// `DCAppAttestService`: make or reuse this install's key (its id kept in
+/// the Keychain) and attest it over `client_data_hash`. Called on a
+/// background thread; it may wait for the system. Answer `None` when App
+/// Attest isn't supported, as in the simulator, and the core sends a proof
+/// of work instead.
+#[uniffi::export(with_foreign)]
+pub trait AppAttester: Send + Sync {
+    fn attest(&self, client_data_hash: Vec<u8>) -> Option<AppAttestation>;
+}
+
+struct Bridge(Arc<dyn AppAttester>);
+impl openagents_account::Attester for Bridge {
+    fn attest(&self, client_data_hash: Vec<u8>) -> Option<openagents_account::Attestation> {
+        self.0
+            .attest(client_data_hash)
+            .map(|a| openagents_account::Attestation {
+                key_id: a.key_id,
+                attestation: a.attestation,
+            })
+    }
+}
+
 /// An identity store that is never there: accounts made for tests use it,
 /// so they never reach the real Keychain.
 pub(crate) struct NoVault;
@@ -83,6 +114,12 @@ impl CoreAccount {
 
 #[uniffi::export]
 impl CoreAccount {
+    /// Use App Attest for this phone's first sign-in. Set it before
+    /// `start_identity`.
+    pub fn set_app_attester(&self, attester: Arc<dyn AppAttester>) {
+        self.controller().set_attester(Arc::new(Bridge(attester)));
+    }
+
     /// Starts this phone's account on launch, with nothing for the person
     /// to do: open the 12 words (or reuse the wallet's, or make new ones),
     /// then sign in with the key. A phone that was signed in before keeps

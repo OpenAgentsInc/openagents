@@ -529,6 +529,13 @@ impl Client {
                 Some("balance_remaining") => Some("balance_remaining"),
                 Some("shared_workspace") => Some("shared_workspace"),
                 Some("session_required") => Some("session_required"),
+                Some("proof_required") => Some("proof_required"),
+                Some("invalid_proof") => Some("invalid_proof"),
+                Some("signup_limit") => Some("signup_limit"),
+                Some("invalid_attestation") => Some("invalid_attestation"),
+                Some("attestation_in_use") => Some("attestation_in_use"),
+                Some("sign_in_denied") => Some("sign_in_denied"),
+                Some("agent_account") => Some("agent_account"),
                 _ => None,
             };
             return Err(Error::Refused {
