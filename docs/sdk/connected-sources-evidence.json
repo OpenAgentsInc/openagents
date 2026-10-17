@@ -174,5 +174,13 @@
     "files": 27,
     "contains": "Exact tested source patch, tool versions, binary and artifact hashes, API and SDK test logs, export logs, setup-failure diagnosis, check scripts, and native app SDK consumer build evidence.",
     "contains_credentials": false
+  },
+  "copy_followup": {
+    "source": "e29e4c9bf62f87cd0615b81091da3193b25b6869",
+    "change": "Replace separately qualified Google features with other Google features in the operation description.",
+    "app_fixture_sha256": "affcc8437144b144195f41330472937850496d2630795b42dcfcf29d8951303a",
+    "official_export_runs": 2,
+    "both_exports_match_committed_fixture": true,
+    "runtime_behavior_changed": false
   }
 }
