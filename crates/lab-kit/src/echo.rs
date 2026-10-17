@@ -31,6 +31,7 @@ impl LabKind for Echo {
                     "required": ["document", "text"], "additionalProperties": false}),
             }],
             job_types: vec!["shout".into()],
+            job_requirements: Default::default(),
             views: vec![View::Report],
             limits: Limits::default(),
         }
