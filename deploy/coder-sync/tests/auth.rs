@@ -64,6 +64,7 @@ impl Fixture {
                     .unwrap(),
             ),
             revision: "auth-fixture".into(),
+            push: None,
         });
         let task = tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();

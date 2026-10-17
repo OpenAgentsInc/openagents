@@ -171,6 +171,7 @@ async fn database_migrations_health_and_auth_with_fake_bucket() {
         auth: AuthMode::Disabled,
         accounts: None,
         revision: "fixture".into(),
+        push: None,
     });
     let response = app
         .clone()

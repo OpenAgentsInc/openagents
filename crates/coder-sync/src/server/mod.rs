@@ -5,6 +5,7 @@ pub mod config;
 pub mod db;
 pub mod device;
 pub mod notifications;
+pub mod push;
 pub mod registry;
 pub mod rooms;
 pub mod storage;
@@ -29,6 +30,8 @@ pub struct StateData {
     pub auth: AuthMode,
     pub accounts: Option<auth::Accounts>,
     pub revision: String,
+    /// Session notifications; `None` when push isn't configured.
+    pub push: Option<Arc<push::Push>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -92,6 +95,13 @@ pub fn router(state: StateData) -> Router {
         .route(
             "/registry/{org}/reset",
             axum::routing::post(registry::reset),
+        )
+        .route("/registry/{org}/push-config", get(registry::push_config))
+        .route(
+            "/registry/{org}/push-grant",
+            axum::routing::post(registry::push_grant)
+                .delete(registry::delete_grant)
+                .layer(axum::extract::DefaultBodyLimit::max(16384)),
         )
         .route(
             "/registry/{org}/push-target",

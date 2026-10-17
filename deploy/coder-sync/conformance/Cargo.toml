@@ -25,6 +25,7 @@ stateright = "0.31"
 futures = "0.3"
 tokio-tungstenite = "0.24"
 tempfile = "3"
+push-gateway = { path = "../../../crates/push-gateway", default-features = false }
 
 [[test]]
 name = "service"
@@ -65,3 +66,7 @@ path = "../tests/push_rules.rs"
 [[test]]
 name = "auth"
 path = "../tests/auth.rs"
+
+[[test]]
+name = "push_notify"
+path = "../tests/push_notify.rs"

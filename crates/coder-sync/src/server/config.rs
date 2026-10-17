@@ -14,6 +14,7 @@ pub struct Config {
     pub auth: AuthMode,
     pub account_deployment: openagents::Deployment,
     pub revision: String,
+    pub push: Option<super::push::Settings>,
 }
 
 impl Config {
@@ -65,6 +66,7 @@ impl Config {
             revision: get("CODER_SYNC_REVISION")
                 .unwrap_or("development")
                 .to_owned(),
+            push: super::push::Settings::parse(&|key| get(key).map(str::to_owned))?,
         })
     }
 }

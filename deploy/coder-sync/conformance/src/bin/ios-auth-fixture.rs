@@ -118,6 +118,7 @@ async fn main() {
                 .unwrap(),
         ),
         revision: "ios-account-fixture".into(),
+        push: None,
     };
     let (stop, mut stopped) = tokio::sync::watch::channel(false);
     let app = server::router(state).route(

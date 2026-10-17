@@ -1,5 +1,5 @@
-//! Pure registry transition rules for the later push-gateway integration.
-//! No route invokes delivery in the first release.
+//! Pure registry transition rules for session notifications. `push` sends
+//! what these rules decide through the push gateway.
 use openagents_doc::RegistryRow;
 use openagents_proto::{
     SessionStatus,

@@ -39,6 +39,7 @@ impl Server {
             auth: AuthMode::Dev,
             accounts: None,
             revision: "registry-test".into(),
+            push: None,
         });
         let task = tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();

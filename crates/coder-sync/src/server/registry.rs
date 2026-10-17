@@ -3,6 +3,8 @@
 use super::{
     Identity, StateData,
     chat::{Failure, identity},
+    notifications::{notification_for, parse_prefs},
+    push,
     rooms::Room,
 };
 use axum::{
@@ -16,9 +18,10 @@ use axum::{
     response::Response,
 };
 use openagents_doc::{OpKind, RegistryRow, RowOp, apply_op};
+use push_gateway::wire::Transport;
 use serde_json::{Value, json};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     future::Future,
     sync::Arc,
 };
@@ -187,6 +190,7 @@ async fn apply(
     device: &str,
     body: Value,
     sender: Uuid,
+    test_run: bool,
 ) -> Result<Applied> {
     let batch = body["batch"]
         .as_str()
@@ -207,6 +211,8 @@ async fn apply(
         "sequence_exhausted",
     ))?;
     let mut touched = BTreeMap::<(String, String), RegistryRow>::new();
+    // Each session row as it was before this batch, for notifications.
+    let mut original = BTreeMap::<String, Option<RegistryRow>>::new();
     let mut applied = 0;
     for op in ops {
         let key = (op.kind.clone(), op.id.clone());
@@ -224,6 +230,9 @@ async fn apply(
             })
             .transpose()?
         };
+        if op.kind == "sessions" && !original.contains_key(&op.id) {
+            original.insert(op.id.clone(), before.clone());
+        }
         let (row, changed) = apply_op(before.as_ref(), &op);
         if changed {
             if let Some(mut row) = row {
@@ -244,7 +253,15 @@ async fn apply(
         )
         .await?;
     }
+    let notes = if applied > 0 && !test_run && state.push.is_some() {
+        notes(&tx, account, &original, &touched).await?
+    } else {
+        Vec::new()
+    };
     tx.commit().await?;
+    if !notes.is_empty() {
+        notify(state, account, notes).await;
+    }
     let seq = if applied > 0 { next } else { head };
     let rows = (applied > 0)
         .then(|| json!({"t":"rows","seq":seq,"rows":touched.values().collect::<Vec<_>>()}));
@@ -267,6 +284,115 @@ async fn apply(
             .send((sender, serde_json::to_vec(&ack).unwrap()));
     }
     Ok(Applied { ack })
+}
+async fn load_row(
+    tx: &Transaction<'_>,
+    account: &str,
+    kind: &str,
+    id: &str,
+) -> Result<Option<RegistryRow>> {
+    tx.query_opt(
+        "SELECT value::text FROM registry_rows WHERE account=$1 AND kind=$2 AND id=$3",
+        &[&account, &kind, &id],
+    )
+    .await?
+    .map(|r| {
+        serde_json::from_str::<RegistryRow>(&r.get::<_, String>(0))
+            .map_err(|_| Failure(StatusCode::SERVICE_UNAVAILABLE, "unavailable"))
+    })
+    .transpose()
+}
+/// The notifications a committed batch calls for (done, needs you, failed).
+async fn notes(
+    tx: &Transaction<'_>,
+    account: &str,
+    original: &BTreeMap<String, Option<RegistryRow>>,
+    touched: &BTreeMap<(String, String), RegistryRow>,
+) -> Result<Vec<push::Note>> {
+    let at = now();
+    let mut chats = HashMap::new();
+    for (id, before) in original {
+        let Some(after) = touched.get(&("sessions".to_owned(), id.clone())) else {
+            continue;
+        };
+        if notification_for(before.as_ref(), after, at).is_none()
+            || touched.contains_key(&("chats".to_owned(), id.clone()))
+        {
+            continue;
+        }
+        chats.insert(id.clone(), load_row(tx, account, "chats", id).await?);
+    }
+    Ok(push::notes_for(
+        original,
+        touched,
+        &|id| chats.get(id).cloned().flatten(),
+        at,
+    ))
+}
+async fn grants(state: &StateData, account: &str) -> Result<Vec<push::Target>> {
+    let db = state.database.connect().await?;
+    Ok(db
+        .query(
+            "SELECT device,transport,endpoint_grant,expires_at,prefs::text FROM registry_push_grants WHERE account=$1 ORDER BY device",
+            &[&account],
+        )
+        .await?
+        .iter()
+        .filter_map(|r| {
+            Some(push::Target {
+                device: r.get(0),
+                transport: Transport::parse(&r.get::<_, String>(1))?,
+                grant: r.get(2),
+                expires_at: u64::try_from(r.get::<_, i64>(3)).ok()?,
+                prefs: parse_prefs(&serde_json::from_str(&r.get::<_, String>(4)).ok()?),
+            })
+        })
+        .collect())
+}
+/// Send the batch's notifications in the background; the write never waits.
+async fn notify(state: &StateData, account: &str, notes: Vec<push::Note>) {
+    let Some(sender) = state.push.clone() else {
+        return;
+    };
+    let targets = match grants(state, account).await {
+        Ok(targets) => targets,
+        Err(_) => {
+            tracing::warn!("Could not read push grants");
+            return;
+        }
+    };
+    let present = state
+        .rooms
+        .presence(Room::Registry(account.into()), None)
+        .await
+        .into_keys()
+        .collect::<HashSet<_>>();
+    let wakes = sender.plan(
+        account,
+        &notes,
+        &targets,
+        &present,
+        push_gateway::unix_now(),
+    );
+    if wakes.is_empty() {
+        return;
+    }
+    let database = state.database.clone();
+    let account = account.to_owned();
+    tokio::spawn(async move {
+        for wake in wakes {
+            if let push::Outcome::Gone(_) = sender.send(&account, &wake).await {
+                if let Ok(db) = database.connect().await {
+                    let _ = db
+                        .execute(
+                            "DELETE FROM registry_push_grants WHERE account=$1 AND device=$2 AND endpoint_grant=$3",
+                            &[&account, &wake.device, &wake.grant],
+                        )
+                        .await;
+                }
+            }
+        }
+    });
 }
 fn cursor(q: &HashMap<String, String>) -> Option<i64> {
     q.get("since")
@@ -329,8 +455,9 @@ pub async fn push(
     let s = state.clone();
     let account = who.account.clone();
     let device = q.get("device").cloned().unwrap_or_default();
+    let test_run = push::is_test_run(&headers);
     let applied = run(&state, &who.account, async move {
-        apply(&s, &account, &device, frame, Uuid::nil()).await
+        apply(&s, &account, &device, frame, Uuid::nil(), test_run).await
     })
     .await?;
     Ok(Json(applied.ack))
@@ -348,8 +475,10 @@ pub async fn stats(
         let snap=snapshot(&s,&account,None).await?;
         let db=s.database.connect().await?;
         let targets=db.query("SELECT device,environment,prefs::text FROM registry_push_targets WHERE account=$1 ORDER BY device",&[&account]).await?.iter().map(|r|json!({"device":r.get::<_,String>(0),"environment":r.get::<_,String>(1),"prefs":serde_json::from_str::<Value>(&r.get::<_,String>(2)).unwrap()})).collect::<Vec<_>>();
+        let grants=grants(&s,&account).await?.into_iter().map(|t|json!({"device":t.device,"transport":t.transport.as_str(),"expiresAt":t.expires_at,"prefs":t.prefs})).collect::<Vec<_>>();
+        let log=s.push.as_ref().map(|p|p.log(&account)).unwrap_or_default();
         let rows=snap["rows"].as_array().unwrap();let connected=s.rooms.events(Room::Registry(account)).await.receiver_count();
-        Ok(Json(json!({"seq":snap["seq"],"gcFloor":snap["gcFloor"],"rowCount":rows.len(),"tombstones":rows.iter().filter(|r|r["deleted"]==true).count(),"connectedSockets":connected,"presence":snap["presence"],"pushTargets":targets,"pushConfigured":false,"pushLog":[],"pushOutcomes":{},"lastBackupSeq":0,"lastGcAt":0})))
+        Ok(Json(json!({"seq":snap["seq"],"gcFloor":snap["gcFloor"],"rowCount":rows.len(),"tombstones":rows.iter().filter(|r|r["deleted"]==true).count(),"connectedSockets":connected,"presence":snap["presence"],"pushTargets":targets,"pushGrants":grants,"pushConfigured":s.push.is_some(),"pushLog":log,"pushOutcomes":{},"lastBackupSeq":0,"lastGcAt":0})))
     }).await
 }
 pub async fn reset(
@@ -437,6 +566,77 @@ pub async fn delete_target(
     })
     .await
 }
+/// Where a phone registers for notifications and which key it delegates to.
+pub async fn push_config(
+    State(state): State<Arc<StateData>>,
+    Path(org): Path<String>,
+    Query(q): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>> {
+    scope(&state, &headers, &q, &org)?;
+    Ok(Json(match &state.push {
+        Some(push) => push.settings.public(),
+        None => json!({"configured":false}),
+    }))
+}
+/// Store a phone's push gateway delivery grant and its choices.
+pub async fn push_grant(
+    State(state): State<Arc<StateData>>,
+    Path(org): Path<String>,
+    Query(q): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<Value>> {
+    let who = scope(&state, &headers, &q, &org)?;
+    let device = q
+        .get("device")
+        .filter(|d| !d.is_empty())
+        .cloned()
+        .ok_or(bad("bad_request"))?;
+    let body: Value = serde_json::from_slice(&body).map_err(|_| bad("bad_request"))?;
+    let (transport, grant, expires_at, prefs) =
+        push::parse_grant(&body, push_gateway::unix_now()).ok_or(bad("bad_request"))?;
+    let expires_at = i64::try_from(expires_at).map_err(|_| bad("bad_request"))?;
+    let prefs = serde_json::to_string(&prefs)
+        .map_err(|_| Failure(StatusCode::SERVICE_UNAVAILABLE, "unavailable"))?;
+    let s = state.clone();
+    let account = who.account.clone();
+    run(&state, &who.account, async move {
+        let mut db = s.database.connect().await?;
+        let tx = db.transaction().await?;
+        lock(&tx, &account).await?;
+        tx.execute("INSERT INTO registry_push_grants(account,device,transport,endpoint_grant,expires_at,prefs) VALUES($1,$2,$3,$4,$5,$6::text::jsonb) ON CONFLICT(account,device) DO UPDATE SET transport=EXCLUDED.transport,endpoint_grant=EXCLUDED.endpoint_grant,expires_at=EXCLUDED.expires_at,prefs=EXCLUDED.prefs,updated_at=now()",&[&account,&device,&transport.as_str(),&grant,&expires_at,&prefs]).await?;
+        tx.commit().await?;
+        Ok(Json(json!({"ok":true})))
+    })
+    .await
+}
+/// Stop notifications to a phone.
+pub async fn delete_grant(
+    State(state): State<Arc<StateData>>,
+    Path(org): Path<String>,
+    Query(q): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>> {
+    let who = scope(&state, &headers, &q, &org)?;
+    let device = q
+        .get("device")
+        .filter(|d| !d.is_empty())
+        .cloned()
+        .ok_or(bad("bad_request"))?;
+    let s = state.clone();
+    let account = who.account.clone();
+    run(&state, &who.account, async move {
+        let db = s.database.connect().await?;
+        db.execute(
+            "DELETE FROM registry_push_grants WHERE account=$1 AND device=$2",
+            &[&account, &device],
+        )
+        .await?;
+        Ok(Json(json!({"ok":true})))
+    })
+    .await
+}
 
 pub async fn websocket(
     State(state): State<Arc<StateData>>,
@@ -447,6 +647,7 @@ pub async fn websocket(
 ) -> Result<Response> {
     let who = scope(&state, &headers, &q, &org)?;
     let lease = super::auth::socket_lease(&state, &headers, &q, &who);
+    let test_run = push::is_test_run(&headers);
     let upgrade =
         upgrade.map_err(|_| Failure(StatusCode::UPGRADE_REQUIRED, "expected_websocket"))?;
     let s = state.clone();
@@ -472,6 +673,7 @@ pub async fn websocket(
                 q.get("device").cloned().unwrap_or_default(),
                 events,
                 lease,
+                test_run,
             )
         }))
 }
@@ -487,6 +689,7 @@ async fn session(
     mut device: String,
     mut events: tokio::sync::broadcast::Receiver<(Uuid, Vec<u8>)>,
     lease: Option<super::auth::SocketLease>,
+    test_run: bool,
 ) {
     let sender = Uuid::new_v4();
     let mut ready = false;
@@ -523,7 +726,7 @@ async fn session(
                     Some("push") if ready=>{
                         let d=device.clone();
                         run(&state,&account,async move{
-                            apply(&s,&owner,&d,frame,sender).await?;
+                            apply(&s,&owner,&d,frame,sender,test_run).await?;
                             Ok(vec![])
                         }).await
                     },

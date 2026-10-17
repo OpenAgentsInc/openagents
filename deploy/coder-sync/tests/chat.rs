@@ -80,6 +80,7 @@ impl TestServer {
             auth: AuthMode::Dev,
             accounts: None,
             revision: "chat-test".into(),
+            push: None,
         });
         let task = tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();

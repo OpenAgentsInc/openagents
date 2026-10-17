@@ -33,6 +33,7 @@ impl Server {
             auth: AuthMode::Dev,
             accounts: None,
             revision: "blob-test".into(),
+            push: None,
         };
         let app = server::router(state.clone());
         let task = tokio::spawn(async move {

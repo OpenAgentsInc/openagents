@@ -44,6 +44,9 @@ async fn run() -> Result<(), &'static str> {
         auth: config.auth,
         accounts,
         revision: config.revision,
+        push: config
+            .push
+            .map(|settings| std::sync::Arc::new(coder_sync::server::push::Push::new(settings))),
     };
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
