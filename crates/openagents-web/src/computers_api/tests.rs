@@ -239,8 +239,35 @@ async fn serve(router: Router) -> (String, tokio::task::JoinHandle<()>) {
     (base, task)
 }
 
+// Each provider fixture owns the process-wide production configuration.
+fn own_provider_process<T>(fixture: T) -> bool {
+    let name = std::any::type_name_of_val(&fixture);
+    let (_, name) = name.split_once("::").expect("qualified fixture name");
+    const CHILD: &str = "OPENAGENTS_COMPUTERS_FIXTURE_CHILD";
+    if std::env::var(CHILD).as_deref() == Ok(name) {
+        return true;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", name, "--nocapture"])
+        .env(CHILD, name)
+        .output()
+        .expect("start the isolated provider fixture");
+    assert!(
+        output.status.success(),
+        "{name}: {}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    false
+}
+
 #[tokio::test]
 async fn public_lifecycle_uses_current_account_authority_and_keeps_service_credentials_private() {
+    if !own_provider_process(
+        public_lifecycle_uses_current_account_authority_and_keeps_service_credentials_private,
+    ) {
+        return;
+    }
     let dir = tempfile::tempdir().unwrap();
     std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let state = Arc::new(Native::default());
@@ -917,6 +944,9 @@ async fn handoff_provider(State(state): State<Arc<Handoff>>, request: Request) -
 
 #[tokio::test]
 async fn account_handoff_retries_a_read_and_does_not_replay_a_delete() {
+    if !own_provider_process(account_handoff_retries_a_read_and_does_not_replay_a_delete) {
+        return;
+    }
     let dir = tempfile::tempdir().unwrap();
     std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     let state = Arc::new(Handoff {
