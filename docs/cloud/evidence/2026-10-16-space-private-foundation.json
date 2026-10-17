@@ -734,5 +734,233 @@
       "Listings were not taken under a write fence and do not establish cleanup.",
       "No retention or allowance was changed; soft-deleted generations remain recoverable."
     ]
+  },
+  "lane0_monitoring_20261017": {
+    "source_commit": "2c763703280e6369fa7fcd23c855cd892709a58d",
+    "checked_at": "2026-10-17T08:12:21.528132+00:00",
+    "collector_sha256": "6f5f23d45fa609c8b35fe8e2008ccb8408b82c9c81a9d42c825d1d80616f41f6",
+    "measurements": [
+      {
+        "metric": "nodes_ready",
+        "time": "2026-10-17T08:11:37.834568Z",
+        "value": 2
+      },
+      {
+        "metric": "services_ready_ratio",
+        "time": "2026-10-17T08:11:37.834568Z",
+        "value": 1
+      },
+      {
+        "metric": "collector_errors",
+        "time": "2026-10-17T08:11:37.834568Z",
+        "value": 0
+      },
+      {
+        "metric": "oldest_operation_seconds",
+        "time": "2026-10-17T08:11:37.834568Z",
+        "value": 0
+      },
+      {
+        "metric": "oldest_transition_seconds",
+        "time": "2026-10-17T08:11:37.834568Z",
+        "value": 0
+      },
+      {
+        "metric": "worker_disk_free_bytes",
+        "time": "2026-10-17T08:11:37.834568Z",
+        "value": 314999517184
+      },
+      {
+        "metric": "sandbox_count",
+        "time": "2026-10-17T08:11:37.834568Z",
+        "value": 0
+      },
+      {
+        "metric": "orphan_snapshot_locations",
+        "time": "2026-10-17T08:11:37.834568Z",
+        "value": 0
+      },
+      {
+        "metric": "oldest_orphan_seconds",
+        "time": "2026-10-17T08:11:37.834568Z",
+        "value": 0
+      },
+      {
+        "metric": "unfinished_uploads",
+        "time": "2026-10-17T08:11:37.834568Z",
+        "value": 0
+      },
+      {
+        "metric": "oldest_unfinished_upload_seconds",
+        "time": "2026-10-17T08:11:37.834568Z",
+        "value": 0
+      }
+    ],
+    "policies": {
+      "policies": [
+        {
+          "name": "projects/openagentsgemini/alertPolicies/10283226037195673935",
+          "metric": "nodes_ready",
+          "enabled": true,
+          "notification_channels": 0
+        },
+        {
+          "name": "projects/openagentsgemini/alertPolicies/2371420808032944348",
+          "metric": "services_ready_ratio",
+          "enabled": true,
+          "notification_channels": 0
+        },
+        {
+          "name": "projects/openagentsgemini/alertPolicies/6453099402489130955",
+          "metric": "collector_errors",
+          "enabled": true,
+          "notification_channels": 0
+        },
+        {
+          "name": "projects/openagentsgemini/alertPolicies/2371420808032947299",
+          "metric": "oldest_operation_seconds",
+          "enabled": true,
+          "notification_channels": 0
+        },
+        {
+          "name": "projects/openagentsgemini/alertPolicies/6453099402489130658",
+          "metric": "oldest_transition_seconds",
+          "enabled": true,
+          "notification_channels": 0
+        },
+        {
+          "name": "projects/openagentsgemini/alertPolicies/13516671637668553242",
+          "metric": "worker_disk_free_bytes",
+          "enabled": true,
+          "notification_channels": 0
+        },
+        {
+          "name": "projects/openagentsgemini/alertPolicies/17741192474482501197",
+          "metric": "sandbox_count",
+          "enabled": true,
+          "notification_channels": 0
+        },
+        {
+          "name": "projects/openagentsgemini/alertPolicies/14101644095627733231",
+          "metric": "oldest_orphan_seconds",
+          "enabled": true,
+          "notification_channels": 0
+        },
+        {
+          "name": "projects/openagentsgemini/alertPolicies/14101644095627732558",
+          "metric": "oldest_unfinished_upload_seconds",
+          "enabled": true,
+          "notification_channels": 0
+        }
+      ],
+      "notifications": "Cloud Monitoring incidents; existing channel assignments are preserved"
+    },
+    "iam_changed": false,
+    "iam_note": "The helper\u2019s redundant project IAM update was denied. Existing control-identity publication succeeded, so configuration continued without that IAM operation.",
+    "application_services_restarted": false,
+    "timer_already_enabled": true,
+    "notification_channels_added": 0,
+    "automatic_timer_check": {
+      "Result": "success",
+      "ExecMainStartTimestamp": "Sat 2026-10-17 08:14:59 UTC",
+      "ExecMainStatus": "0",
+      "monitor_and_k3s_active": true,
+      "latest_collector_errors_point": {
+        "interval": {
+          "startTime": "2026-10-17T08:15:00.842702Z",
+          "endTime": "2026-10-17T08:15:00.842702Z"
+        },
+        "value": {
+          "doubleValue": 0
+        }
+      }
+    }
+  },
+  "lane0_read_only_inventory_20261017": {
+    "observed_at": "2026-10-17T08:12:38.631452+00:00",
+    "resource_count": 43,
+    "unconfirmed_ownership": [],
+    "unattached_owned_disks": [],
+    "objects": [
+      {
+        "bucket": "openagentsgemini-oa-space-service-templates",
+        "active_objects": 6,
+        "active_bytes": 1182053577,
+        "noncurrent_objects": 0,
+        "noncurrent_bytes": 0,
+        "soft_deleted_objects": 3,
+        "soft_deleted_bytes": 14680128,
+        "top_level_prefixes": [
+          "templates"
+        ],
+        "metadata_sha256": "6bc5d303669ce6281f199ce3e91a17b1ec8b280ee5829509cc19fd365356998b",
+        "listing_started_at": "2026-10-17T08:12:41.565027+00:00",
+        "listing_finished_at": "2026-10-17T08:12:42.424024+00:00",
+        "listing_pages": 2,
+        "object_metadata_complete": true,
+        "latest_soft_delete_expiry": "2026-10-23T22:27:00.654000+00:00",
+        "includes_noncurrent_versions": true,
+        "includes_soft_deleted_objects": true,
+        "includes_unfinished_uploads": false,
+        "storage_cleanup_proof": false,
+        "soft_delete": {
+          "retentionDurationSeconds": "604800",
+          "effectiveTime": "2026-10-16T22:21:03.687Z"
+        },
+        "ip_filter_enabled": true
+      },
+      {
+        "bucket": "openagentsgemini-oa-space-service-snapshots",
+        "active_objects": 0,
+        "active_bytes": 0,
+        "noncurrent_objects": 0,
+        "noncurrent_bytes": 0,
+        "soft_deleted_objects": 27,
+        "soft_deleted_bytes": 738602164,
+        "top_level_prefixes": [],
+        "metadata_sha256": "e96cace70f8f593187a797dbef73bd26a46cb55859acca3b8fac724e59f06833",
+        "listing_started_at": "2026-10-17T08:12:42.831680+00:00",
+        "listing_finished_at": "2026-10-17T08:12:43.804768+00:00",
+        "listing_pages": 2,
+        "object_metadata_complete": true,
+        "latest_soft_delete_expiry": "2026-10-24T07:08:51.892000+00:00",
+        "includes_noncurrent_versions": true,
+        "includes_soft_deleted_objects": true,
+        "includes_unfinished_uploads": false,
+        "storage_cleanup_proof": false,
+        "soft_delete": {
+          "retentionDurationSeconds": "604800",
+          "effectiveTime": "2026-10-16T22:22:40.452Z"
+        },
+        "ip_filter_enabled": true
+      }
+    ],
+    "multipart": {
+      "observed_at": "2026-10-17T08:13:25.017937+00:00",
+      "buckets": [
+        {
+          "bucket": "openagentsgemini-oa-space-service-templates",
+          "active_objects": 6,
+          "active_bytes": 1182053577,
+          "unfinished_uploads": 0,
+          "oldest_unfinished_upload_seconds": 0,
+          "unfinished_upload_bytes": 0
+        },
+        {
+          "bucket": "openagentsgemini-oa-space-service-snapshots",
+          "active_objects": 0,
+          "active_bytes": 0,
+          "unfinished_uploads": 0,
+          "oldest_unfinished_upload_seconds": 0,
+          "unfinished_upload_bytes": 0
+        }
+      ],
+      "includes_soft_deleted_objects": false,
+      "mutations_performed": 0,
+      "credential_output": false
+    },
+    "mutations_performed": 0,
+    "write_fence_held": false,
+    "cleanup_proved": false
   }
 }
