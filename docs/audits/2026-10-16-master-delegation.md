@@ -80,6 +80,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 1: harness and chats (critical path)
 
+**Taken 2026-10-17 00:48 CDT** by a Claude Code subagent working #11823 in ~/work/openagents-11823.
+
 **Taken 2026-10-17 00:34 CDT** by Codex (GPT-6), coordinator-worker in `~/work/openagents-codex-coord`, for #11945 release-blocking `coder-new` model-picker and Cursor screen tests only. #11898 stays with its live owner; #11823 remains free.
 
 **Taken 2026-10-16 22:21 CDT** by Codex working #11894, #11898, #11823 in `~/work/openagents-chat-bridge`.
