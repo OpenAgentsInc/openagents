@@ -125,7 +125,11 @@ pub fn same_model_options(
 
 /// Host-side controls handed to a run: input-request bridge + steering mailbox.
 pub struct RunControls {
+    #[cfg(feature = "voice")]
     pub realtime: Option<codex::realtime::RealtimeControls>,
+    /// Voice controls cannot be supplied when native voice is disabled.
+    #[cfg(not(feature = "voice"))]
+    pub realtime: Option<std::convert::Infallible>,
     /// Shared execution gate held until the harness has shut down and reaped
     /// its subprocess, including when the host drops the event stream. Each
     /// detached session task must retain this lease through its cleanup.

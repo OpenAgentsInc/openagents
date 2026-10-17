@@ -121,3 +121,5 @@ links remain readable. Upstream fixes now require manual ports.
   OpenCode run paths accept `process::LaunchBroker`. The host applies its
   borrowed command wrapper before each launch, including OpenCode's MCP version
   probe. A refused or cancelled request cannot start an unwrapped process.
+  `default-features = false` builds text drivers without the app voice transport
+  and SQLite, so root workspace callers can link them.

@@ -46,6 +46,7 @@
 
 pub(crate) mod catalog;
 mod normalize;
+#[cfg(feature = "voice")]
 pub mod realtime;
 mod subagents;
 
@@ -1176,6 +1177,7 @@ async fn run_session(session: Session) {
             .await?;
         client.notify("initialized", None);
 
+        #[cfg(feature = "voice")]
         if realtime.is_some() {
             // Codex's first account/read announces the initial auth snapshot
             // via account/updated. Load it before attaching the voice router,
@@ -1230,10 +1232,13 @@ async fn run_session(session: Session) {
         let thread_id = thread["thread"]["id"].as_str().unwrap_or("").to_owned();
         let mut children = subagents::Subagents::new(thread_id.clone());
         children.restore(&thread["thread"]);
+        #[cfg(feature = "voice")]
         let voice_context = realtime::ThreadContext {
             cwd: thread["cwd"].as_str().unwrap_or(&request.cwd).to_owned(),
             model_provider: thread["modelProvider"].as_str().map(str::to_owned),
         };
+        #[cfg(not(feature = "voice"))]
+        let voice_context = ();
         Ok::<_, HarnessError>((thread_id, children, voice_context))
     };
     let (thread_id, mut children, voice_context) = tokio::select! {
@@ -1312,6 +1317,9 @@ async fn run_session(session: Session) {
     }
 
     let mut router = TurnRouter::default();
+    #[cfg(not(feature = "voice"))]
+    let _ = (realtime, executable, voice_context);
+    #[cfg(feature = "voice")]
     let _voice_bridge = realtime.map(|controls| {
         realtime::attach(
             client.clone(),

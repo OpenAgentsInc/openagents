@@ -1856,6 +1856,7 @@ async fn a_stopped_turn_keeps_the_app_server_for_the_next_prompt() {
     assert!(next_event(&mut stream).await.is_none());
 }
 
+#[cfg(feature = "voice")]
 #[tokio::test]
 async fn idle_voice_runtime_has_no_initial_turn_and_preserves_mcp() {
     let dir = tempfile::tempdir().unwrap();
@@ -1921,6 +1922,7 @@ async fn idle_voice_runtime_has_no_initial_turn_and_preserves_mcp() {
 }
 
 #[cfg(unix)]
+#[cfg(feature = "voice")]
 #[tokio::test]
 async fn external_voice_keeps_canonical_events_without_any_local_helper() {
     use std::os::unix::fs::PermissionsExt;
