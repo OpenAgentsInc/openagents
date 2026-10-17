@@ -45,8 +45,8 @@ const KEY_DAYS: u64 = 30;
 /// The Linux engine the computer runs, pinned by digest. Deployments can
 /// pin another build with `OPENAGENTS_CLOUD_HOST_ENGINE_URL` and
 /// `OPENAGENTS_CLOUD_HOST_ENGINE_SHA256` together.
-const ENGINE_URL: &str = "https://storage.googleapis.com/openagentsgemini-cli-releases/openagents-host/2026-10-17/openagents-host-linux-x86_64";
-const ENGINE_SHA256: &str = "";
+const ENGINE_URL: &str = "https://storage.googleapis.com/openagentsgemini-cli-releases/openagents-host/3063ab036c/openagents-host-linux-x86_64";
+const ENGINE_SHA256: &str = "c5e3ee693f8235039d5881c6d3721753cea94de19f26c6b1431f2e2add1138f6";
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
@@ -561,6 +561,15 @@ mod tests {
         // The engine ends before the command limit, so its key is not left running.
         assert!(ENGINE_SECONDS < RUN_SECONDS);
         assert_eq!(text, command(&engine()), "the digest must be stable");
+    }
+
+    #[test]
+    fn the_built_in_engine_is_pinned() {
+        let pinned = Engine {
+            url: ENGINE_URL.into(),
+            sha256: ENGINE_SHA256.into(),
+        };
+        assert!(pinned.valid());
     }
 
     #[test]
