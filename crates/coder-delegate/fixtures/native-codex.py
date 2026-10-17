@@ -2,6 +2,7 @@
 """Local app-server fixture for terminal session control tests."""
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import threading
@@ -38,6 +39,8 @@ def turn(text, number):
     notice("item/started", {"item": item})
     item.update(status="completed", exitCode=1)
     notice("item/completed", {"item": item})
+    if os.environ.get("STANDIN_STEER_SILENT"):
+        threading.Event().wait()
     time.sleep(float(os.environ.get("STANDIN_DELAY", "0")))
     if state["steer"]:
         what = "steer"
@@ -54,6 +57,8 @@ for line in sys.stdin:
         continue
     params = request.get("params", {})
     if method == "turn/steer" and os.environ.get("STANDIN_STEER_SILENT"):
+        if seen := os.environ.get("STANDIN_STEER_SEEN"):
+            Path(seen).write_text("received")
         continue
     result = {}
     if method == "thread/resume":

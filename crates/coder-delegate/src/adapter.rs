@@ -663,26 +663,35 @@ mod tests {
     #[tokio::test]
     async fn an_unanswered_native_steer_cannot_hold_the_host_past_its_deadline() {
         let dir = scratch("native-steer-timeout");
+        let seen = dir.join("steer-requested");
         let mut cli = cli(
             Agent::Codex,
             &dir,
-            &[("STANDIN_STEER_SILENT", "1"), ("STANDIN_DELAY", "0.05")],
+            &[
+                ("STANDIN_STEER_SILENT", "1"),
+                ("STANDIN_STEER_SEEN", seen.to_str().unwrap()),
+                ("STANDIN_DELAY", "0.05"),
+            ],
         );
-        cli.granted = Some(Duration::from_millis(1500));
+        cli.granted = Some(Duration::from_secs(5));
         let controls = Controls {
-            deadline_ms: 1500,
+            deadline_ms: 5000,
             steer: Some(Steer {
-                when: Trigger::CommandFailed,
+                when: Trigger::After { ms: 0 },
                 message: "Please steer".into(),
             }),
             ..controls()
         };
-        let (driven, _) = tokio::time::timeout(Duration::from_secs(5), run(&cli, &controls, true))
+        let (driven, _) = tokio::time::timeout(Duration::from_secs(8), run(&cli, &controls, true))
             .await
             .expect("the host deadline must stop an unanswered steer");
         assert_eq!(driven.report.status, Status::TimedOut);
         assert_eq!(driven.stops.len(), 1);
         assert!(driven.stops[0].cleanup.contains("empty after cleanup"));
+        assert!(
+            seen.is_file(),
+            "the native fixture must receive the steer request"
+        );
         assert_eq!(
             action(&driven, Capability::Steer).unwrap().outcome,
             "failed"
