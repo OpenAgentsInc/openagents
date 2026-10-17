@@ -38,31 +38,39 @@ def request(admin, method, path, data=None):
 def main(action):
     if os.getuid()!=0: raise RuntimeError('Run qualification through the owned control identity.')
     ROOT.mkdir(mode=0o700, exist_ok=True)
+    template='code-runtime' if action.startswith('runtime-') else 'seed'
+    action=action.removeprefix('runtime-')
     if action=='probe':
         nodes=request(True,'GET','/admin/api/v1/nodes')
         (ROOT/'nodes.json').write_text(json.dumps(nodes,indent=2)+'\n')
         sandboxes=request(False,'GET','/api/v1/sandboxes')
         print(json.dumps({'admin_nodes': nodes, 'native_sandboxes': sandboxes}))
     elif action=='build':
-        state=ROOT/'seed-build.json'
+        state=ROOT/(template+'-build.json')
         if state.exists(): raise RuntimeError('Inspect the saved build before submitting another.')
         # Create the marker first: a lost response must not cause a duplicate build.
-        state.write_text(json.dumps({'state':'submission_pending','template':'seed'})+'\n')
-        value=request(True,'POST','/admin/api/v1/system-templates/seed/builds',{'publish_tags':['latest']})
+        state.write_text(json.dumps({'state':'submission_pending','template':template})+'\n')
+        data={'publish_tags':['latest']}
+        if template=='code-runtime':
+            seed=json.loads((ROOT/'seed-build-status.json').read_text())
+            import re
+            if seed.get('state')!='succeeded' or not re.fullmatch(r'sha256:[0-9a-f]{64}',seed.get('content_hash','')): raise RuntimeError('Verify the exact published seed before building its runtime.')
+            data['base']='seed@'+seed['content_hash']
+        value=request(True,'POST','/admin/api/v1/system-templates/'+template+'/builds',data)
         state.write_text(json.dumps(value,indent=2)+'\n')
         print(json.dumps(value))
     else:
-        value=json.loads((ROOT/'seed-build.json').read_text())
+        value=json.loads((ROOT/(template+'-build.json')).read_text())
         job=value.get('job_id')
         if not job: raise RuntimeError('No build receipt is saved. Inspect the operation before retrying submission.')
         import uuid
         job=str(uuid.UUID(job))
-        value=request(True,'GET','/admin/api/v1/templates/seed/builds/'+job)
-        (ROOT/'seed-build-status.json').write_text(json.dumps(value,indent=2)+'\n')
+        value=request(True,'GET','/admin/api/v1/templates/'+template+'/builds/'+job)
+        (ROOT/(template+'-build-status.json')).write_text(json.dumps(value,indent=2)+'\n')
         print(json.dumps(value))
 
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action',choices=['probe','build','status'])
+    parser.add_argument('action',choices=['probe','build','status','runtime-build','runtime-status'])
     main(parser.parse_args().action)
