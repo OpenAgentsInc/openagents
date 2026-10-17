@@ -475,3 +475,10 @@ links remain readable. Upstream fixes now require manual ports.
   Settings row in `apps/ios/OpenAgents/Shell/MoreViewController.swift`.
   Hook: the Delete account row and its steps in the desktop account menu,
   `crates/ui/src/openagents_account.rs`.
+
+- Wallet presentation (#12013). Our Rust wallet now separates the balance,
+  receive methods, send entry, payment review, activity, and wallet information
+  into focused Rust Native views. The iOS adapter uses the Bitcoin Design and
+  WalletUI hierarchy, typography, and button patterns described in
+  `docs/design/` at the repository root. Wallet operations, seed storage, and
+  backup authentication are unchanged.

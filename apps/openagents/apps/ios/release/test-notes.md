@@ -1,4 +1,24 @@
-# OpenAgents 1.0.0 (1012)
+# OpenAgents 1.0.0 (1013)
+
+The wallet now uses separate screens for receiving bitcoin, sending, payment
+review, activity, and wallet information. The balance page keeps Send and
+Receive together, with recent payments and a backup reminder. Buttons, text,
+spacing, and payment codes follow the Bitcoin Design wallet patterns.
+
+This build changes the presentation of existing wallet features. It adds no
+payment methods or wallet services. Existing wallets and recovery words stay
+in place.
+
+Check each receive method, entering a Lightning request amount, copying its
+payment request, entering a destination, reviewing the amount and fee, editing
+before sending, and returning to activity. Check light and dark appearance,
+large text, recovery words after device authentication, and updating over your
+existing installation. Use a dedicated test wallet for any payment checks.
+
+Sign-in changes already on main are included: use the existing sign-in sheet;
+Sign in with Apple is no longer offered.
+
+OpenAgents 1.0.0 (1012)
 
 The phone works with no computer. It opens on a chat: type a question and send
 it, and the answer streams in, with no sign-in for your first few messages.

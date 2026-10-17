@@ -117,6 +117,16 @@ enum Sending {
     Failed(String),
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Screen {
+    #[default]
+    Home,
+    Receive,
+    Send,
+    Activity,
+    About,
+}
+
 struct State {
     instance: String,
     revision: u64,
@@ -134,6 +144,7 @@ struct State {
     spark: Option<String>,
     bitcoin: Option<String>,
     payments: Vec<PaymentRow>,
+    screen: Screen,
     receive: Receive,
     invoice_amount: String,
     invoice: Option<(String, Option<u64>)>,
@@ -147,7 +158,6 @@ struct State {
     restore_error: Option<String>,
     setup_busy: bool,
     trust_acknowledged: bool,
-    trust_open: bool,
     words_saved: Option<String>,
 }
 
@@ -211,6 +221,7 @@ impl Wallet {
             spark: None,
             bitcoin: None,
             payments: vec![],
+            screen: Screen::Home,
             receive: Receive::default(),
             invoice_amount: String::new(),
             invoice: None,
@@ -224,7 +235,6 @@ impl Wallet {
             restore_error: None,
             setup_busy: false,
             trust_acknowledged: home.join(TRUST_FILE).exists(),
-            trust_open: false,
             words_saved,
         };
         Self {
@@ -437,6 +447,10 @@ impl Wallet {
 
     fn run(&self, key: &str) -> Effect {
         match key {
+            "home" => self.lock().screen = Screen::Home,
+            "receive-open" => self.lock().screen = Screen::Receive,
+            "send-open" => self.lock().screen = Screen::Send,
+            "activity-open" => self.lock().screen = Screen::Activity,
             "retry" => self.retry(),
             "refresh" => self.refresh(),
             "create" => self.create(),
@@ -454,14 +468,14 @@ impl Wallet {
             "restore" => self.restore(),
             "trust" => {
                 let mut state = self.lock();
-                state.trust_open = !state.trust_open;
+                state.screen = Screen::About;
             }
             "trust-ok" => {
                 let _ = std::fs::create_dir_all(&self.home);
                 let _ = std::fs::write(self.home.join(TRUST_FILE), b"1\n");
                 let mut state = self.lock();
                 state.trust_acknowledged = true;
-                state.trust_open = false;
+                state.screen = Screen::Home;
             }
             "backup" => return Effect::Backup,
             "receive-spark" => self.lock().receive = Receive::Spark,
@@ -492,6 +506,7 @@ impl Wallet {
                 state.send = Sending::Idle;
                 state.send_to.clear();
                 state.send_amount.clear();
+                state.screen = Screen::Home;
             }
             _ => {}
         }
@@ -830,12 +845,34 @@ fn view(state: &State, format: Format) -> View<Action> {
         Key::Absent => setup(state),
         Key::Present => ready(state, format),
     };
-    View::new_v3(&state.instance, state.revision, stack("wallet", children))
+    let page = match (state.key, state.screen, &state.send) {
+        (Key::Present, Screen::Home, _) => "wallet-home",
+        (Key::Present, Screen::Receive, _) => "wallet-receive",
+        (Key::Present, Screen::Send, Sending::Quoted(_) | Sending::Paying(_)) => "wallet-review",
+        (Key::Present, Screen::Send, Sending::Sent(_)) => "wallet-result",
+        (Key::Present, Screen::Send, _) => "wallet-send",
+        (Key::Present, Screen::Activity, _) => "wallet-activity",
+        (Key::Present, Screen::About, _) => "wallet-about",
+        _ if state.restoring => "wallet-restore",
+        _ => "wallet-setup",
+    };
+    View::new_v3(&state.instance, state.revision, stack(page, children))
 }
 
 fn setup(state: &State) -> Vec<ViewNode<Action>> {
     let enabled = !state.setup_busy;
-    let mut nodes = vec![text("heading", "Wallet", TextRole::Heading)];
+    let mut nodes = vec![text(
+        "heading",
+        if state.restoring {
+            "Restore your wallet"
+        } else {
+            "Your bitcoin, with you"
+        },
+        TextRole::Heading,
+    )];
+    if !state.restoring {
+        nodes.insert(0, text("wallet-mark", "₿", TextRole::Heading));
+    }
     if state.restoring {
         nodes.push(text(
             "restore-detail",
@@ -864,20 +901,44 @@ fn setup(state: &State) -> Vec<ViewNode<Action>> {
         if let Some(error) = &state.restore_error {
             nodes.push(text("setup-error", error, TextRole::Status));
         }
-        nodes.push(button("create", "Make a wallet", enabled));
-        nodes.push(button("restore-open", "Restore from words", enabled));
+        nodes.push(button("create", "Create wallet", enabled));
+        nodes.push(button("restore-open", "Restore wallet", enabled));
     }
     nodes
 }
 
 fn ready(state: &State, format: Format) -> Vec<ViewNode<Action>> {
     let running = state.node.is_some();
-    let mut nodes = vec![text(
-        "balance",
-        state
-            .balance
-            .map_or_else(|| "–".to_owned(), |total| format.show(total)),
-        TextRole::Heading,
+    if state.screen != Screen::Home {
+        let mut nodes = vec![button("home", "Back to wallet", true)];
+        match state.screen {
+            Screen::Receive => nodes.push(receive(state, format, running)),
+            Screen::Send => nodes.push(send(state, format, running)),
+            Screen::Activity => nodes.push(history(state, format)),
+            Screen::About => {
+                let mut about = vec![text("trust-title", TRUST_TITLE, TextRole::Heading)];
+                for (index, line) in TRUST_LINES.iter().enumerate() {
+                    about.push(text(format!("trust-line-{index}"), *line, TextRole::Body));
+                }
+                about.push(button("trust-ok", "Got it", true));
+                nodes.push(stack("trust-card", about));
+            }
+            Screen::Home => unreachable!(),
+        }
+        return nodes;
+    }
+    let mut nodes = vec![stack(
+        "balance-summary",
+        vec![
+            text("balance-label", "Bitcoin balance", TextRole::Status),
+            text(
+                "balance",
+                state
+                    .balance
+                    .map_or_else(|| "–".to_owned(), |total| format.show(total)),
+                TextRole::Heading,
+            ),
+        ],
     )];
     let status = if state.starting {
         Some("Connecting…".to_owned())
@@ -897,58 +958,61 @@ fn ready(state: &State, format: Format) -> Vec<ViewNode<Action>> {
             nodes.push(button("retry", "Try again", true));
         }
     }
+    nodes.push(node(
+        "wallet-actions",
+        Element::Stack {
+            axis: Axis::Horizontal,
+            children: vec![
+                button("receive-open", "Receive", true),
+                button("send-open", "Send", true),
+            ],
+        },
+    ));
     if state
         .balance
         .is_some_and(|total| total > BALANCE_WARNING_SATS)
     {
         nodes.push(text(
             "warning",
-            format!(
-                "This phone wallet holds more than {}. Keep only what you'd carry, and make sure your recovery words are written down.",
-                format.show(BALANCE_WARNING_SATS)
-            ),
+            format!("This phone wallet holds more than {}. Keep only what you'd carry, and make sure your recovery words are written down.", format.show(BALANCE_WARNING_SATS)),
             TextRole::Body,
         ));
     }
     let fingerprint = state.seed.as_ref().map(Seed::fingerprint);
-    if fingerprint.is_some() && state.words_saved != fingerprint {
-        nodes.push(stack(
-            "backup-card",
-            vec![
-                text("backup-title", "Back up your wallet", TextRole::Heading),
-                text(
-                    "backup-detail",
-                    "If you lose this phone, your recovery words are the only way to get your bitcoin back.",
-                    TextRole::Body,
-                ),
-            ],
+    let needs_backup = fingerprint.is_some() && state.words_saved != fingerprint;
+    if needs_backup {
+        nodes.push(stack("backup-card", vec![
+            text("backup-title", "Back up your wallet", TextRole::Heading),
+            text("backup-detail", "Keep your recovery words somewhere safe. You'll need them if you lose this phone.", TextRole::Body),
+            button("backup", "Back up wallet", true),
+        ]));
+    }
+    nodes.push(button("activity-open", "Activity", true));
+    if state.payments.is_empty() {
+        nodes.push(text(
+            "history-empty",
+            "No payments yet. Receive bitcoin to get started.",
+            TextRole::Status,
+        ));
+    } else {
+        nodes.push(history_rows(state, format, 3));
+    }
+    let mut more = vec![button("trust", TRUST_TITLE, true)];
+    if !state.trust_acknowledged {
+        more.push(text(
+            "trust-summary",
+            "Learn how payments and recovery work before adding bitcoin.",
+            TextRole::Status,
         ));
     }
-    if !state.trust_acknowledged || state.trust_open {
-        let mut trust = vec![
-            text("trust-title", TRUST_TITLE, TextRole::Heading),
-            text("trust-summary", TRUST_SUMMARY, TextRole::Body),
-        ];
-        if state.trust_open {
-            for (index, line) in TRUST_LINES.iter().enumerate() {
-                trust.push(text(format!("trust-line-{index}"), *line, TextRole::Body));
-            }
-        } else {
-            trust.push(button("trust", "Read more", true));
-        }
-        trust.push(button("trust-ok", "Got it", true));
-        nodes.push(stack("trust-card", trust));
+    if !needs_backup {
+        more.push(button("backup", "Recovery words", true));
     }
-    nodes.push(receive(state, format, running));
-    nodes.push(send(state, format, running));
-    nodes.push(history(state, format));
-    let mut more = vec![
-        button("backup", "Back up recovery words", true),
-        button("refresh", "Refresh", running && !state.refreshing),
-    ];
-    if state.trust_acknowledged && !state.trust_open {
-        more.push(button("trust", TRUST_TITLE, true));
-    }
+    more.push(button(
+        "refresh",
+        "Refresh balance",
+        running && !state.refreshing,
+    ));
     nodes.push(stack("more", more));
     nodes
 }
@@ -1026,7 +1090,7 @@ fn receive(state: &State, format: Format, running: bool) -> ViewNode<Action> {
     match code {
         Some(code) => {
             nodes.push(text("qr", code, TextRole::Code));
-            nodes.push(button("copy", "Copy", true));
+            nodes.push(button("copy", "Copy payment request", true));
         }
         None if state.receive != Receive::Lightning => {
             nodes.push(text(
@@ -1050,25 +1114,42 @@ fn selected(label: &str, chosen: bool) -> String {
 
 fn send(state: &State, format: Format, running: bool) -> ViewNode<Action> {
     let editable = running && !matches!(state.send, Sending::Quoting | Sending::Paying(_));
-    let mut nodes = vec![
-        text("send-heading", "Send", TextRole::Heading),
-        field(
+    let reviewing = matches!(state.send, Sending::Quoted(_) | Sending::Paying(_));
+    let finished = matches!(state.send, Sending::Sent(_));
+    let mut nodes = vec![text(
+        "send-heading",
+        if reviewing {
+            "Review payment"
+        } else if finished {
+            "Payment status"
+        } else {
+            "Send bitcoin"
+        },
+        TextRole::Heading,
+    )];
+    if !reviewing && !finished {
+        nodes.push(text(
+            "send-detail",
+            "Enter a payment request or address to get started.",
+            TextRole::Body,
+        ));
+        nodes.push(field(
             "send-to",
             "Pay to",
             state.send_to.clone(),
             "Invoice, Bitcoin address, or Lightning address",
             true,
             editable,
-        ),
-        field(
+        ));
+        nodes.push(field(
             "send-amount",
             format!("Amount in {}", format.unit()),
             state.send_amount.clone(),
             "Only if the request has none",
             false,
             editable,
-        ),
-    ];
+        ));
+    }
     match &state.send {
         Sending::Idle => nodes.push(button("review", "Review", editable)),
         Sending::Quoting => nodes.push(button("review", "Checking…", false)),
@@ -1078,7 +1159,36 @@ fn send(state: &State, format: Format, running: bool) -> ViewNode<Action> {
         }
         Sending::Quoted(quote) | Sending::Paying(quote) => {
             let paying = matches!(state.send, Sending::Paying(_));
-            nodes.push(text("quote", quote_text(quote, format), TextRole::Body));
+            nodes.push(stack(
+                "payment-review",
+                vec![
+                    text("review-amount-label", "Amount", TextRole::Status),
+                    text(
+                        "review-amount",
+                        format.show(quote.amount_sats),
+                        TextRole::Heading,
+                    ),
+                    text("review-destination-label", "To", TextRole::Status),
+                    text(
+                        "review-destination",
+                        match &quote.destination {
+                            Destination::Lightning(value)
+                            | Destination::LightningAddress(value)
+                            | Destination::Spark(value)
+                            | Destination::Bitcoin(value) => value.clone(),
+                        },
+                        TextRole::Code,
+                    ),
+                    text("review-fee-label", "Fee", TextRole::Status),
+                    text("review-fee", format.show(quote.fee_sats), TextRole::Body),
+                    text("review-total-label", "Total", TextRole::Status),
+                    text(
+                        "review-total",
+                        format.show(quote.amount_sats.saturating_add(quote.fee_sats)),
+                        TextRole::Heading,
+                    ),
+                ],
+            ));
             if let Some(note) = &quote.note {
                 nodes.push(text("quote-note", note, TextRole::Body));
             }
@@ -1094,7 +1204,7 @@ fn send(state: &State, format: Format, running: bool) -> ViewNode<Action> {
                 },
                 !paying,
             ));
-            nodes.push(button("send-cancel", "Cancel", !paying));
+            nodes.push(button("send-cancel", "Edit payment", !paying));
         }
         Sending::Sent(row) => {
             nodes.push(text(
@@ -1112,27 +1222,22 @@ fn send(state: &State, format: Format, running: bool) -> ViewNode<Action> {
     stack("send", nodes)
 }
 
-fn quote_text(quote: &Quote, format: Format) -> String {
-    let to = match &quote.destination {
-        Destination::Lightning(invoice) => format!("Lightning invoice {}", shorten(invoice)),
-        Destination::LightningAddress(address) => address.clone(),
-        Destination::Spark(address) => format!("Spark address {}", shorten(address)),
-        Destination::Bitcoin(address) => format!("Bitcoin address {}", shorten(address)),
-    };
-    format!(
-        "{} to {to}. Fee {}. Total {}.",
-        format.show(quote.amount_sats),
-        format.show(quote.fee_sats),
-        format.show(quote.amount_sats.saturating_add(quote.fee_sats))
+fn history(state: &State, format: Format) -> ViewNode<Action> {
+    stack(
+        "activity",
+        vec![
+            text("history-heading", "Activity", TextRole::Heading),
+            history_rows(state, format, HISTORY_LIMIT as usize),
+        ],
     )
 }
 
-fn history(state: &State, format: Format) -> ViewNode<Action> {
-    let mut nodes = vec![text("history-heading", "Activity", TextRole::Heading)];
+fn history_rows(state: &State, format: Format, limit: usize) -> ViewNode<Action> {
+    let mut nodes = vec![];
     if state.payments.is_empty() {
         nodes.push(text("history-empty", "No payments yet.", TextRole::Status));
     }
-    for (index, row) in state.payments.iter().enumerate() {
+    for (index, row) in state.payments.iter().take(limit).enumerate() {
         let mut line = format!(
             "{} {} · {}",
             if row.received { "Received" } else { "Sent" },
@@ -1150,17 +1255,6 @@ fn history(state: &State, format: Format) -> ViewNode<Action> {
         nodes.push(text(format!("payment-{index}"), line, TextRole::Body));
     }
     stack("history", nodes)
-}
-
-/// The start and end of a long code.
-fn shorten(text: &str) -> String {
-    let chars: Vec<char> = text.chars().collect();
-    if chars.len() <= 28 {
-        return text.to_owned();
-    }
-    let head: String = chars[..14].iter().collect();
-    let tail: String = chars[chars.len() - 10..].iter().collect();
-    format!("{head}…{tail}")
 }
 
 /// A Unix time as a UTC date, `2026-10-17`.

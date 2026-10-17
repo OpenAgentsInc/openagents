@@ -1,3 +1,11 @@
+## Check the wallet presentation on a test iPhone (#12013)
+
+Install OpenAgents 1.0.0 (1013) from TestFlight over the existing test app.
+Use a dedicated test wallet. Check the separate Receive, Send, payment review,
+Activity, and About screens, light and dark appearance, large text, and the
+recovery-words sheet after device authentication. Simulator checks use an
+offline wallet; they do not establish physical-device or funded-payment results.
+
 ## Add your account ID as site admin (#12003)
 
 Site admin can now be keyed on an account ID or npub instead of your GitHub

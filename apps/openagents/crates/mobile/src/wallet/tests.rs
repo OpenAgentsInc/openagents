@@ -361,13 +361,14 @@ fn the_wallet_opens_on_a_fixture_seed() {
     wallet.open();
     settle(&wallet);
     let texts = texts(&wallet);
-    for expected in ["₿250,000", fixture::SPARK, "Receive", "Send", "Activity"] {
+    for expected in ["₿250,000", "Receive", "Send", "Activity"] {
         assert!(texts.iter().any(|t| t == expected), "{expected}: {texts:?}");
     }
     assert!(
         texts.iter().any(|t| t.starts_with("Received +₿262,003")),
         "{texts:?}"
     );
+    tap(&wallet, "receive-open");
     assert_eq!(
         tap(&wallet, "copy"),
         Effect::Copy {
@@ -376,6 +377,7 @@ fn the_wallet_opens_on_a_fixture_seed() {
     );
     tap(&wallet, "receive-bitcoin");
     assert!(self::texts(&wallet).contains(&fixture::BITCOIN.to_owned()));
+    tap(&wallet, "home");
     assert_eq!(tap(&wallet, "backup"), Effect::Backup);
     // The balance survives a relaunch before the wallet reads Spark again.
     let again = Wallet::new(
@@ -392,6 +394,7 @@ fn receive_makes_invoices_and_send_pays_the_confirmed_quote_once() {
     let h = harness(MemoryStore::holding(fixture::ENTROPY.to_vec()));
     h.wallet.open();
     settle(&h.wallet);
+    tap(&h.wallet, "receive-open");
     tap(&h.wallet, "receive-lightning");
     type_in(&h.wallet, "invoice-amount", "2100");
     tap(&h.wallet, "invoice");
@@ -403,12 +406,14 @@ fn receive_makes_invoices_and_send_pays_the_confirmed_quote_once() {
     );
     assert!(texts.iter().any(|t| t.starts_with("lnbc2100n1")));
 
+    tap(&h.wallet, "home");
+    tap(&h.wallet, "send-open");
     type_in(&h.wallet, "send-to", "lnbc1000n1pfixture");
     tap(&h.wallet, "review");
     settle(&h.wallet);
     let texts = self::texts(&h.wallet);
     assert!(
-        texts.iter().any(|t| t.contains("Fee ₿2. Total ₿1,002.")),
+        texts.contains(&"₿2".to_owned()) && texts.contains(&"₿1,002".to_owned()),
         "{texts:?}"
     );
     tap(&h.wallet, "pay");
@@ -443,10 +448,19 @@ fn the_wallet_screen_passes_the_copy_guard() {
     seen.extend(texts(&h.wallet));
     tap(&h.wallet, "trust");
     seen.extend(texts(&h.wallet));
+    tap(&h.wallet, "trust-ok");
+    tap(&h.wallet, "receive-open");
+    seen.extend(texts(&h.wallet));
     for key in ["receive-lightning", "receive-bitcoin"] {
         tap(&h.wallet, key);
         seen.extend(texts(&h.wallet));
     }
+    tap(&h.wallet, "home");
+    tap(&h.wallet, "activity-open");
+    seen.extend(texts(&h.wallet));
+    tap(&h.wallet, "home");
+    tap(&h.wallet, "send-open");
+    seen.extend(texts(&h.wallet));
     type_in(&h.wallet, "send-to", "bc1qexample");
     tap(&h.wallet, "review");
     settle(&h.wallet);
@@ -470,4 +484,54 @@ fn the_keychain_item_is_the_one_the_earlier_app_wrote() {
     assert_eq!(seed::KEYCHAIN_SERVICE, "com.openagents.app.spark");
     assert_eq!(seed::KEYCHAIN_ACCOUNT, "seed-v1");
     assert!(matches!(NETWORK, openagents_spark::Network::Mainnet));
+}
+
+#[test]
+fn focused_screens_keep_drafts_and_require_the_visible_review_to_pay() {
+    let h = harness(MemoryStore::holding(fixture::ENTROPY.to_vec()));
+    h.wallet.open();
+    settle(&h.wallet);
+    assert!(!keys(&h.wallet).contains(&"send-to".into()));
+    assert!(!keys(&h.wallet).contains(&"qr".into()));
+    tap(&h.wallet, "send-open");
+    type_in(&h.wallet, "send-to", "lnbc1000n1pfixture");
+    tap(&h.wallet, "review");
+    settle(&h.wallet);
+    assert_eq!(h.wallet.view().root.key, "wallet-review");
+    assert!(!keys(&h.wallet).contains(&"send-to".into()));
+    assert!(texts(&h.wallet).contains(&"lnbc1000n1pfixture".into()));
+    let reviewed = h.wallet.view();
+    tap(&h.wallet, "home");
+    assert!(
+        h.wallet
+            .activate(&Activation {
+                instance: reviewed.instance,
+                revision: reviewed.revision,
+                node: "pay".into(),
+            })
+            .is_err()
+    );
+    assert_eq!(h.wallet.lock().balance, Some(250_000));
+    tap(&h.wallet, "send-open");
+    tap(&h.wallet, "send-cancel");
+    assert_eq!(h.wallet.lock().send_to, "lnbc1000n1pfixture");
+    assert!(keys(&h.wallet).contains(&"send-to".into()));
+    assert!(!keys(&h.wallet).contains(&"pay".into()));
+    tap(&h.wallet, "home");
+    tap(&h.wallet, "receive-open");
+    assert_eq!(
+        tap(&h.wallet, "copy"),
+        Effect::Copy {
+            text: fixture::SPARK.into()
+        }
+    );
+    tap(&h.wallet, "home");
+    tap(&h.wallet, "activity-open");
+    assert!(keys(&h.wallet).contains(&"payment-1".into()));
+    assert!(!keys(&h.wallet).contains(&"send-to".into()));
+    tap(&h.wallet, "home");
+    tap(&h.wallet, "trust");
+    assert!(keys(&h.wallet).contains(&"trust-line-4".into()));
+    tap(&h.wallet, "trust-ok");
+    assert_eq!(h.wallet.view().root.key, "wallet-home");
 }

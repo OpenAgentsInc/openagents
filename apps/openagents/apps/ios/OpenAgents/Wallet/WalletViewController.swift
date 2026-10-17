@@ -15,6 +15,7 @@ final class WalletViewController: UIViewController, UITextViewDelegate {
     private var observation: AnyObject?
     private var instance = ""
     private var revision: UInt64 = 0
+    private var page = ""
     private var views: [String: UIView] = [:]
     private var fieldKeys: [ObjectIdentifier: String] = [:]
 
@@ -28,7 +29,8 @@ final class WalletViewController: UIViewController, UITextViewDelegate {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Wallet"
-        view.backgroundColor = Palette.background
+        view.backgroundColor = .systemBackground
+        view.tintColor = WalletAppearance.accent
         view.accessibilityIdentifier = "wallet"
         scroll.translatesAutoresizingMaskIntoConstraints = false
         scroll.keyboardDismissMode = .interactive
@@ -40,7 +42,7 @@ final class WalletViewController: UIViewController, UITextViewDelegate {
         }, for: .valueChanged)
         scroll.refreshControl = refresh
         content.axis = .vertical
-        content.spacing = 16
+        content.spacing = 24
         content.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scroll)
         scroll.addSubview(content)
@@ -73,10 +75,20 @@ final class WalletViewController: UIViewController, UITextViewDelegate {
               let root = document["root"] as? [String: Any] else { return }
         instance = document["instance"] as? String ?? ""
         revision = (document["revision"] as? NSNumber)?.uint64Value ?? 0
+        let nextPage = root["key"] as? String ?? "wallet"
+        let changedPage = page != nextPage
+        page = nextPage
         var used = Set<String>()
         let children = (props(root)["children"] as? [[String: Any]]) ?? []
         arrange(content, children.compactMap { mount($0, used: &used) })
         views = views.filter { used.contains($0.key) }
+        fieldKeys = fieldKeys.filter { id, _ in views.values.contains { view in
+            (view as? UIStackView)?.arrangedSubviews.contains { ObjectIdentifier($0) == id } == true
+        } }
+        if changedPage {
+            scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top), animated: false)
+            UIAccessibility.post(notification: .screenChanged, argument: content)
+        }
     }
 
     private func props(_ node: [String: Any]) -> [String: Any] {
@@ -114,6 +126,10 @@ final class WalletViewController: UIViewController, UITextViewDelegate {
         case "stack":
             let card = cached(key) { Self.card(key) }
             guard let stack = (card as? UIStackView) ?? card.subviews.compactMap({ $0 as? UIStackView }).first else { return nil }
+            let horizontal = (p["axis"] as? String) == "horizontal"
+                && !traitCollection.preferredContentSizeCategory.isAccessibilityCategory
+            stack.axis = horizontal ? .horizontal : .vertical
+            stack.distribution = stack.axis == .horizontal ? .fillEqually : .fill
             let children = (p["children"] as? [[String: Any]]) ?? []
             arrange(stack, children.compactMap { mount($0, used: &used) })
             return card
@@ -128,18 +144,29 @@ final class WalletViewController: UIViewController, UITextViewDelegate {
             label.accessibilityIdentifier = "wallet-\(key)"
             switch role {
             case "heading":
-                label.font = key == "balance" ? Fonts.ui(.sansSemibold, 40) : Fonts.ui(.sansSemibold, 20)
-                label.textColor = Palette.text
+                let size: CGFloat = key == "balance" ? 36 : (key.hasSuffix("heading") || key == "heading" ? 28 : 21)
+                label.font = UIFontMetrics(forTextStyle: .title1).scaledFont(for: .systemFont(ofSize: size, weight: .semibold))
+                label.textColor = .label
                 label.accessibilityTraits = .header
             case "status":
                 label.font = .preferredFont(forTextStyle: .subheadline)
                 label.textColor = key.hasSuffix("error") ? .systemRed : .secondaryLabel
             case "code":
-                label.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
-                label.textColor = Palette.text
+                label.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .monospacedSystemFont(ofSize: 15, weight: .regular))
+                label.lineBreakMode = .byCharWrapping
+                label.textColor = .label
             default:
                 label.font = .preferredFont(forTextStyle: .body)
-                label.textColor = Palette.text
+                label.textColor = .label
+            }
+            if ["balance", "balance-label", "wallet-mark"].contains(key) { label.textAlignment = .center }
+            if key == "wallet-mark" {
+                label.font = UIFontMetrics(forTextStyle: .largeTitle).scaledFont(for: .systemFont(ofSize: 64, weight: .medium))
+                label.textColor = WalletAppearance.accent
+                label.accessibilityLabel = "Bitcoin"
+            }
+            if key.hasPrefix("payment-") {
+                label.font = .preferredFont(forTextStyle: .body)
             }
             return label
         case "button":
@@ -148,11 +175,30 @@ final class WalletViewController: UIViewController, UITextViewDelegate {
                 button.addAction(UIAction { [weak self] _ in self?.activate(key) }, for: .touchUpInside)
                 return button
             }
-            var config = ["create", "restore", "pay", "invoice", "review", "trust-ok", "send-done"].contains(key)
-                ? UIButton.Configuration.filled() : UIButton.Configuration.tinted()
-            config.title = p["label"] as? String
-            config.cornerStyle = .large
+            let label = p["label"] as? String ?? ""
+            let primary = ["create", "pay", "invoice", "review", "trust-ok", "send-done", "restore", "receive-open"].contains(key)
+            let plain = ["home", "restore-open", "restore-cancel", "send-cancel", "trust", "refresh", "activity-open"].contains(key)
+            var config = WalletAppearance.button(primary: primary, plain: plain)
+            config.title = label
+            if label.hasPrefix("✓ ") {
+                config.baseBackgroundColor = WalletAppearance.accent.withAlphaComponent(0.12)
+                config.background.strokeColor = WalletAppearance.accent
+                button.accessibilityTraits.insert(.selected)
+            } else {
+                button.accessibilityTraits.remove(.selected)
+            }
+            if key == "receive-open" { config.image = UIImage(systemName: "arrow.down.left") }
+            if key == "send-open" { config.image = UIImage(systemName: "arrow.up.right") }
+            if key == "home" { config.image = UIImage(systemName: "chevron.left") }
+            if ["activity-open", "trust"].contains(key) {
+                config.image = UIImage(systemName: "chevron.right")
+                config.imagePlacement = .trailing
+            }
+            button.contentHorizontalAlignment = plain && key != "restore-open" ? .leading : .center
+            config.imagePadding = 8
             button.configuration = config
+            button.titleLabel?.adjustsFontForContentSizeCategory = true
+            button.titleLabel?.numberOfLines = 0
             button.isEnabled = p["enabled"] as? Bool ?? true
             button.accessibilityIdentifier = "wallet-\(key)"
             return button
@@ -169,7 +215,10 @@ final class WalletViewController: UIViewController, UITextViewDelegate {
                 field.delegate = self
                 field.font = .preferredFont(forTextStyle: .body)
                 field.backgroundColor = .secondarySystemBackground
-                field.layer.cornerRadius = 10
+                field.layer.cornerRadius = 8
+                field.layer.borderWidth = 1
+                field.layer.borderColor = UIColor.separator.cgColor
+                field.adjustsFontForContentSizeCategory = true
                 field.isScrollEnabled = false
                 field.textContainerInset = UIEdgeInsets(top: 10, left: 6, bottom: 10, right: 6)
                 // Recovery words and payment codes must not reach the
@@ -211,11 +260,12 @@ final class WalletViewController: UIViewController, UITextViewDelegate {
     private static func card(_ key: String) -> UIView {
         let stack = UIStackView()
         stack.axis = .vertical
-        stack.spacing = 10
-        guard ["receive", "send", "history", "backup-card", "trust-card"].contains(key) else { return stack }
+        stack.spacing = key == "history" ? 20 : 16
+        stack.accessibilityIdentifier = "wallet-\(key)"
+        guard ["backup-card", "payment-review"].contains(key) else { return stack }
         let box = UIView()
-        box.backgroundColor = .secondarySystemBackground.withAlphaComponent(0.6)
-        box.layer.cornerRadius = 16
+        box.backgroundColor = .secondarySystemBackground
+        box.layer.cornerRadius = 12
         stack.translatesAutoresizingMaskIntoConstraints = false
         box.addSubview(stack)
         NSLayoutConstraint.activate([
@@ -238,14 +288,17 @@ final class WalletViewController: UIViewController, UITextViewDelegate {
             let image = UIImageView()
             image.layer.magnificationFilter = .nearest
             image.backgroundColor = .white
+            image.contentMode = .scaleAspectFit
+            image.isAccessibilityElement = true
             image.layer.cornerRadius = 8
             image.clipsToBounds = true
-            image.widthAnchor.constraint(equalToConstant: 200).isActive = true
-            image.heightAnchor.constraint(equalToConstant: 200).isActive = true
+            image.widthAnchor.constraint(equalToConstant: 240).isActive = true
+            image.heightAnchor.constraint(equalTo: image.widthAnchor).isActive = true
             let label = UILabel()
             label.numberOfLines = 0
-            label.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
-            label.textColor = Palette.text
+            label.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .monospacedSystemFont(ofSize: 15, weight: .medium))
+            label.adjustsFontForContentSizeCategory = true
+            label.textColor = .label
             label.lineBreakMode = .byCharWrapping
             label.accessibilityIdentifier = "wallet-code"
             box.addArrangedSubview(image)
@@ -256,7 +309,7 @@ final class WalletViewController: UIViewController, UITextViewDelegate {
         if let label = box.arrangedSubviews.last as? UILabel, label.text != value {
             label.text = value
             (box.arrangedSubviews.first as? UIImageView)?.image = Self.qr(value)
-            box.arrangedSubviews.first?.accessibilityLabel = "QR code"
+            box.arrangedSubviews.first?.accessibilityLabel = "Payment request QR code"
         }
         return box
     }
@@ -266,8 +319,10 @@ final class WalletViewController: UIViewController, UITextViewDelegate {
         // Upper case fits the compact alphanumeric mode; these codes ignore case.
         filter.message = Data(text.uppercased().utf8)
         filter.correctionLevel = "M"
-        guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 8, y: 8)),
-              let image = CIContext().createCGImage(output, from: output.extent) else { return nil }
+        guard let code = filter.outputImage else { return nil }
+        let white = CIImage(color: .white).cropped(to: code.extent.insetBy(dx: -4, dy: -4))
+        let output = code.composited(over: white).transformed(by: CGAffineTransform(scaleX: 8, y: 8))
+        guard let image = CIContext().createCGImage(output, from: output.extent) else { return nil }
         return UIImage(cgImage: image)
     }
 
@@ -343,7 +398,8 @@ final class RecoveryWordsController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Recovery words"
-        view.backgroundColor = Palette.background
+        view.backgroundColor = .systemBackground
+        view.tintColor = WalletAppearance.accent
         view.accessibilityIdentifier = "wallet-words"
         navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak self] _ in
             self?.close()
@@ -351,6 +407,7 @@ final class RecoveryWordsController: UIViewController {
         let note = UILabel()
         note.numberOfLines = 0
         note.font = .preferredFont(forTextStyle: .body)
+        note.adjustsFontForContentSizeCategory = true
         note.textColor = Palette.text
         note.text = "Write these \(words.count) words down in order and keep them somewhere safe and offline. Anyone with them can take your bitcoin."
         let grid = UIStackView()
@@ -364,8 +421,13 @@ final class RecoveryWordsController: UIViewController {
             line.spacing = 12
             for index in [row, row + half] where index < words.count {
                 let label = UILabel()
-                label.font = .monospacedSystemFont(ofSize: 17, weight: .medium)
-                label.textColor = Palette.text
+                label.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .monospacedSystemFont(ofSize: 17, weight: .medium))
+                label.adjustsFontForContentSizeCategory = true
+                label.numberOfLines = 0
+                label.backgroundColor = .secondarySystemBackground
+                label.layer.cornerRadius = 8
+                label.clipsToBounds = true
+                label.textColor = .label
                 label.text = "\(index + 1). \(words[index])"
                 line.addArrangedSubview(label)
             }
@@ -395,12 +457,12 @@ final class RecoveryWordsController: UIViewController {
             grid.leadingAnchor.constraint(equalTo: canvas.leadingAnchor),
             grid.trailingAnchor.constraint(equalTo: canvas.trailingAnchor),
         ])
-        var copyConfig = UIButton.Configuration.tinted()
+        var copyConfig = WalletAppearance.button(primary: false)
         copyConfig.title = "Copy words"
         copyConfig.cornerStyle = .large
         let copy = UIButton(configuration: copyConfig, primaryAction: UIAction { [weak self] _ in self?.copyWords() })
         copy.accessibilityIdentifier = "wallet-copy-words"
-        var doneConfig = UIButton.Configuration.filled()
+        var doneConfig = WalletAppearance.button(primary: true)
         doneConfig.title = "I wrote them down"
         doneConfig.cornerStyle = .large
         let done = UIButton(configuration: doneConfig, primaryAction: UIAction { [weak self] _ in
@@ -413,11 +475,20 @@ final class RecoveryWordsController: UIViewController {
         stack.spacing = 20
         stack.setCustomSpacing(28, after: host)
         stack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(stack)
+        let scroll = UIScrollView()
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(scroll)
+        scroll.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
-            stack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -24),
+            scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 20),
+            stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -24),
+            stack.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -24),
+            stack.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor, constant: -48),
         ])
     }
 
@@ -433,5 +504,29 @@ final class RecoveryWordsController: UIViewController {
     private func close() {
         words = []
         dismiss(animated: true)
+    }
+}
+
+/// WalletUI's filled, outlined, and plain hierarchy, adapted to native text sizing.
+private enum WalletAppearance {
+    static let accent = UIColor(red: 0.97, green: 0.58, blue: 0.10, alpha: 1)
+
+    static func button(primary: Bool, plain: Bool = false) -> UIButton.Configuration {
+        var config = primary ? UIButton.Configuration.filled() : UIButton.Configuration.plain()
+        config.baseBackgroundColor = accent
+        config.baseForegroundColor = primary ? .black : .label
+        config.cornerStyle = .fixed
+        config.background.cornerRadius = 8
+        if !primary && !plain {
+            config.background.strokeWidth = 1
+            config.background.strokeColor = .separator
+        }
+        config.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16)
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { incoming in
+            var outgoing = incoming
+            outgoing.font = UIFont.preferredFont(forTextStyle: .headline)
+            return outgoing
+        }
+        return config
     }
 }
