@@ -41,6 +41,11 @@ def transform(documents):
             if document["kind"] == "Job" and metadata["name"] == "space-db-migrate":
                 container["image"] = PINS["migrator"]["image"]
             entries = container.get("env", [])
+            for entry in entries:
+                if entry["name"] == "SPACE_FIRECRACKER_VENDOR_DIR":
+                    if entry.get("value") != "/space/bin/runtime/firecracker":
+                        raise ValueError("Review the upstream runtime layout before changing its vendor root.")
+                    entry["value"] = "/space/vendor/firecracker"
             if any(entry["name"] == "SPACE_K8S_CONTROL_PLANE" and entry.get("value") != "true" for entry in entries):
                 raise ValueError("The maintained controller requires the Kubernetes substrate.")
             connection = next((entry for entry in entries if entry["name"] in ("POSTGRES_CONNECTION_STRING", "DATABASE_URL")), None)
