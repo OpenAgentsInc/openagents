@@ -225,6 +225,7 @@ pub fn view(e: &Entry) -> Value {
             "absolute_ms": e.record.bounds.absolute_ms,
             "absolute_scope": "boot",
             "uncertain_at_absolute_limit": "delete",
+            "stopped_retention_ms": e.stopped_retention_ms,
         },
         "resource_binding": e.binding.as_ref().and_then(|binding| e.record.resource().map(|id|
             json!({"deployment":binding.deployment,"id":id}))),

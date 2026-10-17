@@ -21,6 +21,7 @@ const MIGRATIONS: &[(i32, &str)] = &[
         11,
         include_str!("../migrations/0011_lifecycle_operations.sql"),
     ),
+    (12, include_str!("../migrations/0012_stopped_retention.sql")),
 ];
 
 #[derive(Debug)]
