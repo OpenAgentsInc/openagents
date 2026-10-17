@@ -36,7 +36,7 @@ raise SystemExit(0 if all(r["denied"] for r in results) else 1)
     return 'python3 -c '+shlex.quote(script)
 
 
-def request(method,path,data=None):
+def request(method,path,data=None,allow_refusal=False):
     value=secret('qualification',identity())
     connection=http.client.HTTPSConnection(HOST,timeout=30)
     try:
@@ -46,7 +46,9 @@ def request(method,path,data=None):
         if len(raw)>1048576: raise RuntimeError('The Computers response exceeded its size limit.')
         try: value=json.loads(raw) if raw else None
         except json.JSONDecodeError: raise RuntimeError(f'Computers endpoint returned non-JSON HTTP {response.status}. Check its private route before retrying.')
-        if not 200<=response.status<300: raise RuntimeError(f'Computers request returned HTTP {response.status}: {json.dumps(value)[:1000]}')
+        if not 200<=response.status<300:
+            if allow_refusal and 400<=response.status<500: return {'http_status':response.status,'error':value}
+            raise RuntimeError(f'Computers request returned HTTP {response.status}: {json.dumps(value)[:1000]}')
         return value
     finally: connection.close()
 
@@ -73,8 +75,8 @@ def main(action,run):
         else:
             if path.exists(): raise RuntimeError('Inspect the saved computer before another create.')
             save('cwc-seed',{'state':'submission_pending','idempotency_key':key})
-        value=request('POST','/v1/computers',{'size':'small','idempotency_key':key})
-        save('cwc-seed',value);print(json.dumps({key:value.get(key) for key in ('id','state','desired','image','size','last_error')}));return
+        value=request('POST','/v1/computers',{'size':'small','idempotency_key':key},allow_refusal=True)
+        save('cwc-seed',value);print(json.dumps({key:value.get(key) for key in ('id','state','desired','image','size','last_error','http_status','error') if key in value}));return
     computer=json.loads((ROOT/'cwc-seed.json').read_text())
     identifier=computer.get('id')
     if not isinstance(identifier,str) or not identifier.replace('-','').replace('_','').isalnum(): raise RuntimeError('Inspect the create receipt before continuing.')
