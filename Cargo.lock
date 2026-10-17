@@ -12682,6 +12682,7 @@ name = "openagents-sync"
 version = "0.2.113"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "block2 0.6.2",
  "coder-access",
  "coder-host",
@@ -12694,6 +12695,7 @@ dependencies = [
  "openagents-brand",
  "openagents-doc",
  "secp256k1 0.31.1",
+ "security-framework",
  "serde",
  "serde_json",
  "thiserror 2.0.20",

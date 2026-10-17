@@ -483,7 +483,7 @@ fn owns(app: &App, headers: &HeaderMap, id: &str) -> bool {
         return false;
     }
     let digest: [u8; 32] = Sha256::digest(secret.as_bytes()).into();
-    app.web_sign_in
+    app.config.web_sign_in
         .lock()
         .get(id)
         .is_some_and(|r| r.secret == digest)
