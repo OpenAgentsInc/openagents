@@ -11,6 +11,13 @@
 !/vendor/
 !/.cargo/
 !/crates/
+# Coder shares the app harness and its workspace dependencies.
+!/apps/
+/apps/*
+!/apps/openagents/
+/apps/openagents/*
+!/apps/openagents/Cargo.toml
+!/apps/openagents/crates/
 !/migrations/
 !/nips/
 !/tests/
