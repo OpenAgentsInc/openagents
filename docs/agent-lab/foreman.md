@@ -56,7 +56,7 @@ full `openagents` checkout is over the copy limit
 In the desktop app, open **Settings → General → Foreman** on the computer that runs Foreman's chat ([#11965](https://github.com/OpenAgentsInc/openagents/issues/11965)):
 
 1. **Foreman's chat**: pick the chat you started with **Use agent**.
-2. **Check-ins**: choose how often (every 10 minutes to 4 hours) and turn them on. The schedule is saved to your account and also appears at [openagents.com/settings/schedules](https://openagents.com/settings/schedules), where you can pause or delete it. The computer runs it, not a server.
+2. **Check-ins**: choose how often (every 10 minutes by default, up to 4 hours) and turn them on. Every check-in posts a short status in Foreman's chat, even when nothing changed. The schedule is saved to your account and also appears at [openagents.com/settings/schedules](https://openagents.com/settings/schedules), where you can pause or delete it. The computer runs it, not a server.
 3. **Standing authority**: turn it on to let Foreman message, start, steer and stop chats on your computers without asking during check-ins. Turn it off at any time. Money, keys, secrets, deploys and closing other agents' issues still need your approval. Turns you start yourself work as before.
 
 Foreman also checks in, at most once every few minutes and never over a turn it's already running, when:

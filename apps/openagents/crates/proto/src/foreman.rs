@@ -5,8 +5,9 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The default and allowed check-in intervals, in minutes.
-pub const DEFAULT_EVERY_MINUTES: u32 = 30;
+/// The default and allowed check-in intervals, in minutes. The default
+/// keeps a visible status in Foreman's chat at least every 10 minutes.
+pub const DEFAULT_EVERY_MINUTES: u32 = 10;
 pub const MIN_EVERY_MINUTES: u32 = 5;
 pub const MAX_EVERY_MINUTES: u32 = 24 * 60;
 

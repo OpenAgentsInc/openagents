@@ -662,7 +662,7 @@ pub(crate) fn prompt(
         }
     }
     text.push_str(
-        "\nGather fresh facts, act on what needs it, then call record_decision once with what you saw, what you decided and what you did.",
+        "\nGather fresh facts and act on what needs it. Then, even when nothing changed, post a short status of 3 to 6 lines in this chat: what changed, what you did, and what's next. Finally call record_decision once with what you saw, what you decided and what you did.",
     );
     text
 }
@@ -827,6 +827,10 @@ mod tests {
         let wake = f.due(false, 20 * MIN).unwrap().expect("due");
         assert!(wake.text.contains("scheduled"));
         assert!(wake.text.contains("record_decision"));
+        assert!(
+            wake.text
+                .contains("even when nothing changed, post a short status of 3 to 6 lines")
+        );
         assert!(wake.text.contains("don't have standing authority"));
         assert_eq!(f.due(false, 21 * MIN).unwrap(), None, "one per slot");
         assert!(f.is_wake(&wake.id));
@@ -1001,6 +1005,23 @@ mod tests {
         assert!(!wake.text.contains("#9"));
         assert!(wake.text.contains("The claim on #20 (Stale) by codex:abc"));
         assert_eq!(wake.text.matches("The claim on").count(), 1);
+    }
+
+    #[test]
+    fn a_new_foreman_checks_in_at_least_every_ten_minutes_with_a_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let f = Foreman::open(dir.path());
+        let settings = ForemanSettings {
+            chat_id: Some("foreman".into()),
+            ..ForemanSettings::default()
+        };
+        assert!(settings.every_minutes <= 10);
+        f.set(settings, 0).unwrap();
+        assert_eq!(f.next_scheduled(), Some(10 * MIN));
+        let quiet = f.due(false, 10 * MIN).unwrap().expect("a quiet check-in");
+        assert!(quiet.text.contains("Nothing new was reported"));
+        assert!(quiet.text.contains("post a short status of 3 to 6 lines"));
+        assert!(f.due(false, 20 * MIN).unwrap().is_some(), "and again");
     }
 
     #[test]
