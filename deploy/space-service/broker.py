@@ -24,7 +24,7 @@ LABELS = "openagents-service=space,openagents-issue=11814,openagents-owner=platf
 
 def cloud(*args, data=None, missing=False):
     result = subprocess.run(
-        ["gcloud", *args, "--project", PROJECT, "--quiet", "--format=json"],
+        ["gcloud", "--project", PROJECT, "--quiet", "--format=json", *args],
         input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
     )
     if result.returncode:
