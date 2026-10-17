@@ -495,8 +495,8 @@
     "operator_command": "oa-computers-usage lifecycle-retry ACCOUNT FILE",
     "requires_feature": "space",
     "source_scope": "Explicit operator authority for at most eight child attempts after a saved definitive refusal. Original, accepted, and uncertain receipts stay unchanged.",
-    "deployed": false,
-    "live_qualified": false,
+    "deployed": true,
+    "live_qualified": true,
     "pre_deploy_observation": {
       "candidate_revision": "oa-space-service-computers-00002-pch",
       "source": "0492600d791e873b51d4eab5edb2d1ef373db28d",
@@ -624,6 +624,93 @@
       "protected_endpoint_denials_passed": 7,
       "final_state": "stopped",
       "primary_rejected_operation_recovery": "pending lane 0 deployment and explicit operator authorization"
+    },
+    "live_qualification": {
+      "checked_at": "2026-10-17T05:15:51.795370+00:00",
+      "scope": "Private synthetic-account lifecycle recovery, encrypted checkpoint/resume, and protected-network denial. Production rollout, worker replacement, and the complete storage inventory remain separate checks.",
+      "operator": {
+        "job": "oa-space-retry-11939",
+        "execution": "oa-space-retry-11939-q2j8l",
+        "completed": true,
+        "expected_child_verified": true,
+        "expected_child": "lifecycle-retry:18c1a207eecb70830e1909aa86b6589bdb3a627f45fde7739d3fbc8ef8f936b9",
+        "image": "sha256:a58dc392c6623358490e32ccb0dbe8467652d78e099e4e6b48ceb4e77634c8db",
+        "source": "f83f2538f8368169c4005fe94cd2e6bbda420ccd",
+        "candidate": "oa-space-service-computers-00003-ffl",
+        "job_deleted": true
+      },
+      "phases": {
+        "checkpoint": {
+          "computer": "cmp_ef8caf1babae3b48ed87",
+          "phase": "checkpoint",
+          "memory": {
+            "boot_id": "56f3f85b-957e-4529-aa32-b0c798dcf9cf",
+            "pid": 305,
+            "start_ticks": 697637,
+            "canary_sha256": "744b26a5682a2f6d5fdcd8d855695eef1f653a7c6384dec16d450e8163595823"
+          },
+          "observed_unix": 1792213542,
+          "helper_sha256": "4940961d5611cf883cf85884488f3f437f6afe76bb74506b1e06652ffd6dd82c"
+        },
+        "resume": {
+          "computer": "cmp_ef8caf1babae3b48ed87",
+          "phase": "resume",
+          "memory": {
+            "boot_id": "56f3f85b-957e-4529-aa32-b0c798dcf9cf",
+            "pid": 305,
+            "start_ticks": 697637,
+            "canary_sha256": "744b26a5682a2f6d5fdcd8d855695eef1f653a7c6384dec16d450e8163595823"
+          },
+          "observed_unix": 1792213625,
+          "helper_sha256": "4940961d5611cf883cf85884488f3f437f6afe76bb74506b1e06652ffd6dd82c"
+        },
+        "network": {
+          "computer": "cmp_ef8caf1babae3b48ed87",
+          "phase": "network",
+          "denials": [
+            {
+              "host": "10.219.14.10",
+              "port": 6443,
+              "denied": true
+            },
+            {
+              "host": "10.219.14.10",
+              "port": 8443,
+              "denied": true
+            },
+            {
+              "host": "10.219.14.10",
+              "port": 9810,
+              "denied": true
+            },
+            {
+              "host": "10.219.14.11",
+              "port": 9800,
+              "denied": true
+            },
+            {
+              "host": "10.220.1.1",
+              "port": 9800,
+              "denied": true
+            },
+            {
+              "host": "10.219.16.3",
+              "port": 5432,
+              "denied": true
+            },
+            {
+              "metadata": "unreachable",
+              "denied": true
+            }
+          ],
+          "observed_unix": 1792213730,
+          "helper_sha256": "4940961d5611cf883cf85884488f3f437f6afe76bb74506b1e06652ffd6dd82c"
+        }
+      },
+      "final_state": "stopped",
+      "final_turns": 3,
+      "owner_account_used": false,
+      "signet_or_observer_changed": false
     }
   }
 }

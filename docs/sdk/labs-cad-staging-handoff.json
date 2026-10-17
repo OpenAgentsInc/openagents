@@ -103,6 +103,148 @@
       "manual_cleanup_verified": true,
       "removed_project": "prj_d6b7b58481a6a32b",
       "followup_issue": 11938
+    },
+    "deployment_0b74ec8f79": {
+      "source_commit": "0b74ec8f79399f7091f8061209d305f729229aa1",
+      "web_image": "sha256:e195c182ffaffe32c932d6f84e80e91d0cf95065e1dada19ba193a1d1623b7ea",
+      "stack_image": "sha256:cccb658375cb7257d623e8915b4c6e81df48e55a81cd30c7e0999c3e6554b5e9",
+      "web_cloud_build": "8b6f2e79-9887-443e-b811-b1da4ee14a86",
+      "stack_cloud_build": "e7014509-7443-42a0-ad1e-1edce5b79dc5",
+      "staging_revision": "openagents-web-1-staging-0b74ec8f79-045541",
+      "staging_smoke": {
+        "passed": 99,
+        "failed": 0,
+        "skipped": 2
+      },
+      "cad_staging": {
+        "schema": "openagents.labs-cad-evidence.v1",
+        "checked_at": "2026-10-17T04:58:18.802164+00:00",
+        "source_commit": "0b74ec8f79399f7091f8061209d305f729229aa1",
+        "api": "https://staging.openagents.com",
+        "test_accounts": [
+          "acct_dc7a799879686fc5",
+          "acct_881a71bc40f3ea4c"
+        ],
+        "checks": [
+          "dedicated browser session",
+          "dedicated project",
+          "checked fan bracket",
+          "isolated browser picked the top face",
+          "picked face five millimeters thicker",
+          "stale face pull refused",
+          "current Pro plan checked",
+          "both versions in the project",
+          "3D card with poster and project link",
+          "existing CAD page and versions",
+          "STEP job admitted",
+          "STEP retry shares its job",
+          "STEP job completed",
+          "STEP artifact recorded",
+          "STEP range download",
+          "second account cannot read the project design",
+          "second account cannot change the project design",
+          "reading a card starts no work"
+        ],
+        "version_sha256": [
+          "3631e011346839bf7cc628ec7a797d67b101b6237f6aee7500676d80de9cd58f",
+          "62684e48268805699575164d962586d5d36149294a5520cd0f7df3aceabf44d8"
+        ],
+        "cleanup_verified": true,
+        "browser_capture_sha256": "928fcebc09e69ce20ced53051f6186e5d815a7eb3bb51bf4f9ee18191a755ab4"
+      },
+      "echo_staging": {
+        "schema": "openagents.labs-api-evidence.v1",
+        "checked_at": "2026-10-17T04:58:35.835258+00:00",
+        "api": "https://staging.openagents.com",
+        "source_commit": "0b74ec8f79399f7091f8061209d305f729229aa1",
+        "test_accounts": [
+          "acct_dc7a799879686fc5",
+          "acct_881a71bc40f3ea4c"
+        ],
+        "checks": [
+          "second-account kind gate",
+          "signed-out refusal",
+          "gated Echo kind",
+          "create document",
+          "checked edit",
+          "stale base refusal",
+          "kind refusal",
+          "version and card reads",
+          "job admission",
+          "job retry identity",
+          "bounded source upload",
+          "short signed file link",
+          "signed file range",
+          "authenticated file range",
+          "add note",
+          "read notes",
+          "ordered event polling",
+          "event stream",
+          "second-account reads refused",
+          "second-account changes refused",
+          "read did not start work"
+        ],
+        "cleanup": {
+          "verified": true,
+          "document_read": 404,
+          "artifact_read": 404
+        },
+        "scope": "Gated Echo fixture API; CAD and other kind integrations have separate issues."
+      },
+      "production_revision": "coder-web-e195c182ff-20261017050408",
+      "production_percent": 100,
+      "candidate_smoke": {
+        "passed": 58,
+        "failed": 0,
+        "skipped": 2,
+        "expected_waits": 8
+      },
+      "production_smoke": {
+        "passed": 66,
+        "failed": 0,
+        "skipped": 2
+      },
+      "production_project_list": "503: account files are being treated as chats; follow-up #11941",
+      "production_cad_recheck": "Waits for the #11941 deployment. No new fixture was created.",
+      "echo_production": {
+        "schema": "openagents.labs-api-evidence.v1",
+        "checked_at": "2026-10-17T05:15:01.248359+00:00",
+        "api": "https://api.openagents.com",
+        "source_commit": "0b74ec8f79399f7091f8061209d305f729229aa1",
+        "test_accounts": [
+          "acct_83d16a35955ef908",
+          "acct_c76f469572ad3446"
+        ],
+        "checks": [
+          "second-account kind gate",
+          "signed-out refusal",
+          "gated Echo kind",
+          "create document",
+          "checked edit",
+          "stale base refusal",
+          "kind refusal",
+          "version and card reads",
+          "job admission",
+          "job retry identity",
+          "bounded source upload",
+          "short signed file link",
+          "signed file range",
+          "authenticated file range",
+          "add note",
+          "read notes",
+          "ordered event polling",
+          "event stream",
+          "second-account reads refused",
+          "second-account changes refused",
+          "read did not start work"
+        ],
+        "cleanup": {
+          "verified": true,
+          "document_read": 404,
+          "artifact_read": 404
+        },
+        "scope": "Gated Echo fixture API; CAD and other kind integrations have separate issues."
+      }
     }
   }
 }
