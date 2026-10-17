@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <title>LayerTree</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #0a0a0a; overflow: hidden; }
+      canvas { display: block; width: 100vw; height: 100vh; }
+      p { position: fixed; left: 16px; bottom: 8px; color: #ccc; font: 14px sans-serif; }
+    </style>
+  </head>
+  <body>
+    <!-- A local test page; the site serves its own at /layertree. -->
+    <canvas id="layertree-canvas" tabindex="0"></canvas>
+    <p id="layertree-status">Loading…</p>
+    <script type="module" src="./start.js"></script>
+  </body>
+</html>

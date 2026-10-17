@@ -1,0 +1,57 @@
+[package]
+name = "layertree-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "LayerTree in a browser: a shared Bitcoin coin's Merkle-sum tree as a Verse scene, from a seeded demo run or the real signet run."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# The demo generator, the replay, the playback stage, and the layout build
+# natively for their tests; only the page itself is browser-only.
+[dependencies]
+glam = "0.30.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+verse = { path = "../verse", default-features = false, features = ["web"] }
+verse-engine = { path = "../verse-engine" }
+wgpu = "30.0.1"
+# The browser display handle wgpu's WebGL2 backend needs on its instance.
+raw-window-handle = "0.6"
+# The `wasm-bindgen` CLI that `scripts/build-layertree-web.sh` runs must be
+# the version Cargo.lock resolves here; the script checks.
+wasm-bindgen = "0.2.128"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+console_error_panic_hook = "0.1.7"
+log = "0.4"
+web-sys = { version = "0.3", features = [
+    "AddEventListenerOptions",
+    "CssStyleDeclaration",
+    "Document",
+    "Element",
+    "Event",
+    "EventTarget",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "KeyboardEvent",
+    "Location",
+    "MouseEvent",
+    "Navigator",
+    "Performance",
+    "PointerEvent",
+    "WheelEvent",
+    "Window",
+    "console",
+] }
+
+[dev-dependencies]
+oa-copy = { path = "../oa-copy" }
+
+[lints]
+workspace = true

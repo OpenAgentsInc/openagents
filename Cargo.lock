@@ -9518,6 +9518,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "layertree-web"
+version = "1.0.0"
+dependencies = [
+ "console_error_panic_hook",
+ "glam",
+ "js-sys",
+ "log",
+ "oa-copy",
+ "raw-window-handle",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "verse",
+ "verse-engine",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "wgpu",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

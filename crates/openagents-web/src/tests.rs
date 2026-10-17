@@ -79,7 +79,7 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 /// of `UiPage`, so the shell's checks (one `ui.css` link, the wordmark, no
 /// script) don't apply. Its own test below holds it to the same policy
 /// rules: no inline script or style, scripts from this site only.
-const PAGES: [&str; 63] = [
+const PAGES: [&str; 64] = [
     "/new",
     "/blog",
     "/blog/coder-1-0",
@@ -93,6 +93,7 @@ const PAGES: [&str; 63] = [
     "/games/grow-little-bunny",
     "/games/the-ice-cream-man",
     "/games/snap-station",
+    "/layertree",
     "/stats",
     "/efficiency",
     "/affiliates",
@@ -1640,6 +1641,131 @@ async fn the_bunny_page_says_it_cannot_be_played_without_the_build() {
         let (status, _, _) = get_bytes(
             router(config),
             &format!("/games/grow-little-bunny/{}", pages::BUNNY_WASM),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+}
+
+/// A server started with `--layertree DIR` holding a stand-in LayerTree
+/// demo build.
+fn with_layertree(root: &std::path::Path) -> Config {
+    let build = root.join("layertree");
+    std::fs::create_dir_all(&build).unwrap();
+    std::fs::write(
+        build.join(pages::LAYERTREE_GLUE),
+        "export default async function init() {}",
+    )
+    .unwrap();
+    std::fs::write(build.join(pages::LAYERTREE_WASM), b"\0asm\x01\0\0\0").unwrap();
+    std::fs::write(
+        build.join(pages::LAYERTREE_START),
+        "import init from \"./layertree_web.js\";",
+    )
+    .unwrap();
+    std::fs::write(
+        build.join(format!("{}.gz", pages::LAYERTREE_WASM)),
+        b"gzipped wasm",
+    )
+    .unwrap();
+    std::fs::write(build.join("index.html"), "not served").unwrap();
+    std::fs::write(root.join("secret.js"), "outside the build").unwrap();
+    let mut config = config(root.join("tasks"));
+    config.layertree = Some(build);
+    config
+}
+
+/// `/layertree` (#11987): a full-window canvas, the build's one start
+/// script, the demo's policy, and the build's files with their types.
+#[tokio::test]
+async fn the_layertree_page_serves_the_demo_build() {
+    let root = tempfile::tempdir().unwrap();
+    let config = with_layertree(root.path());
+    let (status, headers, html) =
+        get_with(router(config.clone()), pages::LAYERTREE_PATH, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("<title>LayerTree"), "{html}");
+    assert!(html.contains(&format!("<canvas id=\"{}\"", pages::LAYERTREE_CANVAS)));
+    assert!(html.contains("<html lang=\"en\" class=\"stage\">"));
+    assert!(html.contains("id=\"layertree-status\""));
+    let lower = html.to_ascii_lowercase();
+    assert_eq!(scripts(&lower), 1, "one script");
+    assert!(html.contains(&format!(
+        "<script type=\"module\" src=\"/layertree/{}\"></script>",
+        pages::LAYERTREE_START
+    )));
+    assert!(!lower.contains(" style=") && !lower.contains("<style"));
+    assert_eq!(
+        headers[header::CONTENT_SECURITY_POLICY],
+        pages::LAYERTREE_POLICY
+    );
+    let text = oa_copy::visible_text(main_of(&html));
+    assert!(text.contains("share one Bitcoin coin"), "{text}");
+    assert_eq!(oa_copy::violations(&text, &[]), vec![], "{text}");
+    assert!(crate::upstream::owned(pages::LAYERTREE_PATH));
+    assert!(crate::upstream::owned("/layertree/start.js"));
+
+    for (file, content_type) in [
+        (pages::LAYERTREE_GLUE, "text/javascript; charset=utf-8"),
+        (pages::LAYERTREE_START, "text/javascript; charset=utf-8"),
+        (pages::LAYERTREE_WASM, "application/wasm"),
+    ] {
+        let uri = format!("/layertree/{file}");
+        let (status, headers, _) = get_bytes(router(config.clone()), &uri).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert_eq!(headers[header::CONTENT_TYPE], content_type, "{uri}");
+    }
+    let response = router(config.clone())
+        .oneshot(
+            Request::builder()
+                .uri(format!("/layertree/{}", pages::LAYERTREE_WASM))
+                .header(header::HOST, LOCAL)
+                .header(header::ACCEPT_ENCODING, "gzip")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.headers()[header::CONTENT_ENCODING], "gzip");
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(&bytes[..], b"gzipped wasm");
+
+    for uri in [
+        "/layertree/index.html",
+        "/layertree/missing.js",
+        "/layertree/..%2Fsecret.js",
+        "/layertree/%2E%2E%2Fsecret.js",
+        "/layertree/../secret.js",
+        "/layertree/a/b.js",
+    ] {
+        let (status, _, _) = get_bytes(router(config.clone()), uri).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+    }
+}
+
+/// Without the build directory, or without any of its three files, the
+/// page says the demo is unavailable, runs no script, keeps the site's
+/// policy, and serves no build file.
+#[tokio::test]
+async fn the_layertree_page_says_it_is_unavailable_without_the_build() {
+    let root = tempfile::tempdir().unwrap();
+    let mut elsewhere = config(root.path().join("tasks"));
+    elsewhere.layertree = Some(root.path().join("nowhere"));
+    let no_start = with_layertree(root.path());
+    std::fs::remove_file(root.path().join("layertree").join(pages::LAYERTREE_START)).unwrap();
+    for config in [config(root.path().join("tasks")), elsewhere, no_start] {
+        let (status, headers, html) =
+            get_with(router(config.clone()), pages::LAYERTREE_PATH, LOCAL).await;
+        assert_eq!(status, StatusCode::OK);
+        let text = oa_copy::visible_text(main_of(&html));
+        assert!(text.contains("demo is unavailable right now"), "{text}");
+        assert!(scripts(&html.to_ascii_lowercase()) == 0);
+        let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+        assert!(!policy.contains("script-src"), "{policy}");
+        assert_eq!(oa_copy::violations(&text, &[]), vec![], "{text}");
+        let (status, _, _) = get_bytes(
+            router(config),
+            &format!("/layertree/{}", pages::LAYERTREE_WASM),
         )
         .await;
         assert_eq!(status, StatusCode::NOT_FOUND);

@@ -7,6 +7,12 @@ stubs mark empty subtrees. Gold dots carry the sums toward the root.
 
 ![A LayerTree regtest run above the Verse Grid](captures/layertree/tree.jpg)
 
+The same scene runs in a browser at
+[openagents.com/layertree](https://openagents.com/layertree), with a large
+seeded demo run (thousands of members, a stream of transactions, and one
+switch-off and unroll) or the real signet run with `?run=signet`. Read
+`crates/layertree-web/README.md` for its build and how it draws large trees.
+
 Run these commands from the repository root:
 
 ```sh

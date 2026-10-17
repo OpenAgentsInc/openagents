@@ -20,6 +20,7 @@ pub(crate) mod home;
 mod icecream;
 mod icecream_guide;
 mod landing;
+mod layertree;
 pub(crate) mod live;
 mod pricing;
 pub(crate) mod profile;
@@ -62,6 +63,11 @@ pub(crate) use icecream::{
 };
 #[cfg(test)]
 pub(crate) use icecream_guide::ICECREAM_GUIDE_PATH;
+#[cfg(test)]
+pub(crate) use layertree::{
+    LAYERTREE_CANVAS, LAYERTREE_GLUE, LAYERTREE_PATH, LAYERTREE_POLICY, LAYERTREE_START,
+    LAYERTREE_WASM,
+};
 pub(crate) use pricing::PRICING;
 #[cfg(test)]
 pub(crate) use snap::{SNAP_CANVAS, SNAP_GLUE, SNAP_PATH, SNAP_START, SNAP_WASM};
@@ -84,6 +90,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(bunny::routes())
         .merge(icecream::routes())
         .merge(snap::routes())
+        .merge(layertree::routes())
         .merge(att::routes())
         .merge(cad::routes())
         .merge(content::routes())

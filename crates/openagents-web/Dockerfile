@@ -122,6 +122,13 @@ RUN scripts/build-att-web.sh /build/att \
 
 RUN scripts/build-sand-garden.sh /build/sand
 
+# The LayerTree demo (#11987), which /layertree serves the same way, found at
+# /srv/layertree without a flag.
+RUN scripts/build-layertree-web.sh /build/layertree \
+    && test -s /build/layertree/layertree_web.js \
+    && test -s /build/layertree/layertree_web_bg.wasm \
+    && test -s /build/layertree/start.js
+
 # The CAD engine for the browser (crates/cad-wasm), which /cad loads
 # (#11649): its own stage, so it builds beside the others. wasm-opt
 # (binaryen) shrinks it; brotli and gzip copies ride beside each file.
@@ -168,6 +175,7 @@ ENV OPENAGENTS_ROBOT_BUILD=/srv/robot
 COPY --from=everglade /build/att /srv/att
 COPY --from=cadweb /build/cad /srv/cad
 COPY --from=everglade /build/sand /srv/sand
+COPY --from=everglade /build/layertree /srv/layertree
 
 USER 10001:10001
 EXPOSE 8080

@@ -398,6 +398,10 @@ pub struct Config {
     /// `/games/the-ice-cream-man/`. Without it, the game's page says it
     /// can't be played here.
     pub icecream: Option<PathBuf>,
+    /// The LayerTree demo's web build (`--layertree DIR`, default
+    /// `/srv/layertree` when it exists), served under `/layertree/`.
+    /// Without it, `/layertree` says the demo is unavailable.
+    pub layertree: Option<PathBuf>,
     /// The Snap Station web build (`--snap DIR`, default `/srv/snap` when
     /// it exists), served under `/games/snap-station/`. Without it, the
     /// game's page says it can't be played here.
@@ -518,6 +522,7 @@ impl Config {
             everglade: None,
             bunny: None,
             icecream: None,
+            layertree: None,
             snap: None,
             att: None,
             cad: None,

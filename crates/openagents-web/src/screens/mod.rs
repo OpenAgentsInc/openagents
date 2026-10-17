@@ -227,6 +227,7 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ("/grid", "a canvas world"),
     ("/games/*", "a game"),
     ("/att*", "a canvas app"),
+    ("/layertree*", "a canvas world"),
     (
         "/cad",
         "a live tool: the CAD engine runs in the page, so it has no sample states",
