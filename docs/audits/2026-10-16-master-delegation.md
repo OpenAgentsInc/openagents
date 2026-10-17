@@ -96,6 +96,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 3: keepers and moving agents
 
+**Taken 2026-10-16 23:31 CDT** by a Claude Code subagent working #11931 in `~/work/openagents-lane3b`.
+
 **Released 2026-10-17 00:05 CDT** by a Claude Code subagent. #11930's keeper layer is on `main` (`16629755e6`); Claude Code and Codex attach remain, see the issue. #11931 wasn't started: it needs a test host, because a LaunchAgent can't be installed on the owner's Mac. Target `~/work/openagents-target-lane3-app` stays warm.
 
 - **Owns:** a new keeper module in `apps/openagents/crates/harness` (additive; lane 1 owns the existing API), engine adoption in `apps/openagents/crates/engine`, the LaunchAgent and systemd service plumbing, and the move-plan store and UI.
