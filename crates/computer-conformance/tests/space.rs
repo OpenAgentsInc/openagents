@@ -33,6 +33,7 @@ struct Records {
     operation_states: std::collections::VecDeque<&'static str>,
     operation_reads: usize,
     operation_error: Option<u16>,
+    deletes: usize,
 }
 #[derive(Clone)]
 struct Mock {
@@ -114,6 +115,7 @@ async fn api(
     }
     if !tail.contains('/') {
         if method == Method::DELETE {
+            r.deletes += 1;
             r.machines.remove(id);
             return reply(json!({"operation_id":"op_delete"}));
         }
@@ -582,5 +584,52 @@ async fn interrupted_space_commands_keep_bounded_partial_output_without_claiming
     assert!(output.starts_with(b"early output"));
     assert!(!format!("{:?}", exec.output).contains("early output"));
     assert!(driver.delete(&id).await.is_done());
+    task.abort();
+}
+
+#[tokio::test]
+async fn deletion_waits_for_the_saved_operation_even_after_the_resource_disappears() {
+    let (driver, mock, task) = setup().await;
+    let id = driver
+        .create(&CreateRequest {
+            operation: "delete-barrier".into(),
+            ..Default::default()
+        })
+        .await
+        .value()
+        .unwrap();
+    let journal = Arc::new(JournalFixture::default());
+    let driver = driver.with_lifecycle_journal(journal.clone());
+    mock.records.lock().unwrap().operation_error = Some(404);
+    assert!(matches!(driver.delete(&id).await, Outcome::Unknown { .. }));
+    assert_eq!(
+        driver.observe(&id).await.value().unwrap().state,
+        computer_driver::State::Gone
+    );
+    assert_eq!(mock.records.lock().unwrap().deletes, 1);
+    assert_eq!(
+        journal
+            .0
+            .lock()
+            .unwrap()
+            .values()
+            .next()
+            .unwrap()
+            .2
+            .as_deref(),
+        Some("op_delete")
+    );
+    mock.records.lock().unwrap().operation_states = ["queued", "running", "succeeded"].into();
+    let restarted = driver.clone().with_lifecycle_journal(journal);
+    let reads = mock.records.lock().unwrap().operation_reads;
+    assert!(restarted.delete(&id).await.is_done());
+    assert_eq!(mock.records.lock().unwrap().deletes, 1);
+    assert_eq!(mock.records.lock().unwrap().operation_reads - reads, 3);
+    mock.records.lock().unwrap().operation_error = Some(403);
+    assert!(matches!(
+        restarted.delete(&id).await,
+        Outcome::Unknown { .. }
+    ));
+    assert_eq!(mock.records.lock().unwrap().deletes, 1);
     task.abort();
 }

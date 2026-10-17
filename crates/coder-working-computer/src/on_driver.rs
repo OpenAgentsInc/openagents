@@ -336,6 +336,15 @@ impl<D: Driver> Provider for OnDriver<D> {
     }
 
     async fn inspect(&self, c: &Computer, resource: &str) -> Outcome<Inspection> {
+        // Providers can hide the resource while its deletion is still queued.
+        // Resume the saved delete operation before treating absence as final.
+        if c.deletion.as_ref().is_some_and(Fact::is_unknown)
+            && self.driver.capabilities().memory_suspend
+            && let other @ (Outcome::Failed { .. } | Outcome::Unknown { .. }) =
+                self.driver.delete(resource).await
+        {
+            return other.map(|_| unreachable!());
+        }
         // Actual deletion settles uncertainty even if the provider no longer
         // retains the earlier operation. It never authorizes another create.
         if let Outcome::Done { value } = self.driver.observe(resource).await
