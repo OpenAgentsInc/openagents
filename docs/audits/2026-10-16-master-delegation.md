@@ -94,6 +94,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 3: keepers and moving agents
 
+**Taken 2026-10-16 22:41 CDT** by a Claude Code subagent working #11930, then #11931 in `~/work/openagents-lane3`.
+
 - **Owns:** a new keeper module in `apps/openagents/crates/harness` (additive; lane 1 owns the existing API), engine adoption in `apps/openagents/crates/engine`, the LaunchAgent and systemd service plumbing, and the move-plan store and UI.
 - **Order:** #11930, then #11931. #11932 waits on #11852 (lane 8), #11813 (lane 6), and #11898 (lane 1). #11933 comes last. Spec: [move running agents](../desktop/move-running-agents.md).
 - **Risk:** #11932 and #11933 sit at the end of three other lanes' chains. If those slip, ship #11930 and #11931 and close the other two with their remaining steps recorded. Don't hold the release for them.
