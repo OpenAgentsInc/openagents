@@ -14,7 +14,7 @@ checks. Integration patches are listed in
 | Last merged upstream | `3b2f78027a2c31622c39c35716da4d6e1af8de15` (v0.2.113 + 2, 2026-10-15) |
 | License | MIT. `LICENSE` keeps Zeron's copyright (Wing); `THIRD_PARTY_NOTICES.md` stays as upstream ships it. |
 
-Update the "Last merged upstream" row after each merge.
+Record later upstream commits in the port log below.
 
 ## Port upstream fixes
 
@@ -37,9 +37,9 @@ the conformance check below when a port changes the sync clients.
 
 ## Sync protocol merge checkpoint (#11847)
 
-If an upstream pull changes `crates/sync`, `crates/proto`, `crates/rpc`,
+If an upstream port changes `crates/sync`, `crates/proto`, `crates/rpc`,
 `crates/doc` or `crates/client`, run the Rust server conformance suite before
-pushing the merge. The server (`deploy/coder-sync`) uses these crates by path,
+pushing the port. The server (`deploy/coder-sync`) uses these crates by path,
 so it always tests the clients in the same commit:
 
 ```sh
@@ -49,7 +49,7 @@ scripts/coder-sync/conformance.sh   # from the repository root
 It builds this tree's headless engine and runs chat, registry, device, blob,
 and image fixture flows against temporary Postgres and a fake bucket. Never
 push to Zeron's `upstream`. If the suite fails, fix the mismatch or back out
-the pull, and turn each mismatch into a regression test before retrying. Notifications remain disabled until
+the port, and turn each mismatch into a regression test before retrying. Notifications remain disabled until
 OpenAgents push-gateway delivery lands in #11853.
 
 ## Identity and branding seams (patch log)
@@ -73,24 +73,8 @@ The table below is the history up to the rename.
 
 The source of truth is [`crates/brand/src/lib.rs`](crates/brand/src/lib.rs).
 
-| Seam | OpenAgents | Coder Desktop | Where |
-| --- | --- | --- | --- |
-| App name (bundle, menus, dock, window title, notifications) | OpenAgents | **Coder** | `openagents_brand::NAME`; `dist/macos/Info.plist`; `crates/ui/src/app_menus.rs`; `crates/ui/src/lib.rs` (window title, now set on every platform; macOS hides it in the titlebar); `crates/ui/src/notify.rs` |
-| Formal name and attribution | — | **Coder Desktop**; "Based on Zeron by Wing, MIT" | `openagents_brand::LONG_NAME`, `ATTRIBUTION`; About panel credits (`app_menus.rs`); `NSHumanReadableCopyright`; `README.md` |
-| macOS bundle ID | `sh.openagents.app` | `com.openagents.coder.desktop` | `openagents_brand::BUNDLE_ID`; `Info.plist`; notification identity (`notify.rs`) |
-| Dev bundle ID | `sh.openagents.app.dev` | `com.openagents.coder.desktop.dev` | `openagents_brand::DEV_BUNDLE_ID`; `Info-dev.plist`; `scripts/run-macos-dev.sh` |
-| Bundle names | `OpenAgents.app`, `OpenAgents Dev.app` | `Coder.app`, `Coder Dev.app` | `scripts/package-macos.sh`, `scripts/run-macos-dev.sh` |
-| Data directory | `~/.openagents`, `%LOCALAPPDATA%\OpenAgents` | `~/Library/Application Support/Coder Desktop` (macOS), `$XDG_DATA_HOME/coder-desktop` (Linux), `%LOCALAPPDATA%\Coder Desktop` (Windows) | `apps/openagents/src/paths.rs`; `main.rs` exports the resolved directory as `OPENAGENTS_DATA_DIR` before anything starts, so engine subsystems and child processes use it too |
-| Dev data directory | `target/macos-dev/data` | unchanged, `target/macos-dev/data` (keeps existing dev sessions) | `scripts/run-macos-dev.sh` |
-| Worktrees, scratch folders, managed adapters | `~/.openagents/{worktrees,scratch,adapters}` | `~/.coder-desktop/{worktrees,scratch}`; adapters under the data directory | `openagents_brand::HOME_WORK_DIR`; `crates/engine/src/repos.rs`; `crates/proto/src/projectless.rs`; `crates/harness/src/adapter_install.rs` |
-| Single-instance lock | `{data}/engine.lock` | same file, in Coder's data directory | `crates/engine/src/instance_lock.rs` (unchanged) |
-| Engine IPC port | 27654 (dev script 49777) | **27854** (dev script unchanged, 49777) | `openagents_brand::DEFAULT_IPC_PORT`; `apps/openagents/src/main.rs`; `crates/mcp/src/lib.rs` |
-| URL scheme | `openagents://` | `coder-desktop://` | `openagents_brand::URL_SCHEME`; `Info.plist`; `crates/ui/src/lib.rs`, `links.rs`; `crates/client/src/auth.rs`; Windows installer registry |
-| Background service | launchd `sh.openagents.app`, systemd `openagents.service` | `com.openagents.coder.desktop`, `coder-desktop.service` | `openagents_brand::LAUNCHD_LABEL`, `SYSTEMD_UNIT`; `apps/openagents/src/daemon.rs`; `crates/update/src/lib.rs` |
-| Keychain | Provider entries only | OpenAgents app sessions use `<bundle ID>.account`, scoped by profile and deployment; provider entries stay separate. | `crates/account/src/platform.rs`; `crates/ui/src/openagents_account.rs` |
-| Icon | OpenAgents | OpenAgents app icon (`dist/openagents/icon-1024.png`, from `openagents/bins/openagents-ios/.../icon-1024.png`) | `dist/openagents/openagents.icns`, `coder.ico`, `coder.png`; packaging scripts; `dist/windows/openagents.rc` |
-| Windows installer | AppId `AD5DEC34-…`, `Programs\OpenAgents` | new AppId `0FBFAAA3-AC9B-4542-8219-5C1638A1FB18`, `Programs\Coder` | `dist/windows/openagents.iss`; `crates/update/src/windows.rs` |
-| User-visible strings | "OpenAgents …" | "Coder …" | menus, update dialog, permission prompts, notices, slash-command descriptions, link actions, settings text, agent-login pages |
+Historical identity values are retained in the [pre-rename fork notes](https://github.com/OpenAgentsInc/openagents/blob/2b5d4905d8/apps/openagents/FORK.md).
+Current product identity comes from the table above and `crates/brand`.
 
 Regenerate the icons after changing `dist/openagents/icon-1024.png`:
 
@@ -104,40 +88,34 @@ iconutil -c icns "$T/coder.iconset" -o dist/openagents/openagents.icns
 python3 -c 'from PIL import Image; im=Image.open("dist/openagents/icon-1024.png").convert("RGBA"); im.save("dist/openagents/coder.ico", sizes=[(n,n) for n in (16,24,32,48,64,128,256)]); im.resize((512,512), Image.LANCZOS).convert("RGB").save("dist/openagents/coder.png")'
 ```
 
-## Hosted services turned off
+## Hosted services
 
-A plain start of Coder makes no request to OpenAgents's services.
+The apps use OpenAgents account sign-in and `coder-sync`. They do not use
+upstream authentication or release services.
 
-| Service | Upstream default | Coder Desktop | Switch |
+| Service | Upstream default | OpenAgents | Setting |
 | --- | --- | --- | --- |
-| Update feed | `https://sync.openagents.com/releases` | Off. No background checks; "Check for Updates…" says Coder doesn't update itself yet and points at openagents.com/download. Set our feed in one place when it exists. | `openagents_brand::UPDATE_FEED`; `crates/update/src/lib.rs` (`feed_configured`, `release_base`); dev override `OPENAGENTS_RELEASES_URL` |
+| Update feed | Upstream release service | Off until an OpenAgents desktop feed is available. Download links point to openagents.com/download. | `openagents_brand::UPDATE_FEED`; `crates/update/src/lib.rs` (`feed_configured`, `release_base`); dev override `OPENAGENTS_RELEASES_URL` |
 | Sign-in (WorkOS AuthKit via the edge) | Production client ID baked in | Off. Local workspaces remain independent. OpenAgents account sign-in uses the public SDK and the app’s own Keychain entry ([#11829](https://github.com/OpenAgentsInc/openagents/issues/11829)). | `openagents_brand::WORKOS_CLIENT_ID` |
-| Sync, relays, preview signaling (edge) | `https://sync.openagents.com` | Off. The default edge URL is `https://edge.invalid`, which never resolves. | `openagents_brand::HOSTED_EDGE_URL`, `DISABLED_EDGE_URL`; dev override `OPENAGENTS_EDGE_URL` |
+| Sync, relays, preview signaling | Upstream edge service | `https://sync.openagents.com`; account and device grants decide access. | `openagents_brand::HOSTED_EDGE_URL`, `DISABLED_EDGE_URL`; dev override `OPENAGENTS_EDGE_URL` |
 | Release and download links | GitHub `zeronsh/zeron` releases | `https://openagents.com/download` | `openagents_brand::DOWNLOAD_URL` via `openagents_update::RELEASES_PAGE` |
 | Telemetry, analytics, crash reporting | none in the app | none | — |
 | Website, docs, Discord, sponsor links | README only (none in the app) | README points at openagents.com | — |
 
-Not changed, and not called by the app: `edge/` (OpenAgents's Cloudflare Worker
-and curl installer), `apps/landing`, `apps/www-redirect`, and the GitHub
-workflows that deploy or release to OpenAgents's infrastructure (`deploy.yml`,
-`release.yml`, `testflight.yml`). Our repository has none of their secrets.
+The upstream TypeScript server, landing sites, and GitHub workflows were not
+imported. Only `edge/src/install.sh` remains from the upstream edge tree;
+`coder-sync` supplies our server. Releases use local scripts.
 
-## Still says OpenAgents
+## Names and compatibility
 
-Known places a user can still see "OpenAgents" or "openagents":
+The desktop binary and MCP server are `openagents`; new worktree branches use
+`openagents/`. The theme family is OpenAgents, project files are
+`openagents.json`, and the terminal sets `TERM_PROGRAM=OpenAgents`. Packaging
+and iOS projects and targets use OpenAgents names.
 
-- The binary and CLI are `openagents` (`openagents mcp`, `openagents daemon`, CLI help and
-  messages). The MCP server agents see is named `openagents`, and its tool
-  descriptions and agent prompts mention OpenAgents.
-- Worktree branches are named `openagents/<name>` (`crates/engine/src/repos.rs`,
-  `titles.rs`; many tests pin the prefix).
-- The theme family named "OpenAgents", the project file `openagents.json`, the
-  `TERM_PROGRAM=OpenAgents` terminal variable, and the Codex/ACP client title.
-- Sign-in and sync screens (unreachable while sign-in is off).
-- Linux and Windows packaging file names (`openagents.desktop`, `openagents.exe`,
-  `openagents-update.json`), and Linux's install layout (`~/.openagents/app`,
-  `~/.local/bin/openagents`).
-- iOS keeps the upstream project and target names; identity and account seams are listed below.
+Readers accept saved project files, theme IDs, conversation links, and earlier
+environment variables. Those compatibility paths do not change existing data
+folders, Keychain entries, or bundle IDs.
 
 ## Platform matrix
 
@@ -146,10 +124,14 @@ Known places a user can still see "OpenAgents" or "openagents":
 | macOS (Apple silicon) | `.dmg` + app tarball (`scripts/package-macos.sh`, `release.yml` on `macos-latest`) | Dev bundle built and run on 2026-10-15 (macOS 26, Apple silicon): bundle identity, window title, data directory and no hosted requests checked. `package-macos.sh` updated, not yet run. |
 | macOS (Intel) | Not in the release matrix | Not checked. |
 | Windows x86_64 | Inno Setup installer + portable `.exe` (`scripts/package-windows.ps1`, `windows-2022`) | Identity edited (installer AppId, names, scheme, icon, data directory); not built or run. |
-| Linux x86_64 / aarch64 | Tarball with `install.sh` (`scripts/package-linux.sh`, Ubuntu 24.04) | Data directory and icon changed; install layout still OpenAgents's (collides with a OpenAgents install). Not built or run. |
-| iOS | TestFlight (`testflight.yml`) | OpenAgents Coder identity and shared account flow; simulator verified. Store upload is an owner step. |
+| Linux x86_64 / aarch64 | Tarball with `install.sh` (`scripts/package-linux.sh`, Ubuntu 24.04) | OpenAgents installer paths and icons; existing data paths stay unchanged. Not built or run. |
+| iOS | TestFlight (local release scripts) | `com.openagents.app` and the shared account flow. Check the renamed project in the simulator before the next owner-approved upload. |
 
 ## iOS identity (#11841)
+
+This section records the earlier Coder-branded integration. The current
+identity is `com.openagents.app`, with the OpenAgents project, targets, and
+URL scheme listed above. Retired names below explain the upgrade path.
 
 - `apps/ios/OpenAgents.xcodeproj` and `OpenAgents/Info.plist`: OpenAgents Coder,
   `com.openagents.coder`, isolated extension/test bundle IDs, and
@@ -174,7 +156,7 @@ Known places a user can still see "OpenAgents" or "openagents":
   preserve the selected Rust toolchain (default 1.98.1) across Xcode's clean
   build environment.
 
-After upstream merges, review these seams, run the iOS identity tests, and
+After upstream ports, review these seams, run the iOS identity tests, and
 scan the built app with `python3 scripts/ios/verify-identity.py PATH_TO_APP`.
 
 Verification scope: upstream has existing workspace formatting differences;

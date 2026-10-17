@@ -6,6 +6,15 @@ when offered. Switch computers, try offline choices, and reopen a saved agent.
 The automated checks use fixture model replies and do not run Claude on the
 owner's computers.
 
+## Check the renamed OpenAgents apps across updates (#11899)
+
+After the renamed project passes simulator checks, choose the next unused
+`com.openagents.app` build and follow
+[the iOS release steps](apps/openagents/apps/ios/release/README.md) to sign
+and upload it. Install it over the existing TestFlight app and confirm that
+sign-in and chats remain available. Check the existing OpenAgents Dev profile
+after updating from `main`; automated checks use disposable data instead.
+
 ## Check the refreshed Home on iPhone (#11923)
 
 Install TestFlight build 1007. Check Coder Noir and Coder Light, large text, and
