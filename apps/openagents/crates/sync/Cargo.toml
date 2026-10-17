@@ -6,6 +6,10 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+nostr = { path = "../../../../crates/nostr" }
+coder-link = { path = "../../../../crates/coder-link" }
+coder-reach = { path = "../../../../crates/coder-reach" }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
 coder-access = { path = "../../../../crates/coder-access", default-features = false }
 coder-host = { path = "../../../../crates/coder-host", default-features = false }
 async-trait.workspace = true

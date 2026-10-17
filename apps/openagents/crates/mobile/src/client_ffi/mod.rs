@@ -112,6 +112,24 @@ impl CoreClient {
         Ok(Arc::new(Self { client }))
     }
 
+    pub async fn pair_device_channel(&self, device_id: String, code: String) -> CoreResult<()> {
+        let client = self.client.clone();
+        on_runtime(async move { client.pair_device_channel(&device_id, &code).await }).await
+    }
+
+    pub fn device_channel_enabled(&self, device_id: String) -> bool {
+        self.client.device_channel_enabled(&device_id)
+    }
+
+    pub async fn forget_device_channel(&self, device_id: String) -> CoreResult<()> {
+        let client = self.client.clone();
+        on_runtime(async move { client.forget_device_channel(&device_id).await }).await
+    }
+
+    pub fn disable_device_channel(&self, device_id: String) {
+        self.client.disable_device_channel(&device_id);
+    }
+
     pub fn is_demo(&self) -> bool {
         self.client.is_demo()
     }

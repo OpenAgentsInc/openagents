@@ -51,13 +51,15 @@ fi
 # Xcode exports SDKROOT/deployment vars for the *app* SDK; host build scripts
 # (proc macros, build.rs) must not see them, so cargo runs in a clean env.
 run_cargo() {
+  local jobs_env=()
+  if [[ -n "${CARGO_BUILD_JOBS:-}" ]]; then jobs_env=("CARGO_BUILD_JOBS=$CARGO_BUILD_JOBS"); fi
   env -i HOME="$HOME" USER="${USER:-}" TERM="${TERM:-dumb}" \
     PATH="$HOME/.cargo/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
     IPHONEOS_DEPLOYMENT_TARGET=26.0 \
     RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-1.98.1}" \
     CARGO_TARGET_DIR="$CARGO_OUT" \
     CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-1}" \
-    cargo "$@"
+    ${jobs_env[@]+"${jobs_env[@]}"} cargo "$@"
 }
 
 cd "$ROOT"

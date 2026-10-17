@@ -1638,7 +1638,7 @@ Closing or hiding a device card releases viewing resources and subscriptions;
 a batch continues. An interactive view it owns explicitly requests pause on
 close. This profile supplies no physical robot, wallet, or approval authority.
 
-## OpenAgents app device channel (#11854, draft)
+## OpenAgents app device channel (#11854)
 
 This optional profile carries the OpenAgents app's device RPC over a current
 NIP-HOST grant. Chat documents and their updates stay in `coder-sync` rooms.
@@ -1655,7 +1655,8 @@ The initial profile supports unary calls:
 
 | Methods | Required right |
 | --- | --- |
-| `ListHarnesses`, `ListModels`, `ListSkills`, `ListCommands` | `observe` |
+| `EngineInfo`, `ListHarnesses`, `ListModels`, `ListSkills`, `ListCommands` | `observe` |
+| `AuthorizeSync` | All six pairing rights |
 | `RelayCommand` | `operate` |
 
 `QueueCommand` stays on its existing transport until it accepts a stable
@@ -1666,7 +1667,7 @@ project scope before every dispatch. A method that accepts a path also passes
 through the host's workspace and symlink checks. An app service cannot turn a
 host-wide grant into a project-scoped grant or widen a narrower project grant.
 The reply uses the existing signed reply envelope and the original request
-identity. Requests and replies are limited to 64 KiB. Larger file and chat
+identity. Requests and replies are limited to 60 KiB. Larger file and chat
 content uses its existing transfer path.
 
 Commands retain the app's client-generated command ID and its existing durable
@@ -1685,14 +1686,46 @@ permits choosing the WebSocket path for that operation.
 
 ### HTTP device proofs
 
-A NIP-98 device proof supplements the signed-in account session on `coder-sync`;
-it never replaces the session or authorizes joining another account's room.
-The proof names the exact public request URL, including its query, and HTTP
-method, and hashes the exact body for requests with a body. Its signer must
-match the device key registered to that account. The service verifies the
-signature, a timestamp within 60 seconds, and a fresh event ID before accepting
-the request. Requests with an invalid supplied proof never fall back to bearer
-access. A revoked device key cannot register itself again without a new pairing.
-Legacy clients keep the existing account-session path while this profile is
-opt-in. A latency comparison must name the tested revisions, routes, sample
-counts, and failures before this profile becomes the default.
+The host registers its public key under its app computer ID on `coder-sync`
+with its account session and a NIP-98 proof. Another key cannot replace it.
+Every paired phone chat-room join, row read/write, checkpoint read, and fallback
+device-room join carries two NIP-98 events alongside its account session:
+
+- The host signs the exact request after checking the phone's current grant.
+  `AuthorizeSync` requires all six pairing rights because a content-blind sync
+  room can carry commands as well as reads. The signed tags bind the account,
+  app computer ID, phone key, and an expiry at most 15 seconds away and no later
+  than the grant's expiry. Project-scoped grants do not enter this profile.
+- The phone signs the same URL, method, and body hash, and names the host event.
+  `x-openagents-host-proof` and `x-openagents-device-proof` carry the two events
+  as `Nostr <base64>` values, leaving `Authorization: Bearer` for the session.
+
+The server checks both signatures, the configured public origin, the complete
+URL and query, method, exact body hash, account, recipient, registered host key,
+and expiry. The chat's registry row must name that app computer. Event IDs are
+consumed in Postgres across replicas. Invalid supplied proofs never downgrade
+to bearer-only access. A proved socket closes when its short admission expires;
+its reconnect asks the host again, so revocation takes effect within 15 seconds.
+Legacy clients keep the account-session path while this profile is opt-in.
+
+### Opt in
+
+On the signed-in computer, set `OPENAGENTS_NIP_HOST=1` and
+`OPENAGENTS_NIP_HOST_INVITE_FILE` to a new private file, then start the app or
+headless engine. `OPENAGENTS_NIP_HOST_RELAY` defaults to
+`wss://relay.openagents.com`. The host keeps account-scoped keys in the platform
+keychain (or, for a headless install explicitly using
+`OPENAGENTS_NIP_HOST_KEY_STORE=file`, private files under the account profile),
+registers its key with the configured sync server, and writes one
+single-use connect code. The code expires after five minutes. Remove the file
+after pairing. `CODER_SYNC_PUBLIC_ORIGIN` must match the server's public origin;
+it defaults to `https://sync.openagents.com`.
+
+On the phone, open **Settings**, select the computer, and paste that code.
+The phone proves the app computer ID before enabling the connection. Pairing
+lasts until sign-out or process exit; no private key is saved on the phone.
+Select the computer again and choose **Use usual connection** to opt out.
+Choose **Forget pairing** to revoke this phone's grant on that computer.
+The host's local access authority also lists and revokes each paired device; an
+account switch closes admission before host cleanup. The default stays on the
+existing WebSocket path until the production latency comparison passes.

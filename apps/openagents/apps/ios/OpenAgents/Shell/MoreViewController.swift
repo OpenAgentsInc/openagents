@@ -191,7 +191,7 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             s.appendItems([Row(id: "project-sharing", title: "Project sharing", symbol: "person.2")])
         }
         s.appendSections(["Devices"])
-        s.appendItems(app.hostOptions.map { Row(id: "device:\($0.id)", title: $0.name, subtitle: $0.online ? "Online" : "Offline", symbol: "desktopcomputer", accessory: .dot($0.online)) })
+        s.appendItems(app.hostOptions.map { Row(id: "device:\($0.id)", title: $0.name, subtitle: app.client?.deviceChannelEnabled(deviceId: $0.id) == true ? "Device connection" : ($0.online ? "Online" : "Offline"), symbol: "desktopcomputer", accessory: .dot($0.online)) })
         if app.offersCloudHost {
             let on = app.cloudHost?.running == true
             s.appendItems([Row(id: "cloudhost", title: on ? "Stop Our cloud" : "Start Our cloud", subtitle: app.cloudHostDetail, symbol: "cloud", accessory: .none, destructive: on)])
@@ -257,6 +257,54 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
                     self.present(alert, animated: true)
                 }
                 self.reload()
+            }
+        case let id where id.hasPrefix("device:"):
+            guard !app.isDemo, let client = app.client else { return }
+            let device = String(id.dropFirst("device:".count))
+            if client.deviceChannelEnabled(deviceId: device) {
+                let alert = UIAlertController(title: "Device connection", message: "Use the usual connection for this computer?", preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "Use usual connection", style: .default) { [weak self] _ in
+                    client.disableDeviceChannel(deviceId: device)
+                    self?.reload()
+                })
+                alert.addAction(UIAlertAction(title: "Forget pairing", style: .destructive) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        do { try await client.forgetDeviceChannel(deviceId: device) }
+                        catch {
+                            guard let self, self.app.client === client else { return }
+                            let failure = UIAlertController(title: "Couldn't remove this pairing", message: "Try again when this computer is online.", preferredStyle: .alert)
+                            failure.addAction(UIAlertAction(title: "OK", style: .default))
+                            self.present(failure, animated: true)
+                        }
+                        self?.reload()
+                    }
+                })
+                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                present(alert, animated: true)
+            } else {
+                let alert = UIAlertController(title: "Pair this computer", message: "Paste the connect code shown on this computer. This connection lasts until you sign out or close the app.", preferredStyle: .alert)
+                alert.addTextField { field in
+                    field.placeholder = "Connect code"
+                    field.autocapitalizationType = .none
+                    field.autocorrectionType = .no
+                    field.isSecureTextEntry = true
+                    field.accessibilityIdentifier = "device-connect-code"
+                }
+                alert.addAction(UIAlertAction(title: "Connect", style: .default) { [weak self, weak alert] _ in
+                    guard let code = alert?.textFields?.first?.text, !code.isEmpty else { return }
+                    Task { @MainActor [weak self] in
+                        do { try await client.pairDeviceChannel(deviceId: device, code: code) }
+                        catch {
+                            guard let self, self.app.client === client else { return }
+                            let failure = UIAlertController(title: "Couldn't pair this computer", message: "Check the code and try again.", preferredStyle: .alert)
+                            failure.addAction(UIAlertAction(title: "OK", style: .default))
+                            self.present(failure, animated: true)
+                        }
+                        self?.reload()
+                    }
+                })
+                alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+                present(alert, animated: true)
             }
         case let id where id.hasPrefix("appearance:"):
             let style = Int(id.dropFirst(11)) ?? 0

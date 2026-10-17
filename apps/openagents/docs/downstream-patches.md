@@ -225,3 +225,10 @@ links remain readable. Upstream fixes now require manual ports.
   agent (`prompt` on v1, `system` under `agents` on v2), selected explicitly on
   the session or prompt. Shared configuration files stay unchanged. The existing
   harness owns launch and event handling.
+
+- [OpenAgents #11854](https://github.com/OpenAgentsInc/openagents/issues/11854):
+  the optional app device connection embeds the existing Coder host and connector,
+  with account-scoped host keys, explicit session-only phone pairing, admitted
+  unary RPCs, original command IDs, and exact-request NIP-98 proofs for sync.
+  Transcripts continue through the existing Loro rooms. The default remains
+  WebSocket; refusals and uncertain commands do not retry on another transport.

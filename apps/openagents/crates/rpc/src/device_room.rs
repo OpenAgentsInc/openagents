@@ -245,6 +245,13 @@ impl From<TokenError> for openagents_sync::SyncError {
 #[async_trait]
 pub trait TokenSource: Send + Sync + 'static {
     async fn token(&self) -> Result<String, TokenError>;
+    async fn device_headers(
+        &self,
+        _device: &str,
+        _url: &str,
+    ) -> Result<Vec<(String, String)>, TokenError> {
+        Ok(vec![])
+    }
 
     /// Changes whenever credentials become available or are replaced. Long-lived
     /// supervisors use this to retry immediately instead of waiting for backoff.
@@ -603,7 +610,13 @@ pub struct DeviceLink {
 
 impl DeviceLink {
     pub async fn connect(url: &str) -> Result<Self, RpcError> {
-        let ws = openagents_sync::dial::connect_ws(url)
+        Self::connect_with_headers(url, &[]).await
+    }
+    pub async fn connect_with_headers(
+        url: &str,
+        headers: &[(String, String)],
+    ) -> Result<Self, RpcError> {
+        let ws = openagents_sync::dial::connect_ws_headers(url, headers)
             .await
             .map_err(|e| RpcError::Transport(format!("device room unreachable: {e}")))?;
         Ok(Self::from_socket(ws))
@@ -1056,9 +1069,18 @@ impl LinkCache {
         // under `forward()` — a wedged edge socket hung callers indefinitely
         // and only the UI's own per-call timers saved them (silently).
         const DIAL_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
-        let link = tokio::time::timeout(DIAL_CONNECT_TIMEOUT, DeviceLink::connect(&url))
+        let headers = self
+            .config
+            .token
+            .device_headers(device_id, &url)
             .await
-            .map_err(|_| RpcError::Transport(format!("peer {device_id}: connect timed out")))?;
+            .map_err(|e| RpcError::Transport(e.to_string()))?;
+        let link = tokio::time::timeout(
+            DIAL_CONNECT_TIMEOUT,
+            DeviceLink::connect_with_headers(&url, &headers),
+        )
+        .await
+        .map_err(|_| RpcError::Transport(format!("peer {device_id}: connect timed out")))?;
         let link = Arc::new(link?);
         // Readiness probe: prove the host answers before caching (an offline host bounces
         // host_offline, which closes the link and fails this call fast).

@@ -73,6 +73,33 @@ pub(crate) async fn wait_backoff(cancel: &CancellationToken, wait: Duration) -> 
 pub(crate) struct Bearer(pub(crate) Weak<ClientInner>);
 
 impl Bearer {
+    pub(crate) async fn device_proofs(
+        &self,
+        host: &str,
+        url: &str,
+        method: &str,
+        body: &[u8],
+    ) -> Result<Vec<(String, String)>, SyncError> {
+        let inner = self.0.upgrade().ok_or(SyncError::Closed)?;
+        if inner.cancel.is_cancelled() {
+            return Err(SyncError::Closed);
+        }
+        let channel = inner
+            .live()
+            .and_then(|live| lock(&live.relay.device_channels).get(host).cloned());
+        match channel {
+            Some(channel) => channel
+                .proof_headers(url, method, body, inner.credentials.org_id())
+                .await
+                .map_err(|_| {
+                    SyncError::Auth(
+                        "Couldn't confirm this device's access. Pair this computer again.".into(),
+                    )
+                }),
+            None => Ok(vec![]),
+        }
+    }
+
     pub(crate) async fn get(&self) -> std::result::Result<String, SyncError> {
         let Some(inner) = self.0.upgrade() else {
             return Err(SyncError::Closed);
@@ -87,6 +114,20 @@ impl Bearer {
 
 #[async_trait::async_trait]
 impl openagents_rpc::TokenSource for Bearer {
+    async fn device_headers(
+        &self,
+        device: &str,
+        url: &str,
+    ) -> Result<Vec<(String, String)>, openagents_rpc::TokenError> {
+        self.device_proofs(device, url, "GET", b"")
+            .await
+            .map_err(|_| {
+                openagents_rpc::TokenError::TemporarilyUnavailable(
+                    "Couldn't confirm this device's access.".into(),
+                )
+            })
+    }
+
     async fn token(&self) -> std::result::Result<String, openagents_rpc::TokenError> {
         match self.get().await {
             Ok(token) => Ok(token),

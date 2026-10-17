@@ -50,6 +50,8 @@ fn map_rpc(device_id: &str, method: &str, err: RpcError) -> ClientError {
 }
 
 pub(crate) struct Relay {
+    pub(crate) device_channels:
+        Mutex<HashMap<String, Arc<openagents_sync::device_channel::DeviceChannel>>>,
     links: Arc<LinkCache>,
     watches: Mutex<HashMap<WatchKey, CancellationToken>>,
     /// Devices whose engine lacks WatchCheckoutChangeRequest (cleared on
@@ -110,6 +112,7 @@ impl Relay {
             LinkCache::new(config)
         };
         Self {
+            device_channels: Mutex::new(HashMap::new()),
             links,
             watches: Mutex::new(HashMap::new()),
             unsupported: Mutex::new(HashSet::new()),
@@ -117,6 +120,7 @@ impl Relay {
     }
 
     pub(crate) fn shutdown(&self) {
+        lock(&self.device_channels).clear();
         self.links.disconnect_all();
         for (_, token) in lock(&self.watches).drain() {
             token.cancel();
@@ -124,6 +128,11 @@ impl Relay {
     }
 
     /// Presence says `device_id` is alive again: dial immediately next time.
+    pub(crate) fn channel_changed(&self, device_id: &str) {
+        self.links.invalidate(device_id);
+        self.links.reset_cooldown(device_id);
+    }
+
     pub(crate) fn peer_alive(&self, device_id: &str) {
         self.links.reset_cooldown(device_id);
     }
@@ -131,6 +140,14 @@ impl Relay {
     /// One unary call with a deadline; a stale cached link is retried once
     /// on a fresh dial.
     pub(crate) async fn call(&self, device_id: &str, method: &str, params: Value) -> Result<Value> {
+        let channel = lock(&self.device_channels).get(device_id).cloned();
+        if let Some(channel) = channel {
+            match channel.call(method, params.clone()).await {
+                Ok(Some(value)) => return Ok(value),
+                Ok(None) => {}
+                Err(error) => return Err(ClientError::HostError(error.to_string())),
+            }
+        }
         let timeout = deadline(method);
         for attempt in 0..2 {
             let client = self

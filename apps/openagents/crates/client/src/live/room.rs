@@ -310,6 +310,13 @@ pub(crate) struct ChatUrl {
 }
 
 impl UrlProvider for ChatUrl {
+    fn headers(&self, url: &str) -> BoxFuture<'static, Result<Vec<(String, String)>, SyncError>> {
+        let bearer = self.bearer.clone();
+        let host = self.host_device_id.clone();
+        let url = url.to_owned();
+        Box::pin(async move { bearer.device_proofs(&host, &url, "GET", b"").await })
+    }
+
     fn url(&self) -> BoxFuture<'static, Result<String, SyncError>> {
         let bearer = self.bearer.clone();
         let host = self.host_device_id.clone();
@@ -346,6 +353,7 @@ fn http_err(err: reqwest::Error) -> SyncError {
 impl CheckpointFetcher for ChatHttp {
     fn fetch(&self) -> BoxFuture<'static, Result<Vec<u8>, SyncError>> {
         let bearer = self.bearer.clone();
+        let host = self.host_device_id.clone();
         let url = urls::chat_checkpoint(&self.edge, &self.chat_id);
         Box::pin(async move {
             let mut got: Vec<u8> = Vec::new();
@@ -356,10 +364,14 @@ impl CheckpointFetcher for ChatHttp {
                     .http(openagents_sync::budget::Priority::Interactive)
                     .await?;
                 let token = bearer.get().await?;
+                let proofs = bearer.device_proofs(&host, &url, "GET", b"").await?;
                 let mut request = crate::auth::http()
                     .get(&url)
                     .bearer_auth(&token)
                     .timeout(Duration::from_secs(300));
+                for (key, value) in proofs {
+                    request = request.header(key, value);
+                }
                 if !got.is_empty() {
                     request = request.header("range", format!("bytes={}-", got.len()));
                 }
@@ -413,19 +425,22 @@ impl CheckpointFetcher for ChatHttp {
 impl ChatTransport for ChatHttp {
     fn fetch_rows(&self, after: u64) -> BoxFuture<'static, Result<Vec<u8>, SyncError>> {
         let bearer = self.bearer.clone();
+        let host = self.host_device_id.clone();
         let url = urls::chat_rows(&self.edge, &self.chat_id, after, &self.device_id);
         Box::pin(async move {
             let _permit = openagents_sync::budget::shared()
                 .http(openagents_sync::budget::Priority::Interactive)
                 .await?;
             let token = bearer.get().await?;
-            let response = crate::auth::http()
+            let proofs = bearer.device_proofs(&host, &url, "GET", b"").await?;
+            let mut request = crate::auth::http()
                 .get(url)
                 .bearer_auth(token)
-                .timeout(Duration::from_secs(120))
-                .send()
-                .await
-                .map_err(http_err)?;
+                .timeout(Duration::from_secs(120));
+            for (key, value) in proofs {
+                request = request.header(key, value);
+            }
+            let response = request.send().await.map_err(http_err)?;
             if !response.status().is_success() {
                 return Err(SyncError::Protocol(format!(
                     "chat pull http {}",
@@ -442,6 +457,7 @@ impl ChatTransport for ChatHttp {
         bytes: Vec<u8>,
     ) -> BoxFuture<'static, Result<String, SyncError>> {
         let bearer = self.bearer.clone();
+        let host = self.host_device_id.clone();
         let url = format!(
             "{}&hostDevice={}",
             urls::chat_push(&self.edge, &self.chat_id, &batch_id, &self.device_id),
@@ -452,13 +468,12 @@ impl ChatTransport for ChatHttp {
                 .http(openagents_sync::budget::Priority::Interactive)
                 .await?;
             let token = bearer.get().await?;
-            let response = crate::auth::http()
-                .post(url)
-                .bearer_auth(token)
-                .body(bytes)
-                .send()
-                .await
-                .map_err(http_err)?;
+            let proofs = bearer.device_proofs(&host, &url, "POST", &bytes).await?;
+            let mut request = crate::auth::http().post(url).bearer_auth(token).body(bytes);
+            for (key, value) in proofs {
+                request = request.header(key, value);
+            }
+            let response = request.send().await.map_err(http_err)?;
             if !response.status().is_success() {
                 return Err(SyncError::Protocol(format!(
                     "chat push http {}",

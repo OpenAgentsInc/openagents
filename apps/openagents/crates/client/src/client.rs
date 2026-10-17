@@ -532,6 +532,69 @@ impl std::fmt::Debug for Client {
 }
 
 impl Client {
+    /// Pair only for this signed-in client. The private key is discarded on sign-out.
+    pub async fn pair_device_channel(&self, device_id: &str, code: &str) -> Result<()> {
+        if self.inner.cancel.is_cancelled() {
+            return Err(ClientError::HostError("You're signed out.".into()));
+        }
+        if !self.workspace().devices.iter().any(|d| d.id == device_id) {
+            return Err(ClientError::HostError(
+                "Choose one of your computers.".into(),
+            ));
+        }
+        let Some(live) = self.inner.live() else {
+            return Err(ClientError::Unsupported(
+                "Connect a signed-in computer first.".into(),
+            ));
+        };
+        let channel = tokio::select! {
+            _ = self.inner.cancel.cancelled() => return Err(ClientError::HostError("You're signed out.".into())),
+            result = openagents_sync::paired_device::pair(code, device_id) => result.map_err(|_| ClientError::HostError("Couldn't pair this computer. Check the code and try again.".into()))?,
+        };
+        let mut channels = lock(&live.relay.device_channels);
+        if self.inner.cancel.is_cancelled() {
+            return Err(ClientError::HostError("You're signed out.".into()));
+        }
+        channels.insert(device_id.into(), Arc::new(channel));
+        drop(channels);
+        live.relay.channel_changed(device_id);
+        for core in self.inner.cores() {
+            self.inner.kick_room(&core.chat_id);
+        }
+        Ok(())
+    }
+
+    pub fn device_channel_enabled(&self, device_id: &str) -> bool {
+        self.inner
+            .live()
+            .is_some_and(|live| lock(&live.relay.device_channels).contains_key(device_id))
+    }
+
+    pub async fn forget_device_channel(&self, device_id: &str) -> Result<()> {
+        let channel = self
+            .inner
+            .live()
+            .and_then(|live| lock(&live.relay.device_channels).get(device_id).cloned());
+        if let Some(channel) = channel {
+            channel.revoke().await.map_err(|_| {
+                ClientError::HostUnavailable(
+                    "Couldn't remove this pairing. Try again when this computer is online.".into(),
+                )
+            })?;
+        }
+        self.disable_device_channel(device_id);
+        Ok(())
+    }
+
+    pub fn disable_device_channel(&self, device_id: &str) {
+        if let Some(live) = self.inner.live() {
+            lock(&live.relay.device_channels).remove(device_id);
+            live.relay.channel_changed(device_id);
+            for core in self.inner.cores() {
+                self.inner.kick_room(&core.chat_id);
+            }
+        }
+    }
     /// Dedicated ephemeral call handle; never uses durable commands or RPC retries.
     pub async fn voice_transport(
         &self,

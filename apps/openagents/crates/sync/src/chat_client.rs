@@ -237,10 +237,13 @@ impl BinConnector for WsBinConnector {
             let socket_permit = crate::budget::shared().socket().await?;
             let dial_permit = crate::budget::shared().dial().await?;
             let url = provider.url().await?;
-            let ws = crate::dial::connect_ws(&url).await.map_err(|e| {
-                crate::budget::shared().observe_error(&e);
-                SyncError::WebSocket(e.to_string())
-            })?;
+            let headers = provider.headers(&url).await?;
+            let ws = crate::dial::connect_ws_headers(&url, &headers)
+                .await
+                .map_err(|e| {
+                    crate::budget::shared().observe_error(&e);
+                    SyncError::WebSocket(e.to_string())
+                })?;
             drop(dial_permit);
             let (out_tx, out_rx) = mpsc::channel(64);
             let (in_tx, in_rx) = mpsc::channel(64);

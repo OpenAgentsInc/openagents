@@ -14,6 +14,22 @@ use std::sync::Arc;
 #[async_trait::async_trait]
 pub trait HostLink: Send + Sync {
     async fn app_call(&self, request: Request) -> Result<Answer, coder_host::Error>;
+    async fn revoke(&self) -> Result<(), coder_host::Error> {
+        Err(coder_host::Error::Access(coder_access::Error::new(
+            Code::Unsupported,
+            "This pairing can't be removed here.",
+        )))
+    }
+    async fn proof_headers(
+        &self,
+        _intent: coder_access::http_proof::Intent,
+        _account: &str,
+    ) -> Result<Vec<(String, String)>, coder_host::Error> {
+        Err(coder_host::Error::Access(coder_access::Error::new(
+            Code::Unsupported,
+            "Device proofs aren't available.",
+        )))
+    }
 }
 #[async_trait::async_trait]
 impl HostLink for coder_host::client::Link {
@@ -43,6 +59,32 @@ pub struct DeviceChannel {
     enabled: bool,
 }
 impl DeviceChannel {
+    pub async fn revoke(&self) -> Result<(), Failure> {
+        match self.link.revoke().await {
+            Ok(()) => Ok(()),
+            Err(coder_host::Error::Access(error)) if error.code == Code::Revoked => Ok(()),
+            Err(_) => Err(Failure::Unavailable),
+        }
+    }
+
+    pub async fn proof_headers(
+        &self,
+        url: &str,
+        method: &str,
+        body: &[u8],
+        account: &str,
+    ) -> Result<Vec<(String, String)>, Failure> {
+        if !self.enabled {
+            return Ok(vec![]);
+        }
+        let intent = coder_access::http_proof::Intent::new(url, method, body)
+            .map_err(|e| Failure::Refused(e.code))?;
+        self.link
+            .proof_headers(intent, account)
+            .await
+            .map_err(|_| Failure::Unavailable)
+    }
+
     /// `link` comes from `Connector::link` for this paired computer.
     /// Enable only after the person opts in and the host advertises `app-rpc-v1`.
     pub fn new(link: Arc<dyn HostLink>, opted_in: bool, capabilities: &[String]) -> Self {

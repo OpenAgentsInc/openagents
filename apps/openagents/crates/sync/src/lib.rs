@@ -16,6 +16,7 @@ pub mod chat_frames;
 pub mod device_channel;
 pub mod dial;
 pub mod net_path;
+pub mod paired_device;
 pub mod registry;
 pub mod socket;
 #[cfg(feature = "store")]
