@@ -196,7 +196,9 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 9: CLI, Agent Lab, and web fixes
 
-**Still free:** #11952, the Computers provider-fixture isolation follow-up reported under #11925. It changes only `crates/openagents-web/src/computers_api/tests.rs` or the fixture injection it uses.
+**Taken 2026-10-17 04:07 CDT** by Codex working #11952 in `~/work/openagents-labs-finish`, while keeping the #11871 claim pending #11948.
+
+**Claimed above:** #11952, the Computers provider-fixture isolation follow-up reported under #11925. It changes only `crates/openagents-web/src/computers_api/tests.rs` or the fixture injection it uses.
 
 **Released 2026-10-17 00:13 CDT** by Codex (Grok 4.7). #11934, #11929, #11925, and #11727 are closed on code. After-close checks remain for the #11934 deploy and Foreman live check, the #11925 controlled deploy, and the #11727 named-sale test-mode check. The `~/work/openagents-lane9b` worktree is removed.
 
