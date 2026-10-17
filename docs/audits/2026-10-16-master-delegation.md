@@ -82,7 +82,9 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 **Taken 2026-10-17 00:48 CDT** by a Claude Code subagent working #11823 in ~/work/openagents-11823.
 
-**Taken 2026-10-17 00:34 CDT** by Codex (GPT-6), coordinator-worker in `~/work/openagents-codex-coord`, for #11945 release-blocking `coder-new` model-picker and Cursor screen tests only. #11898 stays with its live owner; #11823 remains free.
+**Taken 2026-10-17 01:00 CDT** by Codex (GPT-6), coordinator-worker in `~/work/openagents-codex-coord`, for #11947 attribution integration tests only. #11898 stays with its live owner; #11823 remains free.
+
+**Released 2026-10-17 01:00 CDT** by Codex (GPT-6) after #11945 landed in `92662ccae4`. Both reported unit failures are fixed; `coder-new` unit checks passed 1,055/0/24. The broader run found the separate attribution failures tracked in #11947.
 
 **Taken 2026-10-16 22:21 CDT** by Codex working #11894, #11898, #11823 in `~/work/openagents-chat-bridge`.
 
