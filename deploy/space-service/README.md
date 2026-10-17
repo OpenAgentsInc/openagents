@@ -120,8 +120,19 @@ limit changes use `oa-computers-usage` so committed allocations are checked.
 The sandbox namespace separately limits guest pods. Firecracker resources are
 controlled by the host cgroup and Computers allocation limits; the native pause
 container declares no Kubernetes CPU or memory request.
-Object transfers use two 8 MiB upload parts, two 8 MiB download readers, and a
+Object transfers use two 8 MiB upload parts, one download reader per object, and a
 256 MiB process-wide download-buffer budget.
+
+Run `qualification_native.py encryption` before creating an encrypted fixture.
+`qualification_computers.py --run encrypted-1` and `--run capacity-2` keep separate
+computer, command, and memory-check receipts. A failed qualification stays in
+its original record; a new run uses a new outer idempotency key.
+
+Run `inventory.py --objects` from the operator machine and save its JSON under
+scratch. It inventories owned resources, flags names whose ownership is
+unconfirmed and unattached owned disks, and counts active objects through the
+private connection. It performs no deletion and omits secret values. Soft-deleted
+objects and unfinished multipart uploads need separate checks.
 
 `database-recovery.py` creates and restores only the separate
 `oa-space-service-restore-11814` copy. Export its public connection settings after

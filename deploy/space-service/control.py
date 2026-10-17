@@ -7,6 +7,21 @@ from broker import cloud, named_resource, PROJECT, PREFIX, REGION, MARKER, LABEL
 REPOSITORY = f"projects/{PROJECT}/locations/{REGION}/repositories/{PREFIX}"
 
 
+def label_boot_disk(instance):
+    if instance.get('labels',{}).get('openagents-issue')!='11814':
+        raise RuntimeError('The attached boot disk has no owned instance.')
+    boot=[disk for disk in instance['disks'] if disk.get('boot')]
+    if len(boot)!=1 or not boot[0].get('autoDelete'):
+        raise RuntimeError('Review the instance boot disk before labeling it.')
+    name=boot[0]['source'].rsplit('/',1)[-1]
+    zone=instance['zone'].rsplit('/',1)[-1]
+    disk=cloud('compute','disks','describe',name,'--zone='+zone)
+    if (name!=instance['name'] or disk.get('users')!=[instance['selfLink']]
+        or int(disk['sizeGb'])!=40 or disk.get('labels',{}).get('openagents-issue') not in (None,'11814')):
+        raise RuntimeError('The boot disk attachment or ownership differs.')
+    cloud('compute','disks','add-labels',name,'--zone='+zone,'--labels='+LABELS+',openagents-role='+instance['labels']['openagents-role'])
+
+
 def images():
     named_resource(
         ["artifacts", "repositories", "describe", PREFIX, f"--location={REGION}"],
@@ -106,6 +121,7 @@ def nodes():
             raise RuntimeError("A node has public ingress.")
         if role == "worker" and instance.get("serviceAccounts"):
             raise RuntimeError("The worker has a Google identity.")
+        label_boot_disk(instance)
         print(json.dumps({"node": instance["name"], "role": role, "zone": zone, "state": instance["status"], "disk_gib": size}))
 
 
@@ -137,6 +153,7 @@ def builder(zone="us-central1-a", machine="n2-standard-8"):
     schedule = instance.get("scheduling", {})
     if schedule.get("maxRunDuration", {}).get("seconds") not in (14400, "14400") or schedule.get("instanceTerminationAction") != "DELETE":
         raise RuntimeError("The builder has no four-hour deletion limit.")
+    label_boot_disk(instance)
     print(json.dumps({"builder": instance["name"], "state": instance["status"], "maximum_hours": 4}))
 
 
