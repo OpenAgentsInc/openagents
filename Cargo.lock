@@ -12533,6 +12533,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.22.1",
+ "coder-lease",
  "deser-hjson",
  "futures",
  "libc",
