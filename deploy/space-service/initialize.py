@@ -6,8 +6,17 @@ import subprocess
 from broker import PROJECT, PREFIX, cloud
 
 
+def zone_for(role):
+    if role != "builder":
+        return {"control": "us-central1-a", "worker": "us-central1-b"}[role]
+    nodes = cloud("compute", "instances", "list", f"--filter=name={PREFIX}-builder")
+    if len(nodes) != 1 or nodes[0].get("labels", {}).get("openagents-issue") != "11814":
+        raise RuntimeError("Choose the single owned builder before initializing it.")
+    return nodes[0]["zone"].rsplit("/", 1)[-1]
+
+
 def ssh(role, command, data=None):
-    zone = {"control": "us-central1-a", "worker": "us-central1-b", "builder": "us-central1-b"}[role]
+    zone = zone_for(role)
     result = subprocess.run(["gcloud", "compute", "ssh", f"{PREFIX}-{role}", f"--project={PROJECT}", f"--zone={zone}",
         "--tunnel-through-iap", "--quiet", "--ssh-flag=-T", "--command=" + command],
         input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
@@ -23,7 +32,7 @@ def initialize(role):
     subprocess.run(["git", "fetch", "-q", "origin", "main"], check=True)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     subprocess.run(["git", "merge-base", "--is-ancestor", commit, "origin/main"], check=True)
-    zone = {"control": "us-central1-a", "worker": "us-central1-b", "builder": "us-central1-b"}[role]
+    zone = zone_for(role)
     instance = cloud("compute", "instances", "describe", f"{PREFIX}-{role}", f"--zone={zone}")
     if instance.get("labels", {}).get("openagents-issue") != "11814":
         raise RuntimeError("This node belongs to another deployment.")

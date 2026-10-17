@@ -109,7 +109,7 @@ def nodes():
         print(json.dumps({"node": instance["name"], "role": role, "zone": zone, "state": instance["status"], "disk_gib": size}))
 
 
-def builder():
+def builder(zone="us-central1-a", machine="n2-standard-8"):
     """Create one credential-free builder that deletes itself after four hours."""
     named_resource(
         ["compute", "firewall-rules", "describe", f"{PREFIX}-builder-cluster"],
@@ -120,9 +120,9 @@ def builder():
          f"--description={MARKER}", "--enable-logging"],
     )
     instance = named_resource(
-        ["compute", "instances", "describe", f"{PREFIX}-builder", "--zone=us-central1-b"],
-        ["compute", "instances", "create", f"{PREFIX}-builder", "--zone=us-central1-b",
-         "--machine-type=n2-standard-4", f"--subnet={PREFIX}-nodes", "--private-network-ip=10.219.14.12",
+        ["compute", "instances", "describe", f"{PREFIX}-builder", f"--zone={zone}"],
+        ["compute", "instances", "create", f"{PREFIX}-builder", f"--zone={zone}",
+         f"--machine-type={machine}", f"--subnet={PREFIX}-nodes", "--private-network-ip=10.219.14.12",
          "--no-address", "--no-service-account", "--no-scopes", "--enable-nested-virtualization",
          "--min-cpu-platform=Intel Cascade Lake", "--maintenance-policy=TERMINATE",
          "--image-project=ubuntu-os-cloud", "--image=ubuntu-2404-noble-amd64-v20261016",
@@ -143,5 +143,7 @@ def builder():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["images", "database", "nodes", "builder"])
+    parser.add_argument("--builder-zone", choices=["us-central1-a", "us-central1-b", "us-central1-c", "us-central1-f"], default="us-central1-a")
+    parser.add_argument("--builder-machine", choices=["n2-standard-4", "n2-standard-8"], default="n2-standard-8")
     args = parser.parse_args()
-    {"images": images, "database": database, "nodes": nodes, "builder": builder}[args.command]()
+    {"images": images, "database": database, "nodes": nodes, "builder": lambda: builder(args.builder_zone, args.builder_machine)}[args.command]()
