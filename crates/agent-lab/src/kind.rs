@@ -24,6 +24,15 @@ impl LabKind for AgentLab {
                 parameters: json!({"type":"object","properties":{"document":{"type":"string"},"content":{"type":"object"}},"required":["document","content"],"additionalProperties":false}),
             }],
             job_types: vec!["trial".into()],
+            job_requirements: [(
+                "trial".into(),
+                Requirements {
+                    model_use: Some(lab_kit::ModelUse::Evaluation),
+                    max_seconds: 1800,
+                    ..Default::default()
+                },
+            )]
+            .into(),
             views: vec![View::Report, View::Compare],
             limits: Limits {
                 max_doc_bytes: 128 * 1024,
@@ -72,7 +81,10 @@ impl LabKind for AgentLab {
     fn jobs_for(version: &Version, want: &Want) -> Vec<JobSpec> {
         match want {
             Want::Job { job_type, params }
-                if job_type == "trial" && Self::check(&version.content, &Value::Null).is_ok() =>
+                if job_type == "trial"
+                    && Self::check(&version.content, &Value::Null).is_ok()
+                    && lab_kit::check_model_use(version, &[], lab_kit::ModelUse::Evaluation)
+                        .is_ok() =>
             {
                 vec![JobSpec {
                     kind: "agent".into(),

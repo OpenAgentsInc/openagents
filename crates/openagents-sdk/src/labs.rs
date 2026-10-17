@@ -17,6 +17,7 @@ mod artifacts;
 pub mod cad;
 mod events;
 mod wire;
+pub mod worker;
 pub use artifacts::{ArtifactDownload, ArtifactHandle};
 pub use events::Events;
 
@@ -142,6 +143,7 @@ macro_rules! reference {
 }
 reference!(DocumentRef);
 reference!(JobRef);
+reference!(WorkerRef);
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]

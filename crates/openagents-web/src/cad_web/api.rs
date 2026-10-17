@@ -289,14 +289,83 @@ impl Kind for CadApi<'_> {
             _ => Err(ApiError::missing()),
         }
     }
-    async fn run_job(&self, store: lab_store::Store, job: JobState) {
-        let Ok(lease) = store.claim(&job.id, "cad-local", now(), 180_000).await else {
+    fn server_capabilities(&self) -> Option<lab_jobs::Capabilities> {
+        Some(lab_jobs::Capabilities {
+            worker: "cad-local".into(),
+            placement: lab_jobs::Placement::Server,
+            cpu_millis: 1000,
+            memory_bytes: 640 * 1024 * 1024,
+            gpu: false,
+            tools: ["cad-lab".into()].into(),
+            jobs: [
+                "cad/rebuild".into(),
+                "cad/export".into(),
+                "cad/render".into(),
+            ]
+            .into(),
+            local_assets: Default::default(),
+            max_seconds: 75,
+        })
+    }
+    async fn run_server_job(
+        &self,
+        store: lab_store::Store,
+        job: JobState,
+        execution: lab_api::ServerExecution,
+    ) {
+        let Ok(version) = store
+            .version(&job.spec.version.document, job.spec.version.version)
+            .await
+        else {
             return;
         };
+        let Ok(requirements) =
+            lab_jobs::EffectiveRequirements::for_job(&job.spec, &version, &self.manifest())
+        else {
+            return;
+        };
+        if execution.worker.capabilities.placement != lab_jobs::Placement::Server
+            || !requirements.eligible(&execution.worker.capabilities)
+            || store.namespace()
+                != lab_kit::digest(
+                    &serde_json::to_value(&execution.worker.space).unwrap_or_default(),
+                )
+        {
+            return;
+        }
+        if execution
+            .authority
+            .reserve(&execution.worker, &job.id, now())
+            .await
+            .is_err()
+        {
+            return;
+        }
+        let Ok(lease) = store
+            .claim(&job.id, &execution.worker.id, now(), 180_000)
+            .await
+        else {
+            return;
+        };
+        if execution
+            .authority
+            .assign(&execution.worker, lease.clone(), now())
+            .await
+            .is_err()
+        {
+            return;
+        }
         let Ok(lease) = store.start(&lease, now()).await else {
             return;
         };
-        let result = tokio::time::timeout(DEADLINE, self.execute(&store, &job)).await;
+        let Ok(assignment) = execution
+            .authority
+            .started(&execution.worker, lease.clone(), now())
+            .await
+        else {
+            return;
+        };
+        let result = tokio::time::timeout(DEADLINE, self.execute(&store, &job, &lease)).await;
         let (status, message, artifacts) = match result {
             Ok(Ok(artifacts)) => (JobStatus::Done, None, artifacts),
             Ok(Err(_)) => (
@@ -310,9 +379,16 @@ impl Kind for CadApi<'_> {
                 vec![],
             ),
         };
-        let _ = store
+        if let Ok(result) = store
             .finish(&lease, status, message, artifacts, now())
-            .await;
+            .await
+        {
+            let fingerprint = lab_kit::digest(&serde_json::to_value(&result).unwrap_or_default());
+            let _ = execution
+                .authority
+                .complete(&execution.worker, &assignment, result, &fingerprint, now())
+                .await;
+        }
     }
 }
 
@@ -321,6 +397,7 @@ impl CadApi<'_> {
         &self,
         store: &lab_store::Store,
         job: &JobState,
+        lease: &lab_store::Lease,
     ) -> lab_store::Result<Vec<String>> {
         let version = store
             .version(&job.spec.version.document, job.spec.version.version)
@@ -392,7 +469,7 @@ impl CadApi<'_> {
                     return Err(invalid("This design file is too large."));
                 }
                 if let Ok(bytes) = tokio::fs::read(path).await {
-                    platform::attach(store, &version.reference(), name, bytes, now())
+                    platform::attach_job(store, lease, &version.reference(), name, bytes, now())
                         .await
                         .map_err(invalid)?;
                 }
@@ -411,8 +488,9 @@ impl CadApi<'_> {
                         || name.clone(),
                         |suffix| format!("{id}-v{}.{suffix}", version.number),
                     );
-                    platform::attach(
+                    platform::attach_job(
                         store,
+                        lease,
                         &version.reference(),
                         &format!("out/{name}"),
                         bytes,
@@ -482,7 +560,7 @@ print(json.dumps({'doc': doc, 'version': 1, 'saved': sys.argv[2] == 'cad_from_js
         )
         .unwrap();
         let foreign = lab_store::Store::new(
-            backend,
+            backend.clone(),
             &lab_kit::SpaceRef::Personal {
                 account: "synthetic-bob".into(),
             },
@@ -549,7 +627,35 @@ print(json.dumps({'doc': doc, 'version': 1, 'saved': sys.argv[2] == 'cad_from_js
             .create_job(spec.clone(), &api.manifest(), now())
             .await
             .unwrap();
-        api.run_job(store.clone(), job.clone()).await;
+        let authority = lab_jobs::authority::Authority::new(backend.clone());
+        let issued = authority
+            .enroll(
+                "synthetic-alice",
+                lab_kit::SpaceRef::Personal {
+                    account: "synthetic-alice".into(),
+                },
+                api.server_capabilities().unwrap(),
+                now(),
+                60000,
+            )
+            .await
+            .unwrap();
+        api.run_server_job(
+            store.clone(),
+            job.clone(),
+            lab_api::ServerExecution {
+                worker: issued.worker.clone(),
+                authority: authority.clone(),
+            },
+        )
+        .await;
+        let usage = authority
+            .usage(&issued.worker.space, &job.id)
+            .await
+            .unwrap();
+        assert_eq!(usage.len(), 1);
+        assert_eq!(usage[0].placement, lab_jobs::Placement::Server);
+        assert_eq!(usage[0].charge, None);
         assert_eq!(store.job(&job.id).await.unwrap().status, JobStatus::Done);
         let step = store
             .named_artifact(&second.reference(), "out/fan-v2.step")

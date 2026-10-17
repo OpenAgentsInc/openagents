@@ -297,13 +297,16 @@ unknown execution keeps its copy for investigation.
 
 Hosts may install `agent-lab/tools.json` under their account data directory.
 Each `ToolBinding` pins its account, project, name, read-only tool, loopback
-origin, arguments, training permission, and `private_local: false`. Private local or
-training-restricted references are refused. Documents carry only its ID and
-content hash. Supported references are Video `lab_open` with `render: false`,
-CAD `cad_check`, and Robot `robot_inspect` at a pinned version and frame.
-The host makes bounded, nonredirecting reads; it does not accept a command or
-URL from an experiment. These references become task context and do not grant
-runtime tool execution or physical control. `components::LabTaskCheck` provides
+origin, arguments, training permission, and `private_local: false`. These local
+flags can restrict use; they cannot authorize a source's content for evaluation.
+Legacy Video `lab_open`, CAD `cad_check`, and Robot `robot_inspect` replies do
+not provide a trusted source-policy contract. The host refuses these references
+before calling the tool or adding model text. The workbench hides the add control;
+saved references remain removable. Enabling them requires a separate typed source
+endpoint and SDK contract that reads the exact pinned source Version and consumed
+Artifacts, verifies identity and content hashes, and checks evaluation policy.
+Arbitrary tool JSON is not that contract, and this check is not remote attestation.
+Experiments without live Lab references continue to run. `components::LabTaskCheck` provides
 JSON checks for a Video version, a CAD check result, and Robot joint limits.
 
 Every scheduled trial remains in the report. Text, JSON, and explicit human

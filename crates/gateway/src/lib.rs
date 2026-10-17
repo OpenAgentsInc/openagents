@@ -71,6 +71,7 @@ pub mod inference_state;
 pub mod inference_status;
 pub mod inference_x402;
 pub mod jobs;
+mod lab_workers;
 pub mod money;
 pub mod open_quota;
 #[allow(clippy::result_large_err)]

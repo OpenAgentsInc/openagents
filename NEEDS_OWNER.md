@@ -2785,3 +2785,15 @@ and identify its account (and project, if applicable). The image's
 same version numbers and content digests. It keeps the old files unchanged.
 The [operator instructions](docs/sdk/labs.md) describe its runtime setup.
 If the source changes before approval, run a fresh review first.
+
+
+## Install the Lab worker on the Mac (#11878)
+
+After lane 0 deploys the Lab worker routes, install `labs-worker` from the
+qualified source with `cargo build -p lab-jobs --bin labs-worker`. Follow
+[`crates/lab-jobs/README.md`](crates/lab-jobs/README.md) to enroll a worker for
+your space, save its job-only credential and configuration with mode `0600`,
+and select trusted installed handlers. Add private file checksums and paths
+only on the Mac. Run `labs-worker --config /absolute/path/worker.json`.
+Revoke its worker key when removing the installation. Agents qualify this on
+a disposable host; they do not install or enroll it on your Mac.

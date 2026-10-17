@@ -1,6 +1,15 @@
 //! Operator-installed read-only Lab references. Documents contain only a name and pin.
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// Metadata read by a trusted source adapter for the exact inputs it consumes.
+/// This value does not authenticate a source. Do not construct it from arbitrary
+/// legacy tool responses or an experiment's permission flags.
+pub struct ModelContextSource<'a> {
+    pub version: &'a lab_kit::Version,
+    pub artifacts: &'a [lab_kit::Artifact],
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolBinding {
@@ -33,6 +42,48 @@ impl ReadTool {
     }
 }
 impl ToolBinding {
+    /// Check source policy before formatting any content for an evaluation.
+    /// A source reader must establish access and supply all consumed artifacts.
+    /// Legacy read tools have no such contract and must pass `None`.
+    pub fn admit_model_context<'a>(
+        &self,
+        account: &str,
+        project: &str,
+        source: Option<ModelContextSource<'a>>,
+    ) -> Result<ModelContextSource<'a>, lab_kit::Refusal> {
+        let unavailable = || {
+            lab_kit::Refusal::new(
+                "lab_reference_unavailable",
+                "Remove the Lab reference before running this experiment.",
+            )
+        };
+        if !self.validate(account, project) {
+            return Err(unavailable());
+        }
+        let source = source.ok_or_else(unavailable)?;
+        let version = source.version;
+        let document_key = if matches!(self.tool, ReadTool::Cad) {
+            "doc"
+        } else {
+            "document"
+        };
+        let same_version = match self.tool {
+            ReadTool::Video | ReadTool::Cad => {
+                self.arguments["version"].as_u64() == Some(version.number)
+            }
+            // The legacy Robot identifier has no established mapping to a Lab Version.
+            ReadTool::Robot => false,
+        };
+        if self.arguments[document_key].as_str() != Some(version.document.as_str())
+            || !same_version
+            || lab_kit::digest(&version.content) != version.content_sha256
+        {
+            return Err(unavailable());
+        }
+        lab_kit::check_model_use(version, source.artifacts, lab_kit::ModelUse::Evaluation)?;
+        Ok(source)
+    }
+
     pub fn digest(&self) -> String {
         lab_kit::digest(&serde_json::to_value(self).unwrap_or_default())
     }

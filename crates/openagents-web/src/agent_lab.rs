@@ -124,16 +124,22 @@ where
     conflict()
 }
 fn experiment(b: &Book, id: &str, version: u64) -> Result<Experiment, Response> {
-    let v = b
-        .documents
-        .get(id)
-        .filter(|d| !d.deleted)
-        .and_then(|d| d.versions.iter().find(|v| v.number == version))
-        .ok_or_else(missing)?;
+    let v = saved_version(b, id, version)?;
     match serde_json::from_value::<Content>(v.content.clone()) {
         Ok(Content::Experiment { experiment }) => Ok(experiment),
         _ => Err(invalid("Choose an experiment document.")),
     }
+}
+fn saved_version<'a>(
+    b: &'a Book,
+    id: &str,
+    version: u64,
+) -> Result<&'a lab_kit::Version, Response> {
+    b.documents
+        .get(id)
+        .filter(|d| !d.deleted)
+        .and_then(|d| d.versions.iter().find(|v| v.number == version))
+        .ok_or_else(missing)
 }
 pub(crate) fn routes() -> Router<App> {
     Router::new()
@@ -293,6 +299,14 @@ async fn start(
         } else {
             conflict()
         };
+    }
+    let version = match saved_version(&b, &id, body.version) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    // The experiment consumes its saved content and no Lab artifacts.
+    if let Err(e) = lab_kit::check_model_use(version, &[], lab_kit::ModelUse::Evaluation) {
+        return refused(StatusCode::BAD_REQUEST, &e.code, &e.message);
     }
     let e = match experiment(&b, &id, body.version) {
         Ok(e) => e,
@@ -1000,7 +1014,7 @@ mod tests {
             routes()
                 .merge(crate::custom_agents::routes())
                 .merge(crate::agent_assignments::routes())
-                .with_state(app)
+                .with_state(app.clone())
                 .route("/v1/account", get(auth)),
         )
         .await;
@@ -1056,6 +1070,68 @@ mod tests {
             request_id: "2".repeat(64),
             version: 1,
         });
+        // Saved source policy applies even when the experiment content is otherwise valid.
+        let owner = &a.account().id;
+        let key = Store::owner_key(owner, "labs-agent.json").unwrap();
+        for class in [
+            lab_kit::AssetClass::PrivateLocal,
+            lab_kit::AssetClass::NoTraining,
+        ] {
+            let (mut book, generation) = load(&app.config.chat_store, owner).await.unwrap();
+            book.documents.get_mut(&d.id).unwrap().versions[0].assets = vec![lab_kit::AssetEntry {
+                location: "fixture-input".into(),
+                sha256: "a".repeat(64),
+                class,
+            }];
+            app.config
+                .chat_store
+                .write_key(
+                    &key,
+                    serde_json::to_vec(&book).unwrap(),
+                    generation.as_deref(),
+                )
+                .await
+                .unwrap();
+            let response = reqwest::Client::new()
+                .post(format!("{base}/v1/labs/agent/documents/{}/jobs", d.id))
+                .bearer_auth(format!("sess_{}", "a".repeat(64)))
+                .json(&StartRun {
+                    request_id: "2".repeat(64),
+                    version: 1,
+                })
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert_eq!(
+                response.json::<Value>().await.unwrap()["error"]["code"],
+                "no_training"
+            );
+            let (book, _) = load(&app.config.chat_store, owner).await.unwrap();
+            assert!(book.runs.is_empty());
+            assert!(!book.receipts.contains_key(&"2".repeat(64)));
+            assert!(
+                agents
+                    .assignments(None, None, &cancel)
+                    .await
+                    .unwrap()
+                    .data
+                    .is_empty()
+            );
+        }
+        let (mut book, generation) = load(&app.config.chat_store, owner).await.unwrap();
+        book.documents.get_mut(&d.id).unwrap().versions[0]
+            .assets
+            .clear();
+        app.config
+            .chat_store
+            .write_key(
+                &key,
+                serde_json::to_vec(&book).unwrap(),
+                generation.as_deref(),
+            )
+            .await
+            .unwrap();
         let mut r = labs.start(&d.id, &start, &cancel).await.unwrap();
         assert_eq!(r, labs.start(&d.id, &start, &cancel).await.unwrap());
         assert!(
