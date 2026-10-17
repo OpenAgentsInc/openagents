@@ -120,3 +120,5 @@ Artifact reads use the reader's own credential.
 The history SDK exposes each card with an account-bound `document_ref()`.
 Unknown card views fall back to Report. The browser composes cards through `lab-ui`'s shared Rust Native view. Desktop, phone, and terminal adapters use the same view as they are added;
 media surfaces resolve its opaque resources through the Labs client.
+
+[History-card source checks](lab-history-evidence.json) record the local qualification.

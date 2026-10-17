@@ -1,0 +1,70 @@
+{
+  "schema": "openagents.labs.history-checks.v1",
+  "issue": 11877,
+  "source_commit": "0882ddc25b0d9d8d02f60e4ac922dac51e766da0",
+  "checks": {
+    "api-ui": {
+      "passed": 11,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "abcd2a59efd8b8f9f55f1b18c6b47e1d1e1a69ab5b03bef968c791015ccb97c3"
+    },
+    "account": {
+      "passed": 53,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "208780b90ab8740b4bb3f0fc19829e4bac10b98dc4c3c28440ff13a294844fc2"
+    },
+    "sdk-history": {
+      "passed": 5,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "ef35ba1725552ba501e35b64227d289d47ac464fed99850d5b377d8082ebbda3"
+    },
+    "web-history": {
+      "passed": 2,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "a9b64df25b1071d1a081fdd8017c56751395e96819fe5ed40ba9b815556f92c9"
+    },
+    "web-labs": {
+      "passed": 7,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "1bf424b08483cd2c1be3e6bed2c7d0062c63bd9f847917924703f549d0afd523"
+    },
+    "web-card": {
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "9bc38003372484cbce3d97af0604976c47e28ad6015c609048bbb58544ae6f43"
+    },
+    "web-events": {
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "f3c7e8a3c015ea5df898a79ba89f5609d220c1b0cdcf864c56457911e65e97f9"
+    },
+    "web-chat": {
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "bc6b320ad4e44dc2cbf776d9ef5d53ff9f7572bbe58cd21ac7a27a6ccbcf3f1b"
+    },
+    "web-schema": {
+      "passed": 5,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "a0bc95b14f03155f278ffede83d46d2843faa3f0b9cd47453afe0020e851eced"
+    }
+  },
+  "openapi_export": "cargo run -p openagents-web --example app_openapi",
+  "openapi_sha256": "5758397968eccd0b10ac0d82cccd44df88db8c9c5d0a90fa7837ef20c7092f51",
+  "format": "changed Rust files checked with rustfmt --edition 2024 --config skip_children=true --check",
+  "archive": {
+    "path": "docs/sdk/evidence/lab-history-checks-2026-10-17.tar.gz",
+    "sha256": "84ce87f0e5881d8f604e2fc9314df264bdac12fcd305bfac7bd8c5e8de4ed8df"
+  },
+  "after_close": "Dedicated-account CAD card through /v1/history, rendered in a second browser session; listed in the master delegation After-close checks table.",
+  "live_resources_created": false
+}
