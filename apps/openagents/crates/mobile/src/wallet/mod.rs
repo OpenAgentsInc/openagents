@@ -171,6 +171,8 @@ impl State {
 pub struct Wallet {
     home: PathBuf,
     store: Arc<dyn KeyStore>,
+    /// The identity's words, which a new wallet is made from (#11995).
+    identity: Option<seed::IdentitySource>,
     opener: Opener,
     format: Format,
     shared: Arc<Mutex<State>>,
@@ -240,11 +242,18 @@ impl Wallet {
         Self {
             home,
             store,
+            identity: None,
             opener,
             format: Format::default(),
             shared: Arc::new(Mutex::new(state)),
             notify,
         }
+    }
+
+    /// Make a new wallet from the identity's words (#11995).
+    pub fn with_identity(mut self, identity: seed::IdentitySource) -> Self {
+        self.identity = Some(identity);
+        self
     }
 
     fn lock(&self) -> MutexGuard<'_, State> {
@@ -533,7 +542,7 @@ impl Wallet {
             }
             state.setup_busy = true;
         }
-        let made = seed::create(self.store.as_ref());
+        let made = seed::create_with(self.store.as_ref(), self.identity.as_ref());
         self.settle_setup(made);
     }
 
@@ -1310,7 +1319,8 @@ impl CoreWallet {
                 store,
                 spark_opener(),
                 Arc::new(move || listener.on_wallet_changed()),
-            ),
+            )
+            .with_identity(seed::phone_identity()),
         })
     }
 

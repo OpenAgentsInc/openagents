@@ -535,3 +535,75 @@ fn focused_screens_keep_drafts_and_require_the_visible_review_to_pay() {
     tap(&h.wallet, "trust-ok");
     assert_eq!(h.wallet.view().root.key, "wallet-home");
 }
+
+fn identity_source(answer: seed::IdentityEntropy) -> (seed::IdentitySource, Arc<Mutex<usize>>) {
+    let reads = Arc::new(Mutex::new(0));
+    let counted = reads.clone();
+    let source: seed::IdentitySource = Arc::new(move || {
+        *counted.lock().unwrap() += 1;
+        answer.clone()
+    });
+    (source, reads)
+}
+
+/// "Make a wallet" uses the identity's words, so one backup covers both
+/// (#11995).
+#[test]
+fn a_new_wallet_is_made_from_the_identity_words() {
+    let (source, _) = identity_source(seed::IdentityEntropy::Found(vec![0; 16]));
+    let home = tempfile::tempdir().unwrap();
+    let store = Arc::new(MemoryStore::default());
+    let seen = Arc::new(Mutex::new(vec![]));
+    let wallet = Wallet::new(
+        home.path().join("spark"),
+        store.clone(),
+        recording(seen.clone()),
+        Arc::new(|| {}),
+    )
+    .with_identity(source);
+    wallet.open();
+    tap(&wallet, "create");
+    settle(&wallet);
+    assert_eq!(store.stored(), Some(vec![0; 16]));
+    assert_eq!(store.adds.lock().unwrap().len(), 1);
+    assert_eq!(*seen.lock().unwrap(), vec![mnemonic(&[0; 16])]);
+    assert_eq!(wallet.words().unwrap().join(" "), TWELVE_ZERO);
+}
+
+#[test]
+fn an_existing_wallet_seed_is_kept_and_the_identity_is_not_used() {
+    let (source, reads) = identity_source(seed::IdentityEntropy::Found(vec![0; 16]));
+    let store = MemoryStore::holding(vec![7; 32]);
+    assert!(matches!(
+        seed::create_with(&store, Some(&source)),
+        Err(SeedError::Exists)
+    ));
+    assert_eq!(*reads.lock().unwrap(), 0);
+    assert!(store.adds.lock().unwrap().is_empty());
+    assert_eq!(store.stored(), Some(vec![7; 32]));
+}
+
+#[test]
+fn a_locked_identity_makes_no_wallet_and_no_identity_makes_new_words() {
+    let (locked, _) = identity_source(seed::IdentityEntropy::Unavailable);
+    let store = MemoryStore::default();
+    assert!(matches!(
+        seed::create_with(&store, Some(&locked)),
+        Err(SeedError::Unavailable)
+    ));
+    assert!(store.adds.lock().unwrap().is_empty());
+
+    // No identity yet: new words, which the identity adopts when it is made.
+    let (absent, reads) = identity_source(seed::IdentityEntropy::Absent);
+    let made = seed::create_with(&store, Some(&absent)).unwrap();
+    assert_eq!(*reads.lock().unwrap(), 1);
+    assert_eq!(made.entropy.len(), 16);
+    assert_eq!(store.stored(), Some(made.entropy.clone()));
+    // And a second make never replaces it.
+    let (other, _) = identity_source(seed::IdentityEntropy::Found(vec![0; 16]));
+    assert!(matches!(
+        seed::create_with(&store, Some(&other)),
+        Err(SeedError::Exists)
+    ));
+    assert_eq!(store.stored(), Some(made.entropy));
+}
