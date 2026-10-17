@@ -582,3 +582,9 @@ links remain readable. Upstream fixes now require manual ports.
   the account chat, which has no model chip or computer progress. Picking it
   starts a project-less session on that computer
   (`HostOption.cloudBesides`); the account choice shows the OpenAgents mark.
+- [OpenAgents #12016](https://github.com/OpenAgentsInc/openagents/issues/12016):
+  the iOS Talk with Codex list reads the execution host's Codex account
+  through the existing `ListAgentAccounts` RPC and its cache. Our module
+  `crates/mobile/src/client_ffi/voice_usage.rs` owns host selection, refreshes,
+  and usage state; hooks are `Client::agent_accounts`, `VoiceCall`'s host id,
+  and the usage section in `VoiceViewController.swift`.

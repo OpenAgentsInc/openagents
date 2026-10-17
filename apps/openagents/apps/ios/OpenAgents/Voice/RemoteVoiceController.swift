@@ -15,6 +15,8 @@ final class RemoteVoiceController {
 
     private weak var app: AppModel?
     private var call: VoiceCall?
+    /// The Rust call handle keeps the execution host fixed for usage reads.
+    var usageCall: VoiceCall? { call }
     private var media: NativeVoiceMedia?
     private var generation: UInt64 = 0
     private var observers: [UUID: () -> Void] = [:]

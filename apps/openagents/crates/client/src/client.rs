@@ -634,6 +634,31 @@ impl Client {
             }
         }
     }
+    /// Read the execution host's saved agent accounts and provider usage.
+    /// The host owns credentials, cached results, and provider retry limits.
+    pub async fn agent_accounts(
+        &self,
+        device_id: &str,
+        force_usage: bool,
+    ) -> Result<openagents_proto::AgentAccountsSnapshot> {
+        // Not connected yet reads as unreachable, never as an old computer.
+        let live = self
+            .inner
+            .live()
+            .ok_or_else(|| ClientError::HostUnavailable(device_id.to_owned()))?;
+        let value = live
+            .relay
+            .call(
+                device_id,
+                openagents_rpc::methods::LIST_AGENT_ACCOUNTS,
+                serde_json::json!({"forceUsage": force_usage}),
+            )
+            .await?;
+        serde_json::from_value(value).map_err(|_| {
+            ClientError::HostError("Couldn't read account usage from this computer.".into())
+        })
+    }
+
     /// Dedicated ephemeral call handle; never uses durable commands or RPC retries.
     pub async fn voice_transport(
         &self,

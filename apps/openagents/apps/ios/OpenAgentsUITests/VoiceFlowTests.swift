@@ -63,6 +63,25 @@ final class VoiceFlowTests: XCTestCase {
         snapshot(app, "voice-settings-scrolled")
     }
 
+    /// Settings → Voice shows the call computer's Codex usage section without a
+    /// call. The demo has no voice-ready computer, so it says so instead of 0%.
+    func testVoiceSettingsShowCodexUsageWithoutACall() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-fast", "-remote-voice", "-route", "more"]
+        app.launch()
+        let row = app.cells["settings-voice"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10))
+        row.tap()
+        let status = app.cells["voice-usage-status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 5))
+        XCTAssertTrue(status.staticTexts["Usage shows for the computer you call"].exists)
+        XCTAssertTrue(app.staticTexts["Codex account usage"].exists || app.staticTexts["CODEX ACCOUNT USAGE"].exists)
+        XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label CONTAINS '% used'")).firstMatch.exists,
+                       "no quota is shown without data")
+        XCTAssertFalse(app.cells["voice-usage-refresh"].exists, "nothing to refresh without a computer")
+        snapshot(app, "voice-settings-usage")
+    }
+
     private func snapshot(_ app: XCUIApplication, _ name: String) {
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = name
