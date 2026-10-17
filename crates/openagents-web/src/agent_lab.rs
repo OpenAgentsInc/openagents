@@ -824,6 +824,17 @@ async fn synchronize(app: &App, owner: &str, id: &str) -> Result<Run, Response> 
     }
     Err(conflict())
 }
+/// The person's computers seen in the last 90 seconds, newest first.
+pub(crate) async fn online_hosts(store: &Store, owner: &str) -> Result<Vec<Host>, Error> {
+    let (book, _) = load(store, owner).await?;
+    let mut hosts: Vec<Host> = book
+        .hosts
+        .into_values()
+        .filter(|h| now().saturating_sub(h.seen_ms) < 90_000)
+        .collect();
+    hosts.sort_by(|a, b| b.seen_ms.cmp(&a.seen_ms));
+    Ok(hosts)
+}
 async fn hosts(State(app): State<App>, headers: HeaderMap) -> Response {
     let owner = match crate::coder_sync::owner(&app, &headers).await {
         Ok(o) => o,

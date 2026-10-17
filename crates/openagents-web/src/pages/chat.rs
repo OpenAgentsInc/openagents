@@ -2610,6 +2610,20 @@ async fn answer(
         }
         _ => None,
     };
+    // A person with saved agents of their own (Foreman and the like):
+    // Gemini asks one of them, or hands the message on (#11934).
+    let agents = match (&door, parts.is_empty()) {
+        (Some(_), true) => {
+            crate::agents_door::door(
+                &app.config.chat_store,
+                &payer,
+                &request_id,
+                repo.as_ref().map(|r| r.repository.clone()),
+            )
+            .await
+        }
+        _ => None,
+    };
     // Images or PDFs go to the door that takes them; the hosted chat
     // answers with the words only when it can't (#11174).
     // Whether the Drive door answers: it may look at videos, which takes
@@ -2618,6 +2632,8 @@ async fn answer(
     // Whether the Labs answer: a CAD edit rebuilds and checks the model, and
     // a turn may make several (#11627).
     let mut labs_door = false;
+    // Whether a saved agent may answer: it works for minutes (#11934).
+    let mut agents_door = false;
     let door: Option<Box<dyn openagents_chat::basic_coder::Door>> = match (door, vision) {
         (Some(door), Some(doors)) if !parts.is_empty() => {
             Some(Box::new(crate::chat_vision::VisionDoor {
@@ -2650,10 +2666,18 @@ async fn answer(
                 None => door,
             };
             labs_door = labs.is_some();
-            match labs {
+            let door: Box<dyn openagents_chat::basic_coder::Door> = match labs {
                 Some(mut labs) => {
                     labs.fallback = Some(door);
-                    Some(Box::new(labs))
+                    Box::new(labs)
+                }
+                None => door,
+            };
+            agents_door = agents.is_some();
+            match agents {
+                Some(mut agents) => {
+                    agents.fallback = Some(door);
+                    Some(Box::new(agents))
                 }
                 None => Some(door),
             }
@@ -2704,7 +2728,9 @@ async fn answer(
         None => None,
     };
     let deadline = tokio::time::Instant::now()
-        + if drive_door {
+        + if agents_door {
+            crate::agents_door::DEADLINE
+        } else if drive_door {
             crate::connections::chat::DRIVE_DEADLINE
         } else if labs_door {
             crate::labs::DEADLINE

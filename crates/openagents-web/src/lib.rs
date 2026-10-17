@@ -25,6 +25,7 @@ mod agent_lab_openapi;
 mod agent_lab_page;
 mod agent_ready;
 mod agent_work;
+mod agents_door;
 mod agents_page;
 pub mod analytics;
 mod answer_ui;

@@ -217,6 +217,18 @@ async fn load(store: &Store, owner: &str) -> Result<(Book, Option<String>), Erro
         }
     }
 }
+/// The person's agents available for new work: each one's latest revision,
+/// without deleted ones.
+pub(crate) async fn active(store: &Store, owner: &str) -> Result<Vec<AgentDefinition>, Error> {
+    let (book, _) = load(store, owner).await?;
+    Ok(book
+        .definitions
+        .values()
+        .filter_map(|history| history.last())
+        .filter(|d| !d.deleted)
+        .cloned()
+        .collect())
+}
 pub(super) async fn definition(
     store: &Store,
     owner: &str,
