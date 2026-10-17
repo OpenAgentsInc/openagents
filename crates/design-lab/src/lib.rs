@@ -1,8 +1,11 @@
-//! Design Lab: every screen of the current phone app on one board.
+//! Design Lab: every screen of the current OpenAgents apps on one board.
 //!
-//! The screens are captured from the app in `apps/openagents/` by
-//! `apps/openagents/scripts/design-lab-capture.sh`, which drives the offline
-//! demo through every screen. Each capture run is a folder named
+//! The board holds two apps ([`APPS`]), the phone and the desktop app, both in
+//! `apps/openagents/`. `apps/openagents/scripts/design-lab-capture.sh` drives
+//! the phone's offline demo through every screen, and its runs sit in the
+//! captures folder itself. `apps/openagents/scripts/design-lab-capture-desktop.sh`
+//! draws every desktop screen offscreen, and its runs sit in the folder's
+//! `desktop/` folder ([`DESKTOP_DIR`]). Each capture run is a folder named
 //! `<YYYYmmdd-HHMMSS>-<commit>[-dirty]` of `<area>--<screen>.png` files, plus
 //! `<area>--<screen>@dark.png` for the same screen in dark mode; a run is one
 //! version of every screen it holds, and a screen that looks the same as in
@@ -27,6 +30,13 @@ use std::path::{Path, PathBuf};
 
 pub const SCHEMA: &str = "board.v1";
 
+/// The apps on the board, in toolbar order: id and name.
+pub const APPS: [(&str, &str); 2] = [(PHONE, "Phone"), (DESKTOP, "Desktop")];
+pub const PHONE: &str = "phone";
+pub const DESKTOP: &str = "desktop";
+/// The desktop app's capture runs, inside the captures folder.
+pub const DESKTOP_DIR: &str = "desktop";
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Board {
@@ -38,9 +48,15 @@ pub struct Board {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Screen {
+    /// `<area>--<screen>` for a phone screen, `desktop:<area>--<screen>` for
+    /// a desktop one.
     pub id: String,
     pub title: String,
     pub area: String,
+    /// Which app the screen belongs to: `phone` or `desktop` ([`APPS`]).
+    /// Boards saved before the desktop app joined hold only phone screens.
+    #[serde(default = "phone")]
+    pub app: String,
     /// Oldest first.
     pub versions: Vec<ScreenVersion>,
     /// Whether the newest capture run still has this screen. A screen the
@@ -54,10 +70,15 @@ fn yes() -> bool {
     true
 }
 
+fn phone() -> String {
+    PHONE.into()
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ScreenVersion {
-    /// `<run>/<file>` inside the captures folder.
+    /// `<run>/<file>` inside the captures folder, or `desktop/<run>/<file>`
+    /// for a desktop screen.
     pub image: String,
     /// SHA-256 of the picture.
     pub sha256: String,
@@ -148,6 +169,26 @@ impl Board {
     pub fn versions(&self) -> usize {
         self.screens.iter().map(|s| s.versions.len()).sum()
     }
+
+    /// The board's screens of one app ([`APPS`]).
+    pub fn screens_of<'a>(&'a self, app: &'a str) -> impl Iterator<Item = &'a Screen> + 'a {
+        self.screens.iter().filter(move |s| s.app == app)
+    }
+}
+
+/// Whether `path` names a capture file inside the captures folder:
+/// `<run>/<file>.<ext>`, or `desktop/<run>/<file>.<ext>` for the desktop app.
+/// Nothing that climbs out of the folder or names another folder.
+pub fn capture_path_ok(path: &str, ext: &str) -> bool {
+    let rest = path
+        .strip_prefix(DESKTOP_DIR)
+        .and_then(|r| r.strip_prefix('/'))
+        .unwrap_or(path);
+    rest.ends_with(ext)
+        && rest.split('/').count() == 2
+        && rest
+            .split('/')
+            .all(|part| !part.is_empty() && part != ".." && part != "." && !part.contains('\\'))
 }
 
 /// Where capture runs go unless `DESIGN_LAB_CAPTURES` says otherwise.
@@ -239,14 +280,56 @@ struct Shot {
     dark_elements: Option<String>,
 }
 
-/// Builds the board from every capture run, oldest run first.
+/// Builds the board from every capture run, oldest run first: the phone's
+/// runs in `captures` and the desktop app's in `captures/desktop`.
 pub fn scan(captures: &Path) -> Result<Board, String> {
-    let entries = std::fs::read_dir(captures).map_err(|e| {
+    if !captures.is_dir() {
+        return Err(format!(
+            "can't read {}; run design-lab-capture.sh first",
+            captures.display()
+        ));
+    }
+    let mut screens = scan_app(captures, "", PHONE)?;
+    let desktop = captures.join(DESKTOP_DIR);
+    if desktop.is_dir() {
+        screens.extend(scan_app(&desktop, DESKTOP_DIR, DESKTOP)?);
+    }
+    let order = |app: &str| {
+        APPS.iter()
+            .position(|(id, _)| *id == app)
+            .unwrap_or(APPS.len())
+    };
+    screens.sort_by(|a, b| (order(&a.app), &a.area, &a.id).cmp(&(order(&b.app), &b.area, &b.id)));
+    Ok(Board {
+        schema: SCHEMA.into(),
+        name: "OpenAgents apps".into(),
+        screens,
+    })
+}
+
+/// One app's screens from the runs in `dir`. `prefix` is `dir` inside the
+/// captures folder (empty for the phone), so every path the board keeps is
+/// relative to the captures folder. A screen is current when the app's own
+/// newest run has it.
+fn scan_app(dir: &Path, prefix: &str, app: &str) -> Result<Vec<Screen>, String> {
+    let entries = std::fs::read_dir(dir).map_err(|e| {
         format!(
             "can't read {} ({e}); run design-lab-capture.sh first",
-            captures.display()
+            dir.display()
         )
     })?;
+    let inside = |rest: String| {
+        if prefix.is_empty() {
+            rest
+        } else {
+            format!("{prefix}/{rest}")
+        }
+    };
+    let prefix_len = if prefix.is_empty() {
+        0
+    } else {
+        prefix.len() + 1
+    };
     let mut runs: Vec<(String, u64, String)> = entries
         .flatten()
         .filter(|e| e.path().is_dir())
@@ -260,7 +343,7 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
     let mut screens: BTreeMap<String, Screen> = BTreeMap::new();
     let mut in_newest: std::collections::BTreeSet<String> = Default::default();
     for (run, unix, commit) in runs {
-        let mut files: Vec<String> = std::fs::read_dir(captures.join(&run))
+        let mut files: Vec<String> = std::fs::read_dir(dir.join(&run))
             .map_err(|e| e.to_string())?
             .flatten()
             .map(|e| e.file_name().to_string_lossy().to_string())
@@ -287,7 +370,7 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
                 (false, false) => &mut shot.elements,
                 (false, true) => &mut shot.dark_elements,
             };
-            *slot = Some(format!("{run}/{file}"));
+            *slot = Some(inside(format!("{run}/{file}")));
         }
         for (
             id,
@@ -308,11 +391,12 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
             if newest.as_deref() == Some(run.as_str()) {
                 in_newest.insert(id.clone());
             }
-            let bytes = std::fs::read(captures.join(&file)).map_err(|e| e.to_string())?;
+            let bytes = std::fs::read(dir.join(&file[prefix_len..])).map_err(|e| e.to_string())?;
             let sha256 = format!("{:x}", Sha256::digest(&bytes));
             let dark_sha256 = match &dark {
                 Some(dark) => {
-                    let bytes = std::fs::read(captures.join(dark)).map_err(|e| e.to_string())?;
+                    let bytes =
+                        std::fs::read(dir.join(&dark[prefix_len..])).map_err(|e| e.to_string())?;
                     Some(format!("{:x}", Sha256::digest(&bytes)))
                 }
                 None => None,
@@ -321,6 +405,7 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
                 title: title(&name),
                 area,
                 id,
+                app: app.into(),
                 versions: Vec::new(),
                 current: true,
             });
@@ -368,13 +453,11 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
     let mut screens: Vec<Screen> = screens.into_values().collect();
     for screen in &mut screens {
         screen.current = in_newest.contains(&screen.id);
+        if app != PHONE {
+            screen.id = format!("{app}:{}", screen.id);
+        }
     }
-    screens.sort_by(|a, b| (&a.area, &a.id).cmp(&(&b.area, &b.id)));
-    Ok(Board {
-        schema: SCHEMA.into(),
-        name: "OpenAgents mobile app".into(),
-        screens,
-    })
+    Ok(screens)
 }
 
 /// A picture's or element tree's bytes, only if the board holds it.
@@ -471,6 +554,84 @@ mod tests {
         assert!(current("home--home"));
         assert!(!current("welcome--sign-in"));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn desktop_runs_form_their_own_app() {
+        let dir = std::env::temp_dir().join(format!("design-lab-apps-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+        png.extend(2560u32.to_be_bytes());
+        png.extend(1600u32.to_be_bytes());
+        // Two phone runs; the newer one dropped Settings. One desktop run,
+        // newer than both, that has its own Settings and no Home.
+        let phone_old = dir.join("20261017-100000-aaaa");
+        let phone_new = dir.join("20261017-110000-bbbb");
+        let desktop = dir.join(DESKTOP_DIR).join("20261017-120000-cccc");
+        for run in [&phone_old, &phone_new, &desktop] {
+            std::fs::create_dir_all(run).unwrap();
+        }
+        std::fs::write(phone_old.join("home--home.png"), &png).unwrap();
+        std::fs::write(phone_old.join("settings--settings.png"), &png).unwrap();
+        std::fs::write(phone_new.join("home--home.png"), &png).unwrap();
+        std::fs::write(desktop.join("settings--general.png"), &png).unwrap();
+        std::fs::write(desktop.join("settings--general@dark.png"), &png).unwrap();
+        std::fs::write(desktop.join("chat--conversation.png"), &png).unwrap();
+        let board = scan(&dir).unwrap();
+        let ids = |app| {
+            board
+                .screens_of(app)
+                .map(|s| s.id.as_str())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(PHONE), ["home--home", "settings--settings"]);
+        assert_eq!(
+            ids(DESKTOP),
+            ["desktop:chat--conversation", "desktop:settings--general"]
+        );
+        let screen = |id: &str| board.screens.iter().find(|s| s.id == id).unwrap();
+        // Each app's own newest run decides what is current: the desktop run
+        // doesn't make the phone's Home look removed.
+        assert!(screen("home--home").current);
+        assert!(!screen("settings--settings").current);
+        assert!(screen("desktop:settings--general").current);
+        let general = &screen("desktop:settings--general").versions[0];
+        assert_eq!(
+            general.image,
+            "desktop/20261017-120000-cccc/settings--general.png"
+        );
+        assert_eq!(
+            general.dark.as_deref(),
+            Some("desktop/20261017-120000-cccc/settings--general@dark.png")
+        );
+        assert_eq!((general.width, general.height), (2560, 1600));
+        assert_eq!(general.commit, "cccc");
+        assert!(image(&dir, &board, &general.image).is_some());
+        // Phone screens come first, then desktop ones.
+        assert_eq!(board.screens.last().unwrap().app, DESKTOP);
+        // A board saved before the desktop app joined reads as phone screens.
+        let mut old = serde_json::to_value(&board).unwrap();
+        old["screens"][0].as_object_mut().unwrap().remove("app");
+        let old: Board = serde_json::from_value(old).unwrap();
+        assert_eq!(old.screens[0].app, PHONE);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn capture_paths_stay_inside_the_captures_folder() {
+        assert!(capture_path_ok(
+            "20261017-100000-aaaa/home--home.png",
+            ".png"
+        ));
+        assert!(capture_path_ok(
+            "desktop/20261017-100000-aaaa/chat--conversation@dark.png",
+            ".png"
+        ));
+        assert!(!capture_path_ok("desktop/../../etc/passwd.png", ".png"));
+        assert!(!capture_path_ok("desktop/x/y/z.png", ".png"));
+        assert!(!capture_path_ok("phone/x/y.png", ".png"));
+        assert!(!capture_path_ok("../x.png", ".png"));
+        assert!(!capture_path_ok("run/x.json", ".png"));
     }
 
     #[test]

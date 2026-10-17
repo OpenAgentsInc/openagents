@@ -64,6 +64,8 @@ use crate::transcript::{self, Transcript, TranscriptEvent};
 
 mod account_chats;
 #[cfg(feature = "account-fixture")]
+pub mod design_lab_tour;
+#[cfg(feature = "account-fixture")]
 pub use account_chats::capture_sidebar;
 mod actions_ui;
 mod chat_dropzone;

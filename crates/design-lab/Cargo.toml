@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "Design Lab: a zoomable board of every screen of the current phone app, captured from apps/openagents by its demo tour, the board.v1 Lab kind, and mock screens with revision notes (mock.v1)"
+description = "Design Lab: a zoomable board of every screen of the current phone and desktop apps, captured from apps/openagents by their tours, the board.v1 Lab kind, and mock screens with revision notes (mock.v1)"
 
 [dependencies]
 ab_glyph = "0.2.32"

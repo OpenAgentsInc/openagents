@@ -8,7 +8,9 @@
 //!
 //! `serve` also edits mocks and notes: `POST /mocks/change` takes one checked
 //! change, and only from this computer.
-//! Capture runs come from `apps/openagents/scripts/design-lab-capture.sh`.
+//! Capture runs come from `apps/openagents/scripts/design-lab-capture.sh`
+//! (the phone) and `apps/openagents/scripts/design-lab-capture-desktop.sh`
+//! (the desktop app, in the captures folder's `desktop/` folder).
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -189,6 +191,7 @@ fn serve(args: &[String]) -> Result<(), String> {
             .route("/healthz", get(|| async { "ok" }))
             .route("/board.json", get(board))
             .route("/img/{run}/{file}", get(image))
+            .route("/img/desktop/{run}/{file}", get(desktop_image))
             .route("/mocks.json", get(mocks))
             .route("/mocks/change", post(change))
             .route("/spec/{name}", get(spec_route))
@@ -365,11 +368,23 @@ async fn board(State(lab): State<Arc<Lab>>) -> Json<Board> {
     Json(lab.board.clone())
 }
 
+/// A desktop capture: `img/desktop/<run>/<file>`.
+async fn desktop_image(
+    State(lab): State<Arc<Lab>>,
+    UrlPath((run, file)): UrlPath<(String, String)>,
+) -> Response {
+    let picture = format!("{}/{run}/{file}", design_lab::DESKTOP_DIR);
+    served(lab, picture).await
+}
+
 async fn image(
     State(lab): State<Arc<Lab>>,
     UrlPath((run, file)): UrlPath<(String, String)>,
 ) -> Response {
-    let picture = format!("{run}/{file}");
+    served(lab, format!("{run}/{file}")).await
+}
+
+async fn served(lab: Arc<Lab>, picture: String) -> Response {
     let found =
         tokio::task::spawn_blocking(move || design_lab::image(&lab.captures, &lab.board, &picture))
             .await

@@ -469,3 +469,9 @@ links remain readable. Upstream fixes now require manual ports.
   `AppRouter`, a drawer toolbar button, a Settings row, the `-route wallet`
   launch argument, and `WalletModel.shared.open()` at the start of
   `AppModel.init` and in `willEnterForeground`.
+- [OpenAgents #12010](https://github.com/OpenAgentsInc/openagents/issues/12010):
+  the Design Lab desktop tour. Our module `crates/ui/src/shell/design_lab_tour.rs`
+  (behind `account-fixture`) opens the whole shell offscreen with fixture data
+  and saves every screen in light and dark mode;
+  `examples/design-lab-tour.rs` and `scripts/design-lab-capture-desktop.sh`
+  run it. Hook: one `pub mod design_lab_tour` in `crates/ui/src/shell.rs`.

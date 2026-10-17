@@ -37,6 +37,10 @@
   #areas { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 6px 8px;
     color: inherit; font: inherit; max-width: 220px; }
   .spacer { flex: 1; }
+  #apps { display: inline-flex; }
+  #apps button { border-radius: 0; margin-left: -1px; }
+  #apps button:first-child { border-radius: 8px 0 0 8px; margin-left: 0; }
+  #apps button:last-child { border-radius: 0 8px 8px 0; }
   button.on { background: #3d3d3d; border-color: #5a5a5a; }
   button { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 7px 11px;
     color: inherit; font: inherit; cursor: pointer; }
@@ -125,6 +129,7 @@
 <div id="canvas"><div id="world"></div></div>
 <div id="bar">
   <span class="chip"><span id="title">Design Lab</span> <span id="count"></span></span>
+  <span id="apps" title="Show the phone app or the desktop app (P)"></span>
   <input id="search" type="search" placeholder="Find a screen" autocomplete="off">
   <select id="areas"><option value="">All areas</option></select>
   <span class="spacer"></span>
@@ -134,9 +139,9 @@
   <button id="fit" title="Show everything (Shift+1)">Fit</button>
   <button id="mode" title="Show screens in light or dark mode (D)">Light</button>
   <button id="removed" title="Also show screens the app no longer has">Show removed</button>
-  <button id="newmock" class="edit" title="Start a blank phone-sized mock screen (N)">New mock screen</button>
+  <button id="newmock" class="edit" title="Start a blank mock screen the size of this app's screens (N)">New mock screen</button>
 </div>
-<div id="help">Drag or scroll to move · Pinch or ⌘/Ctrl + scroll to zoom · Click a screen to open it, select its elements and pin notes · D switches light and dark</div>
+<div id="help">Drag or scroll to move · Pinch or ⌘/Ctrl + scroll to zoom · Click a screen to open it, select its elements and pin notes · D switches light and dark · P switches phone and desktop</div>
 <div id="empty">No screens match.</div>
 <div id="view">
   <div class="stage"><div id="shot"><img id="big" alt=""><div id="marks"></div><div id="pins"></div></div></div>
@@ -240,7 +245,37 @@ document.getElementById("removed").onclick = () => {
   layout();
   fit();
 };
-function visible(s) { return showRemoved || s.current !== false; }
+function visible(s) { return (showRemoved || s.current !== false) && appOf(s) === app; }
+
+// The board shows one app at a time: the phone or the desktop app. Each has
+// its own screens; mocks and notes are shared.
+const APPS = [
+  { id: "phone", name: "Phone", w: 440, h: 956,
+    capture: "apps/openagents/scripts/design-lab-capture.sh" },
+  { id: "desktop", name: "Desktop", w: 1280, h: 800,
+    capture: "apps/openagents/scripts/design-lab-capture-desktop.sh" },
+];
+const appOf = (s) => (s && s.app) || "phone";
+const appInfo = (id) => APPS.find((a) => a.id === id) || APPS[0];
+let app = "phone";
+try { const saved = localStorage.getItem("design-lab-app"); if (APPS.some((a) => a.id === saved)) app = saved; } catch (e) {}
+function setApp(next) {
+  if (!APPS.some((a) => a.id === next)) return;
+  app = next;
+  try { localStorage.setItem("design-lab-app", app); } catch (e) {}
+  for (const b of document.querySelectorAll("#apps button")) b.classList.toggle("on", b.dataset.app === app);
+  if (!board.screens.length && !mocks.mocks.length) return;
+  areas();
+  layout();
+  fit();
+}
+for (const a of APPS) {
+  const b = document.createElement("button");
+  b.dataset.app = a.id;
+  b.textContent = a.name;
+  b.onclick = () => setApp(a.id);
+  document.getElementById("apps").appendChild(b);
+}
 
 // Light or dark screens. A version without a dark capture shows its light one.
 let mode = "light";
@@ -260,8 +295,10 @@ function setMode(next) {
 }
 document.getElementById("mode").onclick = () => setMode(mode === "dark" ? "light" : "dark");
 
-function aspect(v) {
-  return v.width && v.height ? v.width / v.height : 0.46;
+function aspect(v, screen) {
+  if (v.width && v.height) return v.width / v.height;
+  const a = appInfo(appOf(screen));
+  return a.w / a.h;
 }
 
 function el(cls, x, y, w, h, text) {
@@ -280,7 +317,7 @@ function section(area, screens) {
   const items = [];
   let x = PAD, y = HEAD, rowH = 0, w = 0;
   for (const screen of screens) {
-    const sizes = screen.versions.map((v) => Math.round(Math.min(PIC * aspect(v), PIC * 2.2)));
+    const sizes = screen.versions.map((v) => Math.round(Math.min(PIC * aspect(v, screen), PIC * 2.2)));
     const gw = Math.max(sizes.reduce((a, b) => a + b, 0) + GAP * (sizes.length - 1), 220);
     if (x > PAD && x + gw > WRAP) { x = PAD; y += rowH + ROWGAP; rowH = 0; }
     items.push({ screen, sizes, x, y });
@@ -298,7 +335,9 @@ function layout() {
   frames = [];
   const byArea = new Map();
   let shown = 0, versions = 0;
+  let inApp = 0;
   for (const screen of board.screens) {
+    if (appOf(screen) === app) inApp++;
     if (!visible(screen)) continue;
     if (only && screen.area !== only) continue;
     const hay = (screen.title + " " + screen.id + " " + screen.area).toLowerCase();
@@ -357,7 +396,10 @@ function layout() {
   }
   bounds = { w: Math.max(w, 1), h: Math.max(y + shelf, 1) };
   document.getElementById("count").textContent = shown + " screens · " + versions + " versions";
-  document.getElementById("empty").style.display = shown ? "none" : "flex";
+  const empty = document.getElementById("empty");
+  empty.textContent = inApp ? "No screens match."
+    : "No " + appInfo(app).name.toLowerCase() + " screens yet. Run " + appInfo(app).capture + " to capture them.";
+  empty.style.display = shown ? "none" : "flex";
   render();
 }
 
@@ -496,6 +538,7 @@ function show() {
     const img = document.createElement("img");
     img.src = picUrl(s);
     img.loading = "lazy";
+    img.style.aspectRatio = String(aspect(s, screen));
     img.title = "v" + (j + 1) + " · " + when(s.unix);
     if (j === i) img.className = "on";
     img.onclick = () => { current.i = j; sel = []; show(); };
@@ -528,6 +571,7 @@ addEventListener("keydown", (e) => {
   if (e.key === "!" || (e.shiftKey && e.key === "1") || e.key === "0") fit();
   if (e.key === "/") { e.preventDefault(); document.getElementById("search").focus(); }
   if (e.key === "d" || e.key === "D") setMode(mode === "dark" ? "light" : "dark");
+  if (e.key === "p" || e.key === "P") setApp(app === "phone" ? "desktop" : "phone");
   if ((e.key === "n" || e.key === "N") && editable) newMock();
 });
 
@@ -536,7 +580,7 @@ addEventListener("keydown", (e) => {
 let mocks = { mocks: [], notes: [], next: 1 }, mocksVersion = 0, editable = false;
 let author = "";
 try { author = localStorage.getItem("design-lab-author") || ""; } catch (e) {}
-const PHONE = { w: 440, h: 956 }, SNAP = 8, DEFAULT_SCALE = 3;
+const SNAP = 8, DEFAULT_SCALE = 3;
 const $ = (id) => document.getElementById(id);
 
 function setMocks(b) {
@@ -638,7 +682,7 @@ function mockSection(list) {
   const items = [];
   let x = PAD, y = HEAD, w = 400;
   const tiles = list.map((m) => ({ m, w: Math.round((PIC * m.width) / m.height) }));
-  if (editable) tiles.push({ add: true, w: Math.round((PIC * PHONE.w) / PHONE.h) });
+  if (editable) tiles.push({ add: true, w: Math.round((PIC * appInfo(app).w) / appInfo(app).h) });
   for (const t of tiles) {
     if (x > PAD && x + t.w > WRAP) { x = PAD; y += NAME + PIC + ROWGAP; }
     items.push(Object.assign(t, { x, y }));
@@ -679,7 +723,9 @@ function buildMocks(box, s) {
 }
 
 async function newMock() {
-  const b = await send({ intent: "mock_new", title: "Mock " + (mocks.mocks.length + 1) }, "New mock screen");
+  const size = appInfo(app);
+  const b = await send({ intent: "mock_new", title: "Mock " + (mocks.mocks.length + 1), width: size.w, height: size.h },
+    "New mock screen");
   if (!b) return null;
   const id = lastId("m");
   layout();
@@ -805,7 +851,9 @@ function loadTree(path) {
 const curV = () => current.screen.versions[current.i];
 const picW = (v) => v.width || $("big").naturalWidth || 1;
 const picH = (v) => v.height || $("big").naturalHeight || 1;
-const ptScale = (v) => (vtree && vtree.scale > 0 ? vtree.scale : v.width ? v.width / PHONE.w : DEFAULT_SCALE);
+// Points to picture pixels: the element tree says, or the app's screen width does.
+const ptScale = (v) => (vtree && vtree.scale > 0 ? vtree.scale
+  : v.width ? v.width / appInfo(appOf(current && current.screen)).w : DEFAULT_SCALE);
 const dispScale = (v) => $("big").clientWidth / picW(v);
 function elementRect(e, s) { return { x: e.x * s, y: e.y * s, w: e.width * s, h: e.height * s }; }
 function selRect(it, s) { return it.e ? elementRect(it.e, s) : it.box; }
@@ -1260,11 +1308,19 @@ Promise.all([fetch("board.json").then((r) => r.json()), loadMocks()]).then(([b])
   // `#q=words` opens the board already searched, so a view can be linked.
   const hash = new URLSearchParams(location.hash.slice(1));
   if (hash.get("q")) document.getElementById("search").value = hash.get("q");
+  // `#app=desktop` opens the desktop board; a linked screen opens its own app.
+  const linked = hash.get("screen") && board.screens.find((x) => x.id === hash.get("screen"));
+  if (linked) app = appOf(linked);
+  else if (hash.get("app")) app = hash.get("app");
+  // An app without screens yet still shows; the board says how to capture it.
+  if (!APPS.some((a) => a.id === app)) app = "phone";
+  for (const btn of document.querySelectorAll("#apps button")) btn.classList.toggle("on", btn.dataset.app === app);
   areas();
   setMode(mode);
   layout();
   fit();
-  // `#mock=m1` opens a mock and `#screen=area--name` a screen, so either can be linked.
+  // `#mock=m1` opens a mock and `#screen=area--name` (or `desktop:area--name`) a
+  // screen, so either can be linked.
   if (hash.get("mock")) { const m = mockById(hash.get("mock")); if (m) openEditor(m.id); }
   if (hash.get("screen")) {
     const sc = board.screens.find((x) => x.id === hash.get("screen"));

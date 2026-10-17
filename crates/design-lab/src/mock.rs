@@ -1,6 +1,6 @@
 //! Mock screens and revision notes: the `mock.v1` document.
 //!
-//! A mock is a blank phone-sized frame that holds pieces cut from captured
+//! A mock is a blank phone- or desktop-sized frame that holds pieces cut from captured
 //! screens (each keeping the element it came from), plain rectangles and text
 //! boxes. A note is pinned to a point or a box on a screen version or a mock,
 //! with its text, its author and whether it is resolved. The document lives
@@ -26,6 +26,9 @@ pub const FILE: &str = "design-lab-mocks.json";
 
 /// A phone frame in points when nothing says otherwise (iPhone 17 Pro Max).
 pub const PHONE: (f64, f64) = (440.0, 956.0);
+/// A desktop window in points, the size the desktop tour draws at (16:10).
+/// The board asks for it when it starts a mock on the Desktop board.
+pub const DESKTOP: (f64, f64) = (1280.0, 800.0);
 
 /// Points to picture pixels for captures without an element tree.
 pub const DEFAULT_SCALE: f64 = 3.0;
@@ -189,12 +192,10 @@ fn refuse(message: impl Into<String>) -> Refusal {
     Refusal::new("mock_check", message)
 }
 
-/// `<run>/<file>.png` inside the captures folder, nothing else.
+/// `<run>/<file>.png` inside the captures folder, or
+/// `desktop/<run>/<file>.png` for the desktop app; nothing else.
 pub fn safe_picture(p: &str) -> bool {
-    p.ends_with(".png")
-        && p.split('/').count() == 2
-        && p.split('/')
-            .all(|part| !part.is_empty() && part != ".." && part != "." && !part.contains('\\'))
+    crate::capture_path_ok(p, ".png")
 }
 
 fn color_ok(c: &str) -> bool {
@@ -890,10 +891,14 @@ pub fn spec(
         .ok_or_else(|| format!("no mock or screen is called {name}"))?;
     let newest = screen.versions.last().ok_or("the screen has no versions")?;
     let mut md = format!(
-        "# Screen: {}\n\n`{}` in the {} area, {} version{}; the newest is from commit {}.\n\n![{}](img/{})\n",
+        "# Screen: {}\n\n`{}` in the {} area of the {} app, {} version{}; the newest is from commit {}.\n\n![{}](img/{})\n",
         screen.title,
         screen.id,
         screen.area,
+        crate::APPS
+            .iter()
+            .find(|(id, _)| *id == screen.app)
+            .map_or(screen.app.as_str(), |(_, name)| name),
         screen.versions.len(),
         if screen.versions.len() == 1 { "" } else { "s" },
         newest.commit,
@@ -1195,6 +1200,7 @@ mod tests {
             screens: vec![
                 Screen {
                     id: "settings--settings".into(),
+                    app: crate::PHONE.into(),
                     title: "Settings".into(),
                     area: "settings".into(),
                     versions: vec![ScreenVersion {
@@ -1214,6 +1220,7 @@ mod tests {
                 },
                 Screen {
                     id: "home--home".into(),
+                    app: crate::PHONE.into(),
                     title: "Home".into(),
                     area: "home".into(),
                     versions: vec![ScreenVersion {
