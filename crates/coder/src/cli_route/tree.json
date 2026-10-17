@@ -24100,6 +24100,147 @@
       ]
     },
     {
+      "name": "agents",
+      "summary": "Your saved agents, such as Foreman: list them, and ask one a question on a computer of yours.",
+      "children": [
+        {
+          "name": "list",
+          "leaf": {
+            "path": [
+              "agents",
+              "list"
+            ],
+            "usage": [
+              "list"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "list"
+                  }
+                ]
+              }
+            ],
+            "summary": "Your saved agents: name, runtime, model, and what each is for.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "ask",
+          "leaf": {
+            "path": [
+              "agents",
+              "ask"
+            ],
+            "usage": [
+              "ask NAME QUESTION [--on COMPUTER] [--project PROJECT] [--timeout SECONDS]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "ask"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "NAME"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "QUESTION"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "on",
+                    "value": "COMPUTER",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "project",
+                    "value": "PROJECT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "timeout",
+                    "value": "SECONDS",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Ask one of your agents and print its answer. It runs on a computer of yours that is online in the OpenAgents app with the agent's runtime: --on picks the computer and --project its project, by name or id. Without --project, the project named like this folder's Git repository comes first. It waits up to --timeout seconds (default 600); a dropped wait doesn't stop the agent, and its conversation stays in the app. QUESTION `-` reads it from stdin.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "status",
+          "leaf": {
+            "path": [
+              "agents",
+              "status"
+            ],
+            "usage": [
+              "status [ID]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "status"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Your recent questions to agents and their state, or one by its id.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "on",
+          "value": "COMPUTER",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "project",
+          "value": "PROJECT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "timeout",
+          "value": "SECONDS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "shadow",
       "summary": "What a sample of Coder runs would have cost through the raw engine (off unless set: coder.shadow).",
       "children": [

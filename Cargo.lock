@@ -11887,6 +11887,7 @@ dependencies = [
  "openagents-chat-app",
  "openagents-connect",
  "openagents-login",
+ "openagents-sdk",
  "openagents-spark",
  "openagents-terminal",
  "openagents-wallet",

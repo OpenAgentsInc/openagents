@@ -18,6 +18,7 @@ use std::process::ExitCode;
 // (see the dispatch below); Windows builds the rest.
 mod account_threads;
 mod agent;
+mod agents;
 mod approval_gate;
 mod argv;
 mod artifact;
@@ -277,6 +278,8 @@ Coder:
   agent        The workshop agent, Alice: make her with her own key, ask her,
                answer her proposals, stop, pause, or retire her, her memory,
                journal, and standing jobs.
+  agents       Your saved agents, such as Foreman: list them, and ask one a
+               question on a computer of yours.
   shadow       What a sample of Coder runs would have cost through the raw engine
                (off unless set: coder.shadow).
   efficiency   Routed against raw delegation, from recorded runs: cost per
@@ -504,6 +507,7 @@ fn main() -> ExitCode {
         "pair" => runtime().block_on(pair(&rest)),
         "task" => runtime().block_on(coder::task::cli::run_with_json(&rest, json)),
         "issue" => issue::run(&output, &rest),
+        "agents" => agents::run(&output, &rest),
         "projects" => projects::run(&output, &rest),
         "connections" => connections::run(&output, &rest),
         "board" => issue::project(&output, &rest),
@@ -648,7 +652,7 @@ fn main() -> ExitCode {
         "settings" => settings::run(&output, &rest),
         "boat" => boat_run::run(&output, &rest),
         "studio" => studio::run(&output, &rest),
-        "agent" | "agents" => agent::run(&output, &rest),
+        "agent" => agent::run(&output, &rest),
         "shadow" => shadow::run(&output, &rest),
         "efficiency" => efficiency::run(&output, &rest),
         "cloud" => cloud::run(&output, &rest),

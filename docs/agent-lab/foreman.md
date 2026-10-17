@@ -16,7 +16,25 @@ On the phone or at [openagents.com/labs/agent](https://openagents.com/labs/agent
 3. Choose the computer it runs on and a project, then **Save**.
 4. Choose **Use agent**. Foreman now appears in the agent picker. Pick it and ask.
 
-To do the same from code, run the [SDK example](../../crates/openagents-sdk/examples/foreman.rs).
+## Ask Foreman from the terminal
+
+```sh
+openagents agents ask Foreman "what isn't being worked on?"
+```
+
+Foreman runs on a computer of yours that's online in the OpenAgents app with
+Claude Code. Inside a Git checkout, it prefers the project with the same name
+as the repository; `--on COMPUTER` and `--project PROJECT` choose explicitly.
+The command waits up to ten minutes (`--timeout SECONDS`) and prints Foreman's
+answer. Its conversation stays in the app, and `openagents agents status`
+lists recent questions. `openagents agents list` shows your saved agents.
+
+Chats can ask too. In a website, phone, or project chat
+(`openagents chat send "Ask Foreman …" --project NAME`), the chat hands the
+question to Foreman the same way and replies with its answer
+([#11934](https://github.com/OpenAgentsInc/openagents/issues/11934)).
+
+To make Foreman from code instead of the app, run the [SDK example](../../crates/openagents-sdk/examples/foreman.rs).
 It saves the experiment, runs its tests on a computer, prints the report, and with
 `--promote` saves the agent:
 

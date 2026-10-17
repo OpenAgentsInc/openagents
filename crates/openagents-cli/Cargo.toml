@@ -90,6 +90,7 @@ coder-sync = { path = "../coder-sync" }
 # `chat work`: issue runs as rows of the account's agent lists (#11228).
 agent-fleet = { path = "../agent-fleet" }
 openagents-login = { path = "../openagents-login" }
+openagents-sdk = { path = "../openagents-sdk" }
 # `openagents vault`: the person's "only you" vault (NIP-VAULT tier user).
 oa-vault = { path = "../oa-vault" }
 zeroize = "1.8"
