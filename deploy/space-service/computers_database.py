@@ -11,7 +11,7 @@ def main():
     value=credential()
     environment={**os.environ,'PGHOST':value['private_ip'],'PGDATABASE':'postgres','PGUSER':value['bootstrap_login'],
         'PGPASSWORD':value['bootstrap_password'],'PGSSLMODE':'verify-ca','PGSSLROOTCERT':'/space/config/postgres-ca.crt','PGCONNECT_TIMEOUT':'5','PSQL_HISTORY':'/dev/null'}
-    sql="""DO $$ BEGIN
+    sql=r"""DO $$ BEGIN
 IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='space_computers') THEN
  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='space_computers' AND shobj_description(oid,'pg_authid')='OpenAgents maintained SPACE service (#11814)') THEN
   RAISE EXCEPTION 'The candidate database role belongs to another deployment';

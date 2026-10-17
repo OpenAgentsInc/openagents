@@ -36,7 +36,11 @@ def configure(passwords):
         value={'role':'space_computers','password':password,'database':'space_computers',
             'dsn':f'postgresql://space_computers:{quote(password,safe="")}@{native["private_ip"]}/space_computers?{query}'}
         install('computers-database',json.dumps(value).encode())
-    else: value=json.loads(saved('computers-database'))
+    else:
+        if existing.get('labels',{}).get('openagents-issue')!='11814': raise RuntimeError('The candidate credential belongs to another deployment.')
+        value=json.loads(saved('computers-database'))
+    if value['role']!='space_computers' or value['database']!='space_computers': raise RuntimeError('The candidate database identity differs.')
+    cloud('secrets','add-iam-policy-binding',PREFIX+'-computers-database','--member=serviceAccount:'+PREFIX+'-control@'+PROJECT+'.iam.gserviceaccount.com','--role=roles/secretmanager.secretAccessor')
     fixture=json.loads(saved('qualification'))
     install('computers-dsn',value['dsn'].encode())
     install('computers-token',fixture['computers_token'].encode())
