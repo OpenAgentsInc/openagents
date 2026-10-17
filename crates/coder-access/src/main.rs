@@ -27,6 +27,7 @@ fn usage() -> &'static str {
   init --owner KEY
   public-key
   invite --relay URL [--rights LIST] [--grant-secs N] [--no-qr]
+  invite-scoped --relay URL --account ID --workspace NAME --root DIR [--rights LIST] [--grant-secs N] [--no-qr]
   cancel --invitation ID
   request --relay URL [--rights LIST]
   approve --relay URL --host KEY --device KEY --code CODE [--rights LIST]
@@ -209,12 +210,48 @@ async fn run() -> Result<()> {
             args.finish()?;
             println!("{}", host.public_key()?);
         }
-        "invite" => {
+        "invite" | "invite-scoped" => {
             let relay = args.required("--relay")?;
-            let rights = args.rights(Rights::standard())?;
+            let scoped = command == "invite-scoped";
+            #[cfg(unix)]
+            let scope = if scoped {
+                let account = args.required("--account")?;
+                let workspace = args.required("--workspace")?;
+                let root = PathBuf::from(args.required("--root")?);
+                Some(coder_access::enrolled::Scope::local(
+                    &account,
+                    &[(workspace, root)],
+                )?)
+            } else {
+                None
+            };
+            #[cfg(not(unix))]
+            if scoped {
+                return Err(Error::new(
+                    Code::Unsupported,
+                    "Workspace connections are not supported on this host yet.",
+                ));
+            }
+            let rights = args.rights(if scoped {
+                Rights::parse_list("observe,operate")?
+            } else {
+                Rights::standard()
+            })?;
             let grant_secs = args.number("--grant-secs", DEFAULT_GRANT_SECS)?;
             let no_qr = args.flag("--no-qr");
             args.finish()?;
+            #[cfg(unix)]
+            let issued = match scope {
+                Some(scope) => host.invite_scoped(
+                    &relay,
+                    rights.clone(),
+                    scope,
+                    now,
+                    now.saturating_add(grant_secs),
+                )?,
+                None => host.invite(&relay, rights.clone(), now, now.saturating_add(grant_secs))?,
+            };
+            #[cfg(not(unix))]
             let issued =
                 host.invite(&relay, rights.clone(), now, now.saturating_add(grant_secs))?;
             eprintln!(

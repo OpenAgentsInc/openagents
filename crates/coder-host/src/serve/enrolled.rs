@@ -113,6 +113,17 @@ impl Manager {
         if resolved != Path::new(&root.path) {
             return Err(Code::Stale);
         }
+        // A workspace must not expose the host's enrollment and command book.
+        // Otherwise its command right could be used to rewrite its own grant.
+        let state = self
+            .directory
+            .parent()
+            .ok_or(Code::Unavailable)?
+            .canonicalize()
+            .map_err(|_| Code::Unavailable)?;
+        if state.starts_with(&resolved) || resolved.starts_with(&state) {
+            return Err(Code::Forbidden);
+        }
         let files = WorkspaceFiles::open(Path::new(&root.path))?;
         if files.root() != Path::new(&root.path) || files.identity()? != root.identity {
             return Err(Code::Stale);
@@ -238,7 +249,15 @@ impl Manager {
                 drop(store);
                 let live = match job.start(supervise::Input::Null) {
                     Ok(live) => live,
-                    Err(_) => return Err(Code::Unavailable),
+                    Err(_) => {
+                        if let Ok((mut store, mut book)) = self.open() {
+                            if let Some(record) = book.commands.get_mut(&key) {
+                                record.progress = Progress::Lost;
+                            }
+                            let _ = store.save(&book);
+                        }
+                        return Err(Code::Unavailable);
+                    }
                 };
                 let (stop, cancel) = watch::channel(false);
                 self.live.lock().unwrap().insert(key.clone(), stop);
@@ -393,6 +412,7 @@ impl Manager {
         } else {
             Progress::Lost
         };
+        let _serial = self.serial.lock().unwrap();
         if let Ok((mut store, mut book)) = self.open() {
             let used: usize = book
                 .commands
@@ -713,6 +733,32 @@ mod tests {
             }
         ));
         f.manager.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn a_workspace_cannot_include_or_enter_the_host_access_store() {
+        let f = Fixture::new();
+        let parent = f.root.parent().unwrap().to_path_buf();
+        let scope = Scope::local("acct_test", &[("project".into(), parent.clone())]).unwrap();
+        let manager = Manager::new(
+            &f.access,
+            BTreeMap::from([("project".into(), parent)]),
+            f.authority.clone(),
+        )
+        .unwrap();
+        let call = Call {
+            account: scope.account.clone(),
+            action: Action::Attach {
+                computer: random_id(),
+                workspace: "project".into(),
+            },
+        };
+        assert_eq!(
+            manager.call(&f.device, 0, &scope, &call),
+            Err(Code::Forbidden)
+        );
+        f.manager.shutdown().await;
+        manager.shutdown().await;
     }
 
     #[tokio::test]

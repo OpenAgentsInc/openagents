@@ -516,3 +516,97 @@ async fn missing_resource_does_not_complete_a_pending_delete_after_restart() {
     let done = restarted.tick("computer-1", false, 40).await.unwrap();
     assert_eq!(done.computer().phase, Phase::Deleted);
 }
+
+#[derive(Clone, Default)]
+struct WorkspaceAttachment(std::sync::Arc<std::sync::atomic::AtomicBool>);
+impl computer_driver::Driver for WorkspaceAttachment {
+    fn capabilities(&self) -> computer_driver::Capabilities {
+        let mut caps = computer_driver::Capabilities::new("enrolled", [], &["workspace"]);
+        caps.workspace_attachment = true;
+        caps
+    }
+    async fn create(&self, r: &computer_driver::CreateRequest) -> computer_driver::Outcome<String> {
+        assert!(r.ttl_seconds.is_none() && r.image.is_none());
+        computer_driver::Outcome::done("logical-workspace".into())
+    }
+    async fn observe(&self, _: &str) -> computer_driver::Outcome<computer_driver::Observation> {
+        computer_driver::Outcome::done(computer_driver::Observation {
+            state: if self.0.load(std::sync::atomic::Ordering::SeqCst) {
+                State::Gone
+            } else {
+                State::Running
+            },
+            detail: None,
+        })
+    }
+    async fn exec(
+        &self,
+        _: &str,
+        _: &Exec,
+    ) -> computer_driver::Outcome<computer_driver::ExecOutput> {
+        panic!("logical detach must not run workspace-wide cleanup")
+    }
+    async fn put_file(&self, _: &str, _: &str, _: &[u8]) -> computer_driver::Outcome<()> {
+        panic!("unexpected file write")
+    }
+    async fn get_file(&self, _: &str, _: &str) -> computer_driver::Outcome<Vec<u8>> {
+        panic!("unexpected file read")
+    }
+    async fn meter(&self, _: &str) -> computer_driver::Outcome<computer_driver::Meter> {
+        computer_driver::Outcome::done(computer_driver::Meter {
+            running: !self.0.load(std::sync::atomic::Ordering::SeqCst),
+            evidence: "synthetic attachment".into(),
+            seconds: None,
+        })
+    }
+    async fn delete(&self, _: &str) -> computer_driver::Outcome<()> {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+        computer_driver::Outcome::done(())
+    }
+}
+
+#[tokio::test]
+async fn workspace_commands_finish_without_a_checkpoint_and_delete_only_detaches() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::under(dir.path().join("records"));
+    let mut request = spec();
+    request.size = "workspace".into();
+    store.create(&Computer::new(request, 1).unwrap()).unwrap();
+    let attachment = WorkspaceAttachment::default();
+    // Chat admission still requires Suspend; only the explicit workspace API
+    // can use this narrower lifecycle.
+    assert!(OnDriver::admit(&attachment).is_err());
+    let driver = Driver::new(store.clone(), fast(attachment.clone()));
+    let first = driver.prompt("computer-1", 10).await.unwrap();
+    assert!(matches!(first, Settled::Dispatch { generation: 1, .. }));
+    {
+        let lease = store.lease("computer-1").unwrap();
+        lease
+            .apply(&Command::FinishCommand { generation: 1 }, 20)
+            .unwrap();
+        assert_eq!(
+            lease
+                .apply(&Command::FinishCommand { generation: 1 }, 21)
+                .unwrap()
+                .phase,
+            Phase::Awake
+        );
+        assert!(lease.read().unwrap().checkpoints.is_empty());
+    }
+    let second = driver.prompt("computer-1", 30).await.unwrap();
+    assert!(matches!(second, Settled::Dispatch { generation: 2, .. }));
+    {
+        let lease = store.lease("computer-1").unwrap();
+        assert!(
+            lease
+                .apply(&Command::FinishCommand { generation: 1 }, 31)
+                .is_err()
+        );
+        lease
+            .apply(&Command::FinishCommand { generation: 2 }, 32)
+            .unwrap();
+    }
+    let deleted = driver.delete("computer-1", 40).await.unwrap();
+    assert_eq!(deleted.computer().phase, Phase::Deleted, "{deleted:?}");
+    assert!(attachment.0.load(std::sync::atomic::Ordering::SeqCst));
+}

@@ -50,6 +50,10 @@ pub enum Command {
     FinishTurn {
         generation: u64,
     },
+    /// Finish an independently supervised API command without a chat checkpoint.
+    FinishCommand {
+        generation: u64,
+    },
     ObserveCheckpoint {
         generation: u64,
         outcome: Outcome<CheckpointEvidence>,
@@ -465,6 +469,22 @@ pub fn apply(c: &Computer, command: &Command, now_ms: u64) -> Result<Applied, Re
                 return Ok(Applied::Unchanged);
             }
             n.turn.heartbeat_ms = now;
+            true
+        }
+        Command::FinishCommand { generation } => {
+            match c.phase {
+                Phase::Turn { generation: active } if active == *generation => {}
+                Phase::Awake if c.turn.completed == *generation => return Ok(Applied::Unchanged),
+                Phase::Turn { generation: active } => {
+                    return Err(Refusal::StaleGeneration {
+                        fence: active,
+                        observed: *generation,
+                    });
+                }
+                _ => return Err(wrong(c)),
+            }
+            n.turn.completed = *generation;
+            n.phase = Phase::Awake;
             true
         }
         Command::FinishTurn { generation } => {

@@ -1,0 +1,29 @@
+[package]
+name = "computer-enrolled"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Core computer operations over workspace-scoped NIP-HOST access."
+
+[dependencies]
+base64 = "0.22"
+coder-access = { path = "../coder-access", default-features = false }
+coder-host = { path = "../coder-host", default-features = false }
+computer-driver = { path = "../computer-driver" }
+computer-files = { path = "../computer-files" }
+serde_json = "1"
+tokio = { version = "1", features = ["time"] }
+
+[dev-dependencies]
+coder-host = { path = "../coder-host", features = ["host"] }
+futures-util = "0.3"
+nostr = { path = "../nostr" }
+tokio-tungstenite = "0.30"
+coder-access = { path = "../coder-access", features = ["host"] }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

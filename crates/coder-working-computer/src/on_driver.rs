@@ -113,7 +113,8 @@ impl<D: Driver> Provider for OnDriver<D> {
                 operation: operation.into(),
                 size: Some(c.size.clone()),
                 image: self.image.clone(),
-                ttl_seconds: Some((c.bounds.absolute_ms / 1000).max(1)),
+                ttl_seconds: (!self.driver.capabilities().workspace_attachment)
+                    .then_some((c.bounds.absolute_ms / 1000).max(1)),
                 labels: [("computer".to_owned(), c.id.clone())].into(),
             })
             .await
@@ -277,6 +278,11 @@ impl<D: Driver> Provider for OnDriver<D> {
     }
 
     async fn shutdown_processes(&self, _c: &Computer, resource: &str) -> Outcome<String> {
+        if self.driver.capabilities().workspace_attachment {
+            // Commands have their own bounds and explicit cancellation. A
+            // logical detach must not signal other programs in the workspace.
+            return Outcome::done("workspace commands remain independently supervised".into());
+        }
         if self.driver.capabilities().memory_suspend {
             // Stop preserves ordinary services. The command owner must finish
             // explicit cancellation before allowing this suspension.
@@ -299,6 +305,15 @@ impl<D: Driver> Provider for OnDriver<D> {
     }
 
     async fn stop(&self, c: &Computer, resource: &str) -> Outcome<String> {
+        if self.driver.capabilities().workspace_attachment {
+            // Internal expiry and deletion release logical access. The public
+            // stop/wake endpoints refuse because this is not Suspend.
+            return self
+                .driver
+                .delete(resource)
+                .await
+                .map(|()| format!("detached:{resource}"));
+        }
         if self.driver.capabilities().memory_suspend
             && let Outcome::Done { value } = self.driver.observe(resource).await
             && value.state == State::Gone

@@ -169,6 +169,9 @@ pub struct Capabilities {
     /// Whether Suspend preserves running processes, beyond the disk contents.
     #[serde(default, skip_serializing_if = "is_false")]
     pub memory_suspend: bool,
+    /// Create attaches an existing workspace; delete and lifecycle expiry detach it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub workspace_attachment: bool,
     /// Start, observe, and cancel a command under one retained command ID.
     #[serde(default, skip_serializing_if = "is_false")]
     pub command_sessions: bool,
@@ -187,6 +190,7 @@ impl Capabilities {
         profiles.insert(Profile::Core);
         Self {
             memory_suspend: false,
+            workspace_attachment: false,
             command_sessions: false,
             environment_artifacts: false,
             default_artifact: None,
@@ -211,6 +215,17 @@ impl Capabilities {
         }
         if !self.supports(Profile::Core) {
             return Err("Every driver must support the Core profile.");
+        }
+        if self.workspace_attachment
+            && (self.profiles != BTreeSet::from([Profile::Core])
+                || self.memory_suspend
+                || self.environment_artifacts
+                || self.default_artifact.is_some()
+                || !self.shapes.is_empty())
+        {
+            return Err(
+                "Workspace connections support only Core operations without cloud images or sizes.",
+            );
         }
         if self.memory_suspend && !self.supports(Profile::Suspend) {
             return Err("Keeping processes requires Suspend support.");
@@ -805,6 +820,34 @@ impl<D: Driver> Driver for std::sync::Arc<D> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workspace_attachments_cannot_advertise_cloud_lifecycle_or_resources() {
+        let mut caps = Capabilities::new("enrolled", [], &["workspace"]);
+        caps.workspace_attachment = true;
+        assert!(caps.validate().is_ok());
+        let mut cloud = caps.clone();
+        cloud.profiles.insert(Profile::Suspend);
+        assert!(cloud.validate().is_err());
+        let mut cloud = caps.clone();
+        cloud.default_artifact = Some(Artifact {
+            kind: ArtifactKind::GceImage,
+            reference: "cloud-image".into(),
+            provider_identity: None,
+            disk_gib: None,
+        });
+        assert!(cloud.validate().is_err());
+        let mut cloud = caps;
+        cloud.shapes.insert(
+            "workspace".into(),
+            Shape {
+                vcpus: 1,
+                memory_mib: 1024,
+                min_disk_gib: None,
+            },
+        );
+        assert!(cloud.validate().is_err());
+    }
 
     #[test]
     fn admit_refuses_an_undeclared_profile_by_name() {

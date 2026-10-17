@@ -4466,6 +4466,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "computer-enrolled"
+version = "1.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "coder-access",
+ "coder-host",
+ "computer-driver",
+ "computer-files",
+ "futures-util",
+ "nostr",
+ "secp256k1 0.31.1",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+]
+
+[[package]]
 name = "computer-files"
 version = "1.0.0"
 dependencies = [
