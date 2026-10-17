@@ -30,7 +30,9 @@ Why retain rather than migrate:
   `secp256k1`, `sha2`, `serde`, and `serde_json`. Adding `hmac`, `hkdf`,
   `chacha20`, and `subtle` at runtime widens the supply-chain surface of a
   crate whose whole point is to stay small and auditable, and the relay
-  builds on it.
+  builds on it. NIP-06 (`nip06.rs`) later added `bip39` and `getrandom`
+  for the word list and new words; its HMAC-SHA512 is hand-written the
+  same way and checked against RFC 4231.
 - The hand-written code is about 120 lines, has no `unsafe` (the crate is
   `#![forbid(unsafe_code)]`), and now agrees with RustCrypto on every input
   the differential tests generate.

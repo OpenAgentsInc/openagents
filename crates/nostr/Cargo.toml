@@ -19,9 +19,12 @@ test-invoice = []
 # Dependency allowlist carried over from immortal-core: secp256k1, sha2,
 # serde, serde_json. `ryu-js` renders finite numbers with the ECMAScript
 # algorithm RFC 8785 requires. The ordinary `ryu` form disagrees with
-# `JSON.stringify` on published JCS vectors.
+# `JSON.stringify` on published JCS vectors. `bip39` (word list, checksum,
+# PBKDF2) and `getrandom` (16 bytes for new words) serve NIP-06 only.
 [dependencies]
 agent-contract = { path = "../agent-contract" }
+bip39 = { version = "2.2.2", default-features = false, features = ["std"] }
+getrandom = "0.3"
 ryu-js = "1.0.2"
 secp256k1 = { version = "0.31.1", features = ["recovery"] }
 serde = { version = "1.0.229", features = ["derive"] }

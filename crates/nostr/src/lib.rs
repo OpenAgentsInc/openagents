@@ -39,6 +39,7 @@ pub mod live;
 pub mod market_contracts;
 pub mod negentropy;
 pub mod nip04;
+pub mod nip06;
 pub mod nip17;
 pub mod nip19;
 pub mod nip44;

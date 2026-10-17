@@ -11295,7 +11295,9 @@ name = "nostr"
 version = "1.0.0"
 dependencies = [
  "agent-contract",
+ "bip39",
  "chacha20 0.10.2",
+ "getrandom 0.3.4",
  "hkdf 0.13.0",
  "hmac 0.13.0",
  "proptest",
