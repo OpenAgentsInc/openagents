@@ -108,6 +108,24 @@ pub struct TransferClaim {
     pub seed: Option<Seed>,
 }
 
+/// A web request waits for the source computer to freeze its old part.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MoveRequest {
+    pub source: String,
+    pub target: PartRef,
+    pub expires_unix: u64,
+}
+impl MoveRequest {
+    pub fn valid(&self, now: u64) -> bool {
+        valid_id(&self.source)
+            && self.target.valid()
+            && self.target.id != self.source
+            && self.target.home == Home::Cloud
+            && self.expires_unix > now
+            && self.expires_unix <= now.saturating_add(15 * 60)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Role {
@@ -214,6 +232,27 @@ pub struct Continued {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn web_moves_expire_and_never_reuse_the_source_or_choose_another_computer() {
+        let mut request = MoveRequest {
+            source: "a1000000-0000-4000-8000-000000000001".into(),
+            target: PartRef {
+                id: "a1000000-0000-4000-8000-000000000002".into(),
+                home: Home::Cloud,
+            },
+            expires_unix: 700,
+        };
+        assert!(request.valid(100));
+        assert!(!request.valid(700));
+        request.expires_unix = 1001;
+        assert!(!request.valid(100));
+        request.expires_unix = 700;
+        request.target.home = Home::Computer("fixture".into());
+        assert!(!request.valid(100));
+        request.target.home = Home::Cloud;
+        request.target.id = request.source.clone();
+        assert!(!request.valid(100));
+    }
     #[test]
     fn context_keeps_recent_turns_and_bounds_screened_unicode() {
         let text = format!("{} sk-ant-{}", "🌻".repeat(30_000), "x".repeat(30));

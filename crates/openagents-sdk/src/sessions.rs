@@ -7,7 +7,7 @@
 //! The transcript is opt-in per chat or per project, off by default; while
 //! it is on, the host uploads a read-only copy.
 use crate::{CancellationToken, Client, Error, Session};
-pub use chat_home::{Home, PartRef};
+pub use chat_home::{Home, MoveRequest, PartRef};
 use reqwest::Method;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Value, json};
@@ -78,14 +78,23 @@ pub struct SessionSummary {
     /// The `openagents://` link that opens it in the app.
     #[serde(default)]
     pub app_link: Option<String>,
+    /// The earlier part, whether it ran in the cloud or on a computer.
+    #[serde(default)]
+    pub continues: Option<PartRef>,
     /// The web chat that continues it.
     #[serde(default)]
     pub continued_by: Option<PartRef>,
+    #[serde(default)]
+    pub home_transfer: bool,
 }
 impl SessionSummary {
     pub(crate) fn valid(&self) -> bool {
         chat_home::valid_id(&self.id)
             && matches!(&self.home, Home::Computer(_))
+            && self
+                .continues
+                .as_ref()
+                .is_none_or(|p| p.valid() && p.id != self.id)
             && self.continued_by.as_ref().is_none_or(PartRef::valid)
     }
 }
@@ -95,6 +104,10 @@ impl SessionSummary {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct PublishedSession {
     pub id: String,
+    #[serde(skip_serializing_if = "is_false")]
+    pub home_transfer: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub continues: Option<PartRef>,
     pub title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
@@ -106,6 +119,47 @@ pub struct PublishedSession {
     /// The app's 16-character workspace locator, so the web can link back.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+/// Requests from the web wait for this computer's normal handoff path.
+pub async fn pending_moves(
+    client: &Client,
+    session: &Session,
+    device: &str,
+    cancel: &CancellationToken,
+) -> Result<Vec<MoveRequest>, Error> {
+    client.check_session(session)?;
+    if !device_ok(device) {
+        return Err(Error::InvalidReference);
+    }
+    let value: Value = cancellable(
+        cancel,
+        client.request(
+            Method::GET,
+            &["history", "sessions", "computers", device, "moves"],
+            &[],
+            None,
+            Some(session.token()),
+        ),
+    )
+    .await?;
+    let moves: Vec<MoveRequest> =
+        serde_json::from_value(value["moves"].clone()).map_err(|_| Error::InvalidResponse)?;
+    if moves.len() > MAX_PER_COMPUTER {
+        return Err(Error::InvalidResponse);
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| Error::InvalidResponse)?
+        .as_secs();
+    if moves.iter().any(|r| r.expires_unix > now && !r.valid(now)) {
+        return Err(Error::InvalidResponse);
+    }
+    Ok(moves.into_iter().filter(|r| r.valid(now)).collect())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -239,7 +293,12 @@ pub async fn publish(
     client.check_session(session)?;
     if !device_ok(device)
         || sessions.len() > MAX_PER_COMPUTER
-        || sessions.iter().any(|s| !chat_home::valid_id(&s.id))
+        || sessions.iter().any(|s| {
+            !chat_home::valid_id(&s.id)
+                || s.continues
+                    .as_ref()
+                    .is_some_and(|p| !p.valid() || p.id == s.id)
+        })
     {
         return Err(Error::InvalidReference);
     }

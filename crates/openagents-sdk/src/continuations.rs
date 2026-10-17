@@ -1,6 +1,8 @@
 //! Move to a linked part without creating a second editable copy of the source.
 use crate::{CancellationToken, ChatRef, Client, Error, Session};
-pub use chat_home::{Claim, Continued, Home, Links, PartRef, REQUEST_OPTION, Role, Seed, Source};
+pub use chat_home::{
+    Claim, Continued, Home, Links, PartRef, REQUEST_OPTION, Role, Seed, Source, TransferClaim,
+};
 use reqwest::Method;
 
 pub async fn destination(
@@ -27,7 +29,17 @@ pub async fn destination(
             )
             .await
     };
-    let value = tokio::select! {biased;_=cancel.cancelled()=>return Err(Error::Cancelled),value=request=>value?};
+    let value = tokio::select! {biased;_=cancel.cancelled()=>return Err(Error::Cancelled),value=request=>value};
+    let value = match value {
+        Ok(value) => value,
+        Err(Error::NotFound | Error::Refused { status: 404, .. }) => {
+            return Ok(crate::sessions::get(client, session, source.id(), cancel)
+                .await?
+                .session
+                .continued_by);
+        }
+        Err(error) => return Err(error),
+    };
     if value["thread"]["id"].as_str() != Some(source.id()) {
         return Err(Error::InvalidResponse);
     }
@@ -46,6 +58,29 @@ pub async fn claim(
     claim: &Claim,
     cancel: &CancellationToken,
 ) -> Result<Continued, Error> {
+    transfer(
+        client,
+        session,
+        source,
+        &TransferClaim {
+            revision: claim.revision,
+            target: claim.target.clone(),
+            seed: None,
+        },
+        cancel,
+    )
+    .await
+}
+
+/// Choose a linked destination. Computer hosts supply a screened seed;
+/// saved-chat sources use the history already held by the service.
+pub async fn transfer(
+    client: &Client,
+    session: &Session,
+    source: &ChatRef,
+    claim: &TransferClaim,
+    cancel: &CancellationToken,
+) -> Result<Continued, Error> {
     client.check_session(session)?;
     if source.account() != session.account().id {
         return Err(Error::WrongAccount);
@@ -53,7 +88,11 @@ pub async fn claim(
     if source.deployment() != client.deployment() {
         return Err(Error::WrongDeployment);
     }
-    if !claim.target.valid() || claim.target.id == source.id() || claim.revision == 0 {
+    if !claim.target.valid()
+        || claim.target.id == source.id()
+        || claim.revision == 0
+        || claim.seed.as_ref().is_some_and(|seed| !seed.valid())
+    {
         return Err(Error::InvalidReference);
     }
     let request = async {

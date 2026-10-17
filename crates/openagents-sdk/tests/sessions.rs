@@ -34,8 +34,13 @@ async fn sessions_publish_list_and_share_transcripts_through_the_account() {
         .route("/v1/history/sessions/computers/{device}", put(|Json(body): Json<Value>| async move {
             assert_eq!(body["name"], "Test Mac");
             assert_eq!(body["sessions"][0]["status"], "awaiting_input");
+            assert_eq!(body["sessions"][0]["home_transfer"], true);
             Json(json!({"transcripts":[body["sessions"][0]["id"]]}))
         }).delete(|| async { Json(json!({"removed":true})) }))
+        .route("/v1/history/sessions/computers/{device}/moves", get(|| async {
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+            Json(json!({"moves":[{"source":ONE,"target":{"id":CHAT,"home":"cloud"},"expires_unix":now+600}]}))
+        }))
         .route("/v1/history/sessions/{id}/transcript", put(|Json(body): Json<Value>| async move {
             Json(json!({"on":body["on"],"transcript":body["on"]}))
         }))
@@ -66,6 +71,7 @@ async fn sessions_publish_list_and_share_transcripts_through_the_account() {
         .await
         .unwrap();
     assert_eq!(rows[0].computer, "Test Mac");
+    assert!(!rows[0].home_transfer, "older summaries still decode");
     let detail = sessions::get(&client, &session, ONE, &cancel)
         .await
         .unwrap();
@@ -73,6 +79,8 @@ async fn sessions_publish_list_and_share_transcripts_through_the_account() {
 
     let published = PublishedSession {
         id: ONE.into(),
+        home_transfer: true,
+        continues: None,
         title: "Fix the badge".into(),
         project: None,
         folder: None,
@@ -92,6 +100,12 @@ async fn sessions_publish_list_and_share_transcripts_through_the_account() {
     .await
     .unwrap();
     assert_eq!(on, vec![ONE.to_owned()]);
+    let moves = sessions::pending_moves(&client, &session, "test-mac", &cancel)
+        .await
+        .unwrap();
+    assert_eq!(moves.len(), 1);
+    assert_eq!(moves[0].source, ONE);
+    assert_eq!(moves[0].target.id, CHAT);
     assert!(matches!(
         sessions::publish(&client, &session, "not a device", "x", &[], &cancel).await,
         Err(Error::InvalidReference)

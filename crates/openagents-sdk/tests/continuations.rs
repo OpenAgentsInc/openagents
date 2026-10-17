@@ -75,3 +75,59 @@ async fn claim_and_recovery_validate_the_account_and_destination() {
     ));
     task.abort();
 }
+
+#[tokio::test]
+async fn computer_sources_recover_through_the_session_index_and_transfer_to_cloud() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let app = Router::new()
+        .route("/v1/account", get(|| async {Json(json!({"account":{"id":"one","label":"Test account"},"workspaces":[]}))}))
+        .route("/v1/threads/{id}", get(|| async {(axum::http::StatusCode::NOT_FOUND, Json(json!({"error":{"code":"not_found","message":"No such chat."}})))}))
+        .route("/v1/history/sessions/{id}", get(|| async {Json(json!({"session":{
+            "id":SOURCE,"source":"session","home":"computer:test-mac","title":"Earlier work","computer":"Test Mac",
+            "project":null,"folder":null,"status":"idle","last_activity_unix":7,"updated_unix":7,
+            "recap":"","online":true,"transcript":false,"app_link":null,"continued_by":{"id":TARGET,"home":"cloud"}
+        },"messages":null}))}))
+        .route("/v1/threads/{id}/continue", post(|Json(request): Json<Value>| async move {
+            assert_eq!(request["target"]["home"], "cloud");
+            assert_eq!(request["seed"]["recent"][0]["text"], "coral orchid");
+            Json(json!({"account":"one","source":{"id":SOURCE,"home":"computer:test-mac"},"target":request["target"],"seed":request["seed"]}))
+        }));
+    let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let client = Client::new(Deployment::new(&format!("{origin}/v1"), &origin).unwrap()).unwrap();
+    let session = client
+        .authenticate(&format!("oa_sk_{}", "1".repeat(64)))
+        .await
+        .unwrap();
+    let source = client.chat(&session, SOURCE).unwrap();
+    let cancel = CancellationToken::new();
+    let target = PartRef {
+        id: TARGET.into(),
+        home: Home::Cloud,
+    };
+    assert_eq!(
+        continuations::destination(&client, &session, &source, &cancel)
+            .await
+            .unwrap(),
+        Some(target.clone())
+    );
+    let moved = continuations::transfer(
+        &client,
+        &session,
+        &source,
+        &continuations::TransferClaim {
+            revision: 7,
+            target: target.clone(),
+            seed: Some(continuations::Seed::new(
+                "Earlier work",
+                [(continuations::Role::User, "coral orchid")],
+            )),
+        },
+        &cancel,
+    )
+    .await
+    .unwrap();
+    assert_eq!(moved.target, target);
+    assert_eq!(moved.source.home, Home::Computer("test-mac".into()));
+    task.abort();
+}

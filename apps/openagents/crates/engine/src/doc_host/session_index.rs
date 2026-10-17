@@ -104,6 +104,8 @@ pub(crate) fn rows(
                 });
             PublishedSession {
                 id: chat.id.clone(),
+                continues: None,
+                home_transfer: false,
                 title: chat.title.clone().unwrap_or_default(),
                 project: None,
                 folder,

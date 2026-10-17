@@ -495,6 +495,7 @@ impl Client {
                 Some("invalid_cursor") => Some("invalid_cursor"),
                 Some("changed") => Some("changed"),
                 Some("continued") => Some("continued"),
+                Some("context_required") => Some("context_required"),
                 Some("version_conflict") => Some("version_conflict"),
                 Some("idempotency_conflict") => Some("idempotency_conflict"),
                 Some("invalid_agent") => Some("invalid_agent"),
