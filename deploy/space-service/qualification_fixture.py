@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Seed the separate native database with one synthetic qualification owner."""
+import bcrypt
+import secrets
 import hashlib
 import json
 import os
@@ -20,14 +22,17 @@ def main():
     org, user, key, session = (str(uuid.UUID(fixture[name])) for name in ("org_id", "user_id", "key_id", "session_id"))
     api_hash = hashlib.sha256(fixture["api_key"].encode()).hexdigest()
     session_hash = hashlib.sha256(fixture["admin_session"].encode()).hexdigest()
+    # A real random password hash enables the native account. Discard its
+    # password; only the explicit four-hour session is used by qualification.
+    password_hash = bcrypt.hashpw(secrets.token_hex(32).encode(), bcrypt.gensalt(rounds=12)).decode()
     sql = f"""BEGIN;
 SET ROLE space_migrator;
 INSERT INTO organizations (id,name,slug,snapshot_base_object_storage_uri)
 VALUES ('{org}','SPACE qualification 11814','qualification-11814','s3://openagentsgemini-oa-space-service-snapshots/org/{org}/')
 ON CONFLICT (id) DO NOTHING;
 INSERT INTO users (id,email,password_hash,display_name,org_id,role)
-VALUES ('{user}','qualification-11814@openagents.invalid','!','Qualification operator','{org}','organization_admin')
-ON CONFLICT (id) DO NOTHING;
+VALUES ('{user}','qualification-11814@openagents.invalid','{password_hash}','Qualification operator','{org}','organization_admin')
+ON CONFLICT (id) DO UPDATE SET password_hash=CASE WHEN users.password_hash='!' THEN excluded.password_hash ELSE users.password_hash END;
 INSERT INTO api_keys (id,org_id,name,key_hash,created_by,allowed_surfaces)
 VALUES ('{key}','{org}','qualification-11814','{api_hash}','{user}',ARRAY['ecw','native'])
 ON CONFLICT (id) DO NOTHING;
@@ -44,7 +49,7 @@ COMMIT;
     if result.returncode:
         # SQL contains hashes only; emit no raw credential or full query.
         raise RuntimeError("The synthetic native database fixture failed: " + result.stderr.decode()[:512])
-    print(json.dumps({"synthetic_org": org, "password_login": "locked", "admin_session_hours": 4, "owner_account_used": False}))
+    print(json.dumps({"synthetic_org": org, "password": "random and discarded", "admin_session_hours": 4, "owner_account_used": False}))
 
 
 if __name__ == "__main__":
