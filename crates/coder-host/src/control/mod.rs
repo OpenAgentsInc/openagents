@@ -657,31 +657,66 @@ pub fn connect_rights() -> Rights {
     Rights::pairing()
 }
 
-/// Create an invitation and its `openagents-connect:` code. The
-/// invitation is stored before the code is returned, so the code the
-/// window shows is always one the host will honor.
-fn invite(shared: &Shared) -> Reply {
+/// An invitation and the connect code that carries it.
+#[derive(Clone, Debug)]
+pub struct ConnectInvitation {
+    /// The invitation ID, which `invite.cancel` takes.
+    pub invitation: String,
+    pub code: openagents_connect::code::ConnectCode,
+    pub expires_at: u64,
+}
+
+/// Why a connect code could not be made.
+pub(crate) enum InviteRefusal {
+    /// A refusal code and its message.
+    Refused(String, String),
+    Access(coder_access::Error),
+}
+
+impl InviteRefusal {
+    fn reply(&self) -> Reply {
+        match self {
+            Self::Refused(code, message) => refused(code, message.clone()),
+            Self::Access(error) => access_refused(error),
+        }
+    }
+
+    pub(crate) fn into_error(self) -> Error {
+        match self {
+            Self::Refused(_, message) => Error::Config(message),
+            Self::Access(error) => Error::Access(error),
+        }
+    }
+}
+
+/// Store an invitation with the [connect code rights](connect_rights) and
+/// build its `openagents-connect:` code. The invitation is stored before
+/// the code is returned, so a code a window shows is always one the host
+/// will honor.
+pub(crate) fn connect_invitation(
+    shared: &Shared,
+) -> std::result::Result<ConnectInvitation, InviteRefusal> {
+    let refuse = |code: &str, message: &str| InviteRefusal::Refused(code.into(), message.into());
     let Some(iroh) = shared.iroh.get() else {
-        return refused(
+        return Err(refuse(
             "unavailable",
             "this host serves no iroh endpoint, so it cannot show a connect code",
-        );
+        ));
     };
     let Ok(relay) = shared.config.primary().map(str::to_owned) else {
-        return refused("unavailable", "the host serves no relay");
+        return Err(refuse("unavailable", "the host serves no relay"));
     };
-    let rights = connect_rights();
-    let issued = match shared.authority.local(|host, now| {
-        host.invite(
-            &relay,
-            rights.clone(),
-            now,
-            now.saturating_add(CONNECT_GRANT_SECS),
-        )
-    }) {
-        Ok(issued) => issued,
-        Err(error) => return access_refused(&error),
-    };
+    let issued = shared
+        .authority
+        .local(|host, now| {
+            host.invite(
+                &relay,
+                connect_rights(),
+                now,
+                now.saturating_add(CONNECT_GRANT_SECS),
+            )
+        })
+        .map_err(InviteRefusal::Access)?;
     let parts = openagents_connect::code::CodeParts {
         host: shared.host_key.clone(),
         endpoint: iroh.id(),
@@ -690,28 +725,43 @@ fn invite(shared: &Shared) -> Reply {
         addrs: iroh.direct(),
         label: shared.config.label.clone(),
     };
-    let code = match openagents_connect::code::ConnectCode::from_invitation(
+    match openagents_connect::code::ConnectCode::from_invitation(
         parts,
         &issued.id,
         &issued.capability,
     ) {
-        Ok(code) => code,
+        Ok(code) => Ok(ConnectInvitation {
+            invitation: issued.id,
+            code,
+            expires_at: issued.expires_at,
+        }),
         Err(error) => {
             // Never leave a redeemable invitation behind a code nobody saw.
             let _ = shared
                 .authority
                 .local(|host, _| host.cancel_invitation(&issued.id));
-            return refused(error.code.as_str(), "the connect code cannot be built");
+            Err(refuse(
+                error.code.as_str(),
+                "the connect code cannot be built",
+            ))
         }
-    };
-    Reply::Invite {
-        invitation: issued.id,
-        code: code.encode(),
-        expires_at: issued.expires_at,
-        rights: rights
-            .iter()
-            .map(|right| right.as_str().to_owned())
-            .collect(),
+    }
+}
+
+/// Create an invitation and its `openagents-connect:` code for the
+/// control socket.
+fn invite(shared: &Shared) -> Reply {
+    match connect_invitation(shared) {
+        Ok(issued) => Reply::Invite {
+            invitation: issued.invitation,
+            code: issued.code.encode(),
+            expires_at: issued.expires_at,
+            rights: connect_rights()
+                .iter()
+                .map(|right| right.as_str().to_owned())
+                .collect(),
+        },
+        Err(refusal) => refusal.reply(),
     }
 }
 

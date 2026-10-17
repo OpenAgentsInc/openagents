@@ -575,3 +575,28 @@ async fn a_grant_near_its_end_is_renewed_on_the_channel_and_the_channel_follows_
     );
     host.running.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_window_issues_codes_in_process_and_a_cancelled_one_is_refused() {
+    let host = host().await;
+    let codes = host.running.connect_codes();
+    let cancelled = codes.issue().unwrap();
+    assert_eq!(cancelled.code.host(), host.running.host_key());
+    assert_eq!(cancelled.code.invitation(), cancelled.invitation);
+    assert_eq!(cancelled.expires_at, cancelled.code.expires_at());
+    codes.cancel(&cancelled.invitation).unwrap();
+    // Cancelling twice is not an error.
+    codes.cancel(&cancelled.invitation).unwrap();
+    let phone = Phone::new().await;
+    let (_, refused, _) = phone.redeem(&cancelled.code, &host.relay, now()).await;
+    assert!(refused.is_err());
+
+    let shown = codes.issue().unwrap();
+    let (_, access, _) = phone.redeem(&shown.code, &host.relay, now()).await;
+    assert_eq!(access.unwrap().grant.device, pubkey(&phone.secret));
+    // A redeemed code has nothing left to cancel.
+    codes.cancel(&shown.invitation).unwrap();
+
+    host.running.shutdown().await;
+    assert!(codes.issue().is_err());
+}

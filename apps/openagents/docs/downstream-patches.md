@@ -496,3 +496,20 @@ links remain readable. Upstream fixes now require manual ports.
   use **Start OpenAgents Cloud** and **Stop OpenAgents Cloud**, with matching
   status, help, and error text. The cloud device's display name follows the
   same wording; its service name and cloud-host API stay unchanged.
+## Connect your phone (#11998)
+
+- The device connection (NIP-HOST host) runs by default with an iroh
+  endpoint, signed in or not; `OPENAGENTS_NIP_HOST=0` turns it off. A start
+  or device-key registration failure is logged and the app keeps running.
+  Hooks: `assemble_runtime` in `crates/engine/src/lib.rs` and
+  `host_rpc::configuration`.
+- Our module `crates/engine/src/connect_phone.rs` serves `CreateConnectCode`
+  and `CancelConnectCodes` (`crates/rpc/src/connect_phone.rs`) only on the
+  in-process and localhost transports, through
+  `EngineRuntime::local_rpc_service`. Hooks: the headless IPC service in
+  `Engine::run` and the embedded service in `crates/ui/src/state.rs`.
+- Our module `crates/ui/src/shell/connect_phone.rs` is the sheet. Hooks: the
+  `ConnectPhone` action, field, overlay, keyboard check, and window
+  deactivation pause in `crates/ui/src/shell.rs`; a menu row and a signed-out
+  button in `crates/ui/src/openagents_account.rs`; the Phone row in
+  `crates/ui/src/settings/devices.rs`.
