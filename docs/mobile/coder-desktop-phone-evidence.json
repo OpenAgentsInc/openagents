@@ -77,5 +77,82 @@
       "engine fixture example",
       "iOS simulator Rust core and UIKit"
     ]
+  },
+  "lane0_server_rollout_20261017": {
+    "source_commit": "c983085ff52c6b8254f24b1970edd6ae89e1c62c",
+    "cloud_build": "3d62ae40-2e00-4da7-a30e-784404eb90fe",
+    "image_digest": "sha256:b522158fa7670f5e2b37d496fbaf8ceaa362cef2af6c0cac10850e9f888387ce",
+    "build_seconds": 697,
+    "worker": "E2_HIGHCPU_32",
+    "staging": {
+      "source_commit": "c983085ff52c6b8254f24b1970edd6ae89e1c62c",
+      "checked_at": "2026-10-17T08:01:51.034553+00:00",
+      "service": "coder-sync-staging",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:c983085ff52c6b8254f24b1970edd6ae89e1c62c",
+      "revision": "coder-sync-staging-00010-znx",
+      "traffic": [
+        {
+          "latestRevision": true,
+          "percent": 100,
+          "revisionName": "coder-sync-staging-00010-znx"
+        }
+      ],
+      "public_origin": "https://coder-sync-staging-ezxz4mgdsq-uc.a.run.app",
+      "environment_names": [
+        "CODER_SYNC_ENV",
+        "CODER_SYNC_AUTH",
+        "CODER_SYNC_BUCKET",
+        "CODER_SYNC_REVISION",
+        "CODER_SYNC_DATABASE_URL",
+        "CODER_SYNC_PUBLIC_ORIGIN"
+      ],
+      "secret_bindings": [
+        "CODER_SYNC_DATABASE_URL"
+      ],
+      "health": {
+        "ok": true,
+        "service": "coder-sync",
+        "auth": "openagents",
+        "revision": "c983085ff52c6b8254f24b1970edd6ae89e1c62c"
+      },
+      "dev_bearer_status": 401,
+      "resources_created": 0
+    },
+    "production": {
+      "source_commit": "c983085ff52c6b8254f24b1970edd6ae89e1c62c",
+      "checked_at": "2026-10-17T08:02:18.977405+00:00",
+      "service": "coder-sync",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/coder-sync:c983085ff52c6b8254f24b1970edd6ae89e1c62c",
+      "revision": "coder-sync-00010-bbv",
+      "traffic": [
+        {
+          "latestRevision": true,
+          "percent": 100,
+          "revisionName": "coder-sync-00010-bbv"
+        }
+      ],
+      "public_origin": "https://sync.openagents.com",
+      "environment_names": [
+        "CODER_SYNC_ENV",
+        "CODER_SYNC_AUTH",
+        "CODER_SYNC_BUCKET",
+        "CODER_SYNC_REVISION",
+        "CODER_SYNC_DATABASE_URL",
+        "CODER_SYNC_PUBLIC_ORIGIN"
+      ],
+      "secret_bindings": [
+        "CODER_SYNC_DATABASE_URL"
+      ],
+      "health": {
+        "ok": true,
+        "service": "coder-sync",
+        "auth": "openagents",
+        "revision": "c983085ff52c6b8254f24b1970edd6ae89e1c62c"
+      },
+      "run_app_health_matches": true,
+      "dev_bearer_status": 401,
+      "resources_created": 0
+    },
+    "scope": "Server deployment, startup, correct public origins, and dev-bearer denial. These checks do not repeat the earlier simulator flow or qualify paired devices, latency, or push."
   }
 }

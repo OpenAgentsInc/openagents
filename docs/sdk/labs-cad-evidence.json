@@ -1,11 +1,11 @@
 {
   "schema": "openagents.labs-cad-evidence.v1",
-  "checked_at": "2026-10-17T06:06:36.178718+00:00",
-  "source_commit": "79f8c18f712b0559e590ec9ad9c45c44875b7d48",
+  "checked_at": "2026-10-17T07:58:33.227105+00:00",
+  "source_commit": "b50cb5416554a233f6b72c640d56b20e3c5900c3",
   "api": "https://api.openagents.com",
   "test_accounts": [
     "acct_83d16a35955ef908",
-    "acct_c76f469572ad3446"
+    "acct_37ff290acc17e7b3"
   ],
   "checks": [
     "dedicated browser session",
@@ -28,9 +28,9 @@
     "reading a card starts no work"
   ],
   "version_sha256": [
-    "f3a60c2092a503918628d5430159177f961cc1af73068f9daa88eb9c8e819301",
-    "c29fcfae012b65e485c6645d9eaa861b721a4228c4c896888316f58b5a9e73dd"
+    "8c4820373300832c08fe5b0846ad27c8583e7c4124fc06aa3a1afaa931cdcfbe",
+    "3f999415c040ac1e7ac58821e401f2d47110c7d536a44e022ada69ae0101a86d"
   ],
   "cleanup_verified": true,
-  "browser_capture_sha256": "a6caeb9462a55e6c2e6ba3e1a218d47c38e187bb8db68f5356bce2994653d54f"
+  "browser_capture_sha256": "6d5870e655ca5f097f138539387666daf1098a031dab73c32fa0ea1be2cafd74"
 }

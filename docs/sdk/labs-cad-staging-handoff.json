@@ -38,7 +38,7 @@
     "cad_live_qualification_performed": true,
     "production_promotion_performed": true,
     "production_shift_performed": true,
-    "next_step": "Fix #11950 saved chat card metadata, then continue the After-close checks.",
+    "next_step": "Continue the remaining After-close checks. Saved CAD history cards and the controlled account-service handoff passed on b50cb54165.",
     "standard_staging_smoke": {
       "passed": 99,
       "failed": 0,
@@ -439,6 +439,372 @@
         "document_created_in_requested_project": true,
         "saved_reply_card_count": 0,
         "cleanup_verified": true
+      }
+    },
+    "deployment_b50cb54165": {
+      "source_commit": "b50cb5416554a233f6b72c640d56b20e3c5900c3",
+      "web_image": "sha256:17269455644ae9908cb2d85461ef1072853fb5260827d5f724c9e053023afc0f",
+      "stack_image": "sha256:b9c6fe3851d3adf94cb676b479fe2225af1cdd20681ab973303896f918e9eb9c",
+      "web_cloud_build": "217103a6-4c04-4e37-ac8a-1e6aaa03f231",
+      "stack_cloud_build": "cd678506-954b-4ae6-8332-fd4ce177edac",
+      "staging_revision": "openagents-web-1-staging-b50cb54165-072237",
+      "production_revision": "coder-web-1726945564-20261017074218",
+      "production_percent": 100,
+      "rollback_revision": "coder-web-307e2d2e1a-20261017060209",
+      "staging_smoke": {
+        "passed": 99,
+        "failed": 0,
+        "skipped": 2
+      },
+      "candidate_smoke": {
+        "passed": 58,
+        "failed": 0,
+        "skipped": 2,
+        "expected_waits": 8
+      },
+      "production_smoke": {
+        "passed": 66,
+        "failed": 0,
+        "skipped": 2
+      },
+      "candidate_account_handoff": {
+        "schema": "openagents.accounts.handoff-live.v1",
+        "checked_at": "2026-10-17T07:44:13.628205+00:00",
+        "source_commit": "b50cb5416554a233f6b72c640d56b20e3c5900c3",
+        "candidate": "coder-web-1726945564-20261017074218",
+        "candidate_traffic_percent": 0,
+        "test_account": "acct_83d16a35955ef908",
+        "test_header": true,
+        "checks": [
+          {
+            "target": "production",
+            "method": "GET",
+            "status": 200,
+            "milliseconds": 258.94
+          },
+          {
+            "target": "zero-traffic candidate",
+            "method": "GET",
+            "status": 503,
+            "retry_after_seconds": 1,
+            "milliseconds": 108.7
+          },
+          {
+            "target": "zero-traffic candidate",
+            "method": "DELETE",
+            "status": 503,
+            "retry_after_seconds": 1,
+            "milliseconds": 144.41
+          }
+        ],
+        "nonexistent_computer_read": 404,
+        "resources_created": 0
+      },
+      "postshift_account_reads": {
+        "source_commit": "b50cb5416554a233f6b72c640d56b20e3c5900c3",
+        "checked_at": "2026-10-17T07:50:53.012278+00:00",
+        "account": "acct_83d16a35955ef908",
+        "original_shared_credential": true,
+        "test_header": true,
+        "checks": [
+          {
+            "path": "/v1/account",
+            "attempts": [
+              {
+                "status": 200,
+                "milliseconds": 207.05,
+                "retry_after": null
+              }
+            ]
+          },
+          {
+            "path": "/v1/projects",
+            "attempts": [
+              {
+                "status": 200,
+                "milliseconds": 285.24,
+                "retry_after": null
+              }
+            ]
+          },
+          {
+            "path": "/v1/threads",
+            "attempts": [
+              {
+                "status": 200,
+                "milliseconds": 312.6,
+                "retry_after": null
+              }
+            ]
+          },
+          {
+            "path": "/v1/computers",
+            "attempts": [
+              {
+                "status": 200,
+                "milliseconds": 303.94,
+                "retry_after": null
+              }
+            ]
+          }
+        ]
+      },
+      "cad_staging": {
+        "schema": "openagents.labs-cad-evidence.v1",
+        "checked_at": "2026-10-17T07:31:36.292125+00:00",
+        "source_commit": "b50cb5416554a233f6b72c640d56b20e3c5900c3",
+        "api": "https://staging.openagents.com",
+        "test_accounts": [
+          "acct_dc7a799879686fc5",
+          "acct_881a71bc40f3ea4c"
+        ],
+        "checks": [
+          "dedicated browser session",
+          "dedicated project",
+          "checked fan bracket",
+          "isolated browser picked the top face",
+          "picked face five millimeters thicker",
+          "stale face pull refused",
+          "current Pro plan checked",
+          "both versions in the project",
+          "3D card with poster and project link",
+          "existing CAD page and versions",
+          "STEP job admitted",
+          "STEP retry shares its job",
+          "STEP job completed",
+          "STEP artifact recorded",
+          "STEP range download",
+          "second account cannot read the project design",
+          "second account cannot change the project design",
+          "reading a card starts no work"
+        ],
+        "version_sha256": [
+          "b5d713b86706cfb0e2fdd630ce99a9d39425c97d1601c5ffaadbe0f3d5d7f625",
+          "f5720df254fe32ddf4fb043c3ef5961987eaf69b7cc22b6d028e3e86eddf76f0"
+        ],
+        "cleanup_verified": true,
+        "browser_capture_sha256": "4ace0708c12f0b4ae12b5d3bb8ca3d398c47d8c19ce31fd944e6dbd543f13c87"
+      },
+      "echo_staging": {
+        "schema": "openagents.labs-api-evidence.v1",
+        "checked_at": "2026-10-17T07:29:22.602734+00:00",
+        "api": "https://staging.openagents.com",
+        "source_commit": "b50cb5416554a233f6b72c640d56b20e3c5900c3",
+        "test_accounts": [
+          "acct_dc7a799879686fc5",
+          "acct_881a71bc40f3ea4c"
+        ],
+        "checks": [
+          "second-account kind gate",
+          "signed-out refusal",
+          "gated Echo kind",
+          "create document",
+          "checked edit",
+          "stale base refusal",
+          "kind refusal",
+          "version and card reads",
+          "job admission",
+          "job retry identity",
+          "bounded source upload",
+          "short signed file link",
+          "signed file range",
+          "authenticated file range",
+          "add note",
+          "read notes",
+          "ordered event polling",
+          "event stream",
+          "second-account reads refused",
+          "second-account changes refused",
+          "read did not start work"
+        ],
+        "cleanup": {
+          "verified": true,
+          "document_read": 404,
+          "artifact_read": 404
+        },
+        "scope": "Gated Echo fixture API; CAD and other kind integrations have separate issues."
+      },
+      "saved_history_staging": {
+        "source_commit": "b50cb5416554a233f6b72c640d56b20e3c5900c3",
+        "api": "https://staging.openagents.com",
+        "account": "acct_dc7a799879686fc5",
+        "schema": "openagents.labs.history-live.v1",
+        "checked_at": "2026-10-17T07:40:21.012231+00:00",
+        "checks": [
+          "typed CAD card through /v1/history",
+          "fresh isolated browser 1 with a rendered 3D model",
+          "fresh isolated browser 2 with a rendered 3D model"
+        ],
+        "cleanup": [
+          "designs unreadable",
+          "chat deleted",
+          "project unreadable",
+          "issued browser session revoked"
+        ],
+        "created_design_count": 1,
+        "failure": null,
+        "test_header": true,
+        "owner_account": false,
+        "browser_proofs": [
+          {
+            "kind": "cad",
+            "version": 1,
+            "visible": true,
+            "model_ready": true,
+            "camera_changed_pixels": true,
+            "canvas_before_sha256": "e4990bdb11556389beb9722fa3299f02b38458d315dd6e40d6940ddd4cbb32cf",
+            "canvas_after_sha256": "523d20d16ed1f48dce7472c4cad329c58d8d7e8cb2dad1929c51540bff46a8db"
+          },
+          {
+            "kind": "cad",
+            "version": 1,
+            "visible": true,
+            "model_ready": true,
+            "camera_changed_pixels": true,
+            "canvas_before_sha256": "e4990bdb11556389beb9722fa3299f02b38458d315dd6e40d6940ddd4cbb32cf",
+            "canvas_after_sha256": "523d20d16ed1f48dce7472c4cad329c58d8d7e8cb2dad1929c51540bff46a8db"
+          }
+        ],
+        "captures": [
+          {
+            "name": "browser-1.png",
+            "sha256": "b2d21201bb793a75991d8f18c42626b8589a4ffe1f349483f71adedac0148a84",
+            "visually_checked": true
+          },
+          {
+            "name": "browser-2.png",
+            "sha256": "b2d21201bb793a75991d8f18c42626b8589a4ffe1f349483f71adedac0148a84",
+            "visually_checked": true
+          }
+        ]
+      },
+      "cad_production": {
+        "schema": "openagents.labs-cad-evidence.v1",
+        "checked_at": "2026-10-17T07:58:33.227105+00:00",
+        "source_commit": "b50cb5416554a233f6b72c640d56b20e3c5900c3",
+        "api": "https://api.openagents.com",
+        "test_accounts": [
+          "acct_83d16a35955ef908",
+          "acct_37ff290acc17e7b3"
+        ],
+        "checks": [
+          "dedicated browser session",
+          "dedicated project",
+          "checked fan bracket",
+          "isolated browser picked the top face",
+          "picked face five millimeters thicker",
+          "stale face pull refused",
+          "current Pro plan checked",
+          "both versions in the project",
+          "3D card with poster and project link",
+          "existing CAD page and versions",
+          "STEP job admitted",
+          "STEP retry shares its job",
+          "STEP job completed",
+          "STEP artifact recorded",
+          "STEP range download",
+          "second account cannot read the project design",
+          "second account cannot change the project design",
+          "reading a card starts no work"
+        ],
+        "version_sha256": [
+          "8c4820373300832c08fe5b0846ad27c8583e7c4124fc06aa3a1afaa931cdcfbe",
+          "3f999415c040ac1e7ac58821e401f2d47110c7d536a44e022ada69ae0101a86d"
+        ],
+        "cleanup_verified": true,
+        "browser_capture_sha256": "6d5870e655ca5f097f138539387666daf1098a031dab73c32fa0ea1be2cafd74"
+      },
+      "echo_production": {
+        "schema": "openagents.labs-api-evidence.v1",
+        "checked_at": "2026-10-17T07:58:22.363515+00:00",
+        "api": "https://api.openagents.com",
+        "source_commit": "b50cb5416554a233f6b72c640d56b20e3c5900c3",
+        "test_accounts": [
+          "acct_83d16a35955ef908",
+          "acct_37ff290acc17e7b3"
+        ],
+        "checks": [
+          "second-account kind gate",
+          "signed-out refusal",
+          "gated Echo kind",
+          "create document",
+          "checked edit",
+          "stale base refusal",
+          "kind refusal",
+          "version and card reads",
+          "job admission",
+          "job retry identity",
+          "bounded source upload",
+          "short signed file link",
+          "signed file range",
+          "authenticated file range",
+          "add note",
+          "read notes",
+          "ordered event polling",
+          "event stream",
+          "second-account reads refused",
+          "second-account changes refused",
+          "read did not start work"
+        ],
+        "cleanup": {
+          "verified": true,
+          "document_read": 404,
+          "artifact_read": 404
+        },
+        "scope": "Gated Echo fixture API; CAD and other kind integrations have separate issues."
+      },
+      "saved_history_production": {
+        "source_commit": "b50cb5416554a233f6b72c640d56b20e3c5900c3",
+        "api": "https://api.openagents.com",
+        "account": "acct_83d16a35955ef908",
+        "schema": "openagents.labs.history-live.v1",
+        "checked_at": "2026-10-17T07:58:39.107687+00:00",
+        "checks": [
+          "typed CAD card through /v1/history",
+          "fresh isolated browser 1 with a rendered 3D model",
+          "fresh isolated browser 2 with a rendered 3D model"
+        ],
+        "cleanup": [
+          "designs unreadable",
+          "chat deleted",
+          "project unreadable"
+        ],
+        "created_design_count": 1,
+        "failure": null,
+        "test_header": true,
+        "owner_account": false,
+        "browser_proofs": [
+          {
+            "kind": "cad",
+            "version": 1,
+            "visible": true,
+            "model_ready": true,
+            "camera_changed_pixels": true,
+            "canvas_before_sha256": "b9f297e8c75ff9f3f63a9c718dd0f77015523a8a8386cdcfcfcc105649f66a0a",
+            "canvas_after_sha256": "aec633a675ffb1926658ba2046c58ecfbf61ee2061ec45982acf47b387df927b"
+          },
+          {
+            "kind": "cad",
+            "version": 1,
+            "visible": true,
+            "model_ready": true,
+            "camera_changed_pixels": true,
+            "canvas_before_sha256": "b9f297e8c75ff9f3f63a9c718dd0f77015523a8a8386cdcfcfcc105649f66a0a",
+            "canvas_after_sha256": "aec633a675ffb1926658ba2046c58ecfbf61ee2061ec45982acf47b387df927b"
+          }
+        ],
+        "captures": [
+          {
+            "name": "browser-1.png",
+            "sha256": "ad8f48b61f00720c370fd58e47e500a7c62b50b48402f735fd65fa3d4ca1d4a6",
+            "visually_checked": true
+          },
+          {
+            "name": "browser-2.png",
+            "sha256": "4d6d96eb2ffa9cf134793fdd9830ce3482445a2d82d38fd4e7e8b9bf88b935a0",
+            "visually_checked": true
+          }
+        ]
       }
     }
   }
