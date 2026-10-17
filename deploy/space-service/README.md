@@ -105,7 +105,9 @@ on the control node after the empty candidate has applied its migrations. It
 bounds both the service and its synthetic account to two computers, four running
 vCPUs, 8 GiB RAM, 60-second commands, and one hour of stopped retention. Later
 limit changes use `oa-computers-usage` so committed allocations are checked.
-The sandbox namespace separately limits pods and requested CPU and memory.
+The sandbox namespace separately limits guest pods. Firecracker resources are
+controlled by the host cgroup and Computers allocation limits; the native pause
+container declares no Kubernetes CPU or memory request.
 Object transfers use two 8 MiB upload parts, two 8 MiB download readers, and a
 256 MiB process-wide download-buffer budget.
 

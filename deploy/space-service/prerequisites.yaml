@@ -54,5 +54,3 @@ metadata:
 spec:
   hard:
     pods: '2'
-    requests.cpu: '4'
-    requests.memory: 8Gi
