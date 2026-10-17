@@ -2,9 +2,11 @@
 """Qualify CAD versions, face pulls, and STEP exports with dedicated accounts."""
 import argparse
 import datetime
+import hashlib
 import json
 import os
 from pathlib import Path
+import subprocess
 import time
 import urllib.error
 import urllib.parse
@@ -18,6 +20,7 @@ def main():
     parser.add_argument('--web', required=True)
     parser.add_argument('--commit', required=True)
     parser.add_argument('--evidence', type=Path, required=True)
+    parser.add_argument('--browser-capture', type=Path)
     args = parser.parse_args()
     primary = os.environ.get('OPENAGENTS_TOKEN', '')
     other = os.environ.get('OPENAGENTS_OTHER_TOKEN', '')
@@ -27,10 +30,14 @@ def main():
         def redirect_request(self, *_args, **_kwargs):
             return None
     opener = urllib.request.build_opener(NoRedirect())
+    browser_session = None
+    issued_browser_session = False
     def call(method, path, data=None, token=primary, extra=None, web=False):
         headers = {'Accept': 'application/json', 'X-OpenAgents-Test': '1'}
         if token:
             headers['Authorization'] = 'Bearer ' + token
+            if web and browser_session:
+                headers['Cookie'] = 'oa_cloud_session=' + browser_session
         if data is not None:
             headers['Content-Type'] = 'application/json'
         headers.update(extra or {})
@@ -60,6 +67,15 @@ def main():
     project = job = artifact = None
     hashes = []
     try:
+        if primary.startswith(('sess_', 'oa_sk_')):
+            browser_session = primary
+            status, signed = call('GET', '/api/v1/session', token=primary, web=True)
+        else:
+            status, signed = call('POST', '/api/v1/sessions', token=primary, web=True)
+            browser_session = signed.get('token') if status in (200, 201) else None
+            issued_browser_session = bool(browser_session)
+        check('dedicated browser session', bool(browser_session and browser_session.startswith(('sess_', 'oa_sk_')))
+              and status in (200, 201) and signed.get('session', {}).get('account') == accounts[0])
         status, body = call('POST', '/v1/projects', {'name': project_name})
         project = body.get('id') if status == 201 else None
         check('dedicated project', project is not None)
@@ -77,6 +93,13 @@ def main():
         status, body = call('POST', '/v1/labs/kinds/cad/tools/cad_from_json', request)
         check('checked fan bracket', status == 200 and body['result']['version']['number'] == 1)
         hashes.append(body['result']['version']['content_sha256'])
+        if args.browser_capture:
+            page = args.web.rstrip('/') + '/cad/' + identifier + '?' + urllib.parse.urlencode({'v': 1, 'project': project})
+            subprocess.run(['openagents', 'browser', 'run', '--', 'python3',
+                str(Path(__file__).with_name('browser-labs-cad.py')), '--url', page,
+                '--capture', str(args.browser_capture)], check=True, timeout=120,
+                env={**os.environ, 'OPENAGENTS_BROWSER_TOKEN': browser_session})
+            check('isolated browser picked the top face', True)
         # A named box face is the same selection the 3D viewer sends.
         edit = {'space': space, 'base': 1, 'arguments': {'doc': identifier, 'part': identifier, 'face': 'body:+z', 'delta_mm': 5}}
         status, body = call('POST', '/v1/labs/kinds/cad/tools/cad_drag_face', edit)
@@ -161,11 +184,19 @@ def main():
                     failures.append('Project cleanup cursor did not advance')
                     break
                 seen.add(cursor)
+        if issued_browser_session:
+            try:
+                if call('DELETE', '/api/v1/session', token=browser_session, web=True)[0] not in (200, 204):
+                    failures.append('Browser session sign-out')
+            except Exception:
+                failures.append('Browser session sign-out')
         assert not failures, 'Cleanup failed: ' + ', '.join(failures)
         print('PASS cleanup: design, STEP access, and dedicated project removed', flush=True)
     evidence = {'schema': 'openagents.labs-cad-evidence.v1', 'checked_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 'source_commit': args.commit, 'api': args.api, 'test_accounts': accounts,
                 'checks': checks, 'version_sha256': hashes, 'cleanup_verified': True}
+    if args.browser_capture:
+        evidence['browser_capture_sha256'] = hashlib.sha256(args.browser_capture.read_bytes()).hexdigest()
     args.evidence.parent.mkdir(parents=True, exist_ok=True)
     args.evidence.write_text(json.dumps(evidence, indent=2) + '\n')
 

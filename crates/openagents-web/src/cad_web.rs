@@ -1270,15 +1270,15 @@ async fn page_scope(app: &App, headers: &HeaderMap, project: Option<&str>) -> Op
             Scope::personal(&reader)
         }
         Some(id) => {
-            let access = crate::projects::api::access(app, headers, id).await.ok()?;
-            let mut scope = Scope::project(
-                &access.home_owner(),
-                &access.project.id,
-                access.role.edits(),
-                &reader,
-            )?;
-            scope.owns = access.role.owns();
-            Some(scope)
+            let status = app
+                .config
+                .cloud
+                .as_deref()?
+                .github_status(headers)
+                .await
+                .ok()?;
+            let project = status.projects.iter().find(|project| project.id == id)?;
+            Scope::for_turn(&reader, Some(id), Some(project))
         }
     }
 }

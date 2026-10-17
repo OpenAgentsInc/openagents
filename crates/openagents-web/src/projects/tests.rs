@@ -925,3 +925,70 @@ mod files;
 mod members;
 
 mod cad_drag;
+
+#[tokio::test]
+async fn cad_project_pages_use_browser_cookies_and_recheck_project_access() {
+    let world = world().await;
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    let page = browser.get(&world, PAGE).await;
+    let csrf = hidden(
+        &page.body,
+        r#"<form method="post" action="/projects">"#,
+        "csrf",
+    );
+    let created = browser
+        .post(&world, PAGE, &[("csrf", &csrf), ("name", "CAD fixture")])
+        .await;
+    assert_eq!(created.status, StatusCode::SEE_OTHER, "{}", created.body);
+    let id = created
+        .location()
+        .strip_prefix("/projects/")
+        .unwrap()
+        .to_owned();
+    let owner = account_owner_of(&world, "octo-local");
+    let scope = crate::cad_web::Scope::project(&owner, &id, true, &owner).unwrap();
+    for (name, bytes) in [
+        ("index.json", serde_json::to_vec(&json!({"schema":"openagents.web.cad-index.v1","docs":{"bracket":{"title":"Browser bracket","kind":"part.v1","versions":1,"history":[]}}})).unwrap()),
+        ("bracket/v1/doc.json", br#"{"kind":"part.v1","id":"bracket"}"#.to_vec()),
+        ("bracket/v1/version.json", br#"{"n":1,"summary":"New part","report":{"mass":{"mass_kg":0.02}}}"#.to_vec()),
+        ("bracket/v1/model.glb", b"glTF".to_vec()),
+    ] {
+        world.store.write_key(&scope.key(name).unwrap(), bytes, None).await.unwrap();
+    }
+    let path = format!("/cad/bracket?project={id}");
+    let page = browser.get(&world, &path).await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    assert!(page.body.contains("Browser bracket"));
+    let file = browser
+        .get(
+            &world,
+            &format!("/cad/bracket/file?v=1&name=model.glb&project={id}"),
+        )
+        .await;
+    assert_eq!(file.status, StatusCode::OK);
+    assert_eq!(file.body, "glTF");
+    let mut other = Browser::default();
+    other.sign_in(&world, "quiet-local").await;
+    assert_eq!(other.get(&world, &path).await.status, StatusCode::NOT_FOUND);
+    let response = world
+        .site
+        .clone()
+        .oneshot(
+            Request::delete(format!("/v1/projects/{id}"))
+                .header(header::HOST, &world.host)
+                .header(
+                    header::AUTHORIZATION,
+                    format!("Bearer {}", browser.0["oa_cloud_session"]),
+                )
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(response.status().is_success());
+    assert_eq!(
+        browser.get(&world, &path).await.status,
+        StatusCode::NOT_FOUND
+    );
+}
