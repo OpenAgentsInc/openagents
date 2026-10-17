@@ -1,6 +1,6 @@
 import XCTest
 
-/// The iPhone shell's drawer: Sessions, search, Home and Settings, opened
+/// The iPhone shell's drawer: Sessions, search, the chat and Settings, opened
 /// from the page's menu button.
 extension XCUIApplication {
     @discardableResult

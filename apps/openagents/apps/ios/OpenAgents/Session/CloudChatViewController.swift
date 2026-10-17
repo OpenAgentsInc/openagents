@@ -246,8 +246,6 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
         return .sent
     }
 
-    /// Focus the composer, as the tutorial's last page asks.
-    func focusComposer() { _ = composer.becomeFirstResponder() }
 
     // MARK: Table
 
@@ -263,30 +261,14 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
 // MARK: Opening the chat
 
 extension CloudChatViewController {
-    /// The landing chat: the cloud chat open in the shell `root`. With
-    /// `fresh`, a new chat with the composer focused (the tutorial's end).
-    static func land(in root: UIViewController, app: AppModel, fresh: Bool = false) {
-        guard let chat = app.cloudChat else { return }
-        if fresh, !chat.snapshot.lines.isEmpty { chat.newChat() }
-        let page = CloudChatViewController(app: app, chat: chat)
-        DispatchQueue.main.async {
-            show(page, in: root)
-            if fresh { DispatchQueue.main.async { page.focusComposer() } }
-        }
-    }
-
-    static func openDemo(in root: UIViewController?, app: AppModel) {
-        guard app.isDemo, let root, let chat = app.cloudChat else { return }
-        show(CloudChatViewController(app: app, chat: chat), in: root)
-    }
-
-    /// Just signed in from the cloud chat: keep the conversation open in the
-    /// new shell, now as the account's.
-    static func continueAfterSignIn(in root: UIViewController, app: AppModel) {
-        guard let chat = app.cloudChat, !chat.snapshot.lines.isEmpty else { return }
-        DispatchQueue.main.async {
-            show(CloudChatViewController(app: app, chat: chat), in: root)
-        }
+    /// The shell's first page (#12009): the cloud chat, or an empty page
+    /// when there is none (a local dev stack).
+    static func landingPage(app: AppModel) -> UIViewController {
+        if let chat = app.cloudChat { return CloudChatViewController(app: app, chat: chat) }
+        let page = UIViewController()
+        page.view.backgroundColor = Palette.background
+        page.title = "OpenAgents"
+        return page
     }
 
     /// New session with no computer online: start a chat on OpenAgents.

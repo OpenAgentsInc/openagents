@@ -17,7 +17,7 @@ final class TransitionTourTests: XCTestCase {
         app.navigationBars.buttons.element(boundBy: 0).tap()
         sleep(2)
         // Drawer pages.
-        for page in ["sidebar-settings", "sidebar-home"] {
+        for page in ["sidebar-settings", "sidebar-chat"] {
             app.openDrawer()
             app.buttons[page].tap()
             sleep(1)

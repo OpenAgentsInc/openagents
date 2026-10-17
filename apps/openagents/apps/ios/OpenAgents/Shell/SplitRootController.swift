@@ -3,7 +3,8 @@ import UIKit
 /// Navigation entry points the scene and screens use without knowing which
 /// shell is on screen (the iPhone drawer or the iPad split).
 protocol AppRouter: AnyObject {
-    func showHome()
+    /// The landing chat; the app has no Home page (#12009).
+    func showChat()
     func showSessions()
     func openSession(_ chatId: String)
     func presentNewSession(prompt: String?)
@@ -49,19 +50,17 @@ final class SplitRootController: UISplitViewController, UISplitViewControllerDel
         detail.navigationBar.tintColor = Palette.text
         setViewController(detail, for: .secondary)
         setViewController(tabs, for: .compact)
-        detail.setViewControllers([HomeViewController(app: app)], animated: false)
+        detail.setViewControllers([CloudChatViewController.landingPage(app: app)], animated: false)
     }
 
     override var keyCommands: [UIKeyCommand]? {
         [
-            UIKeyCommand(title: "Home", action: #selector(homeCommand), input: "h", modifierFlags: [.command, .shift]),
             UIKeyCommand(title: "New Session", action: #selector(newSessionCommand), input: "n", modifierFlags: .command),
             UIKeyCommand(title: "Search", action: #selector(searchCommand), input: "f", modifierFlags: [.command, .shift]),
             UIKeyCommand(title: "Toggle Sidebar", action: #selector(toggleSidebarCommand), input: "b", modifierFlags: .command),
         ]
     }
 
-    @objc private func homeCommand() { showHome() }
     @objc private func newSessionCommand() { presentNewSession(prompt: nil) }
     @objc private func searchCommand() { showSearch() }
     @objc private func toggleSidebarCommand() {
@@ -78,11 +77,11 @@ final class SplitRootController: UISplitViewController, UISplitViewControllerDel
         show(.primary)
     }
 
-    func showHome() {
-        guard !isCollapsed else { return tabs.showHome() }
+    func showChat() {
+        guard !isCollapsed else { return tabs.showChat() }
         currentChatId = nil
         sidebar.currentChatId = nil
-        detail.setViewControllers([HomeViewController(app: app)], animated: false)
+        detail.setViewControllers([CloudChatViewController.landingPage(app: app)], animated: false)
     }
 
     func openSession(_ chatId: String) {
@@ -253,11 +252,11 @@ final class SidebarViewController: UIViewController, UISearchResultsUpdating {
         list.navigationItem.searchController = search
         list.navigationItem.hidesSearchBarWhenScrolling = false
         list.navigationItem.preferredSearchBarPlacement = .stacked
-        let home = UIBarButtonItem(image: UIImage(systemName: "house"), primaryAction: UIAction { [weak self] _ in
-            self?.router?.showHome()
+        let chat = UIBarButtonItem(image: UIImage(systemName: "bubble.left"), primaryAction: UIAction { [weak self] _ in
+            self?.router?.showChat()
         })
-        home.accessibilityLabel = "Home"
-        home.accessibilityIdentifier = "sidebar-home"
+        chat.accessibilityLabel = "Chat"
+        chat.accessibilityIdentifier = "sidebar-chat"
         let settings = UIBarButtonItem(image: UIImage(systemName: "gearshape"), primaryAction: UIAction { [weak self] _ in
             self?.router?.showSettings()
         })
@@ -273,14 +272,14 @@ final class SidebarViewController: UIViewController, UISearchResultsUpdating {
         compose.accessibilityLabel = "New session"
         compose.accessibilityIdentifier = "new-session"
         list.navigationItem.rightBarButtonItem = nil
-        list.toolbarItems = [home, settings, options, .flexibleSpace(), compose]
+        list.toolbarItems = [chat, settings, options, .flexibleSpace(), compose]
         nav.isToolbarHidden = false
         // Voice beside compose, once a host can run it.
         let voiceBar = VoiceBarItem(app: app, host: self)
         self.voiceBar = voiceBar
         let syncVoice = { [weak self, weak voiceBar] in
             guard let self, let voiceBar else { return }
-            let items = voiceBar.visible ? [home, settings, options, .flexibleSpace(), voiceBar.item, compose] : [home, settings, options, .flexibleSpace(), compose]
+            let items = voiceBar.visible ? [chat, settings, options, .flexibleSpace(), voiceBar.item, compose] : [chat, settings, options, .flexibleSpace(), compose]
             if self.list.toolbarItems?.count != items.count {
                 self.list.setToolbarItems(items, animated: self.view.window != nil)
             }

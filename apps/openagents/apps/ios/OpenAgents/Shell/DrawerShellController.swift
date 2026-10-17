@@ -24,7 +24,7 @@ final class DrawerShellController: UIViewController, AppRouter, UINavigationCont
 
     init(app: AppModel) {
         self.app = app
-        self.content = Self.nav(HomeViewController(app: app))
+        self.content = Self.nav(CloudChatViewController.landingPage(app: app))
         self.sidebar = SidebarViewController(app: app)
         super.init(nibName: nil, bundle: nil)
     }
@@ -230,10 +230,7 @@ final class DrawerShellController: UIViewController, AppRouter, UINavigationCont
         return item
     }
 
-    /// Pages that manage their own leading item (Home) put `menuButton()`
-    /// there themselves.
     private func addMenuButton(to page: UIViewController) {
-        guard !(page is HomeViewController) else { return }
         page.navigationItem.leftBarButtonItem = menuButton()
     }
 
@@ -344,13 +341,14 @@ final class DrawerShellController: UIViewController, AppRouter, UINavigationCont
         openDrawer()
     }
 
-    func showHome() {
+    /// The landing chat (#12009: there is no Home page).
+    func showChat() {
         if presentedViewController != nil { dismiss(animated: true) }
         sidebar.currentChatId = nil
-        if content.viewControllers.first is HomeViewController {
+        if content.viewControllers.first is CloudChatViewController {
             content.popToRootViewController(animated: false)
         } else {
-            setPage(HomeViewController(app: app))
+            setPage(CloudChatViewController.landingPage(app: app))
         }
         closeDrawer()
     }
@@ -396,7 +394,7 @@ final class DrawerShellController: UIViewController, AppRouter, UINavigationCont
     func popToFrontPage() {
         guard content.viewControllers.contains(where: { $0 is SessionViewController || $0 is SavedTranscriptController }) else { return }
         sidebar.currentChatId = nil
-        setPage(HomeViewController(app: app))
+        setPage(CloudChatViewController.landingPage(app: app))
     }
 
     func showSessionOpenError() {

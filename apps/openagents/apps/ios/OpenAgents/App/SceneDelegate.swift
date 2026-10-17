@@ -56,7 +56,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             shellShown()
             showTutorialIfNeeded()
         }
-        openLayouts(connectionOptions.urlContexts)
 
         #if DEBUG
         if args.contains("-voice-preview") {
@@ -73,7 +72,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 if route == "new" { router.presentNewSession(prompt: nil) }
                 if route == "more" { router.showSettings() }
                 if route == "search" { router.showSearch() }
-                if route == "cloud" || route == "welcome" { CloudChatViewController.openDemo(in: window.rootViewController, app: self.app) }
+                if route == "cloud" || route == "welcome" { router.showChat() }
             }
         }
     }
@@ -84,10 +83,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard app.isSignedIn else { return }
         if !app.isDemo { PushNotifications.shared.signedIn() }
         PushNotifications.shared.shellReady()
-        if let link = app.pendingHomeLink {
-            (window?.rootViewController as? AppRouter)?.showHome()
-            app.openHomeLink(link)
-        }
     }
 
     /// First launch: the tutorial over the shell, once (#11996). It ends on
@@ -106,13 +101,15 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             presenter?.dismiss(animated: true) {
                 if demo {
                     self.app.openDemo()
-                } else if let root = self.window?.rootViewController {
-                    CloudChatViewController.land(in: root, app: self.app, fresh: true)
+                } else {
+                    // A new chat; the chat page focuses its empty composer.
+                    self.app.cloudChat?.newChat()
+                    (self.window?.rootViewController as? AppRouter)?.showChat()
                 }
             }
         }
         DispatchQueue.main.async {
-            // Over the landing chat when the shell shows it as a sheet (iPad).
+            // Over anything already shown (a launch route's sheet).
             var top = root
             while let shown = top.presentedViewController { top = shown }
             top.present(tutorial, animated: false)
@@ -122,15 +119,10 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     private func showRoot(animated: Bool) {
         guard let window else { return }
         // iPad gets the split shell (it collapses to the drawer shell
-        // at compact widths); iPhone the drawer shell directly.
-        // Always the shell; nothing asks the person to sign in (#11996).
+        // at compact widths); iPhone the drawer shell directly. Nothing asks
+        // the person to sign in (#11996), and the shell's first page is the
+        // chat (#12009: there is no Home).
         let root: UIViewController = UIDevice.current.userInterfaceIdiom == .pad ? SplitRootController(app: app) : DrawerShellController(app: app)
-        if !app.isSignedIn {
-            // No account yet (#11995): the cloud chat is the landing chat.
-            CloudChatViewController.land(in: root, app: app)
-        } else if !app.isDemo {
-            CloudChatViewController.continueAfterSignIn(in: root, app: app)
-        }
         // Sheets (new session, Settings) belong to the old root: they'd
         // stay on top of the new one.
         if let old = window.rootViewController, old.presentedViewController != nil {
@@ -147,17 +139,10 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     /// `openagents://voice` (the call's Live Activity) returns to the stage.
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
-        openLayouts(URLContexts)
         guard URLContexts.contains(where: { $0.url.scheme == "openagents" && $0.url.host == "voice" }),
               app.voice.live, let root = window?.rootViewController
         else { return }
         root.presentVoiceStage(app: app, source: nil)
-    }
-
-    private func openLayouts(_ contexts: Set<UIOpenURLContext>) {
-        guard let url = contexts.first(where: { $0.url.scheme == "openagents" && $0.url.host == "layout" })?.url else { return }
-        (window?.rootViewController as? AppRouter)?.showHome()
-        app.openHomeLink(url.absoluteString)
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
