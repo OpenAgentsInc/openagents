@@ -268,7 +268,8 @@ The status lines below summarize each issue and its comments. Open the issue for
   4. Run live echo on server, enrolled, and cloud placements. The enrolled host is a disposable VM. The cloud worker needs either a registered image with the pinned `labs-worker` or the proposed chunked-upload path. Boat's workspace is `$HOME/workspace`.
 - **Owner-only:** installing `labs-worker` on the owner's Mac. Add the steps to `NEEDS_OWNER.md`.
 
-**#11880 Labs V2: Video Lab on the platform.** Lane 5, not started.
+**#11880 Labs V2: Video Lab on the platform.** Lane 5, closed.
+- **Done:** the kind's job requirements and tests, the `render`, `frames` and `measure` worker handlers (`video_lab::runner`; `video-lab render-job|frames-job|measure-job --ffmpeg PATH --ffprobe PATH`), and `lab_private.json` as asset classes (`video_lab::private`), on `main` in `a8e27eb97c`. The rest of the code is #11942; registration and the live run are in [After-close checks](#after-close-checks).
 - **Depends on:** #11877, #11878.
 - **Remains:** Rust job runners (ffmpeg, Blender, `film_shot`, whisper.cpp), enrolled-host placement for `private_local` assets, the Rust loopback service on 8792 behind `lab.py serve`, import of the local films, `/labs/video/{doc}` pages, and the three acceptance runs.
 - **Simplification:** the freeze is lifted, so Coder can call the platform directly. Keep loopback mode only where the local web chat or `openagents lab` still needs it.
@@ -285,7 +286,8 @@ The status lines below summarize each issue and its comments. Open the issue for
   2. Register the kind in `labs_api.rs` (lane 4's file during #11877), and add the web replay card.
   3. A simulation run on a cloud worker with a test account, shown on the web and through `/v1/history`.
 
-**#11883 Labs D1: desktop Lab row and the standard views.** Lane 5.
+**#11883 Labs D1: desktop Lab row and the standard views.** Lane 5, closed.
+- **Done:** saved chats' Lab cards draw `lab-ui`'s Rust Native card in the desktop app, with image and strip, compare, video, Model3d and playable posters, and reports (`19493ba7b6`, `408569fa70`). The rest of the code is #11943; the test-account run is in [After-close checks](#after-close-checks).
 - **Status:** the native Video card with inline AVFoundation playback is in `apps/openagents/crates/ui/src/lab_card.rs` (loopback only).
 - **Remains:** the image, compare, Model3d, and report views, cards from `/v1/history`, live updates from `/v1/labs` events, and fixture screenshots. Render `lab-ui`'s Rust Native card through the GPUI adapter.
 
@@ -438,6 +440,8 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 | #11852 | Deploy `4a796e8ff8` or newer. Run `OurCloudLiveTests/testStartRunAndStopOurCloud` with the dedicated test account, check `GET /v1/computer-usage`, delete the computer with `DELETE /v1/cloud-host`, and remove its test registry rows. Validate TestFlight 1011 or the next free build. | to do; phone source `d37ed99d0c`, local control acceptance `a67ec60b44` passed |
 | #11894 | A test account's terminal chat continued on the desktop: the first turn knows the history, and the phone steers it. | to do |
 | #11881 | Register `game_lab::kind::Game` and `ship_lab::kind::Ship` in `labs_api.rs` after #11877 lands, host `/labs/game/{doc}`, and install `game-lab playtest-job` as the `playtest` handler. Then, with the dedicated test account on production: a Game Lab edit plays in the web card and appears through `/v1/history`, and a Ship Lab refusal and an accepted edit. Clean up after. | to do |
+| #11880 | Register `video_lab::VideoKind` in `labs_api.rs` next to CAD (lane 4's file), and install `video-lab render-job`, `frames-job` and `measure-job` as handlers on an enrolled test host. Then, with the dedicated test account on production and synthetic clips: create a cut, make one edit and one refused edit, render, play the card in web chat and through `/v1/history`, and delete the fixtures. A `private_local`-marked synthetic document renders only on the enrolled host. A cloud render needs public inputs on a worker (#11942). | to do; `cargo test -p video-lab` passed 27/0 with synthetic ffmpeg clips |
+| #11883 | Build the desktop app from `main`. With the dedicated test account, open a web CAD chat and a Video chat in the desktop's saved history: the cards draw and their pictures load, Open document opens the page, and signing out clears them. Delete the chats afterward. | to do; account tests 15/0 (fake history and artifact server), GPUI fixture test over every `lab-kit` card passed |
 | #11815 | Deploy storage allowances and account cleanup through lane 0; collect complete private storage inventories, including recoverable versions, and qualify limits/cleanup on synthetic fixtures. | Source checks passed 71/0 on rebased main, including five storage/cleanup cases. Usage read passed with `acct_83d16a35955ef908`: HTTP 200, pricing off, no charge; the earlier account remains outside the rollout. [Evidence](../sdk/computers-usage-evidence.json). Storage deployment and live cleanup: to do. |
 | #11928 | On the next production deploy, a candidate with no traffic does not resume setups or delete homes. | to do |
 | #11897 | Deploy web, and build the desktop app, from `main`. With the dedicated test account, a desktop session appears on openagents.com within about 30 seconds as a summary row; its transcript isn't on the server until opt-in (`openagents::sessions::set_transcript`), then renders on the summary page; a second account sees nothing; removing the computer removes its rows. Clean up the test computer and chats afterward. | to do |
