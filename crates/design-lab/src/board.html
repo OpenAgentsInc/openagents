@@ -108,7 +108,10 @@ function setMode(next) {
   mode = next;
   try { localStorage.setItem("design-lab-mode", mode); } catch (e) {}
   const b = document.getElementById("mode");
-  b.textContent = mode === "dark" ? "Dark" : "Light";
+  const dark = board.screens.some((s) => s.versions.some((v) => v.dark));
+  b.textContent = mode === "dark" ? (dark ? "Dark" : "Dark · none captured yet") : "Light";
+  b.title = dark ? "Show screens in light or dark mode (D)"
+    : "No dark-mode captures yet. Run apps/openagents/scripts/design-lab-capture.sh to take them.";
   b.classList.toggle("on", mode === "dark");
   if (board.screens.length) layout();
   if (current) show();
