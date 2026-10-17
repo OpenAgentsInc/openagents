@@ -61,7 +61,7 @@
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Take photos to attach to messages.</string>
+	<string>Take photos to attach to messages, and scan the code on your computer to connect it.</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

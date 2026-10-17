@@ -493,3 +493,21 @@ links remain readable. Upstream fixes now require manual ports.
   `crates/ui/src/openagents_account.rs`, which no longer has the browser
   sign-in (its `sign_in` opens the welcome); the overlay and keyboard check in
   `crates/ui/src/shell.rs`. `examples/identity-capture.rs` draws it offscreen.
+
+## Connect a computer by scanning its code (#12000)
+
+- Our modules `crates/sync/src/account_link.rs` (the account-link proof,
+  phone and computer halves) and `crates/client/src/pairing.rs` (pair with no
+  registry entry, keep the grant in a `PairingStore`, reconnect on launch,
+  link the computer to the account). `crates/sync/src/paired_device.rs` gains
+  `pair_scanned`, `open`, and the Keychain store; `pair` keeps its old
+  behavior.
+- Hooks: one `pairings` field on `ClientInner` and one `forget_saved_pairing`
+  call in `forget_device_channel` (`crates/client/src/client.rs`); paired
+  computers merged into the registry's devices in
+  `crates/client/src/workspace/mod.rs`; one `LinkAccount` branch and
+  `Hosted::set_account_signer` in `crates/engine/src/host_rpc.rs`.
+- Phone: `Shell/CodeScannerViewController.swift` (AVFoundation scanner and
+  `CodeAction`), a Settings row, the tutorial's connect page, and the
+  universal-link handler in `App/SceneDelegate.swift`. The scanner also takes
+  website sign-in codes (#12001) through `client_ffi/web_login.rs`.

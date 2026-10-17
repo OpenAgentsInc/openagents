@@ -52,9 +52,9 @@ pub(crate) fn routes() -> Router<App> {
         .route("/.well-known/assetlinks.json", get(assetlinks))
 }
 
-/// iOS universal links: the OpenAgents app opens `/connect` and
-/// invitations to shared projects (`/projects/join/<code>`, #11591), and
-/// nothing else.
+/// iOS universal links: the OpenAgents app opens `/connect`, invitations
+/// to shared projects (`/projects/join/<code>`, #11591), and website
+/// sign-in codes (`/login/scan`, #12001), and nothing else.
 pub(crate) fn apple_association() -> serde_json::Value {
     serde_json::json!({
         "applinks": {
@@ -66,6 +66,9 @@ pub(crate) fn apple_association() -> serde_json::Value {
                 }, {
                     "/": "/projects/join/*",
                     "comment": "Joining a shared project; the app previews it first."
+                }, {
+                    "/": "/login/scan",
+                    "comment": "Signing in on the website; the app asks first (#12001)."
                 }]
             }]
         }
@@ -221,9 +224,10 @@ mod tests {
         assert_eq!(details.as_array().unwrap().len(), 1);
         assert_eq!(details[0]["appIDs"], serde_json::json!([APPLE_APP_ID]));
         let components = details[0]["components"].as_array().unwrap();
-        assert_eq!(components.len(), 2);
+        assert_eq!(components.len(), 3);
         assert_eq!(components[0]["/"], "/connect");
         assert_eq!(components[1]["/"], "/projects/join/*");
+        assert_eq!(components[2]["/"], "/login/scan");
     }
 
     #[tokio::test]

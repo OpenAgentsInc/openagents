@@ -6,9 +6,9 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
 use chrono::{TimeZone, Utc};
-use tokio_util::sync::CancellationToken;
 use openagents_doc::RegistryDoc;
 use openagents_proto::{Chat, ChatConfig, SidebarPinChange, SidebarSectionChange};
+use tokio_util::sync::CancellationToken;
 
 use crate::attachments::{self, AttachmentCache};
 use crate::auth::TokenProvider;
@@ -79,6 +79,9 @@ pub(crate) struct ClientInner {
     foreground: AtomicBool,
     synced: AtomicBool,
     harness_catalogs: Mutex<HashMap<String, Vec<HarnessInfo>>>,
+    /// Where pairings made by code are kept (#12000); memory only until the
+    /// platform supplies its store.
+    pub(crate) pairings: Mutex<Option<Arc<dyn openagents_sync::paired_device::PairingStore>>>,
 }
 
 impl Drop for ClientInner {
@@ -524,6 +527,9 @@ pub struct Client {
 
 #[path = "chat_homes.rs"]
 mod chat_homes;
+#[path = "pairing.rs"]
+mod pairing;
+pub use pairing::ConnectedComputer;
 
 impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -615,6 +621,7 @@ impl Client {
             })?;
         }
         self.disable_device_channel(device_id);
+        self.forget_saved_pairing(device_id);
         Ok(())
     }
 
@@ -688,6 +695,7 @@ impl Client {
             foreground: AtomicBool::new(true),
             synced: AtomicBool::new(false),
             harness_catalogs: Mutex::new(HashMap::new()),
+            pairings: Mutex::new(None),
             credentials: credentials.clone(),
             config,
         });

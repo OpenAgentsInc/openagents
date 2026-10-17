@@ -6,6 +6,8 @@ import UIKit
 final class OnboardingViewController: UIViewController, UIScrollViewDelegate {
     /// The tutorial is done. `true` when the person chose "See a demo".
     var onFinish: ((Bool) -> Void)?
+    /// The person tapped "Scan the code" on the connect page (#12000).
+    var onScan: (() -> Void)?
 
     private let steps: [OnboardingStep]
     private let scroll = UIScrollView()
@@ -132,7 +134,18 @@ final class OnboardingViewController: UIViewController, UIScrollViewDelegate {
         body.textColor = Palette.secondary
         body.numberOfLines = 0
         body.textAlignment = .center
-        let stack = UIStackView(arrangedSubviews: [image, title, body])
+        var views: [UIView] = [image, title, body]
+        if step.id == "connect" {
+            let scan = UIButton(type: .system)
+            scan.setTitle("Scan the code", for: .normal)
+            scan.setImage(UIImage(systemName: "qrcode.viewfinder"), for: .normal)
+            scan.titleLabel?.font = Fonts.ui(.sansMedium, 17)
+            scan.tintColor = Palette.text
+            scan.accessibilityIdentifier = "onboarding-scan"
+            scan.addAction(UIAction { [weak self] _ in self?.onScan?() }, for: .touchUpInside)
+            views.append(scan)
+        }
+        let stack = UIStackView(arrangedSubviews: views)
         stack.axis = .vertical
         stack.alignment = .center
         stack.spacing = 14

@@ -56,6 +56,9 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             shellShown()
             showTutorialIfNeeded()
         }
+        if let activity = connectionOptions.userActivities.first(where: { $0.activityType == NSUserActivityTypeBrowsingWeb }) {
+            DispatchQueue.main.async { [weak self] in self?.openCodeLink(activity.webpageURL) }
+        }
 
         #if DEBUG
         if args.contains("-voice-preview") {
@@ -94,6 +97,10 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         var start = 0
         if let i = args.firstIndex(of: "-onboarding-step"), i + 1 < args.count { start = Int(args[i + 1]) ?? 0 }
         let tutorial = OnboardingViewController(steps: onboarding.steps(), start: start)
+        tutorial.onScan = { [weak self, weak tutorial] in
+            guard let self, let tutorial else { return }
+            CodeAction.scan(from: tutorial, app: self.app)
+        }
         tutorial.onFinish = { [weak self, weak tutorial] demo in
             guard let self else { return }
             onboarding.finish()
@@ -143,6 +150,28 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
               app.voice.live, let root = window?.rootViewController
         else { return }
         root.presentVoiceStage(app: app, source: nil)
+    }
+
+    /// `https://openagents.com/connect#…` (a computer's connect code) and
+    /// `https://openagents.com/login/scan#…` (a website sign-in), opened by
+    /// the phone's own camera as universal links (#12000, #12001). The link
+    /// goes only to Rust; the app keeps no copy.
+    func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb else { return }
+        openCodeLink(userActivity.webpageURL)
+    }
+
+    private func openCodeLink(_ url: URL?) {
+        guard let url, let presenter = topController() else { return }
+        let text = url.absoluteString
+        guard isWebsiteLogin(text: text) || computerCodeProblem(text: text) == nil else { return }
+        CodeAction.run(text, from: presenter, app: app)
+    }
+
+    private func topController() -> UIViewController? {
+        var top = window?.rootViewController
+        while let shown = top?.presentedViewController { top = shown }
+        return top
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {

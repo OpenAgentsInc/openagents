@@ -38,6 +38,9 @@ pub(crate) struct WorkspaceStore {
     snapshot: RwLock<Arc<WorkspaceSnapshot>>,
     recompute: Mutex<()>,
     revision: AtomicU64,
+    /// Computers this phone paired with by code (#12000). Each shows in the
+    /// devices list until the registry lists it.
+    paired: Mutex<Vec<openagents_proto::Device>>,
 }
 
 impl WorkspaceStore {
@@ -50,7 +53,23 @@ impl WorkspaceStore {
             snapshot: RwLock::new(Arc::new(WorkspaceSnapshot::default())),
             recompute: Mutex::new(()),
             revision: AtomicU64::new(0),
+            paired: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Show a computer paired by code, or replace its row.
+    pub(crate) fn add_paired(&self, device: openagents_proto::Device) {
+        let mut paired = lock(&self.paired);
+        paired.retain(|d| d.id != device.id);
+        paired.push(device);
+        drop(paired);
+        *lock(&self.cache) = None;
+    }
+
+    /// Stop showing a computer paired by code.
+    pub(crate) fn remove_paired(&self, device_id: &str) {
+        lock(&self.paired).retain(|d| d.id != device_id);
+        *lock(&self.cache) = None;
     }
 
     /// The shared replica (handed to `RegistryClient` in live mode).
@@ -74,7 +93,7 @@ impl WorkspaceStore {
         {
             return (cached.state.clone(), cached.prefs.clone());
         }
-        let state = Arc::new(doc.read_all().unwrap_or_else(|err| {
+        let mut state = doc.read_all().unwrap_or_else(|err| {
             tracing::warn!(error = %err, "registry read failed");
             WorkspaceState {
                 devices: vec![],
@@ -82,7 +101,13 @@ impl WorkspaceStore {
                 chats: vec![],
                 sessions: vec![],
             }
-        }));
+        });
+        for device in lock(&self.paired).iter() {
+            if !state.devices.iter().any(|d| d.id == device.id) {
+                state.devices.push(device.clone());
+            }
+        }
+        let state = Arc::new(state);
         let prefs = doc.sidebar_preferences();
         *cache = Some(StateCache {
             generation,

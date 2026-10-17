@@ -477,9 +477,11 @@ public tags reveal a relationship between keys, not its state.
 desktop [#11998](https://github.com/OpenAgentsInc/openagents/issues/11998),
 phone [#12000](https://github.com/OpenAgentsInc/openagents/issues/12000), and
 the account routes in
-[#11993](https://github.com/OpenAgentsInc/openagents/issues/11993). Nothing in
-this section is implemented yet; update it to match those issues when they
-land.
+[#11993](https://github.com/OpenAgentsInc/openagents/issues/11993). The phone
+half and the host's signer are implemented in
+`apps/openagents/crates/sync/src/account_link.rs` (app method `LinkAccount`,
+params `{url, challenge}`, reply `{event}`); the desktop wires its account key
+into the signer with #11997.
 
 One scan of a [connect code](#connect-codes) does two things: it pairs the
 phone with the computer's host, as above, and it links the computer's
@@ -530,7 +532,10 @@ account.
 
 - The host answers a link-proof request only from the device whose
   redemption of a connect code made its current grant, only within 300
-  seconds of that redemption, and only once per redemption. Any other
+  seconds of that redemption, and only once per redemption. A host that
+  can't see the redemption time reads the code's issue time from the
+  grant's expiry (exactly 30 days after issue) and answers within 600
+  seconds of it: the code's 300-second life and the 300 seconds after. Any other
   request gets `forbidden`. A delegated or older grant can't relink the
   computer.
 - A computer already signed in to a different account doesn't sign a proof

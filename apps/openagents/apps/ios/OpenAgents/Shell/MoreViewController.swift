@@ -203,6 +203,9 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             s.appendItems([Row(id: "project-sharing", title: "Project sharing", symbol: "person.2")])
         }
         s.appendSections(["Devices"])
+        if app.client != nil, !app.isDemo {
+            s.appendItems([Row(id: "scan-code", title: "Connect a computer", subtitle: "Scan the code OpenAgents shows on your computer", symbol: "qrcode.viewfinder")])
+        }
         s.appendItems(app.hostOptions.map { Row(id: "device:\($0.id)", title: $0.name, subtitle: app.client?.deviceChannelEnabled(deviceId: $0.id) == true ? "Device connection" : ($0.online ? "Online" : "Offline"), symbol: "desktopcomputer", accessory: .dot($0.online)) })
         if app.offersCloudHost {
             let on = app.cloudHost?.running == true
@@ -260,6 +263,8 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             about.addAction(UIAlertAction(title: "Done", style: .default))
             present(about, animated: true)
         case "voice": navigationController?.pushViewController(VoiceViewController(app: app), animated: true)
+        case "scan-code":
+            CodeAction.scan(from: self, app: app) { [weak self] in self?.reload() }
         case "cloudhost":
             guard !app.cloudHostBusy else { return }
             let start = app.cloudHost?.running != true

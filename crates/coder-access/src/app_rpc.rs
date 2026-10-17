@@ -48,6 +48,11 @@ pub enum Method {
     RelayCommand,
     ContinueChat,
     PrepareContinuation,
+    /// Sign this computer's request to join the phone's account (#12000):
+    /// params `{url, challenge}`, answer `{event}`, a NIP-98 event signed by
+    /// the computer's account key. The app answers it only while it shows
+    /// a connect code that offers the link, and only to a pairing grant.
+    LinkAccount,
 }
 impl Method {
     pub fn as_str(self) -> &'static str {
@@ -61,6 +66,7 @@ impl Method {
             Self::RelayCommand => "RelayCommand",
             Self::ContinueChat => "ContinueChat",
             Self::PrepareContinuation => "PrepareContinuation",
+            Self::LinkAccount => "LinkAccount",
         }
     }
     pub fn right(self) -> Right {
@@ -68,7 +74,8 @@ impl Method {
             Self::RelayCommand
             | Self::AuthorizeSync
             | Self::ContinueChat
-            | Self::PrepareContinuation => Right::Operate,
+            | Self::PrepareContinuation
+            | Self::LinkAccount => Right::Operate,
             _ => Right::Observe,
         }
     }
@@ -139,9 +146,18 @@ impl Request {
             }
         }
         if self.method == Method::PrepareContinuation {
-            for value in [&self.params["chatId"], &self.params["source"]["account"], &self.params["source"]["chat"]] {
-                if !value.as_str().is_some_and(|s| !s.is_empty() && s.len() <= 256 && !s.chars().any(char::is_control)) {
-                    return Err(Error::new(Code::Malformed, "continuation needs its account, source, and destination"));
+            for value in [
+                &self.params["chatId"],
+                &self.params["source"]["account"],
+                &self.params["source"]["chat"],
+            ] {
+                if !value.as_str().is_some_and(|s| {
+                    !s.is_empty() && s.len() <= 256 && !s.chars().any(char::is_control)
+                }) {
+                    return Err(Error::new(
+                        Code::Malformed,
+                        "continuation needs its account, source, and destination",
+                    ));
                 }
             }
             if !self.params["source"]["revision"]
@@ -199,6 +215,8 @@ mod tests {
         assert!(serde_json::from_value::<Method>(json!("DeleteAll")).is_err());
         assert_eq!(Method::ListModels.right(), Right::Observe);
         assert_eq!(Method::RelayCommand.right(), Right::Operate);
+        assert_eq!(Method::LinkAccount.right(), Right::Operate);
+        assert!(Method::LinkAccount.reads_only());
         let mut request = Request {
             method: Method::RelayCommand,
             params: json!({"chatId":"chat"}),

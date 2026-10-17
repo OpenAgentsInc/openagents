@@ -39,13 +39,19 @@ pub mod runtime;
 pub mod session;
 pub mod workspace;
 
-pub use client::{Client, NewSession, PRELOAD_CAP, PushPrefs, SessionTarget, WARM_SESSION_CAP};
+pub use client::{
+    Client, ConnectedComputer, NewSession, PRELOAD_CAP, PushPrefs, SessionTarget, WARM_SESSION_CAP,
+};
 pub use config::{
     AuthTokens, ClientConfig, Credentials, DemoFixture, DemoOptions, StreamSpeed, TranscriptScale,
 };
 pub use connectivity::{Connectivity, ConnectivityState, SendState};
 pub use error::ClientError;
 pub use events::{ClientEvent, ClientListener};
+/// Where pairings made by code are kept (#12000).
+pub use openagents_sync::paired_device::{
+    KeychainPairings, MemoryPairings, PairedComputer, PairingStore, code_problem,
+};
 pub use session::{
     AppendHint, BusyPolicy, ComposerState, Entry, HostCapabilities, HostInfo, InputRequest,
     LiveStatus, LocalEcho, OutgoingAttachment, PendingKind, PendingSend, QueueEditAction,
