@@ -15,6 +15,12 @@ steps:
         git -C space fetch -q --depth 1 https://github.com/perplexityai/SPACE.git de87b436c35dac056564bdd5b2a113c9046e189b
         git -C space checkout -q FETCH_HEAD
         git -C space apply ../config/deploy/space-service/migrator-tls.patch
+  - name: python:3.13-slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
         # This adds only an existing workspace dependency; no version resolves.
         python3 - <<'PY'
         from pathlib import Path
