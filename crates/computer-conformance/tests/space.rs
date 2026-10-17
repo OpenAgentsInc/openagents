@@ -24,6 +24,7 @@ use tokio::io::AsyncWriteExt;
 struct Records {
     machines: BTreeMap<String, String>,
     creates: BTreeMap<String, String>,
+    lifecycle: BTreeMap<String, String>,
     commands: BTreeMap<String, (String, Value)>,
     // Assert the saved API payload never contains secret values.
     requests: Vec<Value>,
@@ -102,8 +103,14 @@ async fn api(
             "wake" => "running",
             _ => return StatusCode::NOT_FOUND.into_response(),
         };
+        let key = headers.get("idempotency-key").unwrap().to_str().unwrap();
+        if let Some(operation) = r.lifecycle.get(key) {
+            return reply(json!({"operation_id":operation}));
+        }
+        let operation = format!("op_{action}_{}", r.lifecycle.len());
+        r.lifecycle.insert(key.into(), operation.clone());
         r.machines.insert(id.into(), state.into());
-        return reply(json!({"operation_id":format!("op_{action}")}));
+        return reply(json!({"operation_id":operation}));
     }
     if !tail.contains('/') {
         if method == Method::DELETE {
@@ -338,6 +345,53 @@ async fn lifecycle_waits_for_the_operation_and_never_echoes_its_error() {
         assert!(!format!("{result:?}").contains("do-not-echo"));
     }
     assert!(d.delete(&id).await.is_done());
+    task.abort();
+}
+
+#[tokio::test]
+async fn lifecycle_retries_reuse_the_original_operation_after_lost_lookup() {
+    let (driver, mock, task) = setup().await;
+    let id = driver
+        .create(&CreateRequest {
+            operation: "stable-lifecycle".into(),
+            ..Default::default()
+        })
+        .await
+        .value()
+        .unwrap();
+    let driver = Arc::new(driver);
+    mock.records.lock().unwrap().operation_error = Some(404);
+    assert!(matches!(
+        driver.suspend_operation(&id, "checkpoint-1").await,
+        Outcome::Unknown { .. }
+    ));
+    assert_eq!(
+        driver.observe(&id).await.value().unwrap().state,
+        State::Stopped
+    );
+    assert_eq!(
+        driver
+            .suspend_operation(&id, "checkpoint-1")
+            .await
+            .value()
+            .unwrap(),
+        "op_suspend_0"
+    );
+    assert_eq!(mock.records.lock().unwrap().lifecycle.len(), 1);
+    assert!(driver.resume_operation(&id, "wake-2").await.is_done());
+    assert!(
+        driver
+            .suspend_operation(&id, "checkpoint-1")
+            .await
+            .is_done()
+    );
+    assert_eq!(
+        driver.observe(&id).await.value().unwrap().state,
+        State::Running,
+        "an older operation retry must never apply its effect again"
+    );
+    assert_eq!(mock.records.lock().unwrap().lifecycle.len(), 2);
+    assert!(driver.delete(&id).await.is_done());
     task.abort();
 }
 

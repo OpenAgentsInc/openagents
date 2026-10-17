@@ -1147,3 +1147,151 @@ async fn managed_builders_require_artifact_support_and_reject_customer_writes_an
         })
         .await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unknown_memory_command_never_checkpoints_or_dispatches_a_follow_up() {
+    let Some(db) = database().await else {
+        return;
+    };
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let store = Store::new(db.clone());
+            let root = tempfile::tempdir().unwrap();
+            let mut backend = Simulated::new(root.path(), true);
+            backend.caps.memory_suspend = true;
+            let registry = Registry::new(
+                Catalog::new("b", "p1", [backend.target("b")]).unwrap(),
+                [("b".into(), backend.clone())].into(),
+            )
+            .unwrap();
+            let (entry, _) = store
+                .create_placed("alice", &CreateIntent::default(), registry.catalog())
+                .await
+                .unwrap();
+            phase(&db, &store, &registry, &entry.id, "awake").await;
+            let (url, task) = server(store.clone(), &registry).await;
+            let detail: Value = reqwest::Client::new()
+                .get(format!("{url}/v1/computers/{}", entry.id))
+                .bearer_auth(TOKEN)
+                .header("X-OpenAgents-Account", "alice")
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            assert_eq!(detail["capabilities"]["memory_suspend"], true);
+            assert_eq!(detail["lifecycle_policy"]["turn_complete"], "suspend");
+            assert_eq!(detail["lifecycle_policy"]["absolute_scope"], "boot");
+            backend.fake.inject("start_command", Inject::LoseRequest);
+            let (status, command) = post(
+                &format!("{url}/v1/computers/{}/commands", entry.id),
+                "alice",
+                json!({"command":"printf effect >> counter", "idempotency_key":"unknown-command"}),
+            )
+            .await;
+            assert_eq!(status, 202);
+            visit(&db, &store, registry.clone(), &entry.id).await;
+            let command_id = command["id"].as_str().unwrap();
+            let state = store
+                .command("alice", &entry.id, command_id)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(state.status, "unknown");
+            let before = backend.fake.calls();
+            assert!(!before.iter().any(|call| call.starts_with("suspend:")));
+            let (status, _) = post(
+                &format!("{url}/v1/computers/{}/commands", entry.id),
+                "alice",
+                json!({"command":"printf wrong", "idempotency_key":"follow-up"}),
+            )
+            .await;
+            assert_eq!(status, 202);
+            for _ in 0..2 {
+                visit(&db, &store, registry.clone(), &entry.id).await;
+            }
+            store
+                .set_desired("alice", &entry.id, Desired::Stopped)
+                .await
+                .unwrap();
+            visit(&db, &store, registry.clone(), &entry.id).await;
+            assert!(matches!(
+                store
+                    .get("alice", &entry.id)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .record
+                    .phase,
+                coder_working_computer::Phase::Turn { generation: 1 }
+            ));
+            assert_eq!(
+                backend
+                    .fake
+                    .calls()
+                    .iter()
+                    .filter(|call| call.starts_with("start_command:"))
+                    .count(),
+                1
+            );
+            assert!(
+                !backend
+                    .fake
+                    .calls()
+                    .iter()
+                    .any(|call| call.starts_with("suspend:"))
+            );
+            store
+                .set_desired("alice", &entry.id, Desired::Deleted)
+                .await
+                .unwrap();
+            phase(&db, &store, &registry, &entry.id, "deleted").await;
+            assert!(backend.fake.live().is_empty());
+            assert!(
+                !backend
+                    .fake
+                    .calls()
+                    .iter()
+                    .any(|call| call.starts_with("suspend:"))
+            );
+            task.abort();
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn memory_legacy_turn_recovery_keeps_the_execution_fence_until_explicit_deletion() {
+    use coder_working_computer::driver::Held;
+    let Some(db) = database().await else {
+        return;
+    };
+    tokio::task::LocalSet::new().run_until(async {
+        let store = Store::new(db.clone());
+        let root = tempfile::tempdir().unwrap();
+        let mut backend = Simulated::new(root.path(), true);
+        backend.caps.memory_suspend = true;
+        let registry = Registry::new(Catalog::new("b", "p1", [backend.target("b")]).unwrap(),
+            [("b".into(), backend.clone())].into()).unwrap();
+        let (entry, _) = store.create_placed("alice", &CreateIntent::default(), registry.catalog()).await.unwrap();
+        phase(&db, &store, &registry, &entry.id, "awake").await;
+        store.add_turn("interrupted-legacy", &entry.id, "alice", "printf effect", None, 30, &[]).await.unwrap();
+        store.poke(&entry.id).await.unwrap();
+        let settings = settings();
+        store.claim(&settings.holder, settings.lease).await.unwrap().unwrap();
+        let lease = oa_computers::store::PgLease { store: store.clone(), id: entry.id.clone(),
+            holder: settings.holder.clone(), lease: settings.lease };
+        lease.apply(&coder_working_computer::Command::StartTurn { generation: 1 }, oa_computers::reconcile::now_ms()).await.unwrap();
+        db.client().await.unwrap().execute("UPDATE computers.turns SET state='running',generation=1,started_at=now() WHERE id='interrupted-legacy'", &[]).await.unwrap();
+        store.release(&entry.id, &settings.holder, Duration::ZERO, 0, None, false).await.unwrap();
+        let before = backend.fake.calls().len();
+        for _ in 0..2 { visit(&db, &store, registry.clone(), &entry.id).await; }
+        let turn = store.turn("alice", &entry.id, "interrupted-legacy").await.unwrap().unwrap();
+        assert_eq!(turn.state, "failed");
+        assert!(turn.error.unwrap().contains("couldn't confirm"));
+        assert!(!backend.fake.calls()[before..].iter().any(|call| call.starts_with("exec:") || call.starts_with("suspend:")));
+        store.set_desired("alice", &entry.id, Desired::Deleted).await.unwrap();
+        phase(&db, &store, &registry, &entry.id, "deleted").await;
+        assert!(backend.fake.live().is_empty());
+    }).await;
+}
