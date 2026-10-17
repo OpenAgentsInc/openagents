@@ -201,6 +201,13 @@
           "SPACE_SNAPSHOT_STORAGE_SWEEPER_MAX_PER_TICK": "8",
           "SPACE_SNAPSHOT_STORAGE_SWEEPER_CONCURRENCY": "2"
         }
+      },
+      "snapshotRetentionSweeper": {
+        "env": {
+          "SPACE_SNAPSHOT_RETENTION_SWEEPER_ENABLED": "true",
+          "SPACE_SNAPSHOT_RETENTION_SWEEPER_KEEP_N": "3",
+          "SPACE_SNAPSHOT_RETENTION_SWEEPER_MAX_PER_TICK": "8"
+        }
       }
     },
     "replicaCount": 1

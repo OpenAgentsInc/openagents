@@ -343,7 +343,10 @@
       },
       "computer_driver_tests_passed": 24,
       "candidate_build": "9e1c6796-f61c-4381-8b67-750d8939ef41",
-      "candidate_build_status": "working"
+      "candidate_build_status": "success",
+      "candidate_digest": "sha256:f469151c6f77e2327aa7e3feec2654ad1576fb7fa88a8aaa8ea1b00fc1a4f717",
+      "candidate_deploy": "requested_from_lane_0",
+      "deployment_request": "https://github.com/OpenAgentsInc/openagents/issues/11936#issuecomment-6228933851"
     },
     "synthetic_org_encryption_enabled": true,
     "encrypted_lifecycle_complete": false,
@@ -356,6 +359,32 @@
       "organization_key_provider": "external-branching",
       "operator_create_recovery_required": false,
       "memory_or_durable_checkpoint_recovery_proved": false
+    },
+    "native_cleanup_candidate": {
+      "patch": "deploy/space-service/cleanup.patch",
+      "deployed": false,
+      "checks": "pending",
+      "check_builds": [
+        {
+          "id": "75912b47-bc94-4ab6-8015-cd63aab359e1",
+          "source": "a08050032ceef565950f7e747a2c0a4b8bcd147d",
+          "note": "Initial regression fixture used the observed-only deletion path; corrected before final qualification."
+        },
+        {
+          "id": "52a53388-a9cc-4df5-abce-cd3fdf074cfb",
+          "source": "ac777c4076ef2950871158b7bf4853e5856989d5",
+          "note": "Regression uses the stored tombstone and checks snapshot reference detachment."
+        }
+      ],
+      "bounds": {
+        "orphan_prefixes_per_pass": 8,
+        "orphan_concurrency": 2,
+        "object_pages_per_prefix": 16,
+        "maximum_objects_per_page": 1000,
+        "minimum_orphan_age_seconds": 3600,
+        "retained_automatic_checkpoint_generations": 3,
+        "retention_candidates_per_pass": 8
+      }
     }
   },
   "resource_inventory": {

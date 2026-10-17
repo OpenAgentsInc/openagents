@@ -1,0 +1,47 @@
+# Build candidate images; promotion requires focused checks and live qualification.
+substitutions:
+  _COMMIT: ''
+steps:
+  - name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        git init -q config
+        git -C config fetch -q --depth 1 https://github.com/OpenAgentsInc/openagents.git '${_COMMIT}'
+        git -C config checkout -q FETCH_HEAD
+        test "$$(git -C config rev-parse HEAD)" = '${_COMMIT}'
+        git init -q space
+        git -C space fetch -q --depth 1 https://github.com/perplexityai/SPACE.git de87b436c35dac056564bdd5b2a113c9046e189b
+        git -C space checkout -q FETCH_HEAD
+        git -C space apply ../config/deploy/space-service/seed-kernel.patch
+        git -C space apply ../config/deploy/space-service/cleanup.patch
+        sha256sum config/deploy/space-service/seed-kernel.patch config/deploy/space-service/cleanup.patch
+  - name: gcr.io/cloud-builders/docker
+    dir: space
+    entrypoint: bash
+    env: ['DOCKER_BUILDKIT=1']
+    args:
+      - -c
+      - |
+        set -eu
+        sed -i '/^WORKDIR \/workspace/a ENV CARGO_BUILD_JOBS=8' docker/Dockerfile.rust-build-common
+        for component in api cluster-controller; do
+          docker build -f docker/Dockerfile.rust-build-common --target "build-artifacts-$$component" \
+            --build-arg "SPACE_RUST_ARTIFACT_SET=$$component" --build-arg SPACE_CARGO_RELEASE_LTO=false \
+            -t "space-rust-build-$$component:maintained" .
+          docker build -f "docker/Dockerfile.$$component" \
+            --build-arg "SPACE_RUST_BUILD_IMAGE=space-rust-build-$$component:maintained" \
+            --build-arg SPACE_GIT_SHA=de87b436c35dac056564bdd5b2a113c9046e189b \
+            --label com.openagents.patch-source='${_COMMIT}' --label com.openagents.patch=public-seed-and-cleanup-v2 \
+            -t "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/$$component-cleanup:${_COMMIT}" .
+          docker push "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/$$component-cleanup:${_COMMIT}"
+        done
+images:
+  - 'us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/api-cleanup:${_COMMIT}'
+  - 'us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/cluster-controller-cleanup:${_COMMIT}'
+options:
+  machineType: E2_HIGHCPU_32
+  diskSizeGb: 200
+timeout: 3600s

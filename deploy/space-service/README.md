@@ -108,7 +108,9 @@ leaves the guest stopped for the recovery check.
 cleanup. Its controller settings allow eight snapshot prefixes per sweep, with
 two deletions at once and the existing one-hour upload grace. Each prefix has a
 16-page listing budget; unfinished deletion keeps its database reference for a
-later retry. Run `cleanup-check-cloudbuild.yaml` against the exact patch commit
+later retry. Automatic checkpoint retention keeps the newest three generations,
+with a one-hour minimum age and at most eight candidates per pass. Run
+`cleanup-check-cloudbuild.yaml` against the exact patch commit
 before building or promoting replacement API and controller images. Existing
 image pins remain in effect until those checks and live cleanup pass.
 
