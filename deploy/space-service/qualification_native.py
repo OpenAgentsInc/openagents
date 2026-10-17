@@ -38,6 +38,14 @@ def request(admin, method, path, data=None):
 def main(action):
     if os.getuid()!=0: raise RuntimeError('Run qualification through the owned control identity.')
     ROOT.mkdir(mode=0o700, exist_ok=True)
+    if action=='encryption':
+        org='00000000-0000-4000-8000-000000011814'
+        value=request(True,'PATCH','/admin/api/v1/orgs/'+org,{'byok_enabled':True})
+        if value.get('id')!=org or value.get('byok_enabled') is not True:
+            raise RuntimeError('The synthetic organization encryption setting differs.')
+        state=ROOT/'organization-encryption.json'
+        state.write_text(json.dumps({'organization':org,'byok_enabled':True})+'\n');state.chmod(0o600)
+        print(state.read_text().strip());return
     template='code-runtime' if action.startswith('runtime-') else 'seed'
     action=action.removeprefix('runtime-')
     if action=='probe':
@@ -72,5 +80,5 @@ def main(action):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action',choices=['probe','build','status','runtime-build','runtime-status'])
+    parser.add_argument('action',choices=['probe','build','status','runtime-build','runtime-status','encryption'])
     main(parser.parse_args().action)
