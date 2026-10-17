@@ -506,3 +506,9 @@ links remain readable. Upstream fixes now require manual ports.
   The phone's saved-account transcript uses the existing turn activity state
   for its Working row, including before answer text arrives. The saved
   message adapter, Lab cards, Stop, and computer sessions keep their paths.
+
+- [OpenAgents #12020](https://github.com/OpenAgentsInc/openagents/issues/12020):
+  The new-session model picker checks its draft against the selected computer's
+  live catalog in Rust. A supported choice stays selected; failed discovery,
+  a different host, later edits, and custom-agent bindings keep their choices.
+  The iOS hook is limited to `NewSessionViewController.loadModels`.
