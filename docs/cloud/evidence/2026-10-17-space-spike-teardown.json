@@ -1,0 +1,24 @@
+{
+  "schema": "openagents.space.stop_teardown.v1",
+  "at_utc": "2026-10-17T02:43:13.809723+00:00",
+  "project": "openagentsgemini",
+  "zone": "us-central1-a",
+  "resource_prefix": "oa-space-spike-11812",
+  "owner_stop_order": true,
+  "all_users_confirmed_source_and_evidence_saved": true,
+  "all_users_reported_no_active_builds": true,
+  "destroy_exit_code": 0,
+  "deleted": [
+    "VM and attached disks/local SSD",
+    "dedicated router and NAT",
+    "dedicated IAP firewall",
+    "dedicated subnet",
+    "dedicated VPC network"
+  ],
+  "named_runtime_disk_remaining": false,
+  "other_issue_resources_changed": false,
+  "command": "SPACE_SPIKE_ISSUE=11812 deploy/space-host/host.sh destroy",
+  "local_log_sha256": "7f3c9f40f000ccbea64f1797e1d343377d2ad3e53ced305232a519ee057e3e6e",
+  "source_checkpoints": "docs/sdk/evidence/grid-stop-checkpoints-2026-10-17.json",
+  "limits": "Ephemeral remote build caches were removed with the disposable VM; source checkpoints and important evidence were copied/pushed before deletion. Local long-lived targets remain."
+}

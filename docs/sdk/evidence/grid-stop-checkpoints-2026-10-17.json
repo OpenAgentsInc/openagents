@@ -67,5 +67,6 @@
     "11876 source client and exact-source receipt",
     "11878 independently tested model-use primitive only"
   ],
-  "resources": "Disposable spike host and dedicated network resources require final teardown or explicit consolidation handover. Test guests/uploaded snapshot objects are gone."
+  "resources": "Disposable spike VM and dedicated network resources deleted. Source branches, archive and important evidence preserved; local targets retained.",
+  "final_resource_cleanup": "docs/cloud/evidence/2026-10-17-space-spike-teardown.json"
 }

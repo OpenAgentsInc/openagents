@@ -83,7 +83,7 @@
     "all_private_checkpoint_directories_absent": true,
     "isolated_api_processes_stopped": true,
     "isolated_postgres_containers_removed": true,
-    "host": "Shared oa-space-spike-11812 is temporarily reused by active #11876, #11878, and #11894 checks. Root will delete the host and dedicated network resources when those checks end; six-hour automatic expiry remains enabled.",
+    "host": "Destroyed oa-space-spike-11812 and its dedicated disks/router/NAT/firewall/subnet/network after every workstream saved its important source/evidence and stopped. See 2026-10-17-space-spike-teardown.json.",
     "uploaded_snapshot_objects": {
       "passed": true,
       "evidence": "bench/computers/11812/2026-10-16-rust/uploaded-checkpoint-cleanup.json",
