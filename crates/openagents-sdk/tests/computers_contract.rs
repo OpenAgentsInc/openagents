@@ -65,6 +65,14 @@ fn computer_resources_decode_optional_capabilities_without_claiming_legacy_suppo
     let current: AppComputer = serde_json::from_value(value.clone()).unwrap();
     assert_eq!(current.capabilities.as_ref().unwrap().memory_suspend, true);
     assert_eq!(current.lifecycle_policy.as_ref().unwrap().absolute_ms, 5000);
+    assert_eq!(
+        current
+            .lifecycle_policy
+            .as_ref()
+            .unwrap()
+            .stopped_retention_ms,
+        Some(604800000)
+    );
     value["capabilities"]["memory_suspend"] = json!(false);
     let disk_only: AppComputer = serde_json::from_value(value.clone()).unwrap();
     assert_eq!(

@@ -58,7 +58,9 @@ Computer results can include `capabilities` for that computer and its recorded
 Use `capabilities.memory_suspend` to distinguish memory preservation from
 disk-only suspension; the Suspend profile alone does not promise memory
 preservation. The policy gives turn-completion behavior and idle/absolute timing
-bounds without exposing provider configuration or credentials.
+bounds and how long stopped computers are kept. Current account or service
+limits can shorten the recorded maximum. Provider configuration and credentials
+are not included.
 
 Deployed on 2026-10-16 for accounts with cloud access. The
 [verification record](computers-lifecycle-evidence.json) pins both running

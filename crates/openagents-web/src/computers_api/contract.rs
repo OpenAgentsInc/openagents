@@ -8,7 +8,7 @@ pub(super) fn qualify(document: &mut Value) {
         "desired":"running", "online":true, "turns":0, "created_unix":1,
         "updated_unix":1, "seen_unix":null, "sync":null, "last_error":null,
         "capabilities":{"profiles":["core","suspend"],"sizes":["small"],"shapes":{"small":{"vcpus":2,"memory_mib":1024}},"memory_suspend":true,"command_sessions":true,"workspace_file_bytes":4194304},
-        "lifecycle_policy":{"turn_complete":"suspend","idle_ms":100,"observed_extension_ms":200,"absolute_ms":5000,"absolute_scope":"boot","uncertain_at_absolute_limit":"delete"}
+        "lifecycle_policy":{"turn_complete":"suspend","idle_ms":100,"observed_extension_ms":200,"absolute_ms":5000,"absolute_scope":"boot","uncertain_at_absolute_limit":"delete","stopped_retention_ms":604800000}
     });
     let command = json!({
         "id":"trn_0123456789abcdef0123", "computer":computer["id"],
