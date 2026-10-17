@@ -38,6 +38,14 @@ def transform(documents):
                 if component not in PINS["native"]:
                     raise ValueError("An unqualified native component was selected.")
                 container["image"] = PINS.get("native_overrides", {}).get(component, IMAGE_ROOT + component + "@sha256:" + PINS["native"][component])
+                for name, value in {
+                    "SPACE_OBJECT_STORE_MULTIPART_PART_SIZE_BYTES": "8388608",
+                    "SPACE_OBJECT_STORE_MULTIPART_CONCURRENCY": "2",
+                    "SPACE_OBJECT_STORE_DOWNLOAD_READER_CONCURRENCY": "2",
+                    "SPACE_OBJECT_STORE_DOWNLOAD_CHUNK_SIZE_BYTES": "8388608",
+                    "SPACE_OBJECT_STORE_DOWNLOAD_BUFFER_BUDGET_BYTES": "268435456",
+                }.items():
+                    environment(container, name, {"value": value})
             if document["kind"] == "Job" and metadata["name"] == "space-db-migrate":
                 container["image"] = PINS["migrator"]["image"]
             entries = container.get("env", [])
