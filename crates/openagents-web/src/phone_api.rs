@@ -81,6 +81,7 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .merge(crate::chat_api::routes())
         .merge(crate::cloud_host::routes())
+        .merge(crate::continuations::routes())
         .route("/v1/threads", get(threads).post(start))
         .route(
             "/v1/threads/{id}",
@@ -200,7 +201,10 @@ fn row(chat: &Conversation, computers: &Computers) -> Value {
         "updated_unix": chat.updated_unix,
         "working": chat.working(),
         "online": online_now,
-        "can_reply": can_reply,
+        "can_reply": can_reply && chat.links.continued_by.is_none(),
+        "home": crate::continuations::home(chat),
+        "continues": chat.links.continues,
+        "continued_by": chat.links.continued_by,
         "pinned": chat.pinned_unix.is_some(),
         // The project it is filed under (#11541), for the apps to name.
         "project": chat.project,
@@ -468,6 +472,13 @@ async fn reply(
         }
         Err(error) => return stored(&error),
     };
+    if chat.links.continued_by.is_some() {
+        return refused(
+            StatusCode::CONFLICT,
+            "continued",
+            "This chat continues elsewhere. Open its latest part to reply.",
+        );
+    }
     if let Some(terminal) = &chat.terminal {
         if !sent.files.is_empty() {
             return refused(

@@ -105,4 +105,43 @@ final class OpenAgentsLiveSyncTests: XCTestCase {
         XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 10))
         XCTAssertFalse(session.exists)
     }
+    func testContinuedComputerSession() throws {
+        continueAfterFailure = false
+        guard let raw = ProcessInfo.processInfo.environment["CODER_MOBILE_SYNC_CONFIG"],
+              let data = raw.data(using: .utf8),
+              let config = try JSONSerialization.jsonObject(with: data) as? [String: String] else {
+            throw XCTSkip("Run with the dedicated continuation coordinator.")
+        }
+        control = try XCTUnwrap(config["control"])
+        let app = XCUIApplication()
+        app.launchArguments = ["-no-auth-browser", "-account-fixture", "-account-test-credential-url", try XCTUnwrap(config["credential_url"]), "-edge", try XCTUnwrap(config["sync"])]
+        app.launch()
+        ownedApp = app
+        let sessions = app.tabBars.buttons["Sessions"]
+        XCTAssertTrue(sessions.waitForExistence(timeout: 20))
+        sessions.tap()
+        let session = app.cells["session-" + (try XCTUnwrap(config["chat"]))]
+        XCTAssertTrue(session.waitForExistence(timeout: 90))
+        session.tap()
+        let input = app.textViews["composer-input"]
+        XCTAssertTrue(input.waitForExistence(timeout: 30))
+        let flower = try XCTUnwrap(config["flower"])
+        let earlier = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", flower)).firstMatch
+        XCTAssertTrue(earlier.waitForExistence(timeout: 30))
+        capture(app, "continued-desktop-session-on-phone")
+        input.tap()
+        input.typeText("Write a numbered list of 1000 different garden plants, one per line. Keep writing until all 1000 are listed.")
+        app.buttons["composer-send"].tap()
+        XCTAssertTrue(app.buttons["Stop response"].waitForExistence(timeout: 20))
+        input.tap()
+        input.typeText("Stop listing plants and repeat only the fictional flower name from the earlier chat.")
+        app.buttons["composer-send"].press(forDuration: 0.8)
+        let steer = app.buttons["Steer now"]
+        XCTAssertTrue(steer.waitForExistence(timeout: 5))
+        steer.tap()
+        XCTAssertTrue(app.buttons["Send message"].waitForExistence(timeout: 100))
+        capture(app, "continued-session-phone-steer")
+        try post("/phone-done")
+    }
+
 }

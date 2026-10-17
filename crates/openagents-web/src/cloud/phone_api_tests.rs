@@ -47,6 +47,7 @@ async fn with_store() -> (Fixture, Arc<Store>) {
 
 fn web_chat(owner: &str, id: &str) -> Conversation {
     Conversation {
+        links: Default::default(),
         id: id.into(),
         owner: owner.into(),
         revision: 1,

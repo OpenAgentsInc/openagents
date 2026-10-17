@@ -38,6 +38,9 @@ fn bounded(text: &str) -> String {
 }
 
 impl DocHost {
+    pub(super) fn openagents_lease(&self) -> Option<Lease> {
+        self.inner.custom_agents.get()?.auth.openagents_lease()
+    }
     pub fn start_custom_agents(
         &self,
         auth: Auth,
@@ -72,6 +75,7 @@ impl DocHost {
                 if host.sessions().is_none() || host.workspace().is_none() {
                     continue;
                 }
+                let _ = host.recover_continuations(&lease).await;
                 // Failures leave the original requests queued; an outage never starts another run.
                 let _ = host
                     .agent_lab_tick(&lease, &binding.lab_root, &binding.registry)

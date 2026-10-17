@@ -28,6 +28,8 @@ const METADATA_TOKEN: &str =
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Conversation {
+    #[serde(default, flatten)]
+    pub links: chat_home::Links,
     pub id: String,
     pub owner: String,
     pub revision: u64,
@@ -893,6 +895,7 @@ impl Store {
             return Err(Error::Invalid("The conversation mutation is invalid."));
         }
         validate_retained_requests(&previous.conversation, conversation)?;
+        crate::continuations::check_update(&previous.conversation, conversation)?;
         self.write(conversation, Some(previous.generation.clone()))
             .await
     }
@@ -3177,6 +3180,7 @@ mod tests {
 
     fn conversation() -> Conversation {
         Conversation {
+            links: Default::default(),
             id: ID.into(),
             owner: OWNER.into(),
             revision: 1,

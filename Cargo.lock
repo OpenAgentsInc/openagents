@@ -3098,6 +3098,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chat-home"
+version = "1.0.0"
+dependencies = [
+ "secret-screen",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "chat-load-bench"
 version = "1.0.0"
 dependencies = [
@@ -12055,6 +12064,7 @@ dependencies = [
  "axum 0.8.9",
  "base64 0.22.1",
  "cad",
+ "chat-home",
  "futures-util",
  "getrandom 0.4.3",
  "httpdate",
@@ -12166,6 +12176,7 @@ dependencies = [
  "bitcoin",
  "boat",
  "cad",
+ "chat-home",
  "coder",
  "coder-access",
  "coder-cloud",

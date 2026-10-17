@@ -31,7 +31,7 @@ pub(crate) struct World {
     _root: tempfile::TempDir,
     pub(crate) site: Router,
     fake: Fake,
-    store: Arc<Store>,
+    pub(crate) store: Arc<Store>,
     github: reqwest::Client,
     /// The Host header requests carry.
     pub(crate) host: String,
@@ -405,6 +405,7 @@ fn chat_csrf(html: &str) -> String {
 
 fn chat(id: &str, owner: &str, title: &str, project: Option<&str>) -> Conversation {
     Conversation {
+        links: Default::default(),
         id: id.into(),
         owner: owner.into(),
         revision: 1,

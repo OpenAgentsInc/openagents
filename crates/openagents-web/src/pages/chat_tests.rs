@@ -61,6 +61,7 @@ impl Fixture {
             .config
             .chat_store
             .create(&Conversation {
+                links: Default::default(),
                 id: CHAT.into(),
                 owner: OWNER.into(),
                 revision: 1,
@@ -498,6 +499,7 @@ async fn chat_and_information_panels_render_semantic_controls() {
 #[test]
 fn sidebar_rows_show_the_repository_and_a_plain_status() {
     let mut chat = Conversation {
+        links: Default::default(),
         id: CHAT.into(),
         owner: OWNER.into(),
         revision: 1,
@@ -721,6 +723,7 @@ async fn pin_rename_search_and_archive_work_end_to_end() {
 #[test]
 fn pinned_chats_keep_pin_order_and_archived_chats_leave_the_list() {
     let chat = |id: &str, title: &str| Conversation {
+        links: Default::default(),
         id: id.into(),
         owner: OWNER.into(),
         revision: 1,
@@ -1138,6 +1141,7 @@ async fn a_coder_chat_opens_read_only_with_its_computer() {
     let fixture = Fixture::new();
     let store = fixture.app.config.chat_store.clone();
     let mut chat = Conversation {
+        links: Default::default(),
         id: CHAT.into(),
         owner: OWNER.into(),
         revision: 1,
@@ -1494,6 +1498,7 @@ fn reading_earlier_messages_keeps_the_ones_shown() {
         })
         .collect::<Vec<_>>();
     let chat = Conversation {
+        links: Default::default(),
         id: CHAT.into(),
         owner: OWNER.into(),
         revision: 2,
@@ -1535,6 +1540,7 @@ fn reading_earlier_messages_keeps_the_ones_shown() {
 #[test]
 fn an_answered_reply_carries_its_served_tier_route_and_answer() {
     let mut chat = Conversation {
+        links: Default::default(),
         id: CHAT.into(),
         owner: OWNER.into(),
         revision: 2,
@@ -1604,6 +1610,7 @@ fn an_answered_reply_carries_its_served_tier_route_and_answer() {
 fn a_reply_another_provider_answered_says_so() {
     use nostr::cj_conversation::switched::{Missed, Provider, Switched};
     let mut chat = Conversation {
+        links: Default::default(),
         id: CHAT.into(),
         owner: OWNER.into(),
         revision: 2,
@@ -1676,6 +1683,7 @@ fn a_reply_another_provider_answered_says_so() {
 fn a_streaming_reply_never_shows_half_written_markdown() {
     let full = "## Steps\n\n1. Run **cargo build**.\n2. See [the docs](https://openagents.com/docs).\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n```sh\ncargo test\n```\n";
     let mut chat = Conversation {
+        links: Default::default(),
         id: CHAT.into(),
         owner: OWNER.into(),
         revision: 2,
@@ -1931,6 +1939,7 @@ async fn a_second_new_chat_send_waits_for_the_first_to_save_it() {
         app.config
             .chat_store
             .create(&Conversation {
+                links: Default::default(),
                 id: CHAT.into(),
                 owner: OWNER.into(),
                 revision: 1,
@@ -2211,6 +2220,7 @@ async fn work_in_a_chat_stays_in_the_chat_with_coder_online() {
     let store = &app.config.chat_store;
     let owner = crate::chat_store::account_owner("acct_11318");
     let pending = |id: &str, text: &str| Conversation {
+        links: Default::default(),
         id: id.into(),
         owner: owner.clone(),
         revision: 1,
@@ -2359,6 +2369,7 @@ fn no_answer_offers_run_in_coder() {
         request_id: Some(CHAT.into()),
     };
     let chat = Conversation {
+        links: Default::default(),
         id: CHAT.into(),
         owner: crate::chat_store::account_owner("acct_11318_offer"),
         revision: 1,

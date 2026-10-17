@@ -53,6 +53,7 @@ mod notice;
 pub mod notify;
 pub mod openagents_account;
 mod openagents_composer;
+mod openagents_continuation;
 pub mod openagents_history;
 pub mod openagents_reader;
 pub mod orb;

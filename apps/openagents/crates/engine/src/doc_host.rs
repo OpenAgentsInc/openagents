@@ -18,6 +18,7 @@
 
 mod agent_lab;
 mod custom_agents;
+mod continuations;
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -3430,7 +3431,13 @@ impl DocHost {
         transfers: Vec<crate::uploads::AttachmentTransfer>,
     ) -> Result<String, EngineError> {
         let handle = self.open(chat_id)?;
-        let id = new_id();
+        let (id, replay) = self
+            .continuation_command(&handle, &payload)?
+            .unwrap_or_else(|| (new_id(), false));
+        if replay {
+            self.nudge_remote_host(chat_id);
+            return Ok(id);
+        }
         let now = now_ms();
         let based_on = handle.doc.read_entries()?.last().map(|m| CommandBasedOn {
             turn_id: Some(m.id.clone()),
@@ -5424,6 +5431,7 @@ impl DocHost {
                     );
                 }
                 let harness = self.harness_for_request(chat_id, &request);
+                request = self.prepare_continuation(chat_id, harness, request).await?;
                 // A row with no config renders no harness glyph (and every
                 // later dispatch falls back to the engine default), so stamp
                 // what this run actually executes with. Claimed rows and

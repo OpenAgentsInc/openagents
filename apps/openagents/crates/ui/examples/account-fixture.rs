@@ -1,5 +1,6 @@
 //! Exercise isolated account controls or an explicitly selected test-account chat.
-//! Pass an empty scratch directory. No Keychain or local engine is used.
+//! Pass an empty scratch directory. Account credentials stay in memory.
+//! The continuation mode starts its own engine and uses the selected test chat.
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -7,7 +8,7 @@ use axum::{
     response::{Html, IntoResponse, Response},
     routing::{get, post},
 };
-use openagents_account::{
+use ::openagents_account::{
     Controller, Phase,
     openagents::{Client, CredentialRecord, CredentialStore, Deployment, StorageError},
 };
@@ -149,10 +150,13 @@ fn capture_window(
         .unwrap();
 }
 fn main() -> anyhow::Result<()> {
+    let continuation_mode = std::env::args().any(|arg| arg == "--continue-chat");
     let chat_mode = std::env::args().any(|arg| arg == "--public-chat");
     let film_mode = std::env::args().any(|arg| arg == "--film");
-    let public_mode =
-        chat_mode || film_mode || std::env::args().any(|arg| arg == "--public-history");
+    let public_mode = continuation_mode
+        || chat_mode
+        || film_mode
+        || std::env::args().any(|arg| arg == "--public-history");
     let public_ids: Vec<String> = if public_mode {
         serde_json::from_str(&std::env::var("SDK_FIXTURE_CHAT_IDS")?)?
     } else {
@@ -208,10 +212,16 @@ fn main() -> anyhow::Result<()> {
         let session = runtime.block_on(client.authenticate(&token))?;
         store.save(&session.record())?;
         anyhow::ensure!(
-            public_ids.len() == if film_mode || chat_mode { 1 } else { 3 },
+            public_ids.len()
+                == if film_mode || chat_mode || continuation_mode {
+                    1
+                } else {
+                    3
+                },
             "pass the three disposable fixture IDs"
         );
     }
+    let fixture_space = format!("continuation-fixture-{}", uuid::Uuid::new_v4());
     let controller = Controller::new(client, store.clone(), output.join("profile/signed-out"));
     let result = Arc::new(AtomicBool::new(false));
     let passed = result.clone();
@@ -339,6 +349,43 @@ fn main() -> anyhow::Result<()> {
                             .unwrap();
                         if name == "signed-in" {
                             if public_mode {
+                                let core = if continuation_mode {
+                                    let account_id = controller.lease().unwrap().session().account().id.clone();
+                                    let edge = std::env::var("SDK_FIXTURE_EDGE").unwrap();
+                                    let config = openagents_engine::AuthConfig::new(&edge, output.join("engine"));
+                                    let auth = openagents_engine::Auth::with_account(config, controller.clone());
+                                    let registry = Arc::new(openagents_engine::default_registry());
+                                    registry.register(Arc::new(openagents_harness::ClaudeHarness::new().with_executable(std::env::var("SDK_FIXTURE_CLAUDE").unwrap())));
+                                    let core = runtime.block_on(async {
+                                        let core = openagents_engine::EngineCore::assemble_with_identity(
+                                            &output.join("engine"), registry, HarnessId::ClaudeCode,
+                                            Some(openagents_engine::doc_host::EdgeConfig::new(&edge, Arc::new(auth.clone()))),
+                                            &account_id, &account_id).unwrap();
+                                        core.set_auth(auth);
+                                        Arc::new(core)
+                                    });
+                                    #[cfg(unix)] {
+                                    let shutdown = core.clone();
+                                    runtime.spawn(async move {
+                                        let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).unwrap();
+                                        term.recv().await;
+                                        shutdown.shutdown().await;
+                                        std::process::exit(143);
+                                    });
+                                    }
+                                    std::fs::write(output.join("fixture-space"), &fixture_space).unwrap();
+                                    std::fs::write(output.join("fixture-device"), &core.device_id).unwrap();
+                                    let client = { let _entered = runtime.enter(); openagents_rpc::memory_client(core.rpc_service()) };
+                                    let info = openagents_proto::EngineInfo {
+                                        device_id: core.device_id.clone(), workspace_scope: core.workspace_scope(),
+                                        cursor_sdk_version: None, capabilities: openagents_proto::capabilities::current(),
+                                    };
+                                    state.update(cx, |s, cx| s.fixture_account_engine(state::EngineHandle::fixture_memory(client, info), cx));
+                                    let folder = output.join("chosen-project");
+                                    std::fs::create_dir_all(&folder).unwrap();
+                                    core.workspace.create_space(&fixture_space, &core.device_id, folder.to_str().unwrap(), Some("Continuation test".into()), false).unwrap();
+                                    Some(core)
+                                } else { None };
                                 let panel = shell_window
                                     .update(cx, |shell, _, _| shell.fixture_saved_history().0)
                                     .unwrap()
@@ -370,12 +417,64 @@ fn main() -> anyhow::Result<()> {
                                         viewer.update(cx, |viewer, _| viewer.model.clone());
                                     let deadline = Instant::now() + Duration::from_secs(30);
                                     while reader.snapshot().state
-                                        == openagents_account::history::LoadState::Loading
+                                        == ::openagents_account::history::LoadState::Loading
                                     {
                                         assert!(Instant::now() < deadline);
                                         cx.background_executor()
                                             .timer(Duration::from_millis(100))
                                             .await;
+                                    }
+                                    if continuation_mode {
+                                        let core = core.as_ref().unwrap();
+                                        viewer.update(cx, |v, cx| v.fixture_continue(cx));
+                                        cx.background_executor().timer(Duration::from_millis(400)).await;
+                                        let deadline = Instant::now()+Duration::from_secs(30);
+                                        while !state.read_with(cx, |s,_| s.spaces.iter().any(|p|p.id==fixture_space)) {
+                                            assert!(Instant::now()<deadline, "local project did not load");
+                                            cx.background_executor().timer(Duration::from_millis(100)).await;
+                                        }
+                                        state.update(cx, |s,cx| s.select_space(Some(fixture_space.clone()),cx));
+                                        let composer = shell_window.update(cx,|s,_,_|s.fixture_continuation_composer()).unwrap();
+                                        composer.update(cx,|c,cx|c.fixture_continuation_send(std::env::var("SDK_CHAT_PROMPT").unwrap(),cx));
+                                        let expected=std::env::var("SDK_CHAT_EXPECTED").unwrap();
+                                        let deadline=Instant::now()+Duration::from_secs(150);
+                                        let chat=loop {
+                                            if let Some(chat)=state.read_with(cx,|s,_|s.selected_chat.clone()) {
+                                                std::fs::write(output.join("pending-chat"), &chat).unwrap();
+                                                let doc={ let _entered=runtime.enter(); core.doc_host.open(&chat).unwrap() };
+                                                let entries=doc.doc().read_entries().unwrap();
+                                                if entries.iter().any(|e|e.role==openagents_doc::MessageRole::Assistant && e.parts.iter().any(|p|matches!(p,openagents_doc::MessagePart::Text{text,..} if text.to_lowercase().contains(&expected.to_lowercase())))) { break chat; }
+                                            }
+                                            assert!(Instant::now()<deadline, "Claude continuation did not answer with earlier context");
+                                            cx.background_executor().timer(Duration::from_millis(200)).await;
+                                        };
+                                        let doc={ let _entered=runtime.enter(); core.doc_host.open(&chat).unwrap() };
+                                        assert!(openagents_doc::continuation::get(doc.doc()).is_some());
+                                        capture_window(window,cx,&output,"continued-on-computer");
+                                        std::fs::write(output.join("continued-chat"), &chat).unwrap();
+                                        // An optional phone probe can observe and steer this disposable session.
+                                        if std::env::var_os("SDK_FIXTURE_WAIT_PHONE").is_some() {
+                                            let relay = {
+                                                let _entered = runtime.enter();
+                                                core.start_host_relay(&std::env::var("SDK_FIXTURE_EDGE").unwrap())
+                                            };
+                                            let deadline=Instant::now()+Duration::from_secs(240);
+                                            while !output.join("phone-done").exists() {
+                                                assert!(Instant::now()<deadline,"phone probe timed out");
+                                                cx.background_executor().timer(Duration::from_millis(200)).await;
+                                            }
+                                            let doc = { let _entered = runtime.enter(); core.doc_host.open(&chat).unwrap() };
+                                            let commands = doc.doc().read_commands().unwrap();
+                                            assert!(commands.iter().any(|c| matches!(c.payload, openagents_doc::SessionCommandPayload::Steer { .. }) && c.status == openagents_doc::SessionCommandStatus::Applied), "Phone steer was not applied by the host");
+                                            let text = serde_json::to_string(&doc.doc().read_entries().unwrap()).unwrap();
+                                            assert!(text.contains("Stop listing plants and repeat only the fictional flower name"));
+                                            std::fs::write(output.join("phone-steer-confirmed"), b"applied").unwrap();
+                                            drop(relay);
+                                        }
+                                        core.workspace.delete_space(&fixture_space).unwrap();
+                                        cx.background_executor().timer(Duration::from_secs(2)).await;
+                                        runtime.spawn({let core=core.clone();async move {core.shutdown().await}}).await.unwrap();
+                                        continue;
                                     }
                                     if chat_mode {
                                         let prompt=std::env::var("SDK_CHAT_PROMPT").unwrap();
@@ -393,8 +492,8 @@ fn main() -> anyhow::Result<()> {
                                             cx.background_executor().timer(Duration::from_millis(100)).await;
                                         }
                                         let snapshot=reader.snapshot();
-                                        assert!(snapshot.messages.iter().any(|m|m.role==openagents_account::openagents::MessageRole::User && m.text==prompt));
-                                        assert!(snapshot.messages.iter().rev().find(|m|m.role==openagents_account::openagents::MessageRole::Assistant).unwrap().text.contains(&expected),"cloud reply lost earlier context");
+                                        assert!(snapshot.messages.iter().any(|m|m.role==::openagents_account::openagents::MessageRole::User && m.text==prompt));
+                                        assert!(snapshot.messages.iter().rev().find(|m|m.role==::openagents_account::openagents::MessageRole::Assistant).unwrap().text.contains(&expected),"cloud reply lost earlier context");
                                         cx.background_executor().timer(Duration::from_millis(300)).await;
                                         capture_window(window,cx,&output,"public-cloud-reply");
                                         let before=reader.snapshot().messages.len();
@@ -403,7 +502,7 @@ fn main() -> anyhow::Result<()> {
                                         let deadline=Instant::now()+Duration::from_secs(100);
                                         loop {
                                             let snapshot=reader.snapshot();
-                                            if snapshot.messages.len()>before && snapshot.messages.iter().any(|m|m.role==openagents_account::openagents::MessageRole::User && m.text==web_prompt) && snapshot.messages.iter().rev().find(|m|m.role==openagents_account::openagents::MessageRole::Assistant).is_some_and(|m|m.text.contains(&expected)){break;}
+                                            if snapshot.messages.len()>before && snapshot.messages.iter().any(|m|m.role==::openagents_account::openagents::MessageRole::User && m.text==web_prompt) && snapshot.messages.iter().rev().find(|m|m.role==::openagents_account::openagents::MessageRole::Assistant).is_some_and(|m|m.text.contains(&expected)){break;}
                                             assert!(Instant::now()<deadline,"web reply did not appear on desktop");
                                             cx.background_executor().timer(Duration::from_millis(100)).await;
                                         }
@@ -482,10 +581,12 @@ fn main() -> anyhow::Result<()> {
                                         .client()
                                         .chat(lease.session(), &chat_id(204))
                                         .unwrap();
-                                    let target = openagents_account::history::ExistingChat {
+                                    let target = ::openagents_account::history::ExistingChat {
                                         chat: chat.clone(),
                                         lease,
-                                        summary: openagents_account::openagents::ChatSummary {
+                                        summary: ::openagents_account::openagents::ChatSummary {
+                                            home: Default::default(),
+                                            links: Default::default(),
                                             chat,
                                             title: "Saved chat".into(),
                                             revision: 1,
@@ -493,7 +594,7 @@ fn main() -> anyhow::Result<()> {
                                             pinned_unix: None,
                                             archived_unix: None,
                                             project: None,
-                                            source: openagents_account::openagents::ChatSource::Other(
+                                            source: ::openagents_account::openagents::ChatSource::Other(
                                                 "unknown".into(),
                                             ),
                                             messages: 405,
@@ -512,7 +613,7 @@ fn main() -> anyhow::Result<()> {
                                         viewer.update(cx, |viewer, _| viewer.model.clone());
                                     let deadline = Instant::now() + Duration::from_secs(10);
                                     while reader.snapshot().state
-                                        == openagents_account::history::LoadState::Loading
+                                        == ::openagents_account::history::LoadState::Loading
                                     {
                                         assert!(Instant::now() < deadline);
                                         cx.background_executor()
@@ -550,7 +651,7 @@ fn main() -> anyhow::Result<()> {
                                     });
                                     while matches!(
                                         reader.snapshot().download.as_ref().map(|d| &d.state),
-                                        Some(openagents_account::history::LoadState::Loading)
+                                        Some(::openagents_account::history::LoadState::Loading)
                                     ) {
                                         cx.background_executor()
                                             .timer(Duration::from_millis(50))
@@ -598,7 +699,7 @@ fn main() -> anyhow::Result<()> {
                                     capture_window(window, cx, &output, "reader-changed");
                                     viewer.update(cx, |viewer, cx| viewer.refresh(cx));
                                     while reader.snapshot().state
-                                        == openagents_account::history::LoadState::Loading
+                                        == ::openagents_account::history::LoadState::Loading
                                     {
                                         cx.background_executor()
                                             .timer(Duration::from_millis(50))
@@ -657,7 +758,7 @@ fn main() -> anyhow::Result<()> {
                                 let project = model.snapshot().projects[0].clone();
                                 panel.update(cx, |panel, cx| panel.project(Some(&project), cx));
                                 while model.snapshot().state
-                                    == openagents_account::history::LoadState::Loading
+                                    == ::openagents_account::history::LoadState::Loading
                                 {
                                     cx.background_executor()
                                         .timer(Duration::from_millis(50))
@@ -676,14 +777,14 @@ fn main() -> anyhow::Result<()> {
                                     .await;
                                 assert!(matches!(
                                     model.snapshot().state,
-                                    openagents_account::history::LoadState::Failed { stale: true, .. }
+                                    ::openagents_account::history::LoadState::Failed { stale: true, .. }
                                 ));
                                 capture_window(window, cx, &output, "offline-retry");
                                 server.history_status.store(0, Ordering::SeqCst);
                                 runtime.spawn(model.more()).await.unwrap();
                                 assert_eq!(
                                     model.snapshot().state,
-                                    openagents_account::history::LoadState::Ready
+                                    ::openagents_account::history::LoadState::Ready
                                 );
                             }
                             account.update(cx, |a, cx| a.sign_out(cx));
@@ -715,7 +816,7 @@ fn main() -> anyhow::Result<()> {
                             break;
                         }
                     }
-                    if start.elapsed() > Duration::from_secs(120) {
+                    if start.elapsed() > Duration::from_secs(if continuation_mode { 450 } else { 120 }) {
                         cx.update(|cx| cx.quit());
                         break;
                     }

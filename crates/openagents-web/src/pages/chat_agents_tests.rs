@@ -3,6 +3,7 @@ use crate::chat_store::Message;
 
 fn chat() -> Conversation {
     Conversation {
+        links: Default::default(),
         id: "11111111-1111-4111-8111-111111111111".into(),
         owner: "v_owner".into(),
         revision: 1,

@@ -9027,6 +9027,11 @@ impl Shell {
     }
 
     #[cfg(feature = "account-fixture")]
+    pub fn fixture_continuation_composer(&self) -> Entity<Composer> {
+        self.composer.clone()
+    }
+
+    #[cfg(feature = "account-fixture")]
     pub fn fixture_saved_reader(&self) -> Option<Entity<crate::openagents_reader::SavedReader>> {
         self.saved_reader.clone()
     }
@@ -9064,6 +9069,34 @@ impl Shell {
     ) {
         use crate::openagents_reader::ReaderEvent;
         match event {
+            ReaderEvent::Continue(target) => {
+                if !target.is_current() {
+                    return;
+                }
+                self.open_new_session(None, cx);
+                self.state.update(cx, |state, cx| {
+                    let local = state.local_device_id.clone();
+                    if state
+                        .selected_space_row()
+                        .is_some_and(|p| Some(&p.device_id) != local.as_ref())
+                    {
+                        state.select_space(None, cx);
+                    }
+                    if let Some(local) = local {
+                        state.select_device(local, cx);
+                    }
+                });
+                let composer = self.composer.clone();
+                let target = target.clone();
+                cx.defer(move |cx| {
+                    composer.update(cx, |composer, cx| composer.continue_saved_chat(target, cx))
+                });
+            }
+            ReaderEvent::OpenComputer(id) => {
+                self.set_route(Route::Chat, cx);
+                self.state
+                    .update(cx, |state, cx| state.select_chat(Some(id.clone()), cx));
+            }
             ReaderEvent::Close => {
                 if let Some(panel) = self.saved_history.clone() {
                     panel.update(cx, |panel, cx| panel.close(cx));

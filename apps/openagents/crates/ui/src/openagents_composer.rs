@@ -107,7 +107,7 @@ impl Render for AccountComposer {
             .snapshot()
             .summary
             .as_ref()
-            .is_none_or(|s| s.source != ChatSource::Web)
+            .is_none_or(|s| s.source != ChatSource::Web || s.links.continued_by.is_some())
         {
             return div()
                 .px(px(24.))

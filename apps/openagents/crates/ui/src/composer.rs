@@ -5979,6 +5979,7 @@ fn slash_error_message(err: &RpcError, skill: bool) -> SharedString {
 }
 
 pub struct Composer {
+    pub(crate) continuations: crate::openagents_continuation::Drafts,
     pub(crate) state: Entity<AppState>,
     pub(crate) input: Entity<ComposerInput>,
     /// Draft displaced while a queued message occupies the composer.
@@ -6335,6 +6336,7 @@ impl Composer {
             mention_scroll: gpui::ScrollHandle::new(),
             popup_bar: crate::popover::MenuScrollbarState::default(),
             current_key,
+            continuations: Default::default(),
             sending: false,
             launching_new_chat: false,
             failure: None,
@@ -8786,6 +8788,16 @@ impl Composer {
     /// is on), `Mutate createChat` with the `ChatConfig` + cwd, and the model /
     /// reasoning / options on the Run request itself (§1.7).
     fn send(&mut self, text: String, queue: bool, cx: &mut Context<Self>) {
+        self.continuations
+            .observe_active(&self.current_key, self.state.read(cx));
+        if let Err(message) = self
+            .continuations
+            .validate(&self.current_key, self.state.read(cx))
+        {
+            self.failure = Some(message.into());
+            cx.notify();
+            return;
+        }
         if !self.check_reference_delivery(&text, cx) {
             return;
         }
@@ -8799,8 +8811,14 @@ impl Composer {
         // (the chat then appears from the doc host once the doc materializes).
         let (chat_id, is_new) = match self.state.read(cx).selected_chat.clone() {
             Some(id) => (id, false),
-            None => (uuid::Uuid::new_v4().to_string(), true),
+            None => (
+                self.continuations
+                    .preferred_chat(&self.current_key)
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                true,
+            ),
         };
+        let continuation = self.continuations.bind(&self.current_key, &chat_id);
         // Where the new session runs (Current checkout / reuse an existing
         // worktree / fresh worktree off the picked base) — resolved NOW so
         // the async block needs no picker access.
@@ -8921,7 +8939,10 @@ impl Composer {
         let text = openagents_proto::attachment_mentions::demote_unattached_mentions(&text, &attached);
         let text = crate::comments::with_comments(&text, &comments);
         self.preview = None;
-        let message_id = uuid::Uuid::new_v4().to_string();
+        let message_id = self
+            .continuations
+            .message(&chat_id)
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         let created_at = chrono::Utc::now().timestamp_millis();
         // Existing busy chats always queue; compatibility was checked before
         // taking the draft, attachments, or review comments.
@@ -9075,6 +9096,7 @@ impl Composer {
         let restore_text = typed;
         let err_chat_id = chat_id.clone();
         let err_message_id = message_id.clone();
+        let continuation_attempt = continuation.is_some();
         self.send_task = Some(cx.spawn(async move |this, cx| {
             let result: Result<Option<String>, String> = async {
                 // Attachments stage FIRST — before the chat row or anything
@@ -9328,8 +9350,11 @@ impl Composer {
                             );
                         }
                         if let Some(config) = resolved.chat_config()
-                            && let Ok(config) = serde_json::to_value(&config)
+                            && let Ok(mut config) = serde_json::to_value(&config)
                         {
+                            if let Some(source)=&continuation {
+                                config["modelOptions"][openagents_account::openagents::continuations::REQUEST_OPTION]=serde_json::to_value(source).map_err(|_|"Couldn't read the earlier chat.".to_string())?;
+                            }
                             object.insert("config".into(), config);
                         }
                     }
@@ -9407,7 +9432,7 @@ impl Composer {
                     .as_ref()
                     .and_then(|spec| spec.space_id.as_ref())
                     .is_some();
-                let command = SessionCommandPayload::Run {
+                let mut command = SessionCommandPayload::Run {
                     request: RunRequest {
                         mcp: None,
                         prompt: content.clone(),
@@ -9424,6 +9449,11 @@ impl Composer {
                     },
                     message_id: message_id.clone(),
                 };
+                if let Some(source)=&continuation {
+                    if let SessionCommandPayload::Run{request,..}=&mut command {
+                        request.model_options.insert(openagents_account::openagents::continuations::REQUEST_OPTION.into(),serde_json::to_value(source).map_err(|_|"Couldn't read the earlier chat.".to_string())?);
+                    }
+                }
                 let command = serde_json::to_value(&command)
                     .map_err(|e| format!("Send failed: {e}"))?;
                 let mut params = serde_json::json!({ "chatId": chat_id, "command": command });
@@ -9515,7 +9545,7 @@ impl Composer {
                 Ok(None)
             }
             .await;
-            if result.is_err() && is_new {
+            if result.is_err() && is_new && !continuation_attempt {
                 // A failed new-chat send must not strand a just-minted empty
                 // chat in the sidebar (v0.2.12 "empty transcript" report).
                 // Staging now runs before CreateChat, so usually nothing was
@@ -9532,6 +9562,7 @@ impl Composer {
                 .await;
             }
             this.update(cx, |composer, cx| {
+                if result.is_ok() && continuation_attempt {composer.continuations.accepted(&err_chat_id);}
                 composer.sending = false;
                 composer
                     .state
@@ -9548,7 +9579,7 @@ impl Composer {
                     // chat restores to the CANVAS (key "") and navigates back
                     // there — the minted chat is gone (deleted above), so
                     // nothing may restore under its key.
-                    let restore_key = if is_new {
+                    let restore_key = if is_new && !continuation_attempt {
                         String::new()
                     } else {
                         err_chat_id.clone()
@@ -9558,7 +9589,7 @@ impl Composer {
                     composer.state.update(cx, |s, cx| {
                         s.remove_echo(&err_chat_id, &err_message_id);
                         s.end_pending_send(&err_chat_id, &err_message_id);
-                        if is_new && s.selected_chat.as_deref() == Some(err_chat_id.as_str()) {
+                        if is_new && !continuation_attempt && s.selected_chat.as_deref() == Some(err_chat_id.as_str()) {
                             // Back to the canvas; the navigation draft-swap
                             // loads the restored draft below.
                             s.select_chat(None, cx);
@@ -11685,7 +11716,7 @@ impl Render for Composer {
                 cx,
             ));
         }
-        container
+        container.children(self.continuations.banner(&self.current_key, cx))
     }
 }
 
@@ -16329,3 +16360,10 @@ impl Composer {
 #[cfg(test)]
 #[path = "composer_dictation_tests.rs"]
 mod dictation_tests;
+
+#[cfg(feature = "account-fixture")]
+impl Composer {
+    pub fn fixture_continuation_send(&mut self, text: String, cx: &mut Context<Self>) {
+        self.send(text, false, cx);
+    }
+}

@@ -358,6 +358,7 @@ async fn no_answer_offers_to_run_the_message_in_coder() {
     world
         .store
         .create(&crate::chat_store::Conversation {
+            links: Default::default(),
             id: REQUEST.into(),
             owner: owner.clone(),
             revision: 1,

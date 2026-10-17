@@ -57,7 +57,8 @@ fn summary(chat: &Conversation) -> Value {
         "updated_unix": chat.updated_unix, "pinned_unix": chat.pinned_unix,
         "archived_unix": chat.archived_unix, "project": chat.project,
         "source": match &chat.terminal { None => "web", Some(t) if crate::phone_api::phone_session(&t.session) => "phone", Some(_) => "terminal" },
-        "messages": chat.messages.len()})
+        "messages": chat.messages.len(), "home": crate::continuations::home(chat),
+        "continues": chat.links.continues, "continued_by": chat.links.continued_by})
 }
 
 async fn list(State(app): State<App>, headers: HeaderMap, Query(page): Query<Page>) -> Response {

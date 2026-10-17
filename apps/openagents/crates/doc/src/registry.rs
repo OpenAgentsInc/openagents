@@ -44,6 +44,7 @@ pub const KIND_PREFERENCES: &str = "preferences";
 pub const SIDEBAR_PINS_STATE_ID: &str = "sidebarPins";
 pub const KIND_SIDEBAR_PINS: &str = "sidebarPins";
 mod sidebar_pins;
+mod continuations;
 mod sidebar_sections;
 
 /// Snapshot row id in the local `DocsStore` for the persisted registry state.
@@ -1212,6 +1213,10 @@ impl RegistryDoc {
         let set = fields([
             ("id", json!(chat.id)),
             ("deviceId", json!(chat.device_id)),
+            (
+                "home",
+                json!(chat_home::Home::Computer(chat.device_id.clone())),
+            ),
             ("title", opt_str(chat.title.as_deref())),
             ("archived", json!(chat.archived)),
             ("cwd", opt_str(chat.cwd.as_deref())),

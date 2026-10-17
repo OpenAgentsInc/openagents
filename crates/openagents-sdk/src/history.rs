@@ -66,6 +66,8 @@ impl ChatRef {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChatSummary {
+    pub home: chat_home::Home,
+    pub links: chat_home::Links,
     pub chat: ChatRef,
     pub title: String,
     pub revision: u64,
@@ -180,6 +182,10 @@ pub struct TranscriptPage {
 
 #[derive(Deserialize)]
 struct WireSummary {
+    #[serde(default)]
+    home: Option<chat_home::Home>,
+    #[serde(default, flatten)]
+    links: chat_home::Links,
     id: String,
     title: String,
     revision: u64,
@@ -195,7 +201,20 @@ impl WireSummary {
         if !chat_id(&self.id) || self.revision == 0 {
             return Err(Error::InvalidResponse);
         }
+        if self.links.continues.as_ref().is_some_and(|p| !p.valid())
+            || self.links.continued_by.as_ref().is_some_and(|p| !p.valid())
+        {
+            return Err(Error::InvalidResponse);
+        }
         Ok(ChatSummary {
+            home: self.home.unwrap_or_else(|| {
+                if matches!(self.source, ChatSource::Terminal | ChatSource::Phone) {
+                    chat_home::Home::Computer(format!("legacy-{}", self.id))
+                } else {
+                    chat_home::Home::Cloud
+                }
+            }),
+            links: self.links,
             chat: ChatRef {
                 context: context.clone(),
                 id: self.id,

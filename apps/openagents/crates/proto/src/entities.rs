@@ -246,7 +246,12 @@ impl Chat {
     /// A session the user sees in chat lists: neither another chat's worker
     /// (`parent_chat_id`) nor a hidden voice orchestrator.
     pub fn is_top_level(&self) -> bool {
-        self.parent_chat_id.is_none() && !crate::voice::is_orchestrator_chat(&self.id)
+        self.parent_chat_id.is_none()
+            && !crate::voice::is_orchestrator_chat(&self.id)
+            && !self
+                .config
+                .as_ref()
+                .is_some_and(|c| c.model_options.contains_key(chat_home::REQUEST_OPTION))
     }
 
     /// True when this chat syncs over the chat2 dumb relay.

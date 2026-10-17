@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+chat-home = { path = "../../../../crates/chat-home" }
 openagents-proto.workspace = true
 loro.workspace = true
 serde.workspace = true

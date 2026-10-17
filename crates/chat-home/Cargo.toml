@@ -1,0 +1,15 @@
+[package]
+name = "chat-home"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Portable chat homes, continuation links, and bounded conversation context."
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+secret-screen = { path = "../secret-screen" }
+
+[lints]
+workspace = true

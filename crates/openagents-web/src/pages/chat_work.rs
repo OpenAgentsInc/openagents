@@ -236,7 +236,7 @@ pub(super) fn detail(chat: &Conversation) -> Option<String> {
 }
 
 /// A task is running (or paused, and continues by itself).
-pub(super) fn running(chat: &Conversation) -> bool {
+pub(crate) fn running(chat: &Conversation) -> bool {
     chat.tasks.iter().any(|task| !task.state.finished())
 }
 
@@ -1421,6 +1421,7 @@ mod tests {
 
     fn chat() -> Conversation {
         Conversation {
+            links: Default::default(),
             id: "11111111-1111-4111-8111-111111111111".into(),
             owner: "v_owner".into(),
             revision: 1,

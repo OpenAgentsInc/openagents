@@ -542,6 +542,7 @@ mod tests {
 
     fn chat(id: &str, owner: &str, updated_unix: u64) -> Conversation {
         Conversation {
+            links: Default::default(),
             id: id.into(),
             owner: owner.into(),
             project: None,

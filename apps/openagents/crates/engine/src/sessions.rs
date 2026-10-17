@@ -1772,6 +1772,22 @@ impl Inner {
         current: Option<&str>,
         provider: ProviderSession<'_>,
     ) -> Option<String> {
+        if let Some(stored) = openagents_doc::continuation::get(doc) {
+            if native_command(prompt, harness_id) {
+                return None;
+            }
+            if let ProviderSession::Continued(Some(session)) = provider {
+                if doc.fork_history_session().as_deref() == Some(session) {
+                    return None;
+                }
+            }
+            return stored.prompt(
+                doc,
+                current,
+                prompt,
+                matches!(provider, ProviderSession::Fresh),
+            );
+        }
         if native_command(prompt, harness_id)
             || !self
                 .workspace()

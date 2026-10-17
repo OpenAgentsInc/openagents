@@ -39,7 +39,7 @@ impl Snapshot {
         let mut rows = self
             .rows
             .iter()
-            .filter(|r| r.archived_unix.is_some() == archived)
+            .filter(|r| r.archived_unix.is_some() == archived && r.links.continued_by.is_none())
             .cloned()
             .collect::<Vec<_>>();
         rows.sort_by(|a, b| {

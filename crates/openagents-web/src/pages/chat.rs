@@ -381,6 +381,7 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         }
     }
     let record = Conversation {
+        links: Default::default(),
         id: id.clone(),
         owner: owner.clone(),
         revision: 1,
@@ -583,6 +584,7 @@ pub(crate) fn first_record(
     files: Vec<crate::chat_files::FileRef>,
 ) -> Conversation {
     Conversation {
+        links: Default::default(),
         id: id.to_owned(),
         owner: owner.to_owned(),
         revision: 1,
@@ -718,6 +720,7 @@ async fn start_claude(
         );
     };
     let mut record = Conversation {
+        links: Default::default(),
         id: id.to_owned(),
         owner: owner.to_owned(),
         revision: 1,
@@ -916,6 +919,7 @@ async fn start_solver(
         Err(response) => return response,
     };
     let mut record = Conversation {
+        links: Default::default(),
         id: id.to_owned(),
         owner: owner.to_owned(),
         revision: 1,
@@ -1289,7 +1293,7 @@ pub(crate) fn chat_page(headers: &HeaderMap, chat: &Conversation, parts: Parts) 
             // The thread is private: HTMX never snapshots it into history.
             div #chat-content.oa-thread-view hx-history="false" { (parts.thread) }
         })
-        .composer(parts.dock);
+        .composer(crate::continuations::notice(chat).unwrap_or(parts.dock));
     crate::chat_html::protect(page.respond(headers))
 }
 
@@ -1977,6 +1981,9 @@ pub(crate) async fn follow_from_app(
     let chat = &loaded.conversation;
     if chat.terminal.is_some() || chat.deleted() {
         return AppSent::Missing;
+    }
+    if chat.links.continued_by.is_some() {
+        return AppSent::Busy("This chat continues elsewhere. Open its latest part to reply.");
     }
     let selection = chat.selection.clone();
     let hash = request_digest(

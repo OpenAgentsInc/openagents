@@ -146,6 +146,8 @@ fn target(c: &Arc<Controller>, n: usize) -> ExistingChat {
     ExistingChat {
         chat: chat.clone(),
         summary: ChatSummary {
+            home: Default::default(),
+            links: Default::default(),
             chat,
             title: "Existing target".into(),
             revision: 1,

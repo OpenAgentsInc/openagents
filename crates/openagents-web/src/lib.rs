@@ -38,6 +38,8 @@ pub mod attribution;
 mod auth;
 pub mod backend;
 mod chat_api;
+mod continuations;
+mod continuations_openapi;
 mod chat_api_openapi;
 mod chat_export;
 mod chat_files;

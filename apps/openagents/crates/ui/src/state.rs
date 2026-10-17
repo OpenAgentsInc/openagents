@@ -534,6 +534,19 @@ impl EngineHandle {
         }
     }
 
+    #[cfg(feature = "account-fixture")]
+    pub fn fixture_memory(client: RpcClient, engine_info: EngineInfo) -> Self {
+        Self {
+            inner: Arc::new(RemoteEngine {
+                client: Arc::new(client),
+                url: "memory://account-fixture".into(),
+                lifecycle_task: tokio::sync::Mutex::new(None),
+            }),
+            engine_info,
+            deferred_state: None,
+        }
+    }
+
     pub fn client(&self) -> &RpcClient {
         self.inner.client()
     }
@@ -2560,6 +2573,11 @@ impl AppState {
             });
         })
         .detach();
+    }
+
+    #[cfg(feature = "account-fixture")]
+    pub fn fixture_account_engine(&mut self, handle: EngineHandle, cx: &mut Context<Self>) {
+        self.attach_engine(handle, cx);
     }
 
     /// Wire the connected engine: mark Ready and start the standing watches.

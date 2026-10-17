@@ -247,6 +247,7 @@ mod tests {
 
     fn chat(owner: &str, id: &str, pending: bool) -> Conversation {
         Conversation {
+            links: Default::default(),
             id: id.into(),
             owner: owner.into(),
             project: None,

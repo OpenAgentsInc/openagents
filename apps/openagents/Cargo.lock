@@ -1535,6 +1535,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chat-home"
+version = "1.0.0"
+dependencies = [
+ "secret-screen",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7258,6 +7267,7 @@ dependencies = [
 name = "openagents-doc"
 version = "0.2.113"
 dependencies = [
+ "chat-home",
  "chrono",
  "loro",
  "openagents-proto",
@@ -7276,6 +7286,7 @@ dependencies = [
  "async-trait",
  "axum",
  "base64 0.22.1",
+ "chat-home",
  "chrono",
  "dunce",
  "fff-search",
@@ -7455,6 +7466,7 @@ dependencies = [
 name = "openagents-proto"
 version = "0.2.113"
 dependencies = [
+ "chat-home",
  "chrono",
  "openagents-brand",
  "pulldown-cmark 0.12.2",
@@ -7490,6 +7502,7 @@ dependencies = [
  "agent-contract",
  "agent-lab",
  "base64 0.22.1",
+ "chat-home",
  "getrandom 0.4.3",
  "httpdate",
  "lab-kit",
@@ -10102,6 +10115,14 @@ dependencies = [
  "pkcs8",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "secret-screen"
+version = "1.0.0"
+dependencies = [
+ "regex",
+ "serde_json",
 ]
 
 [[package]]

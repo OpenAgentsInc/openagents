@@ -114,6 +114,8 @@ async fn fixture() -> Fixture {
         .open_latest(ExistingChat {
             chat: chat.clone(),
             summary: ChatSummary {
+                home: Default::default(),
+                links: Default::default(),
                 chat,
                 title: "Cloud fixture".into(),
                 revision: 1,

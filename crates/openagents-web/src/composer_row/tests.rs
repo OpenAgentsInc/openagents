@@ -300,6 +300,7 @@ fn a_reloaded_row_focuses_the_dropdown_that_changed() {
 fn a_chat_row_keeps_its_project_branch_and_claude_code() {
     use crate::chat_store::{ChatEnvironment, ChatTask, Message, Role, TaskKind, TaskState};
     let mut chat = crate::chat_store::Conversation {
+        links: Default::default(),
         id: "11111111-1111-4111-8111-111111111111".into(),
         owner: "v_owner".into(),
         revision: 1,

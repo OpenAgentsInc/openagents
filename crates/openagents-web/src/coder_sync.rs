@@ -354,6 +354,7 @@ pub(crate) async fn save(
         let Some(loaded) = store.load(owner, &id).await? else {
             let first = active.or_else(|| session_started(session).filter(|at| *at <= now));
             let chat = Conversation {
+                links: Default::default(),
                 id: id.clone(),
                 owner: owner.to_owned(),
                 revision: 1,
@@ -410,6 +411,11 @@ pub(crate) async fn save(
                 chat: id,
                 changed: false,
             });
+        }
+        if current.links.continued_by.is_some() {
+            return Ok(Saved::Invalid(
+                "This chat continues elsewhere. Open it in OpenAgents.",
+            ));
         }
         let mut next = current.clone();
         // A name given on the website stays.
@@ -817,6 +823,9 @@ pub(crate) async fn queue_reply(
         let Some(terminal) = loaded.conversation.terminal.clone() else {
             return Ok(Queued::Missing);
         };
+        if loaded.conversation.links.continued_by.is_some() {
+            return Err(Error::Invalid("This chat continues elsewhere."));
+        }
         if terminal.deleted_unix.is_some() {
             return Ok(Queued::Missing);
         }
@@ -1122,6 +1131,7 @@ pub(crate) async fn start_from_web(
         }
         let earlier = carried(earlier);
         let chat = Conversation {
+            links: Default::default(),
             id: id.clone(),
             owner: owner.to_owned(),
             revision: 1,

@@ -7,6 +7,7 @@ mod auth;
 pub mod chats;
 pub mod cloud_host;
 pub mod computers;
+pub mod continuations;
 pub mod dashboard;
 pub mod generated;
 pub mod history;

@@ -6,6 +6,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+chat-home = { path = "../../../../crates/chat-home" }
 openagents-brand.workspace = true
 serde.workspace = true
 serde_json.workspace = true

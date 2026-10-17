@@ -95,6 +95,14 @@ feature keeps forms independent of the app's separate syntax-engine version.
   --target x86_64-unknown-linux-gnu.2.36` builds the headless engine alone,
   linking only libc and libm, for the cloud computers that run Our cloud.
 
+- [OpenAgents #11894](https://github.com/OpenAgentsInc/openagents/issues/11894):
+  `openagents_continuation.rs` carries a saved-chat reference through the normal
+  folder, harness, and composer flow. `doc_host::continuations` links the new
+  session before execution; `doc::continuation` stores bounded context and feeds
+  provider starts. Registry links hide the old part. Stable first-send IDs and
+  metadata recovery preserve one destination across retries. The account fixture
+  attaches an isolated engine through the existing RPC and app-state watchers.
+
 ## Complete OpenAgents names (#11899)
 
 Renamed crates, the desktop binary, iOS targets and UniFFI modules, packaging,

@@ -11508,6 +11508,113 @@
         }
       }
     },
+    "/v1/threads/{id}/continue": {
+      "post": {
+        "operationId": "continueChatOnComputer",
+        "tags": [
+          "Chat homes"
+        ],
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatContinuationClaim"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The same linked destination, including a safe context seed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatContinuation"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid reference, signed out, not owned/missing, changed/busy/already continued, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid reference, signed out, not owned/missing, changed/busy/already continued, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Invalid reference, signed out, not owned/missing, changed/busy/already continued, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid reference, signed out, not owned/missing, changed/busy/already continued, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid reference, signed out, not owned/missing, changed/busy/already continued, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Invalid reference, signed out, not owned/missing, changed/busy/already continued, throttled, or unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        },
+        "description": "Owner-only transition of an idle source to a new computer part. The host first creates its normal session, then calls with that session ID and its device home. A changed source refuses; the same destination is retry-safe, while another destination refuses. The source becomes read-only and records continued_by before execution starts. The host records continues in its document and registry and passes the bounded seed through its existing harness path. This endpoint never starts a harness or creates execution authority. Computer targets only in this version. Older terminal sources use stable legacy-{chat-id} computer references until their original computer can be identified."
+      }
+    },
     "/v1/keys": {
       "get": {
         "operationId": "listAccountKeys",
@@ -20549,6 +20656,29 @@
           "messages": {
             "type": "integer",
             "minimum": 0
+          },
+          "home": {
+            "$ref": "#/components/schemas/ChatHome"
+          },
+          "continues": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChatPartRef"
+              }
+            ]
+          },
+          "continued_by": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChatPartRef"
+              }
+            ]
           }
         }
       },
@@ -24878,6 +25008,29 @@
               "unknown",
               null
             ]
+          },
+          "home": {
+            "$ref": "#/components/schemas/ChatHome"
+          },
+          "continues": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChatPartRef"
+              }
+            ]
+          },
+          "continued_by": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ChatPartRef"
+              }
+            ]
           }
         },
         "required": [
@@ -25986,6 +26139,115 @@
           },
           "finished": {
             "const": true
+          }
+        }
+      },
+      "ChatHome": {
+        "type": "string",
+        "pattern": "^(cloud|computer:[A-Za-z0-9._-]{1,128})$"
+      },
+      "ChatPartRef": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "home"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "home": {
+            "$ref": "#/components/schemas/ChatHome"
+          }
+        }
+      },
+      "ChatContextTurn": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "text"
+        ],
+        "properties": {
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 1024
+          }
+        }
+      },
+      "ChatContext": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "summary",
+          "recent"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 256
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "recent": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "$ref": "#/components/schemas/ChatContextTurn"
+            }
+          }
+        },
+        "description": "At most 16 KiB of serialized UTF-8 JSON. Summary and recent user/assistant text only; no file or tool output. Credential-shaped text is screened."
+      },
+      "ChatContinuationClaim": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "revision",
+          "target"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "target": {
+            "$ref": "#/components/schemas/ChatPartRef"
+          }
+        }
+      },
+      "ChatContinuation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "account",
+          "source",
+          "target",
+          "seed"
+        ],
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ChatPartRef"
+          },
+          "target": {
+            "$ref": "#/components/schemas/ChatPartRef"
+          },
+          "seed": {
+            "$ref": "#/components/schemas/ChatContext"
           }
         }
       },

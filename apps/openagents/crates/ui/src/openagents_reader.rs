@@ -23,6 +23,8 @@ use std::{
 
 #[derive(Clone)]
 pub enum ReaderEvent {
+    Continue(ExistingChat),
+    OpenComputer(String),
     Close,
     AccessLost,
 }
@@ -157,6 +159,16 @@ impl SavedReader {
             _auth: auth_watch,
             _follow: follow,
         }
+    }
+    #[cfg(feature = "account-fixture")]
+    pub fn fixture_continue(&mut self, cx: &mut Context<Self>) {
+        let mut target = self.model.target().expect("open the saved chat");
+        target.summary = self
+            .snapshot
+            .summary
+            .clone()
+            .expect("load its latest revision");
+        cx.emit(ReaderEvent::Continue(target));
     }
     #[cfg(feature = "account-fixture")]
     pub fn fixture_reply(&mut self, text: String, cx: &mut Context<Self>) {
@@ -663,7 +675,46 @@ impl Render for SavedReader {
             }
             footer = footer.child(files);
         }
+        if let Some(target) = self
+            .snapshot
+            .summary
+            .as_ref()
+            .and_then(|s| s.links.continued_by.clone())
+        {
+            footer = footer
+                .child("This chat continues in another conversation.")
+                .child(self.button(
+                    "saved-open-latest",
+                    "Open the latest part",
+                    move |_, cx| cx.emit(ReaderEvent::OpenComputer(target.id.clone())),
+                    cx,
+                ));
+        }
         body = body.child(footer).child(self.composer.clone());
+        if self.snapshot.summary.as_ref().is_some_and(|s| {
+            matches!(
+                s.source,
+                openagents_account::openagents::ChatSource::Terminal
+                    | openagents_account::openagents::ChatSource::Phone
+            ) && s.links.continued_by.is_none()
+        }) && self.state.read(cx).engine().is_some()
+        {
+            body = body.child(self.button(
+                "saved-continue-here",
+                "Continue here",
+                |this, cx| {
+                    if let Some(mut target) = this.model.target() {
+                        if let Some(summary) = this.snapshot.summary.clone() {
+                            target.summary = summary;
+                        }
+                        if target.is_current() {
+                            cx.emit(ReaderEvent::Continue(target));
+                        }
+                    }
+                },
+                cx,
+            ));
+        }
         if let Some(download) = self.snapshot.download.clone() {
             let mut preview = div()
                 .id("saved-file-preview")

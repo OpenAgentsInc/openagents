@@ -109,6 +109,15 @@ impl Turns {
             .reader
             .target()
             .filter(|t| t.summary.source == ChatSource::Web)?;
+        if self
+            .reader
+            .snapshot()
+            .summary
+            .as_ref()
+            .is_some_and(|s| s.links.continued_by.is_some())
+        {
+            return None;
+        }
         let mut s = self.state.lock().unwrap();
         if s.target
             .as_ref()

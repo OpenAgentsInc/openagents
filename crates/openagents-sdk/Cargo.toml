@@ -12,6 +12,7 @@ labs-cad = ["dep:cad"]
 
 [dependencies]
 agent-lab = { path = "../agent-lab" }
+chat-home = { path = "../chat-home" }
 agent-contract = { path = "../agent-contract" }
 lab-kit = { path = "../lab-kit" }
 cad = { path = "../cad", optional = true }

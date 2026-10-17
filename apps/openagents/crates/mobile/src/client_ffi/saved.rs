@@ -413,9 +413,9 @@ impl CoreSavedHistory {
             projects_state: h.projects_state.into(),
             transcript: SavedTranscript {
                 can_reply: active
-                    && r.summary
-                        .as_ref()
-                        .is_some_and(|s| s.source == ChatSource::Web),
+                    && r.summary.as_ref().is_some_and(|s| {
+                        s.source == ChatSource::Web && s.links.continued_by.is_none()
+                    }),
                 answering: turns.busy,
                 stopping: turns.stopping,
                 retry_send: turns.retry,
