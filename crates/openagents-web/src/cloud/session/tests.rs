@@ -13,6 +13,8 @@ use std::sync::{Arc, Mutex};
 const ALICE_KEY: &str = "oak_alice.synthetic-private-key";
 const BOB_KEY: &str = "oak_bob.synthetic-private-key";
 const CANARY: &str = "native-private-response-canary";
+const ALICE_SIGN_IN_KEY: &str =
+    "oa_sk_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
 struct Native {
     revoked: bool,
@@ -25,6 +27,8 @@ struct Native {
     redirect: bool,
     unavailable: bool,
     reads: u64,
+    key_session_unavailable: bool,
+    kind: &'static str,
 }
 
 struct Fixture {
@@ -58,7 +62,7 @@ fn account(headers: &HeaderMap, native: &Native) -> Option<&'static str> {
         .to_str()
         .ok()?
         .strip_prefix("Bearer ")?;
-    if auth == token("alice") {
+    if auth == token("alice") || (auth == ALICE_SIGN_IN_KEY && native.expiry > now()) {
         Some("alice")
     } else if auth == token("bob") {
         Some("bob")
@@ -102,10 +106,18 @@ async fn signin(State(state): State<Arc<Mutex<Native>>>, headers: HeaderMap) -> 
 async fn session(State(state): State<Arc<Mutex<Native>>>, headers: HeaderMap) -> Response {
     let mut native = state.lock().unwrap();
     native.reads += 1;
+    if native.key_session_unavailable
+        && headers
+            .get(header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            == Some(format!("Bearer {ALICE_SIGN_IN_KEY}").as_str())
+    {
+        return refused(StatusCode::SERVICE_UNAVAILABLE);
+    }
     let Some(account) = account(&headers, &native) else {
         return refused(StatusCode::UNAUTHORIZED);
     };
-    Json(json!({"session":{"id":format!("session-{account}"),"kind":"user","account":account,"created_at":now()-1,"expires_at":native.expiry,"state":"active"}})).into_response()
+    Json(json!({"session":{"id":format!("session-{account}"),"kind":native.kind,"account":account,"created_at":now()-1,"expires_at":native.expiry,"state":"active"}})).into_response()
 }
 
 async fn details(State(state): State<Arc<Mutex<Native>>>, headers: HeaderMap) -> Response {
@@ -168,6 +180,8 @@ async fn fixture() -> Fixture {
         redirect: false,
         unavailable: false,
         reads: 0,
+        key_session_unavailable: false,
+        kind: "user",
     }));
     let router = Router::new()
         .route("/v1/sessions", post(signin))
@@ -216,6 +230,43 @@ fn headers(account: &str, workspace: Option<&str>) -> HeaderMap {
     cookie.set_sensitive(true);
     headers.insert(header::COOKIE, cookie);
     headers
+}
+
+#[tokio::test]
+async fn sign_in_key_identity_survives_unavailable_session_metadata() {
+    let f = fixture().await;
+    f.state.lock().unwrap().key_session_unavailable = true;
+    assert!(matches!(
+        f.adapter.app_account(ALICE_KEY).await,
+        Err(SessionError::Unauthenticated)
+    ));
+    for credential in [token("alice"), ALICE_SIGN_IN_KEY.to_owned()] {
+        assert_eq!(f.adapter.app_account(&credential).await.unwrap(), "alice");
+    }
+
+    f.state.lock().unwrap().kind = "anonymous";
+    assert!(matches!(
+        f.adapter.app_account(&token("alice")).await,
+        Err(SessionError::Unauthenticated)
+    ));
+    {
+        let mut state = f.state.lock().unwrap();
+        state.kind = "user";
+        state.expiry = now() - 1;
+    }
+    assert!(matches!(
+        f.adapter.app_account(ALICE_SIGN_IN_KEY).await,
+        Err(SessionError::Unauthenticated)
+    ));
+    {
+        let mut state = f.state.lock().unwrap();
+        state.expiry = now() + 3600;
+        state.revoked = true;
+    }
+    assert!(matches!(
+        f.adapter.app_account(ALICE_SIGN_IN_KEY).await,
+        Err(SessionError::Unauthenticated)
+    ));
 }
 
 #[tokio::test]

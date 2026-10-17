@@ -353,11 +353,28 @@ impl CloudSession {
         }
     }
 
-    /// The account an app's own token (a signed-in Coder, #11046) belongs
-    /// to, when the token is a live user session.
+    /// The account a live user session or sign-in key acts for.
     pub async fn app_account(&self, token: &str) -> Result<String> {
         if !session_token(token) {
             return Err(SessionError::Unauthenticated);
+        }
+        if token.starts_with(super::SIGN_IN_KEY_PREFIX) {
+            let account = self
+                .client(token)?
+                .account()
+                .details()
+                .await
+                .map_err(|error| match super::native_error(error) {
+                    SessionError::Forbidden => SessionError::Unauthenticated,
+                    error => error,
+                })?
+                .account
+                .id;
+            return if super::identifier(&account) {
+                Ok(account)
+            } else {
+                Err(SessionError::Unauthenticated)
+            };
         }
         let answer = self
             .device_call(reqwest::Method::GET, "/v1/session", Some(token), None)
