@@ -207,9 +207,11 @@ impl Transcript {
                     Rc::new(move || model.current() && !model.snapshot().access_lost)
                 };
                 let space = saved.document_ref().space().to_owned();
+                let editor = model.video_editor(path);
                 let id = row_id.clone();
                 let view = cx.new(|cx| {
                     crate::lab_view::LabView::new(id, saved.card, &space, page, fetch, current, cx)
+                        .with_video_editor(editor)
                 });
                 let id = row_id.clone();
                 cx.subscribe(

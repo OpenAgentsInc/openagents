@@ -144,9 +144,9 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 **Released 2026-10-17 01:10 CDT** by a Claude Code subagent. #11942 is closed on code (`e6ebb67e46`, `a3ef319562`). The hosted player and timeline on `/labs/video/{doc}` are #11949. The `~/work/openagents-11942` worktree is removed; target `~/work/openagents-target-agent2` stays warm.
 
-**#11886 taken 2026-10-17 00:30 CDT** by Codex `codex:01a14140` in its `lnd-work` checkout. It owns a separate desktop timeline module and account-side editor service, with additive card-opening hooks coordinated under #11943. The active lane 5 session keeps #11884 and #11943.
+**#11886 code complete by Codex `codex:01a14140`** in `lnd-work`. The desktop timeline and account-bound editor service passed their checks, including the #11943 notes/event integration. #11949 is merged and closed; #11948 stays with its active Claude Code session. Deployment and real native/web render playback stay with lane 0 in After-close checks.
 
-**Released 2026-10-17 01:05 CDT** by a Claude Code subagent. #11884 and #11943 are closed on code (`29d4e808fd`, `a4c68fd920`, `0e18a669df`); typed Lab rows in live sessions, the version list, and Model3d orbit are #11948, which waits on #11942. #11886 is open and free. The `~/work/openagents-lane5c` worktree is removed; target `~/work/openagents-target-lane5b-app` stays warm.
+**Released 2026-10-17 01:05 CDT** by a Claude Code subagent. #11884 and #11943 are closed on code (`29d4e808fd`, `a4c68fd920`, `0e18a669df`); typed Lab rows in live sessions, the version list, and Model3d orbit are #11948, which waits on #11942. #11886 is code complete in the Codex update above. The `~/work/openagents-lane5c` worktree is removed; target `~/work/openagents-target-lane5b-app` stays warm.
 
 **Released 2026-10-17 00:14 CDT** by a Claude Code subagent. #11880 and #11883 are closed on code; their remaining code is #11942 and #11943. #11884 and #11886 are open and free. The worktree `~/work/openagents-lane5b` is removed; targets `~/work/openagents-target-agent2` and `~/work/openagents-target-lane5b-app` stay warm.
 
@@ -159,7 +159,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 - **Owns:** `crates/coder-working-computer`, `crates/oa-computers` and the SPACE driver, `deploy/space-service`, `deploy/space-credentials`, the Computers routes, and usage and quota code.
 - **Status:** `codex:01a14134` completed #11813 and #11816 and is closing #11800 on source. Its canaries, credentials, workloads, and builder are removed. Lane 0 owns the remaining deployment/live rows and provider-managed empty-network cleanup below. #11823 stays in lane 1.
-- **Other completions:** `codex:01a14140` closed #11939 lifecycle recovery, #11940 OpenCode saved agents, and #11944 recoverable-object inventory. Its next source issue is #11886 under lane 5.
+- **Other completions:** `codex:01a14140` closed #11939 lifecycle recovery, #11940 OpenCode saved agents, and #11944 recoverable-object inventory. It also completed #11886 and #11949 under lane 5; lane 0 owns their live checks.
 
 ### Lane 7: host authority
 
@@ -337,9 +337,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Done:** native SDK discovery, calls, and events in Coder and `openagents`, shared `lab-ui` terminal text and links, verified CLI previews, and retained local tools for unhosted kinds (`d37b9a9b6b` through `0cedf5dbf1`). Adapter, native client, generated-tree, and isolated-HOME CLI checks passed. Evidence: `docs/sdk/labs-terminal-evidence.json`.
 - **After-close:** the production terminal flow and visual check are listed below. The separate Cursor screen test failure is recorded in the evidence.
 
-**#11886 Labs D2: video timeline editor in the desktop app.** Lane 5, last in the lane.
-- **Depends on:** #11880, #11883.
-- **Risk:** likely to miss Saturday. Close with what landed if it does.
+**#11886 Labs D2: video timeline editor in the desktop app.** Lane 5, code complete.
+- **Done:** native video, audio, and text tracks with linked drag previews, frame keys, speed, caption length and text, and a dissolve. The shared Video Lab rules and Labs SDK own edits, version conflicts, preview jobs, and account-bound media.
+- **Checks:** account 75 (including 17 editor/model/wire tests), GPUI Lab cards 2, and edited-file formatting passed. Dedicated-account native/web render playback and cleanup stay in After-close checks.
 
 ### Chats, sessions, and moving agents (#11896 epic)
 
@@ -487,6 +487,7 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 | #11877 | A CAD chat's card through `/v1/history`, re-rendered in a second browser session. | Failed on source `79f8c18f71`: the hosted tool saves the requested project document, but its answered reply has no card metadata. Follow-up #11950; design, chat, and project cleanup passed. |
 | #11950 | After the saved-card fix, repeat a hosted CAD chat and load its card through `/v1/history` and two fresh browser sessions. Remove all fixtures afterward. | The saved-answer copy now keeps `lab.card.v1` and its account/project binding. Eleven focused `openagents-web` checks passed: the new regression, seven Labs routing checks, two saved-card authorization checks, and the existing reply marker check. Deployment and the live recheck remain. |
 | #11878 | Deploy the account-service worker routes before the web worker routes. Run dedicated-account Echo on server, disposable enrolled, and cloud placements; prove private input bytes and paths stay local, retire scoped keys, and observe cloud computer deletion. The cloud environment needs the pinned `labs-worker` and trusted handlers installed. | Platform API checks passed on staging and production (21 each, with cleanup). Worker placement, private-input, key retirement, and cloud-deletion checks remain; owner Mac installation is in `NEEDS_OWNER.md`. |
+| #11886 | With a dedicated account and synthetic clips, edit a hosted cut from its saved chat card, verify a new version on the web, render and play the preview on both surfaces, check conflict reload and account switching, then remove every fixture. The hosted video page depends on #11949. | Source checks passed on the main integration: account 75, GPUI Lab card/frame/sign-out fixtures 2, and formatting. The hosted player is on main in `2945c7608c`. Dedicated-account native/web playback and cleanup: to do. |
 | #11885 | After the server deploy and native binary build, use the dedicated test account in an isolated HOME: edit a CAD document with `openagents cad`, edit a hosted Video document with Coder, follow its events, open the page links, and delete the fixtures. Check posters and strips in Kitty and iTerm2. Hosted Video depends on #11880; Game and Ship integration remains under #11881. | Local SDK wire, native dispatch, generated-tree, and actual CLI fixture checks passed; production and visual checks: to do. |
 | #11840 | Complete the existing #11852, #11854, and #11853 rows below, including the signed app build and dedicated-account iPhone checks. | All 14 children are closed, and final source commits are on `main`. Deploy and device checks remain with lane 0; the push capability and paired-phone steps are in `NEEDS_OWNER.md`. |
 | #11852 | Deploy `4a796e8ff8` or newer. Run `OurCloudLiveTests/testStartRunAndStopOurCloud` with the dedicated test account, check `GET /v1/computer-usage`, delete the computer with `DELETE /v1/cloud-host`, and remove its test registry rows. Validate TestFlight 1011 or the next free build. | to do; phone source `d37ed99d0c`, local control acceptance `a67ec60b44` passed |

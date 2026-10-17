@@ -20,6 +20,7 @@ pub mod lab_cards;
 mod platform;
 pub mod reader;
 pub mod turns;
+pub mod video_editor;
 pub use platform::PlatformStore;
 
 #[derive(Clone, Debug)]

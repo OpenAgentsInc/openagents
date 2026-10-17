@@ -88,6 +88,7 @@ mod todo_panel;
 pub(crate) mod tool_images;
 pub mod transcript;
 pub mod typography;
+pub mod video_timeline;
 pub mod visuals;
 pub mod voice;
 mod workspace_links;

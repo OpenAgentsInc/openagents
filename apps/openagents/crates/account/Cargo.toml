@@ -9,6 +9,7 @@ publish.workspace = true
 agent-lab = { path = "../../../../crates/agent-lab", features = ["views"] }
 lab-kit = { path = "../../../../crates/lab-kit" }
 lab-ui = { path = "../../../../crates/lab-ui" }
+video-lab = { path = "../../../../crates/video-lab" }
 openagents-dashboard = { path = "../../../../crates/openagents-dashboard", features = ["views"] }
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
 serde = { version = "1", features = ["derive"] }

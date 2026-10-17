@@ -79,6 +79,7 @@ pub struct LabView {
     draft: Option<NoteDraft>,
     /// Stops the row's event follower.
     stop: Option<tokio_util::sync::CancellationToken>,
+    editor: Option<openagents_account::video_editor::Source>,
 }
 
 impl EventEmitter<LabLayoutChanged> for LabView {}
@@ -113,6 +114,7 @@ impl LabView {
             add_note: None,
             draft: None,
             stop: None,
+            editor: None,
         };
         this.load(cx);
         this
@@ -327,6 +329,30 @@ impl LabView {
             .values()
             .filter(|l| matches!(l, Load::Image(_) | Load::Video(_)))
             .count()
+    }
+
+    pub fn with_video_editor(
+        mut self,
+        editor: Option<openagents_account::video_editor::Source>,
+    ) -> Self {
+        self.editor = editor;
+        self
+    }
+
+    /// Uses the already loaded strip for immediate timeline scrubbing.
+    pub(crate) fn frame_at(&self, fraction: f64) -> Option<std::sync::Arc<gpui::Image>> {
+        if self.released || !(self.current)() {
+            return None;
+        }
+        let fraction = if fraction.is_finite() {
+            fraction.clamp(0., 1.)
+        } else {
+            0.
+        };
+        let index =
+            ((self.pictures.strip.len().saturating_sub(1)) as f64 * fraction).round() as usize;
+        self.image(self.pictures.strip.get(index))
+            .or_else(|| self.image(self.pictures.main.as_ref()))
     }
 
     fn activate(&mut self, node: String, cx: &mut Context<Self>) {
@@ -588,10 +614,24 @@ impl Render for LabView {
             return frame;
         }
         let root = self.projection.as_ref().map(|p| p.view.view().root.clone());
-        let frame = match root {
+        let mut frame = match root {
             Some(root) => frame.child(self.mount(&root, window, cx)),
             None => frame.child(self.card.title.clone()),
         };
+        if let Some(source) = self.editor.as_ref().filter(|source| source.current()) {
+            let source = source.clone();
+            frame = frame.child(
+                div()
+                    .id("edit-video-timeline")
+                    .mt(px(8.))
+                    .cursor_pointer()
+                    .text_color(theme.text)
+                    .child("Edit timeline")
+                    .on_click(cx.listener(move |_, _, _, cx| {
+                        crate::video_timeline::open(source.clone(), cx);
+                    })),
+            );
+        }
         frame.when_some(self.notes(window, cx), |d, notes| d.child(notes))
     }
 }
@@ -758,7 +798,17 @@ mod tests {
             }
             let loaded = view.read_with(cx, |v, _| v.loaded());
             assert_eq!(loaded, expected, "{name}");
+            if card.view == lab_kit::View::Video
+                && (card.poster.is_some() || !card.strip.is_empty())
+            {
+                view.read_with(cx, |view, _| {
+                    for fraction in [-1., 0., 1., 2., f64::NAN] {
+                        assert!(view.frame_at(fraction).is_some(), "{name}");
+                    }
+                });
+            }
             signed_in.set(false);
+            view.read_with(cx, |view, _| assert!(view.frame_at(0.).is_none(), "{name}"));
             cx.update(|window, cx| {
                 window.refresh();
                 window.draw(cx).clear();

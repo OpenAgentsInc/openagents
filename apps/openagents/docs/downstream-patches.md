@@ -273,3 +273,11 @@ links remain readable. Upstream fixes now require manual ports.
   unary RPCs, original command IDs, and exact-request NIP-98 proofs for sync.
   Transcripts continue through the existing Loro rooms. The default remains
   WebSocket; refusals and uncertain commands do not retry on another transport.
+
+- [OpenAgents #11886](https://github.com/OpenAgentsInc/openagents/issues/11886):
+  `account::video_editor` previews the shared Video Lab intents, saves against
+  the loaded version, and follows preview jobs through the Labs SDK.
+  `ui::video_timeline` draws native tracks, drag previews, caption controls,
+  links, speed, and dissolves. Saved cut cards open it through an additive
+  `LabView` hook. Account changes and access refusals clear the editor.
+  Scrubbing reuses the card's loaded frames; playback uses its hosted player.

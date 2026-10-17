@@ -32,6 +32,14 @@ On Fedora:
 sudo dnf install webkit2gtk4.1-devel json-glib-devel
 ```
 
+On NixOS, run from `apps/openagents` with an existing Cargo target directory:
+
+```sh
+nix-shell shell-linux.nix --run 'cargo +1.98.1 check -p openagents-ui'
+```
+
+The development shell includes the native GPUI, audio, TLS, and browser headers.
+
 The build embeds the small helper executable, which is extracted to the user's cache directory when needed. WebKit itself stays system-managed and receives security updates through the distribution.
 
 HTTP(S) links in chat open new Browser tabs in their conversation. If the runtime cannot start, the tab shows the browser error; use **Open in external browser** from the transcript link's context menu or the Browser toolbar's external-open button. See [transcript link interactions and fixtures](../transcript-browser-links.md).

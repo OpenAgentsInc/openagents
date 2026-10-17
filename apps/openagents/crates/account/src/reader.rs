@@ -909,6 +909,17 @@ impl Reader {
         (url.origin() == website.origin()).then(|| url.to_string())
     }
 
+    /// Opens only a video document named by a card in the current account's chat.
+    pub fn video_editor(&self, path: &str) -> Option<crate::video_editor::Source> {
+        let saved = self.lab_card(path)?;
+        if !crate::video_editor::has_timeline(&saved.card) {
+            return None;
+        }
+        let state = self.state.lock().unwrap();
+        let target = state.target.as_ref().filter(|target| target.is_current())?;
+        crate::video_editor::Source::new(target.lease.clone(), saved.document_ref().clone())
+    }
+
     /// One of a shown Lab card's files: image bytes, or a signed link for a
     /// video. Only files the card names are read, through the chat's account.
     pub async fn lab_media(&self, path: &str, artifact: &str) -> Option<crate::lab_cards::Media> {
