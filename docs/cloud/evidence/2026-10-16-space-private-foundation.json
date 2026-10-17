@@ -368,12 +368,21 @@
         {
           "id": "75912b47-bc94-4ab6-8015-cd63aab359e1",
           "source": "a08050032ceef565950f7e747a2c0a4b8bcd147d",
-          "note": "Initial regression fixture used the observed-only deletion path; corrected before final qualification."
+          "note": "Initial regression fixture used the observed-only deletion path; corrected before final qualification.",
+          "status": "failed",
+          "failure": "Disposable database fixture URL was missing its required sslmode suffix; tests stopped before exercising database behavior.",
+          "format": "passed",
+          "api_compilation": "passed",
+          "tests": {
+            "passed": 2,
+            "failed_during_fixture_setup": 16
+          }
         },
         {
           "id": "52a53388-a9cc-4df5-abce-cd3fdf074cfb",
           "source": "ac777c4076ef2950871158b7bf4853e5856989d5",
-          "note": "Regression uses the stored tombstone and checks snapshot reference detachment."
+          "note": "Stopped this owned test job after the first build identified the same runner configuration defect.",
+          "status": "cancelled_to_correct_test_setup"
         }
       ],
       "bounds": {
@@ -385,6 +394,13 @@
         "retained_automatic_checkpoint_generations": 3,
         "retention_candidates_per_pass": 8
       }
+    },
+    "capacity": {
+      "second_computer": "cmp_bb774103e230da7a2d16",
+      "third_create_http_status": 429,
+      "third_create_error": "quota_exhausted",
+      "third_computer_allocated": false,
+      "concurrent_wakes_proved": false
     }
   },
   "resource_inventory": {

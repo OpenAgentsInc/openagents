@@ -26,7 +26,7 @@ steps:
       - CARGO_PROFILE_DEV_DEBUG=0
       - CARGO_PROFILE_TEST_DEBUG=0
       - CARGO_TARGET_DIR=/workspace/space-cleanup-target
-      - SPACE_TEST_POSTGRES_ADMIN_URL=postgres://postgres@127.0.0.1:5432/postgres
+      - SPACE_TEST_POSTGRES_ADMIN_URL=postgres://postgres@127.0.0.1:5432/postgres?sslmode=disable
     args:
       - -c
       - |
@@ -39,9 +39,12 @@ steps:
         su postgres -s /bin/sh -c '/usr/lib/postgresql/15/bin/initdb -D /var/lib/postgresql/space-test --auth=trust >/dev/null'
         su postgres -s /bin/sh -c '/usr/lib/postgresql/15/bin/pg_ctl -D /var/lib/postgresql/space-test -o "-h 127.0.0.1" -l /var/lib/postgresql/space-test/server.log -w start'
         trap 'su postgres -s /bin/sh -c "/usr/lib/postgresql/15/bin/pg_ctl -D /var/lib/postgresql/space-test -m immediate -w stop"' EXIT
-        cargo test --locked -p pplx-space-api --features kubernetes controllers::sandbox::lifecycle::tests:: -- --test-threads=2
-        cargo test --locked -p pplx-space-cluster-controller-server snapshot_storage_sweeper::tests::
-        cargo test --locked -p pplx-space-snapshot-storage --features s3
+        cargo run --locked -p pplx-space-db-test-fixtures --bin space-nextest-postgres-setup -- "$$SPACE_TEST_POSTGRES_ADMIN_URL"
+        space_checks_failed=0
+        cargo test --locked -p pplx-space-api --features kubernetes controllers::sandbox::lifecycle::tests:: -- --test-threads=2 || space_checks_failed=1
+        cargo test --locked -p pplx-space-cluster-controller-server snapshot_storage_sweeper::tests:: || space_checks_failed=1
+        cargo test --locked -p pplx-space-snapshot-storage --features s3 || space_checks_failed=1
+        exit "$$space_checks_failed"
 options:
   machineType: E2_HIGHCPU_32
   diskSizeGb: 150
