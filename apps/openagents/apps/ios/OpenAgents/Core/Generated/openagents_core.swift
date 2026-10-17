@@ -1662,12 +1662,11 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
     func storedLoginPresent() throws  -> Bool
     
     /**
-     * Sign in with the identity token from Apple's sheet and the raw
-     * nonce from [`apple_sign_in_nonce`]. `name` is the name the sheet
-     * returned (only on the first sign-in). Progress arrives as account
-     * snapshots, like [`CoreAccount::sign_in`].
+     * Delete the signed-in account and sign this app out. Call it only
+     * after the person confirmed the warning; with `forfeit_balance`,
+     * only after they confirmed giving up paid credit.
      */
-    func signInWithApple(identityToken: String, nonce: String, name: String?, deviceName: String) 
+    func deleteAccount(forfeitBalance: Bool) async  -> AccountDeletion
     
     func chatHomes(client: CoreClient, chat: String) throws  -> CoreChatHomes
     
@@ -1929,21 +1928,25 @@ open func storedLoginPresent()throws  -> Bool  {
 }
     
     /**
-     * Sign in with the identity token from Apple's sheet and the raw
-     * nonce from [`apple_sign_in_nonce`]. `name` is the name the sheet
-     * returned (only on the first sign-in). Progress arrives as account
-     * snapshots, like [`CoreAccount::sign_in`].
+     * Delete the signed-in account and sign this app out. Call it only
+     * after the person confirmed the warning; with `forfeit_balance`,
+     * only after they confirmed giving up paid credit.
      */
-open func signInWithApple(identityToken: String, nonce: String, name: String?, deviceName: String)  {try! rustCall() {
-        uniffiCallStatus in
-    uniffi_openagents_mobile_fn_method_coreaccount_sign_in_with_apple(
-            self.uniffiCloneHandle(),
-        FfiConverterString.lower(identityToken),
-        FfiConverterString.lower(nonce),
-        FfiConverterOptionString.lower(name),
-        FfiConverterString.lower(deviceName),uniffiCallStatus
-    )
-}
+open func deleteAccount(forfeitBalance: Bool)async  -> AccountDeletion  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreaccount_delete_account(
+                        self.uniffiCloneHandle(),FfiConverterBool.lower(forfeitBalance)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeAccountDeletion_lift,
+            errorHandler: nil
+            
+        )
 }
     
 open func chatHomes(client: CoreClient, chat: String)throws  -> CoreChatHomes  {
@@ -9676,64 +9679,6 @@ public func FfiConverterTypeAccountSnapshot_lower(_ value: AccountSnapshot) -> R
 }
 
 
-/**
- * A Sign in with Apple nonce: `hashed` goes into Apple's request,
- * `raw` comes back to us with the identity token.
- */
-public struct AppleNonce: Equatable, Hashable {
-    public var raw: String
-    public var hashed: String
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(raw: String, hashed: String) {
-        self.raw = raw
-        self.hashed = hashed
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension AppleNonce: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeAppleNonce: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AppleNonce {
-        return
-            try AppleNonce(
-                raw: FfiConverterString.read(from: &buf), 
-                hashed: FfiConverterString.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: AppleNonce, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.raw, into: &buf)
-        FfiConverterString.write(value.hashed, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeAppleNonce_lift(_ buf: RustBuffer) throws -> AppleNonce {
-    return try FfiConverterTypeAppleNonce.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeAppleNonce_lower(_ value: AppleNonce) -> RustBuffer {
-    return FfiConverterTypeAppleNonce.lower(value)
-}
-
-
 public struct AppshotLabel: Equatable, Hashable {
     public var appName: String
     public var windowTitle: String?
@@ -16725,6 +16670,110 @@ public func FfiConverterTypeWorktreeSpec_lift(_ buf: RustBuffer) throws -> Workt
 public func FfiConverterTypeWorktreeSpec_lower(_ value: WorktreeSpec) -> RustBuffer {
     return FfiConverterTypeWorktreeSpec.lower(value)
 }
+
+
+/**
+ * What a delete request came to.
+ */
+
+public enum AccountDeletion: Equatable, Hashable {
+    
+    /**
+     * The account is gone and the app is signed out.
+     */
+    case deleted
+    /**
+     * Paid credit is left: ask, then call again with `forfeit_balance`.
+     */
+    case paidCredit(message: String
+    )
+    /**
+     * The person owns a team with other members.
+     */
+    case sharedTeam(message: String
+    )
+    /**
+     * It didn't work; the message says what to do.
+     */
+    case failed(message: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AccountDeletion: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAccountDeletion: FfiConverterRustBuffer {
+    typealias SwiftType = AccountDeletion
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AccountDeletion {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .deleted
+        
+        case 2: return .paidCredit(message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .sharedTeam(message: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 4: return .failed(message: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AccountDeletion, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .deleted:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .paidCredit(message):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(message, into: &buf)
+            
+        
+        case let .sharedTeam(message):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(message, into: &buf)
+            
+        
+        case let .failed(message):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(message, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccountDeletion_lift(_ buf: RustBuffer) throws -> AccountDeletion {
+    return try FfiConverterTypeAccountDeletion.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccountDeletion_lower(_ value: AccountDeletion) -> RustBuffer {
+    return FfiConverterTypeAccountDeletion.lower(value)
+}
+
 
 
 
@@ -24201,34 +24250,13 @@ public func workosAuthorizeUrl(state: String) -> String  {
 })
 }
 /**
- * A fresh random nonce for one Sign in with Apple request.
+ * The words Settings shows before the person deletes the account: what
+ * goes, and that the wallet's 12 words still hold the wallet.
  */
-public func appleSignInNonce() -> AppleNonce  {
-    return try!  FfiConverterTypeAppleNonce_lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_openagents_mobile_fn_func_apple_sign_in_nonce(uniffiCallStatus
-    )
-})
-}
-/**
- * The scheme [`sign_in_sheet_url`]'s page returns to.
- */
-public func signInSheetScheme() -> String  {
+public func accountDeletionWarning() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_openagents_mobile_fn_func_sign_in_sheet_scheme(uniffiCallStatus
-    )
-})
-}
-/**
- * The approval page to open in the in-app sign-in sheet: the code's page
- * with `return=app`, so Approve sends the sheet back and it closes.
- */
-public func signInSheetUrl(verificationUrl: String) -> String  {
-    return try!  FfiConverterString.lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_openagents_mobile_fn_func_sign_in_sheet_url(
-        FfiConverterString.lower(verificationUrl),uniffiCallStatus
+    uniffi_openagents_mobile_fn_func_account_deletion_warning(uniffiCallStatus
     )
 })
 }
@@ -24422,13 +24450,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_func_workos_authorize_url() != 58769) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_apple_sign_in_nonce() != 2829) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_openagents_mobile_checksum_func_sign_in_sheet_scheme() != 43668) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_openagents_mobile_checksum_func_sign_in_sheet_url() != 7922) {
+    if (uniffi_openagents_mobile_checksum_func_account_deletion_warning() != 18673) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_func_file_mention_link() != 21705) {
@@ -24704,7 +24726,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreaccount_stored_login_present() != 54303) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_sign_in_with_apple() != 22779) {
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_delete_account() != 60111) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_chat_homes() != 42622) {
