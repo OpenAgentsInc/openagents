@@ -1809,9 +1809,21 @@ mod generated_image_tests {
         assert_eq!(unchipped_attachments("Image 1", &paths).len(), 4);
     }
 
-    #[tokio::test]
-    async fn a_queued_file_reads_back_with_its_bytes_and_display_name() {
-        let executor = gpui_platform::background_executor();
+    /// A test executor with real-time parking: the memory engine answers from
+    /// tokio threads. `gpui_platform::background_executor()` would build the
+    /// macOS platform off the main thread, which aborts the test run (#11967).
+    fn engine_executor(cx: &gpui::TestAppContext) -> (tokio::runtime::Runtime, BackgroundExecutor) {
+        let executor = cx.executor();
+        executor.allow_parking();
+        (tokio::runtime::Runtime::new().unwrap(), executor)
+    }
+
+    #[gpui::test]
+    async fn a_queued_file_reads_back_with_its_bytes_and_display_name(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let (runtime, executor) = engine_executor(cx);
+        let _tokio = runtime.enter();
         for bytes in [b"# notes\n".to_vec(), Vec::new()] {
             let engine = EngineHandle::from_test_client(openagents_rpc::memory_client(Arc::new(
                 FileRpc(bytes.clone()),
@@ -1837,9 +1849,12 @@ mod generated_image_tests {
         }
     }
 
-    #[tokio::test]
-    async fn generated_image_chunk_reader_targets_owner_and_bounds_decode() {
-        let executor = gpui_platform::background_executor();
+    #[gpui::test]
+    async fn generated_image_chunk_reader_targets_owner_and_bounds_decode(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let (runtime, executor) = engine_executor(cx);
+        let _tokio = runtime.enter();
         for (width, target, expected, succeeds) in [
             (64, Some("remote-owner"), "image/png", true),
             (64, None, "image/png", true),
