@@ -113,6 +113,8 @@ pub(crate) fn view(v: &Value) -> Value {
         "created_unix": v["created_unix"], "updated_unix": v["updated_unix"],
         "online": matches!(v["state"].as_str(), Some("awake" | "turn" | "booting" | "creating")),
         "seen_unix": Value::Null, "sync": Value::Null,
+        "capabilities": v["capabilities"].is_object().then(|| public_capability_fields(&v["capabilities"])),
+        "lifecycle_policy": public_lifecycle_policy(&v["lifecycle_policy"]),
         "last_error": v["last_error"].as_str().map(|_| "We couldn't finish that computer operation. Try again later.")
     })
 }
@@ -484,6 +486,56 @@ pub(crate) async fn list_cloud(
     }
 }
 
+fn public_capability_fields(value: &Value) -> Value {
+    let profiles: Vec<_> = value["profiles"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|p| matches!(p.as_str(), Some("core" | "suspend" | "snapshot" | "fork")))
+        .collect();
+    let sizes: Vec<_> = value["sizes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .take(32)
+        .filter(|s| s.as_str().is_some_and(coder_environment::valid_id))
+        .collect();
+    let mut shapes = serde_json::Map::new();
+    for size in &sizes {
+        let name = size.as_str().unwrap();
+        let shape = &value["shapes"][name];
+        if !shape["vcpus"].as_u64().is_some_and(|n| n > 0)
+            || !shape["memory_mib"].as_u64().is_some_and(|n| n > 0)
+        {
+            continue;
+        }
+        let mut safe = json!({"vcpus":shape["vcpus"],"memory_mib":shape["memory_mib"]});
+        if shape["min_disk_gib"].as_u64().is_some_and(|n| n > 0) {
+            safe["min_disk_gib"] = shape["min_disk_gib"].clone();
+        }
+        shapes.insert(name.into(), safe);
+    }
+    json!({"profiles":profiles,"sizes":sizes,"shapes":shapes,
+        "memory_suspend":value["memory_suspend"].as_bool().unwrap_or(false),
+        "command_sessions":value["command_sessions"].as_bool().unwrap_or(false),
+        "workspace_file_bytes":value["workspace_file_bytes"].as_u64().filter(|n|*n>0 && *n<=computer_files::MAX_BYTES as u64)})
+}
+
+fn public_lifecycle_policy(value: &Value) -> Value {
+    if !matches!(value["turn_complete"].as_str(), Some("suspend" | "delete"))
+        || value["absolute_scope"] != "boot"
+        || value["uncertain_at_absolute_limit"] != "delete"
+        || ["idle_ms", "observed_extension_ms", "absolute_ms"]
+            .iter()
+            .any(|name| value[*name].as_u64().is_none())
+    {
+        return Value::Null;
+    }
+    json!({"turn_complete":value["turn_complete"],"idle_ms":value["idle_ms"],
+        "observed_extension_ms":value["observed_extension_ms"],"absolute_ms":value["absolute_ms"],
+        "absolute_scope":value["absolute_scope"],"uncertain_at_absolute_limit":value["uncertain_at_absolute_limit"]})
+}
+
 fn public_placements(value: &Value) -> Value {
     let mut placements = Vec::new();
     for group in value.as_array().into_iter().flatten().take(16) {
@@ -495,39 +547,13 @@ fn public_placements(value: &Value) -> Value {
         }
         let mut offers = Vec::new();
         for offer in group["offers"].as_array().into_iter().flatten().take(16) {
-            let profiles: Vec<_> = offer["profiles"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter(|p| matches!(p.as_str(), Some("core" | "suspend" | "snapshot" | "fork")))
-                .collect();
-            let sizes: Vec<_> = offer["sizes"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .take(32)
-                .filter(|s| s.as_str().is_some_and(coder_environment::valid_id))
-                .collect();
-            let mut shapes = serde_json::Map::new();
-            for size in &sizes {
-                let name = size.as_str().unwrap();
-                let shape = &offer["shapes"][name];
-                if !shape["vcpus"].as_u64().is_some_and(|n| n > 0)
-                    || !shape["memory_mib"].as_u64().is_some_and(|n| n > 0)
-                {
-                    continue;
-                }
-                let mut safe = json!({"vcpus":shape["vcpus"],"memory_mib":shape["memory_mib"]});
-                if shape["min_disk_gib"].as_u64().is_some_and(|n| n > 0) {
-                    safe["min_disk_gib"] = shape["min_disk_gib"].clone();
-                }
-                shapes.insert(name.into(), safe);
-            }
-            offers.push(json!({"profiles":profiles,"sizes":sizes,"shapes":shapes,
-                "memory_suspend":offer["memory_suspend"].as_bool().unwrap_or(false),
-                "command_sessions":offer["command_sessions"].as_bool().unwrap_or(false),
-                "workspace_file_bytes":offer["workspace_file_bytes"].as_u64().filter(|n|*n>0 && *n<=computer_files::MAX_BYTES as u64),
-                "default_environment_available":offer["default_environment_available"].as_bool().unwrap_or(false)}));
+            let mut capability = public_capability_fields(offer);
+            capability["default_environment_available"] = json!(
+                offer["default_environment_available"]
+                    .as_bool()
+                    .unwrap_or(false)
+            );
+            offers.push(capability);
         }
         placements.push(json!({"placement":group["placement"],"offers":offers}));
     }
@@ -581,7 +607,8 @@ pub(crate) fn extend_openapi(document: &mut Value) {
             "id":{"type":"string","pattern":"^cmp_[0-9a-fA-F]{20}$"},"name":{"type":"string"},"kind":{"const":"cloud"},
             "chat":{"type":["string","null"]},"size":{"type":"string"},"state":{"type":"string"},"desired":{"type":"string","enum":["running","stopped","deleted"]},
             "online":{"type":"boolean"},"turns":{"type":"integer","minimum":0},"created_unix":{"type":"integer"},"updated_unix":{"type":"integer"},
-            "seen_unix":{"type":"null"},"sync":{"type":"null"},"last_error":{"type":["string","null"]}
+            "seen_unix":{"type":"null"},"sync":{"type":"null"},"last_error":{"type":["string","null"]},
+            "capabilities":reference("ComputerResourceCapabilities"),"lifecycle_policy":reference("ComputerLifecyclePolicy")
         }},
         "AppEnrolledComputer":{"type":"object","required":["name","online"],"properties":{"name":{"type":"string"},"online":{"type":"boolean"},"seen_unix":{"type":["integer","null"]},"sync":{"type":["string","null"]}}},
         "AppComputerList":{"type":"object","required":["computers","next_cursor"],"properties":{
@@ -603,6 +630,14 @@ pub(crate) fn extend_openapi(document: &mut Value) {
         }},
         "AppComputerShape":{"type":"object","required":["vcpus","memory_mib"],"properties":{
             "vcpus":{"type":"integer","minimum":1},"memory_mib":{"type":"integer","minimum":1},"min_disk_gib":{"type":"integer","minimum":1}
+        }},
+        "AppComputerResourceCapabilities":{"type":["object","null"],"required":["profiles","sizes","shapes","memory_suspend","command_sessions","workspace_file_bytes"],"description":"The bound computer's supported operations. Absent or null means unknown. A known object defaults omitted memory_suspend and command_sessions declarations to false; a Suspend profile alone does not promise memory preservation.","properties":{
+            "profiles":{"type":"array","items":{"type":"string","enum":["core","suspend","snapshot","fork"]}},
+            "sizes":{"type":"array","items":{"type":"string"}},"shapes":{"type":"object","additionalProperties":reference("ComputerShape")},
+            "memory_suspend":{"type":"boolean"},"command_sessions":{"type":"boolean"},"workspace_file_bytes":{"type":["integer","null"],"minimum":1,"maximum":computer_files::MAX_BYTES}
+        }},
+        "AppComputerLifecyclePolicy":{"type":["object","null"],"required":["turn_complete","idle_ms","observed_extension_ms","absolute_ms","absolute_scope","uncertain_at_absolute_limit"],"description":"The recorded service policy for this computer. Absent or null means unavailable; clients must not invent timing or memory guarantees.","properties":{
+            "turn_complete":{"type":"string","enum":["suspend","delete"]},"idle_ms":{"type":"integer","minimum":0},"observed_extension_ms":{"type":"integer","minimum":0},"absolute_ms":{"type":"integer","minimum":0},"absolute_scope":{"const":"boot"},"uncertain_at_absolute_limit":{"const":"delete"}
         }},
         "AppPlacementOffer":{"type":"object","required":["profiles","sizes","shapes","memory_suspend","command_sessions","workspace_file_bytes","default_environment_available"],"properties":{
             "profiles":{"type":"array","items":{"type":"string","enum":["core","suspend","snapshot","fork"]}},
