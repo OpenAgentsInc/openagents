@@ -2,6 +2,11 @@
 //! are renamed or moved between areas only through checked changes. The
 //! screenshots themselves come from capture runs of the app, so no change
 //! edits a picture. The card is the newest version of each screen.
+//!
+//! The same kind keeps `mock.v1` documents ([`crate::mock`]): mock screens
+//! built from pieces of captured screens, and revision notes pinned to
+//! screens and mocks. Their changes are the `design_mock_*`, `design_item_*`
+//! and `design_note_*` intents.
 
 use lab_kit::{
     Artifact, Card, Change, Draft, JobSpec, JobState, KindManifest, LabKind, Limits, Measurements,
@@ -52,6 +57,27 @@ fn tool(name: &str, description: &str, extra: Value) -> ToolDecl {
     }
 }
 
+fn mock_tool(name: &str, description: &str, extra: Value, required: &[&str]) -> ToolDecl {
+    let mut properties = json!({
+        "board": {"type": "string", "description": "The mocks document's id."},
+        "summary": {"type": "string", "description": "One line saying what changed."}
+    });
+    for (key, schema) in extra.as_object().into_iter().flatten() {
+        properties[key] = schema.clone();
+    }
+    let mut needed = vec![json!("board")];
+    needed.extend(required.iter().map(|r| json!(r)));
+    ToolDecl {
+        name: name.into(),
+        description: description.into(),
+        parameters: json!({"type": "object", "properties": properties, "required": needed}),
+    }
+}
+
+fn is_mocks(content: &Value) -> bool {
+    content["schema"] == crate::mock::SCHEMA
+}
+
 impl LabKind for Design {
     const KIND: &'static str = "design";
 
@@ -59,7 +85,7 @@ impl LabKind for Design {
         KindManifest {
             kind: Self::KIND.into(),
             name: "Design Lab".into(),
-            schemas: vec![SCHEMA.into()],
+            schemas: vec![SCHEMA.into(), crate::mock::SCHEMA.into()],
             tool_prefix: "design_".into(),
             doc_arg: "board".into(),
             tools: vec![
@@ -73,6 +99,60 @@ impl LabKind for Design {
                     "Move a screen to another area of the board.",
                     json!({"area": {"type": "string"}}),
                 ),
+                mock_tool(
+                    "design_mock_new",
+                    "Start a blank phone-sized mock screen.",
+                    json!({"title": {"type": "string"}}),
+                    &[],
+                ),
+                mock_tool(
+                    "design_mock_set",
+                    "Rename a mock or change its size or background color.",
+                    json!({"mock": {"type": "string"}, "title": {"type": "string"},
+                        "background": {"type": "string"}}),
+                    &["mock"],
+                ),
+                mock_tool(
+                    "design_mock_delete",
+                    "Delete a mock and the notes on it.",
+                    json!({"mock": {"type": "string"}}),
+                    &["mock"],
+                ),
+                mock_tool(
+                    "design_item_add",
+                    "Put a piece on a mock: a crop of a captured screen (with its source), \
+                     a rectangle, or a text box, at x, y with size w × h in points.",
+                    json!({"mock": {"type": "string"}, "item": {"type": "object"}}),
+                    &["mock", "item"],
+                ),
+                mock_tool(
+                    "design_item_set",
+                    "Move, resize or restyle a piece on a mock.",
+                    json!({"mock": {"type": "string"}, "item": {"type": "string"},
+                        "x": {"type": "number"}, "y": {"type": "number"},
+                        "w": {"type": "number"}, "h": {"type": "number"},
+                        "text": {"type": "string"}, "fill": {"type": "string"}}),
+                    &["mock", "item"],
+                ),
+                mock_tool(
+                    "design_item_delete",
+                    "Take a piece off a mock.",
+                    json!({"mock": {"type": "string"}, "item": {"type": "string"}}),
+                    &["mock", "item"],
+                ),
+                mock_tool(
+                    "design_note_add",
+                    "Pin a revision note to a point or box on a mock or a screen version.",
+                    json!({"note": {"type": "object"}}),
+                    &["note"],
+                ),
+                mock_tool(
+                    "design_note_set",
+                    "Edit a note's text or mark it resolved.",
+                    json!({"note": {"type": "string"}, "text": {"type": "string"},
+                        "resolved": {"type": "boolean"}}),
+                    &["note"],
+                ),
             ],
             job_types: Vec::new(),
             job_requirements: Default::default(),
@@ -85,6 +165,9 @@ impl LabKind for Design {
     }
 
     fn check(content: &Value, _: &Measurements) -> Result<Report, Refusal> {
+        if is_mocks(content) {
+            return crate::mock::check(content);
+        }
         let board = board_of(content)?;
         if board.schema != SCHEMA {
             return Err(Refusal::new("board_check", "Choose a board.v1 board."));
@@ -136,6 +219,10 @@ impl LabKind for Design {
         m: &Measurements,
     ) -> Result<Draft, Refusal> {
         let content = match change {
+            Change::Intent { intent } if is_mocks(&base.content) => {
+                let now = base.created_unix_ms / 1000;
+                crate::mock::apply(&base.content, intent, now)?.0
+            }
             Change::Intent { intent } => {
                 let mut board = board_of(&base.content)?;
                 let id = intent["screen"].as_str().unwrap_or_default();
@@ -243,6 +330,8 @@ mod tests {
                     height: 2622,
                     dark: None,
                     dark_sha256: None,
+                    elements: None,
+                    dark_elements: None,
                 }],
             }],
         };
@@ -303,6 +392,32 @@ mod tests {
         assert_eq!(
             refuse(json!({"intent": "paint", "screen": "home"})),
             "unknown_intent"
+        );
+    }
+
+    #[test]
+    fn mock_documents_are_the_same_kind() {
+        let content = serde_json::to_value(crate::mock::Mocks::default()).unwrap();
+        assert_eq!(
+            Design::check(&content, &Value::Null).unwrap().facts["mocks"],
+            0
+        );
+        let mut base = first();
+        base.schema = crate::mock::SCHEMA.into();
+        base.content = content;
+        let draft = Design::apply(
+            &base,
+            &intent(json!({"intent": "mock_new", "title": "Start"})),
+            "New mock",
+            &Value::Null,
+        )
+        .unwrap();
+        assert_eq!(draft.content["mocks"][0]["id"], "m1");
+        assert_eq!(draft.report.facts["mocks"], 1);
+        assert!(
+            Design::manifest()
+                .schemas
+                .contains(&crate::mock::SCHEMA.to_string())
         );
     }
 

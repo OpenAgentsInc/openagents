@@ -47,7 +47,6 @@
   #view { position: fixed; inset: 0; background: rgba(10,10,10,.92); display: none; z-index: 10; }
   #view.open { display: flex; }
   #view .stage { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; min-width: 0; }
-  #view .stage img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
   #view aside { width: 320px; padding: 24px; border-left: 1px solid #333; overflow: auto; }
   #view h2 { margin: 0 0 4px; font-size: 18px; }
   #view .meta { color: #9a9a9a; margin: 2px 0; word-break: break-all; }
@@ -56,6 +55,70 @@
   #view .strip img { width: 100%; aspect-ratio: 9 / 19.5; object-fit: cover; border-radius: 4px;
     cursor: pointer; border: 2px solid transparent; background: #2c2c2c; }
   #view .strip img.on { border-color: #0d99ff; }
+  #view .stage, #editor .stage { cursor: default; }
+  #shot { position: relative; line-height: 0; }
+  #shot img { max-width: calc(100vw - 420px); max-height: calc(100vh - 48px); object-fit: contain;
+    border-radius: 8px; display: block; }
+  #marks, #pins { position: absolute; inset: 0; }
+  #pins { pointer-events: none; }
+  .pin { pointer-events: auto; }
+  #marks { cursor: crosshair; }
+  .box { position: absolute; pointer-events: none; border: 2px solid #0d99ff; border-radius: 3px; }
+  .box.hover { border-color: rgba(13,153,255,.75); background: rgba(13,153,255,.08); }
+  .box.picked { background: rgba(13,153,255,.18); }
+  .box.band { border-style: dashed; }
+  .box.noteband { border: 2px dashed #ffb020; background: rgba(255,176,32,.1); }
+  .box .tag { position: absolute; left: -2px; bottom: 100%; margin-bottom: 2px; background: #0d99ff;
+    color: #fff; font-size: 11px; line-height: 1.4; padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
+  .pin { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 12px;
+    background: #ffb020; color: #1e1e1e; font: 700 12px/24px -apple-system, sans-serif; text-align: center;
+    box-shadow: 0 1px 6px rgba(0,0,0,.5); cursor: pointer; z-index: 3; line-height: 24px; }
+  .pin.done { background: #6b6b6b; color: #ddd; }
+  .notebox { position: absolute; border: 2px dashed #ffb020; border-radius: 3px; pointer-events: none; z-index: 2; }
+  .notebox.done { border-color: #6b6b6b; }
+  aside h3 { margin: 18px 0 6px; font-size: 13px; color: #cfcfcf; font-weight: 600; }
+  aside .hint { color: #8a8a8a; font-size: 12px; margin: 4px 0; }
+  aside .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+  aside .list { margin: 0; padding: 0; list-style: none; }
+  aside .list li { padding: 6px 8px; border: 1px solid #333; border-radius: 6px; margin: 4px 0; word-break: break-word; }
+  aside .list li.done { opacity: .55; }
+  aside .list li b { color: #ffb020; margin-right: 4px; }
+  aside .list li small { color: #8a8a8a; display: block; }
+  aside .list li .row { margin: 4px 0 0; }
+  aside button.small { padding: 3px 8px; font-size: 12px; }
+  aside input[type=text], aside input[type=number], aside textarea, aside select {
+    background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 6px; color: inherit; font: inherit;
+    padding: 5px 7px; outline: none; }
+  aside textarea { width: 100%; min-height: 64px; resize: vertical; }
+  aside input[type=number] { width: 64px; }
+  aside input:focus, aside textarea:focus, aside select:focus { border-color: #0d99ff; }
+  aside label { color: #aaa; font-size: 12px; display: inline-flex; gap: 4px; align-items: center; }
+  .readonly .edit { display: none !important; }
+  #editor { position: fixed; inset: 0; background: rgba(10,10,10,.94); display: none; z-index: 11; }
+  #editor.open { display: flex; }
+  #editor .stage { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; min-width: 0; }
+  #editor aside { width: 340px; padding: 20px 22px; border-left: 1px solid #333; overflow: auto; }
+  #editor aside h2 { margin: 0 0 4px; font-size: 18px; }
+  #phone { position: relative; overflow: hidden; border-radius: 22px; box-shadow: 0 2px 24px rgba(0,0,0,.6);
+    outline: 1px solid #444; touch-action: none; }
+  #phone.grid { background-image: linear-gradient(rgba(13,153,255,.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(13,153,255,.12) 1px, transparent 1px); }
+  .piece { position: absolute; overflow: hidden; line-height: 1.25; white-space: pre-wrap; word-break: break-word;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif; font-weight: 500; }
+  #phone .piece { cursor: move; }
+  #phone .piece.sel { outline: 2px solid #0d99ff; outline-offset: 0; }
+  #phone .handle { position: absolute; width: 12px; height: 12px; background: #fff;
+    border: 2px solid #0d99ff; border-radius: 2px; cursor: nwse-resize; z-index: 2; }
+  #phone.noting, #phone.noting .piece { cursor: crosshair; }
+  .mockpic { position: absolute; inset: 0; overflow: hidden; border-radius: 10px; }
+  .frame .new { width: 100%; height: 100%; border: 3px dashed #4a4a4a; border-radius: 10px; color: #9a9a9a;
+    display: flex; align-items: center; justify-content: center; font-size: 26px; cursor: pointer; }
+  .frame .new:hover { border-color: #0d99ff; color: #e6e6e6; }
+  .frame .badge { color: #ffb020; margin-left: 6px; }
+  #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #2c2c2c;
+    border: 1px solid #4a4a4a; border-radius: 8px; padding: 9px 14px; z-index: 20; display: none;
+    gap: 10px; align-items: center; box-shadow: 0 4px 18px rgba(0,0,0,.5); }
+  #toast.show { display: flex; }
 </style>
 </head>
 <body>
@@ -71,11 +134,12 @@
   <button id="fit" title="Show everything (Shift+1)">Fit</button>
   <button id="mode" title="Show screens in light or dark mode (D)">Light</button>
   <button id="removed" title="Also show screens the app no longer has">Show removed</button>
+  <button id="newmock" class="edit" title="Start a blank phone-sized mock screen (N)">New mock screen</button>
 </div>
-<div id="help">Drag or scroll to move · Pinch or ⌘/Ctrl + scroll to zoom · Click a screen to open it · D switches light and dark</div>
+<div id="help">Drag or scroll to move · Pinch or ⌘/Ctrl + scroll to zoom · Click a screen to open it, select its elements and pin notes · D switches light and dark</div>
 <div id="empty">No screens match.</div>
 <div id="view">
-  <div class="stage"><img id="big" alt=""></div>
+  <div class="stage"><div id="shot"><img id="big" alt=""><div id="marks"></div><div id="pins"></div></div></div>
   <aside>
     <h2 id="vtitle"></h2>
     <div class="meta" id="vwhen"></div>
@@ -84,9 +148,73 @@
       <button id="next">Newer →</button>
       <button id="close">Close</button>
     </div>
+    <div class="row">
+      <button id="vselect" class="on">Select</button>
+      <button id="vnote" class="edit">Pin a note</button>
+    </div>
+    <div class="hint" id="vhint"></div>
+    <h3>Selected</h3>
+    <ul class="list" id="vsel"></ul>
+    <div class="row edit" id="vcopy">
+      <select id="vtarget"></select>
+      <button id="vcopybtn">Copy to mock</button>
+    </div>
+    <div id="vnoteform" class="edit" hidden>
+      <h3>New note</h3>
+      <textarea id="vnotetext" placeholder="Put the composer here"></textarea>
+      <div class="row"><input id="vauthor" type="text" placeholder="Your name" size="14">
+        <button id="vnotesave">Pin note</button><button id="vnotecancel">Cancel</button></div>
+    </div>
+    <h3>Notes</h3>
+    <ul class="list" id="vnotes"></ul>
+    <div class="row edit"><a id="vspec" target="_blank" class="meta">Spec for building agents</a></div>
+    <h3>Versions</h3>
     <div class="strip" id="vstrip"></div>
   </aside>
 </div>
+<div id="editor">
+  <div class="stage" id="estage"><div id="phone"></div></div>
+  <aside>
+    <h2>Mock screen</h2>
+    <div class="row"><input id="etitle" type="text" style="flex:1"></div>
+    <div class="row">
+      <button id="eselect" class="on">Select</button>
+      <button id="enote" class="edit">Pin a note</button>
+      <button id="eclose">Close</button>
+    </div>
+    <div class="row edit">
+      <button id="erect" title="Add a rectangle (R)">Rectangle</button>
+      <button id="etext" title="Add a text box (T)">Text</button>
+      <label><input id="egrid" type="checkbox" checked> Snap to 8 pt</label>
+    </div>
+    <div class="hint" id="ehint"></div>
+    <h3>Selected</h3>
+    <div id="einfo" class="hint">Nothing selected. Click a piece; Shift-click adds more.</div>
+    <div class="row edit" id="eactions">
+      <button id="edup" class="small" title="Duplicate (⌘D)">Duplicate</button>
+      <button id="edel" class="small" title="Delete (⌫)">Delete</button>
+      <button id="efront" class="small">To front</button>
+      <button id="eback" class="small">To back</button>
+    </div>
+    <div class="row edit" id="egeo"></div>
+    <div class="edit" id="estyle"></div>
+    <div class="row edit"><select id="etarget"></select><button id="ecopy" class="small">Copy to mock</button></div>
+    <div id="enoteform" class="edit" hidden>
+      <h3>New note</h3>
+      <textarea id="enotetext" placeholder="This button should say Start"></textarea>
+      <div class="row"><input id="eauthor" type="text" placeholder="Your name" size="14">
+        <button id="enotesave">Pin note</button><button id="enotecancel">Cancel</button></div>
+    </div>
+    <h3>Notes</h3>
+    <ul class="list" id="enotes"></ul>
+    <h3>Mock</h3>
+    <div class="row edit"><label>Background <input id="ebg" type="color"></label>
+      <button id="edelmock" class="small">Delete mock</button></div>
+    <div class="row edit"><a id="espec" target="_blank" class="meta">Spec for building agents</a>
+      <a id="epng" target="_blank" class="meta">Picture</a></div>
+  </aside>
+</div>
+<div id="toast"><span id="toasttext"></span><button id="toastbtn" class="small" hidden></button></div>
 <script>
 "use strict";
 const PIC = 460, NAME = 110, GAP = 28, COLGAP = 90, ROWGAP = 70, HEAD = 120, PAD = 60, WRAP = 4600, SECGAP = 160;
@@ -181,6 +309,8 @@ function layout() {
     versions += screen.versions.length;
   }
   const sections = [...byArea].map(([a, list]) => section(a, list));
+  const mockList = mocks.mocks.filter((m) => !q || m.title.toLowerCase().includes(q));
+  if (!only && (mockList.length || (editable && !q))) sections.unshift(mockSection(mockList));
   // Pack sections in shelves about as wide as a laptop screen is to its height.
   const total = sections.reduce((a, s) => a + (s.w + SECGAP) * (s.h + SECGAP), 0);
   const width = Math.max(Math.sqrt(total * 2.4), ...sections.map((s) => s.w), 1);
@@ -189,6 +319,7 @@ function layout() {
     if (x > 0 && x + s.w > width) { x = 0; y += shelf + SECGAP; shelf = 0; }
     const box = el("section", x, y, s.w, s.h);
     box.appendChild(el("area", PAD, 28, 0, 0, s.area));
+    if (s.mocks) buildMocks(box, s);
     for (const it of s.items) {
       const label = el("screen", it.x, it.y, 0, 0, it.screen.title);
       const small = document.createElement("small");
@@ -201,7 +332,15 @@ function layout() {
         const fw = it.sizes[i];
         const fy = it.y + NAME;
         const f = el("frame", fx, fy, fw, PIC);
-        f.appendChild(el("name", 0, 0, 0, 0, "v" + (i + 1) + " · " + when(v.unix)));
+        const name = el("name", 0, 0, 0, 0, "v" + (i + 1) + " · " + when(v.unix));
+        const openNotes = notesOn(it.screen.id, v).filter((n) => !n.resolved).length;
+        if (openNotes) {
+          const badge = document.createElement("span");
+          badge.className = "badge";
+          badge.textContent = openNotes === 1 ? "1 note" : openNotes + " notes";
+          name.appendChild(badge);
+        }
+        f.appendChild(name);
         const pic = el("pic", 0, 0);
         pic.style.position = "static";
         pic.addEventListener("click", () => { if (!moved) open(it.screen, i); });
@@ -350,6 +489,7 @@ function show() {
     (v.width ? " · " + v.width + "×" + v.height : "");
   document.getElementById("prev").disabled = i === 0;
   document.getElementById("next").disabled = i === screen.versions.length - 1;
+  viewerShow(screen, v);
   const strip = document.getElementById("vstrip");
   strip.textContent = "";
   screen.versions.forEach((s, j) => {
@@ -358,20 +498,25 @@ function show() {
     img.loading = "lazy";
     img.title = "v" + (j + 1) + " · " + when(s.unix);
     if (j === i) img.className = "on";
-    img.onclick = () => { current.i = j; show(); };
+    img.onclick = () => { current.i = j; sel = []; show(); };
     strip.appendChild(img);
   });
 }
-function close() { document.getElementById("view").classList.remove("open"); current = null; }
-document.getElementById("prev").onclick = () => { if (current.i > 0) { current.i--; show(); } };
+function close() {
+  document.getElementById("view").classList.remove("open");
+  current = null;
+  layout();
+}
+document.getElementById("prev").onclick = () => { if (current.i > 0) { current.i--; sel = []; show(); } };
 document.getElementById("next").onclick = () => {
-  if (current.i < current.screen.versions.length - 1) { current.i++; show(); }
+  if (current.i < current.screen.versions.length - 1) { current.i++; sel = []; show(); }
 };
 document.getElementById("close").onclick = close;
-document.querySelector("#view .stage").addEventListener("click", (e) => { if (e.target.tagName !== "IMG") close(); });
+document.querySelector("#view .stage").addEventListener("click", (e) => { if (e.target === e.currentTarget) close(); });
 
 addEventListener("keydown", (e) => {
-  if (e.target.tagName === "INPUT") { if (e.key === "Escape") e.target.blur(); return; }
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) { if (e.key === "Escape") e.target.blur(); return; }
+  if (editing) { editorKey(e); return; }
   if (current) {
     if (e.key === "Escape") close();
     if (e.key === "ArrowLeft") document.getElementById("prev").click();
@@ -383,9 +528,732 @@ addEventListener("keydown", (e) => {
   if (e.key === "!" || (e.shiftKey && e.key === "1") || e.key === "0") fit();
   if (e.key === "/") { e.preventDefault(); document.getElementById("search").focus(); }
   if (e.key === "d" || e.key === "D") setMode(mode === "dark" ? "light" : "dark");
+  if ((e.key === "n" || e.key === "N") && editable) newMock();
 });
 
-fetch("board.json").then((r) => r.json()).then((b) => {
+// ---- Mocks and notes. They are a mock.v1 document the server keeps; every
+// edit is one checked change sent to `mocks/change` (only from this computer).
+let mocks = { mocks: [], notes: [], next: 1 }, mocksVersion = 0, editable = false;
+let author = "";
+try { author = localStorage.getItem("design-lab-author") || ""; } catch (e) {}
+const PHONE = { w: 440, h: 956 }, SNAP = 8, DEFAULT_SCALE = 3;
+const $ = (id) => document.getElementById(id);
+
+function setMocks(b) {
+  if (b && b.doc) { mocks = b.doc; mocksVersion = b.version; editable = !!b.editable; }
+  document.body.classList.toggle("readonly", !editable);
+}
+function loadMocks() {
+  return fetch("mocks.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null))
+    .then(setMocks).catch(() => setMocks(null));
+}
+const mockById = (id) => mocks.mocks.find((m) => m.id === id);
+const lastId = (prefix) => prefix + (mocks.next - 1);
+
+let toastTimer = 0;
+function toast(text, action, label) {
+  const t = $("toast"), b = $("toastbtn");
+  $("toasttext").textContent = text;
+  b.hidden = !action;
+  b.textContent = label || "";
+  b.onclick = () => { t.classList.remove("show"); if (action) action(); };
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 6000);
+}
+
+// One change at a time, in order, each on the version the last one made.
+let saving = Promise.resolve(null);
+function send(change, summary) {
+  const run = () => fetch("mocks/change", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ base: mocksVersion, change, summary, author: author || "board" }),
+  }).then(async (r) => {
+    const b = await r.json().catch(() => null);
+    if (!r.ok) {
+      toast(b && b.error ? b.error.message : "That change didn't save.");
+      if (r.status === 409) await loadMocks();
+      refresh();
+      return null;
+    }
+    setMocks(b);
+    refresh();
+    return b;
+  }).catch(() => {
+    toast("We couldn't reach Design Lab. Is design-lab serve running?");
+    refresh();
+    return null;
+  });
+  saving = saving.then(run);
+  return saving;
+}
+function refresh() {
+  if (editing) drawEditor();
+  if (current) viewerShow(current.screen, current.screen.versions[current.i]);
+}
+
+function notesOn(screenId, v) {
+  return mocks.notes.filter((n) => n.on.screen === screenId &&
+    (n.on.image === v.image || (v.dark && n.on.image === v.dark)));
+}
+
+// One piece of a mock as a positioned div, `k` pixels a point.
+function pieceEl(item, k) {
+  const d = document.createElement("div");
+  d.className = "piece " + item.kind;
+  d.style.left = item.x * k + "px";
+  d.style.top = item.y * k + "px";
+  d.style.width = item.w * k + "px";
+  d.style.height = item.h * k + "px";
+  if (item.radius) d.style.borderRadius = item.radius * k + "px";
+  if (item.fill) d.style.backgroundColor = item.fill;
+  if (item.kind === "crop" && item.source) {
+    const s = item.source, sx = (item.w * k) / s.crop.w, sy = (item.h * k) / s.crop.h;
+    d.style.backgroundImage = 'url("img/' + s.image + '")';
+    d.style.backgroundRepeat = "no-repeat";
+    d.style.backgroundSize = s.image_width * sx + "px " + s.image_height * sy + "px";
+    d.style.backgroundPosition = -s.crop.x * sx + "px " + -s.crop.y * sy + "px";
+  }
+  if (item.kind === "text") {
+    d.textContent = item.text || "";
+    d.style.fontSize = (item.size || 17) * k + "px";
+    d.style.color = item.color || "#111111";
+    d.style.padding = 4 * k + "px";
+  }
+  return d;
+}
+function drawMock(container, mock, k) {
+  container.textContent = "";
+  container.style.backgroundColor = mock.background;
+  return mock.items.map((item) => {
+    const d = pieceEl(item, k);
+    container.appendChild(d);
+    return [item, d];
+  });
+}
+
+// The Mocks section on the board, first, with a tile that starts a new mock.
+function mockSection(list) {
+  const items = [];
+  let x = PAD, y = HEAD, w = 400;
+  const tiles = list.map((m) => ({ m, w: Math.round((PIC * m.width) / m.height) }));
+  if (editable) tiles.push({ add: true, w: Math.round((PIC * PHONE.w) / PHONE.h) });
+  for (const t of tiles) {
+    if (x > PAD && x + t.w > WRAP) { x = PAD; y += NAME + PIC + ROWGAP; }
+    items.push(Object.assign(t, { x, y }));
+    x += t.w + COLGAP;
+    w = Math.max(w, x - COLGAP + PAD);
+  }
+  return { area: "Mocks", mocks: items, items: [], w, h: y + NAME + PIC + PAD };
+}
+function buildMocks(box, s) {
+  for (const it of s.mocks) {
+    const f = el("frame", it.x, it.y + NAME, it.w, PIC);
+    if (it.add) {
+      const n = el("new", 0, 0, 0, 0, "+ New mock screen");
+      n.style.position = "static";
+      n.addEventListener("click", () => { if (!moved) newMock(); });
+      f.appendChild(n);
+    } else {
+      const name = el("name", 0, 0, 0, 0, it.m.title);
+      const open = mocks.notes.filter((n) => n.on.mock === it.m.id && !n.resolved).length;
+      if (open) {
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = open === 1 ? "1 note" : open + " notes";
+        name.appendChild(badge);
+      }
+      f.appendChild(name);
+      const pic = el("pic", 0, 0);
+      pic.style.position = "relative";
+      const inner = document.createElement("div");
+      inner.className = "mockpic";
+      drawMock(inner, it.m, PIC / it.m.height);
+      pic.appendChild(inner);
+      pic.addEventListener("click", () => { if (!moved) openEditor(it.m.id); });
+      f.appendChild(pic);
+    }
+    box.appendChild(f);
+  }
+}
+
+async function newMock() {
+  const b = await send({ intent: "mock_new", title: "Mock " + (mocks.mocks.length + 1) }, "New mock screen");
+  if (!b) return null;
+  const id = lastId("m");
+  layout();
+  return id;
+}
+
+function fillTargets(select, except) {
+  const keep = select.value;
+  select.textContent = "";
+  for (const m of mocks.mocks) {
+    if (m.id === except) continue;
+    const o = document.createElement("option");
+    o.value = m.id; o.textContent = m.title;
+    select.appendChild(o);
+  }
+  const o = document.createElement("option");
+  o.value = "__new"; o.textContent = "New mock screen";
+  select.appendChild(o);
+  if ([...select.options].some((x) => x.value === keep)) select.value = keep;
+}
+
+// Copies pieces to a mock (or a new one) in one change.
+async function copyTo(target, pieces, what) {
+  let id = target;
+  if (id === "__new") { id = await newMock(); if (!id) return null; }
+  const m = mockById(id);
+  const b = await send({ intent: "batch", changes: pieces.map((item) => ({ intent: "item_add", mock: id, item })) },
+    "Copied " + pieces.length + " " + (pieces.length === 1 ? "piece" : "pieces") + " from " + what);
+  if (!b) return null;
+  return { id, title: m ? m.title : (mockById(id) || {}).title };
+}
+
+const localTime = (unix) => (unix ? new Date(unix * 1000).toLocaleString(undefined,
+  { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "");
+
+function renderNotes(ul, notes, hint) {
+  ul.textContent = "";
+  if (!notes.length) {
+    const li = document.createElement("li");
+    li.className = "hint";
+    li.style.border = "0";
+    li.textContent = hint;
+    ul.appendChild(li);
+    return;
+  }
+  for (const n of notes.slice().sort((a, b) => a.number - b.number)) {
+    const li = document.createElement("li");
+    if (n.resolved) li.className = "done";
+    const b = document.createElement("b");
+    b.textContent = n.number + ".";
+    li.appendChild(b);
+    li.appendChild(document.createTextNode(n.text));
+    const small = document.createElement("small");
+    small.textContent = [n.author, localTime(n.unix), n.resolved ? "resolved" : ""].filter(Boolean).join(" · ");
+    li.appendChild(small);
+    const row = document.createElement("div");
+    row.className = "row edit";
+    const btn = (text, fn) => {
+      const x = document.createElement("button");
+      x.className = "small"; x.textContent = text; x.onclick = fn;
+      row.appendChild(x);
+    };
+    btn(n.resolved ? "Reopen" : "Resolve", () =>
+      send({ intent: "note_set", note: n.id, resolved: !n.resolved }, (n.resolved ? "Reopened" : "Resolved") + " note " + n.number));
+    btn("Edit", () => {
+      const text = prompt("Note " + n.number, n.text);
+      if (text && text.trim()) send({ intent: "note_set", note: n.id, text }, "Edited note " + n.number);
+    });
+    btn("Delete", () => send({ intent: "note_delete", note: n.id }, "Deleted note " + n.number));
+    li.appendChild(row);
+    ul.appendChild(li);
+  }
+}
+
+function pinEls(container, notes, k) {
+  for (const n of notes) {
+    const a = n.on.at;
+    if (a.w || a.h) {
+      const box = document.createElement("div");
+      box.className = "notebox" + (n.resolved ? " done" : "");
+      Object.assign(box.style, { left: a.x * k + "px", top: a.y * k + "px", width: a.w * k + "px", height: a.h * k + "px" });
+      container.appendChild(box);
+    }
+    const pin = document.createElement("div");
+    pin.className = "pin" + (n.resolved ? " done" : "");
+    pin.textContent = n.number;
+    pin.title = n.text + (n.author ? " (" + n.author + ")" : "");
+    pin.style.left = a.x * k + "px";
+    pin.style.top = a.y * k + "px";
+    pin.onclick = (e) => { e.stopPropagation(); toast(n.number + ". " + n.text); };
+    container.appendChild(pin);
+  }
+}
+
+function noteForm(prefix, show) {
+  $(prefix + "noteform").hidden = !show;
+  if (show) {
+    $(prefix + "author").value = author;
+    $(prefix + "notetext").value = "";
+    $(prefix + "notetext").focus();
+  }
+}
+function saveAuthor(prefix) {
+  author = $(prefix + "author").value.trim();
+  try { localStorage.setItem("design-lab-author", author); } catch (e) {}
+}
+const norm = (a, b) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) });
+const round1 = (n) => Math.round(n * 10) / 10;
+const roundRect = (r) => ({ x: round1(r.x), y: round1(r.y), w: round1(r.w), h: round1(r.h) });
+
+// ---- Selecting on a screen version.
+let sel = [], vtool = "select", vpending = null, vhover = null, vband = null, vtree = null, vdown = null;
+const trees = new Map();
+const shownImage = (v) => (mode === "dark" && v.dark ? v.dark : v.image);
+const treePath = (v) => (mode === "dark" && v.dark ? v.dark_elements || v.elements : v.elements) || null;
+function loadTree(path) {
+  if (!path) return Promise.resolve(null);
+  if (!trees.has(path)) {
+    trees.set(path, fetch("img/" + path).then((r) => (r.ok ? r.json() : null)).catch(() => null));
+  }
+  return trees.get(path);
+}
+const curV = () => current.screen.versions[current.i];
+const picW = (v) => v.width || $("big").naturalWidth || 1;
+const picH = (v) => v.height || $("big").naturalHeight || 1;
+const ptScale = (v) => (vtree && vtree.scale > 0 ? vtree.scale : v.width ? v.width / PHONE.w : DEFAULT_SCALE);
+const dispScale = (v) => $("big").clientWidth / picW(v);
+function elementRect(e, s) { return { x: e.x * s, y: e.y * s, w: e.width * s, h: e.height * s }; }
+function selRect(it, s) { return it.e ? elementRect(it.e, s) : it.box; }
+function clampRect(r, W, H) {
+  const x = Math.max(0, Math.min(r.x, W - 1)), y = Math.max(0, Math.min(r.y, H - 1));
+  return roundRect({ x, y, w: Math.max(1, Math.min(r.x + r.w, W) - x), h: Math.max(1, Math.min(r.y + r.h, H) - y) });
+}
+function selLabel(it) {
+  if (!it.e) return "Box · " + Math.round(it.box.w) + " × " + Math.round(it.box.h) + " px";
+  const e = it.e;
+  return e.type + (e.label ? " · " + e.label : e.identifier ? " · " + e.identifier : "");
+}
+// The smallest element under a picture pixel.
+function elementAt(p) {
+  if (!vtree || !current) return null;
+  const s = ptScale(curV()), x = p.x / s, y = p.y / s;
+  let best = null;
+  for (const e of vtree.elements || []) {
+    if (x < e.x || y < e.y || x > e.x + e.width || y > e.y + e.height) continue;
+    if (!best || e.width * e.height < best.width * best.height) best = e;
+  }
+  return best;
+}
+function boxEl(r, k, cls, tag) {
+  const d = document.createElement("div");
+  d.className = "box " + cls;
+  Object.assign(d.style, { left: r.x * k + "px", top: r.y * k + "px", width: r.w * k + "px", height: r.h * k + "px" });
+  if (tag) { const t = document.createElement("span"); t.className = "tag"; t.textContent = tag; d.appendChild(t); }
+  return d;
+}
+
+function viewerShow(screen, v) {
+  const path = treePath(v);
+  vtree = null;
+  loadTree(path).then((t) => {
+    if (current && current.screen === screen && treePath(curV()) === path) { vtree = t; drawMarks(); viewerSide(); }
+  });
+  drawMarks();
+  viewerSide();
+}
+function drawMarks() {
+  const marks = $("marks"), pins = $("pins");
+  marks.textContent = "";
+  pins.textContent = "";
+  if (!current) return;
+  const v = curV(), k = dispScale(v), s = ptScale(v);
+  for (const it of sel) marks.appendChild(boxEl(selRect(it, s), k, "picked", selLabel(it)));
+  if (vhover && !sel.some((it) => it.e === vhover)) marks.appendChild(boxEl(elementRect(vhover, s), k, "hover", selLabel({ e: vhover })));
+  if (vband) marks.appendChild(boxEl(vband, k, vtool === "note" ? "noteband" : "band"));
+  if (vpending) {
+    pinEls(pins, [{ number: "+", text: "New note", on: { at: vpending }, resolved: false }], k);
+  }
+  pinEls(pins, notesOn(current.screen.id, v), k);
+}
+function viewerSide() {
+  if (!current) return;
+  const v = curV();
+  $("vselect").classList.toggle("on", vtool === "select");
+  $("vnote").classList.toggle("on", vtool === "note");
+  $("vhint").textContent = vtool === "note" ? "Click a spot or drag a box, then write the note."
+    : vtree ? "Hover to see elements. Click to select one; Shift-click adds more. Drag to cut a box instead."
+    : "This version was captured without its element list. Drag a box to select part of it.";
+  const list = $("vsel");
+  list.textContent = "";
+  for (const it of sel) {
+    const li = document.createElement("li");
+    li.textContent = selLabel(it);
+    list.appendChild(li);
+  }
+  if (!sel.length) {
+    const li = document.createElement("li");
+    li.className = "hint"; li.style.border = "0"; li.textContent = "Nothing selected.";
+    list.appendChild(li);
+  }
+  $("vcopy").style.visibility = sel.length ? "visible" : "hidden";
+  fillTargets($("vtarget"), null);
+  renderNotes($("vnotes"), notesOn(current.screen.id, v), editable ? "No notes yet. Choose Pin a note, then click a spot." : "No notes.");
+  $("vspec").href = "spec/" + encodeURIComponent(current.screen.id);
+}
+
+const marksEl = $("marks");
+function imgPoint(e) {
+  const r = marksEl.getBoundingClientRect(), k = dispScale(curV());
+  return { x: (e.clientX - r.left) / k, y: (e.clientY - r.top) / k };
+}
+marksEl.addEventListener("pointerdown", (e) => {
+  if (!current) return;
+  e.preventDefault();
+  marksEl.setPointerCapture(e.pointerId);
+  vdown = { p: imgPoint(e), shift: e.shiftKey, moved: false };
+});
+marksEl.addEventListener("pointermove", (e) => {
+  if (!current) return;
+  const p = imgPoint(e);
+  if (vdown) {
+    const k = dispScale(curV());
+    if ((Math.abs(p.x - vdown.p.x) + Math.abs(p.y - vdown.p.y)) * k > 5) vdown.moved = true;
+    if (vdown.moved) { vband = norm(vdown.p, p); vhover = null; drawMarks(); }
+    return;
+  }
+  const hit = vtool === "select" ? elementAt(p) : null;
+  if (hit !== vhover) { vhover = hit; drawMarks(); }
+});
+marksEl.addEventListener("pointerup", (e) => {
+  if (!vdown || !current) return;
+  const down = vdown, p = imgPoint(e), v = curV();
+  vdown = null;
+  const band = vband ? clampRect(vband, picW(v), picH(v)) : null;
+  vband = null;
+  if (vtool === "note") {
+    if (!editable) return;
+    vpending = down.moved && band ? band : roundRect({ x: p.x, y: p.y, w: 0, h: 0 });
+    noteForm("v", true);
+    drawMarks();
+    return;
+  }
+  if (down.moved && band) {
+    sel = down.shift ? sel.concat([{ box: band }]) : [{ box: band }];
+  } else {
+    const hit = elementAt(p);
+    const at = sel.findIndex((it) => it.e === hit);
+    if (hit && down.shift) { if (at >= 0) sel.splice(at, 1); else sel.push({ e: hit }); }
+    else if (hit) sel = [{ e: hit }];
+    else if (!down.shift) sel = [];
+  }
+  drawMarks();
+  viewerSide();
+});
+marksEl.addEventListener("pointerleave", () => { if (vhover) { vhover = null; drawMarks(); } });
+$("big").addEventListener("load", drawMarks);
+addEventListener("resize", () => { if (current) drawMarks(); if (editing) drawEditor(); });
+
+function setVTool(t) { vtool = t; vpending = null; noteForm("v", false); vhover = null; drawMarks(); viewerSide(); }
+$("vselect").onclick = () => setVTool("select");
+$("vnote").onclick = () => setVTool(vtool === "note" ? "select" : "note");
+$("vnotecancel").onclick = () => { vpending = null; noteForm("v", false); drawMarks(); };
+$("vnotesave").onclick = async () => {
+  const text = $("vnotetext").value.trim();
+  if (!text || !vpending || !current) return;
+  saveAuthor("v");
+  const on = { screen: current.screen.id, image: shownImage(curV()), at: vpending };
+  const b = await send({ intent: "note_add", note: { on, text, author } }, "Pinned a note on " + current.screen.title);
+  if (b) { vpending = null; noteForm("v", false); setVTool("select"); }
+};
+$("vcopybtn").onclick = async () => {
+  if (!current || !sel.length) return;
+  const screen = current.screen, v = curV(), s = ptScale(v), W = picW(v), H = picH(v);
+  const pieces = sel.map((it) => {
+    const r = clampRect(selRect(it, s), W, H);
+    const source = { screen: screen.id, image: shownImage(v), crop: r, image_width: W, image_height: H };
+    if (it.e) source.element = it.e;
+    return { kind: "crop", x: round1(r.x / s), y: round1(r.y / s), w: round1(r.w / s), h: round1(r.h / s), source };
+  });
+  const done = await copyTo($("vtarget").value, pieces, screen.title);
+  if (done) toast("Copied to " + done.title + ".", () => { close(); openEditor(done.id); }, "Open mock");
+};
+
+// ---- The mock editor.
+let editing = null, esel = [], etool = "select", epending = null, edrag = null, ekCur = 1;
+let snapOn = true;
+try { snapOn = localStorage.getItem("design-lab-snap") !== "off"; } catch (e) {}
+$("egrid").checked = snapOn;
+const snap = (n) => (snapOn ? Math.round(n / SNAP) * SNAP : round1(n));
+function openEditor(id) {
+  editing = id; esel = []; etool = "select"; epending = null;
+  noteForm("e", false);
+  $("editor").classList.add("open");
+  drawEditor();
+}
+function closeEditor() {
+  editing = null;
+  $("editor").classList.remove("open");
+  layout();
+}
+function itemById(m, id) { return m.items.find((i) => i.id === id); }
+function describeItem(item) {
+  if (item.kind === "rect") return "Rectangle";
+  if (item.kind === "text") return "Text";
+  const s = item.source || {}, e = s.element;
+  const screen = board.screens.find((x) => x.id === s.screen);
+  const what = e ? selLabel({ e }) : "A drawn box";
+  return what + " · cut from " + (screen ? screen.title : s.screen) + (s.image && s.image.endsWith("@dark.png") ? " (dark)" : "");
+}
+function hex6(c) {
+  if (!c) return "#ffffff";
+  if (/^#[0-9a-f]{3}$/i.test(c)) return "#" + [...c.slice(1)].map((x) => x + x).join("");
+  return c.slice(0, 7);
+}
+function field(parent, label, input) {
+  const l = document.createElement("label");
+  l.textContent = label + " ";
+  l.appendChild(input);
+  parent.appendChild(l);
+  return input;
+}
+function input(type, value, onchange) {
+  const i = document.createElement(type === "textarea" ? "textarea" : "input");
+  if (type !== "textarea") i.type = type;
+  i.value = value;
+  i.addEventListener("change", () => onchange(i));
+  return i;
+}
+function drawEditor() {
+  const m = mockById(editing);
+  if (!m) { closeEditor(); return; }
+  const st = $("estage");
+  const k = Math.min((st.clientWidth - 48) / m.width, (st.clientHeight - 48) / m.height);
+  ekCur = k;
+  const phone = $("phone");
+  phone.style.width = m.width * k + "px";
+  phone.style.height = m.height * k + "px";
+  phone.classList.toggle("grid", snapOn && editable);
+  phone.style.backgroundSize = SNAP * k + "px " + SNAP * k + "px";
+  phone.classList.toggle("noting", etool === "note");
+  esel = esel.filter((id) => itemById(m, id));
+  for (const [item, d] of drawMock(phone, m, k)) {
+    d.dataset.id = item.id;
+    if (esel.includes(item.id)) {
+      d.classList.add("sel");
+      if (editable) {
+        const h = document.createElement("div");
+        h.className = "handle";
+        h.dataset.id = item.id;
+        h.style.left = (item.x + item.w) * k - 6 + "px";
+        h.style.top = (item.y + item.h) * k - 6 + "px";
+        phone.appendChild(h);
+      }
+    }
+  }
+  const notes = mocks.notes.filter((n) => n.on.mock === m.id);
+  if (epending) pinEls(phone, [{ number: "+", text: "New note", on: { at: epending }, resolved: false }], k);
+  pinEls(phone, notes, k);
+
+  if (document.activeElement !== $("etitle")) $("etitle").value = m.title;
+  $("etitle").readOnly = !editable;
+  $("eselect").classList.toggle("on", etool === "select");
+  $("enote").classList.toggle("on", etool === "note");
+  $("ehint").textContent = etool === "note" ? "Click a spot or drag a box, then write the note."
+    : editable ? "Drag pieces to move them; drag the corner to resize. Copy pieces here from any screen." : "";
+  const chosen = esel.map((id) => itemById(m, id));
+  $("einfo").textContent = !chosen.length ? "Nothing selected. Click a piece; Shift-click adds more."
+    : chosen.length === 1 ? describeItem(chosen[0]) : chosen.length + " pieces selected";
+  for (const id of ["eactions", "egeo", "estyle"]) $(id).style.display = chosen.length ? "" : "none";
+  $("etarget").parentElement.style.display = chosen.length ? "" : "none";
+  fillTargets($("etarget"), m.id);
+  const geo = $("egeo"), style = $("estyle");
+  geo.textContent = "";
+  style.textContent = "";
+  if (chosen.length === 1) {
+    const it = chosen[0];
+    const set = (key, conv) => (i) => send(Object.assign({ intent: "item_set", mock: m.id, item: it.id }, { [key]: conv(i) }), "Edited a piece");
+    const num = (i) => Number(i.value);
+    for (const key of ["x", "y", "w", "h"]) field(geo, key.toUpperCase(), input("number", round1(it[key]), set(key, num)));
+    if (it.kind === "text") {
+      const t = input("textarea", it.text || "", set("text", (i) => i.value));
+      style.appendChild(t);
+      const row = document.createElement("div");
+      row.className = "row";
+      field(row, "Size", input("number", it.size || 17, set("size", num)));
+      field(row, "Color", input("color", hex6(it.color || "#111111"), set("color", (i) => i.value)));
+      style.appendChild(row);
+    }
+    if (it.kind !== "crop") {
+      const row = document.createElement("div");
+      row.className = "row";
+      field(row, "Fill", input("color", hex6(it.fill || "#e5e5ea"), set("fill", (i) => i.value)));
+      const none = input("checkbox", "", set("fill", (i) => (i.checked ? null : "#e5e5ea")));
+      none.checked = !it.fill;
+      field(row, "No fill", none);
+      field(row, "Corners", input("number", it.radius || 0, set("radius", num)));
+      style.appendChild(row);
+    }
+  }
+  renderNotes($("enotes"), notes, editable ? "No notes yet. Choose Pin a note, then click a spot." : "No notes.");
+  $("ebg").value = hex6(m.background);
+  $("espec").href = "spec/" + encodeURIComponent(m.id);
+  $("epng").href = "spec/" + encodeURIComponent(m.id) + ".png";
+}
+
+const phoneEl = $("phone");
+function phonePoint(e) {
+  const r = phoneEl.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / ekCur, y: (e.clientY - r.top) / ekCur };
+}
+phoneEl.addEventListener("pointerdown", (e) => {
+  const m = mockById(editing);
+  if (!m) return;
+  e.preventDefault();
+  phoneEl.setPointerCapture(e.pointerId);
+  const p = phonePoint(e);
+  if (etool === "note") { edrag = { note: true, p0: p, moved: false }; return; }
+  if (!editable) return;
+  const t = e.target;
+  if (t.classList.contains("handle")) {
+    const it = itemById(m, t.dataset.id);
+    edrag = { resize: it.id, p0: p, it: Object.assign({}, it), moved: false };
+    return;
+  }
+  const piece = t.closest(".piece");
+  if (piece) {
+    const id = piece.dataset.id;
+    if (e.shiftKey) esel = esel.includes(id) ? esel.filter((x) => x !== id) : esel.concat([id]);
+    else if (!esel.includes(id)) esel = [id];
+    edrag = { move: true, p0: p, moved: false, click: id, shift: e.shiftKey,
+      start: esel.map((x) => Object.assign({}, itemById(m, x))) };
+    drawEditor();
+    return;
+  }
+  esel = [];
+  edrag = null;
+  drawEditor();
+});
+phoneEl.addEventListener("pointermove", (e) => {
+  if (!edrag) return;
+  const p = phonePoint(e), dx = p.x - edrag.p0.x, dy = p.y - edrag.p0.y, k = ekCur;
+  if ((Math.abs(dx) + Math.abs(dy)) * k > 3) edrag.moved = true;
+  if (!edrag.moved) return;
+  if (edrag.note) {
+    phoneEl.querySelectorAll(".box").forEach((b) => b.remove());
+    phoneEl.appendChild(boxEl(norm(edrag.p0, p), k, "noteband"));
+    return;
+  }
+  phoneEl.querySelectorAll(".handle").forEach((h) => h.remove());
+  if (edrag.move) {
+    edrag.to = edrag.start.map((it) => ({ id: it.id, x: snap(it.x + dx), y: snap(it.y + dy) }));
+    for (const t of edrag.to) {
+      const d = phoneEl.querySelector('.piece[data-id="' + t.id + '"]');
+      if (d) { d.style.left = t.x * k + "px"; d.style.top = t.y * k + "px"; }
+    }
+  } else if (edrag.resize) {
+    const it = edrag.it;
+    edrag.to = { w: Math.max(4, snap(it.x + it.w + dx) - it.x), h: Math.max(4, snap(it.y + it.h + dy) - it.y) };
+    const d = phoneEl.querySelector('.piece[data-id="' + it.id + '"]');
+    if (d) {
+      // A crop keeps its picture filling the new size.
+      const scaled = pieceEl(Object.assign({}, it, edrag.to), k);
+      d.style.width = scaled.style.width; d.style.height = scaled.style.height;
+      d.style.backgroundSize = scaled.style.backgroundSize; d.style.backgroundPosition = scaled.style.backgroundPosition;
+    }
+  }
+});
+phoneEl.addEventListener("pointerup", (e) => {
+  if (!edrag) return;
+  const drag = edrag, m = mockById(editing);
+  edrag = null;
+  if (!m) return;
+  if (drag.note) {
+    if (!editable) return;
+    const p = phonePoint(e);
+    epending = roundRect(drag.moved ? norm(drag.p0, p) : { x: p.x, y: p.y, w: 0, h: 0 });
+    noteForm("e", true);
+    drawEditor();
+    return;
+  }
+  if (drag.move && drag.moved && drag.to) {
+    send({ intent: "batch", changes: drag.to.map((t) => ({ intent: "item_set", mock: m.id, item: t.id, x: t.x, y: t.y })) },
+      "Moved " + drag.to.length + (drag.to.length === 1 ? " piece" : " pieces"));
+  } else if (drag.resize && drag.moved && drag.to) {
+    send(Object.assign({ intent: "item_set", mock: m.id, item: drag.resize }, drag.to), "Resized a piece");
+  } else if (drag.move && !drag.shift) {
+    esel = [drag.click];
+    drawEditor();
+  } else {
+    drawEditor();
+  }
+});
+
+function editorBatch(fn, summary) {
+  const m = mockById(editing);
+  if (!m || !esel.length) return null;
+  return send({ intent: "batch", changes: esel.map((id) => fn(m, itemById(m, id))) }, summary);
+}
+const strip = (it) => { const c = Object.assign({}, it); delete c.id; return c; };
+async function addPiece(item, summary) {
+  const b = await send({ intent: "item_add", mock: editing, item }, summary);
+  if (b) { esel = [lastId("i")]; drawEditor(); }
+}
+async function duplicate() {
+  const n = esel.length;
+  const b = await editorBatch((m, it) => ({ intent: "item_add", mock: m.id, item: Object.assign(strip(it), { x: it.x + 16, y: it.y + 16 }) }), "Duplicated");
+  if (b) { esel = Array.from({ length: n }, (_, i) => "i" + (mocks.next - n + i)); drawEditor(); }
+}
+$("erect").onclick = () => addPiece({ kind: "rect", x: 40, y: 120, w: 160, h: 56, fill: "#e5e5ea", radius: 12 }, "Added a rectangle");
+$("etext").onclick = () => addPiece({ kind: "text", x: 40, y: 200, w: 240, h: 40, text: "Text", size: 17, color: "#111111" }, "Added a text box");
+$("edup").onclick = duplicate;
+$("edel").onclick = () => { editorBatch((m, it) => ({ intent: "item_delete", mock: m.id, item: it.id }), "Deleted"); esel = []; };
+$("efront").onclick = () => editorBatch((m, it) => ({ intent: "item_order", mock: m.id, item: it.id, to: "front" }), "Brought to front");
+$("eback").onclick = () => editorBatch((m, it) => ({ intent: "item_order", mock: m.id, item: it.id, to: "back" }), "Sent to back");
+$("ecopy").onclick = async () => {
+  const m = mockById(editing);
+  if (!m || !esel.length) return;
+  const done = await copyTo($("etarget").value, esel.map((id) => strip(itemById(m, id))), m.title);
+  if (done) toast("Copied to " + done.title + ".", () => openEditor(done.id), "Open mock");
+};
+$("etitle").addEventListener("change", () => {
+  const title = $("etitle").value.trim();
+  if (title) send({ intent: "mock_set", mock: editing, title }, "Renamed a mock");
+});
+$("ebg").addEventListener("change", () => send({ intent: "mock_set", mock: editing, background: $("ebg").value }, "Changed a background"));
+$("edelmock").onclick = async () => {
+  const m = mockById(editing);
+  if (m && confirm("Delete " + m.title + " and its notes?")) {
+    const b = await send({ intent: "mock_delete", mock: m.id }, "Deleted " + m.title);
+    if (b) closeEditor();
+  }
+};
+$("egrid").addEventListener("change", () => {
+  snapOn = $("egrid").checked;
+  try { localStorage.setItem("design-lab-snap", snapOn ? "on" : "off"); } catch (e) {}
+  drawEditor();
+});
+function setETool(t) { etool = t; epending = null; noteForm("e", false); drawEditor(); }
+$("eselect").onclick = () => setETool("select");
+$("enote").onclick = () => setETool(etool === "note" ? "select" : "note");
+$("eclose").onclick = closeEditor;
+$("estage").addEventListener("click", (e) => { if (e.target === e.currentTarget && !esel.length) closeEditor(); });
+$("enotecancel").onclick = () => { epending = null; noteForm("e", false); drawEditor(); };
+$("enotesave").onclick = async () => {
+  const text = $("enotetext").value.trim();
+  if (!text || !epending || !editing) return;
+  saveAuthor("e");
+  const b = await send({ intent: "note_add", note: { on: { mock: editing, at: epending }, text, author } }, "Pinned a note");
+  if (b) { epending = null; noteForm("e", false); setETool("select"); }
+};
+$("newmock").onclick = async () => { const id = await newMock(); if (id) openEditor(id); };
+
+function editorKey(e) {
+  if (e.key === "Escape") {
+    if (epending || etool === "note") setETool("select");
+    else if (esel.length) { esel = []; drawEditor(); }
+    else closeEditor();
+    return;
+  }
+  if (!editable) return;
+  if (e.key === "Backspace" || e.key === "Delete") { e.preventDefault(); $("edel").click(); }
+  if ((e.metaKey || e.ctrlKey) && (e.key === "d" || e.key === "D")) { e.preventDefault(); duplicate(); }
+  const step = e.shiftKey ? SNAP : 1;
+  const arrows = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+  if (arrows[e.key] && esel.length) {
+    e.preventDefault();
+    const [dx, dy] = arrows[e.key];
+    editorBatch((m, it) => ({ intent: "item_set", mock: m.id, item: it.id, x: it.x + dx, y: it.y + dy }), "Nudged");
+  }
+  if (e.key === "r" || e.key === "R") $("erect").click();
+  if (e.key === "t" || e.key === "T") $("etext").click();
+}
+
+Promise.all([fetch("board.json").then((r) => r.json()), loadMocks()]).then(([b]) => {
   board = b;
   document.getElementById("title").textContent = b.name;
   document.title = b.name + " · Design Lab";
@@ -396,6 +1264,12 @@ fetch("board.json").then((r) => r.json()).then((b) => {
   setMode(mode);
   layout();
   fit();
+  // `#mock=m1` opens a mock and `#screen=area--name` a screen, so either can be linked.
+  if (hash.get("mock")) { const m = mockById(hash.get("mock")); if (m) openEditor(m.id); }
+  if (hash.get("screen")) {
+    const sc = board.screens.find((x) => x.id === hash.get("screen"));
+    if (sc) open(sc, sc.versions.length - 1);
+  }
 });
 </script>
 </body>

@@ -6,13 +6,19 @@
 //! `<YYYYmmdd-HHMMSS>-<commit>[-dirty]` of `<area>--<screen>.png` files, plus
 //! `<area>--<screen>@dark.png` for the same screen in dark mode; a run is one
 //! version of every screen it holds, and a screen that looks the same as in
-//! the run before (in both modes) keeps its earlier version.
+//! the run before (in both modes) keeps its earlier version. Next to each
+//! picture the tour saves its element tree, `<area>--<screen>[@dark].json`
+//! ([`ElementTree`]), so the board can select a button or a card.
+//!
+//! Mocks and revision notes are a `mock.v1` document ([`mock`]) kept in the
+//! captures folder and changed only through the same kind's checked changes.
 //!
 //! The board is a `board.v1` document, so it is also a Lab kind
 //! ([`kind::Design`]): renames and areas are checked changes, and the card
 //! shows the newest version of each screen.
 
 pub mod kind;
+pub mod mock;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -70,6 +76,72 @@ pub struct ScreenVersion {
     pub dark: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dark_sha256: Option<String>,
+    /// The light picture's element tree, `<run>/<area>--<screen>.json`, when
+    /// the run saved one. Screens captured before element trees have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elements: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dark_elements: Option<String>,
+}
+
+/// Every visible element of a captured screen, as the tour's
+/// `XCUIApplication().snapshot()` saw it. Frames are in points; a picture
+/// pixel is `scale` points' worth smaller.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ElementTree {
+    #[serde(default)]
+    pub scale: f64,
+    #[serde(default)]
+    pub width: f64,
+    #[serde(default)]
+    pub height: f64,
+    #[serde(default)]
+    pub elements: Vec<Element>,
+}
+
+/// One element of a screen: a button, a text field, a cell, ...
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Element {
+    /// `button`, `text-field`, `text`, `image`, `cell`, ...
+    #[serde(rename = "type", default)]
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identifier: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl Element {
+    /// `button "Start" (start-button)`, for a spec line.
+    pub fn describe(&self) -> String {
+        let mut out = if self.kind.is_empty() {
+            "element".to_string()
+        } else {
+            self.kind.clone()
+        };
+        if let Some(label) = self.label.as_deref().filter(|l| !l.is_empty()) {
+            out.push_str(&format!(" \"{label}\""));
+        }
+        if let Some(value) = self.value.as_deref().filter(|v| !v.is_empty()) {
+            out.push_str(&format!(" value \"{value}\""));
+        }
+        if let Some(id) = self.identifier.as_deref().filter(|i| !i.is_empty()) {
+            out.push_str(&format!(" (`{id}`)"));
+        }
+        out
+    }
+}
+
+/// A run's element tree, if the board names it.
+pub fn elements(captures: &Path, board: &Board, path: &str) -> Option<ElementTree> {
+    let bytes = image(captures, board, path)?;
+    serde_json::from_slice(&bytes).ok()
 }
 
 impl Board {
@@ -117,7 +189,16 @@ fn days_from_civil(y: u64, m: u64, d: u64) -> u64 {
 /// A capture's area and screen: `drawer--sessions.png`. A dark-mode capture,
 /// `drawer--sessions@dark.png`, names the same screen.
 pub fn screen_of(file: &str) -> Option<(String, String)> {
-    let stem = file.strip_suffix(".png")?;
+    shot_of(file.strip_suffix(".png")?)
+}
+
+/// The screen an element tree belongs to: `drawer--sessions.json` or
+/// `drawer--sessions@dark.json`.
+pub fn elements_of(file: &str) -> Option<(String, String)> {
+    shot_of(file.strip_suffix(".json")?)
+}
+
+fn shot_of(stem: &str) -> Option<(String, String)> {
     let stem = stem.strip_suffix("@dark").unwrap_or(stem);
     let (area, screen) = stem.split_once("--")?;
     (!area.is_empty() && !screen.is_empty()).then(|| (area.to_string(), screen.to_string()))
@@ -125,7 +206,7 @@ pub fn screen_of(file: &str) -> Option<(String, String)> {
 
 /// Whether a capture is the dark-mode picture of its screen.
 pub fn is_dark(file: &str) -> bool {
-    file.ends_with("@dark.png")
+    file.ends_with("@dark.png") || file.ends_with("@dark.json")
 }
 
 fn title(id: &str) -> String {
@@ -145,6 +226,17 @@ fn png_size(bytes: &[u8]) -> (u32, u32) {
     let w = u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
     let h = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
     (w, h)
+}
+
+/// One screen's files in one run, each `<run>/<file>`.
+#[derive(Default)]
+struct Shot {
+    area: String,
+    name: String,
+    light: Option<String>,
+    dark: Option<String>,
+    elements: Option<String>,
+    dark_elements: Option<String>,
 }
 
 /// Builds the board from every capture run, oldest run first.
@@ -174,23 +266,41 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
             .map(|e| e.file_name().to_string_lossy().to_string())
             .collect();
         files.sort();
-        // Each screen's light and dark pictures in this run.
-        let mut shots: BTreeMap<String, (String, String, Option<String>, Option<String>)> =
-            BTreeMap::new();
+        // Each screen's light and dark pictures and element trees in this run.
+        let mut shots: BTreeMap<String, Shot> = BTreeMap::new();
         for file in files {
-            let Some((area, name)) = screen_of(&file) else {
-                continue;
+            let (picture, (area, name)) = match (screen_of(&file), elements_of(&file)) {
+                (Some(found), _) => (true, found),
+                (None, Some(found)) => (false, found),
+                (None, None) => continue,
             };
             let shot = shots
                 .entry(format!("{area}--{name}"))
-                .or_insert_with(|| (area, name, None, None));
-            if is_dark(&file) {
-                shot.3 = Some(file);
-            } else {
-                shot.2 = Some(file);
-            }
+                .or_insert_with(|| Shot {
+                    area,
+                    name,
+                    ..Shot::default()
+                });
+            let slot = match (picture, is_dark(&file)) {
+                (true, false) => &mut shot.light,
+                (true, true) => &mut shot.dark,
+                (false, false) => &mut shot.elements,
+                (false, true) => &mut shot.dark_elements,
+            };
+            *slot = Some(format!("{run}/{file}"));
         }
-        for (id, (area, name, light, dark)) in shots {
+        for (
+            id,
+            Shot {
+                area,
+                name,
+                light,
+                dark,
+                elements,
+                dark_elements,
+            },
+        ) in shots
+        {
             // A screen needs its light picture; dark is extra.
             let Some(file) = light else {
                 continue;
@@ -198,13 +308,11 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
             if newest.as_deref() == Some(run.as_str()) {
                 in_newest.insert(id.clone());
             }
-            let bytes =
-                std::fs::read(captures.join(&run).join(&file)).map_err(|e| e.to_string())?;
+            let bytes = std::fs::read(captures.join(&file)).map_err(|e| e.to_string())?;
             let sha256 = format!("{:x}", Sha256::digest(&bytes));
             let dark_sha256 = match &dark {
                 Some(dark) => {
-                    let bytes =
-                        std::fs::read(captures.join(&run).join(dark)).map_err(|e| e.to_string())?;
+                    let bytes = std::fs::read(captures.join(dark)).map_err(|e| e.to_string())?;
                     Some(format!("{:x}", Sha256::digest(&bytes)))
                 }
                 None => None,
@@ -219,6 +327,15 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
             // Unchanged since the last run: still the same version. A run
             // without a dark picture doesn't count as a change by itself.
             if let Some(last) = screen.versions.last_mut() {
+                if last.sha256 == sha256 {
+                    // The first element trees of an unchanged screen.
+                    if last.elements.is_none() {
+                        last.elements = elements.clone();
+                    }
+                    if last.dark_elements.is_none() && last.dark_sha256 == dark_sha256 {
+                        last.dark_elements = dark_elements.clone();
+                    }
+                }
                 if last.sha256 == sha256
                     && (dark_sha256.is_none() || last.dark_sha256 == dark_sha256)
                 {
@@ -226,22 +343,25 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
                 }
                 if last.sha256 == sha256 && last.dark.is_none() {
                     // The first dark picture of an unchanged screen.
-                    last.dark = dark.map(|d| format!("{run}/{d}"));
+                    last.dark = dark;
                     last.dark_sha256 = dark_sha256;
+                    last.dark_elements = dark_elements;
                     continue;
                 }
             }
             let (width, height) = png_size(&bytes);
             screen.versions.push(ScreenVersion {
-                image: format!("{run}/{file}"),
+                image: file,
                 sha256,
                 run: run.clone(),
                 commit: commit.clone(),
                 unix,
                 width,
                 height,
-                dark: dark.map(|d| format!("{run}/{d}")),
+                dark,
                 dark_sha256,
+                elements,
+                dark_elements,
             });
         }
     }
@@ -257,13 +377,14 @@ pub fn scan(captures: &Path) -> Result<Board, String> {
     })
 }
 
-/// A picture's bytes, only if the board holds it.
+/// A picture's or element tree's bytes, only if the board holds it.
 pub fn image(captures: &Path, board: &Board, image: &str) -> Option<Vec<u8>> {
-    let known = board
-        .screens
-        .iter()
-        .flat_map(|s| &s.versions)
-        .any(|v| v.image == image || v.dark.as_deref() == Some(image));
+    let known = board.screens.iter().flat_map(|s| &s.versions).any(|v| {
+        v.image == image
+            || [&v.dark, &v.elements, &v.dark_elements]
+                .iter()
+                .any(|p| p.as_deref() == Some(image))
+    });
     if !known {
         return None;
     }
@@ -349,6 +470,55 @@ mod tests {
         let current = |id: &str| board.screens.iter().find(|s| s.id == id).unwrap().current;
         assert!(current("home--home"));
         assert!(!current("welcome--sign-in"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn element_trees_pair_with_their_pictures() {
+        assert_eq!(
+            elements_of("drawer--sessions@dark.json"),
+            Some(("drawer".into(), "sessions".into()))
+        );
+        assert!(is_dark("drawer--sessions@dark.json"));
+        let dir = std::env::temp_dir().join(format!("design-lab-tree-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\0\x01\0\0\0\x01".to_vec();
+        let tree = r#"{"scale": 3, "width": 440, "height": 956, "elements": [
+            {"type": "button", "identifier": "go", "label": "Go", "x": 1, "y": 2, "width": 3, "height": 4}]}"#;
+        // Run 1 has no element tree; run 2 is the same picture with trees in
+        // both modes; run 3 changes the picture without one.
+        for (run, trees, extra) in [
+            ("20261017-100000-aaaa", false, 0u8),
+            ("20261017-110000-bbbb", true, 0),
+            ("20261017-120000-cccc", false, 1),
+        ] {
+            std::fs::create_dir_all(dir.join(run)).unwrap();
+            let mut bytes = png.clone();
+            bytes.push(extra);
+            std::fs::write(dir.join(run).join("home--home.png"), &bytes).unwrap();
+            std::fs::write(dir.join(run).join("home--home@dark.png"), &bytes).unwrap();
+            if trees {
+                std::fs::write(dir.join(run).join("home--home.json"), tree).unwrap();
+                std::fs::write(dir.join(run).join("home--home@dark.json"), tree).unwrap();
+            }
+        }
+        let board = scan(&dir).unwrap();
+        let versions = &board.screens[0].versions;
+        assert_eq!(versions.len(), 2);
+        assert_eq!(
+            versions[0].elements.as_deref(),
+            Some("20261017-110000-bbbb/home--home.json")
+        );
+        assert_eq!(
+            versions[0].dark_elements.as_deref(),
+            Some("20261017-110000-bbbb/home--home@dark.json")
+        );
+        // A screen captured without its tree still works; it just has none.
+        assert_eq!(versions[1].elements, None);
+        let read = elements(&dir, &board, versions[0].elements.as_deref().unwrap()).unwrap();
+        assert_eq!(read.scale, 3.0);
+        assert_eq!(read.elements[0].describe(), "button \"Go\" (`go`)");
+        assert!(elements(&dir, &board, "20261017-120000-cccc/home--home.json").is_none());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

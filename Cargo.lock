@@ -5662,8 +5662,10 @@ dependencies = [
 name = "design-lab"
 version = "1.0.0"
 dependencies = [
+ "ab_glyph",
  "axum 0.8.9",
  "lab-kit",
+ "png",
  "serde",
  "serde_json",
  "sha2 0.10.9",
