@@ -26,6 +26,7 @@ pub mod doc_host;
 mod fs_watch;
 pub mod harness_updates;
 pub(crate) mod home_index;
+pub mod host_rpc;
 mod http_error;
 pub mod instance_lock;
 pub mod local_import;

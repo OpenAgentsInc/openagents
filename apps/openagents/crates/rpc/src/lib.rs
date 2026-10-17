@@ -358,6 +358,8 @@ pub fn memory_client(service: Arc<dyn RpcService>) -> RpcClient {
 }
 
 #[cfg(test)]
+mod device_channel_tests;
+#[cfg(test)]
 mod tests {
     use super::*;
     use futures::StreamExt;

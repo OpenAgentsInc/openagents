@@ -42,6 +42,7 @@ pub struct RpcClient {
     shared: Arc<Shared>,
     next_id: AtomicU64,
     reader: tokio::task::JoinHandle<()>,
+    device_channel: Mutex<Option<Arc<openagents_sync::device_channel::DeviceChannel>>>,
 }
 
 /// Owned stream receiver whose drop immediately cancels the server task.
@@ -135,7 +136,19 @@ impl RpcClient {
             shared,
             next_id: AtomicU64::new(1),
             reader,
+            device_channel: Mutex::new(None),
         }
+    }
+
+    /// Attach an opted-in paired host route, or remove it to use WebSocket RPC.
+    pub fn set_device_channel(
+        &self,
+        channel: Option<Arc<openagents_sync::device_channel::DeviceChannel>>,
+    ) {
+        *self
+            .device_channel
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = channel;
     }
 
     /// Unary request.
@@ -144,6 +157,18 @@ impl RpcClient {
         method: &str,
         params: serde_json::Value,
     ) -> Result<serde_json::Value, RpcError> {
+        let channel = self
+            .device_channel
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        if let Some(channel) = channel {
+            match channel.call(method, params.clone()).await {
+                Ok(Some(value)) => return Ok(value),
+                Ok(None) => {}
+                Err(error) => return Err(RpcError::Failed(error.to_string())),
+            }
+        }
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
         self.shared.lock().insert(id, Pending::Call(tx));

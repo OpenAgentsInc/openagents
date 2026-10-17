@@ -13,6 +13,7 @@
 pub mod budget;
 pub mod chat_client;
 pub mod chat_frames;
+pub mod device_channel;
 pub mod dial;
 pub mod net_path;
 pub mod registry;
