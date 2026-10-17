@@ -58,6 +58,7 @@ pub mod activity;
 pub mod agent;
 pub mod boat;
 pub mod computers;
+pub mod fence;
 pub mod gce;
 pub mod images;
 #[cfg(feature = "space")]

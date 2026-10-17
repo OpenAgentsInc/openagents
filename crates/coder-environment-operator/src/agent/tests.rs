@@ -191,6 +191,7 @@ fn agent(
         logs: Arc::new(Logs::under(dir.join("studio"))),
         root: dir.join("studio"),
         poll: Duration::from_millis(1),
+        permit: None,
     }
 }
 

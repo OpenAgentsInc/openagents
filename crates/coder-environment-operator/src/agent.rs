@@ -247,6 +247,9 @@ pub struct Agent<P, T> {
     pub root: PathBuf,
     /// How long to wait between reads of a running command or job.
     pub poll: Duration,
+    /// When set, a revoked permit means this process lost the environment
+    /// lease: stop without cancelling the computer or marking the setup failed.
+    pub(crate) permit: Option<Arc<crate::fence::Permit>>,
 }
 
 /// What one tool call did to the loop.
@@ -284,7 +287,14 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
         let _ = self.logs.push(environment, entry, now_ms());
     }
 
+    fn allowed(&self) -> bool {
+        self.permit.as_ref().is_none_or(|permit| permit.allows())
+    }
+
     fn fail(&self, state: &mut State, reason: impl Into<String>) {
+        if !self.allowed() {
+            return;
+        }
         let reason = reason.into();
         self.log(
             &state.environment,
@@ -320,9 +330,19 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
 
     async fn steps(&self, brief: &Brief, mut state: State) -> State {
         loop {
+            if !self.allowed() {
+                let _ = self.save(&state);
+                return state;
+            }
             match state.phase.clone() {
                 Phase::Starting => self.start(brief, &mut state).await,
-                Phase::Working => self.turn(brief, &mut state).await,
+                Phase::Working => {
+                    // A paused turn keeps the phase. The computer stays up.
+                    if self.turn(brief, &mut state).await {
+                        let _ = self.save(&state);
+                        return state;
+                    }
+                }
                 Phase::Waiting { .. } => {
                     if !self.take_steering(&mut state) {
                         let _ = self.save(&state);
@@ -333,8 +353,11 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
                 Phase::Building => self.build(brief, &mut state).await,
                 Phase::Verifying => self.verify(brief, &mut state).await,
                 Phase::Failed { reason } => {
-                    // A stopped setup keeps no machine running.
-                    self.release(&state.session(), &reason).await;
+                    // A stopped setup keeps no machine running, unless this
+                    // process has lost the right to change it.
+                    if self.allowed() {
+                        self.release(&state.session(), &reason).await;
+                    }
                     let _ = self.save(&state);
                     return state;
                 }
@@ -354,8 +377,14 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
     /// Cancel a setup session that is still open, which deletes its
     /// computer. Nothing to do when it never opened or already ended.
     async fn release(&self, session: &str, reason: &str) {
+        if !self.allowed() {
+            return;
+        }
         match self.owners.setup.sessions().read(session) {
             Ok(s) if !s.state.terminal() => {
+                if !self.allowed() {
+                    return;
+                }
                 let _ = self
                     .owners
                     .setup
@@ -546,7 +575,12 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
         }
     }
 
-    async fn turn(&self, brief: &Brief, state: &mut State) {
+    /// `true` pauses the loop with the phase unchanged: the permit is gone,
+    /// the model could not be reached, or the session record is busy.
+    async fn turn(&self, brief: &Brief, state: &mut State) -> bool {
+        if !self.allowed() {
+            return true;
+        }
         let session = state.session();
         match self.owners.setup.sessions().read(&session) {
             Ok(s) if s.state.terminal() => {
@@ -554,10 +588,18 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
                     SetupState::Cancelled { reason } | SetupState::Failed { reason } => reason,
                     _ => "The setup session ended.".into(),
                 };
-                return self.fail(state, reason);
+                self.fail(state, reason);
+                return false;
             }
             Ok(_) => {}
-            Err(e) => return self.fail(state, e.to_string()),
+            Err(
+                coder_environment_setup::store::StoreError::Io(_)
+                | coder_environment_setup::store::StoreError::Busy,
+            ) => return true,
+            Err(e) => {
+                self.fail(state, e.to_string());
+                return false;
+            }
         }
         self.take_steering(state);
         let request = Request {
@@ -572,6 +614,15 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
         };
         let reply = match self.respond(&request).await {
             Ok(r) => r,
+            Err(e) if e.transient() => {
+                // The provider's own answer stays in the server log. The
+                // setup stays where it was so a later try can continue.
+                eprintln!(
+                    "environment {}: setup model request failed: {e}",
+                    state.environment
+                );
+                return true;
+            }
             Err(e) => {
                 // The provider's own answer stays in the server log; the
                 // person reads one plain sentence (#11316).
@@ -579,7 +630,8 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
                     "environment {}: setup model request failed: {e}",
                     state.environment
                 );
-                return self.fail(state, model_failure(&e));
+                self.fail(state, model_failure(&e));
+                return false;
             }
         };
         state.input.extend(reply.items.clone());
@@ -600,10 +652,14 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
             } else {
                 text.trim().to_owned()
             };
-            return self.pause(state, &question).await;
+            self.pause(state, &question).await;
+            return false;
         }
         let mut stopped = false;
         for call in calls {
+            if !self.allowed() {
+                return true;
+            }
             let output = if stopped {
                 json!({"error":"Not run: the turn ended before this call."})
             } else {
@@ -614,9 +670,11 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
             };
             state.input.push(json!({"type":"function_call_output","call_id":call.call_id,"output":output.to_string()}));
             if let Err(e) = self.save(state) {
-                return self.fail(state, e);
+                self.fail(state, e);
+                return false;
             }
         }
+        false
     }
 
     async fn pause(&self, state: &mut State, question: &str) {

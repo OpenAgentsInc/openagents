@@ -5,7 +5,10 @@ use codex_transport::fake::{call, say};
 use codex_transport::{Reply, TokenUsage, TransportError};
 use serde_json::json;
 use std::collections::VecDeque;
+use std::process::Child;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Instant;
 
 const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
 
@@ -452,4 +455,381 @@ fn shared_private_setup_admits_a_broker_reference_without_operator_credentials()
     let b = brief(&configuration, &env, Some(&public));
     assert!(b.git_credential.is_none());
     assert!(!b.profile.credentials.contains_key("GH_TOKEN"));
+}
+
+const FENCE_ENV: &str = "env-held";
+
+struct CountTransport(Arc<AtomicUsize>);
+impl Transport for CountTransport {
+    async fn respond(&self, _request: &codex_transport::Request) -> Result<Reply, TransportError> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Err(TransportError::Unsent("gateway down".into()))
+    }
+}
+
+struct LogMachines {
+    deleted: Arc<AtomicUsize>,
+}
+impl sign_in::Machines for LogMachines {
+    async fn create(&self, _image: &str, _size: &str) -> Result<String, String> {
+        Ok("machine".into())
+    }
+    async fn resume(&self, _id: &str) -> Result<(), String> {
+        Ok(())
+    }
+    async fn run(&self, _id: &str, _script: &str) -> Result<String, String> {
+        Ok(String::new())
+    }
+    async fn put(&self, _id: &str, _path: &str, _bytes: &[u8]) -> Result<(), String> {
+        Ok(())
+    }
+    async fn stop(&self, _id: &str) -> Result<(), String> {
+        Ok(())
+    }
+    async fn state(&self, _id: &str) -> Result<Option<String>, String> {
+        Ok(Some("stopped".into()))
+    }
+    async fn delete(&self, _id: &str) -> Result<(), String> {
+        self.deleted.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+fn plant_unfinished(state: &Path) {
+    let source = SourcePin {
+        repository: Some("example/repo".into()),
+        revision: COMMIT.into(),
+        digest: "b".repeat(64),
+    };
+    let mut recipe = crate::tests::recipe();
+    recipe.limits.deadline_seconds = DEFAULT_DEADLINE_SECONDS;
+    let env = Environment::new(
+        FENCE_ENV,
+        ProjectLink {
+            workspace: "local".into(),
+            project: "repo".into(),
+        },
+        source,
+        recipe,
+        1,
+    )
+    .unwrap();
+    coder_environment::store::Store::under(crate::Layout::under(state).environments())
+        .create(&env)
+        .unwrap();
+    let dir = state.join("environment-studio").join(FENCE_ENV);
+    fs::create_dir_all(&dir).unwrap();
+    let meta = Meta {
+        repository: "example/repo".into(),
+        branch: "main".into(),
+        created_ms: 1,
+        account: None,
+        private: true,
+        public_computers: false,
+    };
+    fs::write(dir.join("meta.json"), serde_json::to_vec(&meta).unwrap()).unwrap();
+    fs::write(
+        dir.join("agent.json"),
+        serde_json::to_vec(&State::new(FENCE_ENV)).unwrap(),
+    )
+    .unwrap();
+    sign_in::Homes::under(sign_in::root(state))
+        .save(
+            FENCE_ENV,
+            &sign_in::Home {
+                sandbox: "sb-old".into(),
+                version: 1,
+                signed_in: false,
+                updated_ms: 1,
+                retired: vec![],
+            },
+        )
+        .unwrap();
+}
+
+fn snapshot(dir: &Path) -> BTreeMap<String, Vec<u8>> {
+    fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<String, Vec<u8>>) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(root, &path, out);
+                continue;
+            }
+            let rel = path
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            if rel.ends_with("-report") {
+                continue;
+            }
+            out.insert(rel, fs::read(&path).unwrap_or_default());
+        }
+    }
+    let mut out = BTreeMap::new();
+    walk(dir, dir, &mut out);
+    out
+}
+
+fn providers(provider: Arc<FakeProvider>) -> Providers<Arc<FakeProvider>> {
+    Providers {
+        setup: provider.clone(),
+        build: provider.clone(),
+        verify: provider,
+    }
+}
+
+fn wait_report(child: &mut Child, path: &Path) -> String {
+    let start = Instant::now();
+    loop {
+        if path.is_file() {
+            let text = fs::read_to_string(path).unwrap_or_default();
+            if !text.is_empty() {
+                return text;
+            }
+        }
+        if let Some(status) = child.try_wait().unwrap() {
+            let mut err = String::new();
+            if let Some(stderr) = child.stderr.as_mut() {
+                use std::io::Read;
+                let _ = stderr.read_to_string(&mut err);
+            }
+            panic!("fence child exited {status}: {err}");
+        }
+        if start.elapsed() > Duration::from_secs(25) {
+            panic!("timed out waiting for {}", path.display());
+        }
+        std::thread::sleep(Duration::from_millis(40));
+    }
+}
+
+struct StopChild(Option<Child>);
+impl Drop for StopChild {
+    fn drop(&mut self) {
+        if let Some(child) = self.0.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+#[tokio::test]
+async fn environment_fence_child() {
+    let Ok(dir) = std::env::var("OA_ENV_FENCE_DIR") else {
+        return;
+    };
+    let role = std::env::var("OA_ENV_FENCE_ROLE").unwrap_or_default();
+    if role.starts_with("lease-") {
+        crate::fence::lease_child(Path::new(&dir), &role);
+        return;
+    }
+    match role.as_str() {
+        "held" => held_candidate(Path::new(&dir)).await,
+        "serving" => serving_candidate(Path::new(&dir)).await,
+        "unavailable" => unavailable_model(Path::new(&dir)).await,
+        other => panic!("unknown fence role {other}"),
+    }
+}
+
+async fn held_candidate(dir: &Path) {
+    let provider = Arc::new(FakeProvider::new(BTreeMap::new(), true));
+    let calls = Arc::new(AtomicUsize::new(0));
+    let transports: Transports<CountTransport> = {
+        let calls = calls.clone();
+        Arc::new(move |_| Ok(CountTransport(calls.clone())))
+    };
+    let studio = Studio::start_admitted(
+        config(dir),
+        "oa-coder-runtime-20261008",
+        providers(provider.clone()),
+        Arc::new(|_: &BTreeSet<String>| Ok(Redactor::new())),
+        transports,
+        Duration::from_millis(1),
+        crate::fence::Admission::serving("held", Arc::new(|| false)),
+    )
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    let deleted = Arc::new(AtomicUsize::new(0));
+    let swept = studio
+        .sweep_homes(&LogMachines {
+            deleted: deleted.clone(),
+        })
+        .await;
+    let refused = studio.steer(FENCE_ENV, "keep going").unwrap_err();
+    assert_eq!(refused, crate::fence::REFUSAL);
+    fs::write(
+        dir.join("held-report"),
+        format!(
+            "calls={} commands={} deleted={} listed={}",
+            calls.load(Ordering::SeqCst),
+            provider.calls().len(),
+            swept + deleted.load(Ordering::SeqCst),
+            studio.list().len()
+        ),
+    )
+    .unwrap();
+}
+
+async fn serving_candidate(dir: &Path) {
+    let provider = machines();
+    let script = Script::default();
+    script.push(say("The repository is ready to set up.", u()));
+    let transports: Transports<Script> = {
+        let script = script.clone();
+        Arc::new(move |_| Ok(script.clone()))
+    };
+    let studio = Studio::start_admitted(
+        config(dir),
+        "oa-coder-runtime-20261008",
+        providers(provider.clone()),
+        Arc::new(|_: &BTreeSet<String>| Ok(Redactor::new())),
+        transports,
+        Duration::from_millis(1),
+        crate::fence::Admission::serving("serving", Arc::new(|| true)),
+    )
+    .unwrap();
+    let mut status = Status::Starting;
+    for _ in 0..3000 {
+        if let Some(view) = studio.view(FENCE_ENV) {
+            status = view.summary.status;
+            if status != Status::Starting {
+                break;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let commands = provider.calls().len();
+    assert!(
+        commands > 0 && status != Status::Starting,
+        "admitted worker made {commands} provider calls and stayed {status:?}"
+    );
+    fs::write(
+        dir.join("serving-report"),
+        format!("progress calls={commands} status={status:?}"),
+    )
+    .unwrap();
+}
+
+async fn unavailable_model(dir: &Path) {
+    let provider = machines();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let transports: Transports<CountTransport> = {
+        let calls = calls.clone();
+        Arc::new(move |_| Ok(CountTransport(calls.clone())))
+    };
+    let studio = Studio::start_admitted(
+        config(dir),
+        "oa-coder-runtime-20261008",
+        providers(provider),
+        Arc::new(|_: &BTreeSet<String>| Ok(Redactor::new())),
+        transports,
+        Duration::from_millis(1),
+        crate::fence::Admission::serving("unavailable", Arc::new(|| true)),
+    )
+    .unwrap();
+    let agent_path = dir
+        .join("environment-studio")
+        .join(FENCE_ENV)
+        .join("agent.json");
+    let started = Instant::now();
+    let phase = loop {
+        let text = fs::read_to_string(&agent_path).unwrap_or_default();
+        if text.contains("\"failed\"") {
+            panic!("unavailable model failed the setup: {text}");
+        }
+        if calls.load(Ordering::SeqCst) > 0 && text.contains("\"working\"") {
+            break text;
+        }
+        if started.elapsed() > Duration::from_secs(15) {
+            panic!(
+                "setup did not stay open after {} model calls: {text}",
+                calls.load(Ordering::SeqCst)
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    };
+    let mut cancelled = false;
+    if let Ok(entries) = fs::read_dir(dir.join("environment-setup").join("sessions")) {
+        for entry in entries.flatten() {
+            let Ok(bytes) = fs::read(entry.path()) else {
+                continue;
+            };
+            if String::from_utf8_lossy(&bytes).contains("cancelled") {
+                cancelled = true;
+            }
+        }
+    }
+    assert!(!cancelled, "unavailable model cancelled the setup computer");
+    assert!(phase.contains("\"working\""));
+    fs::write(
+        dir.join("unavailable-report"),
+        format!("kept calls={} cancelled=0", calls.load(Ordering::SeqCst)),
+    )
+    .unwrap();
+    let _ = studio;
+}
+
+#[test]
+fn a_held_candidate_does_no_environment_work_until_it_has_traffic() {
+    if std::env::var_os("OA_ENV_FENCE_ROLE").is_some() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    plant_unfinished(dir.path());
+    let before = snapshot(dir.path());
+    let child = crate::fence::tests::spawn(dir.path(), "held", &[]);
+    let mut child = StopChild(Some(child));
+    let report = wait_report(child.0.as_mut().unwrap(), &dir.path().join("held-report"));
+    assert_eq!(
+        report.trim(),
+        "calls=0 commands=0 deleted=0 listed=1",
+        "held report: {report}"
+    );
+    assert!(
+        !dir.path()
+            .join("environment-studio")
+            .join("execution.json")
+            .exists(),
+        "a candidate with no traffic took the environment lease"
+    );
+    drop(child);
+    assert_eq!(
+        before,
+        snapshot(dir.path()),
+        "a held candidate changed environment files"
+    );
+
+    let child = crate::fence::tests::spawn(dir.path(), "serving", &[]);
+    let mut child = StopChild(Some(child));
+    let report = wait_report(
+        child.0.as_mut().unwrap(),
+        &dir.path().join("serving-report"),
+    );
+    assert!(
+        report.starts_with("progress calls=") && !report.contains("calls=0"),
+        "serving report: {report}"
+    );
+}
+
+#[test]
+fn an_unavailable_model_leaves_the_setup_in_place() {
+    if std::env::var_os("OA_ENV_FENCE_ROLE").is_some() {
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    plant_unfinished(dir.path());
+    let child = crate::fence::tests::spawn(dir.path(), "unavailable", &[]);
+    let mut child = StopChild(Some(child));
+    let report = wait_report(
+        child.0.as_mut().unwrap(),
+        &dir.path().join("unavailable-report"),
+    );
+    assert!(
+        report.starts_with("kept calls=") && !report.contains("calls=0"),
+        "unavailable report: {report}"
+    );
+    assert!(report.contains("cancelled=0"));
 }

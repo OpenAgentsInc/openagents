@@ -288,6 +288,9 @@ fn spawn_sweeper(studio: std::sync::Weak<Studio>) {
             loop {
                 let Some(live) = studio.upgrade() else { return };
                 runtime.block_on(async {
+                    if !live.permit.allows() {
+                        return;
+                    }
                     if live.shared_root.load(std::sync::atomic::Ordering::Relaxed)
                         && let Ok(Some(shared)) =
                             crate::computers::Runtime::from_env(&live.config.state)
@@ -357,6 +360,8 @@ pub struct Studio {
     base: ImagePin,
     runtime: ArtifactPin,
     work: mpsc::UnboundedSender<Work>,
+    /// Zero while this process must not change environments.
+    permit: Arc<crate::fence::Permit>,
 }
 
 impl std::fmt::Debug for Studio {
@@ -464,13 +469,14 @@ impl Studio {
                 });
             let mut config = config;
             config.machines = machines;
-            return Self::start(
+            return Self::start_admitted(
                 config,
                 &template,
                 providers,
                 crate::computers::custody(shared),
                 transports,
                 Duration::from_secs(1),
+                crate::fence::Admission::from_process_env(),
             )
             .map(|studio| {
                 studio
@@ -498,13 +504,14 @@ impl Studio {
             });
         let mut config = config;
         config.machines = machines;
-        Self::start(
+        Self::start_admitted(
             config,
             &template,
             providers,
             crate::computers::custody(shared),
             transports,
             Duration::from_secs(1),
+            crate::fence::Admission::from_process_env(),
         )
         .map(|studio| {
             studio
@@ -517,6 +524,7 @@ impl Studio {
 
     /// Start the studio over `providers` and `transports`. `template`
     /// names the image fresh setup and builder machines start from.
+    /// Local callers and tests may work immediately.
     pub fn start<P, T>(
         config: Config,
         template: &str,
@@ -529,12 +537,42 @@ impl Studio {
         P: Commands + Images + Send + 'static,
         T: Transport + 'static,
     {
+        Self::start_admitted(
+            config,
+            template,
+            providers,
+            custody,
+            transports,
+            poll,
+            crate::fence::Admission::open(),
+        )
+    }
+
+    /// [`Studio::start`] with an explicit traffic gate. A serving admission
+    /// resumes unfinished setups only after this process holds the lease.
+    pub(crate) fn start_admitted<P, T>(
+        config: Config,
+        template: &str,
+        providers: Providers<P>,
+        custody: Custody,
+        transports: Transports<T>,
+        poll: Duration,
+        admission: crate::fence::Admission,
+    ) -> Result<Arc<Self>, String>
+    where
+        P: Commands + Images + Send + 'static,
+        T: Transport + 'static,
+    {
         let layout = crate::Layout::under(&config.state);
         let logs = Arc::new(Logs::under(config.state.join("environment-studio")));
         let (work, inbox) = mpsc::unbounded_channel();
         let (ready, opened) = std::sync::mpsc::channel();
         let thread_config = config.clone();
         let thread_logs = logs.clone();
+        let thread_work = work.clone();
+        let permit = admission.permit();
+        let thread_permit = permit.clone();
+        let resume_now = admission.is_open();
         std::thread::Builder::new()
             .name("environments".into())
             .spawn(move || {
@@ -558,7 +596,18 @@ impl Studio {
                         }
                     };
                     let _ = ready.send(Ok(()));
-                    serve(thread_config, owners, thread_logs, transports, poll, inbox).await;
+                    serve(
+                        thread_config,
+                        owners,
+                        thread_logs,
+                        transports,
+                        poll,
+                        inbox,
+                        admission,
+                        thread_permit,
+                        thread_work,
+                    )
+                    .await;
                 });
             })
             .map_err(|e| format!("The environments thread didn't start: {e}"))?;
@@ -586,24 +635,32 @@ impl Studio {
             github: github::GitHub::new(token),
             config,
             work,
+            permit,
         });
-        // Pick up every setup that was moving when the studio stopped.
-        for s in studio.list() {
-            if matches!(
-                s.status,
-                Status::Starting | Status::Working | Status::Building | Status::Checking
-            ) {
-                let _ = studio.work.send(Work::Run(s.id));
+        // A candidate with no traffic reads what is already saved. It does
+        // not resume a setup or a Claude Code run; the owner thread does
+        // that after this revision has traffic and holds the lease.
+        if resume_now {
+            for s in studio.list() {
+                if matches!(
+                    s.status,
+                    Status::Starting | Status::Working | Status::Building | Status::Checking
+                ) {
+                    let _ = studio.work.send(Work::Run(s.id));
+                }
             }
+            // And every Claude Code run that was mid-turn (#11331).
+            studio.runs.pick_up_after_restart();
         }
-        // And every Claude Code run that was mid-turn (#11331).
-        studio.runs.pick_up_after_restart();
         Ok(studio)
     }
 
     /// Delete the environment computers no longer anyone's own copy
     /// (#11296, [`sign_in::sweep`]); how many were deleted.
     pub async fn sweep_homes<M: sign_in::Machines>(&self, machines: &M) -> usize {
+        if !self.permit.allows() {
+            return 0;
+        }
         let envs = self.envs();
         let current = |id: &str| {
             envs.read(id)
@@ -921,6 +978,14 @@ impl Studio {
         self.meta(id)?.account
     }
 
+    fn require_work(&self) -> Result<(), String> {
+        if self.permit.allows() {
+            Ok(())
+        } else {
+            Err(crate::fence::REFUSAL.into())
+        }
+    }
+
     fn add(
         &self,
         resolved: &github::Resolved,
@@ -928,6 +993,7 @@ impl Studio {
         shared: bool,
         authorize: impl FnOnce(&str) -> Result<(), String>,
     ) -> Result<String, String> {
+        self.require_work()?;
         let now = now_ms();
         let full = resolved.repository.full();
         let mut nonce = [0u8; 12];
@@ -1048,6 +1114,7 @@ impl Studio {
         if let Some(child) = self.child(id) {
             return child.steer(id, text);
         }
+        self.require_work()?;
         let text = text.trim();
         if text.is_empty() || text.chars().count() > MAX_MESSAGE {
             return Err("Write a message of up to 4,000 characters.".into());
@@ -1071,6 +1138,7 @@ impl Studio {
         if let Some(child) = self.child(id) {
             return child.retry(id);
         }
+        self.require_work()?;
         if !matches!(self.state(id).map(|s| s.phase), Some(Phase::Failed { .. })) {
             return Err("There is nothing to retry.".into());
         }
@@ -1084,6 +1152,7 @@ impl Studio {
         if let Some(child) = self.child(id) {
             return Box::pin(child.save(id, candidate)).await;
         }
+        self.require_work()?;
         let (reply, answer) = oneshot::channel();
         self.send(Work::Save(id.into(), candidate.into(), reply))?;
         answer
@@ -1136,6 +1205,7 @@ impl Studio {
         if let Some(child) = self.child(id) {
             return child.run_claude_pushing(id, prompt, own, files, push);
         }
+        self.require_work()?;
         let env = self.envs().read(id).map_err(|e| e.to_string())?;
         if env.project.workspace != self.config.owner.workspace {
             return Err("That environment isn't yours.".into());
@@ -1326,6 +1396,7 @@ export OA_ENGINE_NOTICE_DIR="$HOME/.openagents/engine"
         if let Some(child) = self.child(id) {
             return child.start_sign_in(id);
         }
+        self.require_work()?;
         let env = self.envs().read(id).map_err(|e| e.to_string())?;
         if env.project.workspace != self.config.owner.workspace {
             return Err("That environment isn't yours.".into());
@@ -1389,6 +1460,7 @@ export OA_ENGINE_NOTICE_DIR="$HOME/.openagents/engine"
         if let Some(child) = self.child(id) {
             return child.sign_in_send(id, text);
         }
+        self.require_work()?;
         self.sign_ins.send(id, text)
     }
 
@@ -1564,6 +1636,38 @@ fn brief(config: &Config, env: &Environment, meta: Option<&Meta>) -> Brief {
     }
 }
 
+/// Queue unfinished setups the way [`Studio::start`] does for an open admission.
+fn resume_unfinished<P: Commands + Images>(
+    config: &Config,
+    owners: &Owners<P>,
+    root: &std::path::Path,
+    work: &mpsc::UnboundedSender<Work>,
+) {
+    let Ok(environments) = owners.setup.environments.list() else {
+        return;
+    };
+    for env in environments {
+        if env.project.workspace != config.owner.workspace {
+            continue;
+        }
+        let meta = fs::read(root.join(&env.id).join("meta.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Meta>(&bytes).ok());
+        if meta.is_none() {
+            continue;
+        }
+        let phase = fs::read(root.join(&env.id).join("agent.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<State>(&bytes).ok());
+        if matches!(
+            phase.as_ref().map(|state| &state.phase),
+            None | Some(Phase::Starting | Phase::Working | Phase::Building | Phase::Verifying)
+        ) {
+            let _ = work.send(Work::Run(env.id));
+        }
+    }
+}
+
 /// The owner thread: runs setups and applies the person's requests.
 async fn serve<P, T>(
     config: Config,
@@ -1572,6 +1676,9 @@ async fn serve<P, T>(
     transports: Transports<T>,
     poll: Duration,
     mut inbox: mpsc::UnboundedReceiver<Work>,
+    admission: crate::fence::Admission,
+    permit: Arc<crate::fence::Permit>,
+    work_tx: mpsc::UnboundedSender<Work>,
 ) where
     P: Commands + Images + 'static,
     T: Transport + 'static,
@@ -1588,6 +1695,7 @@ async fn serve<P, T>(
         logs: logs.clone(),
         root: root.clone(),
         poll,
+        permit: None,
     };
     let launch = |id: String| {
         if !running.borrow_mut().insert(id.clone()) {
@@ -1601,6 +1709,7 @@ async fn serve<P, T>(
         let transports = transports.clone();
         let running = running.clone();
         let again = again.clone();
+        let permit = permit.clone();
         tokio::task::spawn_local(async move {
             loop {
                 let env = owners.setup.environments.read(&id);
@@ -1616,11 +1725,15 @@ async fn serve<P, T>(
                             logs: logs.clone(),
                             root: root.clone(),
                             poll,
+                            permit: Some(permit.clone()),
                         };
                         let state = agent.load(&id).unwrap_or_else(|| State::new(&id));
                         agent.run(&brief(&config, &env, meta.as_ref()), state).await;
                     }
                     (Err(e), _) => {
+                        if !permit.allows() {
+                            break;
+                        }
                         let _ = logs.push(
                             &id,
                             Entry::Failed {
@@ -1630,6 +1743,9 @@ async fn serve<P, T>(
                         );
                     }
                     (_, Err(reason)) => {
+                        if !permit.allows() {
+                            break;
+                        }
                         let agent = Agent::<P, Never> {
                             owners: owners.clone(),
                             transport: Never,
@@ -1637,6 +1753,7 @@ async fn serve<P, T>(
                             logs: logs.clone(),
                             root: root.clone(),
                             poll,
+                            permit: None,
                         };
                         let mut state = agent.load(&id).unwrap_or_else(|| State::new(&id));
                         let _ = logs.push(
@@ -1657,7 +1774,52 @@ async fn serve<P, T>(
             running.borrow_mut().remove(&id);
         });
     };
-    while let Some(work) = inbox.recv().await {
+    let fence = crate::fence::Fence::under(&config.state);
+    let mut lease = None;
+    let mut traffic_cache = None;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(3))
+        .build()
+        .ok();
+    let mut resumed = admission.is_open();
+    loop {
+        if !admission.is_open() {
+            let admitted = crate::fence::claim(
+                &admission,
+                &fence,
+                &mut lease,
+                &permit,
+                client.as_ref(),
+                &mut traffic_cache,
+            )
+            .await;
+            if !admitted {
+                resumed = false;
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                continue;
+            }
+            if !resumed {
+                resume_unfinished(&config, &owners, &root, &work_tx);
+                claude::Runs::under(claude::root(&config.state)).pick_up_after_restart();
+                resumed = true;
+            }
+        }
+        let work = if admission.is_open() {
+            inbox.recv().await
+        } else {
+            match tokio::time::timeout(Duration::from_secs(5), inbox.recv()).await {
+                Ok(work) => work,
+                Err(_) => continue,
+            }
+        };
+        let Some(work) = work else {
+            break;
+        };
+        if !permit.allows() {
+            let _ = work_tx.send(work);
+            resumed = false;
+            continue;
+        }
         match work {
             Work::Sweep => {
                 if let Ok(environments) = owners.setup.environments.list() {
@@ -1744,6 +1906,9 @@ async fn serve<P, T>(
                 }
             }
         }
+    }
+    if let Some(current) = lease.take() {
+        let _ = crate::fence::Fence::release(current);
     }
 }
 
