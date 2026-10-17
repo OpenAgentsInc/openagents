@@ -27,6 +27,7 @@
 pub mod attachments;
 pub mod auth;
 pub mod catalog;
+mod catalog_selection;
 mod client;
 pub mod config;
 pub mod connectivity;

@@ -21,6 +21,7 @@ pub use cloud_chat::*;
 mod cloud_host;
 pub use agent_lab::*;
 mod custom_agents;
+mod host_config;
 mod labs;
 mod onboarding;
 pub use onboarding::*;

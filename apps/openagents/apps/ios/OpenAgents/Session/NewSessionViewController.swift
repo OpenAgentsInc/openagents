@@ -202,6 +202,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     /// name while a fresh one comes back over the relay.
     private static var modelCache: [String: [ModelChoice]] = [:]
     private var modelsDevice: String?
+    private var modelLoadRevision: UInt64 = 0
 
     /// Models for the draft's host: cached (or the built-in catalog) at once,
     /// then the host's own list.
@@ -209,15 +210,29 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
         let device = deviceId
         guard device != modelsDevice else { return refreshChips() }
         modelsDevice = device
+        modelLoadRevision += 1
+        let revision = modelLoadRevision
         models = Self.modelCache[device] ?? Self.catalogModels()
         refreshChips()
         Task { [weak self] in
             guard let self else { return }
+            let requested = self.draft
             let fresh = await self.app.models(for: device)
             guard !fresh.isEmpty else { return }
+            guard self.modelsDevice == device, self.modelLoadRevision == revision else { return }
             Self.modelCache[device] = fresh
-            guard self.modelsDevice == device else { return }
             self.models = fresh
+            self.refreshChips()
+            guard self.continuation == nil, self.app.customAgents?.selectionActive() != true,
+                  let client = self.app.client else { return }
+            let config = ChatConfig(harness: requested.harness, model: requested.model, reasoning: requested.effort, modelOptions: [:], sandbox: .workspaceWrite)
+            guard let selected = try? await client.availableChatConfig(deviceId: device, config: config),
+                  self.modelsDevice == device, self.modelLoadRevision == revision,
+                  self.draft == requested, !self.created,
+                  self.app.customAgents?.selectionActive() != true else { return }
+            self.draft.harness = selected.harness
+            self.draft.model = selected.model
+            self.draft.effort = selected.reasoning
             self.refreshChips()
         }
     }
