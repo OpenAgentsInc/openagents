@@ -2,7 +2,10 @@
 use crate::{HarnessError, ModelContext};
 use openagents_proto::HarnessId;
 use sha2::{Digest, Sha256};
-use std::path::{Path, PathBuf};
+use std::{
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 
 pub(crate) fn root(variable: &str, fallback: PathBuf) -> PathBuf {
     openagents_brand::env_var_os(variable)
@@ -96,6 +99,19 @@ pub(crate) fn context(
         );
     }
     hash_files(&mut hash, files.iter().chain(extra))?;
+    hash_environment(&mut hash, id, std::env::vars_os());
+    Ok(ModelContext {
+        hash: format!("{:x}", hash.finalize()),
+        binary_path: binary,
+        binary_version: version,
+    })
+}
+
+fn hash_environment(
+    hash: &mut Sha256,
+    id: HarnessId,
+    variables: impl Iterator<Item = (OsString, OsString)>,
+) {
     let prefixes: &[&str] = match id {
         HarnessId::Codex => &["CODEX_", "OPENAI_"],
         HarnessId::ClaudeCode => &["CLAUDE_", "ANTHROPIC_", "AWS_"],
@@ -108,23 +124,19 @@ pub(crate) fn context(
         HarnessId::Cursor => &["CURSOR_"],
         _ => &[],
     };
-    let mut env: Vec<_> = std::env::vars_os()
+    let mut env: Vec<_> = variables
         .filter(|(key, _)| {
-            prefixes
-                .iter()
-                .any(|prefix| key.to_string_lossy().starts_with(prefix))
+            (id == HarnessId::Opencode && key == "OPENAGENTS_API_KEY")
+                || prefixes
+                    .iter()
+                    .any(|prefix| key.to_string_lossy().starts_with(prefix))
         })
         .collect();
     env.sort();
     for (key, value) in env {
-        field(&mut hash, key.as_encoded_bytes());
-        field(&mut hash, value.as_encoded_bytes());
+        field(hash, key.as_encoded_bytes());
+        field(hash, value.as_encoded_bytes());
     }
-    Ok(ModelContext {
-        hash: format!("{:x}", hash.finalize()),
-        binary_path: binary,
-        binary_version: version,
-    })
 }
 
 fn field(hash: &mut Sha256, bytes: &[u8]) {
@@ -161,6 +173,55 @@ impl ModelContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn environment_key(id: HarnessId, variables: &[(&str, &str)]) -> String {
+        let mut hash = Sha256::new();
+        hash_environment(
+            &mut hash,
+            id,
+            variables
+                .iter()
+                .map(|(key, value)| ((*key).into(), (*value).into())),
+        );
+        format!("{:x}", hash.finalize())
+    }
+
+    #[test]
+    fn opencode_catalog_tracks_openagents_credentials_without_changing_other_harnesses() {
+        let first = [("OPENAGENTS_API_KEY", "fixture-account-one")];
+        let second = [("OPENAGENTS_API_KEY", "fixture-account-two")];
+        let key = environment_key(HarnessId::Opencode, &first);
+        assert_ne!(key, environment_key(HarnessId::Opencode, &second));
+        assert_ne!(key, environment_key(HarnessId::Opencode, &[]));
+        assert_eq!(key.len(), 64);
+        assert!(!key.contains("fixture-account"));
+        for id in [HarnessId::ClaudeCode, HarnessId::Codex, HarnessId::Pi] {
+            assert_eq!(environment_key(id, &first), environment_key(id, &second));
+            assert_eq!(environment_key(id, &first), environment_key(id, &[]));
+        }
+    }
+
+    #[test]
+    fn opencode_catalog_keeps_existing_provider_keys_and_stable_environment_order() {
+        let keys = [
+            ("OPENAGENTS_API_KEY", "fixture-account"),
+            ("OPENCODE_CONFIG_CONTENT", "fixture-config"),
+            ("OPENAI_API_KEY", "fixture-openai"),
+            ("ANTHROPIC_API_KEY", "fixture-anthropic"),
+            ("GOOGLE_API_KEY", "fixture-google"),
+        ];
+        let key = environment_key(HarnessId::Opencode, &keys);
+        let reversed: Vec<_> = keys.iter().rev().copied().collect();
+        assert_eq!(key, environment_key(HarnessId::Opencode, &reversed));
+        for index in 0..keys.len() {
+            let mut changed = keys;
+            changed[index].1 = "changed-fixture";
+            assert_ne!(key, environment_key(HarnessId::Opencode, &changed));
+        }
+        let mut unrelated = keys.to_vec();
+        unrelated.push(("OPENAGENTS_DEVICE_NAME", "fixture-device"));
+        assert_eq!(key, environment_key(HarnessId::Opencode, &unrelated));
+    }
     #[test]
     fn content_changes_and_missing_files_invalidate_without_exposing_secrets() {
         let dir = tempfile::tempdir().unwrap();
