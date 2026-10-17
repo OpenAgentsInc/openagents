@@ -36,6 +36,7 @@ Every Lab we have follows the same pattern, first set by
 | [Game](../game-lab/README.md) | `game.v1` | The bot plays it; still winnable (`icecream-rules`) | Playtest numbers, a WebGL build | Playable game, numbers | `crates/game-lab`, loopback |
 | [Robot](../lab/README.md) | Robot, environment, experiment versions | Description import, dependencies (`crates/robot-lab`) | Simulation runs, replays, policy results | 3D or video replay | Loopback plus paired-host remote reads; the phone mounts Rust Native cards |
 | [Agent](../agent-lab/README.md) | Agent drafts, task suites, experiment versions | SDK spec validation, compatible runtimes, task checks, finite limits | Existing SDK assignments, conversations, comparison reports | Report, compare | Custom-agent SDK and iOS creation/delegation implemented (#11902); Lab workbench proposed |
+| [Design](../../crates/design-lab/README.md) | `board.v1` | Unique screens, every version names its picture (`crates/design-lab`) | None yet: pictures come from git history | Image | `crates/design-lab`, loopback 8798 |
 | Ship (#11651) | `spacecraft.v1` | Mass budget, thrust line, burn, latches (`verse_lagrange2::ship`) | A Verse zone file | Numbers, 3D | `crates/ship-lab`, loopback |
 | Photo, Film, others | Not built | | | Image, compare, video | |
 

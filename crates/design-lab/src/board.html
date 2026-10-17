@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Design Lab</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1e1e1e;
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; color: #e6e6e6; }
+  #canvas { position: fixed; inset: 0; cursor: grab; touch-action: none;
+    background-image: radial-gradient(#3a3a3a 1px, transparent 1px); }
+  #canvas.dragging { cursor: grabbing; }
+  #world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  .section { position: absolute; background: #262626; border: 2px solid #343434; border-radius: 18px; }
+  .area { position: absolute; font-size: 46px; font-weight: 600; color: #fafafa; white-space: nowrap; }
+  .screen { position: absolute; max-width: 900px; font-size: 24px; font-weight: 600; color: #f0f0f0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .screen small { display: block; margin-top: 6px; font-size: 16px; font-weight: 400; color: #9a9a9a; }
+  .frame { position: absolute; }
+  .frame .name { position: absolute; left: 0 !important; top: auto !important; bottom: 100%; margin-bottom: 8px; font-size: 15px;
+    color: #a8a8a8; white-space: nowrap; }
+  .frame .pic { width: 100%; height: 100%; background: #2c2c2c; border-radius: 6px; overflow: hidden;
+    box-shadow: 0 2px 14px rgba(0,0,0,.45); cursor: zoom-in; }
+  .frame .pic:hover { outline: 4px solid #0d99ff; }
+  .frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  #bar { position: fixed; top: 12px; left: 12px; right: 12px; display: flex; gap: 10px; align-items: center;
+    pointer-events: none; }
+  #bar > * { pointer-events: auto; }
+  .chip { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 7px 11px; }
+  #title { font-weight: 600; }
+  #count { color: #9a9a9a; }
+  #search { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 7px 11px;
+    color: inherit; font: inherit; width: 240px; outline: none; }
+  #search:focus { border-color: #0d99ff; }
+  #areas { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 6px 8px;
+    color: inherit; font: inherit; max-width: 220px; }
+  .spacer { flex: 1; }
+  button { background: #2c2c2c; border: 1px solid #3d3d3d; border-radius: 8px; padding: 7px 11px;
+    color: inherit; font: inherit; cursor: pointer; }
+  button:hover { border-color: #0d99ff; }
+  #zoom { min-width: 64px; text-align: center; }
+  #help { position: fixed; bottom: 12px; left: 12px; color: #8a8a8a; font-size: 12px; }
+  #empty { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; color: #9a9a9a; }
+  #view { position: fixed; inset: 0; background: rgba(10,10,10,.92); display: none; z-index: 10; }
+  #view.open { display: flex; }
+  #view .stage { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; min-width: 0; }
+  #view .stage img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
+  #view aside { width: 320px; padding: 24px; border-left: 1px solid #333; overflow: auto; }
+  #view h2 { margin: 0 0 4px; font-size: 18px; }
+  #view .meta { color: #9a9a9a; margin: 2px 0; word-break: break-all; }
+  #view .nav { display: flex; gap: 8px; margin: 16px 0; }
+  #view .strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  #view .strip img { width: 100%; aspect-ratio: 9 / 19.5; object-fit: cover; border-radius: 4px;
+    cursor: pointer; border: 2px solid transparent; background: #2c2c2c; }
+  #view .strip img.on { border-color: #0d99ff; }
+</style>
+</head>
+<body>
+<div id="canvas"><div id="world"></div></div>
+<div id="bar">
+  <span class="chip"><span id="title">Design Lab</span> <span id="count"></span></span>
+  <input id="search" type="search" placeholder="Find a screen" autocomplete="off">
+  <select id="areas"><option value="">All areas</option></select>
+  <span class="spacer"></span>
+  <button id="out" title="Zoom out (-)">−</button>
+  <span id="zoom" class="chip">100%</span>
+  <button id="in" title="Zoom in (+)">+</button>
+  <button id="fit" title="Show everything (Shift+1)">Fit</button>
+</div>
+<div id="help">Drag or scroll to move · Pinch or ⌘/Ctrl + scroll to zoom · Click a screen to open it</div>
+<div id="empty">No screens match.</div>
+<div id="view">
+  <div class="stage"><img id="big" alt=""></div>
+  <aside>
+    <h2 id="vtitle"></h2>
+    <div class="meta" id="vwhen"></div>
+    <div class="meta" id="vsubject"></div>
+    <div class="meta" id="vpath"></div>
+    <div class="nav">
+      <button id="prev">← Older</button>
+      <button id="next">Newer →</button>
+      <button id="close">Close</button>
+    </div>
+    <div class="strip" id="vstrip"></div>
+  </aside>
+</div>
+<script>
+"use strict";
+const PIC = 460, NAME = 110, GAP = 28, COLGAP = 90, ROWGAP = 70, HEAD = 120, PAD = 60, WRAP = 4600, SECGAP = 160;
+const canvas = document.getElementById("canvas");
+const world = document.getElementById("world");
+let board = { name: "Design Lab", screens: [] };
+let frames = [];
+let view = { x: 40, y: 80, k: 0.25 };
+let bounds = { w: 1, h: 1 };
+
+const when = (unix) => new Date(unix * 1000).toLocaleDateString(undefined,
+  { year: "numeric", month: "short", day: "numeric" });
+
+function aspect(v) {
+  return v.width && v.height ? v.width / v.height : 0.46;
+}
+
+function el(cls, x, y, w, h, text) {
+  const d = document.createElement("div");
+  d.className = cls;
+  d.style.left = x + "px"; d.style.top = y + "px";
+  if (w) d.style.width = w + "px";
+  if (h) d.style.height = h + "px";
+  if (text) d.textContent = text;
+  return d;
+}
+
+// One section per area. Inside, each screen is its versions side by side
+// under the screen's name, and screens wrap into rows.
+function section(area, screens) {
+  const items = [];
+  let x = PAD, y = HEAD, rowH = 0, w = 0;
+  for (const screen of screens) {
+    const sizes = screen.versions.map((v) => Math.round(Math.min(PIC * aspect(v), PIC * 2.2)));
+    const gw = Math.max(sizes.reduce((a, b) => a + b, 0) + GAP * (sizes.length - 1), 220);
+    if (x > PAD && x + gw > WRAP) { x = PAD; y += rowH + ROWGAP; rowH = 0; }
+    items.push({ screen, sizes, x, y });
+    x += gw + COLGAP;
+    w = Math.max(w, x - COLGAP + PAD);
+    rowH = Math.max(rowH, NAME + PIC);
+  }
+  return { area, items, w, h: y + rowH + PAD };
+}
+
+function layout() {
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  const only = document.getElementById("areas").value;
+  world.textContent = "";
+  frames = [];
+  const byArea = new Map();
+  let shown = 0, versions = 0;
+  for (const screen of board.screens) {
+    if (only && screen.area !== only) continue;
+    const hay = (screen.title + " " + screen.id + " " + screen.area).toLowerCase();
+    if (q && !hay.includes(q)) continue;
+    if (!byArea.has(screen.area)) byArea.set(screen.area, []);
+    byArea.get(screen.area).push(screen);
+    shown++;
+    versions += screen.versions.length;
+  }
+  const sections = [...byArea].map(([a, list]) => section(a, list));
+  // Pack sections in shelves about as wide as a laptop screen is to its height.
+  const total = sections.reduce((a, s) => a + (s.w + SECGAP) * (s.h + SECGAP), 0);
+  const width = Math.max(Math.sqrt(total * 2.4), ...sections.map((s) => s.w), 1);
+  let x = 0, y = 0, shelf = 0, w = 0;
+  for (const s of sections) {
+    if (x > 0 && x + s.w > width) { x = 0; y += shelf + SECGAP; shelf = 0; }
+    const box = el("section", x, y, s.w, s.h);
+    box.appendChild(el("area", PAD, 28, 0, 0, s.area));
+    for (const it of s.items) {
+      const label = el("screen", it.x, it.y, 0, 0, it.screen.title);
+      const small = document.createElement("small");
+      const n = it.screen.versions.length;
+      small.textContent = n === 1 ? "1 version" : n + " versions";
+      label.appendChild(small);
+      box.appendChild(label);
+      let fx = it.x;
+      it.screen.versions.forEach((v, i) => {
+        const fw = it.sizes[i];
+        const fy = it.y + NAME;
+        const f = el("frame", fx, fy, fw, PIC);
+        f.appendChild(el("name", 0, 0, 0, 0, "v" + (i + 1) + " · " + when(v.unix)));
+        const pic = el("pic", 0, 0);
+        pic.style.position = "static";
+        pic.addEventListener("click", () => { if (!moved) open(it.screen, i); });
+        f.appendChild(pic);
+        box.appendChild(f);
+        frames.push({ el: pic, src: "img/" + v.blob, x: x + fx, y: y + fy, w: fw, h: PIC, loaded: false });
+        fx += fw + GAP;
+      });
+    }
+    world.appendChild(box);
+    x += s.w + SECGAP;
+    w = Math.max(w, x);
+    shelf = Math.max(shelf, s.h);
+  }
+  bounds = { w: Math.max(w, 1), h: Math.max(y + shelf, 1) };
+  document.getElementById("count").textContent = shown + " screens · " + versions + " versions";
+  document.getElementById("empty").style.display = shown ? "none" : "flex";
+  render();
+}
+
+let pending = false;
+function render() {
+  if (pending) return;
+  pending = true;
+  requestAnimationFrame(() => {
+    pending = false;
+    world.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
+    const grid = 24 * Math.max(view.k * 4, 0.5);
+    canvas.style.backgroundSize = grid + "px " + grid + "px";
+    canvas.style.backgroundPosition = view.x + "px " + view.y + "px";
+    document.getElementById("zoom").textContent = Math.round(view.k * 100) + "%";
+    // Load only pictures on screen, once they are more than a few pixels tall.
+    const W = innerWidth, H = innerHeight, margin = 400;
+    for (const f of frames) {
+      if (f.loaded) continue;
+      const sx = view.x + f.x * view.k, sy = view.y + f.y * view.k;
+      const visible = sx < W + margin && sy < H + margin &&
+        sx + f.w * view.k > -margin && sy + f.h * view.k > -margin;
+      if (visible && f.h * view.k > 6) {
+        const img = document.createElement("img");
+        img.decoding = "async";
+        img.alt = "";
+        img.src = f.src;
+        f.el.appendChild(img);
+        f.loaded = true;
+      }
+    }
+  });
+}
+
+function zoomAt(px, py, factor) {
+  const k = Math.min(4, Math.max(0.02, view.k * factor));
+  view.x = px - (px - view.x) * (k / view.k);
+  view.y = py - (py - view.y) * (k / view.k);
+  view.k = k;
+  render();
+}
+
+function fit() {
+  const pad = 60, top = 70;
+  const k = Math.min((innerWidth - pad * 2) / bounds.w, (innerHeight - top - pad) / bounds.h, 1);
+  view.k = Math.max(k, 0.02);
+  view.x = pad;
+  view.y = top;
+  render();
+}
+
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey) {
+    zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.01));
+  } else {
+    view.x -= e.deltaX;
+    view.y -= e.deltaY;
+    render();
+  }
+}, { passive: false });
+
+let drag = null, moved = false;
+const pointers = new Map();
+canvas.addEventListener("pointerdown", (e) => {
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, pinch: null };
+  moved = false;
+});
+addEventListener("pointermove", (e) => {
+  if (!drag || !pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+    if (drag.pinch) zoomAt(cx, cy, d / drag.pinch);
+    drag.pinch = d;
+    moved = true;
+    return;
+  }
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (Math.abs(dx) + Math.abs(dy) > 3) { moved = true; canvas.classList.add("dragging"); }
+  view.x = drag.vx + dx;
+  view.y = drag.vy + dy;
+  render();
+});
+const end = (e) => {
+  pointers.delete(e.pointerId);
+  if (pointers.size === 0) { drag = null; canvas.classList.remove("dragging"); }
+  else if (drag) { const p = [...pointers.values()][0]; drag = { x: p.x, y: p.y, vx: view.x, vy: view.y, pinch: null }; }
+};
+addEventListener("pointerup", end);
+addEventListener("pointercancel", end);
+addEventListener("resize", render);
+
+document.getElementById("in").onclick = () => zoomAt(innerWidth / 2, innerHeight / 2, 1.25);
+document.getElementById("out").onclick = () => zoomAt(innerWidth / 2, innerHeight / 2, 0.8);
+document.getElementById("fit").onclick = fit;
+document.getElementById("search").addEventListener("input", () => { layout(); fit(); });
+document.getElementById("areas").addEventListener("change", () => { layout(); fit(); });
+
+// The open screen and version.
+let current = null;
+function open(screen, i) {
+  current = { screen, i };
+  document.getElementById("view").classList.add("open");
+  show();
+}
+function show() {
+  const { screen, i } = current;
+  const v = screen.versions[i];
+  document.getElementById("big").src = "img/" + v.blob;
+  document.getElementById("vtitle").textContent = screen.title + " · v" + (i + 1) + " of " + screen.versions.length;
+  document.getElementById("vwhen").textContent = when(v.unix) + " · " + v.commit.slice(0, 10) +
+    (v.width ? " · " + v.width + "×" + v.height : "");
+  document.getElementById("vsubject").textContent = v.subject;
+  document.getElementById("vpath").textContent = v.path;
+  document.getElementById("prev").disabled = i === 0;
+  document.getElementById("next").disabled = i === screen.versions.length - 1;
+  const strip = document.getElementById("vstrip");
+  strip.textContent = "";
+  screen.versions.forEach((s, j) => {
+    const img = document.createElement("img");
+    img.src = "img/" + s.blob;
+    img.loading = "lazy";
+    img.title = "v" + (j + 1) + " · " + when(s.unix);
+    if (j === i) img.className = "on";
+    img.onclick = () => { current.i = j; show(); };
+    strip.appendChild(img);
+  });
+}
+function close() { document.getElementById("view").classList.remove("open"); current = null; }
+document.getElementById("prev").onclick = () => { if (current.i > 0) { current.i--; show(); } };
+document.getElementById("next").onclick = () => {
+  if (current.i < current.screen.versions.length - 1) { current.i++; show(); }
+};
+document.getElementById("close").onclick = close;
+document.querySelector("#view .stage").addEventListener("click", (e) => { if (e.target.tagName !== "IMG") close(); });
+
+addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") { if (e.key === "Escape") e.target.blur(); return; }
+  if (current) {
+    if (e.key === "Escape") close();
+    if (e.key === "ArrowLeft") document.getElementById("prev").click();
+    if (e.key === "ArrowRight") document.getElementById("next").click();
+    return;
+  }
+  if (e.key === "+" || e.key === "=") zoomAt(innerWidth / 2, innerHeight / 2, 1.25);
+  if (e.key === "-") zoomAt(innerWidth / 2, innerHeight / 2, 0.8);
+  if (e.key === "!" || (e.shiftKey && e.key === "1") || e.key === "0") fit();
+  if (e.key === "/") { e.preventDefault(); document.getElementById("search").focus(); }
+});
+
+fetch("board.json").then((r) => r.json()).then((b) => {
+  board = b;
+  document.getElementById("title").textContent = b.name;
+  document.title = b.name + " · Design Lab";
+  const select = document.getElementById("areas");
+  for (const a of [...new Set(b.screens.map((s) => s.area))]) {
+    const o = document.createElement("option");
+    o.value = a; o.textContent = a;
+    select.appendChild(o);
+  }
+  // `#q=words` opens the board already searched, so a view can be linked.
+  const q = new URLSearchParams(location.hash.slice(1)).get("q");
+  if (q) document.getElementById("search").value = q;
+  layout();
+  fit();
+});
+</script>
+</body>
+</html>

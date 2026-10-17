@@ -5659,6 +5659,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "design-lab"
+version = "1.0.0"
+dependencies = [
+ "axum 0.8.9",
+ "lab-kit",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "dhruv-conformance"
 version = "1.0.0"
 dependencies = [
