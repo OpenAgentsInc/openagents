@@ -1933,7 +1933,8 @@ impl AppState {
     pub fn visible_chats(&self) -> impl Iterator<Item = &Chat> {
         self.chats
             .iter()
-            .filter(|c| !c.archived && c.is_top_level() && c.links.continued_by.is_none())
+            .filter(|c| !c.archived && c.is_top_level() && c.links.continued_by.is_none()
+                && !c.config.as_ref().is_some_and(|config| config.model_options.contains_key(chat_home::REQUEST_OPTION)))
     }
 
     pub(crate) fn restore_composer_target(

@@ -1457,6 +1457,8 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
      */
     func storedLoginPresent() throws  -> Bool
     
+    func chatHomes(client: CoreClient, chat: String) throws  -> CoreChatHomes
+    
     /**
      * Our cloud's current state.
      */
@@ -1689,6 +1691,17 @@ open func storedLoginPresent()throws  -> Bool  {
         uniffiCallStatus in
     uniffi_openagents_mobile_fn_method_coreaccount_stored_login_present(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func chatHomes(client: CoreClient, chat: String)throws  -> CoreChatHomes  {
+    return try  FfiConverterTypeCoreChatHomes_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_chat_homes(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCoreClient_lower(client),
+        FfiConverterString.lower(chat),uniffiCallStatus
     )
 })
 }
@@ -2199,6 +2212,152 @@ public func FfiConverterTypeCoreAgents_lower(_ value: CoreAgents) -> UInt64 {
 
 
 
+public protocol CoreChatHomesProtocol: AnyObject, Sendable {
+    
+    func activate(instance: String, revision: UInt64, node: String) async throws  -> ChatHomeAction
+    
+    func choices() throws  -> String
+    
+    func parts() throws  -> String
+    
+}
+open class CoreChatHomes: CoreChatHomesProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_corechathomes(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_corechathomes(handle, $0) }
+    }
+
+    
+
+    
+open func activate(instance: String, revision: UInt64, node: String)async throws  -> ChatHomeAction  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_corechathomes_activate(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(instance),FfiConverterUInt64.lower(revision),FfiConverterString.lower(node)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatHomeAction_lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+open func choices()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corechathomes_choices(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func parts()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corechathomes_parts(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreChatHomes: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreChatHomes
+
+    public static func lift(_ handle: UInt64) throws -> CoreChatHomes {
+        return CoreChatHomes(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreChatHomes) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreChatHomes {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreChatHomes, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreChatHomes_lift(_ handle: UInt64) throws -> CoreChatHomes {
+    return try FfiConverterTypeCoreChatHomes.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreChatHomes_lower(_ value: CoreChatHomes) -> UInt64 {
+    return FfiConverterTypeCoreChatHomes.lower(value)
+}
+
+
+
+
+
+
 /**
  * One signed-in account (or Demo mode). Create one per sign-in; call
  * `shutdown()` on sign-out.
@@ -2342,8 +2501,10 @@ public protocol CoreClientProtocol: AnyObject, Sendable {
     func readAttachment(deviceId: String, path: String) async throws  -> Data
     
     /**
-     * Ask for session notifications on this device (APNs token as hex,
-     * "production" | "sandbox", and which kinds).
+     * Ask for session notifications on this device. `token` is the native
+     * push token (APNs as hex). Rust registers it with the push gateway and
+     * gives the sync server only the delivery grant. `environment` is kept
+     * for the Swift call; the gateway decides which APNs it uses.
      */
     func registerPushTarget(token: String, environment: String, prefs: PushPrefs) async throws 
     
@@ -2427,6 +2588,8 @@ public protocol CoreClientProtocol: AnyObject, Sendable {
      * Current workspace revision (cheap; compare before pulling).
      */
     func workspaceRevision()  -> UInt64
+    
+    func chatReadOnly(id: String)  -> Bool
     
     /**
      * Returns immediately. Callbacks are dispatched on the core runtime; the
@@ -2988,8 +3151,10 @@ open func readAttachment(deviceId: String, path: String)async throws  -> Data  {
 }
     
     /**
-     * Ask for session notifications on this device (APNs token as hex,
-     * "production" | "sandbox", and which kinds).
+     * Ask for session notifications on this device. `token` is the native
+     * push token (APNs as hex). Rust registers it with the push gateway and
+     * gives the sync server only the delivery grant. `environment` is kept
+     * for the Swift call; the gateway decides which APNs it uses.
      */
 open func registerPushTarget(token: String, environment: String, prefs: PushPrefs)async throws   {
     return
@@ -3286,6 +3451,16 @@ open func workspaceRevision() -> UInt64  {
 })
 }
     
+open func chatReadOnly(id: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreclient_chat_read_only(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+})
+}
+    
     /**
      * Returns immediately. Callbacks are dispatched on the core runtime; the
      * platform must hop to its media/UI executor and call complete_media.
@@ -3346,6 +3521,165 @@ public func FfiConverterTypeCoreClient_lift(_ handle: UInt64) throws -> CoreClie
 #endif
 public func FfiConverterTypeCoreClient_lower(_ value: CoreClient) -> UInt64 {
     return FfiConverterTypeCoreClient.lower(value)
+}
+
+
+
+
+
+
+public protocol CoreContinuationDraftProtocol: AnyObject, Sendable {
+    
+    /**
+     * Prepare a durable destination before freezing the earlier computer part.
+     */
+    func create(core: CoreClient, newSession: NewSession) async throws  -> String
+    
+    func deviceId()  -> String
+    
+    func start(core: CoreClient, newSession: NewSession, request: SendRequest) async throws  -> String
+    
+}
+open class CoreContinuationDraft: CoreContinuationDraftProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_corecontinuationdraft(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_corecontinuationdraft(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Prepare a durable destination before freezing the earlier computer part.
+     */
+open func create(core: CoreClient, newSession: NewSession)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_corecontinuationdraft_create(
+                        self.uniffiCloneHandle(),FfiConverterTypeCoreClient_lower(core),FfiConverterTypeNewSession_lower(newSession)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+open func deviceId() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corecontinuationdraft_device_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func start(core: CoreClient, newSession: NewSession, request: SendRequest)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_corecontinuationdraft_start(
+                        self.uniffiCloneHandle(),FfiConverterTypeCoreClient_lower(core),FfiConverterTypeNewSession_lower(newSession),FfiConverterTypeSendRequest_lower(request)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreContinuationDraft: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreContinuationDraft
+
+    public static func lift(_ handle: UInt64) throws -> CoreContinuationDraft {
+        return CoreContinuationDraft(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreContinuationDraft) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreContinuationDraft {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreContinuationDraft, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreContinuationDraft_lift(_ handle: UInt64) throws -> CoreContinuationDraft {
+    return try FfiConverterTypeCoreContinuationDraft.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreContinuationDraft_lower(_ value: CoreContinuationDraft) -> UInt64 {
+    return FfiConverterTypeCoreContinuationDraft.lower(value)
 }
 
 
@@ -3620,6 +3954,13 @@ public func FfiConverterTypeCoreHome_lower(_ value: CoreHome) -> UInt64 {
 
 public protocol CoreSavedHistoryProtocol: AnyObject, Sendable {
     
+    func chatHomes(client: CoreClient) throws  -> CoreChatHomes
+    
+    /**
+     * Open an account-scoped part that need not be in the current list page.
+     */
+    func openChatPart(id: String) throws 
+    
     /**
      * Adds a note to a shown Lab card, at `seconds` into its video when it
      * plays.
@@ -3732,6 +4073,28 @@ open class CoreSavedHistory: CoreSavedHistoryProtocol, @unchecked Sendable {
 
     
 
+    
+open func chatHomes(client: CoreClient)throws  -> CoreChatHomes  {
+    return try  FfiConverterTypeCoreChatHomes_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coresavedhistory_chat_homes(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCoreClient_lower(client),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Open an account-scoped part that need not be in the current list page.
+     */
+open func openChatPart(id: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coresavedhistory_open_chat_part(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
     
     /**
      * Adds a note to a shown Lab card, at `seconds` into its video when it
@@ -12544,6 +12907,7 @@ public func FfiConverterTypeSavedProjectRow_lower(_ value: SavedProjectRow) -> R
 
 
 public struct SavedTranscript: Equatable, Hashable {
+    public var chatId: String?
     public var canReply: Bool
     public var answering: Bool
     public var stopping: Bool
@@ -12567,7 +12931,8 @@ public struct SavedTranscript: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(canReply: Bool, answering: Bool, stopping: Bool, retrySend: Bool, sendError: String?, accepted: UInt64, title: String?, messages: [SavedMessageRow], captures: [SavedAttachment], first: UInt64, received: UInt64, hasMore: Bool, continueRequired: Bool, smallerPage: Bool, reloadRequired: Bool, loginRequired: Bool, accessLost: Bool, state: SavedLoadState, downloadName: String?, downloadState: SavedLoadState) {
+    public init(chatId: String?, canReply: Bool, answering: Bool, stopping: Bool, retrySend: Bool, sendError: String?, accepted: UInt64, title: String?, messages: [SavedMessageRow], captures: [SavedAttachment], first: UInt64, received: UInt64, hasMore: Bool, continueRequired: Bool, smallerPage: Bool, reloadRequired: Bool, loginRequired: Bool, accessLost: Bool, state: SavedLoadState, downloadName: String?, downloadState: SavedLoadState) {
+        self.chatId = chatId
         self.canReply = canReply
         self.answering = answering
         self.stopping = stopping
@@ -12606,6 +12971,7 @@ public struct FfiConverterTypeSavedTranscript: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedTranscript {
         return
             try SavedTranscript(
+                chatId: FfiConverterOptionString.read(from: &buf), 
                 canReply: FfiConverterBool.read(from: &buf), 
                 answering: FfiConverterBool.read(from: &buf), 
                 stopping: FfiConverterBool.read(from: &buf), 
@@ -12630,6 +12996,7 @@ public struct FfiConverterTypeSavedTranscript: FfiConverterRustBuffer {
     }
 
     public static func write(_ value: SavedTranscript, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.chatId, into: &buf)
         FfiConverterBool.write(value.canReply, into: &buf)
         FfiConverterBool.write(value.answering, into: &buf)
         FfiConverterBool.write(value.stopping, into: &buf)
@@ -14883,6 +15250,88 @@ public func FfiConverterTypeBusyPolicy_lift(_ buf: RustBuffer) throws -> BusyPol
 #endif
 public func FfiConverterTypeBusyPolicy_lower(_ value: BusyPolicy) -> RustBuffer {
     return FfiConverterTypeBusyPolicy.lower(value)
+}
+
+
+
+
+public enum ChatHomeAction {
+    
+    case openComputer(id: String
+    )
+    case openSaved(id: String
+    )
+    case draft(draft: CoreContinuationDraft
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ChatHomeAction: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatHomeAction: FfiConverterRustBuffer {
+    typealias SwiftType = ChatHomeAction
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatHomeAction {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .openComputer(id: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .openSaved(id: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .draft(draft: try FfiConverterTypeCoreContinuationDraft.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ChatHomeAction, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .openComputer(id):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(id, into: &buf)
+            
+        
+        case let .openSaved(id):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(id, into: &buf)
+            
+        
+        case let .draft(draft):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeCoreContinuationDraft.write(draft, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatHomeAction_lift(_ buf: RustBuffer) throws -> ChatHomeAction {
+    return try FfiConverterTypeChatHomeAction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatHomeAction_lower(_ value: ChatHomeAction) -> RustBuffer {
+    return FfiConverterTypeChatHomeAction.lower(value)
 }
 
 
@@ -21776,7 +22225,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreclient_read_attachment() != 35402) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_register_push_target() != 34238) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_register_push_target() != 22399) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreclient_rename_project() != 5792) {
@@ -21845,6 +22294,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreclient_workspace_revision() != 57613) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreclient_chat_read_only() != 30414) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreclient_start_voice() != 63530) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -21899,6 +22351,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreaccount_stored_login_present() != 54303) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_chat_homes() != 42622) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_cloud_host() != 19804) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -21921,6 +22376,24 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreagentlab_snapshot() != 64507) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corechathomes_activate() != 47837) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corechathomes_choices() != 34547) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corechathomes_parts() != 50792) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corecontinuationdraft_create() != 58009) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corecontinuationdraft_device_id() != 28877) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corecontinuationdraft_start() != 37618) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreagents_activate() != 20375) {
@@ -21990,6 +22463,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_homelistener_on_home_changed() != 46399) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_chat_homes() != 64078) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_open_chat_part() != 15763) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_add_note() != 38454) {

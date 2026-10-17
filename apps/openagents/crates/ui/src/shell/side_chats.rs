@@ -119,6 +119,7 @@ impl Shell {
         chat.created_at = Utc::now();
         chat.last_message_at = None;
         chat.last_message_preview = None;
+        chat.links = Default::default();
         chat.last_seen_at = None;
         chat.harness_session_id = None;
         chat.harness_session_cwd = None;
@@ -219,6 +220,8 @@ impl Shell {
                 let transcript = transcript.clone();
                 move |this: &mut Self, _, event, cx| {
                     match event {
+                        ComposerEvent::ContinueOn {chat, target} => this.move_computer_chat(chat, target.clone(), cx),
+                        ComposerEvent::OpenPart(part) => this.open_chat_part(part.clone(), cx),
                         ComposerEvent::WorkspaceCommand(command) => {
                             this.pending_workspace_command = Some(*command);
                             cx.notify();

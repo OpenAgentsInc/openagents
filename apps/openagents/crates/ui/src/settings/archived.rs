@@ -17,7 +17,8 @@ use crate::theme::Theme;
 /// Archived rows in sidebar (recency) order. Pure. Side chats stay listed:
 /// once archived and closed, this is the only place to restore them.
 pub fn archived_chats(chats: &[Chat]) -> Vec<&Chat> {
-    chats.iter().filter(|c| c.archived).collect()
+    chats.iter().filter(|c| c.archived && c.links.continued_by.is_none()
+        && !c.config.as_ref().is_some_and(|config| config.model_options.contains_key(chat_home::REQUEST_OPTION))).collect()
 }
 
 const ARCHIVE_PAGE_SIZE: usize = 40;

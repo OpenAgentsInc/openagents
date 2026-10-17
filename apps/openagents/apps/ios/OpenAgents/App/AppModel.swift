@@ -833,6 +833,28 @@ final class AppModel {
         return refs.sorted { $0.current && !$1.current }.map(\.name)
     }
 
+    func chatHomes(_ id: String) throws -> CoreChatHomes? {
+        guard let client else { return nil }
+        return try account?.chatHomes(client: client, chat: id)
+    }
+
+    func createContinuation(_ continuation: CoreContinuationDraft, draft: NewSessionDraft, text: String, images: [StagedImage]) async throws -> String? {
+        guard let client else { return nil }
+        let target: SessionTarget
+        if let project = draft.projectId { target = .project(spaceId: project) }
+        else if let host = draft.hostId { target = .projectless(deviceId: host) }
+        else { return nil }
+        let config = ChatConfig(harness: draft.harness, model: draft.model, reasoning: draft.effort, modelOptions: [:], sandbox: .workspaceWrite)
+        let project = rawProjects.first { $0.id == draft.projectId }
+        let worktree = draft.worktree ? project.map { WorktreeSpec(repoPath: $0.path, base: draft.branch ?? "HEAD", spaceId: $0.id) } : nil
+        let id = try await continuation.start(core: client,
+            newSession: NewSession(target: target, config: config, branch: draft.worktree ? nil : draft.branch, cwd: nil, title: nil),
+            request: SendRequest(text: text, attachments: images.map(\.outgoing), worktree: worktree, busy: .queue))
+        noteDeliveryActivity()
+        refreshWorkspace()
+        return id
+    }
+
     /// Create the chat, open it, and send the first message.
     func createSession(draft: NewSessionDraft, text: String, images: [StagedImage]) -> String? {
         guard let client else { return nil }

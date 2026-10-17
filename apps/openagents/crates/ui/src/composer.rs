@@ -5356,6 +5356,11 @@ impl Render for ComposerInput {
 /// Events the shell listens for.
 #[derive(Debug, Clone)]
 pub enum ComposerEvent {
+    ContinueOn {
+        chat: String,
+        target: chat_home::PartRef,
+    },
+    OpenPart(chat_home::PartRef),
     WorkspaceCommand(WorkspaceCommand),
     /// Arm the shared-element transition before the draft route is replaced
     /// by the newly-created session. Emitting this before `select_chat` keeps
@@ -8788,6 +8793,16 @@ impl Composer {
     /// is on), `Mutate createChat` with the `ChatConfig` + cwd, and the model /
     /// reasoning / options on the Run request itself (§1.7).
     fn send(&mut self, text: String, queue: bool, cx: &mut Context<Self>) {
+        if self
+            .state
+            .read(cx)
+            .selected_chat_row()
+            .is_some_and(|c| c.links.continued_by.is_some())
+        {
+            self.failure = Some("This chat continues elsewhere. Open its latest part.".into());
+            cx.notify();
+            return;
+        }
         self.continuations
             .observe_active(&self.current_key, self.state.read(cx));
         if let Err(message) = self
@@ -8818,6 +8833,8 @@ impl Composer {
                 true,
             ),
         };
+        let continuation_lease = self.continuations.lease(&self.current_key);
+        let native_source = self.continuations.native_source(&self.current_key);
         let continuation = self.continuations.bind(&self.current_key, &chat_id);
         // Where the new session runs (Current checkout / reuse an existing
         // worktree / fresh worktree off the picked base) — resolved NOW so
@@ -9099,6 +9116,7 @@ impl Composer {
         let continuation_attempt = continuation.is_some();
         self.send_task = Some(cx.spawn(async move |this, cx| {
             let result: Result<Option<String>, String> = async {
+                if continuation_lease.as_ref().is_some_and(|lease| !lease.is_current()) { return Err("Sign in again before continuing.".into()); }
                 // Attachments stage FIRST — before the chat row or anything
                 // else exists. Staging is chat-independent (keyed by
                 // uploadId), and ordering it first makes a new-chat send
@@ -9314,6 +9332,7 @@ impl Composer {
                 // (idempotent; the doc host would materialize the chat on
                 // first command anyway, so failures are non-fatal).
                 if is_new {
+                    if continuation_lease.as_ref().is_some_and(|lease| !lease.is_current()) { return Err("Sign in again before continuing.".into()); }
                     let mut mutate = serde_json::json!({
                         "op": "createChat",
                         "chatId": chat_id,
@@ -9368,6 +9387,27 @@ impl Composer {
                     .await
                     {
                         tracing::warn!(error = %err, "CreateChat mutate unavailable; doc host will materialize the chat");
+                        if native_source.is_some() { return Err("Couldn't prepare the new chat. Try again.".into()); }
+                    }
+                }
+                if let Some((source_device, source)) = &native_source {
+                    if !source.is_current() { return Err("Sign in again before continuing.".into()); }
+                    let target = chat_home::PartRef {id: chat_id.clone(), home: chat_home::Home::Computer(device_id.clone())};
+                    let reference = continuation.as_ref().ok_or_else(|| "Open the earlier chat again.".to_string())?;
+                    let mut prepare = serde_json::json!({"chatId":chat_id,"source":reference});
+                    if engine.engine_info().device_id != device_id { prepare["targetDeviceId"] = serde_json::json!(device_id); }
+                    let ready = attachments::call_with_timeout(&engine, cx.background_executor(), methods::PREPARE_CONTINUATION, prepare, std::time::Duration::from_secs(30)).await
+                        .map_err(|_| "Connect the selected computer and try again.".to_string())?;
+                    let ready: chat_home::PartRef = serde_json::from_value(ready).map_err(|_| "Couldn't prepare the new chat.".to_string())?;
+                    if !source.is_current() || ready != target { return Err("Couldn't prepare the new chat.".into()); }
+                    let mut params = serde_json::json!({"account":source.chat.account(),"chatId":source.chat.id(),"target":target});
+                    if engine.engine_info().device_id != *source_device { params["targetDeviceId"] = serde_json::json!(source_device); }
+                    let value = attachments::call_with_timeout(&engine, cx.background_executor(), methods::CONTINUE_CHAT, params, std::time::Duration::from_secs(30)).await
+                        .map_err(|_| "Couldn't confirm the move. Check the earlier chat before trying again.".to_string())?;
+                    let moved: chat_home::Continued = serde_json::from_value(value).map_err(|_| "Couldn't confirm the move.".to_string())?;
+                    if !source.is_current() || moved.account != source.chat.account() || moved.source.id != source.chat.id()
+                        || moved.source.home != chat_home::Home::Computer(source_device.clone()) || moved.target != target || !moved.seed.valid() {
+                        return Err("This chat already continues elsewhere. Open its latest part.".into());
                     }
                 }
                 // A hand-started side chat is minted by its first send. Unlike
@@ -10675,6 +10715,14 @@ impl Focusable for Composer {
 
 impl Render for Composer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self
+            .state
+            .read(cx)
+            .selected_chat_row()
+            .is_some_and(|c| c.links.continued_by.is_some())
+        {
+            return div().children(self.chat_home_controls(cx));
+        }
         if self.dictation_blur.is_none() {
             // Stop, Send and keyboard navigation within the composer must not
             // discard capture. Only leaving the whole composer invalidates it.
@@ -11716,7 +11764,9 @@ impl Render for Composer {
                 cx,
             ));
         }
-        container.children(self.continuations.banner(&self.current_key, cx))
+        container
+            .children(self.continuations.banner(&self.current_key, cx))
+            .children(self.chat_home_controls(cx))
     }
 }
 
@@ -11754,6 +11804,37 @@ mod tests {
         cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear())
             .unwrap();
         (dir, window)
+    }
+
+    #[gpui::test]
+    fn continuation_old_part_preserves_the_draft_and_rejects_send(cx: &mut gpui::TestAppContext) {
+        let (_dir, handle) = composer_focus_window(cx);
+        handle
+            .update(cx, |composer, _, cx| {
+                let id = "a1000000-0000-4000-8000-000000000001";
+                let chat: openagents_proto::Chat = serde_json::from_value(serde_json::json!({
+                    "id":id, "deviceId":"fixture", "archived":false,
+                    "createdAt":"2026-10-17T00:00:00Z",
+                    "continued_by":{"id":"a1000000-0000-4000-8000-000000000002","home":"cloud"}
+                }))
+                .unwrap();
+                composer.state.update(cx, |state, _| {
+                    state.chats = vec![chat];
+                    state.selected_chat = Some(id.into());
+                });
+                composer
+                    .input
+                    .update(cx, |input, cx| input.set_text("Unsent draft", cx));
+                composer.send("Unsent draft".into(), false, cx);
+                assert_eq!(composer.input.read(cx).text(), "Unsent draft");
+                assert_eq!(
+                    composer.failure.as_deref(),
+                    Some("This chat continues elsewhere. Open its latest part.")
+                );
+                assert!(composer.send_task.is_none());
+                assert!(composer.state.read(cx).visible_chats().next().is_none());
+            })
+            .unwrap();
     }
 
     fn with_composer_input(

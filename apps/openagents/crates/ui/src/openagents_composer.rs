@@ -19,6 +19,9 @@ pub struct AccountComposer {
     _follow: Task<()>,
 }
 impl AccountComposer {
+    pub fn has_draft(&self, cx: &App) -> bool {
+        !self.input.read(cx).text().trim().is_empty()
+    }
     pub fn new(reader: Arc<Reader>, turns: Arc<Turns>, cx: &mut Context<Self>) -> Self {
         let input = cx.new(|cx| ComposerInput::new("Message OpenAgents", cx));
         let events = cx.subscribe(&input, |this, _, event, cx| match event {

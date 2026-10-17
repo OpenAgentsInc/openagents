@@ -492,7 +492,7 @@ final class SessionViewController: UIViewController, UIGestureRecognizerDelegate
         let changes = {
             let asking = c.questions != nil
             self.questions.isHidden = !asking
-            self.composer.isHidden = asking
+            self.composer.isHidden = asking || self.app.client?.chatReadOnly(id: self.chatId) == true
             if let q = c.questions { self.questions.configure(q.items) }
             self.queue.isHidden = c.queue.isEmpty || asking
             self.queue.configure(c.queue)
@@ -526,6 +526,17 @@ final class SessionViewController: UIViewController, UIGestureRecognizerDelegate
             let vm = self.app.session(self.chatId)
             let pinned = vm?.pinned ?? false
             done([
+                UIAction(title: "Runs on…", image: UIImage(systemName: "arrow.triangle.branch"), attributes: self.app.isDemo ? [.hidden] : []) { _ in
+                    guard self.composer.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, self.composer.images.isEmpty else {
+                        Toast.show("Send or clear your draft before moving this chat.", in: self.view.window)
+                        return
+                    }
+                    do {
+                        if let homes = try self.app.chatHomes(self.chatId) {
+                            self.present(UINavigationController(rootViewController: ChatHomesController(app: self.app, homes: homes, host: self)), animated: true)
+                        }
+                    } catch { Toast.show(error.localizedDescription, in: self.view.window) }
+                },
                 UIAction(title: pinned ? "Unpin" : "Pin", image: UIImage(systemName: pinned ? "pin.slash" : "pin")) { _ in self.app.setPinned(self.chatId, !pinned) },
                 UIAction(title: "Copy Transcript", image: UIImage(systemName: "doc.on.doc")) { _ in
                     UIPasteboard.general.string = self.engine.frame().plainText()

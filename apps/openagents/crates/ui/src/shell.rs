@@ -65,6 +65,7 @@ use crate::transcript::{self, Transcript, TranscriptEvent};
 
 mod actions_ui;
 mod chat_dropzone;
+mod chat_homes;
 #[cfg(test)]
 mod chat_dropzone_tests;
 mod chat_pull_requests;
@@ -2418,6 +2419,10 @@ impl Shell {
         let composer_events = cx.subscribe(&composer, {
             let transcript = transcript.clone();
             move |this: &mut Shell, _, event: &ComposerEvent, cx| match event {
+                ComposerEvent::ContinueOn { chat, target } => {
+                    this.move_computer_chat(chat, target.clone(), cx)
+                }
+                ComposerEvent::OpenPart(part) => this.open_chat_part(part.clone(), cx),
                 ComposerEvent::WorkspaceCommand(command) => {
                     this.pending_workspace_command = Some(*command);
                     cx.notify();
@@ -8116,6 +8121,12 @@ impl Shell {
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let continued = self
+            .state
+            .read(cx)
+            .chats
+            .iter()
+            .any(|chat| chat.id == id && chat.links.continues.is_some());
         // Activity, not position (t3code Sidebar): status is a small colored
         // word + glyph in the row's top-right corner — Working animates the
         // composer-strip spinner, Done wears a check; Idle rows show the
@@ -8666,6 +8677,14 @@ impl Shell {
                         )
                         .into_any_element(),
                     })
+                    .when(continued && !compact, |el| {
+                        el.child(
+                            div()
+                                .text_size(crate::typography::ui_rems(10.))
+                                .text_color(theme.text_muted)
+                                .child("Continued"),
+                        )
+                    })
                     .when(!compact && !show_label && remote, |el| {
                         el.child(
                             icon(icons::REMOTE_SERVER)
@@ -9069,21 +9088,24 @@ impl Shell {
     ) {
         use crate::openagents_reader::ReaderEvent;
         match event {
-            ReaderEvent::Continue(target) => {
+            ReaderEvent::Continue(target) | ReaderEvent::ContinueOn(target, _) => {
                 if !target.is_current() {
                     return;
                 }
                 self.open_new_session(None, cx);
+                let chosen = match event {
+                    ReaderEvent::ContinueOn(_, device) => Some(device.clone()),
+                    _ => self.state.read(cx).local_device_id.clone(),
+                };
                 self.state.update(cx, |state, cx| {
-                    let local = state.local_device_id.clone();
                     if state
                         .selected_space_row()
-                        .is_some_and(|p| Some(&p.device_id) != local.as_ref())
+                        .is_some_and(|p| Some(&p.device_id) != chosen.as_ref())
                     {
                         state.select_space(None, cx);
                     }
-                    if let Some(local) = local {
-                        state.select_device(local, cx);
+                    if let Some(device) = chosen {
+                        state.select_device(device, cx);
                     }
                 });
                 let composer = self.composer.clone();

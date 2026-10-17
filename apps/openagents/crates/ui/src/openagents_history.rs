@@ -464,6 +464,9 @@ impl Render for HistoryPanel {
                     .map(|d| d.format("%b %e, %Y").to_string())
                     .unwrap_or_default();
             let mut detail = source.to_owned();
+            if row.links.continues.is_some() {
+                detail.insert_str(0, "Continued chat · ");
+            }
             if let Some(project) = project_name(&row.project) {
                 detail.push_str(&format!(" · {project}"));
             }

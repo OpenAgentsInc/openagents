@@ -57,6 +57,8 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     private var models: [ModelChoice] = []
     private var agentsObservation: AnyObject?
     private var waitingForAgent = false
+    private let continuation: CoreContinuationDraft?
+    private var creatingContinuation = false
 
     /// Embedded in the iPad split's main column (no sheet chrome).
     private let embedded: Bool
@@ -69,12 +71,17 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     /// only when opened on purpose (not the launch page).
     var focusOnAppear: Bool
 
-    init(app: AppModel, prompt: String?, embedded: Bool = false, onCreated: @escaping (String, DraftHandoff?) -> Void) {
+    init(app: AppModel, prompt: String?, embedded: Bool = false, continuation: CoreContinuationDraft? = nil, onCreated: @escaping (String, DraftHandoff?) -> Void) {
         self.app = app
+        self.continuation = continuation
         self.embedded = embedded
         self.focusOnAppear = !embedded
         self.onCreated = onCreated
         self.draft = app.lastDraft
+        if let continuation {
+            self.draft.projectId = nil
+            self.draft.hostId = continuation.deviceId()
+        }
         super.init(nibName: nil, bundle: nil)
         // Pick up where the page was left (closed without sending).
         composer.text = prompt ?? app.newSessionText
@@ -245,7 +252,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     private var checkouts: [ProjectOption] {
         guard let p = project else { return [] }
         return app.projectOptions
-            .filter { $0.groupKey == p.groupKey }
+            .filter { $0.groupKey == p.groupKey && (continuation == nil || $0.device == continuation?.deviceId()) }
             .sorted { ($0.deviceName.lowercased(), $0.path) < ($1.deviceName.lowercased(), $1.path) }
     }
 
@@ -255,7 +262,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
             // The project, then the host it runs on.
             chips.append(ComposerChip(id: "project", title: p.groupName, symbol: nil, icon: ProjectTile.image(name: p.groupName, colorIndex: p.colorIndex)))
             chips.append(ComposerChip(id: "host", title: p.deviceName, symbol: "desktopcomputer"))
-            if p.git && app.customAgents?.snapshot().selected == nil {
+            if p.git && (continuation != nil || app.customAgents?.snapshot().selected == nil) {
                 chips.append(ComposerChip(id: "branch", title: draft.worktree ? "New worktree" : (draft.branch ?? "Current branch"), symbol: nil, icon: BranchIcon.sized()))
             }
         } else {
@@ -267,9 +274,9 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
         // Never the harness name in place of a model: a model this host
         // hasn't listed still gets its catalog label.
         let modelTitle = model?.label ?? draft.model.map { modelLabel(harness: draft.harness, model: $0) } ?? fallbackModels(harness: draft.harness).first?.label ?? HarnessNames.label(draft.harness)
-        let custom = app.customAgents?.snapshot().selected
-        chips.insert(ComposerChip(id: "model", title: custom?.name ?? (app.customAgents?.selectionActive() == true ? "Choose agent" : modelTitle), symbol: custom == nil ? nil : "person.crop.circle", icon: custom == nil ? BrandMarks.image(for: draft.harness, side: 13) : nil), at: 0)
-        if app.customAgents?.snapshot().selected == nil, let efforts = model?.efforts, !efforts.isEmpty {
+        let custom = continuation == nil ? app.customAgents?.snapshot().selected : nil
+        chips.insert(ComposerChip(id: "model", title: custom?.name ?? (continuation == nil && app.customAgents?.selectionActive() == true ? "Choose agent" : modelTitle), symbol: custom == nil ? nil : "person.crop.circle", icon: custom == nil ? BrandMarks.image(for: draft.harness, side: 13) : nil), at: 0)
+        if custom == nil, let efforts = model?.efforts, !efforts.isEmpty {
             chips.append(ComposerChip(id: "effort", title: (draft.effort ?? efforts[efforts.count / 2]).capitalized, symbol: "gauge.with.dots.needle.67percent"))
         }
         composer.chips = chips
@@ -280,14 +287,14 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
             "model": { [weak self] in self?.modelMenu() },
             "effort": { [weak self] in self?.effortMenu() },
         ] }
-        mark.image = app.customAgents?.snapshot().selected != nil ? UIImage(systemName: "person.crop.circle") : BrandMarks.image(for: draft.harness, side: 34)
+        mark.image = custom != nil ? UIImage(systemName: "person.crop.circle") : BrandMarks.image(for: draft.harness, side: 34)
     }
 
     /// One entry per project — checkouts of one repository, on any device,
     /// are one entry listing their hosts; the host chip then picks which.
     private func projectMenu() -> UIMenu {
         var groups: [[ProjectOption]] = []
-        for p in app.projectOptions {
+        for p in app.projectOptions where continuation == nil || p.device == continuation?.deviceId() {
             if let i = groups.firstIndex(where: { $0[0].groupKey == p.groupKey }) {
                 groups[i].append(p)
             } else {
@@ -356,13 +363,13 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
                 }
             })
         }
-        var hosts: [UIMenuElement] = app.hostOptions.map { h in
+        var hosts: [UIMenuElement] = app.hostOptions.filter { continuation == nil || $0.id == continuation?.deviceId() }.map { h in
             UIAction(title: h.name, subtitle: h.online ? "Online" : "Offline", image: UIImage(systemName: h.name == AppModel.cloudHostName ? "cloud" : "desktopcomputer"), state: h.id == draft.hostId ? .on : .off) { [weak self] _ in
                 self?.draft.hostId = h.id
                 self?.loadModels()
             }
         }
-        if app.offersCloudHost, app.cloudHostDevice?.online != true {
+        if continuation == nil, app.offersCloudHost, app.cloudHostDevice?.online != true {
             let starting = app.cloudHost?.running == true
             hosts.append(UIAction(title: starting ? "Our cloud is starting…" : "Start Our cloud", subtitle: "Runs on our computer, no desktop needed", image: UIImage(systemName: "cloud"), attributes: starting || app.cloudHostBusy ? .disabled : []) { [weak self] _ in
                 Task { @MainActor [weak self] in
@@ -414,7 +421,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
                 }
             })
         }
-        if let agents = app.customAgents {
+        if continuation == nil, let agents = app.customAgents {
             let snapshot = agents.snapshot()
             let personal = UIMenu(title: "Your agents", options: .displayInline, children: snapshot.rows.map { agent in
                 UIAction(title: agent.name, subtitle: agent.runtime == "sdk" ? "SDK runner" : HarnessNames.label(agent.runtime), state: snapshot.selected?.id == agent.id ? .on : .off) { [weak self] _ in
@@ -455,6 +462,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     }
 
     private func agentsChanged() {
+        guard continuation == nil else { return }
         refreshChips()
         if let snapshot = app.customAgents?.snapshot() { composer.isUserInteractionEnabled = !snapshot.assigning }
         guard waitingForAgent, let snapshot = app.customAgents?.snapshot() else { return }
@@ -484,6 +492,23 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
     /// False when the session couldn't be created (the prompt stays put).
     private func create(text: String, images: [StagedImage]) -> Bool {
         app.lastDraft = draft
+        if let continuation {
+            guard !creatingContinuation else { return false }
+            creatingContinuation = true
+            composer.isUserInteractionEnabled = false
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                defer { self.creatingContinuation = false; self.composer.isUserInteractionEnabled = true }
+                do {
+                    guard let id = try await self.app.createContinuation(continuation, draft: self.draft, text: text, images: images) else { return }
+                    self.created = true
+                    self.app.newSessionText = ""
+                    self.app.newSessionImages = []
+                    self.onCreated(id, DraftHandoff.capture(from: self, composer: self.composer, text: text))
+                } catch { self.showAgentError(error.localizedDescription) }
+            }
+            return false
+        }
         if let agents = app.customAgents, agents.selectionActive() {
             guard agents.snapshot().selected != nil else { showAgentError("Choose an available agent."); return false }
             guard !waitingForAgent, let core = app.client else { return false }

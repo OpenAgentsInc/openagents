@@ -3,6 +3,10 @@ use crate::{
     markdown::{self, BlockTree, render},
     theme::Theme,
 };
+use gpui::{
+    AnyElement, Context, EventEmitter, Render, SharedString, Task, Window, div, prelude::*, px,
+};
+use gpui_tokio::Tokio;
 use openagents_account::reader::text_part;
 use openagents_account::{
     Controller,
@@ -10,10 +14,6 @@ use openagents_account::{
     openagents::AttachmentRef,
     reader::{Reader, Snapshot},
 };
-use gpui::{
-    AnyElement, Context, EventEmitter, Render, SharedString, Task, Window, div, prelude::*, px,
-};
-use gpui_tokio::Tokio;
 use std::{
     collections::{HashMap, VecDeque},
     future::Future,
@@ -24,6 +24,7 @@ use std::{
 #[derive(Clone)]
 pub enum ReaderEvent {
     Continue(ExistingChat),
+    ContinueOn(ExistingChat, String),
     OpenComputer(String),
     Close,
     AccessLost,
@@ -45,6 +46,12 @@ pub struct SavedReader {
     save_notice: Option<SharedString>,
     show_files: bool,
     notified_loss: Option<u64>,
+    home_choices: Option<rust_native::ValidatedView<chat_home::Home>>,
+    part_choices: Option<rust_native::ValidatedView<chat_home::PartRef>>,
+    home_revision: u64,
+    cloud_target: Option<(String, String)>,
+    home_fingerprint: String,
+    parts_fingerprint: String,
     _watch: Task<()>,
     _auth: Task<()>,
     _follow: Task<()>,
@@ -58,6 +65,278 @@ fn launch(f: impl Future<Output = ()> + Send + 'static, cx: &mut Context<SavedRe
     .detach();
 }
 impl SavedReader {
+    fn move_to_cloud(&mut self, target: ExistingChat, cx: &mut Context<Self>) {
+        let source_id = target.chat.id().to_owned();
+        let id = match &self.cloud_target {
+            Some((source, id)) if source == &source_id => id.clone(),
+            _ => {
+                let id = uuid::Uuid::new_v4().to_string();
+                self.cloud_target = Some((source_id, id.clone()));
+                id
+            }
+        };
+        let source = target.chat.clone();
+        let lease = target.lease.clone();
+        let revision = target.summary.revision;
+        let operation = Tokio::spawn(cx, async move {
+            openagents_account::openagents::continuations::transfer(
+                lease.client(),
+                lease.session(),
+                &source,
+                &chat_home::TransferClaim {
+                    revision,
+                    target: chat_home::PartRef {
+                        id,
+                        home: chat_home::Home::Cloud,
+                    },
+                    seed: None,
+                },
+                &lease.cancel,
+            )
+            .await
+        });
+        cx.spawn(async move |this, cx| {
+            let receipt = operation.await;
+            this.update(cx, |this, cx| {
+                let Some(mut current) = this.model.target().filter(ExistingChat::is_current) else {
+                    return;
+                };
+                if current.chat != target.chat {
+                    return;
+                }
+                match receipt {
+                    Ok(Ok(receipt)) => {
+                        let Ok(chat) = current
+                            .lease
+                            .client()
+                            .chat(current.lease.session(), &receipt.target.id)
+                        else {
+                            return;
+                        };
+                        current.chat = chat.clone();
+                        current.summary.chat = chat;
+                        current.summary.home = chat_home::Home::Cloud;
+                        current.summary.links = chat_home::Links {
+                            continues: Some(receipt.source),
+                            continued_by: None,
+                        };
+                        current.summary.revision = 0;
+                        this.open(current, cx);
+                    }
+                    _ => {
+                        this.save_notice =
+                            Some("Couldn't move this chat. Open it again and try again.".into());
+                        cx.notify();
+                    }
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn open_part(&mut self, part: chat_home::PartRef, cx: &mut Context<Self>) {
+        let Some(mut target) = self.model.target().filter(ExistingChat::is_current) else {
+            return;
+        };
+        if !self.snapshot.summary.as_ref().is_some_and(|s| {
+            s.chat == target.chat
+                && (s.links.continues.as_ref() == Some(&part)
+                    || s.links.continued_by.as_ref() == Some(&part))
+        }) {
+            return;
+        }
+        if matches!(&part.home, chat_home::Home::Computer(device) if !device.starts_with("legacy-"))
+        {
+            cx.emit(ReaderEvent::OpenComputer(part.id));
+            return;
+        }
+        let Ok(chat) = target.lease.client().chat(target.lease.session(), &part.id) else {
+            return;
+        };
+        target.chat = chat.clone();
+        target.summary.chat = chat;
+        target.summary.home = part.home;
+        target.summary.links = Default::default();
+        target.summary.revision = 0;
+        self.open(target, cx);
+    }
+
+    fn part_controls(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let target = self.model.target().filter(ExistingChat::is_current)?;
+        let lease = target.lease.clone();
+        let expected = target.chat.clone();
+        let links = self.snapshot.summary.as_ref()?.links.clone();
+        let fingerprint =
+            serde_json::to_string(&(expected.id(), expected.account(), lease.generation, &links))
+                .ok()?;
+        if fingerprint != self.parts_fingerprint {
+            self.home_revision = self.home_revision.wrapping_add(1);
+            self.part_choices = chat_home::view::parts(
+                &format!("parts-{}", self.doc_id),
+                self.home_revision,
+                &links,
+            )
+            .ok();
+            self.parts_fingerprint = fingerprint;
+        }
+        Some(crate::native_actions::mount(
+            self.part_choices.as_ref()?,
+            move |this: &mut Self, event, cx| {
+                if !lease.is_current() || this.model.target().is_none_or(|t| t.chat != expected) {
+                    return;
+                }
+                if let Some(part) = this
+                    .part_choices
+                    .as_ref()
+                    .and_then(|v| v.activate(&event).ok())
+                    .cloned()
+                {
+                    this.open_part(part, cx);
+                }
+            },
+            cx,
+        ))
+    }
+
+    fn home_control(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        use chat_home::{Home, view::Destination};
+        let target = self.model.target().filter(ExistingChat::is_current)?;
+        let lease = target.lease;
+        let expected = target.chat;
+        let summary = self.snapshot.summary.as_ref()?;
+        if summary.revision == 0 || summary.links.continued_by.is_some() {
+            return None;
+        }
+        let state = self.state.read(cx);
+        let engine = state.engine()?;
+        let local = state.local_device_id.as_deref();
+        let current = Destination {
+            home: summary.home.clone(),
+            available: true,
+            label: match &summary.home {
+                Home::Cloud => "OpenAgents".into(),
+                Home::Computer(device) => state
+                    .devices
+                    .iter()
+                    .find(|d| &d.id == device)
+                    .map(|d| d.name.clone())
+                    .unwrap_or_else(|| "Computer".into()),
+            },
+        };
+        let mut destinations = state
+            .devices
+            .iter()
+            .filter(|device| !matches!(device.platform.as_str(), "ios" | "android" | "ipados"))
+            .filter(|d| d.supports(openagents_proto::capabilities::OPENAGENTS_CONTINUATIONS_V1))
+            .filter_map(|device| {
+                Some(Destination {
+                    home: Home::computer(&device.id)?,
+                    label: if local == Some(device.id.as_str()) {
+                        "This Mac".into()
+                    } else {
+                        device.name.clone()
+                    },
+                    available: true,
+                })
+            })
+            .collect::<Vec<_>>();
+        if matches!(&summary.home, Home::Computer(device) if device == &format!("legacy-{}", summary.chat.id()))
+        {
+            destinations.insert(
+                0,
+                Destination {
+                    home: Home::Cloud,
+                    label: "OpenAgents".into(),
+                    available: true,
+                },
+            );
+        }
+        if let Some(local) = local.filter(|_| {
+            engine
+                .engine_info()
+                .supports(openagents_proto::capabilities::OPENAGENTS_CONTINUATIONS_V1)
+        }) {
+            if !destinations
+                .iter()
+                .any(|d| d.home == Home::Computer(local.into()))
+            {
+                destinations.insert(
+                    0,
+                    Destination {
+                        home: Home::Computer(local.into()),
+                        label: "This Mac".into(),
+                        available: true,
+                    },
+                );
+            }
+        }
+        let blocked = if self.cloud_turns.snapshot().busy {
+            Some("Stop the current answer before continuing elsewhere.")
+        } else if self.composer.read(cx).has_draft(cx) {
+            Some("Send or clear your draft before moving this chat.")
+        } else {
+            None
+        };
+        let fingerprint = serde_json::to_string(&(
+            expected.id(),
+            expected.account(),
+            lease.generation,
+            summary.revision,
+            &current.home,
+            &current.label,
+            blocked,
+            destinations
+                .iter()
+                .map(|d| (&d.home, &d.label, d.available))
+                .collect::<Vec<_>>(),
+        ))
+        .ok()?;
+        if fingerprint != self.home_fingerprint {
+            self.home_revision = self.home_revision.wrapping_add(1);
+            self.home_choices = chat_home::view::choices(
+                &self.doc_id,
+                self.home_revision,
+                &current,
+                &destinations,
+                blocked,
+            )
+            .ok();
+            self.home_fingerprint = fingerprint;
+        }
+        let view = self.home_choices.as_ref()?;
+        Some(crate::native_actions::mount(
+            view,
+            move |this: &mut Self, activation, cx| {
+                if !lease.is_current()
+                    || this.model.target().is_none_or(|t| t.chat != expected)
+                    || this.cloud_turns.snapshot().busy
+                    || this.composer.read(cx).has_draft(cx)
+                {
+                    return;
+                }
+                let Some(home) = this
+                    .home_choices
+                    .as_ref()
+                    .and_then(|v| v.activate(&activation).ok())
+                    .cloned()
+                else {
+                    return;
+                };
+                let Some(mut target) = this.model.target().filter(ExistingChat::is_current) else {
+                    return;
+                };
+                if let Some(summary) = this.snapshot.summary.clone() {
+                    target.summary = summary;
+                }
+                match home {
+                    Home::Computer(device) => cx.emit(ReaderEvent::ContinueOn(target, device)),
+                    Home::Cloud => this.move_to_cloud(target, cx),
+                }
+            },
+            cx,
+        ))
+    }
     pub fn new(
         account: Arc<Controller>,
         state: gpui::Entity<crate::state::AppState>,
@@ -155,6 +434,12 @@ impl SavedReader {
             save_notice: None,
             show_files: false,
             notified_loss: None,
+            home_choices: None,
+            part_choices: None,
+            home_revision: 0,
+            cloud_target: None,
+            home_fingerprint: String::new(),
+            parts_fingerprint: String::new(),
             _watch: watch,
             _auth: auth_watch,
             _follow: follow,
@@ -671,45 +956,20 @@ impl Render for SavedReader {
             }
             footer = footer.child(files);
         }
-        if let Some(target) = self
+        if self
             .snapshot
             .summary
             .as_ref()
-            .and_then(|s| s.links.continued_by.clone())
+            .is_some_and(|s| s.links.continued_by.is_some())
         {
-            footer = footer
-                .child("This chat continues in another conversation.")
-                .child(self.button(
-                    "saved-open-latest",
-                    "Open the latest part",
-                    move |_, cx| cx.emit(ReaderEvent::OpenComputer(target.id.clone())),
-                    cx,
-                ));
+            footer = footer.child("This chat continues in another conversation.");
         }
         body = body.child(footer).child(self.composer.clone());
-        if self.snapshot.summary.as_ref().is_some_and(|s| {
-            matches!(
-                s.source,
-                openagents_account::openagents::ChatSource::Terminal
-                    | openagents_account::openagents::ChatSource::Phone
-            ) && s.links.continued_by.is_none()
-        }) && self.state.read(cx).engine().is_some()
-        {
-            body = body.child(self.button(
-                "saved-continue-here",
-                "Continue here",
-                |this, cx| {
-                    if let Some(mut target) = this.model.target() {
-                        if let Some(summary) = this.snapshot.summary.clone() {
-                            target.summary = summary;
-                        }
-                        if target.is_current() {
-                            cx.emit(ReaderEvent::Continue(target));
-                        }
-                    }
-                },
-                cx,
-            ));
+        if let Some(parts) = self.part_controls(cx) {
+            body = body.child(parts);
+        }
+        if let Some(choices) = self.home_control(cx) {
+            body = body.child(choices);
         }
         if let Some(download) = self.snapshot.download.clone() {
             let mut preview = div()

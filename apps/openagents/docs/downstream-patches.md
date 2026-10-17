@@ -123,6 +123,15 @@ feature keeps forms independent of the app's separate syntax-engine version.
   metadata recovery preserve one destination across retries. The account fixture
   attaches an isolated engine through the existing RPC and app-state watchers.
 
+- [OpenAgents #11898](https://github.com/OpenAgentsInc/openagents/issues/11898):
+  `chat-home::view` defines **Runs on** and part links for GPUI and UIKit.
+  `doc_host::transfer` saves the old part as read-only before calling the SDK;
+  unfinished moves retry through the account loop. The destination uses the
+  normal folder, harness, and command flow. `client_ffi::chat_homes` keeps
+  account checks and transfers in Rust. Cloud computers use their registered
+  device rows. Pending destinations stay out of lists until their source link
+  is confirmed.
+
 - [OpenAgents #11897](https://github.com/OpenAgentsInc/openagents/issues/11897):
   `doc_host::session_index` publishes this computer's top-level chats to the
   account's chat list on openagents.com through `openagents::sessions`, as

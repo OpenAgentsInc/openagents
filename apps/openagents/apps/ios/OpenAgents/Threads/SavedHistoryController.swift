@@ -182,6 +182,7 @@ final class SavedTranscriptController: UIViewController {
     private let composer = ComposerBar()
     private let retrySend = UIButton(type: .system)
     private var accepted: UInt64 = 0
+    private var shownChat: String?
     private var submitted = ""
     private let status = UIButton(type: .system)
     private let images = NSCache<NSString, UIImage>()
@@ -246,7 +247,7 @@ final class SavedTranscriptController: UIViewController {
         retrySend.accessibilityIdentifier = "cloud-retry"
         retrySend.addAction(UIAction { [weak self] _ in try? self?.app.savedHistory?.action(action: .retrySend) }, for: .touchUpInside)
         view.addSubview(retrySend)
-        notice.text = "Continue this chat on its computer."
+        notice.text = "Use Runs on to open another part of this chat."
         notice.font = .preferredFont(forTextStyle: .footnote)
         notice.textColor = Palette.secondary
         notice.numberOfLines = 0
@@ -311,12 +312,19 @@ final class SavedTranscriptController: UIViewController {
         }
         labs.bind(app.savedHistory)
         let transcript = snapshot.transcript
+        if shownChat != transcript.chatId {
+            shownChat = transcript.chatId
+            accepted = 0
+            submitted = ""
+            composer.text = ""
+            images.removeAllObjects()
+        }
         title = transcript.title ?? "Chat"
         composer.isHidden = !transcript.canReply
         composer.running = transcript.answering
         composer.isUserInteractionEnabled = !transcript.stopping
         retrySend.isHidden = !transcript.retrySend
-        notice.text = transcript.sendError ?? (transcript.canReply ? nil : "Continue this chat on its computer.")
+        notice.text = transcript.sendError ?? (transcript.canReply ? nil : "Use Runs on to open another part of this chat.")
         if transcript.accepted > accepted, composer.text == submitted { composer.text = "" }
         accepted = transcript.accepted
         list.accessibilityValue = "\(transcript.messages.count) messages loaded"
@@ -332,6 +340,21 @@ final class SavedTranscriptController: UIViewController {
             })
         )
         navigationItem.rightBarButtonItem?.accessibilityIdentifier = "saved-chat-files"
+        let filesItem = navigationItem.rightBarButtonItem
+        let homeItem = UIBarButtonItem(title: "Runs on", primaryAction: UIAction { [weak self] _ in
+            guard let self, let client = self.app.client else { return }
+            guard self.composer.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                Toast.show("Send or clear your draft before moving this chat.", in: self.view.window)
+                return
+            }
+            do {
+                if let homes = try self.app.savedHistory?.chatHomes(client: client) {
+                    self.present(UINavigationController(rootViewController: ChatHomesController(app: self.app, homes: homes, host: self)), animated: true)
+                }
+            } catch { Toast.show(error.localizedDescription, in: self.view.window) }
+        })
+        navigationItem.rightBarButtonItems = [homeItem] + (filesItem.map { [$0] } ?? [])
+
         try? app.savedHistory?.renderTranscript(view: engine)
         let label: String?
         if transcript.loginRequired { label = "Sign in again" }
