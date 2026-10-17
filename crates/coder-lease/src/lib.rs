@@ -46,6 +46,11 @@
 //! program about to open a window: an agent environment needs a `screen`
 //! lease.
 //!
+//! [`agent_builds`] is the build gate the desktop app gives its agent
+//! chats: a `cargo` shim that builds in one shared target folder per Cargo
+//! workspace, refuses below a disk floor, and waits for a `build` lease
+//! under the coordinator's limit, plus the status the coordinator reads.
+//!
 //! [`scratch`] gives each session a durable scratch directory under
 //! `~/.openagents/scratch/<session>/`, which a lease's command and Coder's
 //! delegates get in `OPENAGENTS_SCRATCH`.
@@ -55,6 +60,7 @@
 //!
 //! `docs/coder/runtime/leases.md` is the operator's page.
 
+pub mod agent_builds;
 pub mod artifact;
 mod broker;
 pub mod claims;

@@ -23,6 +23,8 @@ pub struct Observed {
     pub held: Vec<Entry>,
     /// How many leases wait in a queue.
     pub waiting: usize,
+    /// The leases that wait, in table order.
+    pub waiters: Vec<Entry>,
     /// How many receipts the broker has written: one per released lease.
     pub receipts: u64,
     /// How many of those were written within the recent window.
@@ -38,6 +40,15 @@ impl Observed {
             .filter(|entry| entry.resource == resource)
             .map(|entry| entry.amount)
             .sum()
+    }
+
+    /// How many leases wait for `resource`.
+    #[must_use]
+    pub fn waiting_for(&self, resource: &str) -> usize {
+        self.waiters
+            .iter()
+            .filter(|entry| entry.resource == resource)
+            .count()
     }
 }
 
@@ -73,7 +84,10 @@ pub fn observe(root: &Path, recent: Duration) -> Result<Observed, Error> {
         match entry.state {
             State::Held if holder_lives(root, &entry.id) => out.held.push(entry),
             State::Held => {}
-            State::Waiting => out.waiting += 1,
+            State::Waiting => {
+                out.waiting += 1;
+                out.waiters.push(entry);
+            }
         }
     }
     let now = SystemTime::now();
