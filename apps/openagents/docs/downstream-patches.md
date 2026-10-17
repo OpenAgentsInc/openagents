@@ -149,3 +149,22 @@ links remain readable. Upstream fixes now require manual ports.
   The host also receives native exit codes, complete patch paths, and retry metadata.
   A host stop ends supervised processes and their child groups before acknowledgement;
   terminal resume recovery can select its own native history directory.
+
+- [OpenAgents #11930](https://github.com/OpenAgentsInc/openagents/issues/11930):
+  run keepers, so a running agent outlives the engine that started it. Our
+  modules are `crates/harness/src/keeper/` (protocol version 1, the keeper
+  process, the engine-side client, and `LineHarness`, the line-protocol driver
+  that always runs under a keeper) and `crates/engine/src/sessions/keepers.rs`
+  (boot pickup, the keeper scope for each run, and the transcript entry a
+  picked-up run continues). Hooks:
+  - `crates/harness/src/lib.rs`: `pub mod keeper` and the default
+    `Harness::attach`, which returns `None`.
+  - `crates/engine/src/sessions.rs`: the `keepers` module and `Inner` field;
+    `drive_run` starts the harness through `keepers::start` and seeds the
+    segment from `keepers::continued_segment`; `recover_stale` and `shutdown`
+    skip chats a keeper holds.
+  - `crates/engine/src/lib.rs`: `start_keepers` before `recover_stale`, and the
+    `keeper` re-export.
+  - `apps/openagents/src/main.rs`: the hidden `keeper` subcommand.
+  Claude Code, Codex, and the other native drivers don't start under keepers
+  yet; each needs its own `attach`.

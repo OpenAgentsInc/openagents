@@ -63,6 +63,11 @@ pub use instance_lock::InstanceLock;
 pub use profile::EngineProfile;
 pub use project_actions::ProjectActionsStore;
 pub use registry::{HarnessDescriptor, HarnessRegistry, default_registry};
+/// Run keepers (#11930): the app binary runs `keeper::main` for its hidden
+/// `keeper` subcommand.
+#[cfg(unix)]
+pub use openagents_harness::keeper;
+pub use sessions::set_keeper_launch;
 pub use repos::{CheckoutIdentity, Repos, worktree_branch_from_title};
 pub use rpc::EngineRpc;
 pub use run_journal::{JournalError, RunJournal};
@@ -258,6 +263,8 @@ impl EngineCore {
         doc_host.set_workspace(workspace.clone());
         doc_host.set_sessions(sessions.clone());
         sessions.set_doc_host(doc_host.clone());
+        // Before recovery: chats whose agents a keeper still runs are picked up, not recovered.
+        sessions.start_keepers(profile.store_root().join("keepers"));
         match sessions.recover_stale() {
             Ok(0) => {}
             Ok(recovered) => tracing::info!(recovered, "stale sessions recovered on boot"),

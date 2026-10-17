@@ -168,6 +168,13 @@ fn main() -> anyhow::Result<()> {
     if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--noop-browser")) {
         return Ok(());
     }
+    // Hidden: the run keeper that holds one agent across engine restarts (#11930).
+    #[cfg(unix)]
+    if std::env::args_os().nth(1).as_deref()
+        == Some(std::ffi::OsStr::new(openagents_engine::keeper::SUBCOMMAND))
+    {
+        std::process::exit(openagents_engine::keeper::main(std::env::args_os().skip(2)));
+    }
     #[cfg(windows)]
     attach_parent_console();
     pin_coder_environment();

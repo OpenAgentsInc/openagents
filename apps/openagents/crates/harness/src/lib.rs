@@ -290,6 +290,18 @@ pub trait Harness: Send + Sync {
         request: RunRequest,
         controls: RunControls,
     ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError>;
+
+    /// Pick up a run whose agent a keeper still holds, after the engine that
+    /// started it exited (#11930). `None` means this driver can't.
+    #[cfg(unix)]
+    async fn attach(
+        &self,
+        _request: RunRequest,
+        _controls: RunControls,
+        _link: keeper::Link,
+    ) -> Option<Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError>> {
+        None
+    }
 }
 
 pub mod acp;
@@ -306,6 +318,8 @@ pub mod cursor;
 pub(crate) mod executable;
 pub mod host;
 pub mod install;
+#[cfg(unix)]
+pub mod keeper;
 pub(crate) mod jsonrpc;
 pub mod mock;
 mod model_context;

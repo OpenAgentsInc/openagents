@@ -1,0 +1,318 @@
+//! Run keepers in the engine (#11930, `docs/desktop/move-running-agents.md`).
+//!
+//! Every run starts with a [`keeper::KeeperScope`], so a driver that can run
+//! its agent under a keeper does. On boot the engine finds the keepers still
+//! running, leaves their chats out of [`SessionsEngine::recover_stale`], and
+//! picks each run back up through [`Harness::attach`]: the run continues in
+//! the same transcript entry, and the keeper replays every frame after the
+//! last one the old engine handled. Questions the old engine asked are
+//! withdrawn, and the driver asks the ones still pending again.
+//!
+//! The hooks into the upstream `sessions.rs` are listed in
+//! `apps/openagents/docs/downstream-patches.md`.
+
+use super::*;
+
+#[cfg(unix)]
+use openagents_harness::keeper;
+
+/// What the engine records about a run its keeper holds, so the next
+/// engine can pick it up.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RunMeta {
+    chat_id: String,
+    harness: HarnessId,
+    user_message_id: String,
+    request: RunRequest,
+}
+
+/// The binary and leading arguments that run a keeper. The app runs itself.
+static LAUNCH: OnceLock<(std::path::PathBuf, Vec<std::ffi::OsString>)> = OnceLock::new();
+
+/// Run keepers with `exe` and `args` before `keeper` instead of this process's
+/// own binary. Tests pass their test binary; the first call wins.
+pub fn set_keeper_launch(exe: std::path::PathBuf, args: Vec<std::ffi::OsString>) {
+    let _ = LAUNCH.set((exe, args));
+}
+
+pub(super) struct Keepers {
+    root: std::path::PathBuf,
+    #[cfg(unix)]
+    detach: keeper::Detach,
+    /// Chats a keeper still holds that this engine is picking up. `None`
+    /// while connecting; then the link, until the run takes it.
+    #[cfg(unix)]
+    adopting: Mutex<HashMap<String, Option<keeper::Link>>>,
+    /// Runs that continue a transcript entry an earlier engine started.
+    continuing: Mutex<std::collections::HashSet<String>>,
+}
+
+impl SessionsEngine {
+    /// Keep agents under keepers in `root`, and pick up the runs whose
+    /// keepers are still running. Call it before [`Self::recover_stale`].
+    pub fn start_keepers(&self, root: std::path::PathBuf) {
+        let keepers = Arc::new(Keepers {
+            root,
+            #[cfg(unix)]
+            detach: keeper::Detach::default(),
+            #[cfg(unix)]
+            adopting: Mutex::new(HashMap::new()),
+            continuing: Mutex::new(std::collections::HashSet::new()),
+        });
+        if self.inner.keepers.set(keepers.clone()).is_err() {
+            return;
+        }
+        #[cfg(unix)]
+        for found in keeper::client::discover(&keepers.root) {
+            let Ok(meta) = serde_json::from_value::<RunMeta>(found.meta) else {
+                continue;
+            };
+            if !alive(&found.dir) {
+                continue; // its journal stays for whoever looks; recovery takes the chat
+            }
+            lock(&keepers.adopting).insert(meta.chat_id.clone(), None);
+            let engine = self.clone();
+            tokio::spawn(async move {
+                let chat_id = meta.chat_id.clone();
+                if let Err(error) = engine.adopt(found.dir, meta).await {
+                    tracing::warn!(chat = %chat_id, %error, "could not pick up a running agent");
+                    if let Some(keepers) = engine.inner.keepers.get() {
+                        lock(&keepers.adopting).remove(&chat_id);
+                    }
+                    // Fall back to the restart recovery for this chat.
+                    if let Err(error) = engine.recover_stale() {
+                        tracing::warn!(chat = %chat_id, %error, "recovery after a failed pickup failed");
+                    }
+                }
+            });
+        }
+    }
+
+    #[cfg(unix)]
+    async fn adopt(&self, dir: std::path::PathBuf, meta: RunMeta) -> Result<(), EngineError> {
+        let link = keeper::client::connect(&dir, None).await?;
+        tracing::info!(chat = %meta.chat_id, pid = link.pid, "picking up a running agent");
+        // The old engine's questions can't be answered here; the driver asks
+        // the ones the agent still waits on again.
+        for request_id in open_questions(&self.inner.journal, &meta.chat_id) {
+            self.inner
+                .publish(&meta.chat_id, &AgentEvent::InputResolved { request_id });
+        }
+        // Between turns, the agent is a parked session waiting for its next
+        // prompt: pick it up idle, or let it go if it has already exited.
+        let between_turns = matches!(
+            self.inner.journal.last_event(&meta.chat_id),
+            Ok(Some((_, AgentEvent::Done { .. })))
+        );
+        if between_turns && link.exited {
+            link.sender().finish()?;
+            if let Some(keepers) = self.inner.keepers.get() {
+                lock(&keepers.adopting).remove(&meta.chat_id);
+            }
+            return Ok(());
+        }
+        if let Some(keepers) = self.inner.keepers.get() {
+            lock(&keepers.adopting).insert(meta.chat_id.clone(), Some(link));
+        }
+        self.dispatch_inner(
+            &meta.chat_id,
+            meta.harness,
+            meta.request,
+            Some(meta.user_message_id),
+            false,
+            between_turns,
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// True while a keeper holds this chat's agent or this engine is picking it up.
+    pub(super) fn kept(&self, chat_id: &str) -> bool {
+        let Some(keepers) = self.inner.keepers.get() else {
+            return false;
+        };
+        #[cfg(unix)]
+        {
+            if lock(&keepers.adopting).contains_key(chat_id) {
+                return true;
+            }
+            keeper::client::discover(&keepers.root)
+                .into_iter()
+                .any(|found| {
+                    serde_json::from_value::<RunMeta>(found.meta)
+                        .is_ok_and(|meta| meta.chat_id == chat_id)
+                        && alive(&found.dir)
+                })
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (keepers, chat_id);
+            false
+        }
+    }
+
+    /// The engine is going away on purpose: agents under keepers keep running.
+    pub(super) fn detach_keepers(&self) {
+        #[cfg(unix)]
+        if let Some(keepers) = self.inner.keepers.get() {
+            keepers.detach.raise();
+        }
+    }
+}
+
+/// Whether the run folder's keeper accepts connections.
+#[cfg(unix)]
+fn alive(dir: &std::path::Path) -> bool {
+    let Ok(launch) = std::fs::read(dir.join("launch.json")) else {
+        return false;
+    };
+    let Some(socket) = serde_json::from_slice::<serde_json::Value>(&launch)
+        .ok()
+        .and_then(|launch| launch["socket"].as_str().map(std::path::PathBuf::from))
+    else {
+        return false;
+    };
+    std::os::unix::net::UnixStream::connect(socket).is_ok()
+}
+
+/// Request ids of questions asked since the chat's last turn end and not resolved.
+fn open_questions(journal: &RunJournal, chat_id: &str) -> Vec<String> {
+    let mut resolved = std::collections::HashSet::new();
+    let mut open = Vec::new();
+    let Ok(events) = journal.events_rev(chat_id) else {
+        return open;
+    };
+    for event in events.flatten() {
+        match event.1 {
+            AgentEvent::Done { .. } => break,
+            AgentEvent::InputResolved { request_id } => {
+                resolved.insert(request_id);
+            }
+            AgentEvent::InputRequested { request_id, .. } if !resolved.contains(&request_id) => {
+                open.push(request_id);
+            }
+            _ => {}
+        }
+    }
+    open
+}
+
+/// Start the harness for one run: pick up the chat's kept agent if this
+/// engine is adopting it, else start a new run with a keeper scope.
+pub(super) async fn start(
+    inner: &Arc<Inner>,
+    chat_id: &str,
+    run_id: &str,
+    user_message_id: &str,
+    harness: &Arc<dyn Harness>,
+    request: RunRequest,
+    controls: RunControls,
+    idle: bool,
+) -> Result<
+    futures::stream::BoxStream<'static, Result<AgentEvent, openagents_harness::HarnessError>>,
+    openagents_harness::HarnessError,
+> {
+    #[cfg(unix)]
+    if let Some(keepers) = inner.keepers.get() {
+        let adopted = lock(&keepers.adopting).remove(chat_id).flatten();
+        let meta = RunMeta {
+            chat_id: chat_id.to_owned(),
+            harness: harness.id(),
+            user_message_id: user_message_id.to_owned(),
+            request: request.clone(),
+        };
+        let launch = LAUNCH
+            .get()
+            .cloned()
+            .or_else(|| Some((std::env::current_exe().ok()?, Vec::new())));
+        let scope = launch.map(|(keeper_exe, keeper_args)| keeper::KeeperScope {
+            root: keepers.root.clone(),
+            keeper_exe,
+            keeper_args,
+            meta: serde_json::to_value(&meta).unwrap_or_default(),
+            orphan_after: keeper::ORPHAN_AFTER,
+            detach: keepers.detach.clone(),
+        });
+        if let Some(link) = adopted {
+            lock(&keepers.continuing).insert(run_id.to_owned());
+            let attach = harness.attach(request, controls, link);
+            let attached = match scope {
+                Some(scope) => keeper::scope(scope, attach).await,
+                None => attach.await,
+            };
+            return attached.unwrap_or_else(|| {
+                Err(openagents_harness::HarnessError::Protocol(
+                    "this agent can't be picked up after a restart".into(),
+                ))
+            });
+        }
+        if !idle && let Some(scope) = scope {
+            return keeper::scope(scope, harness.run(request, controls)).await;
+        }
+    }
+    let _ = (inner, chat_id, run_id, user_message_id);
+    if idle {
+        harness.start_idle(request, controls).await
+    } else {
+        harness.run(request, controls).await
+    }
+}
+
+/// Where a run that picks up a kept agent continues its transcript.
+pub(super) struct Continued {
+    /// The earlier engine's streaming entry, when the saved transcript has
+    /// it: `(index, id, created_at, parts written)`.
+    pub entry: Option<(usize, String, i64, Vec<MessagePart>)>,
+    /// The turn's parts so far, folded from the run journal, which has every
+    /// event the earlier engine handled, including ones its last save missed.
+    pub parts: Vec<MessagePart>,
+}
+
+/// For a run that picks up a kept agent, where its transcript continues.
+pub(super) fn continued_segment(
+    inner: &Inner,
+    chat_id: &str,
+    run_id: &str,
+    doc: &SessionDoc,
+) -> Option<Continued> {
+    let keepers = inner.keepers.get()?;
+    if !lock(&keepers.continuing).remove(run_id) {
+        return None;
+    }
+    let mut events: Vec<AgentEvent> = Vec::new();
+    for event in inner.journal.events_rev(chat_id).ok()?.flatten() {
+        if matches!(
+            event.1,
+            AgentEvent::Done { .. } | AgentEvent::Steered { .. }
+        ) {
+            break;
+        }
+        events.push(event.1);
+    }
+    let mut parts = Vec::new();
+    for event in events.iter().rev() {
+        match event {
+            AgentEvent::Subagent { .. } => {}
+            AgentEvent::SessionStarted { .. } if !parts.is_empty() => {}
+            _ => fold_event_into_parts(&mut parts, event),
+        }
+    }
+    let entries = doc.read_entries().unwrap_or_default();
+    let entry = entries
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, e)| {
+            e.role == MessageRole::Assistant
+                && e.device_id == inner.device_id
+                && e.status == Some(MessageStatus::Streaming)
+        })
+        .map(|(index, e)| (index, e.id.clone(), e.created_at, e.parts.clone()));
+    if parts.is_empty()
+        && let Some((_, _, _, written)) = &entry
+    {
+        parts = written.clone();
+    }
+    Some(Continued { entry, parts })
+}

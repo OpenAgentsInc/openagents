@@ -39,6 +39,9 @@ use crate::registry::{HarnessDescriptor, HarnessRegistry};
 use crate::run_journal::RunJournal;
 use crate::{EngineError, new_id, now_ms};
 
+mod keepers;
+pub use keepers::set_keeper_launch;
+
 /// One journaled event: the durable seq plus the event, as broadcast to subscribers.
 #[derive(Debug, Clone)]
 pub struct JournaledEvent {
@@ -238,6 +241,8 @@ struct Inner {
     /// dispatch or accepted steer) — the diff sync snapshots the checkout tree
     /// for the Changes pane's "Latest turn" scope. Absent in bare tests.
     turn_listener: OnceLock<TurnListener>,
+    /// Run keepers (#11930): see `sessions/keepers.rs`.
+    keepers: OnceLock<Arc<keepers::Keepers>>,
 }
 
 /// Turn-start hook: called with `(chat_id, cwd)`.
@@ -279,6 +284,7 @@ impl SessionsEngine {
                 generated_images: OnceLock::new(),
                 scratch_root: OnceLock::new(),
                 turn_listener: OnceLock::new(),
+                keepers: OnceLock::new(),
             }),
         }
     }
@@ -1180,8 +1186,8 @@ impl SessionsEngine {
         let stale = self.inner.journal.stale_sessions()?;
         let mut recovered = 0usize;
         for chat_id in stale {
-            if lock(&self.inner.runs).contains_key(&chat_id) {
-                continue; // a live run owns this journal
+            if lock(&self.inner.runs).contains_key(&chat_id) || self.kept(&chat_id) {
+                continue; // a live run owns this journal, or a keeper still runs its agent
             }
             let handle = self.doc_handle(&chat_id)?;
             // Harness continuity first: the crashed run's session id may only
@@ -1312,8 +1318,12 @@ impl SessionsEngine {
             .shutting_down
             .store(true, std::sync::atomic::Ordering::Release);
         self.inner.voice.retire();
+        self.detach_keepers();
         let chats: Vec<String> = lock(&self.inner.runs).keys().cloned().collect();
         for chat_id in chats {
+            if self.kept(&chat_id) {
+                continue; // its agent keeps running; the next engine picks it up
+            }
             if let Err(err) = self.terminate(&chat_id).await {
                 tracing::warn!(chat = %chat_id, error = %err, "shutdown interrupt failed");
             }
@@ -2311,11 +2321,17 @@ async fn drive_run(
                     wire_request.prompt =
                         openagents_proto::invocation::harness_prompt(&wire_request.prompt, harness_id);
                 }
-                if resume_state.idle {
-                    harness.start_idle(wire_request, controls).await
-                } else {
-                    harness.run(wire_request, controls).await
-                }
+                keepers::start(
+                    &inner,
+                    &chat_id,
+                    &run_id,
+                    &resume_state.user_message_id,
+                    &harness,
+                    wire_request,
+                    controls,
+                    resume_state.idle,
+                )
+                .await
             } else {
                 Ok(futures::stream::once(async {
                     Ok(AgentEvent::Done {
@@ -2404,6 +2420,16 @@ async fn drive_run(
     let mut segment_started = now_ms();
     let mut writer: Option<SegmentWriter<'_>> = None;
     let mut dirty = false;
+    // A run that picks up a kept agent continues the earlier engine's entry.
+    if let Some(continued) = keepers::continued_segment(&inner, &chat_id, &run_id, doc_ref) {
+        if let Some((index, id, created_at, written)) = continued.entry {
+            entry_id = id;
+            segment_started = created_at;
+            writer = Some(SegmentWriter::resume(doc_ref, index, written));
+        }
+        folded = continued.parts;
+        dirty = !folded.is_empty();
+    }
     let mut flush_at = tokio::time::Instant::now();
     // Set when the engine interrupts the run: the harness gets this long to end its own
     // stream (its token was cancelled); past it, a terminal Done is synthesized.
