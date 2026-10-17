@@ -548,6 +548,7 @@ impl SpaceDriver {
                     let decoded = BASE64
                         .decode(field(&frame, "data_base64")?)
                         .map_err(|_| Error::unknown("invalid command output"))?;
+                    exec.output.append(frame["type"] == "stderr", &decoded);
                     if decoded.len() > MAX_OUTPUT.saturating_sub(stdout.len() + stderr.len()) {
                         return Err(Error::unknown("command output exceeded its size limit"));
                     }
