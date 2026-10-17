@@ -18,7 +18,8 @@ final class OpenAgentsAgentLabTests: XCTestCase {
         app.buttons["Agent Lab…"].tap()
         let name = app.textViews["lab-name"]
         XCTAssertTrue(name.waitForExistence(timeout: 15))
-        name.tap(); name.typeText(" phone fixture")
+        let suffix = String(try XCTUnwrap(config["device"]).prefix(8))
+        name.tap(); name.typeText(" phone fixture " + suffix)
         let title = app.textViews["lab-title"]
         title.tap(); title.typeText(" phone " + String(try XCTUnwrap(config["device"]).prefix(8)))
         func reveal(_ element: XCUIElement, up: Bool = true) {
@@ -59,7 +60,7 @@ final class OpenAgentsAgentLabTests: XCTestCase {
         XCTAssertTrue(ready.waitForExistence(timeout: 30))
         app.navigationBars.buttons.firstMatch.tap()
         app.buttons["composer-chip-model"].tap()
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "phone fixture,")).firstMatch.waitForExistence(timeout: 30))
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "phone fixture " + suffix)).firstMatch.waitForExistence(timeout: 30))
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)).tap()
         app.navigationBars.buttons.firstMatch.tap()
         app.tabBars.buttons["Settings"].tap()

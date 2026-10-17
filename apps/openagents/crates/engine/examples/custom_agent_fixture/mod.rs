@@ -525,7 +525,12 @@ async fn cleanup_lab(f: &mut Fixture) -> Result<()> {
     let mut definitions = vec![];
     loop {
         let p = agents.list(after.as_deref(), 100, &cancel).await?;
-        definitions.extend(p.data.into_iter().filter(|a| !baseline.contains(&a.id)));
+        definitions.extend(p.data.into_iter().filter(|a| {
+            !baseline.contains(&a.id)
+                && a.spec
+                    .name
+                    .contains(&format!("phone fixture {}", &f.device[..8]))
+        }));
         after = p.next;
         if after.is_none() {
             break;
