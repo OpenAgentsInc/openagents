@@ -32,6 +32,8 @@ pub use sharing::*;
 mod saved;
 pub use saved::*;
 mod session;
+mod voice_usage;
+pub use voice_usage::*;
 mod voice;
 pub use voice::*;
 mod types;

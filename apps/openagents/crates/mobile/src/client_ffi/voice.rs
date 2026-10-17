@@ -3,6 +3,8 @@
 //! platform renders typed snapshots exactly as the desktop reads them.
 use super::*;
 use crate::orb::VoiceOrb;
+use openagents_proto::voice::{VoicePhase, VoiceRejection, VoiceRole, VoiceWork, remote::Sdp};
+use openagents_voice_session::{VoiceMediaEndpoint, VoiceView};
 use std::collections::HashMap;
 use std::sync::{
     Mutex,
@@ -10,8 +12,6 @@ use std::sync::{
 };
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
-use openagents_proto::voice::{VoicePhase, VoiceRejection, VoiceRole, VoiceWork, remote::Sdp};
-use openagents_voice_session::{VoiceMediaEndpoint, VoiceView};
 
 #[derive(Clone, Copy, uniffi::Enum)]
 pub enum VoiceMediaOperation {
@@ -274,6 +274,7 @@ impl VoiceMediaEndpoint for PlatformMedia {
 
 #[derive(uniffi::Object)]
 pub struct VoiceCall {
+    pub(super) host_device_id: String,
     media: Arc<PlatformMedia>,
     cancel: CancellationToken,
     muted: watch::Sender<bool>,
@@ -383,6 +384,7 @@ impl CoreClient {
         let (muted, rx) = watch::channel(false);
         let presented_mute = rx.clone();
         let handle = Arc::new(VoiceCall {
+            host_device_id: host_device_id.clone(),
             media: platform.clone(),
             cancel: cancel.clone(),
             muted,
@@ -454,6 +456,7 @@ mod tests {
         assert!(media.pending.lock().unwrap().is_empty());
         let (muted, _) = watch::channel(false);
         let call = VoiceCall {
+            host_device_id: "host".into(),
             media: media.clone(),
             cancel: CancellationToken::new(),
             muted,
@@ -478,6 +481,7 @@ mod tests {
         let media = media(listener.clone());
         let (muted, _) = watch::channel(false);
         let call = VoiceCall {
+            host_device_id: "host".into(),
             media: media.clone(),
             cancel: CancellationToken::new(),
             muted,

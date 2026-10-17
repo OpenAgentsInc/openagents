@@ -9,8 +9,11 @@ final class VoiceViewController: UIViewController, UICollectionViewDelegate {
     private var voiceToken: AnyObject?
     private var appToken: AnyObject?
     private var signature = ""
+    private var usage: CoreVoiceUsage?
+    private var usageClient: CoreClient?
+    private var lastUsage: VoiceUsageSnapshot?
 
-    enum Section: Int, Hashable { case hero, hosts, voice, call }
+    enum Section: Int, Hashable { case hero, hosts, usage, voice, call }
 
     struct Row: Hashable {
         let id: String
@@ -117,6 +120,7 @@ final class VoiceViewController: UIViewController, UICollectionViewDelegate {
     private static func header(_ section: Section?) -> String? {
         switch section {
         case .hosts: "Codex runs on"
+        case .usage: "Codex account usage"
         case .voice: "Voice"
         case .call: "During a call"
         default: nil
@@ -128,6 +132,10 @@ final class VoiceViewController: UIViewController, UICollectionViewDelegate {
         case .hosts: app.voice.live
             ? "End the call to change devices."
             : "Audio stays on this iPhone. Codex, its sign-in and its tools run on the device you choose."
+        case .usage:
+            if let at = usage?.snapshot().fetchedAtMs {
+                "Last updated \(Self.date(at))."
+            } else { nil }
         case .voice: "Applies to your next call."
         default: nil
         }
@@ -136,17 +144,26 @@ final class VoiceViewController: UIViewController, UICollectionViewDelegate {
     /// Phones can't host Codex; only machines that can are listed.
     private var devices: [DeviceView] { (app.client?.devices() ?? []).filter(\.isExecutionHost) }
 
+    fileprivate func usageChanged() { reload() }
+
     private func reload() {
         let voice = app.voice
         let devices = self.devices
+        if usageClient !== app.client {
+            usageClient = app.client
+            usage = app.client?.voiceUsage(listener: UsageBridge(controller: self))
+        }
+        usage?.track(preferredHost: voice.selectedHost, activeCall: voice.usageCall)
+        let usageSnapshot = usage?.snapshot()
         // Level frames during a call must not rebuild the list.
         let signature = "\(voice.live)|\(voice.selectedHost ?? "")|\(voice.selectedStyle ?? "")|\(voice.styles)|"
             + devices.map { "\($0.id):\($0.online):\($0.capabilities)" }.joined()
-        guard signature != self.signature else { return }
+        guard signature != self.signature || usageSnapshot != lastUsage else { return }
         self.signature = signature
+        lastUsage = usageSnapshot
 
         var s = NSDiffableDataSourceSnapshot<Section, Row>()
-        s.appendSections([.hero, .hosts, .voice, .call])
+        s.appendSections([.hero, .hosts, .usage, .voice, .call])
         s.appendItems([Row(id: "hero", title: "")], toSection: .hero)
         let chosen = voice.startHost?.id
         if devices.isEmpty {
@@ -166,6 +183,7 @@ final class VoiceViewController: UIViewController, UICollectionViewDelegate {
                 )
             }, toSection: .hosts)
         }
+        s.appendItems(usageRows(usageSnapshot), toSection: .usage)
         s.appendItems([Row(id: "style", title: "Voice", subtitle: voice.selectedStyle?.capitalized ?? "Codex default", symbol: "person.wave.2")], toSection: .voice)
         s.appendItems([
             Row(id: "tip-ear", title: "Hold it to your ear", subtitle: "The screen turns off and Codex plays through the earpiece.", symbol: "ear", enabled: true),
@@ -173,6 +191,50 @@ final class VoiceViewController: UIViewController, UICollectionViewDelegate {
             Row(id: "tip-bar", title: "Start from the bottom bar", subtitle: "Tap the waveform; hold it to switch device or voice.", symbol: "waveform", enabled: true),
         ], toSection: .call)
         dataSource.apply(s, animatingDifferences: view.window != nil)
+    }
+
+    private static func date(_ milliseconds: Int64) -> String {
+        Date(timeIntervalSince1970: Double(milliseconds) / 1000)
+            .formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private func usageRows(_ snapshot: VoiceUsageSnapshot?) -> [Row] {
+        guard let snapshot else {
+            return [Row(id: "usage-status", title: "Sign in to see Codex account usage", symbol: "person.crop.circle")]
+        }
+        var rows: [Row] = []
+        if let host = snapshot.hostName {
+            rows.append(Row(id: "usage-account", title: snapshot.account ?? "Codex account",
+                            subtitle: ([host] + [snapshot.plan].compactMap { $0 }).joined(separator: " · "),
+                            symbol: "person.crop.circle"))
+        }
+        for (index, window) in snapshot.windows.enumerated() {
+            let percent = Int((window.usedFraction * 100).rounded())
+            let reset = window.resetsAtMs.map { "Resets \(Self.date($0))" }
+            rows.append(Row(id: "usage-window-\(index)", title: "\(window.label) · \(percent)% used",
+                            subtitle: reset, symbol: "chart.bar"))
+        }
+        if let error = snapshot.error {
+            rows.append(Row(id: "usage-error", title: snapshot.windows.isEmpty ? "Usage unavailable" : "Last known usage",
+                            subtitle: error, symbol: "exclamationmark.circle"))
+        } else if snapshot.windows.isEmpty {
+            let title: String = switch snapshot.phase {
+            case .noHost: "Choose a computer to see Codex usage"
+            case .loading: "Loading Codex usage…"
+            case .offline: "This computer is offline"
+            case .signInRequired: "Sign in to Codex on this computer"
+            case .unsupported: "Update OpenAgents on this computer"
+            case .unavailable, .ready: snapshot.refreshing ? "Loading Codex usage…" : "Codex usage is unavailable"
+            }
+            rows.append(Row(id: "usage-status", title: title, symbol: "chart.bar"))
+        } else if snapshot.phase == .offline {
+            rows.append(Row(id: "usage-status", title: "This computer is offline", subtitle: "Showing last known usage.", symbol: "wifi.slash"))
+        }
+        if snapshot.hostId != nil && snapshot.phase != .offline && snapshot.phase != .unsupported {
+            rows.append(Row(id: snapshot.refreshing ? "usage-loading" : "usage-refresh",
+                            title: snapshot.refreshing ? "Refreshing usage…" : "Refresh usage", symbol: "arrow.clockwise"))
+        }
+        return rows
     }
 
     private static func symbol(for platform: String) -> String {
@@ -185,12 +247,16 @@ final class VoiceViewController: UIViewController, UICollectionViewDelegate {
 
     func collectionView(_ collectionView: UICollectionView, shouldHighlightItemAt path: IndexPath) -> Bool {
         guard let row = dataSource.itemIdentifier(for: path) else { return false }
-        return (row.id.hasPrefix("host-") && row.enabled) || row.id == "style"
+        return (row.id.hasPrefix("host-") && row.enabled) || row.id == "style" || row.id == "usage-refresh"
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt path: IndexPath) {
         collectionView.deselectItem(at: path, animated: true)
         guard let row = dataSource.itemIdentifier(for: path) else { return }
+        if row.id == "usage-refresh" {
+            usage?.refresh()
+            return
+        }
         let voice = app.voice
         guard row.id.hasPrefix("host-"), row.enabled else { return }
         voice.selectedHost = String(row.id.dropFirst("host-".count))
@@ -248,4 +314,13 @@ private final class VoiceHeroCell: UICollectionViewCell {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+}
+
+/// Notifications pull the latest Rust state, including after a host change.
+private final class UsageBridge: VoiceUsageListener, @unchecked Sendable {
+    private weak var controller: VoiceViewController?
+    @MainActor init(controller: VoiceViewController) { self.controller = controller }
+    func onVoiceUsageChanged() {
+        Task { @MainActor [weak self] in self?.controller?.usageChanged() }
+    }
 }

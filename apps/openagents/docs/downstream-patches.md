@@ -496,3 +496,8 @@ links remain readable. Upstream fixes now require manual ports.
   use **Start OpenAgents Cloud** and **Stop OpenAgents Cloud**, with matching
   status, help, and error text. The cloud device's display name follows the
   same wording; its service name and cloud-host API stay unchanged.
+
+- Voice account usage (#12016). The iOS Talk with Codex list reads the active
+  execution host's Codex account through the existing account RPC and cache.
+  Rust owns host selection, refreshes, and usage state; UIKit shows the account,
+  quota windows, resets, and last-updated time, including refresh failures.
