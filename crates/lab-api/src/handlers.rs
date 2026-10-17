@@ -277,7 +277,7 @@ async fn card(
     ))
 }
 async fn enqueue(api: &Api, headers: &HeaderMap, r: CreateJob) -> Result<JobState, ApiError> {
-    let (_, s, k) = api
+    let (access, s, k) = api
         .document(headers, &r.space, Action::Edit, &r.version.document)
         .await?;
     let v = s.version(&r.version.document, r.version.version).await?;
@@ -292,9 +292,48 @@ async fn enqueue(api: &Api, headers: &HeaderMap, r: CreateJob) -> Result<JobStat
         &json!({"operation":"job","request":r,"spec":spec}),
     )
     .await?;
-    let job = s.create_job(spec, &k.manifest(), now()).await?;
+    let requirements = lab_jobs::EffectiveRequirements::for_job(&spec, &v, &k.manifest())
+        .map_err(lab_store::Error::from)?;
+    let mut job = s.create_job(spec, &k.manifest(), now()).await?;
     let pending = job.clone();
-    tokio::spawn(async move { k.run_job(s, pending).await });
+    if let Some(capabilities) = k
+        .server_capabilities()
+        .filter(|caps| requirements.eligible(caps))
+    {
+        if pending.status == JobStatus::Queued {
+            let backend = api.backend.clone();
+            let authorizer = api.authorizer.clone();
+            let headers = headers.clone();
+            let alias = r.space;
+            tokio::spawn(async move {
+                let _ = crate::server::run(
+                    backend,
+                    authorizer,
+                    headers,
+                    alias,
+                    access.account,
+                    access.space,
+                    k,
+                    capabilities,
+                    s,
+                    pending,
+                )
+                .await;
+            });
+        }
+    } else {
+        s.wait_for_worker(
+            &job.id,
+            if requirements.private_local {
+                "No computer with these files is online."
+            } else {
+                "Waiting for a computer with the tools and space for this work."
+            },
+            now(),
+        )
+        .await?;
+        job = s.job(&job.id).await?;
+    }
     Ok(job)
 }
 async fn job_create(

@@ -2,8 +2,10 @@
 //! Every read authorizes its space again and never starts work.
 pub mod contract;
 mod handlers;
+mod server;
 mod workers;
 pub use lab_kit::api::*;
+pub use server::ServerExecution;
 
 use async_trait::async_trait;
 use axum::{
@@ -160,7 +162,15 @@ pub trait Kind: Send + Sync {
     async fn saved(&self, _store: &Store, _version: &Version) -> lab_store::Result<()> {
         Ok(())
     }
+    /// Only an installed bounded child runner declares server execution.
+    /// The enqueue path checks immutable input policy before calling it.
+    fn server_capabilities(&self) -> Option<lab_jobs::Capabilities> {
+        None
+    }
     async fn run_job(&self, _store: Store, _job: JobState) {}
+    async fn run_server_job(&self, store: Store, job: JobState, _execution: ServerExecution) {
+        self.run_job(store, job).await;
+    }
     fn jobs(&self, version: &Version, want: &Want) -> Vec<JobSpec>;
     fn card(&self, version: &Version, jobs: &[JobState], artifacts: &[Artifact]) -> Card;
     fn tool(&self, _name: &str, _arguments: &Value) -> Result<Tool, ApiError> {

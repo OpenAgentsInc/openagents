@@ -1369,6 +1369,36 @@
                 },
                 "description": "What a placement must offer to take a job.",
                 "properties": {
+                  "asset_classes": {
+                    "description": "Input classes required by this job, in addition to the version's assets.",
+                    "items": {
+                      "description": "How a file may travel.",
+                      "oneOf": [
+                        {
+                          "const": "public",
+                          "description": "May be stored and rendered anywhere the space allows.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "private_local",
+                          "description": "Never leaves the host that has it (licensed or personal media:\nMetaHuman, Fab packs, fonts). Only an enrolled host renders it.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "no_training",
+                          "description": "May be stored and shown, never used to train or evaluate a model.",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "cpu_millis": {
+                    "description": "Minimum CPU capacity, in thousandths of one core (0 uses the runner default).",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
                   "gpu": {
                     "default": false,
                     "type": "boolean"
@@ -1378,6 +1408,25 @@
                     "format": "uint64",
                     "minimum": 0,
                     "type": "integer"
+                  },
+                  "memory_bytes": {
+                    "description": "Minimum available memory (0 uses the runner default).",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "model_use": {
+                    "description": "Explicit use of inputs by a model; absent for ordinary rendering.",
+                    "enum": [
+                      "training",
+                      "evaluation",
+                      "trace",
+                      null
+                    ],
+                    "type": [
+                      "string",
+                      "null"
+                    ]
                   },
                   "private_local": {
                     "default": false,
@@ -1508,6 +1557,36 @@
                       },
                       "description": "What a placement must offer to take a job.",
                       "properties": {
+                        "asset_classes": {
+                          "description": "Input classes required by this job, in addition to the version's assets.",
+                          "items": {
+                            "description": "How a file may travel.",
+                            "oneOf": [
+                              {
+                                "const": "public",
+                                "description": "May be stored and rendered anywhere the space allows.",
+                                "type": "string"
+                              },
+                              {
+                                "const": "private_local",
+                                "description": "Never leaves the host that has it (licensed or personal media:\nMetaHuman, Fab packs, fonts). Only an enrolled host renders it.",
+                                "type": "string"
+                              },
+                              {
+                                "const": "no_training",
+                                "description": "May be stored and shown, never used to train or evaluate a model.",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "type": "array"
+                        },
+                        "cpu_millis": {
+                          "description": "Minimum CPU capacity, in thousandths of one core (0 uses the runner default).",
+                          "format": "uint64",
+                          "minimum": 0,
+                          "type": "integer"
+                        },
                         "gpu": {
                           "default": false,
                           "type": "boolean"
@@ -1517,6 +1596,25 @@
                           "format": "uint64",
                           "minimum": 0,
                           "type": "integer"
+                        },
+                        "memory_bytes": {
+                          "description": "Minimum available memory (0 uses the runner default).",
+                          "format": "uint64",
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "model_use": {
+                          "description": "Explicit use of inputs by a model; absent for ordinary rendering.",
+                          "enum": [
+                            "training",
+                            "evaluation",
+                            "trace",
+                            null
+                          ],
+                          "type": [
+                            "string",
+                            "null"
+                          ]
                         },
                         "private_local": {
                           "default": false,
@@ -1619,6 +1717,89 @@
                 "doc_arg": {
                   "description": "The argument a tool names its document by (`document`, `doc`, `game`).",
                   "type": "string"
+                },
+                "job_requirements": {
+                  "additionalProperties": {
+                    "additionalProperties": false,
+                    "description": "What a placement must offer to take a job.",
+                    "properties": {
+                      "asset_classes": {
+                        "description": "Input classes required by this job, in addition to the version's assets.",
+                        "items": {
+                          "description": "How a file may travel.",
+                          "oneOf": [
+                            {
+                              "const": "public",
+                              "description": "May be stored and rendered anywhere the space allows.",
+                              "type": "string"
+                            },
+                            {
+                              "const": "private_local",
+                              "description": "Never leaves the host that has it (licensed or personal media:\nMetaHuman, Fab packs, fonts). Only an enrolled host renders it.",
+                              "type": "string"
+                            },
+                            {
+                              "const": "no_training",
+                              "description": "May be stored and shown, never used to train or evaluate a model.",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "type": "array"
+                      },
+                      "cpu_millis": {
+                        "description": "Minimum CPU capacity, in thousandths of one core (0 uses the runner default).",
+                        "format": "uint64",
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "gpu": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "max_seconds": {
+                        "default": 0,
+                        "format": "uint64",
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "memory_bytes": {
+                        "description": "Minimum available memory (0 uses the runner default).",
+                        "format": "uint64",
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "model_use": {
+                        "description": "Explicit use of inputs by a model; absent for ordinary rendering.",
+                        "enum": [
+                          "training",
+                          "evaluation",
+                          "trace",
+                          null
+                        ],
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "private_local": {
+                        "default": false,
+                        "description": "Set when an input is [`AssetClass::PrivateLocal`].",
+                        "type": "boolean"
+                      },
+                      "tools": {
+                        "default": [],
+                        "description": "Programs the job runs (`ffmpeg`, `blender`, ...).",
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "description": "Minimum resources and maximum run time for each supported job type.",
+                  "type": "object"
                 },
                 "job_types": {
                   "items": {
@@ -2344,10 +2525,1345 @@
         ],
         "title": "List",
         "type": "object"
+      },
+      "LabWorkerAttempt": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "job": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "job",
+          "attempt"
+        ],
+        "title": "Attempt",
+        "type": "object"
+      },
+      "LabWorkerAvailable": {
+        "properties": {
+          "work": {
+            "properties": {
+              "assignment": {
+                "properties": {
+                  "lease": {
+                    "properties": {
+                      "attempt": {
+                        "format": "uint64",
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "expires_unix_ms": {
+                        "format": "uint64",
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "job": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "artifacts": {
+                            "default": [],
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "estimate_seconds": {
+                            "default": null,
+                            "description": "Seconds the job is expected to take, when known.",
+                            "format": "double",
+                            "type": [
+                              "number",
+                              "null"
+                            ]
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "default": null,
+                            "description": "Plain words for a failure or a wait (\"No computer that has these\nfiles is online\").",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "spec": {
+                            "additionalProperties": false,
+                            "description": "Work that makes artifacts. Its idempotency key is the version's digest,\nthe type and the parameters, so asking twice never runs it twice.",
+                            "properties": {
+                              "kind": {
+                                "type": "string"
+                              },
+                              "params": {
+                                "default": null
+                              },
+                              "requirements": {
+                                "additionalProperties": false,
+                                "default": {
+                                  "gpu": false,
+                                  "max_seconds": 0,
+                                  "private_local": false,
+                                  "tools": []
+                                },
+                                "description": "What a placement must offer to take a job.",
+                                "properties": {
+                                  "asset_classes": {
+                                    "description": "Input classes required by this job, in addition to the version's assets.",
+                                    "items": {
+                                      "description": "How a file may travel.",
+                                      "oneOf": [
+                                        {
+                                          "const": "public",
+                                          "description": "May be stored and rendered anywhere the space allows.",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "private_local",
+                                          "description": "Never leaves the host that has it (licensed or personal media:\nMetaHuman, Fab packs, fonts). Only an enrolled host renders it.",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "no_training",
+                                          "description": "May be stored and shown, never used to train or evaluate a model.",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "type": "array"
+                                  },
+                                  "cpu_millis": {
+                                    "description": "Minimum CPU capacity, in thousandths of one core (0 uses the runner default).",
+                                    "format": "uint64",
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "gpu": {
+                                    "default": false,
+                                    "type": "boolean"
+                                  },
+                                  "max_seconds": {
+                                    "default": 0,
+                                    "format": "uint64",
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "memory_bytes": {
+                                    "description": "Minimum available memory (0 uses the runner default).",
+                                    "format": "uint64",
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  },
+                                  "model_use": {
+                                    "description": "Explicit use of inputs by a model; absent for ordinary rendering.",
+                                    "enum": [
+                                      "training",
+                                      "evaluation",
+                                      "trace",
+                                      null
+                                    ],
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "private_local": {
+                                    "default": false,
+                                    "description": "Set when an input is [`AssetClass::PrivateLocal`].",
+                                    "type": "boolean"
+                                  },
+                                  "tools": {
+                                    "default": [],
+                                    "description": "Programs the job runs (`ffmpeg`, `blender`, ...).",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "type": "array"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              "type": {
+                                "description": "Kind-defined: `render`, `rebuild`, `playtest`, `simulate`, ...",
+                                "type": "string"
+                              },
+                              "version": {
+                                "additionalProperties": false,
+                                "description": "An immutable version, possibly of another kind's document (a CAD part\nplaced in a Robot Lab scene). Reading through it checks access to both.",
+                                "properties": {
+                                  "document": {
+                                    "type": "string"
+                                  },
+                                  "version": {
+                                    "format": "uint64",
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "document",
+                                  "version"
+                                ],
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "type",
+                              "version"
+                            ],
+                            "type": "object"
+                          },
+                          "status": {
+                            "oneOf": [
+                              {
+                                "enum": [
+                                  "queued",
+                                  "running",
+                                  "done",
+                                  "failed",
+                                  "cancelled"
+                                ],
+                                "type": "string"
+                              },
+                              {
+                                "const": "uncertain",
+                                "description": "The worker was lost; the outcome is unknown until observed.",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "spec",
+                          "status"
+                        ],
+                        "type": "object"
+                      },
+                      "started": {
+                        "type": "boolean"
+                      },
+                      "worker": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "job",
+                      "worker",
+                      "attempt",
+                      "expires_unix_ms",
+                      "started"
+                    ],
+                    "type": "object"
+                  },
+                  "started_unix_ms": {
+                    "description": "The service records this before returning permission to execute.",
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "lease"
+                ],
+                "type": "object"
+              },
+              "requirements": {
+                "properties": {
+                  "cpu_millis": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "gpu": {
+                    "type": "boolean"
+                  },
+                  "job": {
+                    "type": "string"
+                  },
+                  "local_assets": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "max_seconds": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "memory_bytes": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "no_training": {
+                    "type": "boolean"
+                  },
+                  "private_local": {
+                    "type": "boolean"
+                  },
+                  "tools": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array",
+                    "uniqueItems": true
+                  }
+                },
+                "required": [
+                  "cpu_millis",
+                  "memory_bytes",
+                  "gpu",
+                  "tools",
+                  "max_seconds",
+                  "private_local",
+                  "local_assets",
+                  "no_training",
+                  "job"
+                ],
+                "type": "object"
+              },
+              "version": {
+                "additionalProperties": false,
+                "description": "One immutable version. Made only by a kind's `apply` (through the store),\nnever written directly.",
+                "properties": {
+                  "assets": {
+                    "default": [],
+                    "description": "Every file the content uses.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "class": {
+                          "description": "How a file may travel.",
+                          "oneOf": [
+                            {
+                              "const": "public",
+                              "description": "May be stored and rendered anywhere the space allows.",
+                              "type": "string"
+                            },
+                            {
+                              "const": "private_local",
+                              "description": "Never leaves the host that has it (licensed or personal media:\nMetaHuman, Fab packs, fonts). Only an enrolled host renders it.",
+                              "type": "string"
+                            },
+                            {
+                              "const": "no_training",
+                              "description": "May be stored and shown, never used to train or evaluate a model.",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "location": {
+                          "description": "A path on the host or an object in the space's storage.",
+                          "type": "string"
+                        },
+                        "sha256": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "location",
+                        "sha256",
+                        "class"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "author": {
+                    "description": "A person, or a chat turn (`chat:<id>`).",
+                    "type": "string"
+                  },
+                  "content": true,
+                  "content_sha256": {
+                    "description": "[`crate::digest`] of `content`.",
+                    "type": "string"
+                  },
+                  "created_unix_ms": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "document": {
+                    "type": "string"
+                  },
+                  "number": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "parent": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "report": {
+                    "additionalProperties": false,
+                    "default": {
+                      "facts": null,
+                      "warnings": []
+                    },
+                    "description": "The kind's check report for this content.",
+                    "properties": {
+                      "facts": {
+                        "default": null,
+                        "description": "Kind-specific facts (mass, duration, sketch freedom, ...)."
+                      },
+                      "warnings": {
+                        "default": [],
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "schema": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "document",
+                  "number",
+                  "author",
+                  "summary",
+                  "created_unix_ms",
+                  "schema",
+                  "content",
+                  "content_sha256"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "assignment",
+              "version",
+              "requirements"
+            ],
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "title": "Available",
+        "type": "object"
+      },
+      "LabWorkerEnroll": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "additionalProperties": false,
+            "properties": {
+              "cpu_millis": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "gpu": {
+                "type": "boolean"
+              },
+              "jobs": {
+                "description": "Supported pairs, for example `video/render`.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "uniqueItems": true
+              },
+              "local_assets": {
+                "description": "Private input checksums already present on this enrolled host.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "uniqueItems": true
+              },
+              "max_seconds": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "memory_bytes": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "placement": {
+                "description": "The service binds this value to a worker's enrollment, never a poll argument.",
+                "enum": [
+                  "server",
+                  "cloud",
+                  "enrolled"
+                ],
+                "type": "string"
+              },
+              "tools": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "uniqueItems": true
+              },
+              "worker": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "worker",
+              "placement",
+              "cpu_millis",
+              "memory_bytes",
+              "gpu",
+              "tools",
+              "jobs",
+              "local_assets",
+              "max_seconds"
+            ],
+            "type": "object"
+          },
+          "lifetime_ms": {
+            "default": 3600000,
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "space": {
+            "default": "me",
+            "type": "string"
+          }
+        },
+        "required": [
+          "capabilities"
+        ],
+        "title": "Enroll",
+        "type": "object"
+      },
+      "LabWorkerEnrolled": {
+        "description": "Returned once to the enrolling account. Debug output never contains the key.",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "worker": {
+            "properties": {
+              "account": {
+                "type": "string"
+              },
+              "capabilities": {
+                "additionalProperties": false,
+                "properties": {
+                  "cpu_millis": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "gpu": {
+                    "type": "boolean"
+                  },
+                  "jobs": {
+                    "description": "Supported pairs, for example `video/render`.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "local_assets": {
+                    "description": "Private input checksums already present on this enrolled host.",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "max_seconds": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "memory_bytes": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "placement": {
+                    "description": "The service binds this value to a worker's enrollment, never a poll argument.",
+                    "enum": [
+                      "server",
+                      "cloud",
+                      "enrolled"
+                    ],
+                    "type": "string"
+                  },
+                  "tools": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "worker": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "worker",
+                  "placement",
+                  "cpu_millis",
+                  "memory_bytes",
+                  "gpu",
+                  "tools",
+                  "jobs",
+                  "local_assets",
+                  "max_seconds"
+                ],
+                "type": "object"
+              },
+              "expires_unix_ms": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "id": {
+                "type": "string"
+              },
+              "issuer_session": {
+                "description": "The issuing app/login-key session reference, never its bearer token.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "revoked": {
+                "type": "boolean"
+              },
+              "space": {
+                "description": "Where Labs live: a person's own space or a project. Access follows\nproject membership; the store and API decide it, never this value alone.",
+                "oneOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "account": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "const": "personal",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "account"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "project": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "const": "project",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "project"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "account",
+              "space",
+              "capabilities",
+              "expires_unix_ms",
+              "revoked"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "worker",
+          "token"
+        ],
+        "title": "Enrolled",
+        "type": "object"
+      },
+      "LabWorkerFinish": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "job": {
+            "type": "string"
+          },
+          "outputs": {
+            "default": [],
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "content_base64": {
+                  "type": "string"
+                },
+                "media_type": {
+                  "type": "string"
+                },
+                "role": {
+                  "enum": [
+                    "render",
+                    "poster",
+                    "frame",
+                    "strip",
+                    "export",
+                    "build",
+                    "replay",
+                    "source"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "role",
+                "media_type",
+                "content_base64"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "enum": [
+                  "queued",
+                  "running",
+                  "done",
+                  "failed",
+                  "cancelled"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "uncertain",
+                "description": "The worker was lost; the outcome is unknown until observed.",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "job",
+          "attempt",
+          "status"
+        ],
+        "title": "Finish",
+        "type": "object"
+      },
+      "LabWorkerPoll": {
+        "additionalProperties": false,
+        "properties": {
+          "wait_seconds": {
+            "default": 0,
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "title": "Poll",
+        "type": "object"
+      },
+      "LabWorkerRevoked": {
+        "additionalProperties": false,
+        "properties": {
+          "revoked": {
+            "const": true
+          }
+        },
+        "required": [
+          "revoked"
+        ],
+        "type": "object"
+      },
+      "LabWorkerUsage": {
+        "items": {
+          "properties": {
+            "account": {
+              "type": "string"
+            },
+            "attempt": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "charge": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "job": {
+              "type": "string"
+            },
+            "observed_until_unix_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "observed_wall_ms": {
+              "description": "Time between service observations, not CPU usage or provider billable time.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "outcome": {
+              "oneOf": [
+                {
+                  "enum": [
+                    "queued",
+                    "running",
+                    "done",
+                    "failed",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "const": "uncertain",
+                  "description": "The worker was lost; the outcome is unknown until observed.",
+                  "type": "string"
+                }
+              ]
+            },
+            "placement": {
+              "description": "The service binds this value to a worker's enrollment, never a poll argument.",
+              "enum": [
+                "server",
+                "cloud",
+                "enrolled"
+              ],
+              "type": "string"
+            },
+            "space": {
+              "description": "Where Labs live: a person's own space or a project. Access follows\nproject membership; the store and API decide it, never this value alone.",
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "account": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "const": "personal",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "account"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "project": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "const": "project",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "project"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "started_unix_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "worker": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "job",
+            "attempt",
+            "worker",
+            "account",
+            "space",
+            "placement",
+            "observed_until_unix_ms",
+            "outcome"
+          ],
+          "type": "object"
+        },
+        "title": "Array_of_Usage",
+        "type": "array"
+      },
+      "LabWorkerWork": {
+        "properties": {
+          "assignment": {
+            "properties": {
+              "lease": {
+                "properties": {
+                  "attempt": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expires_unix_ms": {
+                    "format": "uint64",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "job": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "artifacts": {
+                        "default": [],
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "estimate_seconds": {
+                        "default": null,
+                        "description": "Seconds the job is expected to take, when known.",
+                        "format": "double",
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "message": {
+                        "default": null,
+                        "description": "Plain words for a failure or a wait (\"No computer that has these\nfiles is online\").",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "spec": {
+                        "additionalProperties": false,
+                        "description": "Work that makes artifacts. Its idempotency key is the version's digest,\nthe type and the parameters, so asking twice never runs it twice.",
+                        "properties": {
+                          "kind": {
+                            "type": "string"
+                          },
+                          "params": {
+                            "default": null
+                          },
+                          "requirements": {
+                            "additionalProperties": false,
+                            "default": {
+                              "gpu": false,
+                              "max_seconds": 0,
+                              "private_local": false,
+                              "tools": []
+                            },
+                            "description": "What a placement must offer to take a job.",
+                            "properties": {
+                              "asset_classes": {
+                                "description": "Input classes required by this job, in addition to the version's assets.",
+                                "items": {
+                                  "description": "How a file may travel.",
+                                  "oneOf": [
+                                    {
+                                      "const": "public",
+                                      "description": "May be stored and rendered anywhere the space allows.",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "private_local",
+                                      "description": "Never leaves the host that has it (licensed or personal media:\nMetaHuman, Fab packs, fonts). Only an enrolled host renders it.",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "no_training",
+                                      "description": "May be stored and shown, never used to train or evaluate a model.",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "type": "array"
+                              },
+                              "cpu_millis": {
+                                "description": "Minimum CPU capacity, in thousandths of one core (0 uses the runner default).",
+                                "format": "uint64",
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "gpu": {
+                                "default": false,
+                                "type": "boolean"
+                              },
+                              "max_seconds": {
+                                "default": 0,
+                                "format": "uint64",
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "memory_bytes": {
+                                "description": "Minimum available memory (0 uses the runner default).",
+                                "format": "uint64",
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "model_use": {
+                                "description": "Explicit use of inputs by a model; absent for ordinary rendering.",
+                                "enum": [
+                                  "training",
+                                  "evaluation",
+                                  "trace",
+                                  null
+                                ],
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "private_local": {
+                                "default": false,
+                                "description": "Set when an input is [`AssetClass::PrivateLocal`].",
+                                "type": "boolean"
+                              },
+                              "tools": {
+                                "default": [],
+                                "description": "Programs the job runs (`ffmpeg`, `blender`, ...).",
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "type": {
+                            "description": "Kind-defined: `render`, `rebuild`, `playtest`, `simulate`, ...",
+                            "type": "string"
+                          },
+                          "version": {
+                            "additionalProperties": false,
+                            "description": "An immutable version, possibly of another kind's document (a CAD part\nplaced in a Robot Lab scene). Reading through it checks access to both.",
+                            "properties": {
+                              "document": {
+                                "type": "string"
+                              },
+                              "version": {
+                                "format": "uint64",
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "document",
+                              "version"
+                            ],
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "type",
+                          "version"
+                        ],
+                        "type": "object"
+                      },
+                      "status": {
+                        "oneOf": [
+                          {
+                            "enum": [
+                              "queued",
+                              "running",
+                              "done",
+                              "failed",
+                              "cancelled"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "const": "uncertain",
+                            "description": "The worker was lost; the outcome is unknown until observed.",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "spec",
+                      "status"
+                    ],
+                    "type": "object"
+                  },
+                  "started": {
+                    "type": "boolean"
+                  },
+                  "worker": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "job",
+                  "worker",
+                  "attempt",
+                  "expires_unix_ms",
+                  "started"
+                ],
+                "type": "object"
+              },
+              "started_unix_ms": {
+                "description": "The service records this before returning permission to execute.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "lease"
+            ],
+            "type": "object"
+          },
+          "requirements": {
+            "properties": {
+              "cpu_millis": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "gpu": {
+                "type": "boolean"
+              },
+              "job": {
+                "type": "string"
+              },
+              "local_assets": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "uniqueItems": true
+              },
+              "max_seconds": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "memory_bytes": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "no_training": {
+                "type": "boolean"
+              },
+              "private_local": {
+                "type": "boolean"
+              },
+              "tools": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array",
+                "uniqueItems": true
+              }
+            },
+            "required": [
+              "cpu_millis",
+              "memory_bytes",
+              "gpu",
+              "tools",
+              "max_seconds",
+              "private_local",
+              "local_assets",
+              "no_training",
+              "job"
+            ],
+            "type": "object"
+          },
+          "version": {
+            "additionalProperties": false,
+            "description": "One immutable version. Made only by a kind's `apply` (through the store),\nnever written directly.",
+            "properties": {
+              "assets": {
+                "default": [],
+                "description": "Every file the content uses.",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "class": {
+                      "description": "How a file may travel.",
+                      "oneOf": [
+                        {
+                          "const": "public",
+                          "description": "May be stored and rendered anywhere the space allows.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "private_local",
+                          "description": "Never leaves the host that has it (licensed or personal media:\nMetaHuman, Fab packs, fonts). Only an enrolled host renders it.",
+                          "type": "string"
+                        },
+                        {
+                          "const": "no_training",
+                          "description": "May be stored and shown, never used to train or evaluate a model.",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "location": {
+                      "description": "A path on the host or an object in the space's storage.",
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "location",
+                    "sha256",
+                    "class"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "author": {
+                "description": "A person, or a chat turn (`chat:<id>`).",
+                "type": "string"
+              },
+              "content": true,
+              "content_sha256": {
+                "description": "[`crate::digest`] of `content`.",
+                "type": "string"
+              },
+              "created_unix_ms": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "document": {
+                "type": "string"
+              },
+              "number": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "parent": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "report": {
+                "additionalProperties": false,
+                "default": {
+                  "facts": null,
+                  "warnings": []
+                },
+                "description": "The kind's check report for this content.",
+                "properties": {
+                  "facts": {
+                    "default": null,
+                    "description": "Kind-specific facts (mass, duration, sketch freedom, ...)."
+                  },
+                  "warnings": {
+                    "default": [],
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              },
+              "schema": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "document",
+              "number",
+              "author",
+              "summary",
+              "created_unix_ms",
+              "schema",
+              "content",
+              "content_sha256"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "assignment",
+          "version",
+          "requirements"
+        ],
+        "title": "Work",
+        "type": "object"
       }
     },
     "securitySchemes": {
       "appBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "labWorkerBearer": {
+        "description": "A revocable job-only labw_ key for one named space. Account sign-in keys are not accepted.",
         "scheme": "bearer",
         "type": "http"
       }
@@ -5284,6 +6800,170 @@
         ]
       }
     },
+    "/v1/labs/jobs/{id}/usage": {
+      "get": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "getLabJobUsage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "space",
+            "schema": {
+              "default": "me",
+              "description": "me or project:PROJECT_ID. Ownership comes from authentication.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabWorkerUsage"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
     "/v1/labs/kinds": {
       "get": {
         "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
@@ -5808,6 +7488,936 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LabArtifact"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/workers": {
+      "post": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "enrollLabWorker",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabWorkerEnroll"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabWorkerEnrolled"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "appBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/workers/finish": {
+      "post": {
+        "description": "Outbound job-worker operation. Checks current sign-in, account, project membership, kind access and lease before each operation. Requests cannot select another space or executable.",
+        "operationId": "finishLabWorkerJob",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabWorkerFinish"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabJobState"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "labWorkerBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/workers/heartbeat": {
+      "post": {
+        "description": "Outbound job-worker operation. Checks current sign-in, account, project membership, kind access and lease before each operation. Requests cannot select another space or executable.",
+        "operationId": "heartbeatLabWorkerJob",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabWorkerAttempt"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabWorkerWork"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "labWorkerBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/workers/poll": {
+      "post": {
+        "description": "Outbound job-worker operation. Checks current sign-in, account, project membership, kind access and lease before each operation. Requests cannot select another space or executable.",
+        "operationId": "pollLabWorker",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabWorkerPoll"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabWorkerAvailable"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "labWorkerBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/workers/start": {
+      "post": {
+        "description": "Outbound job-worker operation. Checks current sign-in, account, project membership, kind access and lease before each operation. Requests cannot select another space or executable.",
+        "operationId": "startLabWorkerJob",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabWorkerAttempt"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabWorkerWork"
+                }
+              }
+            },
+            "description": "Private, no-store result."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            },
+            "description": "Stable error code and plain-language message.",
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds before retrying.",
+                "schema": {
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "labWorkerBearer": []
+          }
+        ],
+        "tags": [
+          "Labs"
+        ]
+      }
+    },
+    "/v1/labs/workers/{id}": {
+      "delete": {
+        "description": "Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.",
+        "operationId": "revokeLabWorker",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabWorkerRevoked"
                 }
               }
             },

@@ -307,3 +307,59 @@ async fn a_worker_cannot_poll_another_authorized_stores_space() {
             .is_err()
     );
 }
+
+#[tokio::test]
+async fn cancelled_job_cannot_attach_a_late_output_name() {
+    let f = Fixture::new().await;
+    let work = f
+        .coordinator
+        .poll(&f.worker, &f.store, &f.kinds, 101)
+        .await
+        .unwrap()
+        .unwrap();
+    let attempt = Attempt {
+        job: f.job.clone(),
+        attempt: work.assignment.lease.attempt,
+    };
+    let work = f
+        .coordinator
+        .start(&f.worker, &f.store, &f.kinds, &attempt, 102)
+        .await
+        .unwrap();
+    let artifact = f
+        .store
+        .put_job_artifact(
+            &work.assignment.lease,
+            ArtifactInput {
+                version: work.version.reference(),
+                role: ArtifactRole::Build,
+                media_type: "text/plain".into(),
+                class: lab_kit::AssetClass::Public,
+                no_training: false,
+            },
+            b"output".to_vec(),
+            100,
+            103,
+        )
+        .await
+        .unwrap();
+    f.store.cancel(&f.job, 104).await.unwrap();
+    assert!(matches!(
+        f.store
+            .name_job_artifact(
+                &work.assignment.lease,
+                &work.version.reference(),
+                "output.txt",
+                &artifact.id,
+                105
+            )
+            .await,
+        Err(lab_store::Error::LeaseLost)
+    ));
+    assert!(matches!(
+        f.store
+            .named_artifact(&work.version.reference(), "output.txt")
+            .await,
+        Err(lab_store::Error::NotFound)
+    ));
+}

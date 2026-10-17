@@ -48,7 +48,12 @@ impl Authorizer for Accounts {
         let access = self
             .authorize(headers, &request.space, Action::Edit)
             .await?;
-        if !access.experimental {
+        let cad_only = request
+            .capabilities
+            .jobs
+            .iter()
+            .all(|j| j.starts_with("cad/"));
+        if !access.experimental && !(access.cad && cad_only) {
             return Err(ApiError::new(
                 StatusCode::FORBIDDEN,
                 "invite_only",

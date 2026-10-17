@@ -86,8 +86,16 @@ impl Authorizer for Auth {
         })
     }
     async fn revoke_worker(&self, h: &HeaderMap, id: &str) -> Result<(), ApiError> {
-        let a = self.authorize(h, "me", Action::Edit).await?;
-        self.credentials.revoke(&a.account, id).await?;
+        let account = if bearer(h).starts_with("labw_") {
+            let worker = self.credentials.authenticate(bearer(h), now()).await?;
+            if worker.id != id {
+                return Err(ApiError::missing());
+            }
+            worker.account
+        } else {
+            self.authorize(h, "me", Action::Edit).await?.account
+        };
+        self.credentials.revoke(&account, id).await?;
         Ok(())
     }
 }
@@ -177,6 +185,12 @@ impl Fixture {
             .unwrap();
         let r = self.app.clone().oneshot(r).await.unwrap();
         let status = r.status();
+        if path.starts_with("/v1/labs/workers") {
+            assert_eq!(
+                r.headers().get("Cache-Control").unwrap(),
+                "private, no-store"
+            );
+        }
         let bytes = r.into_body().collect().await.unwrap().to_bytes();
         (
             status,
@@ -284,6 +298,41 @@ async fn worker_revocation_and_current_membership_stop_heartbeats() {
     );
     assert_ne!(
         f.call(&token, "POST", "/v1/labs/workers/heartbeat", attempt)
+            .await
+            .0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn a_worker_can_retire_itself_but_not_another_worker() {
+    let f = Fixture::new().await;
+    let (token, id) = f.enroll().await;
+    let (_, other) = f.enroll().await;
+    assert_eq!(
+        f.call(
+            &token,
+            "DELETE",
+            &format!("/v1/labs/workers/{other}"),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        f.call(
+            &token,
+            "DELETE",
+            &format!("/v1/labs/workers/{id}"),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_ne!(
+        f.call(&token, "POST", "/v1/labs/workers/poll", json!({}))
             .await
             .0,
         StatusCode::OK

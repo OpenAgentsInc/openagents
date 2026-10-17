@@ -23,6 +23,16 @@ pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/v1/account/lab-workers/{id}", delete(revoke)),
         ("/v1/account/lab-worker-access", post(access)),
     ]
+    .into_iter()
+    .map(|(path, route)| (path, route.layer(axum::middleware::map_response(no_store))))
+    .collect()
+}
+async fn no_store(mut response: Response) -> Response {
+    response.headers_mut().insert(
+        "Cache-Control",
+        axum::http::HeaderValue::from_static("private, no-store"),
+    );
+    response
 }
 fn failed() -> Response {
     accounts::refused(
@@ -96,6 +106,9 @@ async fn enroll(
     headers: HeaderMap,
     Json(request): Json<Enroll>,
 ) -> Result<Response, Response> {
+    if headers.get_all("Authorization").iter().count() != 1 {
+        return Err(denied());
+    }
     let principal = accounts::principal(&state, &headers)?;
     let account = accounts::member_account(&principal)?;
     let session = principal.session().ok_or_else(issuer_required)?;
@@ -162,10 +175,33 @@ async fn revoke(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Response, Response> {
-    let principal = accounts::principal(&state, &headers)?;
-    let account = accounts::member_account(&principal)?;
+    if headers.get_all("Authorization").iter().count() != 1 {
+        return Err(denied());
+    }
+    let scoped = headers
+        .get("Authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .filter(|v| v.starts_with("labw_"));
+    let account = if let Some(token) = scoped {
+        let worker = authority(&state)?
+            .authenticate(token, accounts::unix_now().saturating_mul(1000))
+            .await
+            .map_err(|_| denied())?;
+        if worker.id != id {
+            return Err(accounts::refused(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "That worker could not be found.",
+            ));
+        }
+        worker.account
+    } else {
+        let principal = accounts::principal(&state, &headers)?;
+        accounts::member_account(&principal)?.to_owned()
+    };
     authority(&state)?
-        .revoke(account, &id)
+        .revoke(&account, &id)
         .await
         .map_err(|e| match e {
             lab_store::Error::NotFound => accounts::refused(

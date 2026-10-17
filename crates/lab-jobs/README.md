@@ -67,7 +67,10 @@ Derived outputs inherit `no_training` from protected inputs. Dataset, evaluation
 and trace builders receiving Lab resources use `lab_kit::check_model_use` with
 both the version and its artifacts. It also checks older output records whose
 flag was absent. Agent Lab's existing trial job applies the evaluation check.
-The current dataset, trace, and Gym builders do not import Lab resources.
+Agent Lab also inserts authorized Lab tool results into model task text. That
+boundary must check the pinned source version and the artifacts it consumes;
+operator flags cannot grant permission to use protected source data. The current
+dataset, trace, and Gym builders do not import Lab resources.
 
 `GET /v1/labs/jobs/JOB_ID/usage?space=me` returns attempts after normal space
 and kind authorization. Records distinguish service-observed elapsed time from

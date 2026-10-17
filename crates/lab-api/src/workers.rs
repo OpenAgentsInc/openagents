@@ -24,6 +24,14 @@ pub(crate) fn routes() -> Router<Arc<Api>> {
         .route("/v1/labs/workers/finish", post(finish))
         .route("/v1/labs/jobs/{id}/usage", get(usage))
         .layer(DefaultBodyLimit::max(12 * 1024 * 1024))
+        .layer(axum::middleware::map_response(worker_no_store))
+}
+async fn worker_no_store(mut response: axum::response::Response) -> axum::response::Response {
+    response.headers_mut().insert(
+        "Cache-Control",
+        axum::http::HeaderValue::from_static("private, no-store"),
+    );
+    response
 }
 fn no_workers() -> ApiError {
     ApiError::new(
@@ -57,7 +65,13 @@ async fn current(
         return Err(no_store());
     }
     let worker = api.authorizer.worker_access(headers).await?;
-    if !worker.experimental {
+    let cad_only = worker
+        .worker
+        .capabilities
+        .jobs
+        .iter()
+        .all(|j| j.starts_with("cad/"));
+    if !worker.experimental && !(worker.cad && cad_only) {
         return Err(no_workers());
     }
     if worker.worker.revoked
@@ -99,7 +113,12 @@ async fn enroll(
         .validate()
         .map_err(lab_store::Error::from)?;
     let (a, _) = api.scoped(&headers, &request.space, Action::Edit).await?;
-    if !a.experimental {
+    let cad_only = request
+        .capabilities
+        .jobs
+        .iter()
+        .all(|j| j.starts_with("cad/"));
+    if !a.experimental && !(a.cad && cad_only) {
         return Err(no_workers());
     }
     for job in &request.capabilities.jobs {
@@ -198,10 +217,9 @@ async fn usage(
     let (access, store) = api.scoped(&headers, &p.space, Action::Read).await?;
     let job = store.job(&id).await?;
     api.registry.get(&job.spec.kind, &access)?;
-    Ok(Json(
-        coordinator(&api)
-            .authority
-            .usage(&access.space, &id)
-            .await?,
-    ))
+    let coordinator = coordinator(&api);
+    coordinator
+        .observe_losses(&access.space, &store, now())
+        .await?;
+    Ok(Json(coordinator.authority.usage(&access.space, &id).await?))
 }

@@ -83,7 +83,7 @@ async fn worker_revocation_and_project_deletion_are_checked_before_each_access()
         &json!({"name":"Worker fixture"}),
     )
     .await;
-    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(status, StatusCode::OK);
     let id = project["project"]["id"]
         .as_str()
         .or_else(|| project["id"].as_str())
@@ -133,6 +133,47 @@ async fn worker_revocation_and_project_deletion_are_checked_before_each_access()
         )
         .await
         .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        post(&d, "/v1/account/lab-worker-access", Some(token), &json!({}))
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
+async fn a_job_key_can_retire_only_its_own_worker() {
+    let d = deploy(Some(account_config(None)), false).await;
+    let alice = join(&d, "Worker self revoke").await;
+    let (_, first) = post(
+        &d,
+        "/v1/account/lab-workers",
+        Some(&alice.session_token),
+        &enrollment("me"),
+    )
+    .await;
+    let (_, second) = post(
+        &d,
+        "/v1/account/lab-workers",
+        Some(&alice.session_token),
+        &enrollment("me"),
+    )
+    .await;
+    let token = first["token"].as_str().unwrap();
+    let id = first["worker"]["id"].as_str().unwrap();
+    let other = second["worker"]["id"].as_str().unwrap();
+    assert_eq!(
+        remove(&d, &format!("/v1/account/lab-workers/{other}"), token)
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        remove(&d, &format!("/v1/account/lab-workers/{id}"), token)
+            .await
+            .0,
         StatusCode::OK
     );
     assert_eq!(
