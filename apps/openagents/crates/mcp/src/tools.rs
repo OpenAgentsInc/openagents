@@ -100,7 +100,7 @@ fn catalog() -> Vec<ToolDef> {
         },
         ToolDef {
             name: "list_chats",
-            description: "Chats with their project, host device, harness/model, live status, and last activity. Newest activity first.",
+            description: "Chats with their project, host device, harness/model, harness session id (the id issue claims name), live status, and last activity. Newest activity first.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -640,6 +640,10 @@ fn summarize_chat(chat: &Chat, spaces: &[Space], sessions: &[Session]) -> Value 
         "reasoning": chat.config.as_ref().and_then(|c| c.reasoning),
         "archived": chat.archived,
         "parentChatId": chat.parent_chat_id,
+        // The harness's own session id (Claude Code session, Codex thread):
+        // the id an issue claim marker names (`session=claude-code:ID`).
+        // An empty id is the engine's "do not resume" tombstone, not a session.
+        "harnessSessionId": chat.harness_session_id.as_deref().filter(|id| !id.is_empty()),
         "status": status,
         "statusAgeSecs": status_age,
         "lastMessageAt": chat.last_message_at,
@@ -1630,6 +1634,7 @@ mod tests {
                         "id": "chat-alpha-1", "deviceId": "dev-local", "title": "Alpha",
                         "archived": false, "spaceId": "space-1",
                         "config": { "harness": "claude-code", "model": "opus", "reasoning": null, "sandbox": "workspace-write" },
+                        "harnessSessionId": "claude-session-alpha",
                         "createdAt": "2026-09-01T00:00:00Z"
                     },
                     {
@@ -1776,6 +1781,12 @@ mod tests {
         assert_eq!(listed["chats"][0]["title"], "Beta");
         assert_eq!(listed["chats"][1]["project"]["name"], "comet");
         assert_eq!(listed["chats"][1]["status"], "idle");
+        // Claim markers name this id, so an agent can map a claimed issue to its chat.
+        assert_eq!(
+            listed["chats"][1]["harnessSessionId"],
+            "claude-session-alpha"
+        );
+        assert!(listed["chats"][0]["harnessSessionId"].is_null());
 
         let read = tools
             .call("read_chat", json!({ "chat": "alpha" }))
