@@ -124,7 +124,6 @@ def main():
         secret(DATABASE_SECRET, "OPENAGENTS_WEB_ACTORS_DATABASE_URL"),
         secret("openagents-labs-production-pg-url", "OPENAGENTS_WEB_LABS_DATABASE_URL"),
         plain("OPENAGENTS_WEB_LABS_BUCKET", "openagentsgemini-web-chats-prod"),
-        plain("OPENAGENTS_WEB_LABS_SIGNING_ACCOUNT", spec.get("serviceAccountName", "157437760789-compute@developer.gserviceaccount.com")),
     ]))
     # The gateway's store read-only: the web reads only its house key.
     web["volumeMounts"] = [

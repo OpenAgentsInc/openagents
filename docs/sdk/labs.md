@@ -30,7 +30,7 @@ and ordered cursors. `Accept: text/event-stream` streams batches and accepts
 
 Direct source uploads accept base64 JSON files up to 512 KiB. Artifacts inherit
 `no_training` from their version's marked inputs. Metadata returns a 60-second
-signed Cloud Storage URL when IAM signing is configured. Local backends return
+signed Cloud Storage URL when IAM signing is configured. When IAM signing is unset, metadata returns
 an authenticated content URL with `expires_seconds: null`. Both support byte
 ranges. Never put a private-local source file in an upload.
 
