@@ -152,6 +152,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 9: CLI, Agent Lab, and web fixes
 
+**Taken 2026-10-16 22:47 CDT** by Codex (Grok 4.7) working #11934, #11929, #11925, #11727 in `~/work/openagents-lane9b`.
+
 **Released 2026-10-16 22:40 CDT** by a Claude Code subagent. #11935 is closed (`264642e0a6`). #11934's `openagents agents` command is on `main` in the same commit; its web-door switch to the shared `place` is still in the issue's patch, and the deploy and live check are in After-close checks. #11929, #11925, and #11727 are free. #11928 was claimed by another agent at 22:27.
 
 - **Owns:** `crates/openagents-cli`, `crates/openagents-login`, `crates/openagents-sdk/src/agents*`, `crates/openagents-web/src/{agents_door,attribution,pages/contact,pages/affiliates}.rs`, the web main and gateway startup paths for #11925 and #11928, and `apps/openagents/crates/engine/src/doc_host/agent_lab.rs` for #11929.
