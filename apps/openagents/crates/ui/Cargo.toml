@@ -35,6 +35,10 @@ name = "sidebar-capture"
 required-features = ["account-fixture"]
 
 [[example]]
+name = "identity-capture"
+required-features = ["account-fixture"]
+
+[[example]]
 name = "tool-progress-capture"
 required-features = ["account-fixture"]
 

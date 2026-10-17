@@ -1,6 +1,8 @@
 //! The app account control. Local workspace and model-provider logins stay separate.
-//! Signed in, it is one sidebar row whose menu holds Connect your phone, Agent
-//! Lab, and Sign out. Signed out, Connect your phone sits under Sign in.
+//!
+//! Nobody signs in (#11997, [`identity`]): a fresh computer opens the
+//! welcome, the identity's key signs in silently after that, and the sidebar
+//! row shows the person's ID, linked devices, and Back up your account.
 use crate::{
     icons::{self, icon},
     motion, popover,
@@ -14,6 +16,10 @@ use gpui_tokio::Tokio;
 use openagents_account::{Controller, Phase, Snapshot};
 use std::{future::Future, path::PathBuf, sync::Arc};
 
+mod identity;
+#[cfg(feature = "account-fixture")]
+pub use identity::capture_identity;
+
 struct GlobalAccount(Entity<AppAccount>);
 impl Global for GlobalAccount {}
 pub struct AppAccount {
@@ -21,9 +27,8 @@ pub struct AppAccount {
     pub snapshot: Snapshot,
     _watch: Option<Task<()>>,
     expiry: Option<Task<()>>,
-    opened_generation: Option<u64>,
-    automatic_browser: bool,
     menu: popover::Popup<()>,
+    id: identity::IdentityState,
 }
 impl AppAccount {
     pub fn init(data: PathBuf, cx: &mut App) {
@@ -45,13 +50,16 @@ impl AppAccount {
                 },
                 _watch: None,
                 expiry: None,
-                opened_generation: None,
-                automatic_browser: true,
                 menu: popover::Popup::default(),
+                id: Default::default(),
             },
         });
         cx.set_global(GlobalAccount(entity.clone()));
         entity.update(cx, |this, cx| {
+            let backend = this.controller.clone().map(|controller| {
+                openagents_account::desktop::identity(&data, controller, computer_name())
+            });
+            this.attach_identity(data, backend, cx);
             if let Some(credential) = credential {
                 if let Some(controller) = &this.controller {
                     let operation = controller.import_credential(credential);
@@ -67,11 +75,7 @@ impl AppAccount {
     }
     #[cfg(feature = "account-fixture")]
     pub fn install_fixture(controller: Arc<Controller>, cx: &mut App) -> Entity<Self> {
-        let account = cx.new(|cx| {
-            let mut account = Self::new(controller, cx);
-            account.automatic_browser = false;
-            account
-        });
+        let account = cx.new(|cx| Self::new(controller, cx));
         cx.set_global(GlobalAccount(account.clone()));
         account
     }
@@ -83,14 +87,6 @@ impl AppAccount {
                 let snapshot = updates.borrow_and_update().clone();
                 if this
                     .update(cx, |this, cx| {
-                        if let Phase::Waiting { url, .. } = &snapshot.phase {
-                            if this.automatic_browser
-                                && this.opened_generation != Some(snapshot.generation)
-                            {
-                                this.opened_generation = Some(snapshot.generation);
-                                cx.open_url(url);
-                            }
-                        }
                         this.expiry = None;
                         if matches!(snapshot.phase, Phase::SignedIn { .. }) {
                             let controller = this.controller.as_ref().unwrap().clone();
@@ -108,7 +104,12 @@ impl AppAccount {
                                         checked = std::time::Instant::now();
                                         let check = controller.clone();
                                         let _ = this.update(cx, |this, cx| {
-                                            this.run(check.revalidate(), cx)
+                                            this.run(check.revalidate(), cx);
+                                            // Sign in again with the key before
+                                            // the session ends.
+                                            if let Some(backend) = this.id.backend.clone() {
+                                                this.run(backend.renew(), cx);
+                                            }
                                         });
                                     }
                                     if controller.lease().is_none() {
@@ -119,6 +120,7 @@ impl AppAccount {
                             }));
                         }
                         this.snapshot = snapshot;
+                        this.identity_changed(cx);
                         cx.notify();
                     })
                     .is_err()
@@ -132,9 +134,8 @@ impl AppAccount {
             snapshot,
             _watch: Some(watch),
             expiry: None,
-            opened_generation: None,
-            automatic_browser: true,
             menu: popover::Popup::default(),
+            id: Default::default(),
         }
     }
     fn run(&mut self, f: impl Future<Output = ()> + Send + 'static, cx: &mut Context<Self>) {
@@ -148,23 +149,26 @@ impl AppAccount {
         }
         cx.notify();
     }
+    /// Where the app used to ask for a sign-in: open the welcome instead.
+    /// There is no browser sign-in or code to type.
     pub fn sign_in(&mut self, cx: &mut Context<Self>) {
+        if self.identity_enabled() {
+            self.open_welcome(cx);
+            return;
+        }
+        // The account fixture drives the older browser sign-in against its
+        // own test server.
+        #[cfg(feature = "account-fixture")]
         if let Some(c) = &self.controller {
-            let computer = gethostname::gethostname()
-                .to_string_lossy()
-                .chars()
-                .take(80)
-                .collect::<String>();
-            let operation = c.sign_in(if computer.is_empty() {
-                "This Mac".into()
-            } else {
-                computer
-            });
+            let operation = c.sign_in(computer_name());
             self.run(operation, cx);
         }
     }
+    /// Sign in silently with this computer's key, or restore a saved session.
     fn restore(&mut self, cx: &mut Context<Self>) {
-        if let Some(c) = &self.controller {
+        if let Some(backend) = self.id.backend.clone() {
+            self.run(backend.start(), cx);
+        } else if let Some(c) = &self.controller {
             let operation = c.restore();
             self.run(operation, cx);
         }
@@ -191,8 +195,11 @@ impl AppAccount {
     fn signed_in_row(&mut self, label: SharedString, cx: &mut Context<Self>) -> AnyElement {
         let theme = Theme::of(cx).for_popup();
         let open = self.menu.is_open();
+        // An npub's first letters are all `npub1`; the next one tells IDs apart.
         let initial: SharedString = label
             .trim()
+            .strip_prefix("npub1")
+            .unwrap_or(label.trim())
             .chars()
             .next()
             .map(|c| c.to_uppercase().to_string())
@@ -270,190 +277,51 @@ impl AppAccount {
             ));
         if self.menu.get().is_some() {
             let closing = self.menu.closing_since();
-            let menu = popover::popover_card(&theme)
-                .w(px(220.))
-                .on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_menu(cx)))
-                .flex()
-                .flex_col()
-                .gap(px(2.))
-                .child(
-                    popover::menu_row(&theme, false, "openagents-connect-phone")
-                        .id("openagents-connect-phone")
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.close_menu(cx);
-                            window.dispatch_action(Box::new(crate::shell::ConnectPhone), cx);
-                        }))
-                        .child(
-                            icon(icons::SMARTPHONE)
-                                .size(px(16.))
-                                .text_color(theme.text_muted),
-                        )
-                        .child(crate::shell::CONNECT_PHONE_TITLE),
-                )
-                .child(
-                    popover::menu_row(&theme, false, "openagents-agent-lab")
-                        .id("openagents-agent-lab")
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.close_menu(cx);
-                            cx.open_url("https://openagents.com/labs/agent");
-                        }))
-                        .child(icon(icons::BOT).size(px(16.)).text_color(theme.text_muted))
-                        .child(div().flex_1().child("Agent Lab"))
-                        .child(
-                            icon(icons::ARROW_UP_RIGHT)
-                                .size(px(12.))
-                                .text_color(theme.text_muted),
-                        ),
-                )
-                .child(
-                    popover::menu_row(&theme, false, "openagents-sign-out")
-                        .id("openagents-sign-out")
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.close_menu(cx);
-                            this.sign_out(cx);
-                        }))
-                        .child(
-                            icon(icons::LOGOUT_2)
-                                .size(px(16.))
-                                .text_color(theme.text_muted),
-                        )
-                        .child("Sign out"),
-                )
-                .into_any_element();
+            let menu = self.identity_menu(&theme, cx).into_any_element();
             row = row.child(popover::anchored_menu_above(
                 "openagents-account-menu",
                 menu,
                 closing,
             ));
         }
+        if self.needs_backup() {
+            row = row.child(
+                div()
+                    .absolute()
+                    .top(px(5.))
+                    .left(px(19.))
+                    .size(px(6.))
+                    .rounded_full()
+                    .bg(theme.accent),
+            );
+        }
         row.into_any_element()
-    }
-    fn button(
-        &self,
-        id: &'static str,
-        label: &'static str,
-        action: fn(&mut Self, &mut Context<Self>),
-        cx: &mut Context<Self>,
-    ) -> gpui::Stateful<gpui::Div> {
-        let theme = Theme::of(cx);
-        div()
-            .id(id)
-            .role(gpui::Role::Button)
-            .aria_label(label)
-            .tab_index(0)
-            .rounded(px(6.))
-            .px(px(8.))
-            .py(px(5.))
-            .bg(theme.glass_hover())
-            .cursor_pointer()
-            .on_click(cx.listener(move |this, _, _, cx| action(this, cx)))
-            .child(label)
     }
 }
 impl Render for AppAccount {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if !matches!(self.snapshot.phase, Phase::SignedIn { .. }) && self.menu.get().is_some() {
-            self.menu = popover::Popup::default();
-        }
-        let theme = Theme::of(cx);
-        let phase = self.snapshot.phase.clone();
-        let mut body = div()
-            .id("openagents-account")
-            .w_full()
-            .min_w_0()
-            .flex()
-            .flex_col()
-            .gap(px(6.))
-            .text_size(px(12.))
-            .text_color(theme.text);
-        match phase {
-            Phase::SignedOut { notice } => {
-                if let Some(notice) = notice {
-                    body = body.child(SharedString::from(notice));
-                }
-                body = body.child(self.button(
-                    "openagents-sign-in",
-                    "Sign in to OpenAgents",
-                    Self::sign_in,
-                    cx,
-                ));
-                // Pairing a phone needs no account.
-                body = body.child(
-                    div()
-                        .id("openagents-connect-phone")
-                        .role(gpui::Role::Button)
-                        .aria_label(crate::shell::CONNECT_PHONE_TITLE)
-                        .tab_index(0)
-                        .rounded(px(6.))
-                        .px(px(8.))
-                        .py(px(5.))
-                        .flex()
-                        .items_center()
-                        .gap(px(6.))
-                        .text_color(theme.text_muted)
-                        .cursor_pointer()
-                        .on_click(|_, window, cx| {
-                            window.dispatch_action(Box::new(crate::shell::ConnectPhone), cx);
-                        })
-                        .child(
-                            icon(icons::SMARTPHONE)
-                                .size(px(14.))
-                                .text_color(theme.text_muted),
-                        )
-                        .child(crate::shell::CONNECT_PHONE_TITLE),
-                );
-            }
-            Phase::Restoring | Phase::Starting => {
-                body = body.child(if matches!(phase, Phase::Restoring) {
-                    "Checking your login…"
-                } else {
-                    "Connecting…"
-                });
-                body = body.child(self.button("openagents-cancel", "Cancel", Self::sign_out, cx));
-            }
-            Phase::Waiting { code, url } => {
-                body = body
-                    .child("Approve login in your browser.")
-                    .child(
-                        div()
-                            .font_family(theme.font_mono.clone())
-                            .child(SharedString::from(code)),
-                    )
-                    .child(
-                        div()
-                            .id("openagents-open-browser")
-                            .role(gpui::Role::Button)
-                            .aria_label("Open browser")
-                            .tab_index(0)
-                            .cursor_pointer()
-                            .on_click(move |_, _, cx| cx.open_url(&url))
-                            .child("Open browser"),
-                    )
-                    .child(self.button("openagents-cancel", "Cancel", Self::sign_out, cx));
-            }
-            Phase::SignedIn { account } => {
-                return self.signed_in_row(account.label.into(), cx);
-            }
-            Phase::Failed {
-                message,
-                can_restore,
-            } => {
-                body = body.child(SharedString::from(message));
-                if self.controller.is_some() {
-                    body = body.child(self.button(
-                        "openagents-retry",
-                        "Retry",
-                        if can_restore {
-                            Self::restore
-                        } else {
-                            Self::sign_in
-                        },
-                        cx,
-                    ));
-                }
+        // No sign-in: the ID, or Set up your account on a fresh computer.
+        match self.identity_label() {
+            Some(label) => self.signed_in_row(label, cx),
+            None => {
+                self.menu = popover::Popup::default();
+                self.set_up_row(cx)
             }
         }
-        body.into_any_element()
+    }
+}
+
+/// This computer's name as the account lists it.
+fn computer_name() -> String {
+    let computer = gethostname::gethostname()
+        .to_string_lossy()
+        .chars()
+        .take(80)
+        .collect::<String>();
+    if computer.is_empty() {
+        "This Mac".into()
+    } else {
+        computer
     }
 }
 
