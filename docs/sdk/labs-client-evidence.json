@@ -88,14 +88,38 @@
   },
   "external_example": {
     "git_pin": "1b55b50ae17dcd47315f803a8238ab7c3c3afe82",
-    "build": "pending",
-    "production_cad_workflow": "pending deployment of the CAD kind",
-    "cleanup": "pending workflow"
+    "build": "failed before compiling the example: solidcraft-kernel requires Truck patches from the top-level workspace, which do not propagate to independent consumers",
+    "production_cad_workflow": "not run; read-only dedicated-account check at 2026-10-17T02:35:06Z did not list CAD",
+    "cleanup": "No production resources were created; no cleanup needed.",
+    "checkpoint_source": "0b0cb8e46046dabce86effbdbe04a63b41d8771a",
+    "build_command": "cargo build --locked --manifest-path Cargo.toml",
+    "exit_code": 101,
+    "dependency_errors": 18,
+    "example_compiled": false,
+    "lock_sha256": "44d202fe48203183612d29db7669ae1b18fc6f2bc233f859e006c2b14a379235",
+    "build_log_sha256": "34836bb27ece2ef89eee373998f9f9236d2dcd86100eb87ec557bf5aa6d6a264",
+    "checkpoint_archive": "docs/sdk/evidence/labs-client-external-checkpoint-2026-10-17.tar.gz",
+    "checkpoint_archive_sha256": "b23e0fd150eeeee2934e6d78ac8808b9a7c8e44acf61575ac248b89cdb8084ad"
   },
   "platforms": {
     "linux": "passed",
     "macos_ios_consumer": "pending root-coordinated warm app check",
     "wasm": "not qualified; existing SDK transport is not a browser transport"
   },
-  "publication": "No package published."
+  "publication": "No package published.",
+  "stopped_by_owner": {
+    "reason": "Consolidate into one agent; no more code, tests, or deployment from this agent.",
+    "claim_released": 11876,
+    "active_cargo_processes": 0,
+    "signal_attempt": "SIGINT to own observed process group 57047 found it already gone after build exit 101.",
+    "targets_preserved": true,
+    "production_resources_created": 0,
+    "production_credentials_copied_remote": false,
+    "remaining": [
+      "Fix the independent optional CAD dependency resolution and regenerate its lockfile.",
+      "Build the Git-pinned outside example and complete the dedicated-account CAD workflow after the kind is deployed, then verify cleanup.",
+      "Qualify the new Labs SDK on macOS and iOS consumers.",
+      "Merge final example/evidence and close the issue after acceptance."
+    ]
+  }
 }
