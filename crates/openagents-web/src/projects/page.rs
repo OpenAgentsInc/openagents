@@ -304,9 +304,9 @@ pub(crate) fn members_section(project: &Project, people: &People, csrf: &str) ->
                     form.oa-page-actions method="post" action=(format!("{base}/invite")) {
                         input type="hidden" name="csrf" value=(csrf);
                         (Input::new("github")
-                            .placeholder("GitHub username (optional)")
-                            .aria_label("GitHub username to invite")
-                            .maxlength(40))
+                            .placeholder("GitHub username or npub (optional)")
+                            .aria_label("GitHub username or npub to invite")
+                            .maxlength(70))
                         (Button::new("Invite an editor")
                             .kind(ButtonType::Submit)
                             .size(ControlSize::Sm)
@@ -791,11 +791,11 @@ async fn invite(
         )
         .await;
     }
-    // Invited by GitHub username: it waits on their Projects page.
+    // Invited by GitHub username or npub: it waits on their Projects page.
     let person = if form.github.trim().is_empty() {
         None
     } else {
-        match super::pending::github_person(&app, &headers, &form.github).await {
+        match super::pending::person(&app, &headers, &form.github).await {
             Ok(person) => Some(person),
             Err(problem) => {
                 return again(
@@ -827,7 +827,7 @@ async fn invite(
                 super::members::JOIN
             );
             let who = match person {
-                Some((github, login)) => {
+                Some((invitee, login)) => {
                     let project_name = service
                         .github_status(&headers)
                         .await
@@ -849,7 +849,7 @@ async fn invite(
                         expires_unix: made["invitation"]["expires_unix"].as_u64().unwrap_or(0),
                     };
                     if let Err(error) =
-                        super::pending::record(&app.config.chat_store, github, &waiting).await
+                        super::pending::record(&app.config.chat_store, &invitee, &waiting).await
                     {
                         eprintln!("openagents-web: project invitation for {login}: {error}");
                     }
@@ -1111,9 +1111,12 @@ async fn join(
         .await
     {
         Ok(body) => {
-            if let Some((github, _)) = &viewer.github {
-                super::pending::forget(&app.config.chat_store, *github, &code).await;
-            }
+            super::pending::forget(
+                &app.config.chat_store,
+                &super::pending::Invitee::of_viewer(&viewer),
+                &code,
+            )
+            .await;
             let id = body["project"]["id"]
                 .as_str()
                 .unwrap_or_default()

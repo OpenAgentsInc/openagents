@@ -816,3 +816,22 @@ fn the_access_list_starts_with_the_owners_accounts_and_matches_email_without_cas
     );
     assert!(access.knows("acct_y"));
 }
+
+#[test]
+fn an_account_that_passed_by_email_keeps_passing_by_account_id() {
+    use crate::cloud::connections::{Access, Seen};
+    let mut access = Access::seeded();
+    assert!(access.entry_for_account("acct_x", None).is_none());
+    access.seen.push(Seen {
+        account: "acct_x".into(),
+        via: "chris@openagents.com".into(),
+    });
+    assert_eq!(
+        access.entry_for_account("acct_x", None).as_deref(),
+        Some("chris@openagents.com"),
+        "a Nostr sign-in with no email still passes as the same account"
+    );
+    assert!(access.entry_for_account("acct_other", None).is_none());
+    assert!(access.remove("chris@openagents.com"));
+    assert!(access.entry_for_account("acct_x", None).is_none());
+}

@@ -218,6 +218,30 @@ impl Book {
             .find(|identity| identity.account == account)
     }
 
+    /// The Apple identity linked to `account`, if any.
+    #[must_use]
+    pub fn apple_of(&self, account: &str) -> Option<&super::apple::AppleIdentity> {
+        self.apple
+            .values()
+            .find(|identity| identity.account == account)
+    }
+
+    /// The email a linked identity gives for `account`, from any provider:
+    /// GitHub's verified address, then Apple's verified one, then GitHub's
+    /// public profile address.
+    #[must_use]
+    pub fn email_of(&self, account: &str) -> Option<&str> {
+        let github = self.github_of(account);
+        github
+            .and_then(|identity| identity.profile.verified_email())
+            .or_else(|| {
+                self.apple_of(account)
+                    .filter(|identity| identity.profile.email_verified)
+                    .and_then(|identity| identity.profile.email.as_deref())
+            })
+            .or_else(|| github.and_then(|identity| identity.profile.email.as_deref()))
+    }
+
     pub(super) fn validate(&self, store: &Store) -> Result<(), String> {
         if self.github.len() > MAX_IDENTITIES {
             return Err("identity book exceeds its bound".into());

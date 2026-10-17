@@ -1,3 +1,12 @@
+## Add your account ID as site admin (#12003)
+
+Site admin can now be keyed on an account ID or npub instead of your GitHub
+ID. Your account ID isn't recorded in the repository, so the GitHub entry
+(id 14167547) still keeps you admin. To move over, sign in at
+openagents.com, read `account.id` from `GET /v1/account`, put it in
+`ADMIN_ACCOUNTS` in `deploy/production/render.py` (and staging's), and
+deploy. Once that is live, the GitHub entry can be dropped.
+
 ## Reminder for Saturday 2026-10-17: set up Stripe (#11727)
 
 You said on 2026-10-16 that Stripe isn't set up yet and that you'd do it on

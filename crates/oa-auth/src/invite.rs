@@ -19,6 +19,15 @@
 //! change; logins can be renamed and then taken by someone else). An entry
 //! with only a `login` matches it case-insensitively. `admin` marks the
 //! person as a site admin: `GET /v1/account` answers `"admin": true`.
+//!
+//! `admins` names site admins by account instead of by GitHub (#12003): an
+//! account id (`acct_…`), or a Nostr key (`npub1…` or 64 hex digits) that
+//! signs the account in. An account named there is admin with or without a
+//! linked GitHub identity; the GitHub entries stay as a fallback.
+//!
+//! ```json
+//! "invite_only": {"open": true, "admins": ["acct_0123456789abcdef"], "github": [...]}
+//! ```
 
 use serde::{Deserialize, Serialize};
 
@@ -33,6 +42,28 @@ pub struct InviteOnly {
     /// GitHub accounts that may sign in.
     #[serde(default)]
     pub github: Vec<Invited>,
+    /// Site admins by account id or Nostr key, matched without GitHub.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub admins: Vec<String>,
+}
+
+/// The Nostr key an `admins` entry names, as lowercase hex, when it names
+/// one (`npub1…` or 64 hex digits).
+fn nostr_hex(entry: &str) -> Option<String> {
+    let entry = entry.trim();
+    if entry.starts_with("npub1") {
+        let key = nostr::nip19::decode_npub(entry).ok()?;
+        return Some(key.iter().map(|byte| format!("{byte:02x}")).collect());
+    }
+    (entry.len() == 64 && entry.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| entry.to_ascii_lowercase())
+}
+
+/// Whether `entry` is an account id: `acct_` and hex digits.
+fn account_id(entry: &str) -> bool {
+    entry.strip_prefix("acct_").is_some_and(|rest| {
+        !rest.is_empty() && rest.len() <= 64 && rest.bytes().all(|byte| byte.is_ascii_hexdigit())
+    })
 }
 
 /// One invited GitHub account.
@@ -68,6 +99,14 @@ impl InviteOnly {
                 return Err("every invite_only.github entry needs an `id` or a `login`".into());
             }
         }
+        for entry in &self.admins {
+            if !account_id(entry.trim()) && nostr_hex(entry).is_none() {
+                return Err(
+                    "every invite_only.admins entry is an account id (`acct_…`) or a Nostr key (`npub1…`)"
+                        .into(),
+                );
+            }
+        }
         Ok(())
     }
 
@@ -94,6 +133,25 @@ impl InviteOnly {
     #[must_use]
     pub fn admin(&self, id: u64, login: &str) -> bool {
         self.find(id, login).is_some_and(|entry| entry.admin)
+    }
+
+    /// Whether `admins` names the account `account`, by its id or by a
+    /// Nostr key among its `principals` (`nostr:<hex>`).
+    #[must_use]
+    pub fn admin_account(&self, account: &str, principals: &[String]) -> bool {
+        self.admins.iter().any(|entry| {
+            let entry = entry.trim();
+            if account_id(entry) {
+                return entry == account;
+            }
+            nostr_hex(entry).is_some_and(|hex| {
+                principals.iter().any(|principal| {
+                    principal
+                        .strip_prefix("nostr:")
+                        .is_some_and(|key| key.eq_ignore_ascii_case(&hex))
+                })
+            })
+        })
     }
 }
 
@@ -154,6 +212,34 @@ mod tests {
         assert!(open.admin(14167547, "AtlantisPleb"));
         assert!(open.find(14167547, "renamed").is_some());
         assert!(list().closed(), "absent `open` is closed");
+    }
+
+    #[test]
+    fn admins_name_an_account_by_id_or_nostr_key_without_github() {
+        let hex = "ab".repeat(32);
+        let mut key = [0u8; 32];
+        key.fill(0xab);
+        let npub = nostr::nip19::encode_npub(&key);
+        let list: InviteOnly = serde_json::from_value(serde_json::json!({
+            "open": true,
+            "admins": ["acct_0123456789abcdef", npub],
+        }))
+        .unwrap();
+        assert!(list.validate().is_ok());
+        assert!(list.admin_account("acct_0123456789abcdef", &[]));
+        assert!(!list.admin_account("acct_ffffffffffffffff", &[]));
+        assert!(list.admin_account("acct_ffffffffffffffff", &[format!("nostr:{hex}")]));
+        assert!(!list.admin_account(
+            "acct_ffffffffffffffff",
+            &[format!("nostr:{}", "cd".repeat(32))]
+        ));
+        let by_hex: InviteOnly =
+            serde_json::from_value(serde_json::json!({"admins": [hex.to_uppercase()]})).unwrap();
+        assert!(by_hex.validate().is_ok());
+        assert!(by_hex.admin_account("acct_1", &[format!("nostr:{hex}")]));
+        let bad: InviteOnly =
+            serde_json::from_value(serde_json::json!({"admins": ["AtlantisPleb"]})).unwrap();
+        assert!(bad.validate().is_err());
     }
 
     #[test]

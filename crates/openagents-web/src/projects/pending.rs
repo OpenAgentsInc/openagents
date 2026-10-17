@@ -1,9 +1,10 @@
-//! Invitations sent to a GitHub person: an owner invites by GitHub
-//! username, and the invitation waits on that person's Projects page with
-//! Join and Decline, no link to pass along. The invitation itself is the
-//! usual single-use code (#11589); this keeps it, for the person it names,
-//! in the chat store under their GitHub user id (ids never change; a login
-//! can be renamed and taken), until they join, decline, or it expires.
+//! Invitations sent to a person: an owner invites by GitHub username or by
+//! Nostr key (`npub1…`, #12003), and the invitation waits on that person's
+//! Projects page with Join and Decline, no link to pass along. The
+//! invitation itself is the usual single-use code (#11589); this keeps it,
+//! for the person it names, in the chat store under their GitHub user id
+//! (ids never change; a login can be renamed and taken) or their Nostr key,
+//! until they join, decline, or it expires.
 
 use axum::Router;
 use axum::extract::{Form, Path, State};
@@ -28,7 +29,69 @@ pub(super) fn routes() -> Router<App> {
     Router::new().route("/projects/invitations/{key}/decline", post(decline))
 }
 
-/// One invitation waiting for a GitHub person.
+/// Who an invitation waits for: a GitHub user id, or a Nostr key as
+/// lowercase hex.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Invitee {
+    Github(u64),
+    Nostr(String),
+}
+
+impl Invitee {
+    fn folder(&self) -> String {
+        match self {
+            Self::Github(id) => format!("project-invitations/github-{id}"),
+            Self::Nostr(hex) => format!("project-invitations/nostr-{hex}"),
+        }
+    }
+
+    /// Everyone the signed-in `viewer` is: their GitHub identity and their
+    /// Nostr key, whichever they have.
+    pub(crate) fn of_viewer(viewer: &crate::cloud::session::Viewer) -> Vec<Self> {
+        let mut found = Vec::new();
+        if let Some((github, _)) = &viewer.github {
+            found.push(Self::Github(*github));
+        }
+        if let Some(hex) = &viewer.nostr {
+            found.push(Self::Nostr(hex.clone()));
+        }
+        found
+    }
+}
+
+/// The Nostr key `npub` names, as lowercase hex.
+pub(crate) fn npub_hex(npub: &str) -> Option<String> {
+    let key = nostr::nip19::decode_npub(npub.trim()).ok()?;
+    Some(key.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
+/// An npub shortened for a sentence: `npub1abcdefgh…uvwxyz`.
+fn short_npub(npub: &str) -> String {
+    let npub = npub.trim();
+    if npub.len() <= 20 {
+        return npub.to_owned();
+    }
+    format!("{}…{}", &npub[..12], &npub[npub.len() - 6..])
+}
+
+/// The person `text` names, a GitHub username or an `npub1…` key, and
+/// how to name them to the owner; or what to tell the owner.
+pub(crate) async fn person(
+    app: &App,
+    headers: &HeaderMap,
+    text: &str,
+) -> Result<(Invitee, String), String> {
+    let text = text.trim();
+    if text.starts_with("npub1") {
+        return npub_hex(text)
+            .map(|hex| (Invitee::Nostr(hex), short_npub(text)))
+            .ok_or_else(|| "That npub isn't a valid Nostr key.".to_owned());
+    }
+    let (id, login) = github_person(app, headers, text).await?;
+    Ok((Invitee::Github(id), login))
+}
+
+/// One invitation waiting for a person.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub(crate) struct Pending {
     /// The single-use code Join spends.
@@ -41,10 +104,6 @@ pub(crate) struct Pending {
     pub(crate) expires_unix: u64,
 }
 
-fn folder(github: u64) -> String {
-    format!("project-invitations/github-{github}")
-}
-
 /// The invitation's name in the folder: part of its code's digest, so the
 /// code itself never shows in a URL.
 fn name_of(code: &str) -> String {
@@ -55,15 +114,19 @@ fn name_of(code: &str) -> String {
         .collect()
 }
 
-fn key(github: u64, name: &str) -> String {
-    format!("{}/{name}.json", folder(github))
+fn key(invitee: &Invitee, name: &str) -> String {
+    format!("{}/{name}.json", invitee.folder())
 }
 
-/// Keep `pending` for the GitHub person `github`.
-pub(crate) async fn record(store: &Store, github: u64, pending: &Pending) -> Result<(), Error> {
+/// Keep `pending` for `invitee`.
+pub(crate) async fn record(
+    store: &Store,
+    invitee: &Invitee,
+    pending: &Pending,
+) -> Result<(), Error> {
     let bytes = serde_json::to_vec(pending)
         .map_err(|_| Error::Invalid("The invitation could not be saved."))?;
-    let key = key(github, &name_of(&pending.code));
+    let key = key(invitee, &name_of(&pending.code));
     let current = store
         .read_key(&key)
         .await?
@@ -72,19 +135,23 @@ pub(crate) async fn record(store: &Store, github: u64, pending: &Pending) -> Res
     Ok(())
 }
 
-/// The invitations waiting for `github`, soonest to expire first, with
-/// each one's name for Decline. Drop expired invitations and invitations to
-/// projects the person already belongs to, including through another invitation.
+/// The invitations waiting for any of `invitees` (one person's GitHub
+/// identity and Nostr key), soonest to expire first, with each one's name
+/// for Decline. Drop expired invitations and invitations to projects the
+/// person already belongs to, including through another invitation.
 pub(crate) async fn waiting(
     store: &Store,
-    github: u64,
+    invitees: &[Invitee],
     projects: &[oa_auth::repos::Project],
 ) -> Vec<(String, Pending)> {
-    let Ok(keys) = store.folder_keys_limit(&folder(github), MOST * 4).await else {
-        return Vec::new();
-    };
+    let mut keys = Vec::new();
+    for invitee in invitees {
+        if let Ok(found) = store.folder_keys_limit(&invitee.folder(), MOST * 4).await {
+            keys.extend(found);
+        }
+    }
     let now = now_unix();
-    let mut found = Vec::new();
+    let mut found: Vec<(String, Pending)> = Vec::new();
     for key in keys {
         let Ok(Some((bytes, generation))) = store.read_key(&key).await else {
             continue;
@@ -98,24 +165,30 @@ pub(crate) async fn waiting(
             store.delete_key(&key, &generation).await.ok();
             continue;
         }
-        found.push((name_of(&pending.code), pending));
+        let name = name_of(&pending.code);
+        if found.iter().all(|(seen, _)| *seen != name) {
+            found.push((name, pending));
+        }
     }
     found.sort_by_key(|(_, pending)| pending.expires_unix);
     found.truncate(MOST);
     found
 }
 
-/// Stop listing the invitation named `name` for `github`.
-async fn forget_named(store: &Store, github: u64, name: &str) {
-    let key = key(github, name);
-    if let Ok(Some((_, generation))) = store.read_key(&key).await {
-        store.delete_key(&key, &generation).await.ok();
+/// Stop listing the invitation named `name` for any of `invitees`.
+async fn forget_named(store: &Store, invitees: &[Invitee], name: &str) {
+    for invitee in invitees {
+        let key = key(invitee, name);
+        if let Ok(Some((_, generation))) = store.read_key(&key).await {
+            store.delete_key(&key, &generation).await.ok();
+        }
     }
 }
 
-/// Stop listing the invitation with `code` for `github` (it was used).
-pub(crate) async fn forget(store: &Store, github: u64, code: &str) {
-    forget_named(store, github, &name_of(code)).await;
+/// Stop listing the invitation with `code` for any of `invitees` (it was
+/// used).
+pub(crate) async fn forget(store: &Store, invitees: &[Invitee], code: &str) {
+    forget_named(store, invitees, &name_of(code)).await;
 }
 
 fn valid_name(name: &str) -> bool {
@@ -247,9 +320,7 @@ async fn decline(
     if !valid_name(&name) {
         return protect(StatusCode::NOT_FOUND.into_response());
     }
-    if let Some((github, _)) = viewer.github {
-        forget_named(&app.config.chat_store, github, &name).await;
-    }
+    forget_named(&app.config.chat_store, &Invitee::of_viewer(&viewer), &name).await;
     protect(Redirect::to(PAGE).into_response())
 }
 
@@ -265,6 +336,21 @@ mod tests {
         for bad in ["", "-a", "a-", "a--b", "a b", "a/b", "a.b", &"x".repeat(40)] {
             assert!(!valid_login(bad), "{bad}");
         }
+    }
+
+    #[test]
+    fn an_npub_names_a_nostr_invitee_apart_from_github() {
+        let npub = nostr::nip19::encode_npub(&[0xab; 32]);
+        assert_eq!(npub_hex(&npub), Some("ab".repeat(32)));
+        assert_eq!(npub_hex("npub1nope"), None);
+        let nostr = Invitee::Nostr("ab".repeat(32));
+        assert_eq!(
+            nostr.folder(),
+            format!("project-invitations/nostr-{}", "ab".repeat(32))
+        );
+        assert_eq!(Invitee::Github(7).folder(), "project-invitations/github-7");
+        let short = short_npub(&npub);
+        assert!(short.starts_with("npub1") && short.contains('…') && short.len() < npub.len());
     }
 
     #[test]

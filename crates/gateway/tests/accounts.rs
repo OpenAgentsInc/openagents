@@ -2079,6 +2079,20 @@ async fn stores_install_under_accounts_config_and_validate() {
     assert!(open.admin(14167547, "AtlantisPleb"));
     config.accounts.as_mut().unwrap().invite_only = Some(open);
     assert!(config.check(&path).is_ok());
+
+    // Admins by account id or npub (#12003), beside the GitHub fallback.
+    let by_account: oa_auth::InviteOnly = serde_json::from_value(json!({
+        "open": true,
+        "admins": ["acct_0123456789abcdef"],
+        "github": [{"id": 14167547, "login": "AtlantisPleb", "admin": true}]
+    }))
+    .unwrap();
+    assert!(by_account.admin_account("acct_0123456789abcdef", &[]));
+    config.accounts.as_mut().unwrap().invite_only = Some(by_account);
+    assert!(config.check(&path).is_ok());
+    config.accounts.as_mut().unwrap().invite_only =
+        Some(serde_json::from_value(json!({"admins": ["AtlantisPleb"]})).unwrap());
+    assert!(config.check(&path).is_err());
 }
 
 #[tokio::test]

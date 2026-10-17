@@ -238,6 +238,21 @@ impl Access {
         })
     }
 
+    /// The way `account` passes by account id alone: [`Self::entry_for`]
+    /// with its `email`, or, with no email at hand (a Nostr sign-in with
+    /// no linked address, #12003), the email entry it passed through
+    /// before, while that entry is still on the list.
+    #[must_use]
+    pub fn entry_for_account(&self, account: &str, email: Option<&str>) -> Option<String> {
+        self.entry_for(account, email).or_else(|| {
+            let via = &self.seen.iter().find(|s| s.account == account)?.via;
+            self.entries
+                .iter()
+                .any(|e| e.email.as_deref() == Some(via.as_str()))
+                .then(|| via.clone())
+        })
+    }
+
     /// Whether `account` is let in without its sign-in at hand: named, or
     /// seen passing.
     #[must_use]

@@ -286,9 +286,11 @@ async fn render_with(
     let token = service
         .csrf(headers, viewer, CSRF_SCOPE, "")
         .unwrap_or_default();
-    let waiting = match (invitation_store, &viewer.github) {
-        (Some(store), Some((github, _))) => pending::waiting(store, *github, &state.projects).await,
-        _ => Vec::new(),
+    let waiting = match invitation_store {
+        Some(store) => {
+            pending::waiting(store, &pending::Invitee::of_viewer(viewer), &state.projects).await
+        }
+        None => Vec::new(),
     };
     let invited = pending::section(&waiting, &token);
     let body = view_with(

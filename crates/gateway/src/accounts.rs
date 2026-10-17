@@ -258,8 +258,14 @@ pub(crate) fn account_is_site_admin(state: &ServeState, account: &str) -> bool {
     let Ok(store) = accounts.store() else {
         return false;
     };
+    let principals = store
+        .accounts
+        .get(account)
+        .map_or(&[][..], |record| record.principals.as_slice());
     oa_auth::service::site_admin(
         config.invite_only.as_ref(),
+        account,
+        principals,
         store.identities.github_of(account),
     )
 }
@@ -1552,11 +1558,12 @@ async fn account_view(State(state): State<Arc<ServeState>>, headers: HeaderMap) 
                 "principals": record.principals,
                 "created": record.created,
                 "kind": if record.agent.is_some() { "agent" } else { "person" },
-                "email": store.identities.github_of(&record.id)
-                    .and_then(|i| i.profile.verified_email().or(i.profile.email.as_deref())),
+                "email": store.identities.email_of(&record.id),
                 "avatar_url": store.identities.github_of(&record.id).and_then(|i| i.profile.avatar()),
                 "admin": oa_auth::service::site_admin(
                     accounts_config(&state).invite_only.as_ref(),
+                    &record.id,
+                    &record.principals,
                     store.identities.github_of(&record.id),
                 ),
             },

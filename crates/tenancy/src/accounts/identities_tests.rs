@@ -148,3 +148,40 @@ fn malformed_github_principals_and_profiles_are_refused() {
     bad_login.login = "../etc".into();
     assert!(accounts.sign_in_github(&bad_login, "t").is_err());
 }
+
+#[test]
+fn email_of_answers_from_any_linked_provider() {
+    use super::apple::{AppleIdentity, AppleProfile};
+    use super::identities::{Book, GithubIdentity};
+    let mut book = Book::default();
+    let apple = |account: &str, verified: bool| AppleIdentity {
+        account: account.into(),
+        profile: AppleProfile {
+            sub: format!("sub.{account}"),
+            email: Some(format!("{account}@apple.example")),
+            email_verified: verified,
+            private_email: false,
+        },
+        linked: String::new(),
+        refreshed: String::new(),
+    };
+    book.apple.insert("a".into(), apple("acct_apple", true));
+    book.apple
+        .insert("b".into(), apple("acct_unverified", false));
+    book.github.insert(
+        "7".into(),
+        GithubIdentity {
+            account: "acct_github".into(),
+            profile: profile(7, "octo"),
+            linked: String::new(),
+            refreshed: String::new(),
+        },
+    );
+    assert_eq!(book.email_of("acct_github"), Some("octo@example.com"));
+    assert_eq!(
+        book.email_of("acct_apple"),
+        Some("acct_apple@apple.example")
+    );
+    assert_eq!(book.email_of("acct_unverified"), None);
+    assert_eq!(book.email_of("acct_nobody"), None);
+}

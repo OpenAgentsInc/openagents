@@ -336,6 +336,27 @@ async fn invite(
             );
         }
     };
+    // Or by Nostr key (#12003): `"npub": "npub1…"`.
+    let npub = match body.get("npub") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(npub)) if super::pending::npub_hex(npub).is_some() => {
+            Some(npub.trim().to_owned())
+        }
+        Some(_) => {
+            return refused(
+                StatusCode::BAD_REQUEST,
+                "invalid_request",
+                "\"npub\" is the Nostr key (npub1…) to invite.",
+            );
+        }
+    };
+    if github.is_some() && npub.is_some() {
+        return refused(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            "Send \"github\" or \"npub\", not both.",
+        );
+    }
     let (token, found) = match reach(&app, &headers, &id).await {
         Ok(found) => found,
         Err(response) => return response,
@@ -356,15 +377,26 @@ async fn invite(
         Ok(Protection::Standard) => {}
         Err(error) => return crate::coder_sync::stored(&error),
     }
-    // Invited by GitHub username: it waits on their Projects page.
-    let person = match github {
-        Some(login) => match super::pending::github_person(&app, &headers, &login).await {
-            Ok(person) => Some(person),
+    // Invited by GitHub username or npub: it waits on their Projects page.
+    let person = match (github, npub) {
+        (Some(login), _) => match super::pending::github_person(&app, &headers, &login).await {
+            Ok((id, login)) => Some((
+                super::pending::Invitee::Github(id),
+                json!({"github": login}),
+                login,
+            )),
             Err(problem) => {
                 return refused(StatusCode::BAD_REQUEST, "unknown_github_user", &problem);
             }
         },
-        None => None,
+        (None, Some(npub)) => super::pending::npub_hex(&npub).map(|hex| {
+            (
+                super::pending::Invitee::Nostr(hex),
+                json!({"npub": npub}),
+                npub.clone(),
+            )
+        }),
+        (None, None) => None,
     };
     let path = format!("/v1/projects/{}/invitations", found.project.id);
     let made = match call(
@@ -386,7 +418,7 @@ async fn invite(
     };
     let expires_unix = made["invitation"]["expires_unix"].as_u64().unwrap_or(0);
     let invitee = match person {
-        Some((github, login)) => {
+        Some((invitee, named, login)) => {
             // Who invited, as the invitation's own page names them.
             let from = call(
                 &app,
@@ -411,11 +443,11 @@ async fn invite(
                 expires_unix,
             };
             if let Err(error) =
-                super::pending::record(&app.config.chat_store, github, &waiting).await
+                super::pending::record(&app.config.chat_store, &invitee, &waiting).await
             {
                 eprintln!("openagents-web: project invitation for {login}: {error}");
             }
-            json!({"github": login})
+            named
         }
         None => Value::Null,
     };

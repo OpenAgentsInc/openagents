@@ -69,7 +69,7 @@ pub(crate) fn permitted(app: &App, viewer: &Viewer) -> bool {
     let via = if viewer.admin {
         Some("admin".to_owned())
     } else {
-        access.entry_for(&viewer.account_id, viewer.email.as_deref())
+        access.entry_for_account(&viewer.account_id, viewer.email.as_deref())
     };
     let recorded = access
         .seen

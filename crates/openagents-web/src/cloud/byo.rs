@@ -144,10 +144,18 @@ impl TokenAllow {
         }
     }
 
-    /// [`Self::admits`] for a signed-in viewer.
+    /// [`Self::admits`] for a signed-in viewer. With the list unset (the
+    /// owner only), a site admin passes by account as well, so the owner
+    /// keeps the option without an email on the account (#12003).
     #[must_use]
     pub fn admits_viewer(&self, viewer: &Viewer) -> bool {
-        self.admits(&viewer.account_id, viewer.email.as_deref())
+        self.admits_as(&viewer.account_id, viewer.email.as_deref(), viewer.admin)
+    }
+
+    /// [`Self::admits`], and with the list unset, a site admin by account.
+    #[must_use]
+    pub fn admits_as(&self, account: &str, email: Option<&str>, admin: bool) -> bool {
+        self.admits(account, email) || (admin && *self == Self::default())
     }
 }
 
@@ -516,6 +524,11 @@ mod tests {
         assert!(default.admits("acct-owner", Some("Chris@OpenAgents.com")));
         assert!(!default.admits("acct-ada", Some("ada@example.com")));
         assert!(!default.admits("acct-ada", None));
+        assert!(
+            default.admits_as("acct-owner", None, true),
+            "the owner, a site admin, passes by account without an email"
+        );
+        assert!(!default.admits_as("acct-ada", None, false));
         // Named accounts, by id or verified email.
         let named = TokenAllow::parse(Some(" alice , bob@example.com,"));
         assert!(named.admits("alice", None));
