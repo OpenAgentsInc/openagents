@@ -11,6 +11,8 @@ mod commercial;
 mod common;
 #[path = "common/funding_receiver.rs"]
 mod funding_receiver;
+#[path = "accounts_lab_workers/mod.rs"]
+mod lab_workers;
 #[path = "accounts_referrals/mod.rs"]
 mod referrals;
 #[path = "accounts_team/mod.rs"]

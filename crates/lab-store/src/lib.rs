@@ -259,6 +259,145 @@ pub struct Store {
     namespace: String,
 }
 impl Store {
+    /// Workers see only queued jobs in this already-authorized space.
+    pub async fn queued_jobs(&self, after: u64, limit: u64) -> Result<Page<JobState>> {
+        let (_, state) = self.state().await?;
+        let mut jobs: Vec<_> = state
+            .jobs
+            .values()
+            .filter(|j| {
+                j.state.status == JobStatus::Queued
+                    && state.document(&j.state.spec.version.document).is_ok()
+            })
+            .collect();
+        jobs.sort_by_key(|j| (j.created, &j.state.id));
+        page(jobs.into_iter().map(|j| j.state.clone()), after, limit)
+    }
+
+    /// A wait reason changes neither execution state nor lease ownership.
+    pub async fn wait_for_worker(&self, id: &str, message: &str, now: u64) -> Result<()> {
+        text(message, 2048)?;
+        let prior = self.job(id).await?;
+        if prior.status != JobStatus::Queued || prior.message.as_deref() == Some(message) {
+            return Ok(());
+        }
+        self.update(|s| {
+            let j = s.jobs.get_mut(id).ok_or(Error::NotFound)?;
+            if j.state.status == JobStatus::Queued && j.state.message.as_deref() != Some(message) {
+                j.state.message = Some(message.into());
+                let document = j.state.spec.version.document.clone();
+                s.event(
+                    &document,
+                    now,
+                    json!({"type":"job","id":id,"status":"queued","message":message}),
+                )?;
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    /// An expired, cancelled, or replaced worker cannot publish new outputs.
+    pub async fn put_job_artifact(
+        &self,
+        lease: &Lease,
+        input: ArtifactInput,
+        bytes: Vec<u8>,
+        max_bytes: u64,
+        now: u64,
+    ) -> Result<Artifact> {
+        self.write_artifact(input, bytes, max_bytes, now, Some(lease))
+            .await
+    }
+
+    async fn write_artifact(
+        &self,
+        input: ArtifactInput,
+        bytes: Vec<u8>,
+        max_bytes: u64,
+        now: u64,
+        lease: Option<&Lease>,
+    ) -> Result<Artifact> {
+        let elapsed = std::time::Instant::now();
+        require(
+            !bytes.is_empty() && bytes.len() as u64 <= max_bytes.min(128 * 1024 * 1024),
+            "Choose a smaller file with content.",
+        )?;
+        text(&input.media_type, 128)?;
+        require(
+            input.class != AssetClass::PrivateLocal,
+            "Keep this file on its computer.",
+        )?;
+        let version = self
+            .version(&input.version.document, input.version.version)
+            .await?;
+        let hash = sha(&bytes);
+        let no_training = input.no_training
+            || input.class == AssetClass::NoTraining
+            || version
+                .assets
+                .iter()
+                .any(|a| matches!(a.class, AssetClass::NoTraining | AssetClass::PrivateLocal));
+        let id = digest(
+            &json!({"version":input.version,"sha256":hash,"role":input.role,"media":input.media_type,"class":input.class,"no_training":no_training}),
+        );
+        let artifact = Artifact {
+            id: id.clone(),
+            version: input.version,
+            role: input.role,
+            media_type: input.media_type,
+            sha256: hash.clone(),
+            size: bytes.len() as u64,
+            class: input.class,
+            no_training,
+        };
+        if let Some(lease) = lease {
+            let (_, mut state) = self.state().await?;
+            // A lost finish response can retry the identical saved output after
+            // expiry. It cannot introduce another file or alter the finished job.
+            if state.jobs.get(&lease.job.id).is_some_and(|j| {
+                j.settled
+                    .as_ref()
+                    .is_some_and(|s| s.worker == lease.worker && s.attempt == lease.attempt)
+                    && j.state.artifacts.contains(&artifact.id)
+            }) && state.artifacts.get(&artifact.id) == Some(&artifact)
+            {
+                return Ok(artifact);
+            }
+            let observed =
+                now.saturating_add(elapsed.elapsed().as_millis().try_into().unwrap_or(u64::MAX));
+            let j = state.leased(lease, observed)?;
+            require(
+                j.state.spec.version == artifact.version
+                    && j.lease.as_ref().is_some_and(|l| l.started),
+                "Start this job before saving its outputs.",
+            )?;
+        }
+        self.backend.put(&self.namespace, &hash, bytes).await?;
+        self.update(|s| {
+            s.document(&artifact.version.document)?;
+            if let Some(lease) = lease {
+                let observed = now
+                    .saturating_add(elapsed.elapsed().as_millis().try_into().unwrap_or(u64::MAX));
+                let j = s.leased(lease, observed)?;
+                require(
+                    j.state.spec.version == artifact.version
+                        && j.lease.as_ref().is_some_and(|l| l.started),
+                    "Start this job before saving its outputs.",
+                )?;
+            }
+            if s.artifacts.insert(id.clone(), artifact.clone()).is_none() {
+                s.event(
+                    &artifact.version.document,
+                    now,
+                    json!({"type":"artifact","id":id}),
+                )?;
+            }
+            Ok(artifact.clone())
+        })
+        .await
+    }
+
     /// The hashed space address, for worker caches and rate limits.
     pub fn namespace(&self) -> &str {
         &self.namespace
@@ -661,51 +800,8 @@ impl LabStore for Store {
         max_bytes: u64,
         now: u64,
     ) -> Result<Artifact> {
-        require(
-            !bytes.is_empty() && bytes.len() as u64 <= max_bytes.min(128 * 1024 * 1024),
-            "Choose a smaller file with content.",
-        )?;
-        text(&input.media_type, 128)?;
-        require(
-            input.class != AssetClass::PrivateLocal,
-            "Keep this file on its computer.",
-        )?;
-        let version = self
-            .version(&input.version.document, input.version.version)
-            .await?;
-        let hash = sha(&bytes);
-        let no_training = input.no_training
-            || input.class == AssetClass::NoTraining
-            || version
-                .assets
-                .iter()
-                .any(|a| a.class == AssetClass::NoTraining);
-        let id = digest(
-            &json!({"version": input.version,"sha256":hash,"role":input.role,"media":input.media_type,"class":input.class,"no_training":no_training}),
-        );
-        let artifact = Artifact {
-            id: id.clone(),
-            version: input.version,
-            role: input.role,
-            media_type: input.media_type,
-            sha256: hash.clone(),
-            size: bytes.len() as u64,
-            class: input.class,
-            no_training,
-        };
-        self.backend.put(&self.namespace, &hash, bytes).await?;
-        self.update(|s| {
-            s.document(&artifact.version.document)?;
-            if s.artifacts.insert(id.clone(), artifact.clone()).is_none() {
-                s.event(
-                    &artifact.version.document,
-                    now,
-                    json!({"type":"artifact","id":id}),
-                )?;
-            }
-            Ok(artifact.clone())
-        })
-        .await
+        self.write_artifact(input, bytes, max_bytes, now, None)
+            .await
     }
     async fn artifact(&self, id: &str) -> Result<Artifact> {
         let (_, s) = self.state().await?;

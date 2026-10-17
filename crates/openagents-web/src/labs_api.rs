@@ -40,6 +40,79 @@ async fn refusal(response: Response) -> ApiError {
 }
 #[async_trait::async_trait]
 impl Authorizer for Accounts {
+    async fn enroll_worker(
+        &self,
+        headers: &HeaderMap,
+        request: &lab_jobs::protocol::Enroll,
+    ) -> Result<lab_jobs::authority::Enrolled, ApiError> {
+        let access = self
+            .authorize(headers, &request.space, Action::Edit)
+            .await?;
+        if !access.experimental {
+            return Err(ApiError::new(
+                StatusCode::FORBIDDEN,
+                "invite_only",
+                "Lab workers aren't available for this account yet.",
+            ));
+        }
+        let service = self
+            .0
+            .config
+            .cloud
+            .as_deref()
+            .ok_or_else(worker_unavailable)?;
+        service
+            .enroll_lab_worker(headers, request)
+            .await
+            .map_err(worker_error)
+    }
+
+    async fn worker_access(
+        &self,
+        headers: &HeaderMap,
+    ) -> Result<lab_jobs::protocol::Access, ApiError> {
+        let service = self
+            .0
+            .config
+            .cloud
+            .as_deref()
+            .ok_or_else(worker_unavailable)?;
+        let mut access = service
+            .lab_worker_access(headers)
+            .await
+            .map_err(worker_error)?;
+        let admin = access.experimental;
+        access.experimental |= self
+            .0
+            .config
+            .agent_accounts
+            .contains(&access.worker.account);
+        access.cad = crate::cad_gate::account_passes(
+            &self.0,
+            headers,
+            &access.worker.account,
+            admin,
+            &std::env::var(crate::cad_gate::TEST_ACCOUNTS_ENV).unwrap_or_default(),
+        );
+        bind_account(&self.0, &access.worker.account)
+            .await
+            .map_err(ApiError::from)?;
+        Ok(access)
+    }
+
+    async fn revoke_worker(&self, headers: &HeaderMap, worker: &str) -> Result<(), ApiError> {
+        let service = self
+            .0
+            .config
+            .cloud
+            .as_deref()
+            .ok_or_else(worker_unavailable)?;
+        service
+            .revoke_lab_worker(headers, worker)
+            .await
+            .map_err(worker_error)
+    }
+
     async fn authorize(
         &self,
         headers: &HeaderMap,
@@ -104,6 +177,27 @@ impl Authorizer for Accounts {
             space: target,
             experimental: id.permitted,
         })
+    }
+}
+fn worker_unavailable() -> ApiError {
+    ApiError::new(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "worker_unavailable",
+        "Lab workers aren't available right now. Try again later.",
+    )
+}
+fn worker_error(error: crate::cloud::session::SessionError) -> ApiError {
+    use crate::cloud::session::SessionError;
+    match error {
+        SessionError::Unauthenticated | SessionError::Forbidden => ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "worker_revoked",
+            "This sign-in or worker key no longer works. Sign in or add the worker again.",
+        ),
+        SessionError::InvalidRequest => {
+            ApiError::invalid("Check the worker's space, tools, and limits.")
+        }
+        _ => worker_unavailable(),
     }
 }
 fn echo_tool(name: &str, args: &Value) -> Result<Tool, ApiError> {

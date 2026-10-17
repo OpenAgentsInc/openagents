@@ -2,6 +2,7 @@
 //! Every read authorizes its space again and never starts work.
 pub mod contract;
 mod handlers;
+mod workers;
 pub use lab_kit::api::*;
 
 use async_trait::async_trait;
@@ -36,6 +37,35 @@ pub trait Authorizer: Send + Sync {
         space: &str,
         action: Action,
     ) -> Result<Access, ApiError>;
+
+    async fn enroll_worker(
+        &self,
+        _headers: &HeaderMap,
+        _request: &lab_jobs::protocol::Enroll,
+    ) -> Result<lab_jobs::authority::Enrolled, ApiError> {
+        Err(worker_unavailable())
+    }
+
+    /// The account service checks the worker key, issuing session, and current
+    /// space membership. Hosts that do not supply this check refuse workers.
+    async fn worker_access(
+        &self,
+        _headers: &HeaderMap,
+    ) -> Result<lab_jobs::protocol::Access, ApiError> {
+        Err(worker_unavailable())
+    }
+
+    async fn revoke_worker(&self, _headers: &HeaderMap, _worker: &str) -> Result<(), ApiError> {
+        Err(worker_unavailable())
+    }
+}
+
+fn worker_unavailable() -> ApiError {
+    ApiError::new(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "worker_unavailable",
+        "Lab workers aren't available right now. Try again later.",
+    )
 }
 #[derive(Clone, Copy)]
 pub enum Gate {
@@ -196,7 +226,7 @@ pub struct Api {
 }
 impl Api {
     pub fn router(self: Arc<Self>) -> Router {
-        handlers::routes().with_state(self)
+        handlers::routes().merge(workers::routes()).with_state(self)
     }
     async fn scoped(
         &self,
