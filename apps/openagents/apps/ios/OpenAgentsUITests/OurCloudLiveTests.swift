@@ -29,18 +29,18 @@ final class OurCloudLiveTests: XCTestCase {
         let row = app.cells["settings-cloudhost"]
         for _ in 0..<4 where !row.isHittable { app.swipeUp() }
         XCTAssertTrue(row.waitForExistence(timeout: 20))
-        XCTAssertTrue(app.staticTexts["Start Our cloud"].exists)
+        XCTAssertTrue(app.staticTexts["Start OpenAgents Cloud"].exists)
         row.tap()
-        XCTAssertTrue(app.staticTexts["Stop Our cloud"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Stop OpenAgents Cloud"].waitForExistence(timeout: 20))
         row.tap()
-        XCTAssertTrue(app.staticTexts["Start Our cloud"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Start OpenAgents Cloud"].waitForExistence(timeout: 20))
         capture(app, "our-cloud-controls")
         let signOut = app.cells["settings-signout"]
         for _ in 0..<8 where !signOut.isHittable { app.swipeUp() }
         signOut.tap()
         app.buttons["Sign Out"].tap()
         XCTAssertTrue(app.otherElements["cloud-chat"].waitForExistence(timeout: 15))
-        XCTAssertFalse(app.staticTexts["Stop Our cloud"].exists)
+        XCTAssertFalse(app.staticTexts["Stop OpenAgents Cloud"].exists)
     }
 
     func testStartRunAndStopOurCloud() throws {
@@ -52,18 +52,18 @@ final class OurCloudLiveTests: XCTestCase {
         app.launchArguments = ["-no-auth-browser", "-account-fixture", "-account-test-credential-url", url]
         app.launch()
 
-        // Start Our cloud from Settings.
+        // Start OpenAgents Cloud from Settings.
         openSettings(app)
         let row = app.cells["settings-cloudhost"]
         for _ in 0..<4 where !row.isHittable { app.swipeUp() }
         XCTAssertTrue(row.waitForExistence(timeout: 30), "Settings offers Our cloud")
         capture(app, "our-cloud-offered")
         row.tap()
-        XCTAssertTrue(app.staticTexts["Stop Our cloud"].waitForExistence(timeout: 120), "Our cloud starts")
+        XCTAssertTrue(app.staticTexts["Stop OpenAgents Cloud"].waitForExistence(timeout: 120), "Our cloud starts")
         capture(app, "our-cloud-starting")
 
         // Its engine joins as a device.
-        let device = app.cells.containing(NSPredicate(format: "label CONTAINS %@", "Our cloud")).matching(NSPredicate(format: "label CONTAINS %@", "Online")).firstMatch
+        let device = app.cells.containing(NSPredicate(format: "label CONTAINS %@", "OpenAgents Cloud")).matching(NSPredicate(format: "label CONTAINS %@", "Online")).firstMatch
         XCTAssertTrue(device.waitForExistence(timeout: 600), "Our cloud's engine comes online")
         capture(app, "our-cloud-online")
 
@@ -72,9 +72,9 @@ final class OurCloudLiveTests: XCTestCase {
         app.buttons["new-session"].tap()
         let host = app.buttons["composer-chip-host"]
         XCTAssertTrue(host.waitForExistence(timeout: 15))
-        if host.label != "Our cloud" {
+        if host.label != "OpenAgents Cloud" {
             host.tap()
-            let choice = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Our cloud")).firstMatch
+            let choice = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "OpenAgents Cloud")).firstMatch
             XCTAssertTrue(choice.waitForExistence(timeout: 10))
             choice.tap()
         }
@@ -97,7 +97,7 @@ final class OurCloudLiveTests: XCTestCase {
         openSettings(app)
         for _ in 0..<4 where !row.isHittable { app.swipeUp() }
         row.tap()
-        XCTAssertTrue(app.staticTexts["Start Our cloud"].waitForExistence(timeout: 120), "Our cloud stops")
+        XCTAssertTrue(app.staticTexts["Start OpenAgents Cloud"].waitForExistence(timeout: 120), "Our cloud stops")
         capture(app, "our-cloud-stopped")
     }
 }

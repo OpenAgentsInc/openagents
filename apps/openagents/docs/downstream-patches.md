@@ -491,3 +491,8 @@ links remain readable. Upstream fixes now require manual ports.
   name for the device that started the call and refreshes on device updates
   and screen return. Missing metadata keeps the last available name; choosing
   another host for a later call does not change the active call’s label.
+
+- OpenAgents Cloud wording (#12015): Settings and the new-chat computer menu
+  use **Start OpenAgents Cloud** and **Stop OpenAgents Cloud**, with matching
+  status, help, and error text. The cloud device's display name follows the
+  same wording; its service name and cloud-host API stay unchanged.

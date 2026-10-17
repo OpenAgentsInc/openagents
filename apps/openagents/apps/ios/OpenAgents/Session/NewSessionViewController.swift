@@ -33,6 +33,10 @@ struct HostOption: Equatable {
     let id: String
     let name: String
     let online: Bool
+
+    var displayName: String {
+        name == AppModel.cloudHostName ? "OpenAgents Cloud" : name
+    }
 }
 
 struct ModelChoice: Equatable {
@@ -278,7 +282,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
         } else {
             let host = app.hostOptions.first { $0.id == draft.hostId }
             chips.append(ComposerChip(id: "project", title: "No project", symbol: "tray"))
-            chips.append(ComposerChip(id: "host", title: host?.name ?? "Choose host", symbol: "desktopcomputer"))
+            chips.append(ComposerChip(id: "host", title: host?.displayName ?? "Choose host", symbol: "desktopcomputer"))
         }
         let model = models.first { $0.harness == draft.harness && $0.id == draft.model } ?? models.first { $0.harness == draft.harness }
         // Never the harness name in place of a model: a model this host
@@ -388,7 +392,7 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
             })
         }
         var hosts: [UIMenuElement] = openAgentsChoice() + app.hostOptions.filter { continuation == nil || $0.id == continuation?.deviceId() }.map { h in
-            UIAction(title: h.name, subtitle: h.online ? "Online" : "Offline", image: UIImage(systemName: h.name == AppModel.cloudHostName ? "cloud" : "desktopcomputer"), state: !onOpenAgents && h.id == draft.hostId ? .on : .off) { [weak self] _ in
+            UIAction(title: h.displayName, subtitle: h.online ? "Online" : "Offline", image: UIImage(systemName: h.name == AppModel.cloudHostName ? "cloud" : "desktopcomputer"), state: !onOpenAgents && h.id == draft.hostId ? .on : .off) { [weak self] _ in
                 self?.onOpenAgents = false
                 self?.draft.hostId = h.id
                 self?.loadModels()
@@ -396,15 +400,15 @@ final class NewSessionViewController: UIViewController, UIGestureRecognizerDeleg
         }
         if continuation == nil, app.offersCloudHost, app.cloudHostDevice?.online != true {
             let starting = app.cloudHost?.running == true
-            hosts.append(UIAction(title: starting ? "Our cloud is starting…" : "Start Our cloud", subtitle: "Runs on our computer, no desktop needed", image: UIImage(systemName: "cloud"), attributes: starting || app.cloudHostBusy ? .disabled : []) { [weak self] _ in
+            hosts.append(UIAction(title: starting ? "OpenAgents Cloud is starting…" : "Start OpenAgents Cloud", subtitle: "Runs on OpenAgents Cloud, no desktop needed", image: UIImage(systemName: "cloud"), attributes: starting || app.cloudHostBusy ? .disabled : []) { [weak self] _ in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     if let message = await self.app.setCloudHost(running: true) {
-                        let alert = UIAlertController(title: "Couldn't start Our cloud", message: message, preferredStyle: .alert)
+                        let alert = UIAlertController(title: "Couldn't start OpenAgents Cloud", message: message, preferredStyle: .alert)
                         alert.addAction(UIAlertAction(title: "OK", style: .default))
                         self.present(alert, animated: true)
                     } else {
-                        Toast.show("Starting Our cloud. Choose it under Run on when it's ready.", in: self.view.window)
+                        Toast.show("Starting OpenAgents Cloud. Choose it under Run on when it's ready.", in: self.view.window)
                     }
                 }
             })

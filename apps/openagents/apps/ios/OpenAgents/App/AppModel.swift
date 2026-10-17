@@ -759,7 +759,7 @@ final class AppModel {
 
     // MARK: Our cloud (#11852)
 
-    /// The device name Our cloud's engine shows under.
+    /// The service's device name, kept for matching existing cloud hosts.
     static let cloudHostName = "Our cloud"
     /// Our cloud's last known state; nil until read or when it isn't offered.
     private(set) var cloudHost: CloudHostView?
@@ -779,7 +779,7 @@ final class AppModel {
 
     /// Start or stop Our cloud. Returns what to tell the person when it can't.
     @MainActor func setCloudHost(running: Bool) async -> String? {
-        guard offersCloudHost, let account else { return "Log in to use Our cloud." }
+        guard offersCloudHost, let account else { return "Log in to use OpenAgents Cloud." }
         guard !cloudHostBusy else { return nil }
         cloudHostRequest &+= 1
         let generation = accountGeneration
@@ -800,17 +800,17 @@ final class AppModel {
             guard generation == accountGeneration else { return nil }
             switch error {
             case let .HostError(message), let .Auth(message), let .Network(message): return message
-            default: return "Our cloud isn't available right now. Try again later."
+            default: return "OpenAgents Cloud isn't available right now. Try again later."
             }
         } catch {
-            return "Our cloud isn't available right now. Try again later."
+            return "OpenAgents Cloud isn't available right now. Try again later."
         }
     }
 
     /// One line on Our cloud's state, for its row.
     var cloudHostDetail: String {
         if cloudHostBusy { return "Working…" }
-        guard let host = cloudHost, host.running else { return "Run sessions on our computer, no desktop needed" }
+        guard let host = cloudHost, host.running else { return "Run sessions on OpenAgents Cloud, no desktop needed" }
         if cloudHostDevice?.online != true { return "Starting… it appears under Devices when ready" }
         guard let until = host.untilUnix else { return "Running" }
         let time = DateFormatter.localizedString(from: Date(timeIntervalSince1970: TimeInterval(until)), dateStyle: .none, timeStyle: .short)

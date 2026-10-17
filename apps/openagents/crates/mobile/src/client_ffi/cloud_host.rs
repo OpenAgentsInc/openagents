@@ -33,7 +33,9 @@ pub(crate) fn message(error: &Error) -> CoreError {
         Error::Refused {
             code: Some("needs_claude"),
             ..
-        } => "Add your Claude key in Settings on openagents.com to run Claude Code on Our cloud.",
+        } => {
+            "Add your Claude key in Settings on openagents.com to run Claude Code on OpenAgents Cloud."
+        }
         // The free cloud allowance is used up (#11981).
         Error::PaymentRequired(_)
         | Error::Refused {
@@ -43,13 +45,13 @@ pub(crate) fn message(error: &Error) -> CoreError {
         Error::Refused {
             code: Some("quota_exhausted"),
             ..
-        } => "Delete an unused cloud computer before starting Our cloud.",
+        } => "Delete an unused cloud computer before starting OpenAgents Cloud.",
         Error::Forbidden
         | Error::Denied
         | Error::Refused {
             code: Some("invite_only"),
             ..
-        } => "Our cloud isn't available for this account yet.",
+        } => "OpenAgents Cloud isn't available for this account yet.",
         Error::Unauthorized | Error::ExpiredSession | Error::InvalidCredential => {
             return CoreError::Auth {
                 message: "Log in again to continue.".into(),
@@ -60,7 +62,7 @@ pub(crate) fn message(error: &Error) -> CoreError {
                 message: "Couldn't reach OpenAgents. Check your connection.".into(),
             };
         }
-        _ => "Our cloud isn't available right now. Try again later.",
+        _ => "OpenAgents Cloud isn't available right now. Try again later.",
     };
     CoreError::HostError {
         message: message.into(),
@@ -78,7 +80,7 @@ impl CoreAccount {
     async fn cloud_host_call(&self, action: Action) -> CoreResult<CloudHostView> {
         let Some(lease) = self.controller().lease() else {
             return Err(CoreError::Auth {
-                message: "Log in to use Our cloud.".into(),
+                message: "Log in to use OpenAgents Cloud.".into(),
             });
         };
         let task = openagents_client::runtime::shared().spawn(async move {
@@ -97,7 +99,7 @@ impl CoreAccount {
             Ok(Ok(host)) => Ok(host.into()),
             Ok(Err(error)) => Err(message(&error)),
             Err(_) => Err(CoreError::HostError {
-                message: "Our cloud isn't available right now. Try again later.".into(),
+                message: "OpenAgents Cloud isn't available right now. Try again later.".into(),
             }),
         }
     }
@@ -130,11 +132,12 @@ mod tests {
             code: Some("needs_claude"),
         });
         assert!(needs.to_string().contains("Claude key"));
+        assert!(needs.to_string().contains("OpenAgents Cloud"));
         let invite = message(&Error::Forbidden);
         assert!(
             invite
                 .to_string()
-                .contains("isn't available for this account")
+                .contains("OpenAgents Cloud isn't available for this account")
         );
         let used = message(&Error::Refused {
             status: 402,

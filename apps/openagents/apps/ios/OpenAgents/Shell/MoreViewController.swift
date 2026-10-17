@@ -204,10 +204,10 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
         s.appendSections(["Wallet"])
         s.appendItems([Row(id: "wallet", title: "Wallet", subtitle: "Bitcoin on this phone", symbol: "bitcoinsign.circle")])
         s.appendSections(["Devices"])
-        s.appendItems(app.hostOptions.map { Row(id: "device:\($0.id)", title: $0.name, subtitle: app.client?.deviceChannelEnabled(deviceId: $0.id) == true ? "Device connection" : ($0.online ? "Online" : "Offline"), symbol: "desktopcomputer", accessory: .dot($0.online)) })
+        s.appendItems(app.hostOptions.map { Row(id: "device:\($0.id)", title: $0.displayName, subtitle: app.client?.deviceChannelEnabled(deviceId: $0.id) == true ? "Device connection" : ($0.online ? "Online" : "Offline"), symbol: "desktopcomputer", accessory: .dot($0.online)) })
         if app.offersCloudHost {
             let on = app.cloudHost?.running == true
-            s.appendItems([Row(id: "cloudhost", title: on ? "Stop Our cloud" : "Start Our cloud", subtitle: app.cloudHostDetail, symbol: "cloud", accessory: .none, destructive: on)])
+            s.appendItems([Row(id: "cloudhost", title: on ? "Stop OpenAgents Cloud" : "Start OpenAgents Cloud", subtitle: app.cloudHostDetail, symbol: "cloud", accessory: .none, destructive: on)])
         }
         if app.voice.available {
             s.appendSections(["Voice"])
@@ -271,7 +271,7 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if let message = await self.app.setCloudHost(running: start) {
-                    let alert = UIAlertController(title: start ? "Couldn't start Our cloud" : "Couldn't stop Our cloud", message: message, preferredStyle: .alert)
+                    let alert = UIAlertController(title: start ? "Couldn't start OpenAgents Cloud" : "Couldn't stop OpenAgents Cloud", message: message, preferredStyle: .alert)
                     alert.addAction(UIAlertAction(title: "OK", style: .default))
                     self.present(alert, animated: true)
                 }
