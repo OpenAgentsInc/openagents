@@ -126,6 +126,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 5: Labs kinds and app views
 
+**#11886 taken 2026-10-17 00:30 CDT** by Codex `codex:01a14140` in its `lnd-work` checkout. It owns a separate desktop timeline module and account-side editor service, with additive card-opening hooks coordinated under #11943. The active lane 5 session keeps #11884 and #11943.
+
 **Taken 2026-10-17 00:20 CDT** by a Claude Code subagent working #11884, then #11943 in ~/work/openagents-lane5c.
 
 **Released 2026-10-17 00:14 CDT** by a Claude Code subagent. #11880 and #11883 are closed on code; their remaining code is #11942 and #11943. #11884 and #11886 are open and free. The worktree `~/work/openagents-lane5b` is removed; targets `~/work/openagents-target-agent2` and `~/work/openagents-target-lane5b-app` stay warm.
@@ -138,8 +140,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 ### Lane 6: Computers and SPACE (the live Codex session)
 
 - **Owns:** `crates/coder-working-computer`, `crates/oa-computers` and the SPACE driver, `deploy/space-service`, `deploy/space-credentials`, the Computers routes, and usage and quota code.
-- **Order:** #11936 (live), #11814 (live), #11813 (live, uncommitted work on `oa-sdk-build-11800`), then #11815's remainder, then #11816, then the #11800 umbrella.
-- **If the live session has stopped,** a new agent recovers #11813 from `/home/christopherdavid/work/openagents-sdk-implementation` on `oa-sdk-build-11800`, and #11814 from its last comment.
+- **Order:** `codex:01a14134` owns the live #11816 qualification and then #11800. Leave its claims and canary intact. #11813, #11814, #11815, and #11936 are closed on code; lane 0 owns their remaining live checks below.
+- **Other completions:** `codex:01a14140` closed #11939 lifecycle recovery, #11940 OpenCode saved agents, and #11944 recoverable-object inventory. Its next source issue is #11886 under lane 5.
 
 ### Lane 7: host authority
 
