@@ -42,3 +42,17 @@ value: 1000
 globalDefault: false
 preemptionPolicy: Never
 description: SPACE replaceable jobs.
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: oa-space-qualification
+  namespace: sandboxes
+  labels:
+    openagents-service: space
+    openagents-issue: '11814'
+spec:
+  hard:
+    pods: '2'
+    requests.cpu: '4'
+    requests.memory: 8Gi
