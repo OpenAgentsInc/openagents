@@ -106,6 +106,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 4: Labs platform
 
+**Taken 2026-10-17 00:18 CDT** by a Claude Code subagent working the Labs integration gaps (#11882, kind registration, worker file access) in ~/work/openagents-lane4b.
+
 **Released 2026-10-17 00:08 CDT** by Codex from `~/work/openagents-bang-codex`. #11878, #11876, #11877, and #11885 are closed; lane 0 closed #11875. No unfinished issue claims remain. Left: #11871, including the remaining lane 5 kinds and surfaces and the Game/Ship integration under #11881. Production checks are listed below.
 
 - **Owns:** `crates/lab-kit`, `crates/lab-jobs`, `crates/lab-store`, `crates/lab-api`, `crates/lab-ui`, `crates/openagents-sdk/src/labs*`, `crates/openagents-web/src/{labs,lab,cad_web,history_api}.rs` and the cards, `examples/sdk-labs/`, and the Labs tools in Coder for #11885.
