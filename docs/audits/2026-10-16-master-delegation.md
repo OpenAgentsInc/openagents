@@ -154,7 +154,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 **Taken 2026-10-16 22:47 CDT** by Codex (Grok 4.7) working #11934, #11929, #11925, #11727 in `~/work/openagents-lane9b`.
 
-**Released 2026-10-16 22:40 CDT** by a Claude Code subagent. #11935 is closed (`264642e0a6`). #11934's `openagents agents` command is on `main` in the same commit; its web-door switch to the shared `place` is still in the issue's patch, and the deploy and live check are in After-close checks. #11929, #11925, and #11727 are free. #11928 was claimed by another agent at 22:27.
+**Released 2026-10-16 22:40 CDT** by a Claude Code subagent. #11935 is closed (`264642e0a6`). #11934's `openagents agents` command is on `main` in the same commit; its web-door switch to the shared `place` is still in the issue's patch, and the deploy and live check are in After-close checks. #11929, #11925, and #11727 are free. #11928 is closed; the no-traffic production check is in After-close checks.
 
 - **Owns:** `crates/openagents-cli`, `crates/openagents-login`, `crates/openagents-sdk/src/agents*`, `crates/openagents-web/src/{agents_door,attribution,pages/contact,pages/affiliates}.rs`, the web main and gateway startup paths for #11925 and #11928, and `apps/openagents/crates/engine/src/doc_host/agent_lab.rs` for #11929.
 - **Order:** #11935, then #11934 (one patch covers both), then #11929, #11925, #11928, and #11727.
@@ -424,6 +424,7 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 | #11894 | A test account's terminal chat continued on the desktop: the first turn knows the history, and the phone steers it. | to do |
 | #11881 | Register `game_lab::kind::Game` and `ship_lab::kind::Ship` in `labs_api.rs` after #11877 lands, host `/labs/game/{doc}`, and install `game-lab playtest-job` as the `playtest` handler. Then, with the dedicated test account on production: a Game Lab edit plays in the web card and appears through `/v1/history`, and a Ship Lab refusal and an accepted edit. Clean up after. | to do |
 | #11815 | Read usage with the configured dedicated production test account and explain the earlier 403. | passed with `acct_83d16a35955ef908`: HTTP 200, pricing off, no charge; the earlier account remains outside the rollout. [Evidence](../sdk/computers-usage-evidence.json). |
+| #11928 | On the next production deploy, a candidate with no traffic does not resume setups or delete homes. | to do |
 
 ## Shared rules
 
