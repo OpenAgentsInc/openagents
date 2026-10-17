@@ -118,6 +118,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 7: host authority
 
+**Taken 2026-10-16 22:02 CDT** by Codex working #11817, #11911 in `~/work/openagents-bang-lanes`.
+
 - **Owns:** `crates/coder-host/src/{serve/*,enroll.rs,authority.rs,computer.rs,tasks.rs}`, `crates/coder-access` (store, enrollment, shared host APIs), and `crates/coder-pty`'s command identity.
 - **Keep source-compatible, because lane 8 consumes them:** `Host::handle`, the `authority::Grants` check, and `client::Connector`. Changes there must be additive.
 - **Don't edit (lane 8 owns them):** the appended device-channel section of `nips/openagents/NIP-HOST.md`, the new app engine serve module, the app sync transport, `crates/coder-sync/src/server/{auth,proof}.rs`, and the mobile toggle.
