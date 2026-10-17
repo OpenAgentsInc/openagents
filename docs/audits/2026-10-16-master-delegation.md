@@ -158,7 +158,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 **Taken 2026-10-16 22:47 CDT** by Codex (Grok 4.7) working #11934, #11929, #11925, #11727 in `~/work/openagents-lane9b`.
 
-The website agents door uses the shared `place` (`1708f44f49`). Deploy and the Foreman live check stay in After-close checks. #11929 is closed on code (`7fb459a5a5`). #11925 is closed on code (`534ecb5c67`). The controlled deploy check stays in After-close checks. #11727 is next.
+The website agents door uses the shared `place` (`1708f44f49`). Deploy and the Foreman live check stay in After-close checks. #11929 is closed on code (`7fb459a5a5`). #11925 is closed on code (`534ecb5c67`). The controlled deploy check stays in After-close checks. #11727 is closed on code (`ed4c8d05c4`). The named-sale test-mode check stays in After-close checks.
 
 **Released 2026-10-16 22:40 CDT** by a Claude Code subagent. #11935 is closed (`264642e0a6`). #11934's `openagents agents` command is on `main` in the same commit. #11928 is closed; the no-traffic production check is in After-close checks.
 
@@ -409,10 +409,10 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ### Growth
 
-**#11727 Affiliate attribution, part 2.** Lane 9, last.
-- **Status:** audited only.
-- **Remains (code):** carry consented attribution on `/contact` requests, owned short `/r/{handle}` handles, and a self-serve link page under the existing auth.
-- **Remains (needs Stripe):** the named-sale end-to-end check. There's no Stripe yet; the owner sets it up on 2026-10-17. Run the check after that, or close with it recorded in `NEEDS_OWNER.md`.
+**#11727 Affiliate attribution, part 2.** Lane 9. Closed on code.
+- **Status:** on `main` (`ed4c8d05c4`). A contact request records the consented click as a reference. A short `/r/{handle}` name stays beside the long link. Settings offers the link under the existing sign-in. The public terms page stays unlinked.
+- **Checks:** `cargo test -p tenancy --lib an_owned_handle_survives` passed (1). `cargo test -p openagents-web --lib` for the contact attribution, the link page, and unknown codes passed (3). `cargo test -p gateway --test accounts an_owned_short_handle` passed (1).
+- **After-close:** the named-sale test-mode check is in [After-close checks](#after-close-checks).
 - **Owner-only:** publishing the terms (`tenant-referrals publish-affiliate`), setting `inference.sats_rate`, linking `/affiliates`, and sending payouts.
 
 ## After-close checks
@@ -425,6 +425,7 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 | #11911 | Deploy a host advertising `project-sharing-v2` and the matching mobile build. With two dedicated test accounts and disposable projects, check owner approval, read-only and edit/command permissions, wrong-device and cross-project denial, retry/reconnect, expiry, scoped revocation, and account switching. Confirm unrelated chats, files, terminals, credentials, and account controls remain unavailable. Physical device and accessibility steps are in `NEEDS_OWNER.md`. | Source checks passed: access 124, host 118, sharing 12, mobile 58; deploy, live, and device checks to do |
 | #11934 | Deploy the agents door from `1708f44f49` or newer. Run `ask_foreman_cli.py` and `openagents agents ask Foreman …` with test account `acct_500d3e1d125b7782`. The web door's switch to `place` is on `main` (`1708f44f49`). | Native list/status passed. A scratch-host OpenCode assignment was accepted but refused by the engine as unsupported (#11940); the agent and assignment were cleaned up and the host stopped. The next web image includes `1708f44f49`. The original Claude Code Foreman workflow remains to do. |
 | #11925 | Deploy `534ecb5c67` or newer. With a synthetic account, confirm an account-backed computer read either succeeds or returns 503 with `Retry-After` during a traffic shift, and a delete during that gap is not applied. | to do |
+| #11727 | Deploy `ed4c8d05c4` or newer. After Stripe test mode is set up (owner, 2026-10-17), a named sale through a short link records the introduction. | to do |
 | #11936 | Redeploy the SPACE candidate with explicit zero-length framing and verify suspend and wake through Cloud Run. | Passed on existing capacity-2 with `oa-space-service-computers-00002-pch`: same-worker memory witness survived checkpoint/resume; seven protected endpoints denied; final state stopped, attempts 0. [Evidence](../cloud/evidence/2026-10-16-space-private-foundation.json). The first fixture still needs #11939 recovery. |
 | #11939 | Deploy the checked private candidate, run the explicit operator retry for the saved rejected suspend, then qualify encrypted checkpoint and resume. The [usage evidence](../sdk/computers-usage-evidence.json) has the exact request and expected child. | 31 final checks and the default build passed. Recovery image built in `e9ee09d8-da6f-4ad6-b511-90cc085888e9`, digest `sha256:a58dc392…34c8db`; packaged CLI and Cloud Run job dry-run passed. Deploy/authorization and primary live recovery: to do |
 | #11814 | Promote the checked cleanup images, install eleven measurements and nine alert policies, then run encrypted lifecycle, worker replacement, concurrent wakes, drain/rollback/placement disable, guest denial, retention, and fixture cleanup. Use the [private service runbook](../../deploy/space-service/README.md) and [receipt](../cloud/evidence/2026-10-16-space-private-foundation.json). | source checks passed 50/0; capacity-2 same-worker memory continuity and seven endpoint denials passed. Remaining deploy/replacement/rollback/storage-cleanup checks: to do |
