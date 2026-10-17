@@ -532,7 +532,11 @@ account.
    computer then signs in with its account key and receives its own
    session on that account. A computer that doesn't hear within a minute
    offers its key for another scan rather than signing in, because an
-   unlinked key that signs in makes its own account.
+   unlinked key that signs in makes its own account. On the desktop the
+   window and the engine's host can be separate processes: the window
+   writes its offer (the key and the Keychain item that holds it, never
+   the secret) to a file only its user can read, and the host writes back
+   whether it signed and whether the link landed.
 
 ### Host rules
 

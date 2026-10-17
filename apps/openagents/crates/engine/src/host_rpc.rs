@@ -16,8 +16,34 @@ pub struct Hosted {
 }
 
 /// The account key that signs a phone's request to link this computer to
-/// its account (#12000), once this computer has one.
-type AccountLink = Arc<std::sync::Mutex<Option<Arc<openagents_sync::account_link::Signer>>>>;
+/// its account (#12000), once this computer has one, and the data directory
+/// whose window offered it, where the answer is written back.
+type AccountLink = Arc<std::sync::Mutex<Option<LinkSigner>>>;
+
+#[derive(Clone)]
+struct LinkSigner {
+    signer: Arc<openagents_sync::account_link::Signer>,
+    data: Option<std::path::PathBuf>,
+}
+
+impl LinkSigner {
+    fn signed(&self) {
+        use openagents_account::desktop::identity::link;
+        let key = self.signer.key();
+        match &self.data {
+            Some(data) => link::signed_in(data, &key),
+            None => link::signed(&key),
+        }
+    }
+    fn linked(&self, key: &str) {
+        use openagents_account::desktop::identity::link;
+        match &self.data {
+            Some(data) => link::linked_in(data, key),
+            None => link::linked(key),
+        }
+    }
+}
+
 impl Hosted {
     pub async fn start(
         service: Arc<dyn RpcService>,
@@ -38,42 +64,95 @@ impl Hosted {
         })
     }
 
-    /// Follow the desktop identity's link offer for `data_dir`
-    /// (`openagents_account::desktop::identity::link::watch`): while it
-    /// offers a key, sign a scanning phone's link proof with it; keep that
-    /// signer until the phone says the link landed; otherwise sign nothing.
-    /// `extra` are key-link addresses beyond production's.
+    /// Follow the desktop identity's link offer for `data_dir`: while the
+    /// window offers a key, sign a scanning phone's link proof with it, and
+    /// write what happened back beside the offer; otherwise sign nothing.
+    ///
+    /// The window may run in this process (`link::watch`) or in another
+    /// one: the engine runs as its own background service, so it also polls
+    /// the offer file the window writes (`link::offered_key`) and reads the
+    /// key's secret from the Keychain item the file names
+    /// (`link::load_offered`). The secret is never on disk. `extra` are
+    /// key-link addresses beyond production's.
     pub fn watch_account_link(&mut self, data_dir: &std::path::Path, extra: Vec<String>) {
         use openagents_account::desktop::identity::link::{self, LinkState};
         use openagents_sync::account_link::Signer;
         let mut state = link::watch(data_dir);
         let slot = Arc::downgrade(&self.link);
+        let data = data_dir.to_owned();
         let task = self.runtime.spawn(async move {
+            // A key whose secret couldn't be read waits before the next try,
+            // so a locked Keychain isn't asked every second.
+            let mut failed: Option<(String, std::time::Instant)> = None;
             loop {
                 let Some(slot) = slot.upgrade() else { return };
-                {
-                    let mut current = slot
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    let next = match &*state.borrow_and_update() {
-                        LinkState::Offered(identity) => {
-                            let key = identity.pubkey_hex();
-                            match current.as_ref() {
-                                // The same key offered again keeps what it signed.
-                                Some(signer) if signer.key() == key => current.clone(),
-                                _ => Signer::from_nsec(&identity.nsec(), &extra).map(Arc::new),
+                let current = slot
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone();
+                let current_key = current.as_ref().map(|c| c.signer.key());
+                let here = state.borrow_and_update().clone();
+                let next = match here {
+                    // The window is in this process.
+                    LinkState::Offered(identity) => {
+                        if current_key.as_deref() == Some(identity.pubkey_hex().as_str()) {
+                            current
+                        } else {
+                            Signer::from_nsec(&identity.nsec(), &extra).map(|signer| LinkSigner {
+                                signer: Arc::new(signer),
+                                data: Some(data.clone()),
+                            })
+                        }
+                    }
+                    // Keep the signer so the phone can say the link landed.
+                    LinkState::Signed(key) => {
+                        current.filter(|_| current_key.as_deref() == Some(key.as_str()))
+                    }
+                    LinkState::Linked(_) => None,
+                    // Perhaps a window in another process: read its file.
+                    LinkState::Idle => {
+                        let at = coder_access::unix_time().unwrap_or(0);
+                        match link::offered_key(&data, at) {
+                            None => None,
+                            Some(key) if current_key.as_deref() == Some(key.as_str()) => current,
+                            Some(key)
+                                if failed.as_ref().is_some_and(|(k, at)| {
+                                    *k == key && at.elapsed() < std::time::Duration::from_secs(30)
+                                }) =>
+                            {
+                                None
+                            }
+                            Some(key) => {
+                                let (data, extra) = (data.clone(), extra.clone());
+                                let loaded = tokio::task::spawn_blocking(move || {
+                                    let identity = link::load_offered(&data, at)?;
+                                    Signer::from_nsec(&identity.nsec(), &extra).map(|signer| {
+                                        LinkSigner {
+                                            signer: Arc::new(signer),
+                                            data: Some(data),
+                                        }
+                                    })
+                                })
+                                .await
+                                .ok()
+                                .flatten();
+                                failed = loaded.is_none().then(|| (key, std::time::Instant::now()));
+                                loaded
                             }
                         }
-                        // Signed: keep the signer so the phone can say the
-                        // link landed.
-                        LinkState::Signed(key) => current.clone().filter(|s| s.key() == *key),
-                        LinkState::Idle | LinkState::Linked(_) => None,
-                    };
-                    *current = next;
-                }
+                    }
+                };
+                *slot
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = next;
                 drop(slot);
-                if state.changed().await.is_err() {
-                    return;
+                tokio::select! {
+                    changed = state.changed() => {
+                        if changed.is_err() {
+                            return;
+                        }
+                    }
+                    () = tokio::time::sleep(link::POLL) => {}
                 }
             }
         });
@@ -89,7 +168,8 @@ impl Hosted {
         *self
             .link
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = signer;
+            .unwrap_or_else(std::sync::PoisonError::into_inner) =
+            signer.map(|signer| LinkSigner { signer, data: None });
     }
     pub async fn configure_sync(
         &self,
@@ -265,7 +345,7 @@ impl AppRpc {
         {
             return Err(Code::MissingRight);
         }
-        let signer = self
+        let link = self
             .link
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -273,8 +353,10 @@ impl AppRpc {
             .ok_or(Code::Unsupported)?;
         let now = coder_access::unix_time().map_err(|e| e.code)?;
         let (grant, _) = grant.ok_or(Code::Forbidden)?;
-        let value = signer.sign(grant, admission.expires_at, &request.params, now)?;
-        openagents_account::desktop::identity::link::signed(&signer.key());
+        let value = link
+            .signer
+            .sign(grant, admission.expires_at, &request.params, now)?;
+        link.signed();
         let answer = Answer {
             method: request.method,
             value,
@@ -298,15 +380,15 @@ impl AppRpc {
         {
             return Err(Code::MissingRight);
         }
-        let signer = self
+        let link = self
             .link
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clone()
             .ok_or(Code::Unsupported)?;
         let (grant, _) = grant.ok_or(Code::Forbidden)?;
-        let key = signer.confirm(grant, &request.params)?;
-        openagents_account::desktop::identity::link::linked(&key);
+        let key = link.signer.confirm(grant, &request.params)?;
+        link.linked(&key);
         Ok(Answer {
             method: request.method,
             value: serde_json::json!({}),
