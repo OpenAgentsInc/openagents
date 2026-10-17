@@ -12,7 +12,7 @@ use openagents_markdown::parser::{Block, BlockTree, IncrementalParser, InlineRun
 use openagents_proto::ToolCall;
 use openagents_text::WhiteSpace;
 
-use super::display::{ColorRole, Decoration, DisplayBuilder, FadeEdge, WidgetKind};
+use super::display::{ColorRole, Decoration, DisplayBuilder, FadeEdge, LinkHit, WidgetKind};
 use super::file_icons::{basename, file_icon_asset};
 use super::markdown::{Ctx, PText, Px, SpanPaint, place_text, prepare_plain};
 use super::rows::{Content, RowBuilder, RowCore, RowKind, next_version, place_text_lines, quick_hash, row_key};
@@ -49,6 +49,8 @@ pub(crate) struct ToolLine {
     pub detail: Option<PText>,
     /// File calls show a badge: (file-icon asset, basename).
     pub badge: Option<(String, PText)>,
+    /// An image file's badge opens it full size (an `openagents-preview:` link).
+    pub open_link: Option<String>,
     pub failed: bool,
     pub running: bool,
     pub key: u64,
@@ -804,6 +806,11 @@ impl RowBuilder {
                         } else {
                             file_path(call).map(|p| (file_icon_asset(p), prepare_plain(ctx, basename(p), st.label, st.lh, if *is_error { ColorRole::Danger } else { ColorRole::TextSoft }, WhiteSpace::Pre)))
                         };
+                        // An absolute image path opens full size from its badge,
+                        // like a sent prompt's image chip.
+                        let open_link = file_path(call)
+                            .filter(|p| badge.is_some() && !*is_error && openagents_proto::attachment_mentions::is_image_path(p) && std::path::Path::new(p).is_absolute())
+                            .map(super::rows::image_preview_link);
                         let detail_color = if agents && !*is_error { ColorRole::TextSoft } else { color };
                         let detail = (badge.is_none() && !detail.is_empty()).then(|| prepare_plain(ctx, &detail, st.label, st.lh, detail_color, WhiteSpace::Pre));
                         let open = !agents && self.detail_open.get(&dkey).copied().unwrap_or(false);
@@ -817,6 +824,7 @@ impl RowBuilder {
                             label: prepare_plain(ctx, label, if agents { medium } else { st.label }, st.lh, color, WhiteSpace::Pre),
                             detail,
                             badge,
+                            open_link,
                             failed: *is_error,
                             running,
                             key: dkey,
@@ -844,6 +852,7 @@ impl RowBuilder {
                             label: prepare_plain(ctx, "Thought process", st.label, st.lh, ColorRole::TextSecondary, WhiteSpace::Pre),
                             detail: None,
                             badge: None,
+                            open_link: None,
                             failed: false,
                             running: false,
                             key: dkey,
@@ -947,6 +956,9 @@ fn place_line_header(line: &ToolLine, px: Px, x: f32, ry: f32, cw: f32, o: &mut 
                 None,
             );
             place_text_lines(name, dx + d(px, 27.0), ry + (row_h - name.lh) / 2.0, (bw - d(px, 33.0)).max(1.0), 1, px, o);
+            if let Some(url) = &line.open_link {
+                o.links.push(LinkHit { x: dx, y: by, w: bw, h: bh, url: url.clone(), scroller: o.scroller });
+            }
         }
     } else if let Some(detail) = &line.detail {
         if avail > 1.0 {

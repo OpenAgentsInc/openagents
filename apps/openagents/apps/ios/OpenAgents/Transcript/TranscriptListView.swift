@@ -584,7 +584,12 @@ final class TranscriptListView: UIScrollView, RowViewDelegate, UIScrollViewDeleg
                 .queryItems?.first(where: { $0.name == "ref" })?.value
             else { return }
             Task { @MainActor [weak self, weak view, weak vc] in
-                guard let image = await self?.imageFetcher?(reference), let view, let vc else { return }
+                let image = await self?.imageFetcher?(reference)
+                guard let view, let vc else { return }
+                guard let image else {
+                    Toast.show("Image unavailable", in: vc.view.window)
+                    return
+                }
                 vc.present(ImageViewer(image: image, source: view), animated: true)
             }
             return

@@ -313,6 +313,8 @@ private final class ShimmerText: UIView {
 
 /// Tap target for one tool row's inline detail.
 final class ToolToggleControl: UIControl {
+    var detail: UInt64 = 0
+    var open = false
     override var isHighlighted: Bool {
         didSet { backgroundColor = isHighlighted ? Palette.controlFill : .clear }
     }

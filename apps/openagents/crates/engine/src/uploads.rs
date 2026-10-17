@@ -402,6 +402,17 @@ impl Uploads {
     }
 }
 
+/// The system temp dirs (`$TMPDIR` and, on Unix, `/tmp`): extra read roots
+/// for images agents write and Read while they work, so their tool chips
+/// open. Like every root but uploads, reads there are image-only.
+pub fn temp_roots() -> Vec<PathBuf> {
+    let mut roots = vec![std::env::temp_dir()];
+    if cfg!(unix) && !roots.iter().any(|r| r == Path::new("/tmp")) {
+        roots.push(PathBuf::from("/tmp"));
+    }
+    roots
+}
+
 struct InspectedFile {
     resolved: PathBuf,
     name: String,
@@ -676,6 +687,21 @@ mod tests {
         let target = uploads.pending_target("../../../etc", "../../passwd");
         assert!(target.starts_with(dir.path()));
         assert!(!target.to_string_lossy().contains(".."));
+    }
+
+    #[test]
+    fn temp_roots_admit_images_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let uploads = Uploads::from_root(dir.path());
+        let scratch = tempfile::tempdir_in(std::env::temp_dir()).unwrap();
+        let image = scratch.path().join("shot.png");
+        let text = scratch.path().join("notes.txt");
+        std::fs::write(&image, b"png").unwrap();
+        std::fs::write(&text, b"secret").unwrap();
+        let roots = temp_roots();
+        assert!(uploads.read_chunk(image.to_str().unwrap(), 0, &[]).is_err());
+        assert!(uploads.read_chunk(image.to_str().unwrap(), 0, &roots).is_ok());
+        assert!(uploads.read_chunk(text.to_str().unwrap(), 0, &roots).is_err());
     }
 
     #[test]

@@ -839,3 +839,49 @@ fn a_live_visual_that_is_a_lab_card_becomes_a_lab_row_until_it_goes() {
     w.merge_labs();
     assert_eq!(w.pass().placement(0).unwrap().kind, RowKind::Visual);
 }
+
+#[test]
+fn image_read_badge_opens_the_image() {
+    use openagents_doc::parts::{MessagePart, MessageStatus};
+    use openagents_doc::schema::{MessageRole, SessionMessageEntry};
+    let read = |id: &str, path: &str| MessagePart::Tool {
+        id: id.into(),
+        call: openagents_proto::ToolCall::ReadFile { path: path.into() },
+        is_error: false,
+        resolved: true,
+        output: None,
+        diff: None,
+        output_ref: None,
+        output_bytes: None,
+        diff_ref: None,
+        diff_stats: None,
+        subagent_ref: None,
+        subagent_status: None,
+        subagent_tail: None,
+    };
+    let mut w = worker(390.0);
+    w.input = TranscriptInput {
+        entries: vec![Arc::new(SessionMessageEntry {
+            id: "a".into(),
+            role: MessageRole::Assistant,
+            parts: vec![read("r1", "/tmp/oa-att/shot one.png"), read("r2", "/repo/src/main.rs"), read("r3", "relative.png")],
+            created_at: 0,
+            device_id: String::new(),
+            status: Some(MessageStatus::Complete),
+            continuation_of: None,
+            duration_ms: None,
+        })],
+        ..Default::default()
+    };
+    let key = w.pass().placement(0).unwrap().key;
+    w.builder.expanded.insert(key);
+    w.builder.invalidate(key);
+    let frame = w.pass();
+    let d = frame.display(0).unwrap();
+    // Only the absolute image path links; source files and relative paths don't.
+    let links: Vec<&str> = d.links.iter().map(|l| l.url.as_str()).collect();
+    assert_eq!(links, ["openagents-preview://image?ref=%2Ftmp%2Foa-att%2Fshot%20one.png"]);
+    let badge = d.boxes.iter().find(|b| b.color == display::ColorRole::ToolBadge).expect("badge");
+    let hit = &d.links[0];
+    assert!((hit.x - badge.x).abs() < 0.5 && (hit.y - badge.y).abs() < 0.5 && (hit.w - badge.w).abs() < 0.5);
+}

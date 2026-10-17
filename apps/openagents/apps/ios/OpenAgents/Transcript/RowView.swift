@@ -74,7 +74,7 @@ final class RowView: UIView {
     private func rebuildLinkElements(_ d: RowDisplay) {
         linkElements = d.links.map { l in
             let e = UIAccessibilityElement(accessibilityContainer: self)
-            e.accessibilityLabel = URL(string: l.url)?.host() ?? l.url
+            e.accessibilityLabel = l.url.hasPrefix("openagents-preview:") ? "Open image" : URL(string: l.url)?.host() ?? l.url
             e.accessibilityValue = l.url
             e.accessibilityTraits = .link
             e.accessibilityIdentifier = "transcript-link"
@@ -291,13 +291,11 @@ final class RowView: UIView {
                 view = ToolRailView(key: d.key, trunkX: trunkX, bend: bend, branchEnd: branchEnd, rowMid: rowMid, tops: tops, heights: heights, rowWidth: CGFloat(d.width) - rect.minX, live: live)
             case let .toolToggle(detail, open):
                 let b = ToolToggleControl()
+                b.detail = detail
+                b.open = open
                 b.accessibilityTraits = .button
                 b.accessibilityLabel = open ? "Hide details" : "Show details"
-                b.addAction(UIAction { [weak self] _ in
-                    guard let self else { return }
-                    UISelectionFeedbackGenerator().selectionChanged()
-                    self.delegate?.rowView(self, toggleDetail: detail, open: open)
-                }, for: .touchUpInside)
+                b.addTarget(self, action: #selector(toolToggleTapped(_:event:)), for: .touchUpInside)
                 view = b
             case .shimmer:
                 view = ShimmerView(model: model!, rect: rect)
@@ -345,6 +343,17 @@ final class RowView: UIView {
         let image = (name.hasPrefix("tool-") || name.hasPrefix("fileicon-")) ? UIImage(named: name) : nil
         assets[name] = image
         return image
+    }
+
+    /// A tool row toggles its details, except on a link inside it (an image
+    /// file's badge), which opens instead: the control swallows the list's tap.
+    @objc private func toolToggleTapped(_ sender: ToolToggleControl, event: UIEvent) {
+        if let touch = event.allTouches?.first, let url = link(at: touch.location(in: self)) {
+            delegate?.rowView(self, open: url)
+            return
+        }
+        UISelectionFeedbackGenerator().selectionChanged()
+        delegate?.rowView(self, toggleDetail: sender.detail, open: sender.open)
     }
 
     @objc private func openImage(_ tap: UITapGestureRecognizer) {

@@ -622,7 +622,7 @@ struct UserChip {
 }
 
 /// The link an image chip opens: the host attachment ref, percent-encoded.
-fn image_preview_link(reference: &str) -> String {
+pub(crate) fn image_preview_link(reference: &str) -> String {
     let mut out = String::from("openagents-preview://image?ref=");
     for byte in reference.bytes() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
