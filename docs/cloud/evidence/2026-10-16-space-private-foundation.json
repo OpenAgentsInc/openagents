@@ -418,7 +418,11 @@
       "image_build": {
         "id": "5eb5c6a0-3ee9-4060-83a6-f801d060c191",
         "source": "086e81e505a0b89ed4a2b3f6fb53ed56851f6a3a",
-        "status": "building; no promotion requested until checks and digest capture"
+        "status": "success",
+        "images": {
+          "api": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/api-cleanup@sha256:0aee5f68945231fc28034cffd0d8f844fed7a4f18c6be674997b6a155dd6e060",
+          "cluster-controller": "us-central1-docker.pkg.dev/openagentsgemini/oa-space-service/native/cluster-controller-cleanup@sha256:f9fbc943591a5a7b7404a6fb18e39ad66ca49ac6e03527bd1c15a1970219906f"
+        }
       }
     },
     "capacity": {

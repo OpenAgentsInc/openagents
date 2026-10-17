@@ -58,7 +58,8 @@ writes each have a 64 MiB budget within the transfer service's 1 GiB memory limi
 ## Native service qualification
 
 Render the pinned production charts with `render.sh`. `image-pins.json` records
-all deployed native images, the TLS startup fix for the migration CLI, and the
+the desired native images, previous rollback pins, the TLS startup fix for the
+migration CLI, and the
 private streaming frontend. The maintained seed recipe selects the public
 Firecracker CI kernel by its verified digest; it does not claim the upstream
 custom BPF profile whose configuration is absent from the public source.
@@ -111,8 +112,9 @@ two deletions at once and the existing one-hour upload grace. Each prefix has a
 later retry. Automatic checkpoint retention keeps the newest three generations,
 with a one-hour minimum age and at most eight candidates per pass. Run
 `cleanup-check-cloudbuild.yaml` against the exact patch commit
-before building or promoting replacement API and controller images. Existing
-image pins remain in effect until those checks and live cleanup pass.
+before building or promoting replacement API and controller images. The checked candidate digests are pinned with their previous rollback images.
+The running deployment remains on its previous images until lane 0 applies the
+rendered manifests and records the live checks.
 
 The deployment is still under qualification. A healthy process and successful
 database migration do not prove checkpoint recovery, capacity admission,
