@@ -56,6 +56,8 @@ fn request(method: Method) -> Operation {
                 json!({"chatId":"chat","entry":{"id":"command"}})
             } else if method == Method::ContinueChat {
                 json!({"account":"fixture","chatId":"a1000000-0000-4000-8000-000000000001","target":{"id":"a1000000-0000-4000-8000-000000000002","home":"cloud"}})
+            } else if method == Method::PrepareContinuation {
+                json!({"chatId":"a1000000-0000-4000-8000-000000000002","source":{"account":"fixture","chat":"a1000000-0000-4000-8000-000000000001","revision":1}})
             } else {
                 json!({})
             },
@@ -65,25 +67,23 @@ fn request(method: Method) -> Operation {
 
 #[test]
 fn continuations_require_observe_and_operate_before_any_effect() {
-    let fixture = Fixture::local();
-    let mut app = App::default();
-    for (rights, missing) in [("observe", Right::Operate), ("operate", Right::Observe)] {
-        let (_, client) = enrolled(&fixture, rights, &mut app);
-        let pending = client
-            .prepare(request(Method::ContinueChat), now())
-            .unwrap();
-        let error = call(&fixture, &client, &pending, &mut app).unwrap_err();
-        assert_eq!(error.code, Code::MissingRight);
-        assert_eq!(error.missing, Some(missing));
+    for method in [Method::ContinueChat, Method::PrepareContinuation] {
+        let fixture = Fixture::local();
+        let mut app = App::default();
+        for (rights, missing) in [("observe", Right::Operate), ("operate", Right::Observe)] {
+            let (_, client) = enrolled(&fixture, rights, &mut app);
+            let pending = client.prepare(request(method), now()).unwrap();
+            let error = call(&fixture, &client, &pending, &mut app).unwrap_err();
+            assert_eq!(error.code, Code::MissingRight);
+            assert_eq!(error.missing, Some(missing));
+        }
+        assert_eq!(app.effects, 0);
+        let (_, client) = enrolled(&fixture, "observe,operate", &mut app);
+        let pending = client.prepare(request(method), now()).unwrap();
+        let first = call(&fixture, &client, &pending, &mut app).unwrap();
+        assert_eq!(first, call(&fixture, &client, &pending, &mut app).unwrap());
+        assert_eq!(app.effects, 1);
     }
-    assert_eq!(app.effects, 0);
-    let (_, client) = enrolled(&fixture, "observe,operate", &mut app);
-    let pending = client
-        .prepare(request(Method::ContinueChat), now())
-        .unwrap();
-    let first = call(&fixture, &client, &pending, &mut app).unwrap();
-    assert_eq!(first, call(&fixture, &client, &pending, &mut app).unwrap());
-    assert_eq!(app.effects, 1);
 }
 fn call(f: &Fixture, client: &Client, pending: &Pending, app: &mut App) -> Result<Outcome> {
     let reply = f

@@ -47,6 +47,7 @@ pub enum Method {
     ListCommands,
     RelayCommand,
     ContinueChat,
+    PrepareContinuation,
 }
 impl Method {
     pub fn as_str(self) -> &'static str {
@@ -59,22 +60,31 @@ impl Method {
             Self::ListCommands => "ListCommands",
             Self::RelayCommand => "RelayCommand",
             Self::ContinueChat => "ContinueChat",
+            Self::PrepareContinuation => "PrepareContinuation",
         }
     }
     pub fn right(self) -> Right {
         match self {
-            Self::RelayCommand | Self::AuthorizeSync | Self::ContinueChat => Right::Operate,
+            Self::RelayCommand
+            | Self::AuthorizeSync
+            | Self::ContinueChat
+            | Self::PrepareContinuation => Right::Operate,
             _ => Right::Observe,
         }
     }
     pub fn reads_only(self) -> bool {
-        !matches!(self, Self::RelayCommand | Self::ContinueChat)
+        !matches!(
+            self,
+            Self::RelayCommand | Self::ContinueChat | Self::PrepareContinuation
+        )
     }
     pub fn first_missing(self, rights: &crate::Rights) -> Option<Right> {
         if !rights.contains(self.right()) {
             return Some(self.right());
         }
-        (self == Self::ContinueChat && !rights.contains(Right::Observe)).then_some(Right::Observe)
+        (matches!(self, Self::ContinueChat | Self::PrepareContinuation)
+            && !rights.contains(Right::Observe))
+        .then_some(Right::Observe)
     }
 }
 
@@ -126,6 +136,22 @@ impl Request {
                         "continuation needs its account, source, and destination",
                     ));
                 }
+            }
+        }
+        if self.method == Method::PrepareContinuation {
+            for value in [&self.params["chatId"], &self.params["source"]["account"], &self.params["source"]["chat"]] {
+                if !value.as_str().is_some_and(|s| !s.is_empty() && s.len() <= 256 && !s.chars().any(char::is_control)) {
+                    return Err(Error::new(Code::Malformed, "continuation needs its account, source, and destination"));
+                }
+            }
+            if !self.params["source"]["revision"]
+                .as_u64()
+                .is_some_and(|r| r > 0)
+            {
+                return Err(Error::new(
+                    Code::Malformed,
+                    "continuation needs its revision",
+                ));
             }
         }
         Ok(())
