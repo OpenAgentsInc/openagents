@@ -1,0 +1,14 @@
+[Unit]
+Description=Measure private SPACE health and operation age
+After=oa-space-k3s.service
+RequiresMountsFor=/space
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /space/config/deployment-tools/monitor.py --publish
+TimeoutStartSec=100
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true

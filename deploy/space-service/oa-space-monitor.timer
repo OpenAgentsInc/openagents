@@ -1,0 +1,12 @@
+[Unit]
+Description=Measure private SPACE every minute
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=60
+RandomizedDelaySec=5
+Persistent=true
+Unit=oa-space-monitor.service
+
+[Install]
+WantedBy=timers.target
