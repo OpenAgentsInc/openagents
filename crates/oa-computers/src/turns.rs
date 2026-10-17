@@ -637,6 +637,15 @@ pub async fn run_next<D: Driver + Clone + 'static>(
     if t.api_command {
         return crate::commands::run(store, secrets, p, lease, e, awake, t, heartbeat).await;
     }
+    // Queueing can race the visit's initial claim. Bind this turn's automatic
+    // stop to the intent seen at dispatch, while preserving later user requests.
+    let Some(dispatch_entry) = store.get(&e.owner, &e.id).await.map_err(io)? else {
+        return Ok(Settled::Idle(awake));
+    };
+    if dispatch_entry.desired != Desired::Running {
+        return Ok(Settled::Idle(awake));
+    }
+    let dispatch_intent_generation = dispatch_entry.intent_generation;
     let resource = awake.resource().unwrap_or_default().to_owned();
     if t.state == "running" {
         // A turn that was running when a process stopped: its process and
@@ -817,7 +826,7 @@ pub async fn run_next<D: Driver + Clone + 'static>(
         let _ = store
             .settle_desired(
                 &e.id,
-                e.intent_generation,
+                dispatch_intent_generation,
                 Desired::Running,
                 Desired::Stopped,
             )

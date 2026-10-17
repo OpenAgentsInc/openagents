@@ -26,6 +26,79 @@ fn admin() -> Option<String> {
     (!url.is_empty()).then_some(url)
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn a_turn_queued_after_the_visit_claim_still_stays_stopped_when_complete() {
+    let Some(admin) = admin() else { return };
+    let (db, _) = Db::scratch(&admin).await.unwrap();
+    let store = Store::new(db);
+    let dir = tempfile::tempdir().unwrap();
+    let fake = FakeDriver::new(dir.path()).boot_observations(0);
+    let secrets = Secrets::default();
+    let base = api_with(store.clone(), fake.capabilities(), secrets.clone()).await;
+    let (_, made) = call(
+        reqwest::Method::POST,
+        format!("{base}/v1/computers"),
+        "claim-race",
+        Some(json!({"chat":"claim-race"})),
+    )
+    .await;
+    let id = made["id"].as_str().unwrap();
+    let entry = store
+        .claim("claim-race", Duration::from_secs(30))
+        .await
+        .unwrap()
+        .unwrap();
+    store
+        .add_turn(
+            "queued-after-claim",
+            id,
+            "claim-race",
+            "echo once >> counter",
+            None,
+            10,
+            &[],
+        )
+        .await
+        .unwrap();
+    assert!(
+        store
+            .get("claim-race", id)
+            .await
+            .unwrap()
+            .unwrap()
+            .intent_generation
+            > entry.intent_generation
+    );
+    let r = Rc::new(Reconciler {
+        store: store.clone(),
+        driver: fake.clone(),
+        settings: fast("claim-race"),
+        turns: secrets,
+    });
+    tokio::task::LocalSet::new().run_until(r.visit(entry)).await;
+    let complete = store.get("claim-race", id).await.unwrap().unwrap();
+    assert_eq!(complete.desired, oa_computers::store::Desired::Stopped);
+    assert_eq!(
+        complete.record.phase,
+        coder_working_computer::Phase::Stopped
+    );
+    assert_eq!(
+        store
+            .turn("claim-race", id, "queued-after-claim")
+            .await
+            .unwrap()
+            .unwrap()
+            .state,
+        "done"
+    );
+    let resource = complete.record.resource().unwrap();
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join(resource).join("counter")).unwrap(),
+        "once\n"
+    );
+    assert_eq!(fake.live().len(), 1);
+}
+
 async fn api(store: Store, caps: Capabilities) -> String {
     api_with(store, caps, Secrets::default()).await
 }
