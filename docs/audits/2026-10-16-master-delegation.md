@@ -165,12 +165,12 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 **Taken 2026-10-17 00:18 CDT** by a Claude Code subagent working #11853 only, in ~/work/openagents-push; #11852 and #11854 stay with the Codex agent.
 
-**Taken 2026-10-16 22:10 CDT** by Codex (GPT-6) working #11852, #11854, #11853 in `~/work/openagents-codex-bang`. #11840 has an existing project claim.
+**Released 2026-10-17 00:50 CDT** by Codex (GPT-6) after closing #11852 (`d37ed99d0c`, `a67ec60b44`) and #11854 (through `e158a12cc2`). No Codex issue remains unfinished. #11853 stays with the push agent above; #11840 remains unclaimed until its children close. Worktree `~/work/openagents-codex-bang` is removed after this update; both lane 8 target directories stay warm.
 
 - **Owns:** `apps/openagents/crates/mobile`, the iOS app, `crates/coder-sync` notifications and auth (`auth.rs`, a new `proof.rs`), the push registration, and the NIP-HOST device-channel profile.
 - **Order:**
-  1. #11852: after lane 0 deploys `4a796e8ff8`, apply the phone patch, regenerate bindings with `scripts/ios/build-core.sh`, and run `OurCloudLiveTests`. TestFlight 1010 is used, so the next build is 1011.
-  2. #11854.
+  1. #11852: closed. Lane 0 runs the deployed account and TestFlight checks listed below.
+  2. #11854: closed. Lane 0 runs the deployed pairing and latency checks listed below.
   3. #11853. The owner-only push capability is recorded below.
 
 ### Lane 9: CLI, Agent Lab, and web fixes
@@ -373,7 +373,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 ### Phone (#11840 epic)
 
 **#11840 Epic: the OpenAgents mobile app on coder-sync.** Lane 8.
-- **Status:** P0–P5, the crash fix, and #11852 are closed. #11854 has passed its source checks and is landing; its deployed checks are listed below. #11853 is claimed by the push agent.
+- **Status:** P0–P5, the crash fix, #11852, and #11854 are closed. Their deployed checks are listed below. #11853 is claimed by the push agent; close the epic after its remaining source work lands and its own checks pass.
 
 **#11852 Cloud computers: run the headless engine on a computer, so the phone works without a desktop.** Lane 8.
 - **Status:** closed. Server and SDK source is on `main` in `3063ab036c`, `1cdf329dfc`, `048005fe73`, and `4a796e8ff8`; phone controls and the local acceptance fixture are `d37ed99d0c` and `a67ec60b44`.
@@ -382,13 +382,13 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **After-close:** the deployed dedicated-account run, usage and deletion checks, and TestFlight release are listed below.
 
 **#11853 Push notifications through our push gateway.** Lane 8.
-- **Status:** the pure decision rules are in `crates/coder-sync/src/server/notifications.rs`.
-- **Remains:** call `notification_for` on registry writes, send through the push gateway (`docs/deployment/push-gateway.md`), register the phone's target, and port the `push-notify.test.ts` cases.
+- **Status:** server notification decisions, registry triggers, grant registration, gateway delivery, and conformance cases are on `main` in `cdb099df8e`. The current push agent owns the phone registration and remaining issue work.
+- **Checks:** after integration with device proofs, isolated PostgreSQL push delivery 3 and pure notification rules 17 passed.
 - **Owner-only:** the App ID's Push Notifications capability (before any build sets `CODER_IOS_PUSH`) and the real-device check.
 
 **#11854 Carry the device channel over NIP-HOST, with Nostr device proofs.** Lane 8.
-- **Status:** source is complete in `ca2be8e8dc`, `f99a91e211`, `becca883a3`, and `496773ac8e` through `02b7564692`. The optional app channel uses the existing host and connector, account-scoped keys, explicit phone pairing, admitted unary RPCs, stable command IDs, and exact-request NIP-98 proofs. Sync checks registered host keys and current grants; proved sockets expire independently of account checks. The existing Loro transcript path and default WebSocket route remain in use.
-- **Checks:** access 125, host 118, control 16, chat 198 (one existing ignored), ledger 31; app client 26, engine 519 (two existing ignored), mobile 58 (one existing ignored), RPC 18, sync 73; sync service 3 and isolated PostgreSQL auth conformance 4 passed. Normal iOS simulator core generation and native build-for-testing passed. The archived Docker build context resolves with the locked Linux dependencies and includes the embedded Nostr schemas. The [NIP-HOST profile](../../nips/openagents/NIP-HOST.md#local-latency-comparison) records a 30-call-per-route local comparison with no failures; the deployed comparison is still required before changing defaults.
+- **Status:** closed. Shared prerequisites are `ca2be8e8dc`, `f99a91e211`, and `becca883a3`; the app, proofs, and packaging landed in `1654cdcc6f` through `e158a12cc2`. The optional app channel uses the existing host and connector, account-scoped keys, explicit phone pairing, admitted unary RPCs, stable command IDs, and exact-request NIP-98 proofs. Sync checks registered host keys and current grants; proved sockets expire independently of account checks. The existing Loro transcript path and default WebSocket route remain in use.
+- **Checks:** access 125, host 118, control 16, chat 198 (one existing ignored), ledger 31; app client 26, engine 519 (two existing ignored), mobile 58 (one existing ignored), RPC 18, sync 73; sync service 3 and isolated PostgreSQL auth conformance 4 passed. After merging the push server and migration 7, auth 4, push delivery 3, and push rules 17 passed together. Normal iOS simulator core generation and native build-for-testing passed. The archived Docker build context resolves with the locked Linux dependencies and includes the embedded Nostr schemas. The [NIP-HOST profile](../../nips/openagents/NIP-HOST.md#local-latency-comparison) records a 30-call-per-route local comparison with no failures; the deployed comparison is still required before changing defaults.
 - **After-close:** lane 0 deploys the server and runs the dedicated-account, device, revocation, expiry, fallback, and deployed latency checks listed below.
 
 ### Signet, LND, and LayerTree
