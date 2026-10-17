@@ -326,7 +326,7 @@ impl<D: Driver> Provider for OnDriver<D> {
     }
 
     async fn delete(&self, _c: &Computer, resource: &str) -> Outcome<String> {
-        match Box::pin(self.driver.delete(resource)).await {
+        match self.driver.delete(resource).await {
             Outcome::Done { .. } => self
                 .reach(resource, State::Gone)
                 .await
@@ -343,7 +343,7 @@ impl<D: Driver> Provider for OnDriver<D> {
                 && attempt.deletion.as_ref().is_some_and(Fact::is_unknown)
         }) && self.driver.capabilities().memory_suspend
             && let other @ (Outcome::Failed { .. } | Outcome::Unknown { .. }) =
-                Box::pin(self.driver.delete(resource)).await
+                self.driver.delete(resource).await
         {
             return other.map(|_| unreachable!());
         }

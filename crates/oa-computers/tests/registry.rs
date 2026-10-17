@@ -315,6 +315,113 @@ async fn database() -> Option<Db> {
     Some(Db::scratch(&dsn).await.unwrap().0)
 }
 
+async fn exercise_bound_commands(
+    db: &Db,
+    store: &Store,
+    registry: &Registry<Simulated>,
+    base: &str,
+    ids: [&str; 2],
+) {
+    for (id, word) in [(ids[0], "alpha"), (ids[1], "beta")] {
+        let url = format!("{base}/v1/computers/{id}/commands");
+        let command =
+            json!({"command":format!("printf {word}"),"idempotency_key":format!("command-{word}")});
+        let (status, created) = post(&url, "alice", command.clone()).await;
+        assert_eq!(status, 202, "{created}");
+        let (status, retry) = post(&url, "alice", command).await;
+        assert_eq!(status, 200);
+        assert_eq!(created["id"], retry["id"]);
+        for _ in 0..100 {
+            let response = reqwest::Client::new()
+                .get(format!("{url}/{}", created["id"].as_str().unwrap()))
+                .bearer_auth(TOKEN)
+                .header("X-OpenAgents-Account", "alice")
+                .send()
+                .await
+                .unwrap()
+                .json::<Value>()
+                .await
+                .unwrap();
+            if response["state"] == "succeeded" {
+                assert_eq!(response["exit_code"], 0);
+                break;
+            }
+            visit(db, store, registry.clone(), id).await;
+            tokio::time::sleep(Duration::from_millis(3)).await;
+        }
+        let output = reqwest::Client::new()
+            .get(format!("{url}/{}/output", created["id"].as_str().unwrap()))
+            .bearer_auth(TOKEN)
+            .header("X-OpenAgents-Account", "alice")
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap();
+        use base64::Engine;
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(output["stdout"].as_str().unwrap())
+                .unwrap(),
+            word.as_bytes()
+        );
+    }
+}
+
+async fn exercise_bound_stop_and_wake(
+    db: &Db,
+    store: &Store,
+    registry: &Registry<Simulated>,
+    ids: [&str; 2],
+) {
+    for id in ids {
+        store
+            .set_desired("alice", id, Desired::Stopped)
+            .await
+            .unwrap();
+        phase(db, store, registry, id, "stopped").await;
+        if id == ids[0] {
+            let current = store.get("alice", id).await.unwrap().unwrap();
+            let bound = registry.resolve(&current).unwrap();
+            let Outcome::Done { value: snapshot } = bound
+                .snapshot(current.record.resource().unwrap(), "same-snapshot-name")
+                .await
+            else {
+                panic!("snapshot failed")
+            };
+            assert!(snapshot.starts_with("oa-"));
+            assert!(matches!(
+                bound.snapshot_ready(&snapshot).await,
+                Outcome::Done { value: true }
+            ));
+            assert!(matches!(
+                bound.delete_snapshot(&snapshot).await,
+                Outcome::Done { .. }
+            ));
+            let Outcome::Done { value: fork } = bound
+                .fork(current.record.resource().unwrap(), "same-fork-operation")
+                .await
+            else {
+                panic!("fork failed")
+            };
+            assert!(
+                matches!(bound.fork(current.record.resource().unwrap(),"same-fork-operation").await,Outcome::Done{value} if value==fork)
+            );
+            assert!(matches!(bound.delete(&fork).await, Outcome::Done { .. }));
+            assert!(matches!(
+                bound.meter(current.record.resource().unwrap()).await,
+                Outcome::Done { .. }
+            ));
+        }
+        store
+            .set_desired("alice", id, Desired::Running)
+            .await
+            .unwrap();
+        phase(db, store, registry, id, "awake").await;
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn one_database_dispatches_overlapping_resources_commands_files_and_cleanup_by_binding() {
     let Some(db) = database().await else {
@@ -351,18 +458,7 @@ async fn one_database_dispatches_overlapping_resources_commands_files_and_cleanu
         assert_eq!(download(&b_files,"alice").await,(200,b"beta\0\x80".to_vec()));
         assert_eq!(download(&a_files,"bob").await.0,404);
         a.fake.inject("start_command",Inject::LoseReply);
-        for (id,word) in [(&first.id,"alpha"),(&second.id,"beta")] {
-            let url=format!("{base}/v1/computers/{id}/commands");let command=json!({"command":format!("printf {word}"),"idempotency_key":format!("command-{word}")});
-            let (status,created)=post(&url,"alice",command.clone()).await;assert_eq!(status,202,"{created}");
-            let (status,retry)=post(&url,"alice",command).await;assert_eq!(status,200);assert_eq!(created["id"],retry["id"]);
-            for _ in 0..100 {
-                let response=reqwest::Client::new().get(format!("{url}/{}",created["id"].as_str().unwrap())).bearer_auth(TOKEN).header("X-OpenAgents-Account","alice").send().await.unwrap().json::<Value>().await.unwrap();
-                if response["state"]=="succeeded" {assert_eq!(response["exit_code"],0);break;}
-                visit(&db,&store,restarted.clone(),id).await;tokio::time::sleep(Duration::from_millis(3)).await;
-            }
-            let output=reqwest::Client::new().get(format!("{url}/{}/output",created["id"].as_str().unwrap())).bearer_auth(TOKEN).header("X-OpenAgents-Account","alice").send().await.unwrap().json::<Value>().await.unwrap();
-            use base64::Engine;assert_eq!(base64::engine::general_purpose::STANDARD.decode(output["stdout"].as_str().unwrap()).unwrap(),word.as_bytes());
-        }
+        exercise_bound_commands(&db,&store,&restarted,&base,[&first.id,&second.id]).await;
         for provider in [&a,&b] {assert_eq!(provider.fake.calls().iter().filter(|call|call.starts_with("start_command:")).count(),1);}
         let command=json!({"command":"printf alpha","idempotency_key":"command-alpha"});
         let (_,known)=post(&format!("{base}/v1/computers/{}/commands",first.id),"alice",command.clone()).await;
@@ -372,22 +468,7 @@ async fn one_database_dispatches_overlapping_resources_commands_files_and_cleanu
         assert_eq!(status,200);assert_eq!(retried["id"],known["id"]);
         assert_eq!(post(&format!("{missing_base}/v1/computers/{}/commands",first.id),"alice",json!({"command":"false","idempotency_key":"command-alpha"})).await.0,409);
         missing_task.abort();
-        for id in [&first.id,&second.id] {
-            store.set_desired("alice",id,Desired::Stopped).await.unwrap();phase(&db,&store,&restarted,id,"stopped").await;
-            if id==&first.id {
-                let current=store.get("alice",id).await.unwrap().unwrap();
-                let bound=restarted.resolve(&current).unwrap();
-                let Outcome::Done{value:snapshot}=bound.snapshot(current.record.resource().unwrap(),"same-snapshot-name").await else {panic!("snapshot failed")};
-                assert!(snapshot.starts_with("oa-"));
-                assert!(matches!(bound.snapshot_ready(&snapshot).await,Outcome::Done{value:true}));
-                assert!(matches!(bound.delete_snapshot(&snapshot).await,Outcome::Done{..}));
-                let Outcome::Done{value:fork}=bound.fork(current.record.resource().unwrap(),"same-fork-operation").await else {panic!("fork failed")};
-                assert!(matches!(bound.fork(current.record.resource().unwrap(),"same-fork-operation").await,Outcome::Done{value} if value==fork));
-                assert!(matches!(bound.delete(&fork).await,Outcome::Done{..}));
-                assert!(matches!(bound.meter(current.record.resource().unwrap()).await,Outcome::Done{..}));
-            }
-            store.set_desired("alice",id,Desired::Running).await.unwrap();phase(&db,&store,&restarted,id,"awake").await;
-        }
+        exercise_bound_stop_and_wake(&db,&store,&restarted,[&first.id,&second.id]).await;
         assert_eq!(download(&a_files,"alice").await.1,b"alpha\0\xff");assert_eq!(download(&b_files,"alice").await.1,b"beta\0\x80");
         for id in [&first.id,&second.id] {store.set_desired("alice",id,Desired::Deleted).await.unwrap();phase(&db,&store,&restarted,id,"deleted").await;}
         assert!(a.fake.live().is_empty()&&b.fake.live().is_empty());task.abort();
