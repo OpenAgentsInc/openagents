@@ -295,12 +295,17 @@ impl Host {
         now: u64,
         retained: Option<&Retained>,
     ) -> Result<Step> {
-        let Operation::Redeem {
-            invitation: id,
-            capability,
-        } = &request.op
-        else {
-            return fail(Code::Malformed, "not a redemption");
+        let (id, capability, account) = match &request.op {
+            Operation::Redeem {
+                invitation,
+                capability,
+            } => (invitation, capability, None),
+            Operation::RedeemProject {
+                invitation,
+                capability,
+                account,
+            } => (invitation, capability, Some(account.as_str())),
+            _ => return fail(Code::Malformed, "Not an invitation redemption."),
         };
         let record = book
             .invitations
@@ -314,7 +319,22 @@ impl Host {
         {
             return fail(Code::Forbidden, "invitation capability or relay differs");
         }
-        let state = if record
+        let state = if account.is_some() && (record.device.is_none() || record.scope.is_none()) {
+            Err(Error::new(
+                Code::Unsupported,
+                "This invitation does not share selected projects.",
+            ))
+        } else if account.is_some_and(|account| {
+            record
+                .scope
+                .as_ref()
+                .is_none_or(|scope| scope.account != account)
+        }) {
+            Err(Error::new(
+                Code::Forbidden,
+                "This invitation belongs to another account.",
+            ))
+        } else if record
             .device
             .as_deref()
             .is_some_and(|device| device != signer)

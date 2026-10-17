@@ -563,6 +563,12 @@ pub struct TaskQueue {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
 pub enum Operation {
+    #[serde(rename = "project.redeem")]
+    RedeemProject {
+        invitation: String,
+        capability: String,
+        account: String,
+    },
     #[serde(rename = "project.invite")]
     InviteProject { share: crate::sharing::Invite },
     #[serde(rename = "project.revoke")]
@@ -1275,6 +1281,7 @@ impl Operation {
             Self::EnvironmentPromote { .. } => "environment.promote",
             Self::EnvironmentSelect { .. } => "environment.select",
             Self::EnvironmentSteer { .. } => "environment.steer",
+            Self::RedeemProject { .. } => "project.redeem",
             Self::Redeem { .. } => "enroll.redeem",
             Self::Approve { .. } => "enroll.approve",
             Self::Deny { .. } => "enroll.deny",
@@ -1370,7 +1377,7 @@ impl Operation {
             } else {
                 Right::Operate
             }),
-            Self::Redeem { .. } => None,
+            Self::Redeem { .. } | Self::RedeemProject { .. } => None,
             Self::Approve { .. }
             | Self::Deny { .. }
             | Self::Invite { .. }
@@ -1504,6 +1511,20 @@ impl Operation {
             Self::ListTasks { query } => query.validate()?,
             Self::ReadTask { query } => query.validate()?,
             Self::ReadTaskOriginal { query } => query.validate()?,
+            Self::RedeemProject {
+                invitation,
+                capability,
+                account,
+            } => {
+                identity(invitation).map_err(Error::from)?;
+                identity(capability).map_err(Error::from)?;
+                if account.is_empty()
+                    || account.len() > 128
+                    || account.chars().any(char::is_control)
+                {
+                    return fail(Code::Malformed, "The recipient account is invalid.");
+                }
+            }
             Self::Redeem {
                 invitation,
                 capability,
@@ -1855,7 +1876,10 @@ impl Request {
             (Some(grant), Some(epoch)) => {
                 identity(grant).map_err(Error::from)?;
                 safe(epoch)?;
-                if matches!(self.op, Operation::Redeem { .. }) {
+                if matches!(
+                    self.op,
+                    Operation::Redeem { .. } | Operation::RedeemProject { .. }
+                ) {
                     return fail(Code::Malformed, "redemption must not name a grant");
                 }
             }
@@ -2454,7 +2478,12 @@ impl Outcome {
             (Operation::ReadTaskOriginal { query }, Self::TaskOriginal { original }) => {
                 original.answers(query)
             }
-            (Operation::Redeem { .. } | Operation::Approve { .. }, Self::Granted { .. })
+            (
+                Operation::Redeem { .. }
+                | Operation::RedeemProject { .. }
+                | Operation::Approve { .. },
+                Self::Granted { .. },
+            )
             | (Operation::Deny { .. }, Self::Denied {})
             | (Operation::Invite { .. }, Self::Invitation { .. })
             | (Operation::CancelInvite { .. }, Self::Cancelled { .. })

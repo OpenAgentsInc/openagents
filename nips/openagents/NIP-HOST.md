@@ -311,7 +311,7 @@ be cancelled; a redeemed one needs device revocation.
 
 ### Owner-approved project sharing
 
-A host advertising `project-sharing-v1` accepts `project.invite` from a current
+A host advertising `project-sharing-v2` accepts `project.invite` from a current
 `access_admin` device. The request names the recipient account and device key,
 sorted host-configured workspace labels, `observe` with optional `operate`, and
 an absolute expiry. The host resolves the roots from its own configuration;
@@ -323,6 +323,14 @@ The host never renews this grant past the owner's selected expiry.
 family, including renewals. Other project grants on the same device keep their
 rights and epoch. A new project share does not replace unrelated scopes.
 Existing device-wide revocation remains a separate operation.
+
+`project.redeem` carries the invitation, capability, and recipient account. It
+refuses a broad invitation, a missing device pin, or another account before
+issuing a grant. Native sharing clients use this required operation and never
+fall back to `enroll.redeem`; an old host cannot turn a project acceptance into
+broad enrollment. Hosts retain `project-sharing-v1` for existing invite/revoke
+clients, while new owner controls require v2 before creating invitations.
+
 
 Scoped guests cannot create invitations, administer accounts, use host-wide
 reads or tasks, open raw terminals, or call the general app RPC surface.

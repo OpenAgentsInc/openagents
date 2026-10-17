@@ -87,7 +87,10 @@ impl Client {
     /// Prepare a caller-owned identity. Persist and retry the exact returned
     /// packet; preparing it again changes its signed event identity.
     pub fn prepare_with_id(&self, op: Operation, now: u64, id: String) -> Result<Pending> {
-        if matches!(op, Operation::Redeem { .. }) {
+        if matches!(
+            op,
+            Operation::Redeem { .. } | Operation::RedeemProject { .. }
+        ) {
             return fail(Code::Malformed, "redeem an invitation with `redeem`");
         }
         let mut expires_at = now.saturating_add(MAX_REQUEST_LIFETIME);
@@ -252,6 +255,26 @@ pub fn prepare_redeem(
     now: u64,
     policy: RelayPolicy,
 ) -> Result<Pending> {
+    prepare_redemption(invitation, secret, now, policy, None)
+}
+/// Redeem only a device-pinned project invitation for this account. An old
+/// host cannot interpret this as a broad device enrollment.
+pub fn prepare_project_redeem(
+    invitation: &HostInvitation,
+    secret: &SecretKey,
+    account: &str,
+    now: u64,
+    policy: RelayPolicy,
+) -> Result<Pending> {
+    prepare_redemption(invitation, secret, now, policy, Some(account))
+}
+fn prepare_redemption(
+    invitation: &HostInvitation,
+    secret: &SecretKey,
+    now: u64,
+    policy: RelayPolicy,
+    account: Option<&str>,
+) -> Result<Pending> {
     let inner = &invitation.0;
     if pubkey(secret) == inner.host {
         return fail(Code::Forbidden, "device and host keys must differ");
@@ -269,9 +292,16 @@ pub fn prepare_redeem(
         expires_at: now
             .saturating_add(MAX_REQUEST_LIFETIME)
             .min(inner.expires_at),
-        op: Operation::Redeem {
-            invitation: inner.id.clone(),
-            capability: inner.capability().into(),
+        op: match account {
+            Some(account) => Operation::RedeemProject {
+                invitation: inner.id.clone(),
+                capability: inner.capability().into(),
+                account: account.into(),
+            },
+            None => Operation::Redeem {
+                invitation: inner.id.clone(),
+                capability: inner.capability().into(),
+            },
         },
     };
     request.validate(policy)?;
@@ -311,11 +341,18 @@ pub fn validate_redeem(
         || original.grant.is_some()
         || original.epoch.is_some()
         || original.expires_at > inner.expires_at
-        || original.op
-            != (Operation::Redeem {
-                invitation: inner.id.clone(),
-                capability: inner.capability().into(),
-            })
+        || !match &original.op {
+            Operation::Redeem {
+                invitation,
+                capability,
+            }
+            | Operation::RedeemProject {
+                invitation,
+                capability,
+                ..
+            } => invitation == &inner.id && capability == inner.capability(),
+            _ => false,
+        }
         || pending.event.tag_values("h").collect::<Vec<_>>() != [original.request.as_str()]
     {
         return fail(
@@ -350,6 +387,19 @@ pub fn finish_redeem(
     if access.grant.relay != invitation.relay() {
         return fail(Code::Forbidden, "grant relay differs from the invitation");
     }
+    if let Operation::RedeemProject { account, .. } = &pending.request.op {
+        if access
+            .grant
+            .scope
+            .as_ref()
+            .is_none_or(|scope| scope.account != *account)
+        {
+            return fail(
+                Code::Forbidden,
+                "The host did not share projects with this account.",
+            );
+        }
+    }
     Ok(access)
 }
 /// Redeem a host invitation with this device's protected key. Save the result
@@ -358,6 +408,26 @@ pub fn finish_redeem(
 pub async fn redeem(code: &str, secret: &SecretKey, policy: RelayPolicy) -> Result<Access> {
     let invitation = HostInvitation::parse(code, unix_time()?, policy)?;
     let pending = prepare_redeem(&invitation, secret, unix_time()?, policy)?;
+    let event = exchange(
+        invitation.relay(),
+        secret,
+        &pending,
+        invitation.host(),
+        policy,
+    )
+    .await?;
+    finish_redeem(&invitation, &pending, &event, secret, unix_time()?, policy)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn redeem_project(
+    code: &str,
+    secret: &SecretKey,
+    account: &str,
+    policy: RelayPolicy,
+) -> Result<Access> {
+    let invitation = HostInvitation::parse(code, unix_time()?, policy)?;
+    let pending = prepare_project_redeem(&invitation, secret, account, unix_time()?, policy)?;
     let event = exchange(
         invitation.relay(),
         secret,

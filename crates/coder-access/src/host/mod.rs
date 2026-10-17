@@ -928,7 +928,10 @@ impl Host {
         request.validate(self.policy)?;
         let relay = match (relay, &request.op) {
             (Some(relay), _) => relay.to_owned(),
-            (None, Operation::Redeem { invitation, .. }) => book
+            (
+                None,
+                Operation::Redeem { invitation, .. } | Operation::RedeemProject { invitation, .. },
+            ) => book
                 .invitations
                 .get(invitation)
                 .map(|i| i.relay().to_owned())
@@ -954,7 +957,10 @@ impl Host {
             let refused = refused(Error::new(Code::Conflict, "request identity reused"));
             return self.seal_reply(&secret, event, &request, refused, clock()?);
         }
-        let (result, retain) = if let Operation::Redeem { .. } = &request.op {
+        let (result, retain) = if matches!(
+            &request.op,
+            Operation::Redeem { .. } | Operation::RedeemProject { .. }
+        ) {
             match self.redeem(
                 &mut book,
                 &secret,
@@ -1230,7 +1236,9 @@ impl Host {
                     )),
                 }
             }
-            Operation::Redeem { .. } => Err(Error::new(Code::Malformed, "redeem has no grant")),
+            Operation::Redeem { .. } | Operation::RedeemProject { .. } => {
+                Err(Error::new(Code::Malformed, "redeem has no grant"))
+            }
             Operation::Approve { .. } | Operation::Deny { .. } => {
                 enroll::decide(book, secret, request, p, now)?
             }

@@ -264,3 +264,57 @@ fn an_owner_selected_expiry_cannot_be_extended_by_automatic_renewal() {
         Code::Expired
     );
 }
+
+#[test]
+fn project_redemption_refuses_broad_invitations_and_wrong_accounts_before_issuing() {
+    let f = Fixture::local();
+    let device = key();
+    let at = now();
+    let broad = f
+        .host()
+        .invite(&f.relay, Rights::pairing(), at, at + 86400)
+        .unwrap();
+    let broad_invitation = HostInvitation::parse(&broad.code, at, POLICY).unwrap();
+    let pending =
+        crate::client::prepare_project_redeem(&broad_invitation, &device, "recipient", at, POLICY)
+            .unwrap();
+    let reply = f
+        .host()
+        .handle(&pending.event, &f.relay, at, &mut Unconnected)
+        .unwrap();
+    assert_eq!(
+        finish_redeem(&broad_invitation, &pending, &reply, &device, at, POLICY)
+            .unwrap_err()
+            .code,
+        Code::Unsupported
+    );
+    assert!(f.host().devices(at).unwrap().is_empty());
+    let a = tempfile::tempdir().unwrap();
+    let b = tempfile::tempdir().unwrap();
+    let mut projects = projects(&a, &b);
+    let code = invitation(&f, &device, "a", at, &mut projects);
+    let invitation = HostInvitation::parse(&code, at, POLICY).unwrap();
+    let wrong =
+        crate::client::prepare_project_redeem(&invitation, &device, "another-account", at, POLICY)
+            .unwrap();
+    let reply = f
+        .host()
+        .handle(&wrong.event, &f.relay, at, &mut Unconnected)
+        .unwrap();
+    assert_eq!(
+        finish_redeem(&invitation, &wrong, &reply, &device, at, POLICY)
+            .unwrap_err()
+            .code,
+        Code::Forbidden
+    );
+    assert!(f.host().devices(at).unwrap().is_empty());
+    let correct =
+        crate::client::prepare_project_redeem(&invitation, &device, "recipient", at, POLICY)
+            .unwrap();
+    let reply = f
+        .host()
+        .handle(&correct.event, &f.relay, at, &mut Unconnected)
+        .unwrap();
+    let access = finish_redeem(&invitation, &correct, &reply, &device, at, POLICY).unwrap();
+    assert_eq!(access.grant.scope.unwrap().account, "recipient");
+}

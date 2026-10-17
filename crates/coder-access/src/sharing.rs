@@ -2,7 +2,8 @@
 use crate::{Code, Error, Result, Right, Rights};
 use serde::{Deserialize, Serialize};
 
-pub const CAPABILITY: &str = "project-sharing-v1";
+pub const LEGACY_CAPABILITY: &str = "project-sharing-v1";
+pub const CAPABILITY: &str = "project-sharing-v2";
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Invite {
