@@ -78,11 +78,13 @@ PY
   if [[ $space_role == builder ]]; then
     space_address=10.219.14.12
     space_pool=builder
+    space_native_role=builder
   else
     space_address=10.219.14.11
     space_pool=sandbox
+    space_native_role=worker
   fi
-  space_start="agent --data-dir=/space/k3s --server=https://10.219.14.10:6443 --token-file=/space/config/k3s-join --node-ip=$space_address --node-name=oa-space-service-$space_role --node-label=space.pplx.net/node-pool=$space_pool"
+  space_start="agent --data-dir=/space/k3s --server=https://10.219.14.10:6443 --token-file=/space/config/k3s-join --node-ip=$space_address --node-name=oa-space-service-$space_role --node-label=space.pplx.net/node-pool=$space_pool --node-label=space.pplx.net/node-role=$space_native_role --node-label=node.kubernetes.io/space-enabled=true"
 else
   space_start='server --data-dir=/space/k3s --advertise-address=10.219.14.10 --node-ip=10.219.14.10 --node-name=oa-space-service-control --tls-san=10.219.14.10 --cluster-cidr=10.220.0.0/16 --service-cidr=10.221.0.0/16 --flannel-backend=wireguard-native --disable=traefik,servicelb,local-storage --secrets-encryption --node-label=space.pplx.net/infra=true --write-kubeconfig-mode=600'
 fi

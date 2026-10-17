@@ -40,9 +40,10 @@ for filename in ('worker.yaml','builder.yaml','migrate.yaml'):
         assert pod['imagePullSecrets']==[{'name':'space-image-reader'}]
         for container in pod.get('containers',[])+pod.get('initContainers',[]):
             env={e['name']:e for e in container.get('env',[])}
-            if 'POSTGRES_CONNECTION_STRING' not in env: continue
+            connection=next((env[key] for key in ('POSTGRES_CONNECTION_STRING','DATABASE_URL') if key in env),None)
+            if connection is None: continue
             assert any(m['mountPath']=='/var/run/space-postgres-ca' and m['readOnly'] for m in container['volumeMounts'])
-            reference=env['POSTGRES_CONNECTION_STRING']['valueFrom']['secretKeyRef']['name']
+            reference=connection['valueFrom']['secretKeyRef']['name']
             if doc['kind']=='Job':
                 assert reference=='space-postgres-bootstrap' and 'PGPASSWORD' in env
             else:

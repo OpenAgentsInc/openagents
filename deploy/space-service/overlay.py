@@ -43,7 +43,7 @@ def transform(documents):
             entries = container.get("env", [])
             if any(entry["name"] == "SPACE_K8S_CONTROL_PLANE" and entry.get("value") != "true" for entry in entries):
                 raise ValueError("The maintained controller requires the Kubernetes substrate.")
-            connection = next((entry for entry in entries if entry["name"] == "POSTGRES_CONNECTION_STRING"), None)
+            connection = next((entry for entry in entries if entry["name"] in ("POSTGRES_CONNECTION_STRING", "DATABASE_URL")), None)
             if connection is None:
                 continue
             database = True

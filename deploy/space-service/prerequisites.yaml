@@ -18,6 +18,7 @@ handler: space
 scheduling:
   nodeSelector:
     node.kubernetes.io/space-enabled: 'true'
+    space.pplx.net/node-role: worker
 ---
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
