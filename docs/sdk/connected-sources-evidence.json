@@ -174,5 +174,24 @@
     "files": 27,
     "contains": "Exact tested source patch, tool versions, binary and artifact hashes, API and SDK test logs, export logs, setup-failure diagnosis, check scripts, and native app SDK consumer build evidence.",
     "contains_credentials": false
+  },
+  "description_copy_followup": {
+    "source": "e29e4c9bf62f87cd0615b81091da3193b25b6869",
+    "source_commit": "0e1359da89",
+    "fixture_commit": "e29e4c9bf62f87cd0615b81091da3193b25b6869",
+    "change": "Remove \"separately qualified\" from the Google features description.",
+    "command": "cargo run --locked -p openagents-web --example app_openapi",
+    "exports": 2,
+    "both_exports_match_fixture": true,
+    "app_schema_sha256": "affcc8437144b144195f41330472937850496d2630795b42dcfcf29d8951303a",
+    "export_binary_sha256": "8ce031d077dfe6636818d6688be8a97b4f7d595c12b27ac2820cb2a70a0f8594",
+    "logs_sha256": {
+      "app-copy-export.log": "431db83ff4329fe2dcb3240b65ec6158323ab72b434f89a84504dbea2d3676c8",
+      "app-copy-repeat.log": "6c078f2933631f9a5f0f3f73c68c7507fa4deda3b10d5cd55ac8bc8fc11b086e"
+    },
+    "archive": "evidence/source-copy-export-2026-10-17.tar.gz",
+    "environment": "Same isolated Linux Rust 1.97.1 environment, two build jobs, no incremental build, private scratch; no credentials or resources.",
+    "deployment": "Included in the next combined Labs rollout; the original eight source operations already serve production.",
+    "archive_sha256": "0a241d4f0a0ce2649e8c0ecb6bd55cc92e919001a4a34cefb694fbd4446ed121"
   }
 }
