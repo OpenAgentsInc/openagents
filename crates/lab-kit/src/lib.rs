@@ -15,6 +15,7 @@ pub mod digest;
 pub mod echo;
 pub mod kind;
 pub mod model;
+pub mod worker;
 
 pub use card::{Card, CardState, Compare, NoteBrief, View};
 pub use change::{Addressing, Change, PatchOp, apply_patch};
