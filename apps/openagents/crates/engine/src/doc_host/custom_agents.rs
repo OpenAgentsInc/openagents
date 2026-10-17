@@ -219,27 +219,7 @@ impl DocHost {
             chat.cwd
                 .ok_or_else(|| error("Choose a folder for this conversation."))?
         };
-        request.model_options.clear();
-        request.model_options.insert(ASSIGNMENT.into(), id.into());
-        if harness == HarnessId::Sdk {
-            request.model_options.insert(
-                "openagentsAgentSpec".into(),
-                serde_json::to_value(&a.definition.spec)
-                    .map_err(|_| error("The agent could not be read."))?,
-            );
-            request
-                .model_options
-                .insert("openagentsConversation".into(), chat_id.into());
-        }
-        request.model_options.insert(
-            INSTRUCTIONS.into(),
-            a.definition.spec.instructions.clone().into(),
-        );
-        request.sandbox = match a.definition.spec.access {
-            Access::HostDefault => SandboxLevel::DangerFullAccess,
-            Access::ReadOnly => SandboxLevel::ReadOnly,
-            Access::WorkspaceWrite => SandboxLevel::WorkspaceWrite,
-        };
+        bind_agent_request(&mut request, spec, harness, &id, chat_id)?;
         Ok((harness, request))
     }
 
@@ -638,6 +618,39 @@ impl DocHost {
         Ok(())
     }
 }
+/// Bind the settings selected for this turn to the existing runner request.
+fn bind_agent_request(
+    request: &mut openagents_proto::RunRequest,
+    spec: &openagents_account::openagents::agents::AgentSpec,
+    harness: HarnessId,
+    id: &str,
+    chat_id: &str,
+) -> Result<(), EngineError> {
+    request.model_options.clear();
+    request.model_options.insert(ASSIGNMENT.into(), id.into());
+    if harness == HarnessId::Sdk {
+        let mut effective = spec.clone();
+        effective.runtime = "sdk".into();
+        effective.model = request.model.clone();
+        request.model_options.insert(
+            "openagentsAgentSpec".into(),
+            serde_json::to_value(effective).map_err(|_| error("The agent could not be read."))?,
+        );
+        request
+            .model_options
+            .insert("openagentsConversation".into(), chat_id.into());
+    }
+    request
+        .model_options
+        .insert(INSTRUCTIONS.into(), spec.instructions.clone().into());
+    request.sandbox = match spec.access {
+        Access::HostDefault => SandboxLevel::DangerFullAccess,
+        Access::ReadOnly => SandboxLevel::ReadOnly,
+        Access::WorkspaceWrite => SandboxLevel::WorkspaceWrite,
+    };
+    Ok(())
+}
+
 fn validate_runtime_access(harness: HarnessId, access: Access) -> Result<(), EngineError> {
     if !matches!(
         harness,
@@ -876,6 +889,51 @@ mod tests {
         latest.deleted = true;
         assert_eq!(current_settings(&a, &latest).runtime, "codex");
     }
+    #[test]
+    fn sdk_turns_use_current_runtime_settings_and_keep_the_pinned_identity() {
+        use openagents_sdk::agents::runner;
+
+        for original_runtime in ["sdk", "codex"] {
+            let (mut a, mut request) = fixture();
+            a.definition.spec.runtime = original_runtime.into();
+            a.definition.spec.model = Some("old-runner".into());
+            a.definition.spec.access = Access::HostDefault;
+            let mut latest = a.definition.clone();
+            latest.revision += 1;
+            latest.spec.runtime = "sdk".into();
+            latest.spec.model = Some("new-runner".into());
+            let spec = current_settings(&a, &latest);
+            request.model = spec.model.clone();
+            bind_agent_request(&mut request, spec, HarnessId::Sdk, &a.id, &a.chat).unwrap();
+            let turn = runner::Turn {
+                schema: runner::VERSION.into(),
+                assignment: request.model_options[ASSIGNMENT].as_str().unwrap().into(),
+                conversation: request.model_options["openagentsConversation"]
+                    .as_str()
+                    .unwrap()
+                    .into(),
+                agent: serde_json::from_value(request.model_options["openagentsAgentSpec"].clone())
+                    .unwrap(),
+                task: request.prompt.clone(),
+                cwd: request.cwd.clone(),
+            };
+            turn.validate().unwrap();
+            assert_eq!(turn.agent.model, request.model);
+            assert_eq!(turn.agent.runtime, "sdk");
+            assert!(turn.agent.same_identity(&a.definition.spec));
+            assert_eq!(request.sandbox, SandboxLevel::DangerFullAccess);
+            assert_eq!(
+                request.model_options[INSTRUCTIONS],
+                a.definition.spec.instructions
+            );
+
+            latest.spec.instructions = "Different instructions".into();
+            let pinned = current_settings(&a, &latest);
+            assert_eq!(pinned, &a.definition.spec);
+            assert_eq!(a.spec.agent_revision, a.definition.revision);
+        }
+    }
+
     #[test]
     fn runtimes_enforce_the_agents_access() {
         assert!(validate_runtime_access(HarnessId::Codex, Access::ReadOnly).is_ok());
