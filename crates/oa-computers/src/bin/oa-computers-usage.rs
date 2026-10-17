@@ -1,7 +1,7 @@
 //! Database-authorized operations for computer allocation limits and usage.
 use oa_computers::{Db, Store, usage::Limits};
 
-const USAGE: &str = "Use read ACCOUNT [AFTER], account-limits ACCOUNT FILE, service-limits FILE, economics FILE, account-cleanup ACCOUNT, account-cleanup-status ACCOUNT, storage-cleanup ACCOUNT FILE, lifecycle-retry ACCOUNT FILE, or resolve ACCOUNT COMPUTER BOOT MAXIMUM_CPU_MS USED_CPU_MS REASON.";
+const USAGE: &str = "Use read ACCOUNT [AFTER], account-limits ACCOUNT FILE, service-limits FILE, economics FILE, qualify FILE [--test-accounts], qualification-template, account-cleanup ACCOUNT, account-cleanup-status ACCOUNT, storage-cleanup ACCOUNT FILE, lifecycle-retry ACCOUNT FILE, or resolve ACCOUNT COMPUTER BOOT MAXIMUM_CPU_MS USED_CPU_MS REASON.";
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, String> {
     use std::io::Read;
@@ -27,6 +27,42 @@ async fn run() -> Result<(), String> {
     let command = args.next().ok_or_else(|| USAGE.to_owned())?;
     if matches!(command.as_str(), "--help" | "-h" | "help") {
         println!("{USAGE}");
+        return Ok(());
+    }
+    if command == "qualification-template" {
+        if args.next().is_some() {
+            return Err("Too many arguments.".into());
+        }
+        println!("{}", oa_computers::qualification::Packet::template());
+        return Ok(());
+    }
+    if command == "qualify" {
+        let path = argument(&mut args)?;
+        let test_accounts = match args.next().as_deref() {
+            None => false,
+            Some("--test-accounts") => true,
+            Some(_) => return Err("Use qualify FILE [--test-accounts].".into()),
+        };
+        if args.next().is_some() {
+            return Err("Too many arguments.".into());
+        }
+        let packet: oa_computers::qualification::Packet = read_json(&path)?;
+        let root = std::path::Path::new(&path)
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let assessment = packet.assess(root).map_err(str::to_owned)?;
+        println!(
+            "{}",
+            serde_json::to_string(&assessment)
+                .map_err(|_| "The assessment could not be written.".to_owned())?
+        );
+        if !(if test_accounts {
+            assessment.ready_for_dedicated_tests
+        } else {
+            assessment.ready_for_named_group
+        }) {
+            return Err("Qualification is incomplete. Review the assessment.".into());
+        }
         return Ok(());
     }
     if command == "economics" {

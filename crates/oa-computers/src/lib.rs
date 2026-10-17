@@ -16,6 +16,7 @@ pub mod economics;
 pub mod files;
 #[cfg(feature = "space")]
 pub mod lifecycle_operations;
+pub mod qualification;
 pub mod reconcile;
 pub mod registry;
 pub mod storage;

@@ -873,6 +873,67 @@ mod tests {
         scoped.caps.driver = "oa-boat".into();
         assert!(Catalog::new("scoped", "p1", [scoped]).is_err());
     }
+    #[test]
+    fn stopping_new_space_placement_keeps_existing_space_and_boat_bindings() {
+        let space = target("space", "https://space.example", Placement::FastSandbox);
+        let boat = target("boat", "https://boat.example", Placement::OurCloud);
+        let catalog = Catalog::new("space", "before", [space.clone(), boat.clone()]).unwrap();
+        let space_intent = CreateIntent {
+            placement: Some(Placement::FastSandbox),
+            ..Default::default()
+        };
+        let old_space = catalog
+            .choose("owner", &space_intent, &BTreeMap::new())
+            .unwrap();
+        let old_boat = catalog
+            .choose(
+                "owner",
+                &CreateIntent {
+                    placement: Some(Placement::OurCloud),
+                    ..Default::default()
+                },
+                &BTreeMap::new(),
+            )
+            .unwrap();
+        let mut paused = space;
+        paused.admit_new = false;
+        paused.rollout_accounts = Some(BTreeSet::new());
+        let restored = Catalog::new("boat", "rollback", [paused, boat]).unwrap();
+        assert!(restored.candidates("owner", &space_intent).is_err());
+        assert!(
+            !restored
+                .offers("owner")
+                .to_string()
+                .contains("fast-sandbox")
+        );
+        assert_eq!(
+            restored
+                .choose("owner", &CreateIntent::default(), &BTreeMap::new())
+                .unwrap()
+                .deployment,
+            "boat"
+        );
+        assert_eq!(
+            restored
+                .bound(&old_space, "owner", "fake", "small")
+                .unwrap()
+                .id,
+            "space"
+        );
+        assert_eq!(
+            restored
+                .bound(&old_boat, "owner", "fake", "small")
+                .unwrap()
+                .id,
+            "boat"
+        );
+        assert!(
+            restored
+                .bound(&old_space, "foreign", "fake", "small")
+                .is_err()
+        );
+    }
+
     fn target(id: &str, origin: &str, placement: Placement) -> Target {
         let mut caps = Capabilities::new("fake", Profile::ALL, &["small"]);
         caps.workspace_file_bytes = Some(4096);

@@ -1,4 +1,4 @@
-//! Dedicated-account Boat qualification. Pass a private checkpoint directory;
+//! Dedicated-account Computers qualification. Pass a private checkpoint directory;
 //! set OPENAGENTS_TEST_TOKEN explicitly. Reruns reuse saved request identities.
 use openagents_sdk::{
     CancellationToken, Client, Deployment,
@@ -11,6 +11,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeMap,
     error::Error,
     fs,
     path::Path,
@@ -44,6 +45,36 @@ fn retained<T: Serialize + DeserializeOwned>(
         save(path, &value)?;
         Ok(value)
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
+struct Selection {
+    api: String,
+    placement: Option<String>,
+}
+
+fn timing(root: &Path, name: &str, elapsed: Duration) -> Result<()> {
+    use std::io::Write;
+    let path = root.join("timings.json");
+    let mut values: BTreeMap<String, u64> = if path.exists() {
+        serde_json::from_slice(&fs::read(&path)?)?
+    } else {
+        BTreeMap::new()
+    };
+    values
+        .entry(name.into())
+        .or_insert(u64::try_from(elapsed.as_millis())?);
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options
+        .open(path)?
+        .write_all(&serde_json::to_vec_pretty(&values)?)?;
+    Ok(())
 }
 
 async fn execute(
@@ -89,11 +120,20 @@ async fn execute(
     tokio::time::timeout_at(deadline, output).await?
 }
 
-async fn workflow(computers: &Computers<'_>, reference: &ComputerRef, root: &Path) -> Result<()> {
+async fn workflow(
+    computers: &Computers<'_>,
+    reference: &ComputerRef,
+    root: &Path,
+    started: Instant,
+) -> Result<()> {
+    timing(root, "create_response_ms", started.elapsed())?;
+    let ready = Instant::now();
     let cancel = CancellationToken::new();
     computers
         .wait(reference, WaitFor::Awake, Duration::from_secs(480), &cancel)
         .await?;
+    timing(root, "readiness_ms", ready.elapsed())?;
+    let upload = Instant::now();
     let bytes = b"OpenAgents SDK binary fixture\0\xff\x80\n";
     let intent = retained(&root.join("write.json"), || {
         Ok(computers.write_intent(reference, "sdk-fixture.bin", bytes)?)
@@ -105,6 +145,8 @@ async fn workflow(computers: &Computers<'_>, reference: &ComputerRef, root: &Pat
     } else if computers.reconcile_write(&intent, &cancel).await?.is_none() {
         return Err("Check the earlier upload before writing again.".into());
     }
+    timing(root, "upload_or_reconcile_ms", upload.elapsed())?;
+    let first_command = Instant::now();
     let expected = format!("{:x}", Sha256::digest(bytes));
     let output = execute(
         computers,
@@ -117,6 +159,9 @@ async fn workflow(computers: &Computers<'_>, reference: &ComputerRef, root: &Pat
     if output.split(|b| *b == b' ').next() != Some(expected.as_bytes()) {
         return Err("The test file checksum differs.".into());
     }
+    timing(root, "first_command_ms", first_command.elapsed())?;
+    timing(root, "first_useful_output_ms", started.elapsed())?;
+    let stop = Instant::now();
     if !root.join("stop-started.json").exists() {
         save(&root.join("stop-started.json"), &json!({"started":true}))?;
         computers.stop(reference, &cancel).await?;
@@ -129,6 +174,8 @@ async fn workflow(computers: &Computers<'_>, reference: &ComputerRef, root: &Pat
             &cancel,
         )
         .await?;
+    timing(root, "stop_ms", stop.elapsed())?;
+    let wake = Instant::now();
     if !root.join("wake-started.json").exists() {
         save(&root.join("wake-started.json"), &json!({"started":true}))?;
         computers.wake(reference, &cancel).await?;
@@ -136,6 +183,8 @@ async fn workflow(computers: &Computers<'_>, reference: &ComputerRef, root: &Pat
     computers
         .wait(reference, WaitFor::Awake, Duration::from_secs(480), &cancel)
         .await?;
+    timing(root, "wake_ms", wake.elapsed())?;
+    let read = Instant::now();
     if computers
         .read_file(reference, "sdk-fixture.bin", &cancel)
         .await?
@@ -144,6 +193,8 @@ async fn workflow(computers: &Computers<'_>, reference: &ComputerRef, root: &Pat
     {
         return Err("The saved file differs after waking.".into());
     }
+    timing(root, "read_after_wake_ms", read.elapsed())?;
+    let command_after_wake = Instant::now();
     execute(
         computers,
         reference,
@@ -152,6 +203,7 @@ async fn workflow(computers: &Computers<'_>, reference: &ComputerRef, root: &Pat
         "rm -- sdk-fixture.bin".into(),
     )
     .await?;
+    timing(root, "command_after_wake_ms", command_after_wake.elapsed())?;
     Ok(())
 }
 
@@ -178,10 +230,30 @@ async fn main() -> Result<()> {
         }
         _ => return Err("Use the production or staging test deployment.".into()),
     };
-    let client = Client::with_timeouts(
+    let placement = match std::env::var("OPENAGENTS_TEST_PLACEMENT").ok().as_deref() {
+        None => None,
+        Some("our-cloud") => Some("our-cloud".to_owned()),
+        Some("fast-sandbox") => Some("fast-sandbox".to_owned()),
+        Some(_) => return Err("Use our-cloud or fast-sandbox for the test placement.".into()),
+    };
+    let selection = Selection {
+        api: origin.clone(),
+        placement: placement.clone(),
+    };
+    if !root.join("selection.json").exists()
+        && root.join("create.json").exists()
+        && placement.is_some()
+    {
+        return Err("Use a new checkpoint directory for an explicit placement.".into());
+    }
+    let saved = retained(&root.join("selection.json"), || Ok(selection.clone()))?;
+    if saved != selection {
+        return Err("The saved checkpoint uses different test settings.".into());
+    }
+    let client = Client::with_test_run(
         Deployment::new(&origin, website)?,
-        Duration::from_secs(10),
         Duration::from_secs(75),
+        true,
     )?;
     let mut credential =
         std::env::var("OPENAGENTS_TEST_TOKEN").map_err(|_| "Set the dedicated test credential.")?;
@@ -195,9 +267,11 @@ async fn main() -> Result<()> {
     let computers = client
         .computers(&session)?
         .with_operation_timeout(Duration::from_secs(90))?;
+    let resumed_checkpoint = root.join("create.json").exists();
     let request: CreateRequest = retained(&root.join("create.json"), || {
         Ok(computers.create_request(CreateOptions {
             size: Some("small".into()),
+            placement: placement.clone(),
             ..Default::default()
         })?)
     })?;
@@ -214,7 +288,7 @@ async fn main() -> Result<()> {
                     Err("The earlier computer is deleted; its workflow did not complete.".into())
                 }
             } else {
-                let mut result = workflow(&computers, &reference, root).await;
+                let mut result = workflow(&computers, &reference, root, started).await;
                 if result.is_ok() && !root.join("workflow-passed.json").exists() {
                     result = save(&root.join("workflow-passed.json"), &json!({"passed": true}));
                 }
@@ -236,6 +310,7 @@ async fn main() -> Result<()> {
             (reference, Err(Box::new(error) as Box<dyn Error>))
         }
     };
+    let cleanup_started = Instant::now();
     let cleanup = async {
         let reference = reference
             .as_ref()
@@ -258,7 +333,13 @@ async fn main() -> Result<()> {
         Ok::<_, Box<dyn Error>>(())
     }
     .await;
+    let cleanup_timing = timing(root, "cleanup_ms", cleanup_started.elapsed());
+    let timings = fs::read(root.join("timings.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
     let evidence = json!({"schema":"openagents.sdk.computers.workflow.v1","api":origin,"dedicated_test_account":true,
+        "placement":placement,"resumed_checkpoint":resumed_checkpoint,
+        "latency_sample_eligible":!resumed_checkpoint && result.is_ok() && cleanup_timing.is_ok(),"timings_ms":timings,
         "workflow_passed":result.is_ok(),"cleanup_passed":cleanup.is_ok(),"computer":reference.as_ref().map(ComputerRef::id),
         "request_key":request.key().as_str(),"elapsed_ms":started.elapsed().as_millis(),
         "contains_credentials":false,"contains_file_or_command_output":false});
@@ -269,5 +350,6 @@ async fn main() -> Result<()> {
     )?;
     println!("{evidence}");
     cleanup?;
+    cleanup_timing?;
     result
 }
