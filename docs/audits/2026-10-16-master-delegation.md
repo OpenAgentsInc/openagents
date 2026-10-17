@@ -66,6 +66,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 0: release and deploys (one agent, the only one that deploys or releases)
 
+**Taken 2026-10-16 22:04 CDT** by Codex working deploys and releases for #11875, #11934, #11852 in `~/work/openagents-bang-lane`.
+
 - **Owns:** every web deploy (staging and production shifts), every release candidate cut, the final 1.0.0 publish, the project boards, and `NEEDS_OWNER.md` hygiene. Other lanes ask lane 0 to deploy. They never shift traffic themselves.
 - **Tonight:**
   1. Run `scripts/dev/project-status-sync.sh 22` and `19`. Fix the stale assignees: #11934, #11840, #11762, #11862, #11863, #11770, #11794, and #11799 show AtlantisPleb with no live claim. Leave #11813, #11814, and #11936 alone (lane 6 is live).
