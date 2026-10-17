@@ -24,6 +24,7 @@ impl LabKind for AgentLab {
                 parameters: json!({"type":"object","properties":{"document":{"type":"string"},"content":{"type":"object"}},"required":["document","content"],"additionalProperties":false}),
             }],
             job_types: vec!["trial".into()],
+            job_requirements: Default::default(),
             views: vec![View::Report, View::Compare],
             limits: Limits {
                 max_doc_bytes: 128 * 1024,

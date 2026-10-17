@@ -171,6 +171,12 @@ impl JobSpec {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Requirements {
+    /// Minimum CPU capacity, in thousandths of one core (0 uses the runner default).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub cpu_millis: u64,
+    /// Minimum available memory (0 uses the runner default).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub memory_bytes: u64,
     #[serde(default)]
     pub gpu: bool,
     /// Programs the job runs (`ffmpeg`, `blender`, ...).
@@ -181,6 +187,13 @@ pub struct Requirements {
     /// Set when an input is [`AssetClass::PrivateLocal`].
     #[serde(default)]
     pub private_local: bool,
+    /// Input classes required by this job, in addition to the version's assets.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asset_classes: Vec<AssetClass>,
+}
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }
 
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
