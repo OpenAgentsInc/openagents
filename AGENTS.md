@@ -33,6 +33,8 @@ aligned with the OpenAgents desktop and mobile apps, ships on Monday
 2026-10-19. Every open issue closes within 24 hours. Read
 [`docs/audits/2026-10-16-coder-1.0-big-bang.md`](docs/audits/2026-10-16-coder-1.0-big-bang.md)
 before you work on Coder, its server routes, or a release.
+[`docs/audits/2026-10-16-master-delegation.md`](docs/audits/2026-10-16-master-delegation.md)
+splits every open issue into lanes; take a lane from it.
 
 - Binary work is in scope. Build features in `coder`, `openagents`,
   `microcoder`, and `coder-boundary`, and drop workarounds that existed only
