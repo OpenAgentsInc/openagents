@@ -154,7 +154,9 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 **Taken 2026-10-16 22:47 CDT** by Codex (Grok 4.7) working #11934, #11929, #11925, #11727 in `~/work/openagents-lane9b`.
 
-**Released 2026-10-16 22:40 CDT** by a Claude Code subagent. #11935 is closed (`264642e0a6`). #11934's `openagents agents` command is on `main` in the same commit; its web-door switch to the shared `place` is still in the issue's patch, and the deploy and live check are in After-close checks. #11929, #11925, and #11727 are free. #11928 is closed; the no-traffic production check is in After-close checks.
+The website agents door uses the shared `place` (`1708f44f49`). Deploy and the Foreman live check stay in After-close checks. #11929 is in progress.
+
+**Released 2026-10-16 22:40 CDT** by a Claude Code subagent. #11935 is closed (`264642e0a6`). #11934's `openagents agents` command is on `main` in the same commit. #11928 is closed; the no-traffic production check is in After-close checks.
 
 - **Owns:** `crates/openagents-cli`, `crates/openagents-login`, `crates/openagents-sdk/src/agents*`, `crates/openagents-web/src/{agents_door,attribution,pages/contact,pages/affiliates}.rs`, the web main and gateway startup paths for #11925 and #11928, and `apps/openagents/crates/engine/src/doc_host/agent_lab.rs` for #11929.
 - **Order:** #11935, then #11934 (one patch covers both), then #11929, #11925, #11928, and #11727.
@@ -335,10 +337,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 **#11933 Move running agents: move plans, Move all, Bring back, and agent tools.** Lane 3, last.
 - **Depends on:** #11932, #11931.
 
-**#11934 Ask a saved agent (Foreman) from `openagents chat send`, web, and phone chats.** Lane 9, with lane 0 for the deploy.
-- **Status:** the agents door is on `main` (`12d5e19449`, 3 tests) and on staging, not production. The shared placement code is in `bb3fe7c578`. The native `openagents agents list|ask|status` command is a patch in the 02:37 UTC comment that has never been compiled.
-- **Remains:** apply the patch, build and test `openagents-cli`, `openagents-web`, and `openagents-sdk`, deploy through lane 0, then run `ask_foreman_cli.py` and `openagents agents ask Foreman …` with test account `acct_500d3e1d125b7782`. Its credentials are in the scratch folder named in the comment; never print them.
-- **Also investigate:** the old shared test account `acct_83d16a35955ef908` returns 503 on `/v1/projects`.
+**#11934 Ask a saved agent (Foreman) from `openagents chat send`, web, and phone chats.** Lane 9, with lane 0 for the deploy. Closed on code.
+- **Status:** `openagents agents list|ask|status` is on `main` (`264642e0a6`). The website agents door calls `openagents_sdk::agents::place::place` (`1708f44f49`). `cargo test -p openagents-web agents_door` passed (2 tests).
+- **Remains:** lane 0 deploys that commit or newer and runs `ask_foreman_cli.py` and `openagents agents ask Foreman …` with test account `acct_500d3e1d125b7782`. The check is in After-close checks.
 
 **#11935 An `OPENAGENTS_TOKEN` that isn't a sign-in token falls back to the saved login.** Lane 9, first.
 - **Status:** `token_env_set` is on `main` (`bb3fe7c578`, 9 tests). The guard in `keys.rs` and `mac.rs` is in the #11934 patch.
@@ -413,7 +414,7 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 | Issue (closed or closing) | Check | Status |
 | --- | --- | --- |
 | #11817 | Deploy the new host and computer service. Configure a disposable Unix host, scoped test-account grant, and explicit enrolled target. Run the public attach, command retry/reconnect/cancel, relative-file, revocation, unsupported-control, and detach flow; verify files and unrelated grants survive. Repeat the Linux-specific command checks on Linux. | source checks passed; deploy and dedicated-account run to do |
-| #11934 | Deploy the agents door. Run `ask_foreman_cli.py` and `openagents agents ask Foreman …` with test account `acct_500d3e1d125b7782`. Land the web door's switch to `place` (in the issue's patch). | to do |
+| #11934 | Deploy the agents door from `1708f44f49` or newer. Run `ask_foreman_cli.py` and `openagents agents ask Foreman …` with test account `acct_500d3e1d125b7782`. The web door's switch to `place` is on `main` (`1708f44f49`). | to do |
 | #11936 | Redeploy the SPACE candidate with explicit zero-length framing and verify suspend and wake through Cloud Run. | Deployed `oa-space-service-computers-00002-pch`, image `sha256:f469151c…f717`, measured 2 vCPUs/1024 MiB. Lane 6 has the revision for the encrypted lifecycle check. |
 | #11814 | Promote the checked cleanup images, install eleven measurements and nine alert policies, then run encrypted lifecycle, worker replacement, concurrent wakes, drain/rollback/placement disable, guest denial, retention, and fixture cleanup. Use the [private service runbook](../../deploy/space-service/README.md) and [receipt](../cloud/evidence/2026-10-16-space-private-foundation.json). | to do; source checks passed 50/0 |
 | #11875 | The dedicated-account CAD run on staging and then production: fan bracket, picked face, 5 mm thicker, project versions, STEP download, cleanup. | Closed. Staging passed 18 CAD checks, browser selection, and cleanup. Production smoke passed 66/0/2; CAD operations and browser selection passed, but API project cleanup failed (#11938). The leftover test project was removed through the website. Evidence: `docs/sdk/labs-cad-staging-handoff.json`. |
