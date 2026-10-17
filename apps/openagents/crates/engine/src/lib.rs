@@ -1036,6 +1036,22 @@ impl Engine {
             false
         };
         if started {
+            // A phone that scans this computer's code may link its account
+            // key to the phone's account (#12000): follow the desktop
+            // identity's offer.
+            let extra: Vec<String> = std::env::var("CODER_DESKTOP_API_URL")
+                .ok()
+                .map(|api| openagents_sync::account_link::link_url(&api))
+                .into_iter()
+                .collect();
+            if let Some(hosted) = runtime
+                .nip_host
+                .get_mut()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .as_mut()
+            {
+                hosted.watch_account_link(&config.data_dir, extra);
+            }
             // With an account, register this computer's device key so a
             // paired phone can also reach it through sync. Without one, the
             // host still pairs phones over the device connection.

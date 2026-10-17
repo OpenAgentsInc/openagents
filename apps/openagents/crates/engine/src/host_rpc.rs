@@ -11,6 +11,8 @@ pub struct Hosted {
     host: Option<coder_host::Running>,
     runtime: tokio::runtime::Handle,
     link: AccountLink,
+    /// Follows the desktop identity's offer (`watch_account_link`).
+    link_watch: Option<tokio::task::JoinHandle<()>>,
 }
 
 /// The account key that signs a phone's request to link this computer to
@@ -32,7 +34,52 @@ impl Hosted {
             host: Some(host),
             runtime,
             link,
+            link_watch: None,
         })
+    }
+
+    /// Follow the desktop identity's link offer for `data_dir`
+    /// (`openagents_account::desktop::identity::link::watch`): while it
+    /// offers a key, sign a scanning phone's link proof with it; keep that
+    /// signer until the phone says the link landed; otherwise sign nothing.
+    /// `extra` are key-link addresses beyond production's.
+    pub fn watch_account_link(&mut self, data_dir: &std::path::Path, extra: Vec<String>) {
+        use openagents_account::desktop::identity::link::{self, LinkState};
+        use openagents_sync::account_link::Signer;
+        let mut state = link::watch(data_dir);
+        let slot = Arc::downgrade(&self.link);
+        let task = self.runtime.spawn(async move {
+            loop {
+                let Some(slot) = slot.upgrade() else { return };
+                {
+                    let mut current = slot
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let next = match &*state.borrow_and_update() {
+                        LinkState::Offered(identity) => {
+                            let key = identity.pubkey_hex();
+                            match current.as_ref() {
+                                // The same key offered again keeps what it signed.
+                                Some(signer) if signer.key() == key => current.clone(),
+                                _ => Signer::from_nsec(&identity.nsec(), &extra).map(Arc::new),
+                            }
+                        }
+                        // Signed: keep the signer so the phone can say the
+                        // link landed.
+                        LinkState::Signed(key) => current.clone().filter(|s| s.key() == *key),
+                        LinkState::Idle | LinkState::Linked(_) => None,
+                    };
+                    *current = next;
+                }
+                drop(slot);
+                if state.changed().await.is_err() {
+                    return;
+                }
+            }
+        });
+        if let Some(previous) = self.link_watch.replace(task) {
+            previous.abort();
+        }
     }
 
     /// Sign phones' account-link requests with `signer` (this computer's
@@ -97,6 +144,9 @@ impl Hosted {
 }
 impl Drop for Hosted {
     fn drop(&mut self) {
+        if let Some(watch) = self.link_watch.take() {
+            watch.abort();
+        }
         if let Some(host) = self.host.take() {
             host.set_app_rpc(None);
             host.stop_taking_requests();
@@ -224,12 +274,43 @@ impl AppRpc {
         let now = coder_access::unix_time().map_err(|e| e.code)?;
         let (grant, _) = grant.ok_or(Code::Forbidden)?;
         let value = signer.sign(grant, admission.expires_at, &request.params, now)?;
+        openagents_account::desktop::identity::link::signed(&signer.key());
         let answer = Answer {
             method: request.method,
             value,
         };
         answer.validate().map_err(|error| error.code)?;
         Ok(answer)
+    }
+
+    /// The phone that got a link proof says our server accepted it: this
+    /// computer's key may sign in now (#12000).
+    fn account_linked(
+        &self,
+        grant: Option<(&str, u64)>,
+        request: &Request,
+        admission: &coder_access::app_rpc::Admission<'_>,
+    ) -> Result<Answer, Code> {
+        request.validate().map_err(|error| error.code)?;
+        if coder_access::Rights::pairing()
+            .first_missing(admission.rights)
+            .is_some()
+        {
+            return Err(Code::MissingRight);
+        }
+        let signer = self
+            .link
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .ok_or(Code::Unsupported)?;
+        let (grant, _) = grant.ok_or(Code::Forbidden)?;
+        let key = signer.confirm(grant, &request.params)?;
+        openagents_account::desktop::identity::link::linked(&key);
+        Ok(Answer {
+            method: request.method,
+            value: serde_json::json!({}),
+        })
     }
 }
 
@@ -244,6 +325,9 @@ impl Handler for AppRpc {
     ) -> Result<Answer, Code> {
         if request.method == coder_access::app_rpc::Method::LinkAccount {
             return self.link_account(grant, request, admission);
+        }
+        if request.method == coder_access::app_rpc::Method::AccountLinked {
+            return self.account_linked(grant, request, admission);
         }
         if request.method != coder_access::app_rpc::Method::AuthorizeSync {
             return self.call(request_id, device, grant, request);
