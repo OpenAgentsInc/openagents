@@ -846,7 +846,7 @@ impl Driver for SpaceDriver {
         digest.update([0]);
         digest.update(computer);
         let operation = format!("delete:{:x}", digest.finalize());
-        self.action(computer, "delete", &operation)
+        Box::pin(self.action(computer, "delete", &operation))
             .await
             .map(|_| ())
     }
