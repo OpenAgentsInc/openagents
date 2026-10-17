@@ -74,6 +74,23 @@ form and forwards versioned field and activation events. The new-session menu
 adds personal agents beside existing models. Rust Native's optional syntax
 feature keeps forms independent of the app's separate syntax-engine version.
 
+- [OpenAgents #11966](https://github.com/OpenAgentsInc/openagents/issues/11966):
+  a saved agent's chat shows the agent, and its runtime is a setting with an
+  ordered fallback. `doc_host::custom_agents::runtime` chooses the first
+  ready runtime each turn (installed, turned on, signed in by a file/key
+  check that starts no login, model offered, access kept), then this
+  computer's own. Our module `sessions/saved_agent.rs` forgets the old
+  provider session and gives the fresh one the conversation. Hooks in
+  `sessions.rs`: the module line, `dispatch_inner` taking the runtime
+  `prepare_custom_agent` returns, and one term in `fork_history_prompt`'s
+  condition. `openagents-proto::saved_agent` reads the chat marker; our
+  module `crates/ui/src/openagents_saved_agent.rs` draws the OpenAgents mark
+  and name, with one hook in `shell.rs` (`render_chat_row`'s mark) and one in
+  `shell/tabs.rs` (the session header). `openagents-client` `SessionRow`
+  carries `agent_name`; the phone's `SessionCell` and `BrandMarks` draw the
+  mark. The agent form offers the runtime, OpenCode, "This computer's
+  default", and the fallback order.
+
 - [OpenAgents #11912](https://github.com/OpenAgentsInc/openagents/issues/11912):
   customizable Home dashboards. `openagents-account::dashboard` owns layout edits,
   summary reads, import/export, account saves, and the layout directory. UIKit
