@@ -7,11 +7,33 @@ import json
 import os
 from pathlib import Path
 import secrets
+import shlex
 from cluster_secrets import identity,secret
 
 ROOT=Path('/space/qualification-11814')
 HOST='oa-space-service-computers-ezxz4mgdsq-uc.a.run.app'
 OWNER='space-qualification-11814'
+TURNS={'turn':'cwc-turn-start','memory':'cwc-turn-memory','network':'cwc-turn-network'}
+
+
+def network_command():
+    script='''import http.client,json,socket
+results=[]
+for host,port in [("10.219.14.10",6443),("10.219.14.10",8443),("10.219.14.11",9800),("10.219.16.3",5432)]:
+    try:
+        with socket.create_connection((host,port),timeout=2): pass
+        results.append({"host":host,"port":port,"denied":False})
+    except OSError: results.append({"host":host,"port":port,"denied":True})
+try:
+    c=http.client.HTTPConnection("169.254.169.254",timeout=2)
+    c.request("GET","/computeMetadata/v1/instance/id",headers={"Metadata-Flavor":"Google"})
+    r=c.getresponse();results.append({"metadata_status":r.status,"denied":r.status in (401,403)})
+    c.close()
+except OSError: results.append({"metadata":"unreachable","denied":True})
+print(json.dumps(results))
+raise SystemExit(0 if all(r["denied"] for r in results) else 1)
+'''
+    return 'python3 -c '+shlex.quote(script)
 
 
 def request(method,path,data=None):
@@ -56,20 +78,21 @@ def main(action):
     elif action in ('stop','wake'): value=request('POST',base+'/'+action,{})
     elif action=='delete': value=request('DELETE',base)
     elif action.endswith('-status'):
-        key='cwc-turn-memory' if action=='memory-status' else 'cwc-turn-start'
+        key=TURNS[action.removesuffix('-status')]
         turn=json.loads((ROOT/(key+'.json')).read_text())
         turn_id=turn.get('id')
         if not isinstance(turn_id,str) or not turn_id.replace('-','').replace('_','').isalnum(): raise RuntimeError('Inspect the turn receipt before continuing.')
         value=request('GET',base+'/turns/'+turn_id)
         save(key+'-status',value)
     else:
-        key='cwc-turn-start' if action=='turn' else 'cwc-turn-memory'
+        key=TURNS[action]
         if (ROOT/(key+'.json')).exists(): raise RuntimeError('Inspect the saved turn before submitting another.')
         if action=='turn':
             canary=secrets.token_hex(32);save('memory-canary',{'sha256':hashlib.sha256(canary.encode()).hexdigest()})
             command="set -eu; env QA_MEMORY_11814="+canary+" setsid sh -c 'while :; do sleep 3600; done' </dev/null >/dev/null 2>&1 & pid=$!; echo $pid >/tmp/oa-11814-memory.pid; cat /proc/sys/kernel/random/boot_id; echo $pid; awk '{print $22}' /proc/$pid/stat; tr '\\0' '\\n' </proc/$pid/environ | sed -n 's/^QA_MEMORY_11814=//p' | tr -d '\\n' | sha256sum"
-        else:
+        elif action=='memory':
             command="set -eu; pid=$(cat /tmp/oa-11814-memory.pid); cat /proc/sys/kernel/random/boot_id; echo $pid; awk '{print $22}' /proc/$pid/stat; tr '\\0' '\\n' </proc/$pid/environ | sed -n 's/^QA_MEMORY_11814=//p' | tr -d '\\n' | sha256sum"
+        else: command=network_command()
         save(key,{'state':'submission_pending'})
         value=request('POST',base+'/turns',{'command':command,'timeout_seconds':45})
         save(key,value)
@@ -78,5 +101,5 @@ def main(action):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action',choices=['probe','create','recover-create','status','turn','turn-status','memory','memory-status','stop','wake','delete'])
+    parser.add_argument('action',choices=['probe','create','recover-create','status','turn','turn-status','memory','memory-status','network','network-status','stop','wake','delete'])
     main(parser.parse_args().action)
