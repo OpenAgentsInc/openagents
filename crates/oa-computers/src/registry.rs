@@ -134,8 +134,38 @@ pub struct Target {
     pub space_compatibility: Option<coder_environment::artifacts::Compatibility>,
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub withdrawn_artifacts: BTreeSet<String>,
+    /// Authority derived from verified host enrollment, never public create input.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enrolled: Option<EnrolledAuthority>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EnrolledAuthority {
+    pub account: String,
+    pub host: String,
+    pub workspace: String,
 }
 impl Target {
+    pub fn enrolled<T: computer_enrolled::Transport>(
+        id: &str,
+        driver: &computer_enrolled::Enrolled<T>,
+    ) -> Result<Self, Refused> {
+        use computer_driver::Driver;
+        let mut target = Self::new(
+            id,
+            &driver.fingerprint(),
+            driver.capabilities(),
+            ArtifactKind::EnrolledWorkspace,
+            Placement::OurCloud,
+        )?;
+        target.placement = Placement::Enrolled;
+        target.enrolled = Some(EnrolledAuthority {
+            account: driver.account().into(),
+            host: driver.host().into(),
+            workspace: driver.workspace().into(),
+        });
+        Ok(target)
+    }
     pub fn new(
         id: &str,
         connection_identity: &str,
@@ -171,11 +201,16 @@ impl Target {
             legacy_driver: None,
             space_compatibility: None,
             withdrawn_artifacts: BTreeSet::new(),
+            enrolled: None,
         })
     }
     fn admits(&self, owner: &str) -> bool {
         self.enabled
             && self.admit_new
+            && self
+                .enrolled
+                .as_ref()
+                .is_none_or(|scope| scope.account == owner)
             && self
                 .rollout_accounts
                 .as_ref()
@@ -261,7 +296,7 @@ impl std::fmt::Display for Refused {
 impl std::error::Error for Refused {}
 
 fn supports_needs(caps: &Capabilities, needs: &Needs) -> bool {
-    coder_working_computer::on_driver::check(caps).is_ok()
+    (caps.workspace_attachment || coder_working_computer::on_driver::check(caps).is_ok())
         && needs.profiles.is_subset(&caps.profiles)
         && (!needs.memory_suspend || caps.memory_suspend)
         && (!needs.files || caps.workspace_file_bytes.is_some())
@@ -287,6 +322,8 @@ impl Catalog {
                     .bytes()
                     .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
                 || target.caps.validate().is_err()
+                || !valid_enrolled(&target)
+                || target.id == default && target.placement == Placement::Enrolled
                 || target.capacity == Some(0)
                 || target.space_compatibility.as_ref().is_some_and(|profile| {
                     target.artifact_kind != ArtifactKind::SpaceTemplate
@@ -364,6 +401,8 @@ impl Catalog {
                     "workspace_file_bytes":caps.workspace_file_bytes,
                     "default_environment_available":caps.default_artifact.is_some(),
                     "environment_artifacts":caps.environment_artifacts,
+                    "workspace_attachment":caps.workspace_attachment,
+                    "enrolled_host":target.enrolled.as_ref().map(|_| target.id.as_str()),
                 }));
         }
         serde_json::Value::Array(groups.into_iter().map(|(placement,offers)|serde_json::json!({"placement":placement,"offers":offers})).collect())
@@ -386,6 +425,10 @@ impl Catalog {
             || binding.fingerprint != target.fingerprint
             || binding.driver != target.caps.driver
             || !target.enabled
+            || target
+                .enrolled
+                .as_ref()
+                .is_some_and(|scope| scope.account != owner)
         {
             return Err(Refused::Unavailable);
         }
@@ -397,6 +440,21 @@ impl Catalog {
         let target = self.bound(binding, &entry.owner, &entry.driver, &entry.size)?;
         if entry.record.size != entry.size {
             return Err(Refused::Unavailable);
+        }
+        if target.placement == Placement::Enrolled {
+            if binding.migrated
+                || binding.placement != Placement::Enrolled
+                || binding.requested_placement != Placement::Enrolled
+                || binding.artifact.is_some()
+                || binding.shape.is_some()
+                || entry.image.is_some()
+                || binding.size != "workspace"
+                || binding.operation_namespace.as_deref() != Some(binding.fingerprint.as_str())
+                || binding.request_fingerprint.len() != 64
+            {
+                return Err(Refused::Unavailable);
+            }
+            return Ok(target);
         }
         if binding.migrated {
             if binding.operation_namespace.is_some() {
@@ -445,10 +503,10 @@ impl Catalog {
         if placement == Placement::Auto && !self.targets.contains_key(&self.default) {
             return Err(Refused::Unavailable);
         }
-        if placement == Placement::Enrolled
-            || intent.enrolled_host.is_some()
-            || intent.egress_profile.is_some()
-        {
+        if placement == Placement::Enrolled {
+            return self.enrolled_candidates(owner, intent);
+        }
+        if intent.enrolled_host.is_some() || intent.egress_profile.is_some() {
             return Err(Refused::Unsupported);
         }
         let needs = intent.needs.clone().unwrap_or_default();
@@ -458,7 +516,10 @@ impl Catalog {
         let mut targets: Vec<_> = self
             .targets
             .values()
-            .filter(|target| placement == Placement::Auto || target.placement == placement)
+            .filter(|target| {
+                target.placement != Placement::Enrolled
+                    && (placement == Placement::Auto || target.placement == placement)
+            })
             .collect();
         if targets.is_empty() {
             return Err(Refused::Placement);
@@ -571,6 +632,58 @@ impl Catalog {
             Ok(choices)
         }
     }
+    fn enrolled_candidates(
+        &self,
+        owner: &str,
+        intent: &CreateIntent,
+    ) -> Result<Vec<Binding>, Refused> {
+        let selector = intent.enrolled_host.as_deref().ok_or(Refused::Invalid)?;
+        let target = self
+            .targets
+            .get(selector)
+            .filter(|target| target.placement == Placement::Enrolled)
+            .ok_or(Refused::Forbidden)?;
+        if !target.admits(owner) {
+            return Err(Refused::Forbidden);
+        }
+        let needs = intent.needs.clone().unwrap_or_default();
+        if intent.chat.is_some()
+            || intent.image.is_some()
+            || intent.environment.is_some()
+            || intent.version.is_some()
+            || intent.environment_image.is_some()
+            || intent.environment_attempt.is_some()
+            || intent.egress_profile.is_some()
+            || !supports_needs(&target.caps, &needs)
+        {
+            return Err(Refused::Unsupported);
+        }
+        if intent.size.as_deref().is_some_and(|s| s != "workspace")
+            || needs.min_vcpus.is_some()
+            || needs.min_memory_mib.is_some()
+        {
+            return Err(Refused::Size);
+        }
+        Ok(vec![Binding {
+            schema: BINDING_SCHEMA.into(),
+            owner: owner.into(),
+            driver: target.caps.driver.clone(),
+            deployment: target.id.clone(),
+            fingerprint: target.fingerprint.clone(),
+            placement: Placement::Enrolled,
+            requested_placement: Placement::Enrolled,
+            needs,
+            request_fingerprint: intent.fingerprint("workspace"),
+            policy: self.policy.clone(),
+            size: "workspace".into(),
+            artifact: None,
+            shape: None,
+            operation_namespace: Some(target.fingerprint.clone()),
+            migrated: false,
+            environment_image: None,
+            environment_attempt: None,
+        }])
+    }
     pub fn choose(
         &self,
         owner: &str,
@@ -590,8 +703,30 @@ impl Catalog {
     }
 }
 
+fn valid_enrolled(target: &Target) -> bool {
+    match &target.enrolled {
+        Some(scope) => {
+            target.placement == Placement::Enrolled
+                && target.artifact_kind == ArtifactKind::EnrolledWorkspace
+                && target.caps.workspace_attachment
+                && target.caps.sizes == ["workspace"]
+                && !scope.account.is_empty()
+                && scope.account.len() <= 128
+                && computer_files::valid_digest(&scope.host)
+                && !scope.workspace.is_empty()
+                && scope.workspace.len() <= 128
+                && target.legacy_driver.is_none()
+        }
+        None => {
+            target.placement != Placement::Enrolled
+                && !target.caps.workspace_attachment
+                && target.artifact_kind != ArtifactKind::EnrolledWorkspace
+        }
+    }
+}
 fn compatible(kind: ArtifactKind, reference: &str) -> bool {
     match kind {
+        ArtifactKind::EnrolledWorkspace => false,
         ArtifactKind::Test => true,
         ArtifactKind::SpaceTemplate => {
             reference.contains("@sha256:") || reference.starts_with("sha256:")
@@ -801,7 +936,7 @@ mod tests {
         };
         assert!(matches!(
             catalog.candidates("owner", &enrolled),
-            Err(Refused::Unsupported)
+            Err(Refused::Forbidden)
         ));
         assert!(!compatible(
             ArtifactKind::SpaceTemplate,
@@ -1055,5 +1190,142 @@ mod environment_artifact_tests {
             catalog.candidates("fixture-owner", &intent(Some(space))),
             Err(Refused::Artifact)
         ));
+    }
+}
+
+#[cfg(test)]
+mod enrolled_tests {
+    use super::*;
+    fn catalog() -> Catalog {
+        let mut cloud_caps = Capabilities::new("fake", Profile::ALL, &["small"]);
+        cloud_caps.shapes.insert(
+            "small".into(),
+            Shape {
+                vcpus: 2,
+                memory_mib: 2048,
+                min_disk_gib: None,
+            },
+        );
+        cloud_caps.default_artifact = Some(Artifact {
+            kind: ArtifactKind::Test,
+            reference: "test:empty".into(),
+            provider_identity: None,
+            disk_gib: None,
+        });
+        let cloud = Target::new(
+            "cloud",
+            "synthetic-cloud",
+            cloud_caps,
+            ArtifactKind::Test,
+            Placement::OurCloud,
+        )
+        .unwrap();
+        let mut caps = Capabilities::new("enrolled", [], &["workspace"]);
+        caps.workspace_attachment = true;
+        caps.command_sessions = true;
+        caps.workspace_file_bytes = Some(4096);
+        let mut own = Target::new(
+            "my-project",
+            "synthetic-workspace",
+            caps,
+            ArtifactKind::EnrolledWorkspace,
+            Placement::OurCloud,
+        )
+        .unwrap();
+        own.placement = Placement::Enrolled;
+        own.enrolled = Some(EnrolledAuthority {
+            account: "alice".into(),
+            host: "ab".repeat(32),
+            workspace: "project".into(),
+        });
+        Catalog::new("cloud", "test", [cloud, own]).unwrap()
+    }
+    fn intent() -> CreateIntent {
+        CreateIntent {
+            placement: Some(Placement::Enrolled),
+            enrolled_host: Some("my-project".into()),
+            ..Default::default()
+        }
+    }
+    #[test]
+    fn only_explicit_account_bound_core_placement_can_attach_a_workspace() {
+        let catalog = catalog();
+        let auto = catalog
+            .candidates("alice", &CreateIntent::default())
+            .unwrap();
+        assert_eq!(auto.len(), 1);
+        assert_eq!(auto[0].placement, Placement::OurCloud);
+        let own = catalog.candidates("alice", &intent()).unwrap();
+        assert_eq!(own.len(), 1);
+        assert_eq!(own[0].placement, Placement::Enrolled);
+        assert!(own[0].artifact.is_none() && own[0].shape.is_none());
+        assert_eq!(own[0].size, "workspace");
+        assert_eq!(
+            catalog.candidates("bob", &intent()).unwrap_err(),
+            Refused::Forbidden
+        );
+        let mut guessed = intent();
+        guessed.enrolled_host = Some("ab".repeat(32));
+        assert_eq!(
+            catalog.candidates("alice", &guessed).unwrap_err(),
+            Refused::Forbidden
+        );
+        let mut missing = intent();
+        missing.enrolled_host = None;
+        assert_eq!(
+            catalog.candidates("alice", &missing).unwrap_err(),
+            Refused::Invalid
+        );
+        let mut request = intent();
+        request.placement = None;
+        assert_eq!(
+            catalog.candidates("alice", &request).unwrap_err(),
+            Refused::Unsupported
+        );
+        for profile in [Profile::Suspend, Profile::Snapshot, Profile::Fork] {
+            let mut request = intent();
+            request.needs = Some(Needs {
+                profiles: BTreeSet::from([profile]),
+                ..Default::default()
+            });
+            assert_eq!(
+                catalog.candidates("alice", &request).unwrap_err(),
+                Refused::Unsupported
+            );
+        }
+        for request in [
+            CreateIntent {
+                image: Some("cloud-image".into()),
+                ..intent()
+            },
+            CreateIntent {
+                chat: Some("chat".into()),
+                ..intent()
+            },
+            CreateIntent {
+                environment: Some("environment".into()),
+                ..intent()
+            },
+        ] {
+            assert_eq!(
+                catalog.candidates("alice", &request).unwrap_err(),
+                Refused::Unsupported
+            );
+        }
+        let mut request = intent();
+        request.needs = Some(Needs {
+            min_vcpus: Some(1),
+            ..Default::default()
+        });
+        assert_eq!(
+            catalog.candidates("alice", &request).unwrap_err(),
+            Refused::Size
+        );
+        let offers = catalog.offers("bob");
+        assert!(!offers.to_string().contains("my-project"));
+        let offers = catalog.offers("alice");
+        assert!(offers.to_string().contains("my-project"));
+        assert!(!offers.to_string().contains(&"ab".repeat(32)));
+        assert!(Catalog::new("my-project", "test", catalog.targets.values().cloned()).is_err());
     }
 }

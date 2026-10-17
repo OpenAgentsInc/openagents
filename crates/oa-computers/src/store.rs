@@ -314,17 +314,11 @@ impl Store {
                 };
                 let record = crate::api::admit_create(&target.caps, owner, &body)
                     .map_err(|_| CreateError::Admission(crate::registry::Refused::Invalid))?;
-                let artifact = binding
-                    .artifact
-                    .as_ref()
-                    .expect("new placement has an image");
-                let image = if artifact.kind == computer_driver::ArtifactKind::Test
-                    && artifact.reference == "test:empty"
-                {
-                    None
-                } else {
-                    Some(artifact.reference.clone())
-                };
+                let image = binding.artifact.as_ref().and_then(|artifact| {
+                    (artifact.kind != computer_driver::ArtifactKind::Test
+                        || artifact.reference != "test:empty")
+                        .then(|| artifact.reference.clone())
+                });
                 Ok(Insert {
                     driver: binding.driver.clone(),
                     image,

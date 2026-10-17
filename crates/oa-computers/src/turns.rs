@@ -403,7 +403,17 @@ async fn add(
         .unwrap_or(MAX_SECONDS)
         .clamp(1, MAX_SECONDS) as i32;
     match api.store.get(&owner, &id).await {
-        Ok(Some(e)) if e.desired != Desired::Deleted => {}
+        Ok(Some(e)) if e.desired != Desired::Deleted => match api.capabilities_for(&e) {
+            Ok(caps) if caps.workspace_attachment => {
+                return err(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "unsupported",
+                    "Use an identified command on this workspace connection. Chat turns require suspension support.",
+                );
+            }
+            Err(error) => return error,
+            _ => {}
+        },
         Ok(_) => {
             return err(
                 StatusCode::NOT_FOUND,

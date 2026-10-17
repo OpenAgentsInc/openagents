@@ -15,6 +15,10 @@ path = "src/main.rs"
 space = ["computer-driver/space"]
 
 [dependencies]
+computer-enrolled = { path = "../computer-enrolled" }
+coder-access = { path = "../coder-access", default-features = false }
+coder-host = { path = "../coder-host", default-features = false }
+secp256k1 = "0.31.1"
 computer-files = { path = "../computer-files" }
 base64 = "0.22"
 axum = { version = "0.8", features = ["json", "query", "tokio", "http1"] }

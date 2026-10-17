@@ -15,6 +15,7 @@ use std::{
 pub enum RuntimeDriver {
     Boat(computer_driver::boat::BoatDriver),
     Fake(computer_driver::fake::FakeDriver),
+    Enrolled(computer_enrolled::Enrolled),
     #[cfg(feature = "space")]
     Space(computer_driver::space::SpaceDriver),
 }
@@ -24,6 +25,7 @@ macro_rules! forward {
             match self {
                 Self::Boat(driver)=>driver.$name($($arg),*).await,
                 Self::Fake(driver)=>driver.$name($($arg),*).await,
+                Self::Enrolled(driver)=>driver.$name($($arg),*).await,
                 #[cfg(feature="space")]
                 Self::Space(driver)=>driver.$name($($arg),*).await,
             }
@@ -35,6 +37,7 @@ impl Driver for RuntimeDriver {
         match self {
             Self::Boat(driver) => driver.capabilities(),
             Self::Fake(driver) => driver.capabilities(),
+            Self::Enrolled(driver) => driver.capabilities(),
             #[cfg(feature = "space")]
             Self::Space(driver) => driver.capabilities(),
         }
@@ -75,6 +78,7 @@ enum Kind {
     Boat,
     Space,
     Fake,
+    Enrolled,
 }
 impl Kind {
     fn driver(self) -> &'static str {
@@ -82,6 +86,7 @@ impl Kind {
             Self::Boat => "oa-boat",
             Self::Space => "space",
             Self::Fake => "fake",
+            Self::Enrolled => "enrolled",
         }
     }
     fn artifact(self) -> ArtifactKind {
@@ -89,11 +94,13 @@ impl Kind {
             Self::Boat => ArtifactKind::GceImage,
             Self::Space => ArtifactKind::SpaceTemplate,
             Self::Fake => ArtifactKind::Test,
+            Self::Enrolled => ArtifactKind::EnrolledWorkspace,
         }
     }
     fn placement(self) -> Placement {
         match self {
             Self::Space => Placement::FastSandbox,
+            Self::Enrolled => Placement::Enrolled,
             _ => Placement::OurCloud,
         }
     }
@@ -110,6 +117,8 @@ struct Configuration {
 struct Deployment {
     id: String,
     kind: Kind,
+    #[serde(default)]
+    enrolled: Option<EnrolledConfiguration>,
     #[serde(default)]
     api_url: Option<String>,
     #[serde(default)]
@@ -143,6 +152,44 @@ struct Deployment {
     /// A non-secret provider tenant/installation name, when URLs alone are ambiguous.
     #[serde(default)]
     scope: Option<String>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EnrolledConfiguration {
+    account: String,
+    host: String,
+    workspace: String,
+    access_file: std::path::PathBuf,
+    device_key_env: String,
+}
+fn load_enrolled(config: &EnrolledConfiguration) -> Result<computer_enrolled::Enrolled, Refused> {
+    use std::io::Read;
+    use std::str::FromStr;
+    let mut bytes = Vec::new();
+    std::fs::File::open(&config.access_file)
+        .map_err(|_| settings())?
+        .take(128 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| settings())?;
+    if bytes.len() > 128 * 1024 {
+        return Err(settings());
+    }
+    let access = coder_access::Access::parse(&bytes).map_err(|_| settings())?;
+    let key = computer_driver::Secret::new(credential(&config.device_key_env)?);
+    let secret = secp256k1::SecretKey::from_str(key.expose()).map_err(|_| settings())?;
+    // Device::new authenticates the encrypted host signature and exact grant
+    // before any account or root from this record becomes service authority.
+    let device = std::sync::Arc::new(
+        coder_host::client::Device::new(access, secret, coder_access::RelayPolicy::Production)
+            .map_err(|_| settings())?,
+    );
+    computer_enrolled::Enrolled::new(
+        computer_enrolled::HostTransport::relay(device),
+        &config.account,
+        &config.host,
+        &config.workspace,
+    )
+    .map_err(|_| settings())
 }
 fn yes() -> bool {
     true
@@ -205,12 +252,14 @@ impl Configuration {
             deployments: vec![Deployment {
                 id,
                 kind,
+                enrolled: None,
                 api_url: match kind {
                     Kind::Boat => {
                         Some(env("BOAT_API_BASE").unwrap_or_else(|| boat::BASE_URL.into()))
                     }
                     Kind::Space => env("SPACE_API_URL"),
                     Kind::Fake => None,
+                    Kind::Enrolled => return Err(settings()),
                 },
                 data_plane_url: env("SPACE_DATA_PLANE_URL"),
                 credential_env: Some(
@@ -244,6 +293,7 @@ async fn load(
     data: Option<&str>,
 ) -> Result<RuntimeDriver, Refused> {
     match deployment.kind {
+        Kind::Enrolled => Err(settings()),
         Kind::Boat => {
             let key = boat::ApiKey::new(credential(
                 deployment
@@ -339,6 +389,38 @@ pub async fn from_environment() -> Result<Registry<RuntimeDriver>, Refused> {
     let mut targets = Vec::new();
     let mut drivers = BTreeMap::new();
     for deployment in config.deployments {
+        if matches!(deployment.kind, Kind::Enrolled) {
+            if deployment.legacy
+                || !deployment.shapes.is_empty()
+                || deployment.template.is_some()
+                || deployment.api_url.is_some()
+                || deployment.data_plane_url.is_some()
+                || deployment.credential_env.is_some()
+                || deployment.fake_root.is_some()
+                || deployment.space_compatibility.is_some()
+                || !deployment.withdrawn_artifacts.is_empty()
+                || deployment.scope.is_some()
+                || deployment
+                    .placement
+                    .is_some_and(|p| p != Placement::Enrolled)
+            {
+                return Err(settings());
+            }
+            let driver = load_enrolled(deployment.enrolled.as_ref().ok_or_else(settings)?)?;
+            let mut target = Target::enrolled(&deployment.id, &driver)?;
+            target.priority = deployment.priority;
+            target.enabled = deployment.enabled;
+            target.admit_new = deployment.admit_new;
+            target.capacity = deployment.capacity;
+            target.rollout_accounts = deployment.rollout_accounts;
+            targets.push(target);
+            drivers.insert(deployment.id, RuntimeDriver::Enrolled(driver));
+            continue;
+        }
+        if deployment.enrolled.is_some() {
+            return Err(settings());
+        }
+
         let api = match deployment.kind {
             Kind::Fake => {
                 let root = deployment

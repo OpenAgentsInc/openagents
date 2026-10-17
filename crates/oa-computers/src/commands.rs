@@ -327,6 +327,14 @@ async fn create(
     };
     let admission = match api.capabilities_for(&entry) {
         Ok(caps) if api.catalog.is_some() && !caps.command_sessions => Err("unsupported"),
+        Ok(caps)
+            if caps.workspace_attachment
+                && (request.credential_ref.is_some()
+                    || request.timeout_seconds > coder_access::enrolled::MAX_TIMEOUT
+                    || request.command.len() > 32 * 1024) =>
+        {
+            Err("unsupported")
+        }
         Ok(_) => Ok(()),
         Err(_) => Err("unavailable"),
     };
@@ -696,6 +704,16 @@ pub async fn run<D: Driver + Clone + 'static>(
     result?;
     if r.status == "unknown" && p.driver.capabilities().memory_suspend {
         return crate::turns::uncertain_memory_turn(p, lease, e, computer).await;
+    }
+    if p.driver.capabilities().workspace_attachment {
+        let computer = lease
+            .apply(
+                &Command::FinishCommand { generation },
+                crate::reconcile::now_ms(),
+            )
+            .await?;
+        let _ = store.poke(&e.id).await;
+        return Ok(Settled::Idle(computer));
     }
     let finished = driver::turn_finished(p, lease, generation, crate::reconcile::now_ms()).await?;
     if store.next_turn(&e.id).await.map_err(io)?.is_none() {

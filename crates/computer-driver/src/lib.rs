@@ -67,6 +67,8 @@ pub enum ArtifactKind {
     GceImage,
     SpaceTemplate,
     Test,
+    /// A logical workspace attachment; no image is allocated.
+    EnrolledWorkspace,
 }
 
 /// A resolved base image. When present, `provider_identity` is the image ID

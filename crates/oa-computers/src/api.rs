@@ -64,6 +64,10 @@ impl Api {
             .ok()
             .and_then(|caps| serde_json::to_value(caps).ok())
             .unwrap_or(Value::Null);
+        if value["capabilities"]["workspace_attachment"] == true {
+            value["lifecycle_policy"]["turn_complete"] = Value::Null;
+            value["lifecycle_policy"]["expiry"] = json!("detach");
+        }
         value
     }
 
@@ -261,7 +265,25 @@ pub fn admit_create(
             "Those computer requirements aren't available here.".into(),
         ));
     }
-    if let Err(no) = coder_working_computer::on_driver::check(caps) {
+    if caps.workspace_attachment
+        && (body.chat.is_some()
+            || body.image.is_some()
+            || body.environment.is_some()
+            || body.version.is_some()
+            || body.environment_attempt.is_some())
+    {
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "unsupported",
+            "Workspace connections do not support chat suspension or cloud images.".into(),
+        ));
+    }
+    let required = if caps.workspace_attachment {
+        &[computer_driver::Profile::Core][..]
+    } else {
+        &coder_working_computer::on_driver::NEEDS[..]
+    };
+    if let Err(no) = computer_driver::admit(caps, required) {
         return Err((
             StatusCode::UNPROCESSABLE_ENTITY,
             "unsupported",
@@ -578,6 +600,23 @@ async fn want(api: &Api, headers: &HeaderMap, id: &str, d: Desired) -> Response 
         Ok(o) => o,
         Err(r) => return r,
     };
+    if d != Desired::Deleted {
+        match api.store.get(&owner, id).await {
+            Ok(Some(entry)) => match api.capabilities_for(&entry) {
+                Ok(caps) if caps.workspace_attachment => {
+                    return err(
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        "unsupported",
+                        "This workspace connection cannot be suspended or woken. Disconnect it when you finish.",
+                    );
+                }
+                Err(error) => return error,
+                _ => {}
+            },
+            Ok(None) => return err(StatusCode::NOT_FOUND, "not_found", "No such computer."),
+            Err(_) => return err(StatusCode::SERVICE_UNAVAILABLE, "unavailable", "Try again."),
+        }
+    }
     match api.store.set_desired(&owner, id, d).await {
         Ok(true) => match api.store.get(&owner, id).await {
             Ok(Some(e)) => (StatusCode::ACCEPTED, Json(api.view(&e))).into_response(),

@@ -47,6 +47,7 @@ impl<D: Driver + Clone> Registry<D> {
             };
             let actual = driver.capabilities();
             if actual.driver != target.caps.driver
+                || actual.workspace_attachment != target.caps.workspace_attachment
                 || !target.caps.profiles.is_subset(&actual.profiles)
                 || target.caps.memory_suspend && !actual.memory_suspend
                 || target.caps.command_sessions && !actual.command_sessions
@@ -150,6 +151,9 @@ impl<D: Driver> Driver for BoundDriver<D> {
             }
             let mut request = request.clone();
             request.operation = binding.operation(&request.operation);
+            if self.caps.workspace_attachment {
+                request.ttl_seconds = None;
+            }
             return self.inner.create(&request).await;
         }
         self.inner.create(request).await
