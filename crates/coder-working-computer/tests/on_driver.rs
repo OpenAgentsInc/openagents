@@ -274,3 +274,30 @@ async fn memory_lifecycle_waits_for_original_operations_across_restart_and_keeps
     restarted.delete("computer-1", 70).await.unwrap();
     assert!(memory.inner.live().is_empty());
 }
+
+#[tokio::test]
+async fn observed_deletion_settles_a_memory_operation_whose_result_cannot_be_read() {
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let memory = MemoryDriver {
+        inner: FakeDriver::new(dir.path().join("machines")).boot_observations(0),
+        complete: Arc::new(AtomicBool::new(true)),
+        operations: Arc::new(Mutex::new(Default::default())),
+    };
+    let store = Store::under(dir.path().join("records"));
+    store.create(&Computer::new(spec(), 1).unwrap()).unwrap();
+    let driver = Driver::new(store, fast(memory.clone()));
+    let first = driver.prompt("computer-1", 10).await.unwrap();
+    let resource = first.computer().resource().unwrap().to_owned();
+    memory.complete.store(false, Ordering::SeqCst);
+    let waiting = driver.turn_finished("computer-1", 1, 20).await.unwrap();
+    assert!(matches!(waiting.computer().phase, Phase::Unknown { .. }));
+    assert!(memory.inner.delete(&resource).await.is_done());
+    let deleted = driver.delete("computer-1", 30).await.unwrap();
+    assert_eq!(deleted.computer().phase, Phase::Deleted, "{deleted:?}");
+    assert_eq!(memory.operations.lock().unwrap().len(), 1);
+    assert!(memory.inner.live().is_empty());
+}

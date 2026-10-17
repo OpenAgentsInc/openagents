@@ -34,8 +34,10 @@ running programs. The policy reports suspend-after-turn, idle and observation
 bounds, and a per-boot absolute limit. An unavailable bound deployment returns
 `capabilities: null`; the service never substitutes the default backend.
 
-Lifecycle retries reuse the same operation identity after restart and wait for
-both provider completion and readiness. Memory restore checks existing services
+SPACE lifecycle recovery reads the provider operation ID saved in PostgreSQL
+and waits for both provider completion and readiness. A lost response before
+that ID is saved remains unknown; the service never sends another mutation for
+that request, even after the provider's retry mapping expires. Memory restore checks existing services
 without rerunning startup hooks. An uncertain command on a memory-preserving
 computer blocks follow-ups and checkpoints; explicit deletion removes that
 computer without saving its possibly live command. Legacy SPACE command

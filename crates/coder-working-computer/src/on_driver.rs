@@ -302,6 +302,17 @@ impl<D: Driver> Provider for OnDriver<D> {
     }
 
     async fn inspect(&self, c: &Computer, resource: &str) -> Outcome<Inspection> {
+        // Actual deletion settles uncertainty even if the provider no longer
+        // retains the earlier operation. It never authorizes another create.
+        if let Outcome::Done { value } = self.driver.observe(resource).await
+            && value.state == State::Gone
+        {
+            return Outcome::done(Inspection {
+                running: None,
+                stop: None,
+                latest_snapshot: None,
+            });
+        }
         let mut stop = None;
         let mut latest_snapshot = None;
         if self.driver.capabilities().memory_suspend {

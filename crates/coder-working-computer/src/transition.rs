@@ -744,9 +744,12 @@ pub fn apply(c: &Computer, command: &Command, now_ms: u64) -> Result<Applied, Re
             if !ok {
                 return Err(wrong(c));
             }
-            if c.resource().is_none() {
+            let resource_deleted = c.creates.iter().any(|attempt| {
+                attempt.resource.as_deref() == c.resource() && done(&attempt.deletion)
+            });
+            if c.resource().is_none() || resource_deleted {
                 n.deletion = Some(Fact::Done {
-                    evidence: "no provider resource".into(),
+                    evidence: "no live provider resource".into(),
                     at_ms: now,
                 });
                 n.phase = Phase::Deleted;

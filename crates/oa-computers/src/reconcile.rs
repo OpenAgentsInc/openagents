@@ -252,7 +252,12 @@ impl<D: Drivers + 'static> Reconciler<D> {
         } else {
             None
         };
-        let result = if let Some(t) = active_command {
+        let result = if e.desired == Desired::Deleted
+            && matches!(e.record.phase, Phase::Unknown { .. })
+            && p.driver.capabilities().memory_suspend
+        {
+            crate::turns::uncertain_memory_turn(&p, &lease, &e, e.record.clone()).await
+        } else if let Some(t) = active_command {
             if !t.api_command && t.state == "done" && t.exit_code.is_some() {
                 driver::turn_finished(&p, &lease, e.record.turn.dispatched, now).await
             } else if !t.api_command {
