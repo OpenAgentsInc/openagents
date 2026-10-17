@@ -8,6 +8,8 @@
 //!   running process, kept until its tab is explicitly closed or the engine exits.
 //!   Only EXITED sessions expire (30min TTL on their inert replay buffers), and
 //!   [`MAX_TERMINALS`] bounds leakage from renderers that lost their tab state.
+//! - Under keepers (#11951, `terminals/kept.rs`), a shell outlives the engine:
+//!   shutdown leaves it running and the next engine picks it up.
 //! - Ownership: M5 is single-user local — every IPC/relay caller is the device
 //!   owner, so the per-user owner re-checks from openagents's Router land with real
 //!   multi-account auth in M6.
@@ -22,6 +24,8 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use portable_pty::PtySize;
 #[cfg(not(windows))]
 use portable_pty::{CommandBuilder, native_pty_system};
+#[cfg(unix)]
+mod kept;
 #[cfg(windows)]
 mod windows;
 use tokio::sync::mpsc;
@@ -49,7 +53,12 @@ struct LiveTerminal {
     reader_thread: Option<std::thread::JoinHandle<()>>,
     #[cfg(windows)]
     cleanup: Option<Arc<windows::Cleanup>>,
-    subscribers: Vec<mpsc::UnboundedSender<TerminalEvent>>,
+    /// Set when a keeper holds the shell; `writer` and `killer` then go to it.
+    #[cfg(unix)]
+    kept: Option<Arc<kept::KeptLink>>,
+    /// Live viewers, each with the sequence number it has seen up to: a kept
+    /// terminal still replaying its keeper's journal sends older events.
+    subscribers: Vec<(u64, mpsc::UnboundedSender<TerminalEvent>)>,
     replay: VecDeque<TerminalEvent>,
     replay_bytes: usize,
     seq: u64,
@@ -77,7 +86,9 @@ impl LiveTerminal {
                 };
             }
         }
-        self.subscribers.retain(|tx| tx.send(event.clone()).is_ok());
+        let seq = event_seq(&event);
+        self.subscribers
+            .retain(|(after, tx)| seq <= *after || tx.send(event.clone()).is_ok());
         if matches!(event, TerminalEvent::Exit { .. }) {
             self.initial_script.take();
             self.exited = true;
@@ -89,10 +100,20 @@ impl LiveTerminal {
         self.seq += 1;
         self.seq
     }
+
+    fn is_kept(&self) -> bool {
+        #[cfg(unix)]
+        return self.kept.is_some();
+        #[cfg(not(unix))]
+        false
+    }
 }
 
 struct TerminalsInner {
     sessions: Mutex<HashMap<String, Arc<Mutex<LiveTerminal>>>>,
+    /// Where terminal keepers keep their folders, once the engine set it.
+    #[cfg(unix)]
+    keepers: std::sync::OnceLock<std::path::PathBuf>,
 }
 
 impl Drop for TerminalsInner {
@@ -105,8 +126,14 @@ impl Drop for TerminalsInner {
             .map(|(_, session)| session)
             .collect::<Vec<_>>();
         for session in sessions {
-            dispose(&session, true);
+            release(&session);
         }
+    }
+}
+
+fn event_seq(event: &TerminalEvent) -> u64 {
+    match event {
+        TerminalEvent::Data { seq, .. } | TerminalEvent::Exit { seq, .. } => *seq,
     }
 }
 
@@ -157,14 +184,21 @@ impl Terminals {
         let terminals = Self {
             inner: Arc::new(TerminalsInner {
                 sessions: Mutex::new(HashMap::new()),
+                #[cfg(unix)]
+                keepers: std::sync::OnceLock::new(),
             }),
         };
         tokio::spawn(reaper_task(Arc::downgrade(&terminals.inner)));
         terminals
     }
 
+    /// Terminals don't use keepers on this platform.
+    #[cfg(not(unix))]
+    pub fn start_keepers(&self, _root: std::path::PathBuf) {}
+
     /// Open a login shell in `cwd`. The PTY outlives every subscriber; it dies on
-    /// [`Self::close`], shell exit + TTL, or engine shutdown.
+    /// [`Self::close`], shell exit + TTL, or engine shutdown (unless a keeper
+    /// holds it).
     pub fn open(&self, cwd: &str, cols: u16, rows: u16) -> Result<TerminalSession, EngineError> {
         self.open_with_environment(cwd, cols, rows, &HashMap::new())
     }
@@ -246,7 +280,7 @@ impl Terminals {
         #[cfg(windows)]
         let (initial_script, bootstrap) = (None, command.map(|command| format!("{command}\r")));
         #[cfg(not(windows))]
-        let (initial_script, bootstrap) = if let Some(command) = command {
+        let (mut initial_script, bootstrap) = if let Some(command) = command {
             let (suffix, source) = match shell_name.as_str() {
                 "fish" => (".fish", "source \"$OPENAGENTS_ACTION_SCRIPT\"\r"),
                 _ => (".sh", ". \"$OPENAGENTS_ACTION_SCRIPT\"\r"),
@@ -261,6 +295,20 @@ impl Terminals {
         } else {
             (None, None)
         };
+
+        #[cfg(unix)]
+        if let Some(session) = self.open_kept(
+            cwd,
+            cols,
+            rows,
+            &shell,
+            &shell_name,
+            environment,
+            &mut initial_script,
+            bootstrap.as_deref(),
+        ) {
+            return Ok(session);
+        }
 
         #[cfg(windows)]
         let (master, mut child) =
@@ -313,6 +361,8 @@ impl Terminals {
             reader_thread: None,
             #[cfg(windows)]
             cleanup: None,
+            #[cfg(unix)]
+            kept: None,
             subscribers: Vec::new(),
             replay: VecDeque::new(),
             replay_bytes: 0,
@@ -396,15 +446,12 @@ impl Terminals {
         let (tx, rx) = mpsc::unbounded_channel();
         let after = after_seq.unwrap_or(0);
         for event in &session.replay {
-            let seq = match event {
-                TerminalEvent::Data { seq, .. } | TerminalEvent::Exit { seq, .. } => *seq,
-            };
-            if seq > after {
+            if event_seq(event) > after {
                 let _ = tx.send(event.clone());
             }
         }
         if !session.exited {
-            session.subscribers.push(tx);
+            session.subscribers.push((after, tx));
         }
         // On an exited session `tx` drops here: the stream ends after the replay.
         Ok(rx)
@@ -447,6 +494,12 @@ impl Terminals {
         if session.exited {
             return Ok(());
         }
+        #[cfg(unix)]
+        if let Some(kept) = &session.kept {
+            return kept
+                .resize(cols, rows)
+                .map_err(|e| EngineError::Other(format!("Terminal resize failed: {e}")));
+        }
         let Some(master) = session.master.as_ref() else {
             return Ok(());
         };
@@ -469,24 +522,49 @@ impl Terminals {
         }
     }
 
-    /// Any live PTY (the reaper prunes exited ones) — restarts kill shells, so
-    /// the auto-updater waits for none.
+    /// Any live PTY a restart would end (the reaper prunes exited ones), so
+    /// the auto-updater waits for none. Terminals under keepers keep running
+    /// across a restart and don't count.
     pub fn any_open(&self) -> bool {
+        lock(&self.inner.sessions)
+            .values()
+            .any(|session| !lock(session).is_kept())
+    }
+
+    /// Any terminal at all, kept or not: what a restart that also stops
+    /// keepers would end.
+    pub fn any_live(&self) -> bool {
         !lock(&self.inner.sessions).is_empty()
     }
 
-    /// Engine shutdown: kill every live shell.
+    /// Engine shutdown: kill every live shell, except those under keepers,
+    /// which the next engine picks up.
     pub fn shutdown(&self) {
         let sessions: Vec<_> = lock(&self.inner.sessions).drain().map(|(_, s)| s).collect();
         for session in sessions {
-            dispose(&session, true);
+            release(&session);
         }
     }
+}
+
+/// The engine is letting go of `session`: kill its shell unless a keeper holds it.
+fn release(session: &Arc<Mutex<LiveTerminal>>) -> bool {
+    let kept = lock(session).is_kept();
+    dispose(session, !kept)
 }
 
 fn dispose(session: &Arc<Mutex<LiveTerminal>>, kill: bool) -> bool {
     let mut session = lock(session);
     session.subscribers.clear();
+    #[cfg(unix)]
+    if let Some(kept) = session.kept.clone() {
+        // Closing a kept terminal ends its keeper even after the shell exited.
+        if kill {
+            kept.finish();
+        }
+        session.initial_script.take();
+        return true;
+    }
     if kill
         && !session.exited
         && let Err(err) = session.killer.kill()
@@ -637,7 +715,12 @@ async fn reaper_task(inner: Weak<TerminalsInner>) {
         let mut sessions = lock(&inner.sessions);
         sessions.retain(|_, session| {
             let session = lock(session);
-            !(session.exited && session.last_active_at.elapsed() > EXITED_TTL)
+            let expired = session.exited && session.last_active_at.elapsed() > EXITED_TTL;
+            #[cfg(unix)]
+            if expired && let Some(kept) = &session.kept {
+                kept.finish();
+            }
+            !expired
         });
     }
 }

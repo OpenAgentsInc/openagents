@@ -37,6 +37,12 @@ pub fn set_keeper_launch(exe: std::path::PathBuf, args: Vec<std::ffi::OsString>)
     let _ = LAUNCH.set((exe, args));
 }
 
+/// The binary and leading arguments that run keepers, if one registered.
+/// Terminals use it too (#11951).
+pub(crate) fn keeper_launch() -> Option<(std::path::PathBuf, Vec<std::ffi::OsString>)> {
+    LAUNCH.get().cloned()
+}
+
 pub(super) struct Keepers {
     root: std::path::PathBuf,
     #[cfg(unix)]

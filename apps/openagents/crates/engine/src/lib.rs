@@ -282,6 +282,8 @@ impl EngineCore {
         let workspace_files =
             WorkspaceFiles::new(repos.clone(), workspace.clone(), device_id.clone());
         let terminals = Terminals::new();
+        // Terminals under keepers outlive the engine (#11951); pick up the open ones.
+        terminals.start_keepers(profile.store_root().join("keepers"));
         let project_actions = ProjectActionsStore::open(profile.store_root())?;
         doc_host.set_project_action_runtime(project_actions.clone(), terminals.clone());
         let previews = openagents_preview::PreviewService::new(

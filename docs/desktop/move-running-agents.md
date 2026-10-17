@@ -157,3 +157,9 @@ auto-resume picks each one back up from its last message.
   chat menu. The Move sheet shows the destination, the estimated paid time,
   each chat's state and reason, Try again, Bring back with stop, delete, or
   keep, and the approval for anything an agent asked for.
+- **Terminals (#11951).** Each terminal's shell runs on a PTY held by a
+  terminal keeper, which journals its output (the most recent ~1.5 MiB) and
+  takes input and resizes. Quitting or updating the engine leaves the shell
+  running, and the next engine shows it under the same id with its
+  scrollback, so an open terminal no longer holds back an update.
+  `OPENAGENTS_KEEPERS=0` opens terminals directly, and those still hold it.

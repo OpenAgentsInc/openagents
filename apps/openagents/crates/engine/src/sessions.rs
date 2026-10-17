@@ -41,6 +41,7 @@ use crate::{EngineError, new_id, now_ms};
 
 mod keepers;
 pub use keepers::{HANDOFF_LEASE, HANDOFF_REFUSAL, set_keeper_launch};
+pub(crate) use keepers::keeper_launch;
 pub mod move_cloud;
 mod saved_agent;
 

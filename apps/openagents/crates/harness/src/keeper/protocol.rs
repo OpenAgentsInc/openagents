@@ -5,6 +5,11 @@
 //! [`FromKeeper::Frame`]s. Both sides ignore operations they don't know, so a
 //! later version can add operations without breaking an older peer. A peer
 //! refuses a version outside [`MIN_PROTOCOL`]..=[`PROTOCOL`].
+//!
+//! A terminal keeper (#11951) holds a PTY instead of an agent's pipes. Its
+//! stdout frames carry the PTY's output bytes in base64, and it takes
+//! [`ToKeeper::Input`] and [`ToKeeper::Resize`]. Only engines that start
+//! terminal keepers send those, and older keepers ignore them.
 
 use serde::{Deserialize, Serialize};
 
@@ -82,6 +87,10 @@ pub enum ToKeeper {
     Signal { signal: KeeperSignal },
     /// The engine has handled the run's end: remove the run folder and exit.
     Finish,
+    /// Terminal keepers: write these bytes, in base64, to the PTY.
+    Input { data: String },
+    /// Terminal keepers: resize the PTY.
+    Resize { cols: u16, rows: u16 },
     #[serde(other)]
     Unknown,
 }
@@ -198,5 +207,19 @@ mod tests {
                 "{line}"
             );
         }
+    }
+
+    #[test]
+    fn terminal_operations_round_trip() {
+        assert_eq!(
+            serde_json::from_str::<ToKeeper>(r#"{"op":"input","data":"bHMK"}"#).unwrap(),
+            ToKeeper::Input {
+                data: "bHMK".into()
+            }
+        );
+        assert_eq!(
+            serde_json::to_string(&ToKeeper::Resize { cols: 80, rows: 24 }).unwrap(),
+            r#"{"op":"resize","cols":80,"rows":24}"#
+        );
     }
 }

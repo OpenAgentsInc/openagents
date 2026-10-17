@@ -20,11 +20,16 @@
 //! engine's [`KeeperScope`] while it launches, and a driver that can pick a
 //! run back up implements [`crate::Harness::attach`]. [`lines::LineHarness`]
 //! does both for agents that write OpenAgents events as JSON lines.
+//!
+//! Terminals use keepers too (#11951): [`client::start_pty`] runs a shell on
+//! a PTY the keeper holds, so an open terminal survives an engine restart.
 
 pub mod client;
 pub(crate) mod kept;
 pub mod lines;
 pub mod protocol;
+#[cfg(feature = "pty")]
+mod pty;
 mod server;
 
 use std::path::PathBuf;

@@ -13,7 +13,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
 use super::protocol::{self, Frame, FromKeeper, KeeperSignal, ToKeeper};
-use super::server::{JOURNAL, LAUNCH, LOG, Launch, META, TOKEN};
+use super::server::{JOURNAL, LAUNCH, LOG, Launch, META, PtySize, TOKEN};
 
 /// How long a new keeper has to open its socket.
 const READY_WITHIN: Duration = Duration::from_secs(10);
@@ -67,6 +67,24 @@ pub fn discover(root: &Path) -> Vec<Found> {
 
 /// Start `spec.program` under a new keeper and connect to it.
 pub async fn spawn(spec: Spawn) -> io::Result<Link> {
+    start(spec, None)?.ready().await
+}
+
+/// Start `spec.program` on a PTY of `cols` by `rows` under a new terminal
+/// keeper. The keeper is starting when this returns; [`Starting::ready`]
+/// connects once it serves.
+pub fn start_pty(spec: Spawn, cols: u16, rows: u16) -> io::Result<Starting> {
+    start(spec, Some(PtySize { cols, rows }))
+}
+
+/// A keeper that has been started and may not serve yet.
+pub struct Starting {
+    pub dir: PathBuf,
+    socket: PathBuf,
+    exited: Arc<std::sync::atomic::AtomicBool>,
+}
+
+fn start(spec: Spawn, pty: Option<PtySize>) -> io::Result<Starting> {
     std::fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
@@ -95,6 +113,7 @@ pub async fn spawn(spec: Spawn) -> io::Result<Link> {
             args: spec.args,
             cwd: spec.cwd,
             socket: socket.clone(),
+            pty,
         })?,
     )?;
     write_private(&dir.join(META), &serde_json::to_vec(&spec.meta)?)?;
@@ -136,29 +155,57 @@ pub async fn spawn(spec: Spawn) -> io::Result<Link> {
             exited.store(true, std::sync::atomic::Ordering::Release);
         });
     }
-    let deadline = tokio::time::Instant::now() + READY_WITHIN;
-    loop {
-        if socket.exists()
-            && let Ok(link) = connect(&dir, None).await
-        {
-            return Ok(link);
+    Ok(Starting {
+        dir,
+        socket,
+        exited,
+    })
+}
+
+impl Starting {
+    /// Connect once the keeper serves, or remove its run folder and say why
+    /// it didn't start.
+    pub async fn ready(self) -> io::Result<Link> {
+        let Starting {
+            dir,
+            socket,
+            exited,
+        } = self;
+        let deadline = tokio::time::Instant::now() + READY_WITHIN;
+        loop {
+            if socket.exists()
+                && let Ok(link) = connect(&dir, None).await
+            {
+                return Ok(link);
+            }
+            if exited.load(std::sync::atomic::Ordering::Acquire)
+                || tokio::time::Instant::now() >= deadline
+            {
+                let log = std::fs::read_to_string(dir.join(LOG)).unwrap_or_default();
+                let _ = std::fs::remove_dir_all(&dir);
+                return Err(io::Error::other(format!(
+                    "the agent keeper did not start{}",
+                    if log.trim().is_empty() {
+                        String::new()
+                    } else {
+                        format!(": {}", log.trim())
+                    }
+                )));
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
         }
-        if exited.load(std::sync::atomic::Ordering::Acquire)
-            || tokio::time::Instant::now() >= deadline
-        {
-            let log = std::fs::read_to_string(dir.join(LOG)).unwrap_or_default();
-            let _ = std::fs::remove_dir_all(&dir);
-            return Err(io::Error::other(format!(
-                "the agent keeper did not start{}",
-                if log.trim().is_empty() {
-                    String::new()
-                } else {
-                    format!(": {}", log.trim())
-                }
-            )));
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
     }
+}
+
+/// Whether the keeper of the run folder `dir` accepts connections.
+pub fn alive(dir: &Path) -> bool {
+    let Ok(launch) = std::fs::read(dir.join(LAUNCH)) else {
+        return false;
+    };
+    let Ok(launch) = serde_json::from_slice::<Launch>(&launch) else {
+        return false;
+    };
+    StdUnixStream::connect(launch.socket).is_ok()
 }
 
 fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
@@ -333,6 +380,19 @@ impl LinkSender {
 
     pub fn signal(&self, signal: KeeperSignal) -> io::Result<()> {
         self.send(&ToKeeper::Signal { signal })
+    }
+
+    /// Terminal keepers: write `bytes` to the PTY.
+    pub fn input(&self, bytes: &[u8]) -> io::Result<()> {
+        use base64::Engine as _;
+        self.send(&ToKeeper::Input {
+            data: base64::engine::general_purpose::STANDARD.encode(bytes),
+        })
+    }
+
+    /// Terminal keepers: resize the PTY.
+    pub fn resize(&self, cols: u16, rows: u16) -> io::Result<()> {
+        self.send(&ToKeeper::Resize { cols, rows })
     }
 
     /// Stop the agent if it still runs, remove the run folder, and end the keeper.

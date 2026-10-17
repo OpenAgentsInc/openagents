@@ -8834,6 +8834,7 @@ dependencies = [
  "openagents-proto",
  "openagents-sdk",
  "openagents-voice-media",
+ "portable-pty",
  "reqwest 0.12.28",
  "semver",
  "serde",

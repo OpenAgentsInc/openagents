@@ -257,6 +257,19 @@ links remain readable. Upstream fixes now require manual ports.
   - `crates/harness/tests/fixtures/fake-claude.sh` and `fake-codex.sh`: the
     `scenario:kept` scenarios.
   The other native drivers don't start under keepers yet.
+  #11951 added terminal keepers: `openagents keeper` can hold a shell's PTY
+  (`crates/harness/src/keeper/pty.rs`, behind the default `pty` feature), and
+  `crates/engine/src/terminals/kept.rs` opens terminals under one and picks
+  them up on boot under the same id. Kept terminals don't hold back an update.
+  Hooks:
+  - `crates/engine/src/terminals.rs`: the `kept` field and `open_kept` call,
+    resize and close through the keeper, shutdown and drop leave kept shells
+    running, `any_open` counts only terminals without a keeper (`any_live`
+    counts all), and live subscribers skip events at or before their `afterSeq`.
+  - `crates/engine/src/lib.rs`: `terminals.start_keepers` after `Terminals::new`.
+  - `crates/engine/src/sessions.rs`: re-exports `keepers::keeper_launch`.
+  - `crates/engine/src/handoff.rs`: `quiescent_check` uses `any_live` when the
+    service doesn't keep keepers alive across a restart.
 
 - [OpenAgents #11932](https://github.com/OpenAgentsInc/openagents/issues/11932):
   move a chat to a cloud computer at a turn boundary. Our module is

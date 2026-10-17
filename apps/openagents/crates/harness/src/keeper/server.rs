@@ -5,6 +5,9 @@
 //! The run folder holds `launch.json` (what to run and where the socket is),
 //! `meta.json` (the engine's record of the run), `token`, and the keeper's
 //! `journal.jsonl` and `keeper.log`. Every file is private to this user.
+//!
+//! A launch with a `pty` size starts a terminal keeper instead (#11951):
+//! the program runs on a PTY the keeper holds (see `pty.rs`).
 
 use std::collections::BTreeSet;
 use std::ffi::OsString;
@@ -35,12 +38,22 @@ pub(crate) struct Launch {
     pub args: Vec<OsString>,
     pub cwd: Option<PathBuf>,
     pub socket: PathBuf,
+    /// Run the program on a PTY of this size, as a terminal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pty: Option<PtySize>,
+}
+
+/// A terminal keeper's PTY size.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub(crate) struct PtySize {
+    pub cols: u16,
+    pub rows: u16,
 }
 
 /// How long an engine has to say hello after it connects.
 const HELLO_WITHIN: Duration = Duration::from_secs(5);
 /// How long an orphaned agent gets to stop after each signal.
-const STOP_GRACE: Duration = Duration::from_secs(10);
+pub(super) const STOP_GRACE: Duration = Duration::from_secs(10);
 
 /// The keeper subcommand's entry point. `args` are the arguments after
 /// `keeper`. Returns the process exit code.
@@ -89,7 +102,7 @@ pub fn main(args: impl IntoIterator<Item = OsString>) -> i32 {
     }
 }
 
-fn private_file(path: &Path) -> std::io::Result<std::fs::File> {
+pub(super) fn private_file(path: &Path) -> std::io::Result<std::fs::File> {
     std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -97,13 +110,23 @@ fn private_file(path: &Path) -> std::io::Result<std::fs::File> {
         .open(path)
 }
 
-struct Journal {
-    file: std::fs::File,
-    last_seq: u64,
+pub(super) struct Journal {
+    pub file: std::fs::File,
+    pub last_seq: u64,
+    /// Bytes written since the file was opened or last compacted.
+    pub bytes: u64,
 }
 
 impl Journal {
-    fn append(&mut self, body: FrameBody) -> std::io::Result<Frame> {
+    pub fn open(path: &Path) -> std::io::Result<Self> {
+        Ok(Self {
+            file: private_file(path)?,
+            last_seq: 0,
+            bytes: 0,
+        })
+    }
+
+    pub fn append(&mut self, body: FrameBody) -> std::io::Result<Frame> {
         self.last_seq += 1;
         let frame = Frame {
             seq: self.last_seq,
@@ -112,26 +135,142 @@ impl Journal {
         let mut line = serde_json::to_vec(&frame)?;
         line.push(b'\n');
         self.file.write_all(&line)?;
+        self.bytes += line.len() as u64;
         Ok(frame)
     }
 }
 
-enum Event {
+pub(super) enum Event {
     Out(Option<String>),
     Err(Option<String>),
+    /// Terminal keepers: bytes the PTY wrote, `None` at its end.
+    Pty(Option<Vec<u8>>),
+    /// Terminal keepers: the shell exited with this code.
+    Exited(Option<i32>),
     Accepted(UnixStream),
     Message(u64, ToKeeper),
     Closed(u64),
 }
 
-struct Connection {
-    id: u64,
+pub(super) struct Connection {
+    pub id: u64,
     frames: mpsc::UnboundedSender<FromKeeper>,
+}
+
+/// Where a run stands when an engine connects.
+pub(super) struct Standing<'a> {
+    pub pid: u32,
+    pub last_seq: u64,
+    pub exited: bool,
+    pub acked: u64,
+    pub held: &'a BTreeSet<u64>,
+}
+
+/// Authenticate a new engine and serve it: the welcome, the replay it asks
+/// for, then live frames. `None` when it is refused.
+pub(super) async fn greet(
+    stream: UnixStream,
+    id: u64,
+    token: &str,
+    standing: Standing<'_>,
+    journal: PathBuf,
+    events: &mpsc::UnboundedSender<Event>,
+) -> Option<Connection> {
+    let (read, mut write) = stream.into_split();
+    let mut lines = BufReader::new(read).lines();
+    let hello = tokio::time::timeout(HELLO_WITHIN, lines.next_line()).await;
+    let hello = match hello {
+        Ok(Ok(Some(line))) => serde_json::from_str::<ToKeeper>(&line).ok(),
+        _ => None,
+    };
+    let refusal = match &hello {
+        Some(ToKeeper::Hello {
+            version, token: t, ..
+        }) => {
+            if *t != token {
+                Some("wrong token".to_owned())
+            } else if protocol::negotiate(*version).is_none() {
+                Some(format!("protocol {version} is not supported"))
+            } else {
+                None
+            }
+        }
+        _ => Some("expected hello".to_owned()),
+    };
+    if let Some(reason) = refusal {
+        let _ = write_line(&mut write, &FromKeeper::Refused { reason }).await;
+        return None;
+    }
+    let Some(ToKeeper::Hello { version, after, .. }) = hello else {
+        return None;
+    };
+    // A new engine replaces the old one: an update hands off this way.
+    let after = after.unwrap_or(standing.acked);
+    let welcome = FromKeeper::Welcome {
+        version: version.min(protocol::PROTOCOL),
+        pid: standing.pid,
+        last_seq: standing.last_seq,
+        exited: standing.exited,
+        acked: standing.acked,
+    };
+    let (frames_tx, frames_rx) = mpsc::unbounded_channel();
+    let replay = Replay {
+        journal,
+        held: standing
+            .held
+            .iter()
+            .copied()
+            .filter(|seq| *seq <= after)
+            .collect(),
+        after,
+        upto: standing.last_seq,
+    };
+    tokio::spawn(write_connection(write, welcome, replay, frames_rx));
+    let tx = events.clone();
+    tokio::spawn(async move {
+        while let Ok(Some(line)) = lines.next_line().await {
+            if let Ok(message) = serde_json::from_str::<ToKeeper>(&line)
+                && tx.send(Event::Message(id, message)).is_err()
+            {
+                return;
+            }
+        }
+        let _ = tx.send(Event::Closed(id));
+    });
+    Some(Connection {
+        id,
+        frames: frames_tx,
+    })
+}
+
+/// Serve `socket`, private to this user, sending each connection to `events`.
+pub(super) fn listen(socket: &Path, events: &mpsc::UnboundedSender<Event>) -> std::io::Result<()> {
+    let _ = std::fs::remove_file(socket);
+    let listener = UnixListener::bind(socket)?;
+    std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o600))?;
+    let tx = events.clone();
+    tokio::spawn(async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            if tx.send(Event::Accepted(stream)).is_err() {
+                break;
+            }
+        }
+    });
+    Ok(())
 }
 
 async fn serve(dir: &Path, orphan_after: Duration) -> std::io::Result<()> {
     let launch: Launch = serde_json::from_slice(&std::fs::read(dir.join(LAUNCH))?)?;
     let token = std::fs::read_to_string(dir.join(TOKEN))?.trim().to_owned();
+    if let Some(size) = launch.pty {
+        #[cfg(feature = "pty")]
+        return super::pty::serve(dir, &launch, &token, size, orphan_after).await;
+        #[cfg(not(feature = "pty"))]
+        {
+            let _ = size;
+            return Err(std::io::Error::other("this build has no terminal keepers"));
+        }
+    }
 
     let mut command = tokio::process::Command::new(&launch.program);
     command
@@ -146,10 +285,7 @@ async fn serve(dir: &Path, orphan_after: Duration) -> std::io::Result<()> {
     if let Some(cwd) = &launch.cwd {
         command.current_dir(cwd);
     }
-    let mut journal = Journal {
-        file: private_file(&dir.join(JOURNAL))?,
-        last_seq: 0,
-    };
+    let mut journal = Journal::open(&dir.join(JOURNAL))?;
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) => {
@@ -170,11 +306,8 @@ async fn serve(dir: &Path, orphan_after: Duration) -> std::io::Result<()> {
         tokio::spawn(write_stdin(stdin, stdin_rx));
     }
 
-    let _ = std::fs::remove_file(&launch.socket);
-    let listener = UnixListener::bind(&launch.socket)?;
-    std::fs::set_permissions(&launch.socket, std::fs::Permissions::from_mode(0o600))?;
-
     let (events_tx, mut events) = mpsc::unbounded_channel::<Event>();
+    listen(&launch.socket, &events_tx)?;
     if let Some(stdout) = child.stdout.take() {
         let tx = events_tx.clone();
         tokio::spawn(async move {
@@ -196,16 +329,6 @@ async fn serve(dir: &Path, orphan_after: Duration) -> std::io::Result<()> {
                 let line = lines.next_line().await.ok().flatten();
                 let end = line.is_none();
                 if tx.send(Event::Err(line)).is_err() || end {
-                    break;
-                }
-            }
-        });
-    }
-    {
-        let tx = events_tx.clone();
-        tokio::spawn(async move {
-            while let Ok((stream, _)) = listener.accept().await {
-                if tx.send(Event::Accepted(stream)).is_err() {
                     break;
                 }
             }
@@ -281,68 +404,27 @@ async fn serve(dir: &Path, orphan_after: Duration) -> std::io::Result<()> {
             Event::Err(None) => stderr_open = false,
             Event::Accepted(stream) => {
                 next_connection += 1;
-                let id = next_connection;
-                let (read, mut write) = stream.into_split();
-                let mut lines = BufReader::new(read).lines();
-                let hello = tokio::time::timeout(HELLO_WITHIN, lines.next_line()).await;
-                let hello = match hello {
-                    Ok(Ok(Some(line))) => serde_json::from_str::<ToKeeper>(&line).ok(),
-                    _ => None,
-                };
-                let refusal = match &hello {
-                    Some(ToKeeper::Hello {
-                        version, token: t, ..
-                    }) => {
-                        if *t != token {
-                            Some("wrong token".to_owned())
-                        } else if protocol::negotiate(*version).is_none() {
-                            Some(format!("protocol {version} is not supported"))
-                        } else {
-                            None
-                        }
-                    }
-                    _ => Some("expected hello".to_owned()),
-                };
-                if let Some(reason) = refusal {
-                    let _ = write_line(&mut write, &FromKeeper::Refused { reason }).await;
-                    continue;
-                }
-                let Some(ToKeeper::Hello { version, after, .. }) = hello else {
-                    continue;
-                };
-                // A new engine replaces the old one: an update hands off this way.
-                let after = after.unwrap_or(acked);
-                let welcome = FromKeeper::Welcome {
-                    version: version.min(protocol::PROTOCOL),
+                let standing = Standing {
                     pid,
                     last_seq: journal.last_seq,
                     exited: exit_seq.is_some(),
                     acked,
+                    held: &held,
                 };
-                let (frames_tx, frames_rx) = mpsc::unbounded_channel();
-                let replay = Replay {
-                    journal: dir.join(JOURNAL),
-                    held: held.iter().copied().filter(|seq| *seq <= after).collect(),
-                    after,
-                    upto: journal.last_seq,
-                };
-                tokio::spawn(write_connection(write, welcome, replay, frames_rx));
-                let tx = events_tx.clone();
-                tokio::spawn(async move {
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        if let Ok(message) = serde_json::from_str::<ToKeeper>(&line)
-                            && tx.send(Event::Message(id, message)).is_err()
-                        {
-                            return;
-                        }
-                    }
-                    let _ = tx.send(Event::Closed(id));
-                });
-                connection = Some(Connection {
-                    id,
-                    frames: frames_tx,
-                });
+                if let Some(c) = greet(
+                    stream,
+                    next_connection,
+                    &token,
+                    standing,
+                    dir.join(JOURNAL),
+                    &events_tx,
+                )
+                .await
+                {
+                    connection = Some(c);
+                }
             }
+            Event::Pty(_) | Event::Exited(_) => {}
             Event::Closed(id) => {
                 if connection.as_ref().is_some_and(|c| c.id == id) {
                     connection = None;
@@ -389,7 +471,10 @@ async fn serve(dir: &Path, orphan_after: Duration) -> std::io::Result<()> {
                         finish(dir, &launch.socket);
                         return Ok(());
                     }
-                    ToKeeper::Hello { .. } | ToKeeper::Unknown => {}
+                    ToKeeper::Hello { .. }
+                    | ToKeeper::Input { .. }
+                    | ToKeeper::Resize { .. }
+                    | ToKeeper::Unknown => {}
                 }
             }
         }
@@ -397,7 +482,7 @@ async fn serve(dir: &Path, orphan_after: Duration) -> std::io::Result<()> {
     Ok(())
 }
 
-fn deliver(connection: &mut Option<Connection>, frame: Frame) {
+pub(super) fn deliver(connection: &mut Option<Connection>, frame: Frame) {
     if let Some(c) = connection
         && c.frames.send(FromKeeper::Frame(frame)).is_err()
     {
@@ -406,17 +491,17 @@ fn deliver(connection: &mut Option<Connection>, frame: Frame) {
 }
 
 /// Stop serving but keep the journal for whoever looks later.
-fn retire(dir: &Path, socket: &Path) {
+pub(super) fn retire(dir: &Path, socket: &Path) {
     let _ = std::fs::remove_file(socket);
     let _ = std::fs::remove_file(dir.join(TOKEN));
 }
 
-fn finish(dir: &Path, socket: &Path) {
+pub(super) fn finish(dir: &Path, socket: &Path) {
     let _ = std::fs::remove_file(socket);
     let _ = std::fs::remove_dir_all(dir);
 }
 
-fn signal_group(pid: u32, signal: KeeperSignal) {
+pub(super) fn signal_group(pid: u32, signal: KeeperSignal) {
     if pid == 0 {
         return;
     }

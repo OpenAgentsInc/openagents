@@ -6,10 +6,12 @@ license.workspace = true
 publish.workspace = true
 
 [features]
-default = ["voice"]
+default = ["voice", "pty"]
 # Native voice links the app transport and its SQLite version. Terminal callers
 # disable default features to share the drivers without the app persistence stack.
 voice = ["dep:openagents-voice-media"]
+# Terminal keepers (#11951): `openagents keeper` can hold a shell's PTY.
+pty = ["dep:portable-pty"]
 # Coder retains its supervisor while sharing native protocol drivers.
 supervised = ["dep:supervise"]
 # Synthetic native protocol peer for subprocess tests; never part of a normal build.
@@ -55,6 +57,7 @@ zip.workspace = true
 coder-lease = { path = "../../../../crates/coder-lease" }
 supervise = { path = "../../../../crates/supervise", optional = true }
 libc.workspace = true
+portable-pty = { workspace = true, optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Security", "Win32_Security_Cryptography", "Win32_Security_Cryptography_Catalog", "Win32_Security_Cryptography_Sip", "Win32_Security_WinTrust", "Win32_System_Console", "Win32_System_Diagnostics_ToolHelp", "Win32_System_JobObjects", "Win32_System_Pipes", "Win32_System_SystemInformation", "Win32_System_Threading"] }

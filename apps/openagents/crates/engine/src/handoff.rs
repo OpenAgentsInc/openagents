@@ -4,8 +4,8 @@
 //! engine restarts into it without waiting for every run to end. Runs whose
 //! agents are under keepers carry on: the engine refuses new work for a
 //! moment, leaves the keepers running as it exits, and the new engine picks
-//! them up. Runs without a keeper, open terminals, and voice still hold the
-//! restart until they end.
+//! them up, as do terminals under keepers (#11951). Runs and terminals
+//! without a keeper, and voice, still hold the restart until they end.
 //!
 //! Two services restart this way:
 //!
@@ -37,15 +37,21 @@ const POLL: Duration = Duration::from_secs(60);
 const DRAIN_WITHIN: Duration = Duration::from_secs(10);
 
 /// The updater's "nothing would be interrupted by a restart" check. Where
-/// the service keeps keepers alive when it restarts, kept runs don't count,
-/// and a true answer holds new work back until the restart.
+/// the service keeps keepers alive when it restarts, kept runs and kept
+/// terminals don't count, and a true answer holds new work back until the
+/// restart.
 pub(crate) fn quiescent_check(
     sessions: SessionsEngine,
     terminals: Terminals,
 ) -> openagents_update::QuiescentCheck {
     let survive = keepers_survive_restart();
     std::sync::Arc::new(move || {
-        if terminals.any_open() {
+        let open = if survive {
+            terminals.any_open()
+        } else {
+            terminals.any_live()
+        };
+        if open {
             return false;
         }
         if survive {
