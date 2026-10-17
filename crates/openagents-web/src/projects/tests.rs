@@ -85,6 +85,8 @@ pub(crate) struct Options {
     )>,
     /// The chat worker (answers with [`CHAT_SALT`] as the salt).
     pub chat: Option<Arc<dyn crate::ask::Chat>>,
+    /// The counts the site keeps, read back by the test.
+    pub analytics: Option<Arc<crate::analytics::Analytics>>,
 }
 
 /// The `ask_salt` a world with its own [`Options::chat`] uses.
@@ -175,6 +177,9 @@ async fn world_at(port: u16, options: Options) -> World {
         config.public_hosts = vec![host.clone()];
     }
     config.environments = options.environments.into();
+    if let Some(analytics) = options.analytics {
+        config.analytics = analytics;
+    }
     if let Some(chat) = options.chat {
         config.chat = chat;
         config.ask_salt = CHAT_SALT;

@@ -61,7 +61,7 @@ pub const SCRIPT: &str = "/static/a.js";
 pub const DASHBOARD: &str = "/admin/analytics";
 
 /// Every product event name a row may carry.
-pub const EVENTS: [&str; 17] = [
+pub const EVENTS: [&str; 20] = [
     "chat_sent",
     "answer_shown",
     "answer_failed",
@@ -83,7 +83,24 @@ pub const EVENTS: [&str; 17] = [
     "app_visitor_claimed",
     "app_cloud_chat",
     "app_cloud_host_started",
+    // The first answer of a chat started from the app, its detail how long
+    // it took ([`first_answer`]), or that it failed; and a visitor that had
+    // reached the limit signing in and keeping its chats.
+    "app_first_answer",
+    "app_first_answer_failed",
+    "app_visitor_signed_in_after_limit",
 ];
+
+/// The fixed detail of `app_first_answer`: how many seconds passed from the
+/// message's admission to its answer's first words.
+pub fn first_answer(seconds: u64) -> &'static str {
+    match seconds {
+        0..5 => "under_5s",
+        5..15 => "under_15s",
+        15..60 => "under_60s",
+        _ => "over_60s",
+    }
+}
 
 /// The events the page's script may send to [`BEACON`]; every other event
 /// is the server's own.

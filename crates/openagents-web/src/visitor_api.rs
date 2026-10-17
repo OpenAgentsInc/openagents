@@ -371,9 +371,19 @@ async fn claim(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
     else {
         return refused(StatusCode::BAD_REQUEST, "invalid", "Send {token}.");
     };
+    // Whether the visitor had reached the limit (as [`admit`] refuses):
+    // read before its chats move.
+    let limited = used(&app, &visitor)
+        .await
+        .is_ok_and(|(sent, chats)| sent >= MESSAGES || chats >= CHATS);
     let moved = crate::chat_owner::adopt_all(&app.config.chat_store, &visitor, &owner).await;
     if moved > 0 {
         app.config.analytics.event("app_visitor_claimed", "");
+        if limited {
+            app.config
+                .analytics
+                .event("app_visitor_signed_in_after_limit", "");
+        }
     }
     answer(StatusCode::OK, json!({"moved": moved}))
 }

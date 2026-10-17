@@ -538,3 +538,58 @@ fn the_dashboard_reads_in_plain_words() {
     assert!(html.contains("oa-chart-bar") && html.contains("500 /chat/{id}"));
     crate::copy_guard::assert_plain("/admin/analytics", &html);
 }
+
+#[test]
+fn the_dashboard_shows_the_phones_first_minute() {
+    let hour = hour_now();
+    let mut counts = Counts::new();
+    add(
+        &mut counts,
+        [
+            row(hour, Series::Event, "app_visitor_started", "", 7),
+            row(hour, Series::Event, "app_first_answer", "under_5s", 3),
+            row(hour, Series::Event, "app_first_answer", "over_60s", 1),
+            row(hour, Series::Event, "app_first_answer_failed", "", 2),
+            row(
+                hour,
+                Series::Event,
+                "app_visitor_signed_in_after_limit",
+                "",
+                1,
+            ),
+        ],
+    );
+    let html = dashboard::report(&counts, hour, true).into_string();
+    for words in [
+        "Phone",
+        "New visitors",
+        "Time to the first answer",
+        "Under 5 seconds",
+        "Over a minute",
+        "First answers that failed",
+        "Of them, after reaching the limit",
+    ] {
+        assert!(html.contains(words), "{words}");
+    }
+    crate::copy_guard::assert_plain("/admin/analytics", &html);
+}
+
+#[test]
+fn first_answer_times_are_four_fixed_buckets() {
+    let buckets = ["under_5s", "under_15s", "under_60s", "over_60s"];
+    for seconds in [0, 4, 5, 14, 15, 59, 60, 3_600, u64::MAX] {
+        let bucket = first_answer(seconds);
+        assert!(buckets.contains(&bucket) && bounded(bucket), "{seconds}");
+    }
+    assert_eq!(first_answer(4), "under_5s");
+    assert_eq!(first_answer(5), "under_15s");
+    assert_eq!(first_answer(59), "under_60s");
+    assert_eq!(first_answer(60), "over_60s");
+    for name in [
+        "app_first_answer",
+        "app_first_answer_failed",
+        "app_visitor_signed_in_after_limit",
+    ] {
+        assert!(EVENTS.contains(&name) && !BEACON_EVENTS.contains(&name));
+    }
+}

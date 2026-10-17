@@ -478,6 +478,7 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
             instructions,
             cad,
             &headers,
+            false,
         );
     }
     crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
@@ -566,6 +567,7 @@ pub(crate) async fn start_from_app(
                 instructions,
                 cad,
                 headers,
+                true,
             );
             AppSent::Answering
         }
@@ -1948,6 +1950,7 @@ async fn follow(
             instructions,
             cad,
             &headers,
+            false,
         );
     }
     accepted(&app, &headers, &loaded.conversation).await
@@ -2091,7 +2094,16 @@ pub(crate) async fn follow_from_app(
                     None,
                 ),
             );
-            spawn_answer(app.clone(), saved, admitted_at, None, None, cad, headers);
+            spawn_answer(
+                app.clone(),
+                saved,
+                admitted_at,
+                None,
+                None,
+                cad,
+                headers,
+                false,
+            );
             AppSent::Answering
         }
         Err(e) => {
@@ -2315,10 +2327,21 @@ fn spawn_answer(
     instructions: Option<String>,
     cad: crate::cad_gate::TurnCad,
     headers: &HeaderMap,
+    from_app: bool,
 ) {
     let headers = headers.clone();
     tokio::spawn(async move {
-        answer(app, loaded, admitted_at, repo, instructions, cad, headers).await;
+        answer(
+            app,
+            loaded,
+            admitted_at,
+            repo,
+            instructions,
+            cad,
+            headers,
+            from_app,
+        )
+        .await;
     });
 }
 
@@ -2479,6 +2502,9 @@ async fn answer(
     instructions: Option<String>,
     cad: crate::cad_gate::TurnCad,
     headers: HeaderMap,
+    // The first answer of a chat started from the app ([`start_from_app`]),
+    // counted with how long it took (#11983). Nothing about it is stored.
+    from_app: bool,
 ) {
     let chat = &loaded.conversation;
     let owner = chat.owner.clone();
@@ -2829,6 +2855,9 @@ async fn answer(
     let mut shown = String::new();
     let mut settled = false;
     let mut checked = tokio::time::Instant::now();
+    // When the answer's first words were seen (unix seconds, as
+    // `admitted_at`), for the app's first-answer count.
+    let mut first_words: Option<u64> = None;
     loop {
         if let Some(job) = &mut job {
             tokio::select! { ()=job,if !asked=>asked=true, ()=tokio::time::sleep(Duration::from_millis(400))=>{} }
@@ -2851,6 +2880,9 @@ async fn answer(
                     .map(crate::chat_api::TurnError::from_failure),
             )
         };
+        if first_words.is_none() && !text.trim().is_empty() {
+            first_words = Some(now());
+        }
         let expired = tokio::time::Instant::now() >= deadline;
         let ended = done || failure.is_some() || asked || expired;
         // Nothing new to write: was it stopped (#11685)? Ending here drops
@@ -2930,6 +2962,17 @@ async fn answer(
                             "answer_failed"
                         };
                         app.config.analytics.event(outcome, "");
+                        if from_app && done {
+                            // From admission to the first words; an answer
+                            // done with none is timed to when it was done.
+                            let at = first_words.unwrap_or_else(now);
+                            app.config.analytics.event(
+                                "app_first_answer",
+                                crate::analytics::first_answer(at.saturating_sub(admitted_at)),
+                            );
+                        } else if from_app {
+                            app.config.analytics.event("app_first_answer_failed", "");
+                        }
                     }
                 }
                 Err(_) => {

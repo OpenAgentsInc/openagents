@@ -334,6 +334,41 @@ pub(super) fn report(counts: &Counts, hour: u64, stored: bool) -> Markup {
             w.sum(30, event("installer_fetched")),
         ),
     ]);
+    let detail = |name: &'static str, value: &'static str| {
+        move |s: Series, n: &str, d: &str| s == Series::Event && n == name && d == value
+    };
+    // The phone's first minute (#11983).
+    let phone_steps = [
+        ("New visitors", "app_visitor_started"),
+        ("Visitor chats started", "app_visitor_chat"),
+        ("Signed-in chats started", "app_cloud_chat"),
+        ("Our cloud started", "app_cloud_host_started"),
+        ("First answers", "app_first_answer"),
+        ("First answers that failed", "app_first_answer_failed"),
+        ("Visitors who reached the limit", "app_visitor_limit"),
+        (
+            "Visitors who signed in and kept their chats",
+            "app_visitor_claimed",
+        ),
+        (
+            "Of them, after reaching the limit",
+            "app_visitor_signed_in_after_limit",
+        ),
+    ]
+    .map(|(label, name)| (label, w.sum(7, event(name)), w.sum(30, event(name))));
+    let phone_funnel = funnel(&phone_steps);
+    let first_answer_times = funnel(
+        &[
+            ("Under 5 seconds", "under_5s"),
+            ("5 to 15 seconds", "under_15s"),
+            ("15 to 60 seconds", "under_60s"),
+            ("Over a minute", "over_60s"),
+        ]
+        .map(|(label, value)| {
+            let keep = detail("app_first_answer", value);
+            (label, w.sum(7, keep), w.sum(30, keep))
+        }),
+    );
     html! {
         (MarkdownRoot::new(html! {
             h1 { "Analytics" }
@@ -368,6 +403,10 @@ pub(super) fn report(counts: &Counts, hour: u64, stored: bool) -> Markup {
         (chat_funnel)
         h2 { "Download" }
         (download_funnel)
+        h2 { "Phone" }
+        (phone_funnel)
+        h3 { "Time to the first answer" }
+        (first_answer_times)
         h2 { "Events" }
         (windowed_table("Events", "Event", &events, 40))
         h2 { "Errors" }

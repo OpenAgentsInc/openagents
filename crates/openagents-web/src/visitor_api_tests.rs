@@ -70,6 +70,55 @@ async fn call(
     (status, value)
 }
 
+/// A chat worker that ends every answer without a word.
+struct Silent;
+impl crate::ask::Chat for Silent {
+    fn door(&self, _: secp256k1::SecretKey) -> Result<Box<dyn basic_coder::Door>, String> {
+        Ok(Box::new(Silent))
+    }
+}
+impl basic_coder::Door for Silent {
+    fn ask(
+        &self,
+        _: Vec<basic_coder::Turn>,
+        _: openagents_chat::router::Context,
+        _: Arc<std::sync::Mutex<basic_coder::Reply>>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        Box::pin(async {})
+    }
+}
+
+/// How many times `name` was counted, and with which details.
+fn counted(analytics: &crate::analytics::Analytics, name: &str) -> (u64, Vec<String>) {
+    let rows: Vec<_> = analytics
+        .snapshot()
+        .into_iter()
+        .filter(|r| r.series == crate::analytics::Series::Event && r.name == name)
+        .collect();
+    (
+        rows.iter().map(|r| r.count).sum(),
+        rows.into_iter().map(|r| r.detail).collect(),
+    )
+}
+
+/// No count carries anything from the requests: every app event's detail
+/// is empty or a fixed time bucket, and no row holds the chats' ids, the
+/// tokens, or the words sent.
+fn nothing_identifying(analytics: &crate::analytics::Analytics, secrets: &[&str]) {
+    let buckets = ["", "under_5s", "under_15s", "under_60s", "over_60s"];
+    for row in analytics.snapshot() {
+        if row.series == crate::analytics::Series::Event && row.name.starts_with("app_") {
+            assert!(buckets.contains(&row.detail.as_str()), "{row:?}");
+        }
+        for secret in secrets {
+            assert!(
+                !row.name.contains(secret) && !row.detail.contains(secret),
+                "{row:?} holds {secret}"
+            );
+        }
+    }
+}
+
 fn id(n: usize) -> String {
     format!("5e1f0c3a-7d2b-4c4e-9a1b-{n:012}")
 }
@@ -99,8 +148,10 @@ async fn answered(world: &crate::projects::tests::World, token: &str, chat: &str
 
 #[tokio::test]
 async fn a_visitor_chats_until_the_limit_and_its_chats_move_to_the_account() {
+    let analytics = Arc::new(crate::analytics::Analytics::default());
     let world = world_with(Options {
         chat: Some(Arc::new(Worker)),
+        analytics: Some(analytics.clone()),
         ..Options::default()
     })
     .await;
@@ -128,6 +179,11 @@ async fn a_visitor_chats_until_the_limit_and_its_chats_move_to_the_account() {
             .as_str()
             .unwrap()
             .contains("Answer to hello")
+    );
+    // Its first answer is counted with how long it took (#11983).
+    assert_eq!(
+        counted(&analytics, "app_first_answer"),
+        (1, vec!["under_5s".to_owned()])
     );
 
     // Its answer streams to the visitor, and to no one else.
@@ -240,6 +296,14 @@ async fn a_visitor_chats_until_the_limit_and_its_chats_move_to_the_account() {
     .await;
     assert_eq!(status, 200, "{claimed}");
     assert_eq!(claimed["moved"], 1);
+    // Replies are not first answers; the visitor had reached the limit.
+    assert_eq!(counted(&analytics, "app_first_answer").0, 1);
+    assert_eq!(counted(&analytics, "app_first_answer_failed").0, 0);
+    assert_eq!(counted(&analytics, "app_visitor_claimed").0, 1);
+    assert_eq!(
+        counted(&analytics, "app_visitor_signed_in_after_limit"),
+        (1, vec![String::new()])
+    );
     let (status, _) = call(
         &world,
         Some(&token),
@@ -278,6 +342,90 @@ async fn a_visitor_chats_until_the_limit_and_its_chats_move_to_the_account() {
     )
     .await;
     assert_eq!(status, 400);
+
+    // A signed-in chat started from the app counts its first answer too.
+    let (status, started) = call(
+        &world,
+        Some(&session),
+        "POST",
+        "/v1/threads",
+        Some(json!({"request_id": id(500), "text": "signed in"})),
+    )
+    .await;
+    assert!(status == 201 || status == 202, "{status} {started}");
+    answered(&world, &session, &id(500)).await;
+    for _ in 0..200 {
+        if counted(&analytics, "app_first_answer").0 == 2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert_eq!(counted(&analytics, "app_first_answer").0, 2);
+    nothing_identifying(
+        &analytics,
+        &[
+            &chat,
+            &id(500),
+            &token,
+            &session,
+            "hello",
+            "signed in",
+            "octo",
+        ],
+    );
+}
+
+#[tokio::test]
+async fn a_failed_first_answer_and_a_claim_before_the_limit_count_as_such() {
+    let analytics = Arc::new(crate::analytics::Analytics::default());
+    let world = world_with(Options {
+        chat: Some(Arc::new(Silent)),
+        analytics: Some(analytics.clone()),
+        ..Options::default()
+    })
+    .await;
+    let (_, minted) = call(&world, None, "POST", "/v1/visitors", None).await;
+    let token = minted["token"].as_str().unwrap().to_owned();
+    let chat = id(7);
+    let (status, started) = call(
+        &world,
+        Some(&token),
+        "POST",
+        "/v1/threads",
+        Some(json!({"request_id": chat, "text": "anyone there"})),
+    )
+    .await;
+    assert_eq!(status, 201, "{started}");
+    for _ in 0..200 {
+        if counted(&analytics, "app_first_answer_failed").0 == 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert_eq!(
+        counted(&analytics, "app_first_answer_failed"),
+        (1, vec![String::new()])
+    );
+    assert_eq!(counted(&analytics, "app_first_answer").0, 0);
+
+    let mut alice = Browser::default();
+    alice.sign_in(&world, "octo-local").await;
+    let session = alice.0["oa_cloud_session"].clone();
+    let (status, claimed) = call(
+        &world,
+        Some(&session),
+        "POST",
+        "/v1/visitors/claim",
+        Some(json!({"token": token})),
+    )
+    .await;
+    assert_eq!((status, &claimed["moved"]), (200, &json!(1)), "{claimed}");
+    assert_eq!(counted(&analytics, "app_visitor_claimed").0, 1);
+    assert_eq!(
+        counted(&analytics, "app_visitor_signed_in_after_limit").0,
+        0
+    );
+    nothing_identifying(&analytics, &[&chat, &token, &session, "anyone"]);
 }
 
 /// Wait until the chat holds `n` answers.
