@@ -1,0 +1,43 @@
+# Separate guest namespace and the pinned containerd runtime handler.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sandboxes
+  labels:
+    openagents-service: space
+    openagents-issue: '11814'
+---
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: space
+  labels:
+    openagents-service: space
+    openagents-issue: '11814'
+handler: space
+scheduling:
+  nodeSelector:
+    node.kubernetes.io/space-enabled: 'true'
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: space-control-plane
+  labels:
+    openagents-service: space
+    openagents-issue: '11814'
+value: 1000000
+globalDefault: false
+description: SPACE control services.
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: space-replaceable
+  labels:
+    openagents-service: space
+    openagents-issue: '11814'
+value: 1000
+globalDefault: false
+preemptionPolicy: Never
+description: SPACE replaceable jobs.
