@@ -79,7 +79,7 @@ pub use coder_access::protocol::{
 #[cfg(feature = "host")]
 pub use config::Config;
 #[cfg(feature = "host")]
-pub use serve::{Running, start};
+pub use serve::{ConnectCodes, Running, start};
 pub use tasks::{
     AgentReport, GoalDecision, NoTasks, Note, Passed, Principal, Reviewed, Standing, StartCause,
     TaskRef, Tasks,

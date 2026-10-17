@@ -1,5 +1,6 @@
 //! The app account control. Local workspace and model-provider logins stay separate.
-//! Signed in, it is one sidebar row whose menu holds Agent Lab and Sign out.
+//! Signed in, it is one sidebar row whose menu holds Connect your phone, Agent
+//! Lab, and Sign out. Signed out, Connect your phone sits under Sign in.
 use crate::{
     icons::{self, icon},
     motion, popover,
@@ -276,6 +277,20 @@ impl AppAccount {
                 .flex_col()
                 .gap(px(2.))
                 .child(
+                    popover::menu_row(&theme, false, "openagents-connect-phone")
+                        .id("openagents-connect-phone")
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.close_menu(cx);
+                            window.dispatch_action(Box::new(crate::shell::ConnectPhone), cx);
+                        }))
+                        .child(
+                            icon(icons::SMARTPHONE)
+                                .size(px(16.))
+                                .text_color(theme.text_muted),
+                        )
+                        .child(crate::shell::CONNECT_PHONE_TITLE),
+                )
+                .child(
                     popover::menu_row(&theme, false, "openagents-agent-lab")
                         .id("openagents-agent-lab")
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -362,6 +377,31 @@ impl Render for AppAccount {
                     Self::sign_in,
                     cx,
                 ));
+                // Pairing a phone needs no account.
+                body = body.child(
+                    div()
+                        .id("openagents-connect-phone")
+                        .role(gpui::Role::Button)
+                        .aria_label(crate::shell::CONNECT_PHONE_TITLE)
+                        .tab_index(0)
+                        .rounded(px(6.))
+                        .px(px(8.))
+                        .py(px(5.))
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .text_color(theme.text_muted)
+                        .cursor_pointer()
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(Box::new(crate::shell::ConnectPhone), cx);
+                        })
+                        .child(
+                            icon(icons::SMARTPHONE)
+                                .size(px(14.))
+                                .text_color(theme.text_muted),
+                        )
+                        .child(crate::shell::CONNECT_PHONE_TITLE),
+                );
             }
             Phase::Restoring | Phase::Starting => {
                 body = body.child(if matches!(phase, Phase::Restoring) {
