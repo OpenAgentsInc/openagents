@@ -3,7 +3,7 @@
   "recorded_at": "2026-10-16T22:31:10.095878+00:00",
   "issue": 11814,
   "issue_complete": false,
-  "phase": "private foundation; native service qualification remains pending",
+  "phase": "native_runtime_qualification",
   "deployment_source": "ac8f1b4ab1a1e67d5ff619d857020edabfc45f76",
   "native_source": "de87b436c35dac056564bdd5b2a113c9046e189b",
   "native_cloud_build": "6bee196d-13c5-4d91-b18a-f27e6662e9f8",
@@ -312,5 +312,124 @@
     "synthetic_owner": "space-qualification-11814",
     "first_create": "initial QA quota rejected pause container resource requests; no native sandbox or pod. Failed CWC fixture preserved before isolated DB reset. Fresh run underway with corrected pods-only quota."
   },
-  "progress_updated_at": "2026-10-17T02:21:31.312495+00:00"
+  "progress_updated_at": "2026-10-17T03:03:49.979170+00:00",
+  "runtime_qualification": {
+    "clean_lifecycle_complete": false,
+    "first_computer": "cmp_b8f7afec9373c5144126",
+    "first_sandbox": "sbx_01a147b0-2082-77f1-be5d-e6073d2a84bb",
+    "command_exit_code": 0,
+    "operator_create_recovery_required": true,
+    "memory_continuity_proved": false,
+    "first_suspend_failed": "The pod network changed the source address of a node-bound RPC; native authorization refused the backup.",
+    "failed_fixture_cleanup": {
+      "computers_state": "deleted",
+      "guest_pods": 0,
+      "firecracker_processes": 0,
+      "local_sandbox_cache_bytes": 0,
+      "active_snapshot_objects": 0
+    },
+    "deployed_fixes": {
+      "gcs_downloads": "Single complete responses retain SDK checksum validation.",
+      "transfers": "Two uploads, two downloads, one codec pass, 64 MiB streaming and writeback budgets.",
+      "pod_proxy": "Only TCP 9800 to 10.220.1.1 is allowed for the local proxy hop.",
+      "node_identity": "Node-bound RPCs use the direct private TLS listener at 10.219.14.10:9800."
+    },
+    "http_framing": {
+      "issue": 11936,
+      "commit": "0492600d791e873b51d4eab5edb2d1ef373db28d",
+      "reproduction": {
+        "missing_content_length": 411,
+        "explicit_zero_length": 202
+      },
+      "computer_driver_tests_passed": 24,
+      "candidate_build": "9e1c6796-f61c-4381-8b67-750d8939ef41",
+      "candidate_build_status": "working"
+    },
+    "synthetic_org_encryption_enabled": true,
+    "encrypted_lifecycle_complete": false
+  },
+  "resource_inventory": {
+    "observed_at": "2026-10-17T02:57:31.325551+00:00",
+    "resources": 41,
+    "unconfirmed_ownership": [],
+    "unattached_owned_disks": [],
+    "objects": [
+      {
+        "bucket": "openagentsgemini-oa-space-service-templates",
+        "active_objects": 6,
+        "active_bytes": 1182053577,
+        "top_level_prefixes": [
+          "templates"
+        ],
+        "soft_delete": {
+          "retentionDurationSeconds": "604800",
+          "effectiveTime": "2026-10-16T22:21:03.687Z"
+        },
+        "ip_filter_enabled": true,
+        "includes_soft_deleted_objects_or_unfinished_uploads": false
+      },
+      {
+        "bucket": "openagentsgemini-oa-space-service-snapshots",
+        "active_objects": 0,
+        "active_bytes": 0,
+        "top_level_prefixes": [],
+        "soft_delete": {
+          "retentionDurationSeconds": "604800",
+          "effectiveTime": "2026-10-16T22:22:40.452Z"
+        },
+        "ip_filter_enabled": true,
+        "includes_soft_deleted_objects_or_unfinished_uploads": false
+      }
+    ],
+    "deletions_performed": 0
+  },
+  "monitoring": {
+    "collector": "deploy/space-service/monitor.py",
+    "timer": "oa-space-monitor.timer",
+    "interval_seconds": 60,
+    "read_only_native_database_role": "space_ro",
+    "worker_disk_capacity_bytes": 322122547200,
+    "alerts": {
+      "policies": [
+        {
+          "name": "projects/openagentsgemini/alertPolicies/10283226037195673935",
+          "metric": "nodes_ready",
+          "enabled": true,
+          "notification_channels": 0
+        },
+        {
+          "name": "projects/openagentsgemini/alertPolicies/2371420808032944348",
+          "metric": "services_ready_ratio",
+          "enabled": true,
+          "notification_channels": 0
+        },
+        {
+          "name": "projects/openagentsgemini/alertPolicies/6453099402489130955",
+          "metric": "collector_errors",
+          "enabled": true,
+          "notification_channels": 0
+        },
+        {
+          "name": "projects/openagentsgemini/alertPolicies/2371420808032947299",
+          "metric": "oldest_operation_seconds",
+          "enabled": true,
+          "notification_channels": 0
+        },
+        {
+          "name": "projects/openagentsgemini/alertPolicies/6453099402489130658",
+          "metric": "oldest_transition_seconds",
+          "enabled": true,
+          "notification_channels": 0
+        },
+        {
+          "name": "projects/openagentsgemini/alertPolicies/13516671637668553242",
+          "metric": "worker_disk_free_bytes",
+          "enabled": true,
+          "notification_channels": 0
+        }
+      ],
+      "notifications": "Cloud Monitoring incidents; existing channel assignments are preserved"
+    },
+    "notification_delivery_tested": false
+  }
 }
