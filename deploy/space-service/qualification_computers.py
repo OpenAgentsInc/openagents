@@ -22,7 +22,8 @@ def request(method,path,data=None):
             headers={'Authorization':'Bearer '+value['computers_token'],'X-OpenAgents-Account':OWNER,'Content-Type':'application/json'})
         response=connection.getresponse(); raw=response.read(1048577)
         if len(raw)>1048576: raise RuntimeError('The Computers response exceeded its size limit.')
-        value=json.loads(raw) if raw else None
+        try: value=json.loads(raw) if raw else None
+        except json.JSONDecodeError: raise RuntimeError(f'Computers endpoint returned non-JSON HTTP {response.status}. Check its private route before retrying.')
         if not 200<=response.status<300: raise RuntimeError(f'Computers request returned HTTP {response.status}: {json.dumps(value)[:1000]}')
         return value
     finally: connection.close()
@@ -37,10 +38,14 @@ def main(action):
     ROOT.mkdir(mode=0o700,exist_ok=True)
     if action=='probe':
         print(json.dumps({'capabilities':request('GET','/v1/capabilities'),'computers':request('GET','/v1/computers')}));return
-    if action=='create':
+    if action in ('create','recover-create'):
         path=ROOT/'cwc-seed.json'
-        if path.exists(): raise RuntimeError('Inspect the saved computer before another create.')
-        save('cwc-seed',{'state':'submission_pending','idempotency_key':'space-11814-runtime-small-1'})
+        if action=='recover-create':
+            pending=json.loads(path.read_text())
+            if pending!={'state':'submission_pending','idempotency_key':'space-11814-runtime-small-1'}: raise RuntimeError('Recovery requires the exact pending outer idempotency key.')
+        else:
+            if path.exists(): raise RuntimeError('Inspect the saved computer before another create.')
+            save('cwc-seed',{'state':'submission_pending','idempotency_key':'space-11814-runtime-small-1'})
         value=request('POST','/v1/computers',{'size':'small','idempotency_key':'space-11814-runtime-small-1'})
         save('cwc-seed',value);print(json.dumps({key:value.get(key) for key in ('id','state','desired','image','size','last_error')}));return
     computer=json.loads((ROOT/'cwc-seed.json').read_text())
@@ -73,5 +78,5 @@ def main(action):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action',choices=['probe','create','status','turn','turn-status','memory','memory-status','stop','wake','delete'])
+    parser.add_argument('action',choices=['probe','create','recover-create','status','turn','turn-status','memory','memory-status','stop','wake','delete'])
     main(parser.parse_args().action)
