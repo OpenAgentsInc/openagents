@@ -55,6 +55,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 | 0. Release and deploys | the release; deploy steps for #11875, #11934, #11852; board and `NEEDS_OWNER.md` | yes |
 | 1. Harness and chats | #11894, then #11898, then #11823 | yes |
 | 2. Sessions on the web | #11897 | no |
+| #11931 | On a test host (never the owner's Mac): quit and relaunch the packaged app during a turn, and check that the turn completes and the app shows it. Then replace the app binary during a turn, and check that the turn isn't interrupted. The fake-turn client-kill check also needs a harness the MCP tools accept, because they hide `mock`. | Unit tests passed: 9 in `openagents-background`, keepers 5 + 4. Debian 12 VM `lane3b-11931`: unit install, start, and attach passed; turn checks not run; VM deleted 2026-10-17. |
 | 3. Keepers and moving agents | #11930, #11931, then #11932, #11933 | partly (#11930 changes the app binary) |
 | 4. Labs platform | #11878, #11876, #11877, #11875 (live checks), then #11885 | yes (#11885) |
 | 5. Labs kinds and app views | #11881, #11882, #11880, then #11883, #11884, #11886 | no |
@@ -96,7 +97,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 3: keepers and moving agents
 
-**Taken 2026-10-16 23:31 CDT** by a Claude Code subagent working #11931 in `~/work/openagents-lane3b`.
+**Released 2026-10-17 00:19 CDT** by a Claude Code subagent. #11931 is closed on code (`c85eb539b7`): the background engine service, attach-or-start, the macOS menu-bar item, and Move to background. Its live turn checks are in After-close checks. #11932 and #11933 remain. Target `~/work/openagents-target-lane3b-app` stays warm.
 
 **Released 2026-10-17 00:05 CDT** by a Claude Code subagent. #11930's keeper layer is on `main` (`16629755e6`); Claude Code and Codex attach remain, see the issue. #11931 wasn't started: it needs a test host, because a LaunchAgent can't be installed on the owner's Mac. Target `~/work/openagents-target-lane3-app` stays warm.
 
@@ -340,8 +341,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Remains:** a keeper subcommand that owns each harness run's stdio and process group, journals frames, and serves a 0600 socket. The engine adopts keepers and replays on boot, the MCP bridge reconnects, and an update becomes a handoff.
 - **Done when:** a fake harness survives an engine kill with no gap, a real Claude Code and Codex turn survives a restart, and pending permission questions come back.
 
-**#11931 Move running agents: background engine by default.** Lane 3, after #11930.
-- **Remains:** the LaunchAgent or systemd service per data folder, the app attaching over IPC, a menu-bar item, and handoff to the service.
+**#11931 Move running agents: background engine by default.** Lane 3. Closed on code.
+- **Status:** `c85eb539b7`. `crates/background` writes each data folder's LaunchAgent or systemd user unit and decides attach, start, or embed; the app runs it before embedding. The macOS menu-bar item has Open, Move to background, and Stop all and quit; Move all to a cloud computer is commented out until #11933. On a disposable Debian 12 VM, `openagents background ensure` installed and started the unit, and a second run attached without reinstalling.
+- **Remains:** the live turn checks in After-close checks.
 
 **#11932 Move running agents: capture and restore on a cloud computer.** Lane 3.
 - **Depends on:** #11852, #11813, #11898.
