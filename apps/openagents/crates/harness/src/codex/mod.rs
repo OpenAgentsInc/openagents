@@ -66,6 +66,7 @@ use openagents_proto::{
     RunRequest, SlashCommand, SteeringMode, UserInputAnswer, UserInputQuestion,
 };
 
+use crate::internal_tags::{self, TagFilter};
 use crate::jsonrpc::{Incoming, RpcClient};
 use crate::process::{Command, Stdio};
 use crate::{Harness, HarnessError, RunControls};
@@ -1449,6 +1450,8 @@ async fn run_session(session: Session) {
     // Deltas seen per agent-message item, so a model that never streams
     // (item/completed only) still emits its text exactly once.
     let mut streamed_text: HashSet<String> = HashSet::new();
+    // Per-message filters that keep harness-internal tags out of agent text.
+    let mut text_filters: HashMap<String, TagFilter> = HashMap::new();
     let mut reasoning_streams: HashMap<String, ReasoningStream> = HashMap::new();
     // Token usage is held until the turn ends, emitted just before Done.
     let mut pending_usage: Option<AgentEvent> = None;
@@ -1547,11 +1550,15 @@ async fn run_session(session: Session) {
                     }
 
                     "item/agentMessage/delta" => {
-                        streamed_text.insert(item_id(&params));
-                        if let Some(text) = delta_text(&params)
-                            && !send(&event_tx, AgentEvent::TextDelta { text }).await
-                        {
-                            break 'main;
+                        let id = item_id(&params);
+                        streamed_text.insert(id.clone());
+                        if let Some(text) = delta_text(&params) {
+                            let text = text_filters.entry(id).or_default().push(&text);
+                            if !text.is_empty()
+                                && !send(&event_tx, AgentEvent::TextDelta { text }).await
+                            {
+                                break 'main;
+                            }
                         }
                     }
 
@@ -1616,10 +1623,13 @@ async fn run_session(session: Session) {
                             if phase == Phase::Completed {
                                 // Fallback for non-streamed messages only.
                                 let id = item.get("id").and_then(Value::as_str).unwrap_or("");
-                                let text = item.get("text").and_then(Value::as_str).unwrap_or("");
-                                if !streamed_text.contains(id)
-                                    && !text.is_empty()
-                                    && !send(&event_tx, AgentEvent::TextDelta { text: text.into() }).await
+                                let text = if streamed_text.contains(id) {
+                                    text_filters.remove(id).map(|mut f| f.finish()).unwrap_or_default()
+                                } else {
+                                    internal_tags::strip(item.get("text").and_then(Value::as_str).unwrap_or(""))
+                                };
+                                if !text.is_empty()
+                                    && !send(&event_tx, AgentEvent::TextDelta { text }).await
                                 {
                                     break 'main;
                                 }
@@ -1707,6 +1717,14 @@ async fn run_session(session: Session) {
                         // Item ids never span turns; without this the set grew
                         // one entry per message for a persistent session's life.
                         streamed_text.clear();
+                        for (_, mut filter) in text_filters.drain() {
+                            let text = filter.finish();
+                            if !text.is_empty()
+                                && !send(&event_tx, AgentEvent::TextDelta { text }).await
+                            {
+                                break 'main;
+                            }
+                        }
                         if let Some(usage) = pending_usage.take()
                             && !send(&event_tx, usage).await
                         {

@@ -5,6 +5,7 @@ use serde_json::Value;
 use openagents_proto::{AgentEvent, DoneStatus, HarnessId, TodoItem, TodoStatus, ToolCall};
 
 use super::wire::{ContentBlock, Frame};
+use crate::internal_tags::{self, TagFilter};
 
 /// Human-readable text for the CLI's assistant-level error codes. These arrive
 /// as a terse `error` field on an `assistant` frame — usually with NO text
@@ -208,6 +209,8 @@ pub(crate) struct Normalizer {
     assistant_message_id: String,
     /// Last session id seen (init or result) — used for synthetic Dones.
     pub session_id: Option<String>,
+    /// Keeps harness-internal tags out of the parent's streamed text.
+    text_filter: TagFilter,
 }
 
 impl Normalizer {
@@ -220,7 +223,14 @@ impl Normalizer {
             agent_spawn_tools: std::collections::HashSet::new(),
             assistant_message_id: new_message_id(),
             session_id: None,
+            text_filter: TagFilter::default(),
         }
+    }
+
+    /// Release the parent's held text at a block or message boundary.
+    fn flush_text(&mut self) -> Option<AgentEvent> {
+        let text = self.text_filter.finish();
+        (!text.is_empty()).then_some(AgentEvent::TextDelta { text })
     }
 
     /// Restore only spawn identity from Claude's native history. The CLI
@@ -426,18 +436,23 @@ impl Normalizer {
             // `AgentEvent::Subagent` instead — the engine routes them to the
             // subagent's own doc.
             Frame::StreamEvent(f) => {
+                if f.event.kind == "content_block_stop" && f.parent_tool_use_id.is_none() {
+                    return self.flush_text().into_iter().collect();
+                }
                 if f.event.kind != "content_block_delta" {
                     return Vec::new();
                 }
                 if let Some(parent) = &f.parent_tool_use_id {
                     let parent = self.agent_tool_spawns.get(parent).unwrap_or(parent);
                     return match f.event.delta.kind.as_str() {
-                        "text_delta" => vec![tag(
-                            parent,
-                            AgentEvent::TextDelta {
-                                text: f.event.delta.text,
-                            },
-                        )],
+                        "text_delta" => {
+                            let text = internal_tags::strip(&f.event.delta.text);
+                            if text.is_empty() {
+                                Vec::new()
+                            } else {
+                                vec![tag(parent, AgentEvent::TextDelta { text })]
+                            }
+                        }
                         "thinking_delta" if !f.event.delta.thinking.is_empty() => vec![tag(
                             parent,
                             AgentEvent::ReasoningDelta {
@@ -450,9 +465,12 @@ impl Normalizer {
                     };
                 }
                 match f.event.delta.kind.as_str() {
-                    "text_delta" => vec![AgentEvent::TextDelta {
-                        text: f.event.delta.text,
-                    }],
+                    // A held delta still proves the run is alive: send an
+                    // empty reasoning delta, the engine's heartbeat.
+                    "text_delta" => match self.text_filter.push(&f.event.delta.text) {
+                        text if text.is_empty() => vec![AgentEvent::ReasoningDelta { text }],
+                        text => vec![AgentEvent::TextDelta { text }],
+                    },
                     "thinking_delta" => vec![AgentEvent::ReasoningDelta {
                         text: f.event.delta.thinking,
                     }],
@@ -480,12 +498,17 @@ impl Normalizer {
                         .message
                         .blocks()
                         .filter_map(|b: ContentBlock| match b.kind.as_str() {
-                            "text" if !b.text.is_empty() => Some(tag(
-                                parent,
-                                AgentEvent::TextDelta {
-                                    text: format!("{}\n\n", b.text.trim_end()),
-                                },
-                            )),
+                            "text" => {
+                                let text = internal_tags::strip(&b.text);
+                                (!text.trim().is_empty()).then(|| {
+                                    tag(
+                                        parent,
+                                        AgentEvent::TextDelta {
+                                            text: format!("{}\n\n", text.trim_end()),
+                                        },
+                                    )
+                                })
+                            }
                             "tool_use" => Some(tag(
                                 parent,
                                 AgentEvent::ToolCall {
@@ -513,6 +536,8 @@ impl Normalizer {
                         self.agent_spawn_tools.insert(b.id.clone());
                     }
                 }
+                // Release held text first, so it precedes these tool calls.
+                let flushed = self.flush_text();
                 let mut out: Vec<AgentEvent> = f
                     .message
                     .blocks()
@@ -566,6 +591,7 @@ impl Normalizer {
                         std::iter::once(call).chain(opening).chain(steer)
                     })
                     .collect();
+                out.splice(0..0, flushed);
                 self.last_model = f.message.model.clone().or(self.last_model.take());
                 if let Some(usage) = &f.message.usage {
                     let fields = [
@@ -634,11 +660,11 @@ impl Normalizer {
                         f.message
                             .blocks()
                             .filter(|b: &ContentBlock| {
-                                b.kind == "text"
-                                    && !b.text.trim().is_empty()
-                                    && !is_synthetic_user_text(&b.text)
+                                b.kind == "text" && !is_synthetic_user_text(&b.text)
                             })
-                            .map(|b| tag(parent, AgentEvent::UserMessage { text: b.text })),
+                            .map(|b| internal_tags::strip(&b.text))
+                            .filter(|text| !text.trim().is_empty())
+                            .map(|text| tag(parent, AgentEvent::UserMessage { text })),
                     );
                     return out;
                 }
@@ -705,7 +731,7 @@ impl Normalizer {
                         } else {
                             DoneStatus::Completed
                         },
-                        result: f.result,
+                        result: f.result.map(|r| internal_tags::strip(&r)),
                         error: None,
                         session_id: f.session_id,
                     }
@@ -759,7 +785,7 @@ impl Normalizer {
                         session_id: f.session_id,
                     }
                 };
-                let mut out = Vec::new();
+                let mut out: Vec<AgentEvent> = self.flush_text().into_iter().collect();
                 if let Some(window) = window {
                     out.push(AgentEvent::ContextUsage {
                         tokens: None,
@@ -844,6 +870,30 @@ mod tests {
             decode_tool_use("Mystery", &json!({})),
             ToolCall::Unknown { .. }
         ));
+    }
+
+    /// #11974: a reply that echoes harness context (`<total_tokens>`,
+    /// `<system-reminder>`) must not reach the transcript, even when the tag
+    /// is split across deltas, while a mention inside a sentence survives.
+    #[test]
+    fn recorded_stream_keeps_internal_tags_out_of_the_transcript() {
+        let fixture = include_str!("../../tests/fixtures/claude/internal-tags-2.1.302.jsonl");
+        let mut norm = Normalizer::new();
+        let mut text = String::new();
+        let mut result = None;
+        for line in fixture.lines() {
+            let frame = crate::claude::wire::parse_frame(line).expect("frame parses");
+            for event in norm.normalize(frame, false) {
+                match event {
+                    AgentEvent::TextDelta { text: t } => text.push_str(&t),
+                    AgentEvent::Done { result: r, .. } => result = r,
+                    _ => {}
+                }
+            }
+        }
+        let shown = "Status as of 14:15 UTC: the `<total_tokens>` line is internal.";
+        assert_eq!(text, shown);
+        assert_eq!(result.as_deref(), Some(shown));
     }
 
     fn normalize_one(raw: &str) -> Vec<AgentEvent> {

@@ -318,6 +318,7 @@ pub mod cursor;
 pub(crate) mod executable;
 pub mod host;
 pub mod install;
+pub(crate) mod internal_tags;
 #[cfg(unix)]
 pub mod keeper;
 pub(crate) mod jsonrpc;

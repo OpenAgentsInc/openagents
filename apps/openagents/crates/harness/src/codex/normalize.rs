@@ -506,6 +506,8 @@ pub(crate) fn user_message_text(item: &Value) -> Option<String> {
 pub(super) struct ChildStream {
     reasoning: ReasoningStream,
     streamed_text: std::collections::HashSet<String>,
+    /// Per-message filters that keep harness-internal tags out of agent text.
+    text_filters: std::collections::HashMap<String, crate::internal_tags::TagFilter>,
     completed_items: std::collections::VecDeque<String>,
     completed_turns: std::collections::VecDeque<String>,
     settled: bool,
@@ -559,6 +561,8 @@ impl ChildStream {
             if matches!(item_type(item), "userMessage" | "user_message") {
                 return if phase == Phase::Completed {
                     user_message_text(item)
+                        .map(|text| crate::internal_tags::strip(&text))
+                        .filter(|text| !text.trim().is_empty())
                         .map(|text| {
                             self.settled = false;
                             AgentEvent::UserMessage { text }
@@ -577,11 +581,17 @@ impl ChildStream {
                     return Vec::new();
                 }
                 let mut events = Vec::new();
-                if !self.streamed_text.remove(&str_field(item, &["id"])) {
-                    let text = str_field(item, &["text"]);
-                    if !text.is_empty() {
-                        events.push(AgentEvent::TextDelta { text });
-                    }
+                let id = str_field(item, &["id"]);
+                let text = if self.streamed_text.remove(&id) {
+                    self.text_filters
+                        .remove(&id)
+                        .map(|mut f| f.finish())
+                        .unwrap_or_default()
+                } else {
+                    crate::internal_tags::strip(&str_field(item, &["text"]))
+                };
+                if !text.is_empty() {
+                    events.push(AgentEvent::TextDelta { text });
                 }
                 events.push(AgentEvent::TextDelta {
                     text: "\n\n".into(),
@@ -599,8 +609,10 @@ impl ChildStream {
                 if !id.is_empty() && self.completed_items.contains(&id) {
                     return Vec::new();
                 }
-                self.streamed_text.insert(id);
+                self.streamed_text.insert(id.clone());
                 delta_text(params)
+                    .map(|text| self.text_filters.entry(id).or_default().push(&text))
+                    .filter(|text| !text.is_empty())
                     .map(|text| AgentEvent::TextDelta { text })
                     .into_iter()
                     .collect()
@@ -629,12 +641,20 @@ impl ChildStream {
                 } else {
                     DoneStatus::Completed
                 };
-                vec![AgentEvent::Done {
+                let mut events: Vec<AgentEvent> = self
+                    .text_filters
+                    .drain()
+                    .map(|(_, mut f)| f.finish())
+                    .filter(|text| !text.is_empty())
+                    .map(|text| AgentEvent::TextDelta { text })
+                    .collect();
+                events.push(AgentEvent::Done {
                     status,
                     result: None,
                     error,
                     session_id: Some(child.to_owned()),
-                }]
+                });
+                events
             }
             "error" => vec![AgentEvent::Error {
                 message: params
@@ -1012,6 +1032,44 @@ mod tests {
             completed.last(),
             Some(AgentEvent::ToolResult { id, is_error: false, .. }) if id == "call_1"
         ));
+    }
+
+    /// #11974: a child agent message that echoes harness context keeps the
+    /// tag out of its transcript, streamed or completion-only.
+    #[test]
+    fn child_agent_text_drops_internal_tags() {
+        let mut child = ChildStream::default();
+        let mut text = String::new();
+        for (method, params) in [
+            (
+                "item/agentMessage/delta",
+                json!({"itemId": "m1", "delta": "<environment_"}),
+            ),
+            (
+                "item/agentMessage/delta",
+                json!({"itemId": "m1", "delta": "context>cwd</environment_context>\n"}),
+            ),
+            (
+                "item/agentMessage/delta",
+                json!({"itemId": "m1", "delta": "Done."}),
+            ),
+            (
+                "item/completed",
+                json!({"item": {"type": "agentMessage", "id": "m1", "text": ""}}),
+            ),
+            (
+                "item/completed",
+                json!({"item": {"type": "agentMessage", "id": "m2",
+                "text": "<total_tokens>9 tokens left</total_tokens>"}}),
+            ),
+        ] {
+            for event in child.map("child", method, &params) {
+                if let AgentEvent::TextDelta { text: t } = event {
+                    text.push_str(&t);
+                }
+            }
+        }
+        assert_eq!(text, "Done.\n\n\n\n");
     }
 
     #[test]
