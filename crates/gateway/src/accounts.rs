@@ -132,6 +132,7 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         "/v1/workspaces/{workspace}/team-policy",
         get(crate::team_policy::read).put(crate::team_policy::change),
     ));
+    routes.extend(crate::nostr_sign_in::routes());
     routes.extend(crate::referrals::routes());
     routes.extend(crate::lab_workers::routes());
     routes.extend(crate::affiliates::routes());
@@ -562,6 +563,7 @@ pub(crate) fn sessions_refusal(refusal: sessions::Refusal) -> Response {
         R::Device(device) => (StatusCode::BAD_REQUEST, device.code()),
         R::KeyName => (StatusCode::BAD_REQUEST, "invalid_name"),
         R::KeyLimit => (StatusCode::CONFLICT, "too_many_keys"),
+        R::ProofUsed => (StatusCode::CONFLICT, "proof_used"),
     };
     refused(status, code, refusal.to_string())
 }

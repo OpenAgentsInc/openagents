@@ -12636,6 +12636,7 @@ dependencies = [
  "lab-api",
  "lab-kit",
  "lab-store",
+ "nostr",
  "oa-auth",
  "oa-copy",
  "openagents-dashboard",

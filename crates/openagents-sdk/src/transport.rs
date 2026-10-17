@@ -100,6 +100,8 @@ pub enum Error {
     Denied,
     /// Apple's identity token didn't check out on the server.
     AppleDenied,
+    /// The server didn't accept the key's signature (#11993).
+    KeyDenied,
     ExpiredLogin,
     FinishedLogin,
     Cancelled,
@@ -150,6 +152,7 @@ impl fmt::Display for Error {
             Self::Forbidden => "You don't have access to this.",
             Self::Denied => "Login was denied on the website.",
             Self::AppleDenied => "Sign in with Apple didn't go through. Try again.",
+            Self::KeyDenied => "Signing in with your key didn't go through. Try again.",
             Self::ExpiredLogin => "The login code expired. Start again.",
             Self::FinishedLogin => "Start a new login to continue.",
             Self::Cancelled => "Canceled.",
@@ -404,7 +407,9 @@ impl Client {
         Self::check_response(response).await
     }
 
-    async fn check_response(response: reqwest::Response) -> Result<reqwest::Response, Error> {
+    pub(crate) async fn check_response(
+        response: reqwest::Response,
+    ) -> Result<reqwest::Response, Error> {
         let status = response.status();
         let retry_after = response
             .headers()
@@ -516,6 +521,12 @@ impl Client {
                 Some("key_refused") => Some("key_refused"),
                 Some("transcript_off") => Some("transcript_off"),
                 Some("sign_in_required") => Some("sign_in_required"),
+                Some("proof_used") => Some("proof_used"),
+                Some("key_proof_denied") => Some("key_proof_denied"),
+                Some("identity_taken") => Some("identity_taken"),
+                Some("last_key") => Some("last_key"),
+                Some("too_many_keys") => Some("too_many_keys"),
+                Some("nostr_disabled") => Some("nostr_disabled"),
                 _ => None,
             };
             return Err(Error::Refused {

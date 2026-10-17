@@ -15,6 +15,8 @@ mod common;
 mod funding_receiver;
 #[path = "accounts_lab_workers/mod.rs"]
 mod lab_workers;
+#[path = "accounts_nostr/mod.rs"]
+mod nostr_keys;
 #[path = "accounts_referrals/mod.rs"]
 mod referrals;
 #[path = "accounts_team/mod.rs"]
