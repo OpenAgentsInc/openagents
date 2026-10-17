@@ -89,7 +89,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 **Released 2026-10-17 01:00 CDT** by Codex (GPT-6) after #11945 landed in `92662ccae4`. Both reported unit failures are fixed; `coder-new` unit checks passed 1,055/0/24. The broader run found the separate attribution failures tracked in #11947.
 
-**Done 2026-10-17 04:03 CDT** by Codex in `~/work/openagents-chat-bridge`. #11894 is closed; #11898 is source-complete through `cc9f2bc14c` and closing. #11823 stays with its active Claude Code owner.
+**Done 2026-10-17 04:03 CDT** by Codex in `~/work/openagents-chat-bridge`. #11894 is closed; #11898 is closed through `cc9f2bc14c`. #11823 stays with its active Claude Code owner.
 
 **Released 2026-10-16 22:16 CDT** by Codex after landing #11894 prerequisites `d944461951` and `b2ac4a07c6`. #11894, #11898, and #11823 remain open and free; see their handoff comments. The `~/work/openagents-push-lane` worktree is removed; targets `~/work/openagents-target-1` and `~/work/openagents-target-1-app` stay warm.
 
@@ -125,6 +125,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 - **Risk:** #11932 and #11933 sit at the end of three other lanes' chains. If those slip, ship #11930 and #11931 and close the other two with their remaining steps recorded. Don't hold the release for them.
 
 ### Lane 4: Labs platform
+
+**Taken 2026-10-17 04:08 CDT** by Codex working #11871 in `~/work/openagents-labs-finish`.
 
 **Released 2026-10-17 CDT** by a Claude Code subagent. Worker reads of referenced versions and files, the Game, Ship, Video and Robot registrations, and #11882 are on main (`2f7acc29fd`, `4e8463ddff`, `2c6be74847`); #11882 is closed. Production checks are in [After-close checks](#after-close-checks). The worktree `~/work/openagents-lane4b` is removed; target `~/work/openagents-target-agent2` stays warm.
 
