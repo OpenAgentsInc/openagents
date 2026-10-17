@@ -219,6 +219,7 @@ pub fn owned(path: &str) -> bool {
         || crate::vault::owns(path)
         || crate::connections::owns(path)
         || crate::sign_in_keys::owns(path)
+        || crate::web_sign_in::owns(path)
         || crate::projects::api::owns(path)
         || crate::projects::files::owns(path)
         || OWNED_PREFIXES.iter().any(|prefix| path.starts_with(prefix))
