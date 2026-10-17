@@ -13530,6 +13530,11 @@ public struct SessionRow: Equatable, Hashable {
      */
     public var harness: String?
     public var harnessLabel: String?
+    /**
+     * The saved agent this chat runs; draw the OpenAgents mark and this
+     * name instead of the runtime (#11966).
+     */
+    public var agentName: String?
     public var model: String?
     public var modelLabel: String?
     /**
@@ -13585,7 +13590,11 @@ public struct SessionRow: Equatable, Hashable {
          */project: ProjectRef?, deviceId: String, deviceName: String?, deviceOnline: Bool, 
         /**
          * Wire harness id (`claude-code`).
-         */harness: String?, harnessLabel: String?, model: String?, modelLabel: String?, 
+         */harness: String?, harnessLabel: String?, 
+        /**
+         * The saved agent this chat runs; draw the OpenAgents mark and this
+         * name instead of the runtime (#11966).
+         */agentName: String?, model: String?, modelLabel: String?, 
         /**
          * Wire effort (`xhigh`).
          */reasoning: String?, branch: String?, cwd: String?, 
@@ -13618,6 +13627,7 @@ public struct SessionRow: Equatable, Hashable {
         self.deviceOnline = deviceOnline
         self.harness = harness
         self.harnessLabel = harnessLabel
+        self.agentName = agentName
         self.model = model
         self.modelLabel = modelLabel
         self.reasoning = reasoning
@@ -13666,6 +13676,7 @@ public struct FfiConverterTypeSessionRow: FfiConverterRustBuffer {
                 deviceOnline: FfiConverterBool.read(from: &buf), 
                 harness: FfiConverterOptionString.read(from: &buf), 
                 harnessLabel: FfiConverterOptionString.read(from: &buf), 
+                agentName: FfiConverterOptionString.read(from: &buf), 
                 model: FfiConverterOptionString.read(from: &buf), 
                 modelLabel: FfiConverterOptionString.read(from: &buf), 
                 reasoning: FfiConverterOptionString.read(from: &buf), 
@@ -13700,6 +13711,7 @@ public struct FfiConverterTypeSessionRow: FfiConverterRustBuffer {
         FfiConverterBool.write(value.deviceOnline, into: &buf)
         FfiConverterOptionString.write(value.harness, into: &buf)
         FfiConverterOptionString.write(value.harnessLabel, into: &buf)
+        FfiConverterOptionString.write(value.agentName, into: &buf)
         FfiConverterOptionString.write(value.model, into: &buf)
         FfiConverterOptionString.write(value.modelLabel, into: &buf)
         FfiConverterOptionString.write(value.reasoning, into: &buf)
