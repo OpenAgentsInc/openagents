@@ -13,7 +13,9 @@ pub mod generated;
 pub mod history;
 pub mod labs;
 mod payment;
+pub mod rooms;
 pub mod sessions;
+pub mod terminal_chats;
 mod transport;
 
 pub use auth::{

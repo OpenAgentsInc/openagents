@@ -13,7 +13,7 @@ pub struct Deployment {
     website: Url,
 }
 
-fn allowed(url: &Url) -> bool {
+pub(crate) fn allowed(url: &Url) -> bool {
     let loopback = url.host_str().is_some_and(|host| {
         host == "localhost"
             || host
@@ -261,6 +261,9 @@ impl Client {
         token: Option<&str>,
     ) -> Result<T, Error> {
         let response = self.send(method, segments, query, body, token).await?;
+        if segments == ["account"] && response.status().as_u16() == 404 {
+            return Err(Error::NotFound);
+        }
         let limit = if segments.first() == Some(&"labs") && segments.get(1) == Some(&"agent") {
             16 * 1024 * 1024
         } else if matches!(
@@ -372,6 +375,33 @@ impl Client {
         let response = request.send().await.map_err(|error| Error::Network {
             timeout: error.is_timeout(),
         })?;
+        Self::check_response(response).await
+    }
+
+    pub(crate) async fn room_request(
+        &self,
+        session: &crate::Session,
+        method: Method,
+        url: Url,
+        body: Option<Vec<u8>>,
+        headers: reqwest::header::HeaderMap,
+    ) -> Result<reqwest::Response, Error> {
+        self.check_session(session)?;
+        let mut request = self
+            .http
+            .request(method, url)
+            .headers(headers)
+            .bearer_auth(session.token());
+        if let Some(body) = body {
+            request = request.body(body);
+        }
+        let response = request.send().await.map_err(|error| Error::Network {
+            timeout: error.is_timeout(),
+        })?;
+        Self::check_response(response).await
+    }
+
+    async fn check_response(response: reqwest::Response) -> Result<reqwest::Response, Error> {
         let status = response.status();
         let retry_after = response
             .headers()
