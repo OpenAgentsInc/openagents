@@ -2742,8 +2742,3 @@ native text support; audio/video, public activity discovery, and physical
 capture or control are unsupported by these profiles. Do not enable them from
 text-fixture evidence. See [the runtime guide](crates/live-host/README.md).
 
-## Refresh Google Cloud operator login for private SPACE deployment (#11814)
-
-Google Cloud rejected operator token refresh on 2026-10-16 with `Reauthentication failed`. Run `gcloud auth login` on the contributor machine to restore authorized deployment access. Runtime services use their own service identities.
-
-The private foundation and its evidence are on `main`; the pinned native images built successfully, and the local manifests and shim build pass. Native lifecycle, recovery, capacity, and guest-isolation qualification still require deployment. #11814 remains incomplete.
