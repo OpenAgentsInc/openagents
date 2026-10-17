@@ -140,8 +140,7 @@ package is published.
 
 Use generated public resource bindings with a small ergonomic layer for waits,
 streaming, files, credentials, and retry identities as those contracts ship.
-The future Computers module remains `openagents::computers`; #11805 can extend
-this package without holding authentication on its prerequisites. Existing
+The Computers module is `openagents::computers`. Existing
 binaries and workspace-wide publication policy keep their names and rules.
 
 Client-only builds must avoid host harness/process stacks, provider services,
@@ -166,12 +165,13 @@ its own adapter/platform and release constraints. Publication to crates.io is
 a separate owner decision after a usable client and real consumer pass; this
 plan does not authorize publishing a package or changing release channels.
 
-The [Coder 1.0 binary freeze](../coder/1.0-freeze.md) remains binding.
-Server and web improvements can ship now. New CLI features, compiled launch
-changes, and host-binary-dependent work wait in
-[the next-release list](../coder/next-release.md), tracked by [#11823](https://github.com/OpenAgentsInc/openagents/issues/11823).
-Existing Coder 1.0.0 routes, old addresses, fields, errors, and model IDs keep
-working throughout the migration.
+The [big-bang 1.0.0 brief](../audits/2026-10-16-coder-1.0-big-bang.md)
+lifts the binary freeze. Coder consumes this SDK for account, history, chats,
+Computers, Labs, and Agent Lab; #11823 covers the Computers integration after
+SPACE qualification. Route changes land with the client that uses them, and
+the old `/v1` and `/api/v1` addresses keep answering. The Monday release becomes
+the compatibility baseline. Publication and commercial activation follow the
+[SDK policy](release-policy.md).
 
 ## Product consumption
 
@@ -186,7 +186,7 @@ internal; they must not become developer credentials or bypass account checks.
 | Solver | Implemented account-scoped allocation, saved commands, recovery, and original-job cleanup behind explicit account admission ([#11807](https://github.com/OpenAgentsInc/openagents/issues/11807), [inventory](solver-computers.md), [evidence](solver-computers-evidence.json)). The GitHub-connected staging job remains unqualified. |
 | Environments | Shared setup, builder, and fresh verification deployed and qualified on Boat, with explicit account enrollment ([#11808](https://github.com/OpenAgentsInc/openagents/issues/11808), [inventory and rollout](environment-computers.md)). |
 | Existing OpenAgents desktop/mobile | Adopt supported public operations incrementally without pulling server/provider internals into clients |
-| Frozen Coder/CLI | Keep compatible server behavior; compiled changes wait for [#11823](https://github.com/OpenAgentsInc/openagents/issues/11823) |
+| Coder/CLI | Consume the same SDK as the apps in the Monday 1.0.0 release; Computers integration is [#11823](https://github.com/OpenAgentsInc/openagents/issues/11823) |
 | External developers/agents | Use HTTP/OpenAPI and the Rust client with their own authorized account credentials |
 
 The completed desktop session work #11709 contributes host-consumer evidence.
@@ -261,13 +261,15 @@ records and infrastructure.
 | External computer providers/Pylon | Trust, account consent, qualification, custody, and payout policy; [#11820](https://github.com/OpenAgentsInc/openagents/issues/11820) |
 | Other language clients | Concrete demand and owner-selected repository/package location; [#11821](https://github.com/OpenAgentsInc/openagents/issues/11821) |
 | Automatic x402 payment | Defined paid offer, explicit opt-in/caps, and payment/execution recovery proof; [#11822](https://github.com/OpenAgentsInc/openagents/issues/11822) |
-| New CLI/compiled host behavior | Owner lifts the Coder freeze and authorizes release work; [#11823](https://github.com/OpenAgentsInc/openagents/issues/11823) |
+| New CLI/compiled host behavior | Authorized for the Monday 1.0.0 release; [#11823](https://github.com/OpenAgentsInc/openagents/issues/11823) follows #11816 |
 
 Rust remains the product language in this repository. Do not add TypeScript.
 Additional generated product clients live only in an explicitly approved
 location. The historical `openagents-ai` reference does not authorize reviving
-that repository or publishing packages. These decisions do not prevent the
-first Rust client and public API from being implemented and exercised.
+that repository or publishing packages. The [completed policy preparation](release-policy.md)
+records the host boundary, provider admission, language generation, and payment
+requirements. Remaining publication and commercial choices are in
+[`NEEDS_OWNER.md`](../../NEEDS_OWNER.md#sdk-publication-and-commercial-activation).
 
 The [connected-source evidence](connected-sources-evidence.json) qualifies the
 existing gated account connection, Drive, and own-project source schemas with

@@ -205,15 +205,15 @@ of truth for completion blockers. All new issues belong to the OpenAgents board
 | [#11817](https://github.com/OpenAgentsInc/openagents/issues/11817) | implement an enrolled-own-machine adapter with safe attach and detach semantics | [#11809](https://github.com/OpenAgentsInc/openagents/issues/11809), [#11802](https://github.com/OpenAgentsInc/openagents/issues/11802), [#11803](https://github.com/OpenAgentsInc/openagents/issues/11803) |
 | [#11818](https://github.com/OpenAgentsInc/openagents/issues/11818) | inventory public API routes and incrementally extend the unified OpenAPI reference | None in this plan |
 
-### Deferred follow-ups
+### Publication policy and native CLI follow-ups
 
 | Issue | Scope | Completion prerequisites |
 | --- | --- | --- |
-| [#11819](https://github.com/OpenAgentsInc/openagents/issues/11819) | define the host public boundary and publication evidence without changing frozen binaries | None in this plan; activation condition below |
+| [#11819](https://github.com/OpenAgentsInc/openagents/issues/11819) | define the host public boundary and publication evidence | None in this plan; activation condition below |
 | [#11820](https://github.com/OpenAgentsInc/openagents/issues/11820) | specify external computer-provider admission and paid placement policy | None in this plan; activation condition below |
 | [#11821](https://github.com/OpenAgentsInc/openagents/issues/11821) | generate additional language clients only after demand and repository decisions | [#11804](https://github.com/OpenAgentsInc/openagents/issues/11804); activation condition below |
 | [#11822](https://github.com/OpenAgentsInc/openagents/issues/11822) | add opt-in x402 payment with spending caps and retry-safe execution | [#11805](https://github.com/OpenAgentsInc/openagents/issues/11805), [#11815](https://github.com/OpenAgentsInc/openagents/issues/11815); activation condition below |
-| [#11823](https://github.com/OpenAgentsInc/openagents/issues/11823) | consume the public Computers SDK for remote work and agent tools | [#11806](https://github.com/OpenAgentsInc/openagents/issues/11806); activation condition below |
+| [#11823](https://github.com/OpenAgentsInc/openagents/issues/11823) | consume the public Computers SDK for remote work and agent tools | [#11816](https://github.com/OpenAgentsInc/openagents/issues/11816); release brief authorizes binary work |
 
 ## Qualification scenarios
 
@@ -263,16 +263,23 @@ Defaults do not migrate existing computers. Verify Boat remains available.
 
 ## Activation conditions and scope boundaries
 
-- [#11819](https://github.com/OpenAgentsInc/openagents/issues/11819): Defer publication until an explicit boundary, two real non-Coder consumers, and owner publication/release decisions; binary-only changes wait for the Coder freeze to lift.
+The [big-bang release brief](../audits/2026-10-16-coder-1.0-big-bang.md)
+lifts the binary freeze and makes the next-release list Monday 1.0.0 scope.
+The [completed SDK policy](release-policy.md) specifies #11819–#11822;
+publication and commercial activation choices move to
+[`NEEDS_OWNER.md`](../../NEEDS_OWNER.md#sdk-publication-and-commercial-activation).
+
+- [#11819](https://github.com/OpenAgentsInc/openagents/issues/11819): Host facade and publication criteria are specified. Keep publication conditional on two qualified real non-Coder consumers and an owner-selected package/support policy.
 - [#11820](https://github.com/OpenAgentsInc/openagents/issues/11820): Activate external provider work only after owner approval of trust, account consent, supported data classes, qualification, pricing, and payout policy.
 - [#11821](https://github.com/OpenAgentsInc/openagents/issues/11821): Wait for a concrete language demand, owner repository/package decision, and explicit publication authorization; no TypeScript product code in this repository.
 - [#11822](https://github.com/OpenAgentsInc/openagents/issues/11822): Activate only for a defined owner-approved paid offer and explicit client opt-in, after durable usage and payment/execution retry qualification.
-- [#11823](https://github.com/OpenAgentsInc/openagents/issues/11823): Binary-dependent implementation waits for the owner to lift the Coder 1.0.0 freeze and authorize a release.
+- [#11823](https://github.com/OpenAgentsInc/openagents/issues/11823): Build native Computers SDK integration for Monday 1.0.0 after #11816 qualification; the freeze is no longer a blocker.
 
-These follow-ups remain open with their conditions recorded. They are not native
-blockers of M1 or M2. Preparation can document supported boundaries without
+Close the policy issues after their scoped specifications are merged and checked;
+owner-only activation stays in `NEEDS_OWNER.md`. These publication decisions are
+not native blockers of M1 or M2. Preparation documents supported boundaries without
 publishing packages, enrolling outside providers, spending money, creating other
-repositories, or changing frozen binaries. Paid persistent computers require a
+repositories. Paid persistent computers require a
 separate explicit entitlement and price policy; bounded operator qualification
 can precede that commercial activation.
 
@@ -329,7 +336,7 @@ cost assumptions, and cleanup inventories, never secret values or private conten
 - #11709: desktop session configuration/resume work; use it as host-consumer
   evidence without duplicating or reopening its implementation scope.
 - #11766: per-turn credential transport work; it does not prove secret-free RAM
-  or snapshots. #11771 remains in the existing frozen-binary next-release list.
+  or snapshots. #11771 is Monday 1.0.0 scope under the big-bang release brief.
 
 The initial #11818 inventory/composition milestone is implemented and deployed;
 [route coverage](public-routes.md) and [evidence](public-reference-evidence.json)

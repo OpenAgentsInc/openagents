@@ -1,3 +1,31 @@
+## SDK publication and commercial activation
+
+Review the completed [SDK policy](docs/sdk/release-policy.md). The Coder
+binary freeze has been lifted; these are publication and commercial choices,
+not blockers on building the Monday 1.0.0 binaries.
+
+- **Host package (#11819):** choose its package name, maintainer/security
+  contact, support/version policy, and a second real non-Coder consumer.
+  Keep `coder-sdk` internal until that consumer and the desktop pass the
+  documented facade and adapter checks. The current evidence does not establish
+  two external host consumers. Authorize package publication separately.
+- **Outside providers (#11820):** name the first approved operator and offer,
+  permitted accounts/data/locations, consent and checkpoint custody/deletion
+  terms, and price/refund/Bitcoin payout policy. The recommendation for launch
+  is first-party deployments only. Qualification must precede customer access.
+- **Other languages (#11821):** identify concrete demand, API domains, an
+  approved repository/package, and a maintainer/publication owner. The launch
+  recommendation is Rust plus HTTP/OpenAPI. This repository gains no TypeScript.
+- **Automatic payments (#11822):** approve the exact paid unit, payer/wallet,
+  spending and fee limits, recipients/networks, cancellation and refund rules,
+  and a bounded funded check. The SDK currently returns typed 402 responses
+  without paying; wallet automation remains unavailable. An approved offer
+  needs a scoped implementation and recovery/usage qualification before use.
+
+No package, outside provider, additional repository, or funded transaction was
+activated by these policy issues. Open a scoped implementation issue when an
+activation decision is made; report defects in the completed baseline separately.
+
 ## Check Agent Lab on iPhone (#11914–#11921)
 
 Install OpenAgents TestFlight build 1010 over the existing app. Open **Agent
