@@ -20,7 +20,7 @@ base64 = "0.22"
 serde_json = "1"
 futures-util = "0.3"
 tempfile = "3"
-tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "test-util"] }
 
 [lints]
 workspace = true
