@@ -306,16 +306,13 @@ The status lines below summarize each issue and its comments. Open the issue for
 ### Chats, sessions, and moving agents (#11896 epic)
 
 **#11896 Epic: OpenAgents chats are normal, resumable chats.** Lane 1.
-- **Status:** #11892, #11893, and #11895 are done. #11894 is partial. #11897 and #11898 are open.
-- **Remains:** close the three children.
+- **Status:** #11892, #11893, #11894, #11895, and #11897 are code-complete. #11898 remains open.
+- **Remains:** close #11898.
 
-**#11894 Continue a terminal or phone chat on this computer, as a real session.** Lane 1.
-- **Status:** `cca7f94ebe` has `chat-home` types, the continuation route, SDK methods, app engine seeding and recovery, read-only sources, and mobile metadata. Earlier app crate tests passed (account 53, mobile 55). Remote checks ran on `04231f589c`, before the final rebase. The worktree `/Users/christopherdavid/work/openagents-resumable-chats` is clean.
-- **Remains:**
-  1. The harness bridge: `coder-delegate` calls `openagents-harness`, and the duplicate drivers are deleted.
-  2. Terminal chats on the SDK and Loro path.
-  3. The live acceptance: a test account's terminal chat continues on the desktop, the first turn knows the history, and the phone steers it.
-- **Starting points:** `crates/coder-delegate/src/adapter.rs` (about line 334), `delegate.rs` (`Wrap`, about line 2550), and `apps/openagents/crates/harness/src/lib.rs`.
+**#11894 Continue a terminal or phone chat on this computer, as a real session.** Lane 1, code-complete.
+- **Status:** `f3267187d5` routes terminal sessions through the shared native harness and removes duplicate drivers. `8453e68318` updates the Microcoder consumer, `0a745fa94c` makes the shared room client available without SQLite, `f12035c392` adds SDK chat and room clients, and `0b84201f39` publishes screened terminal text to the same conversation ID in Loro. `574ec67ab8` stabilizes the steering deadline fixture. The earlier continuation foundation remains in `cca7f94ebe`.
+- **Checks:** bridge 259, publisher 44, Microcoder 141, SDK chat and continuation fixtures 3, and app sync 56 without the store and 73 with it. The full Microcoder run found an unrelated assertion expecting “signed in” after `95a0145d3a` changed the copy to “logged in”; that one assertion is excluded from the passing focused run. Twelve optional tests are ignored. Changed Rust files are formatted, and `git diff --check` passes.
+- **After close:** lane 0 deploys the new binaries and runs the dedicated-account terminal-to-desktop context and phone steering check listed below. Custom account deployments must set `OPENAGENTS_SYNC_URL` to their matching sync service.
 
 **#11897 Show computer sessions as rows on openagents.com.** Lane 2, not started.
 - **Remains:** a summary-only session index per account, rows mixed into the web list with an "On <computer>" badge and offline state, a summary page with app and continue actions, a per-chat and per-project transcript opt-in (off by default), `source: "session"` rows in `/v1/history`, and access and revocation checks.
@@ -438,7 +435,7 @@ Deploys and live checks that no longer hold an issue open. Lane 0 works through 
 | #11878 | Deploy the account-service worker routes before the web worker routes. Run dedicated-account Echo on server, disposable enrolled, and cloud placements; prove private input bytes and paths stay local, retire scoped keys, and observe cloud computer deletion. The cloud environment needs the pinned `labs-worker` and trusted handlers installed. | to do; owner Mac installation is in `NEEDS_OWNER.md` |
 | #11885 | After the server deploy and native binary build, use the dedicated test account in an isolated HOME: edit a CAD document with `openagents cad`, edit a hosted Video document with Coder, follow its events, open the page links, and delete the fixtures. Check posters and strips in Kitty and iTerm2. Hosted Video depends on #11880; Game and Ship integration remains under #11881. | Local SDK wire, native dispatch, generated-tree, and actual CLI fixture checks passed; production and visual checks: to do. |
 | #11852 | Deploy `4a796e8ff8` or newer. Run `OurCloudLiveTests/testStartRunAndStopOurCloud` with the dedicated test account, check `GET /v1/computer-usage`, delete the computer with `DELETE /v1/cloud-host`, and remove its test registry rows. Validate TestFlight 1011 or the next free build. | to do; phone source `d37ed99d0c`, local control acceptance `a67ec60b44` passed |
-| #11894 | A test account's terminal chat continued on the desktop: the first turn knows the history, and the phone steers it. | to do |
+| #11894 | Deploy the Coder and app builds containing `0b84201f39` or newer. With a dedicated test account and `/sync on`, continue a terminal chat on the desktop, confirm its first turn knows the history, and steer it from the phone. | Source checks passed; deploy and dedicated-account run to do. |
 | #11881 | Register `game_lab::kind::Game` and `ship_lab::kind::Ship` in `labs_api.rs` after #11877 lands, host `/labs/game/{doc}`, and install `game-lab playtest-job` as the `playtest` handler. Then, with the dedicated test account on production: a Game Lab edit plays in the web card and appears through `/v1/history`, and a Ship Lab refusal and an accepted edit. Clean up after. | to do |
 | #11880 | Register `video_lab::VideoKind` in `labs_api.rs` next to CAD (lane 4's file), and install `video-lab render-job`, `frames-job` and `measure-job` as handlers on an enrolled test host. Then, with the dedicated test account on production and synthetic clips: create a cut, make one edit and one refused edit, render, play the card in web chat and through `/v1/history`, and delete the fixtures. A `private_local`-marked synthetic document renders only on the enrolled host. A cloud render needs public inputs on a worker (#11942). | to do; `cargo test -p video-lab` passed 27/0 with synthetic ffmpeg clips |
 | #11883 | Build the desktop app from `main`. With the dedicated test account, open a web CAD chat and a Video chat in the desktop's saved history: the cards draw and their pictures load, Open document opens the page, and signing out clears them. Delete the chats afterward. | to do; account tests 15/0 (fake history and artifact server), GPUI fixture test over every `lab-kit` card passed |
