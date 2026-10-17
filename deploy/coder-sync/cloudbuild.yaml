@@ -12,5 +12,6 @@ images:
 substitutions:
   _CACHE_IMAGE: rust:1.98.1-slim-trixie
 options:
+  machineType: E2_HIGHCPU_32
   logging: CLOUD_LOGGING_ONLY
-timeout: 1800s
+timeout: 3600s
