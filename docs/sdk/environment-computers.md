@@ -7,8 +7,11 @@ accounts. Boat is the supported artifact adapter for this migration. The
 [SPACE artifact implementation](../cloud/space.md) remains a separate capability;
 a Boat image is never converted into a SPACE template by changing its label.
 
-Deployment and staging qualification are pending while this change is under
-verification. The default enrollment list is empty.
+The web and lifecycle services are deployed. The synthetic staging flow passed
+clean build, image capture, two fresh verifiers, Save, and ordinary SDK reuse.
+The default enrollment list is empty. The
+[verification record](environment-computers-evidence.json) contains the checks,
+serving revisions, qualification boundaries, and cleanup receipts.
 
 ## Allocation inventory
 
@@ -84,6 +87,10 @@ image identity, and exact create request. Builder and verifier inputs come from
 the existing frozen job records. The builder's derived image name is registered
 before allocation. Mutable setup-recipe edits cannot relabel an earlier attempt.
 Unsupported artifact capabilities refuse before a computer is created.
+The native computer's job key is separate from the Environment's build or
+verification ID. Allocation and capture check the saved job, Environment IDs,
+computer identity, and verifier role together; a logical build ID cannot select
+another job's file.
 
 A command keeps its native ID, specification digest, public request, public
 command reference, and byte cursors. A lost create or execute reply retries the
@@ -166,6 +173,17 @@ recovery. Durable backend usage and reservations use the shared
 [Computers accounting](computers.md) owner.
 
 ## Verification
+
+The staging run passed in 1,774.35 seconds and deleted its five computers and
+output image. An independent provider check found no VMs for their create
+identities or the earlier failed setup attempt; the output image returned `404`.
+All temporary keys and sessions were revoked and rejected on recheck.
+
+The affected checks passed: 13 Boat driver tests, 40 SDK tests, 52 Environment
+operator tests, 43 lifecycle service tests with PostgreSQL, and 819 web tests.
+The record lists four unrelated exclusions. Released Coder 1.0.0 passed version,
+status, and computer-list checks against staging in an isolated home.
+
 
 Focused tests cover job credential separation, account and membership checks,
 repository revocation, sealed grant binding, frozen request retries, lost

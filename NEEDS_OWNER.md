@@ -72,6 +72,23 @@ complete digest; remove that temporary admission after cleanup. See the
 [migration inventory](docs/sdk/solver-computers.md) and
 [verification record](docs/sdk/solver-computers-evidence.json).
 
+## Provide private-repository qualification access for Environments (#11808)
+
+Provide an approved dedicated GitHub test account and a synthetic private
+repository before enrolling private-repository Environment users. The public
+repository staging cycle passed clean build, image capture, both fresh
+verifiers, Save, and SDK reuse. Automated fixtures cover repository and workspace
+revocation, but the dedicated test accounts have no GitHub grant, so that run
+does not establish the private broker path end to end.
+
+Keep `OPENAGENTS_ENVIRONMENT_COMPUTERS_ACCOUNTS` empty until the dedicated
+private-repository check passes. Admit only its staging account for the check,
+verify current repository and workspace access, and remove its computers,
+output images, sessions, and keys afterward. Use the existing Environment flow;
+do not use the owner's GitHub account. See the
+[migration and rollout instructions](docs/sdk/environment-computers.md) and
+[verification record](docs/sdk/environment-computers-evidence.json).
+
 ## Check Coder Desktop GitHub approval and Keychain (#11829, #11832)
 
 On your Mac, sign in to Coder Desktop, allow its own Keychain entry, restart,
