@@ -221,24 +221,17 @@ code as the nonce, and confirm the verifier accepts all three with the real
 vendor certificates and current revocation lists, and refuses a debug
 machine. See [the verifier guide](crates/att-platforms/README.md).
 
-## Decide whether to ship the standing-job budget security fix (#11735)
+## Qualify the Vertex credential handoff (#11771)
 
-The source fix counts unmetered occurrences at their full reserved cost before
-admitting another occurrence. A reload regression covers the budget guard.
-The released Coder 1.0.0 remains unchanged. Under the binary freeze, the owner
-must decide whether this security fix warrants a release; no release or channel
-change was made for this work.
+The source fix in `cd193284a8` hands the Vertex service-account document
+through a sealed anonymous Linux memfd and removes its environment value
+before the delegate starts. The isolated regression and `coder-cloud` tests
+pass. The owner lifted the freeze on 2026-10-16, so this fix ships in the
+Monday Coder 1.0.0 build.
 
-## Decide whether to ship the Vertex credential security fix (#11771)
-
-The source fix hands the Vertex service-account document through a sealed
-anonymous Linux memfd and removes its environment value before the delegate
-starts. A stand-in reads it repeatedly across exec without a temporary
-credential file; the full `coder-cloud` tests pass. Coder 1.0.0 still builds
-the old file-writing script locally. Decide whether this security fix ships
-during the freeze, then qualify one turn with a dedicated private Vertex
-credential on an isolated computer. No frozen binary, release channel, real
-Vertex credential, or production account was changed for this fix.
+Qualify one turn with a dedicated private Vertex credential on an isolated
+computer. The source checks used a stand-in credential; they do not establish
+that live-provider result. See the [release brief](docs/audits/2026-10-16-coder-1.0-big-bang.md).
 
 ## Qualify production sealed vault storage (#11743)
 
