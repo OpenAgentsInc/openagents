@@ -2,7 +2,7 @@
 Type=Application
 Name=Coder
 GenericName=Coding Agent Desktop
-Comment=OpenAgents: a desktop for coding agents (based on OpenAgents)
+Comment=OpenAgents: a desktop for coding agents
 Exec=openagents %u
 TryExec=openagents
 Icon=openagents

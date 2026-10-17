@@ -78,7 +78,7 @@ fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().with_env_filter("warn").init();
     let mut args = std::env::args().skip(1);
     let output = PathBuf::from(args.next().expect("output directory"));
-    let repository = args.next().unwrap_or_else(|| "zeronsh/openagents".into());
+    let repository = args.next().unwrap_or_else(|| "OpenAgentsInc/openagents".into());
     let number = args.next().unwrap_or_else(|| "591".into());
     std::fs::create_dir_all(&output)?;
     let temp = tempfile::tempdir()?;

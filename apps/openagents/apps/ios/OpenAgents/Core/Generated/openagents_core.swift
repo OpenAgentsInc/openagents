@@ -327,7 +327,7 @@ private func makeRustCall<T, E: Swift.Error>(
     _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T,
     errorHandler: ((RustBuffer) throws -> E)?
 ) throws -> T {
-    uniffiEnsureOpenAgentsMobileInitialized()
+    uniffiEnsureOpenagentsMobileInitialized()
     var callStatus = RustCallStatus.init()
     let returnedVal = callback(&callStatus)
     try uniffiCheckCallStatus(callStatus: callStatus, errorHandler: errorHandler)
@@ -20100,7 +20100,7 @@ fileprivate func uniffiRustCallAsync<F, T>(
 ) async throws -> T {
     // Make sure to call the ensure init function since future creation doesn't have a
     // RustCallStatus param, so doesn't use makeRustCall()
-    uniffiEnsureOpenAgentsMobileInitialized()
+    uniffiEnsureOpenagentsMobileInitialized()
     let rustFuture = rustFutureFunc()
     defer {
         freeFunc(rustFuture)
@@ -20470,274 +20470,274 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_core_version() != 46096) {
+    if (uniffi_openagents_mobile_checksum_func_core_version() != 20924) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_auth_callback_scheme() != 8202) {
+    if (uniffi_openagents_mobile_checksum_func_auth_callback_scheme() != 63751) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_auth_exchange_code() != 47073) {
+    if (uniffi_openagents_mobile_checksum_func_auth_exchange_code() != 11893) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_auth_list_orgs() != 21299) {
+    if (uniffi_openagents_mobile_checksum_func_auth_list_orgs() != 52464) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_auth_production_edge_url() != 61532) {
+    if (uniffi_openagents_mobile_checksum_func_auth_production_edge_url() != 30184) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_auth_refresh() != 53630) {
+    if (uniffi_openagents_mobile_checksum_func_auth_refresh() != 8370) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_fallback_harnesses() != 7289) {
+    if (uniffi_openagents_mobile_checksum_func_fallback_harnesses() != 43836) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_fallback_models() != 37563) {
+    if (uniffi_openagents_mobile_checksum_func_fallback_models() != 14502) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_harness_label() != 26297) {
+    if (uniffi_openagents_mobile_checksum_func_harness_label() != 3197) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_jwt_expiry() != 29460) {
+    if (uniffi_openagents_mobile_checksum_func_jwt_expiry() != 20993) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_max_attachment_bytes() != 43171) {
+    if (uniffi_openagents_mobile_checksum_func_max_attachment_bytes() != 39537) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_model_label() != 26905) {
+    if (uniffi_openagents_mobile_checksum_func_model_label() != 11216) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_parse_auth_callback() != 22318) {
+    if (uniffi_openagents_mobile_checksum_func_parse_auth_callback() != 17524) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_parse_user_message() != 19553) {
+    if (uniffi_openagents_mobile_checksum_func_parse_user_message() != 26105) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_production_edge_url() != 3402) {
+    if (uniffi_openagents_mobile_checksum_func_production_edge_url() != 19362) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_project_color_count() != 30925) {
+    if (uniffi_openagents_mobile_checksum_func_project_color_count() != 48388) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_project_color_index() != 14874) {
+    if (uniffi_openagents_mobile_checksum_func_project_color_index() != 49127) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_reasoning_label() != 22513) {
+    if (uniffi_openagents_mobile_checksum_func_reasoning_label() != 28321) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_relative_time_label() != 32740) {
+    if (uniffi_openagents_mobile_checksum_func_relative_time_label() != 9512) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_workos_authorize_url() != 35994) {
+    if (uniffi_openagents_mobile_checksum_func_workos_authorize_url() != 58769) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_file_mention_link() != 14340) {
+    if (uniffi_openagents_mobile_checksum_func_file_mention_link() != 21705) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_default_voice_styles() != 30650) {
+    if (uniffi_openagents_mobile_checksum_func_default_voice_styles() != 20781) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_voice_host_capability() != 32424) {
+    if (uniffi_openagents_mobile_checksum_func_voice_host_capability() != 5785) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_debug_line_starts() != 43822) {
+    if (uniffi_openagents_mobile_checksum_func_debug_line_starts() != 25753) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_layout_fixture_markdown() != 37734) {
+    if (uniffi_openagents_mobile_checksum_func_layout_fixture_markdown() != 54123) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_wallpaper_render() != 28318) {
+    if (uniffi_openagents_mobile_checksum_func_wallpaper_render() != 433) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_func_wallpaper_safe_opacity() != 57056) {
+    if (uniffi_openagents_mobile_checksum_func_wallpaper_safe_opacity() != 39055) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_captionfader_frame() != 19899) {
+    if (uniffi_openagents_mobile_checksum_method_captionfader_frame() != 27460) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_clientlistener_on_event() != 55106) {
+    if (uniffi_openagents_mobile_checksum_method_clientlistener_on_event() != 38819) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_archive_session() != 22530) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_archive_session() != 58071) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_archived_sessions() != 33517) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_archived_sessions() != 46960) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_assign_section() != 63363) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_assign_section() != 51486) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_child_sessions() != 10159) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_child_sessions() != 60002) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_close_session() != 11270) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_close_session() != 57129) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_connectivity() != 51284) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_connectivity() != 21288) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_create_project() != 59427) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_create_project() != 33272) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_create_section() != 53295) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_create_section() != 47254) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_create_session() != 13340) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_create_session() != 15293) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_create_worktree() != 42932) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_create_worktree() != 19826) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_delete_project() != 3844) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_delete_project() != 40169) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_delete_section() != 25270) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_delete_section() != 33628) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_delete_session() != 31581) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_delete_session() != 5527) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_device_id() != 9469) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_device_id() != 44913) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_devices() != 57985) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_devices() != 37462) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_execution_devices() != 15578) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_execution_devices() != 10930) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_front_page() != 3792) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_front_page() != 30461) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_is_demo() != 28119) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_is_demo() != 45217) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_list_folders() != 2324) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_list_folders() != 47556) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_list_harnesses() != 2345) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_list_harnesses() != 13909) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_list_models() != 23103) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_list_models() != 20671) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_list_refs() != 27606) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_list_refs() != 43957) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_mark_seen() != 64234) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_mark_seen() != 7205) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_move_pin() != 26081) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_move_pin() != 53093) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_on_background() != 34188) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_on_background() != 38299) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_on_foreground() != 37345) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_on_foreground() != 38721) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_open_session() != 32134) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_open_session() != 12294) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_org_id() != 50248) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_org_id() != 23370) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_pin_session() != 14361) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_pin_session() != 64812) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_preload_sessions() != 4026) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_preload_sessions() != 63203) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_project() != 50153) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_project() != 36395) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_projectless_sessions() != 26434) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_projectless_sessions() != 52721) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_projects() != 15952) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_projects() != 58647) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_pull_requests() != 6395) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_pull_requests() != 27320) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_read_attachment() != 50982) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_read_attachment() != 35402) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_register_push_target() != 33942) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_register_push_target() != 34238) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_rename_project() != 6571) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_rename_project() != 5792) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_rename_section() != 28642) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_rename_section() != 44909) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_rename_session() != 49666) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_rename_session() != 51934) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_search() != 33140) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_search() != 39313) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_search_files() != 31096) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_search_files() != 43934) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_session() != 12772) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_session() != 50811) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_session_config() != 4276) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_session_config() != 15756) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_session_row() != 10938) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_session_row() != 14109) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_set_network_online() != 33835) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_set_network_online() != 33231) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_set_section_collapsed() != 55017) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_set_section_collapsed() != 43378) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_set_session_config() != 56055) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_set_session_config() != 24080) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_shutdown() != 4352) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_shutdown() != 56796) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_switch_ref() != 45706) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_switch_ref() != 14641) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_switch_session_ref() != 42409) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_switch_session_ref() != 38767) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_unarchive_session() != 9932) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_unarchive_session() != 48105) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_unpin_session() != 9102) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_unpin_session() != 13692) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_unregister_push_target() != 55720) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_unregister_push_target() != 28537) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_update_tokens() != 39229) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_update_tokens() != 21441) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_upload_attachment() != 21501) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_upload_attachment() != 28785) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_user_id() != 27711) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_user_id() != 8688) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_workspace() != 42501) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_workspace() != 24973) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_workspace_revision() != 48105) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_workspace_revision() != 57613) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreclient_start_voice() != 62086) {
+    if (uniffi_openagents_mobile_checksum_method_coreclient_start_voice() != 63530) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_uploadprogress_on_progress() != 40458) {
+    if (uniffi_openagents_mobile_checksum_method_uploadprogress_on_progress() != 48365) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_accountlistener_on_account_changed() != 55279) {
+    if (uniffi_openagents_mobile_checksum_method_accountlistener_on_account_changed() != 40050) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_agent_lab() != 31471) {
@@ -20746,40 +20746,40 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreaccount_cancel() != 18106) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_clear_local_data() != 9037) {
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_cancel() != 21592) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_connect() != 28466) {
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_clear_local_data() != 32880) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_custom_agents() != 22300) {
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_connect() != 14596) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_home() != 63408) {
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_custom_agents() != 2637) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_restore() != 63699) {
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_home() != 44132) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_revalidate() != 30946) {
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_restore() != 29093) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_saved_history() != 42767) {
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_revalidate() != 59528) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_sign_in() != 12969) {
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_saved_history() != 18898) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_sign_in_with_credential() != 16180) {
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_sign_in() != 52498) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_sign_out() != 41574) {
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_sign_in_with_credential() != 26999) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_snapshot() != 23049) {
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_sign_out() != 40332) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreaccount_stored_login_present() != 30984) {
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_snapshot() != 4164) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_agentlablistener_on_agent_lab_changed() != 11440) {
@@ -20800,19 +20800,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreagents_activate() != 29136) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreagents_assign() != 11356) {
+    if (uniffi_openagents_mobile_checksum_method_agentlablistener_on_agent_lab_changed() != 41969) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreagents_change_field() != 61730) {
+    if (uniffi_openagents_mobile_checksum_method_coreagentlab_activate() != 27865) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreagents_clear_selection() != 8165) {
+    if (uniffi_openagents_mobile_checksum_method_coreagentlab_change_field() != 19792) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreagents_create_form() != 18628) {
+    if (uniffi_openagents_mobile_checksum_method_coreagentlab_set_visible() != 56065) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreagents_edit_form() != 40492) {
+    if (uniffi_openagents_mobile_checksum_method_coreagentlab_snapshot() != 64507) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreagents_load_models() != 3096) {
@@ -20821,304 +20821,322 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreagents_refresh() != 51429) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreagents_select() != 12769) {
+    if (uniffi_openagents_mobile_checksum_method_coreagents_assign() != 15141) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreagents_selection_active() != 21158) {
+    if (uniffi_openagents_mobile_checksum_method_coreagents_change_field() != 47811) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coreagents_snapshot() != 35024) {
+    if (uniffi_openagents_mobile_checksum_method_coreagents_clear_selection() != 33587) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_customagentslistener_on_custom_agents_changed() != 8983) {
+    if (uniffi_openagents_mobile_checksum_method_coreagents_create_form() != 30728) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_corehome_activate() != 38081) {
+    if (uniffi_openagents_mobile_checksum_method_coreagents_edit_form() != 964) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_corehome_activate_form() != 7571) {
+    if (uniffi_openagents_mobile_checksum_method_coreagents_refresh() != 35915) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_corehome_import_layout() != 46548) {
+    if (uniffi_openagents_mobile_checksum_method_coreagents_select() != 25581) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_corehome_open_layout_link() != 47586) {
+    if (uniffi_openagents_mobile_checksum_method_coreagents_selection_active() != 61373) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_corehome_refresh() != 49405) {
+    if (uniffi_openagents_mobile_checksum_method_coreagents_snapshot() != 30573) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_corehome_reorder() != 31428) {
+    if (uniffi_openagents_mobile_checksum_method_customagentslistener_on_custom_agents_changed() != 44752) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_corehome_set_visible() != 58015) {
+    if (uniffi_openagents_mobile_checksum_method_corehome_activate() != 57436) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_corehome_shutdown() != 43036) {
+    if (uniffi_openagents_mobile_checksum_method_corehome_activate_form() != 54771) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_corehome_snapshot() != 26107) {
+    if (uniffi_openagents_mobile_checksum_method_corehome_import_layout() != 39038) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_corehome_update_client() != 54013) {
+    if (uniffi_openagents_mobile_checksum_method_corehome_open_layout_link() != 33513) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_homelistener_on_home_changed() != 60992) {
+    if (uniffi_openagents_mobile_checksum_method_corehome_refresh() != 13518) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_action() != 49118) {
+    if (uniffi_openagents_mobile_checksum_method_corehome_reorder() != 7657) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_attachment_bytes() != 39928) {
+    if (uniffi_openagents_mobile_checksum_method_corehome_set_visible() != 6672) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_attachments() != 64386) {
+    if (uniffi_openagents_mobile_checksum_method_corehome_shutdown() != 24047) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_downloaded_file() != 5968) {
+    if (uniffi_openagents_mobile_checksum_method_corehome_snapshot() != 36261) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_downloaded_file_part() != 47197) {
+    if (uniffi_openagents_mobile_checksum_method_corehome_update_client() != 24034) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_follow() != 19809) {
+    if (uniffi_openagents_mobile_checksum_method_homelistener_on_home_changed() != 46399) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_message() != 12292) {
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_action() != 4715) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_render_transcript() != 34758) {
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_attachment_bytes() != 15261) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_set_foreground() != 53922) {
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_attachments() != 36516) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_shutdown() != 19879) {
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_downloaded_file() != 44956) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_snapshot() != 26554) {
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_downloaded_file_part() != 2055) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_savedhistorylistener_on_saved_history_changed() != 22695) {
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_follow() != 17681) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_begin_queued_edit() != 9014) {
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_message() != 57619) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_chat_id() != 51345) {
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_render_transcript() != 10609) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_clear_queue_error() != 4521) {
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_set_foreground() != 11740) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_composer() != 12678) {
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_shutdown() != 28008) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_deliver_queued_now() != 65003) {
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_snapshot() != 54548) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_enqueue() != 37832) {
+    if (uniffi_openagents_mobile_checksum_method_savedhistorylistener_on_saved_history_changed() != 38424) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_finish_queued_edit() != 60901) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_begin_queued_edit() != 65066) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_interrupt() != 42793) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_chat_id() != 55811) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_mark_seen() != 7987) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_clear_queue_error() != 11908) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_message_text() != 60913) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_composer() != 44897) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_move_queued() != 39105) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_deliver_queued_now() != 36693) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_move_queued_by() != 49631) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_enqueue() != 9545) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_remove_queued() != 25599) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_finish_queued_edit() != 41704) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_renew_queued_edit() != 7655) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_interrupt() != 829) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_respond_input() != 8132) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_mark_seen() != 18117) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_retry_delivery() != 40707) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_message_text() != 20409) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_send() != 6874) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_move_queued() != 56053) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_send_queued_now() != 62831) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_move_queued_by() != 23401) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_set_view_attached() != 11843) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_remove_queued() != 1476) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_sessionhandle_transcript_status() != 12910) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_renew_queued_edit() != 29024) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_voicecall_complete_media() != 130) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_respond_input() != 11537) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_voicecall_set_muted() != 41942) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_retry_delivery() != 61808) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_voicecall_stop() != 33696) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_send() != 33402) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_voicemedialistener_on_request() != 10473) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_send_queued_now() != 43151) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_voicesessionlistener_on_voice_state() != 7593) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_set_view_attached() != 32385) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_voicesessionlistener_on_voice_closed() != 14100) {
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_transcript_status() != 24478) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_layoutframe_build_micros() != 17231) {
+    if (uniffi_openagents_mobile_checksum_method_voicecall_complete_media() != 40162) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_layoutframe_display() != 61509) {
+    if (uniffi_openagents_mobile_checksum_method_voicecall_set_muted() != 61805) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_layoutframe_index_at() != 7764) {
+    if (uniffi_openagents_mobile_checksum_method_voicecall_stop() != 32163) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_layoutframe_index_of() != 52386) {
+    if (uniffi_openagents_mobile_checksum_method_voicemedialistener_on_request() != 44204) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_layoutframe_message_text() != 60311) {
+    if (uniffi_openagents_mobile_checksum_method_voicesessionlistener_on_voice_state() != 8243) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_layoutframe_placement() != 14501) {
+    if (uniffi_openagents_mobile_checksum_method_voicesessionlistener_on_voice_closed() != 59201) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_layoutframe_plain_text() != 48003) {
+    if (uniffi_openagents_mobile_checksum_method_layoutframe_build_micros() != 42874) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_layoutframe_prepared_heap_bytes() != 13545) {
+    if (uniffi_openagents_mobile_checksum_method_layoutframe_display() != 33787) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_layoutframe_revision() != 35752) {
+    if (uniffi_openagents_mobile_checksum_method_layoutframe_index_at() != 53480) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_layoutframe_row_count() != 53856) {
+    if (uniffi_openagents_mobile_checksum_method_layoutframe_index_of() != 54587) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_layoutframe_rows_in() != 18475) {
+    if (uniffi_openagents_mobile_checksum_method_layoutframe_message_text() != 2800) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_layoutframe_style_count() != 46371) {
+    if (uniffi_openagents_mobile_checksum_method_layoutframe_placement() != 31572) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_layoutframe_styles() != 21725) {
+    if (uniffi_openagents_mobile_checksum_method_layoutframe_plain_text() != 36349) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_layoutframe_total_height() != 27147) {
+    if (uniffi_openagents_mobile_checksum_method_layoutframe_prepared_heap_bytes() != 44883) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_layoutframe_width() != 16219) {
+    if (uniffi_openagents_mobile_checksum_method_layoutframe_revision() != 28562) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_layoutlistener_frame_ready() != 31990) {
+    if (uniffi_openagents_mobile_checksum_method_layoutframe_row_count() != 15562) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_platformmeasurer_measure() != 59931) {
+    if (uniffi_openagents_mobile_checksum_method_layoutframe_rows_in() != 62567) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_platformmeasurer_measure_run() != 60773) {
+    if (uniffi_openagents_mobile_checksum_method_layoutframe_style_count() != 46663) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_transcriptview_attach() != 3138) {
+    if (uniffi_openagents_mobile_checksum_method_layoutframe_styles() != 47774) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_transcriptview_clear() != 63299) {
+    if (uniffi_openagents_mobile_checksum_method_layoutframe_total_height() != 22191) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_transcriptview_close() != 21021) {
+    if (uniffi_openagents_mobile_checksum_method_layoutframe_width() != 53676) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_transcriptview_frame() != 19133) {
+    if (uniffi_openagents_mobile_checksum_method_layoutlistener_frame_ready() != 49846) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_transcriptview_set_debug_entries() != 54762) {
+    if (uniffi_openagents_mobile_checksum_method_platformmeasurer_measure() != 52123) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_transcriptview_set_viewport() != 43528) {
+    if (uniffi_openagents_mobile_checksum_method_platformmeasurer_measure_run() != 54506) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_transcriptview_set_visual_source() != 22890) {
+    if (uniffi_openagents_mobile_checksum_method_transcriptview_attach() != 18818) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_transcriptview_toggle() != 51051) {
+    if (uniffi_openagents_mobile_checksum_method_transcriptview_clear() != 38699) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_transcriptview_toggle_detail() != 17098) {
+    if (uniffi_openagents_mobile_checksum_method_transcriptview_close() != 61191) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_transcriptview_visual() != 55147) {
+    if (uniffi_openagents_mobile_checksum_method_transcriptview_frame() != 40967) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_orbrenderer_next_frame() != 6064) {
+    if (uniffi_openagents_mobile_checksum_method_transcriptview_set_debug_entries() != 59449) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_orbrenderer_set_audio_levels() != 53067) {
+    if (uniffi_openagents_mobile_checksum_method_transcriptview_set_viewport() != 38739) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_orbrenderer_set_orb() != 18211) {
+    if (uniffi_openagents_mobile_checksum_method_transcriptview_set_visual_source() != 45247) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_visuallistener_display() != 33821) {
+    if (uniffi_openagents_mobile_checksum_method_transcriptview_toggle() != 12420) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_visuallistener_frame() != 6525) {
+    if (uniffi_openagents_mobile_checksum_method_transcriptview_toggle_detail() != 444) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_visualsession_activate() != 24011) {
+    if (uniffi_openagents_mobile_checksum_method_transcriptview_visual() != 38186) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_visualsession_attach() != 52504) {
+    if (uniffi_openagents_mobile_checksum_method_orbrenderer_next_frame() != 5432) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_visualsession_detach() != 6554) {
+    if (uniffi_openagents_mobile_checksum_method_orbrenderer_set_audio_levels() != 4927) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_visualsession_pointer() != 37846) {
+    if (uniffi_openagents_mobile_checksum_method_orbrenderer_set_orb() != 59880) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_visualsession_set_appearance() != 2236) {
+    if (uniffi_openagents_mobile_checksum_method_visuallistener_display() != 11810) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_visualsession_slide() != 15641) {
+    if (uniffi_openagents_mobile_checksum_method_visuallistener_frame() != 48338) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_method_visualsession_title() != 12743) {
+    if (uniffi_openagents_mobile_checksum_method_visualsession_activate() != 13330) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_constructor_captionfader_new() != 15591) {
+    if (uniffi_openagents_mobile_checksum_method_visualsession_attach() != 21550) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_constructor_coreclient_new() != 27504) {
+    if (uniffi_openagents_mobile_checksum_method_visualsession_detach() != 46316) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_constructor_coreaccount_new() != 41588) {
+    if (uniffi_openagents_mobile_checksum_method_visualsession_pointer() != 49040) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_constructor_corehome_demo() != 4156) {
+    if (uniffi_openagents_mobile_checksum_method_visualsession_set_appearance() != 4311) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_constructor_textsystem_new() != 55727) {
+    if (uniffi_openagents_mobile_checksum_method_visualsession_slide() != 60144) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_constructor_transcriptview_new() != 26914) {
+    if (uniffi_openagents_mobile_checksum_method_visualsession_title() != 54604) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_openagents_mobile_checksum_constructor_orbrenderer_new() != 46989) {
+    if (uniffi_openagents_mobile_checksum_constructor_captionfader_new() != 1206) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_coreclient_new() != 50306) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_coreaccount_new() != 30316) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_corehome_demo() != 2243) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_textsystem_new() != 39900) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_transcriptview_new() != 32269) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_orbrenderer_new() != 33643) {
         return InitializationResult.apiChecksumMismatch
     }
 
@@ -21139,7 +21157,7 @@ private let initializationResult: InitializationResult = {
 
 // Make the ensure init function public so that other modules which have external type references to
 // our types can call it.
-public func uniffiEnsureOpenAgentsMobileInitialized() {
+public func uniffiEnsureOpenagentsMobileInitialized() {
     switch initializationResult {
     case .ok:
         break
