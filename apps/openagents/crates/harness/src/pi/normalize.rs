@@ -202,9 +202,13 @@ fn tool(name: &str, args: &Value) -> ToolCall {
         "find" => ToolCall::Glob {
             pattern: string(args, "pattern").into(),
         },
-        name if name.starts_with("openagents_") => ToolCall::Mcp {
+        name if name.starts_with("openagents_") || name.starts_with("zeron_") => ToolCall::Mcp {
             server: "openagents".into(),
-            tool: name[6..].into(),
+            tool: name
+                .strip_prefix("openagents_")
+                .or_else(|| name.strip_prefix("zeron_"))
+                .unwrap_or(name)
+                .into(),
             input: Some(args.clone()),
         },
         _ => ToolCall::Unknown {
@@ -217,6 +221,18 @@ fn tool(name: &str, args: &Value) -> ToolCall {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn branded_mcp_tools_keep_the_full_tool_name() {
+        for name in ["openagents_read_chat", "zeron_read_chat"] {
+            assert!(matches!(
+                tool(name, &json!({"chatId": "chat"})),
+                ToolCall::Mcp { server, tool, .. }
+                    if server == "openagents" && tool == "read_chat"
+            ));
+        }
+    }
+
     #[test]
     fn final_message_reconciles_without_duplicate_text_and_retry_clears_error() {
         let mut n = Normalizer::default();

@@ -891,7 +891,7 @@ pub struct UiSettings {
     /// Desktop banner notifications on the same transitions.
     /// `OPENAGENTS_DISABLE_NOTIFICATIONS` overrides.
     pub notifications_enabled: bool,
-    /// Suppress the banner while a OpenAgents window is focused (the chime covers
+    /// Suppress the banner while an OpenAgents window is focused (the chime covers
     /// the foreground case).
     pub notifications_background_only: bool,
     pub files_panel_width: f32,

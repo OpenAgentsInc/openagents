@@ -8600,14 +8600,18 @@ impl Transcript {
 /// Keep routing instructions in the stored prompt for agents, but show a
 /// concise attribution in the human transcript (including existing messages).
 fn agent_message_display(text: &str) -> String {
-    let Some(rest) = text.strip_prefix("[Message from OpenAgents chat ") else {
+    let Some(rest) = text
+        .strip_prefix("[Message from OpenAgents chat ")
+        .or_else(|| text.strip_prefix("[Message from Zeron chat "))
+    else {
         return text.to_owned();
     };
     let Some((header, body)) = rest.split_once("]\n\n") else {
         return text.to_owned();
     };
-    let Some((label, id)) =
-        header.rsplit_once(". Reply to it with the OpenAgents `send_message` tool, chat ")
+    let Some((label, id)) = header
+        .rsplit_once(". Reply to it with the OpenAgents `send_message` tool, chat ")
+        .or_else(|| header.rsplit_once(". Reply to it with the Zeron `send_message` tool, chat "))
     else {
         return text.to_owned();
     };
@@ -8617,6 +8621,17 @@ fn agent_message_display(text: &str) -> String {
     let suffix = format!(" ({id})");
     let name = label.strip_suffix(&suffix).unwrap_or(label);
     format!("Message from {name}\n\n{body}")
+}
+
+#[cfg(test)]
+#[test]
+fn previous_agent_messages_keep_their_display() {
+    for brand in ["OpenAgents", "Zeron"] {
+        let prompt = format!(
+            "[Message from {brand} chat Helper (chat-1). Reply to it with the {brand} `send_message` tool, chat chat-1.]\n\nDone."
+        );
+        assert_eq!(agent_message_display(&prompt), "Message from Helper\n\nDone.");
+    }
 }
 
 /// The bubble text's runs: body text in the sans font, chips as labels in it

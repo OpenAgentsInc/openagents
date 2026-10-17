@@ -1,4 +1,4 @@
-; OpenAgents (the OpenAgents desktop app, a OpenAgents fork) for Windows — per-user installer (Inno Setup 6).
+; OpenAgents for Windows — per-user installer (Inno Setup 6).
 ; Identity values mirror crates/brand/src/lib.rs. Not yet verified on Windows.
 ;
 ; Built by scripts/package-windows.ps1, which passes the version, the package

@@ -32,7 +32,7 @@ user-visible transcript. This conservative startup bridge can repeat historical
 context already saved by Cursor; it never creates an additional executable turn.
 The receipt uses mode 0600 beside the existing conversation store. Invalid
 receipts or unexpected history schemas produce an explicit error instead of
-silently discarding context. Legacy SDK-default stores without a OpenAgents-owned
+silently discarding context. Legacy SDK-default stores without an OpenAgents-owned
 store have no receipt; the new protection cannot reconstruct previously lost
 messages from those stores.
 

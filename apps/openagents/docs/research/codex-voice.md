@@ -96,7 +96,7 @@ English instruction, as `realtimeStartInstructions` for the backing Codex model
 and as a developer `initialItems` entry for the voice model: use the OpenAgents MCP
 to create, message and monitor chats, and delegate coding work to them.
 
-The voice agent uses the unchanged upstream OpenAgents MCP. Creating chats, sending
+The voice agent uses the shared OpenAgents MCP. Creating chats, sending
 messages and delegating tasks use the normal provider selection, authentication
 and device routing. A Codex voice session can create a Grok, Claude Code or other
 available provider session; those children use their own provider credentials.

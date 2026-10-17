@@ -14,7 +14,7 @@ Scope: desktop OpenAgents on macOS, Linux X11, and Linux Wayland
 An Appshot is a user-triggered capture of the frontmost application window. A
 global keyboard shortcut works while OpenAgents is in the background, captures both
 the visible window and machine-readable application context, then stages that
-capture in a OpenAgents composer for review. It is not an attachment-menu action and
+capture in an OpenAgents composer for review. It is not an attachment-menu action and
 does not send a message automatically.
 
 The first useful release should support this vertical slice:

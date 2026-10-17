@@ -18,7 +18,7 @@ creation time and socket descriptors to listening TCP sockets. On macOS it uses
 cwd belongs to a known local project are probed. The deepest matching project
 wins. Commands with explicit authentication arguments (`login`, `auth`,
 `authenticate`, `signin`, `sign-in`, `sso`, `oauth`, or `oauth2`, before `--`)
-are excluded before any connection, even when started by a OpenAgents terminal or
+are excluded before any connection, even when started by an OpenAgents terminal or
 agent. Their listeners may be one-shot browser callbacks: for example,
 `infisical login` fails with EOF if it receives a discovery HEAD without the
 browser's JSON body. This command check does not identify custom callback

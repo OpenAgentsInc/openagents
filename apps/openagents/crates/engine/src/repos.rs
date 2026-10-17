@@ -2336,7 +2336,7 @@ fn canonical_search_root(root: &Path) -> Result<PathBuf, EngineError> {
         .map_err(|e| EngineError::Other(format!("could not search workspace: {e}")))
 }
 
-/// Turn a generated chat title into the semantic portion of a OpenAgents branch
+/// Turn a generated chat title into the semantic portion of an OpenAgents branch
 /// (port of openagents's `worktreeBranchFromTitle`). OpenAgents NFKD-normalizes accented
 /// letters first; native keeps it ASCII-only (generated titles are Title Case
 /// English), so non-ASCII characters collapse into the `-` separator.
