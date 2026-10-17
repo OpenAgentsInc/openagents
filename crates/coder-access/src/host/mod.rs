@@ -1780,20 +1780,46 @@ impl Host {
             },
             Operation::AppRpc { app } => {
                 let grant = p.grant.as_deref().zip(request.epoch);
-                let answer = dispatch
-                    .app_rpc_admitted(
-                        &request.request,
-                        &p.key,
-                        grant,
-                        app,
-                        &crate::app_rpc::Admission {
-                            rights: &p.rights,
-                            expires_at: p.expires_at,
-                        },
-                    )
-                    .map_err(|code| {
-                        Error::new(code, "The computer couldn't answer this request")
-                    })?;
+                let answered = dispatch.app_rpc_admitted(
+                    &request.request,
+                    &p.key,
+                    grant,
+                    app,
+                    &crate::app_rpc::Admission {
+                        rights: &p.rights,
+                        expires_at: p.expires_at,
+                    },
+                );
+                let answer = match answered {
+                    Ok(answer) => answer,
+                    // A read, or a definite refusal of an effect, earns a
+                    // signed refusal: the device learns the computer's
+                    // answer at once, and an old app without the method
+                    // says `unsupported` (#12000). An effect whose outcome
+                    // is unknown keeps no reply, so a retry asks again.
+                    Err(code)
+                        if app.method.reads_only()
+                            || matches!(
+                                code,
+                                Code::Unsupported
+                                    | Code::Malformed
+                                    | Code::Bounds
+                                    | Code::Forbidden
+                                    | Code::MissingRight
+                            ) =>
+                    {
+                        return Ok(Err(Error::new(
+                            code,
+                            "The computer couldn't answer this request",
+                        )));
+                    }
+                    Err(code) => {
+                        return Err(Error::new(
+                            code,
+                            "The computer couldn't answer this request",
+                        ));
+                    }
+                };
                 let outcome = Outcome::AppRpc { app: answer };
                 if outcome.validate().is_ok() && outcome.answers(&request.op) {
                     Ok(outcome)
