@@ -573,7 +573,26 @@ pub(crate) async fn uncertain_memory_turn<D: Driver>(
     e: &Entry,
     computer: Computer,
 ) -> coder_working_computer::store::Result<Settled> {
-    if e.desired == Desired::Deleted {
+    let expired = computer
+        .boot()
+        .is_some_and(|boot| crate::reconcile::now_ms() >= boot.absolute_deadline_ms);
+    let deleting = if e.desired == Desired::Deleted {
+        true
+    } else if expired {
+        lease.read().await?;
+        lease
+            .store
+            .settle_desired(&e.id, e.intent_generation, e.desired, Desired::Deleted)
+            .await
+            .map_err(|_| {
+                coder_working_computer::store::StoreError::Io(
+                    "The computer's time limit couldn't be applied.",
+                )
+            })?
+    } else {
+        false
+    };
+    if deleting {
         use coder_working_computer::provider::Provider;
         if let Some(resource) = computer.resource() {
             lease.read().await?;
@@ -583,7 +602,7 @@ pub(crate) async fn uncertain_memory_turn<D: Driver>(
             }
         }
     }
-    let message = if e.desired == Desired::Deleted {
+    let message = if deleting {
         "We couldn't confirm whether this computer was deleted. We will check again."
     } else {
         UNCERTAIN_MEMORY_TURN
@@ -884,5 +903,82 @@ mod output_tests {
         assert_eq!(saved.stderr.as_deref(), Some("early error"));
         assert_eq!(saved.exit_code, None);
         assert_eq!(saved.state, "failed");
+    }
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+    use computer_driver::fake::FakeDriver;
+
+    #[tokio::test]
+    async fn an_uncertain_command_cannot_run_past_the_absolute_limit_or_take_a_checkpoint() {
+        let Ok(admin) = std::env::var("OA_COMPUTERS_TEST_DATABASE_URL") else {
+            return;
+        };
+        let (db, _) = crate::Db::scratch(&admin).await.unwrap();
+        let store = Store::new(db);
+        let root = tempfile::tempdir().unwrap();
+        let fake = FakeDriver::new(root.path()).boot_observations(0);
+        let mut record = crate::api::admit_create(
+            &fake.capabilities(),
+            "deadline-test",
+            &crate::registry::CreateIntent::default(),
+        )
+        .unwrap();
+        record.bounds = coder_working_computer::Bounds {
+            idle_ms: 1,
+            observed_extension_ms: 1,
+            absolute_ms: 1,
+        };
+        let (entry, _) = store
+            .create(&crate::store::NewComputer {
+                owner: "deadline-test",
+                chat: None,
+                idempotency_key: Some("deadline"),
+                driver: "fake",
+                image: None,
+                record: &record,
+            })
+            .await
+            .unwrap();
+        let duration = Duration::from_secs(30);
+        store
+            .claim("deadline-holder", duration)
+            .await
+            .unwrap()
+            .unwrap();
+        let lease = PgLease {
+            store: store.clone(),
+            id: entry.id.clone(),
+            holder: "deadline-holder".into(),
+            lease: duration,
+        };
+        let provider = OnDriver::new(fake.clone(), None);
+        let started = driver::settle(
+            &provider,
+            &lease,
+            Trigger::Prompt,
+            crate::reconcile::now_ms(),
+        )
+        .await
+        .unwrap();
+        assert!(matches!(started, Settled::Dispatch { generation: 1, .. }));
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        let finished = uncertain_memory_turn(&provider, &lease, &entry, started.computer().clone())
+            .await
+            .unwrap();
+        assert_eq!(finished.computer().phase, Phase::Deleted);
+        assert_eq!(
+            store
+                .get("deadline-test", &entry.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .desired,
+            Desired::Deleted
+        );
+        assert!(fake.live().is_empty());
+        assert!(!fake.calls().iter().any(|call| call.starts_with("suspend:")));
     }
 }
