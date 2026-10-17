@@ -113,5 +113,14 @@ mod tests {
             restarted.claim("two", "sbx_one", "wake").await.unwrap(),
             LifecycleClaim::Rejected
         );
+        assert_eq!(
+            journal.claim("three", "sbx_one", "delete").await.unwrap(),
+            LifecycleClaim::Fresh
+        );
+        journal.accepted("three", "op_delete").await.unwrap();
+        assert_eq!(
+            restarted.claim("three", "sbx_one", "delete").await.unwrap(),
+            LifecycleClaim::Accepted("op_delete".into())
+        );
     }
 }

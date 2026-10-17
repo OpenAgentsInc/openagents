@@ -12,6 +12,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use futures_util::{SinkExt, StreamExt};
 use reqwest::{Client, Method, Response, Url};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::time::Duration;
 use tokio_tungstenite::tungstenite::{Message, protocol::WebSocketConfig};
 
@@ -348,36 +349,35 @@ impl SpaceDriver {
                 match journal
                     .claim(operation, computer, action)
                     .await
-                    .map_err(|_| {
-                        Error::unknown("couldn't check the earlier stop or wake request")
-                    })? {
+                    .map_err(|_| Error::unknown("couldn't check the earlier request"))?
+                {
                     LifecycleClaim::Accepted(id) => {
                         self.wait_operation(&id).await?;
                         return Ok(id);
                     }
                     LifecycleClaim::Uncertain => {
-                        return Err(Error::unknown(
-                            "the earlier stop or wake request couldn't be confirmed",
-                        ));
+                        return Err(Error::unknown("the earlier request couldn't be confirmed"));
                     }
                     LifecycleClaim::Rejected => {
+                        if action == "delete"
+                            && matches!(self.observe(computer).await, Outcome::Done { value } if value.state == State::Gone)
+                        {
+                            return Ok(format!("missing:{computer}"));
+                        }
                         return Err(Error {
                             status: Some(409),
-                            message: "the earlier stop or wake request was refused",
+                            message: "the earlier request was refused",
                         });
                     }
                     LifecycleClaim::Fresh => {}
                 }
             }
-            let v = match self
-                .json(
-                    Method::POST,
-                    &format!("/v1/sandboxes/{computer}:{action}"),
-                    None,
-                    Some(operation),
-                )
-                .await
-            {
+            let (method, path) = if action == "delete" {
+                (Method::DELETE, format!("/v1/sandboxes/{computer}"))
+            } else {
+                (Method::POST, format!("/v1/sandboxes/{computer}:{action}"))
+            };
+            let v = match self.json(method, &path, None, Some(operation)).await {
                 Ok(value) => value,
                 Err(error) => {
                     if error.status.is_some_and(|status| {
@@ -385,9 +385,12 @@ impl SpaceDriver {
                     }) {
                         if let Some(journal) = &self.lifecycle_journal {
                             journal.rejected(operation).await.map_err(|_| {
-                                Error::unknown("couldn't record the stop or wake refusal")
+                                Error::unknown("couldn't record the request refusal")
                             })?;
                         }
+                    }
+                    if action == "delete" && error.status == Some(404) {
+                        return Ok(format!("missing:{computer}"));
                     }
                     return Err(error);
                 }
@@ -400,7 +403,7 @@ impl SpaceDriver {
                 journal
                     .accepted(operation, id)
                     .await
-                    .map_err(|_| Error::unknown("couldn't record the stop or wake request"))?;
+                    .map_err(|_| Error::unknown("couldn't record the request"))?;
             }
             self.wait_operation(id).await?;
             Ok::<String, Error>(id.to_owned())
@@ -836,22 +839,16 @@ impl Driver for SpaceDriver {
     }
 
     async fn delete(&self, computer: &str) -> Outcome<()> {
-        if !valid_id(computer, "sbx_") {
-            return Outcome::failed("Invalid SPACE computer ID.");
-        }
-        match self
-            .json(
-                Method::DELETE,
-                &format!("/v1/sandboxes/{computer}"),
-                None,
-                Some(&uuid::Uuid::new_v4().to_string()),
-            )
+        // A provider resource has one terminal deletion. Include its origin so
+        // separate deployments cannot share an operation by resource ID alone.
+        let mut digest = Sha256::new();
+        digest.update(self.api.as_str());
+        digest.update([0]);
+        digest.update(computer);
+        let operation = format!("delete:{:x}", digest.finalize());
+        self.action(computer, "delete", &operation)
             .await
-        {
-            Ok(_) => Outcome::done(()),
-            Err(e) if e.status == Some(404) => Outcome::done(()),
-            Err(e) => e.outcome(),
-        }
+            .map(|_| ())
     }
 
     async fn suspend(&self, computer: &str) -> Outcome<String> {
