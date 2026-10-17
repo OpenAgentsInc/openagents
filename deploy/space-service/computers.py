@@ -45,6 +45,8 @@ def configure(passwords):
     cloud('secrets','add-iam-policy-binding',PREFIX+'-computers-database','--member=serviceAccount:'+PREFIX+'-control@'+PROJECT+'.iam.gserviceaccount.com','--role=roles/secretmanager.secretAccessor')
     fixture=json.loads(saved('qualification'))
     install('computers-dsn',value['dsn'].encode())
+    proxy_dsn=f'postgresql://space_computers:{quote(value["password"],safe="")}@127.0.0.1:5432/space_computers?sslmode=disable'
+    install('computers-proxy-dsn',proxy_dsn.encode())
     install('computers-token',fixture['computers_token'].encode())
     install('computers-space-token',fixture['api_key'].encode())
     install('computers-postgres-ca',native['server_ca_pem'].encode())
@@ -81,21 +83,28 @@ def deploy(commit,digest,template,vcpu,memory):
     registry=json.dumps(config,separators=(',',':')).encode()
     registry_key='registry-'+hashlib.sha256(registry).hexdigest()[:16]
     install('computers-'+registry_key,registry)
-    keys=('dsn','token','space-token','postgres-ca',registry_key)
+    keys=('proxy-dsn','token','space-token',registry_key)
     for key in keys:
         cloud('secrets','add-iam-policy-binding',PREFIX+'-computers-'+key,'--member=serviceAccount:'+identity,'--role=roles/secretmanager.secretAccessor')
+    condition=f'''expression=resource.name == "projects/{PROJECT}/instances/{PREFIX}" && resource.type == "sqladmin.googleapis.com/Instance",title=space-native-instance'''
+    cloud('projects','add-iam-policy-binding',PROJECT,'--member=serviceAccount:'+identity,'--role=roles/cloudsql.client','--condition='+condition)
     previous=cloud('run','services','describe',name,'--region='+REGION,missing=True)
     if previous:
         if previous['metadata'].get('labels',{}).get('openagents-issue')!='11814': raise RuntimeError('The candidate service belongs to another deployment.')
         old=previous['metadata']['labels'].get('openagents-commit')
         if old: subprocess.run(['git','merge-base','--is-ancestor',old,current_commit],check=True)
-    env='OA_COMPUTERS_DATABASE_URL='+PREFIX+'-computers-dsn:1,OA_COMPUTERS_TOKEN='+PREFIX+'-computers-token:1,SPACE_API_TOKEN='+PREFIX+'-computers-space-token:1,/var/run/space-postgres-ca/ca.crt='+PREFIX+'-computers-postgres-ca:1,/var/run/space-registry/registry.json='+PREFIX+'-computers-'+registry_key+':1'
-    result=cloud('run','deploy',name,'--region='+REGION,'--image='+image+'@'+digest,'--service-account='+identity,
-        '--execution-environment=gen2','--ingress=internal','--allow-unauthenticated','--port=8080',
-        '--cpu=1','--memory=512Mi','--min-instances=1','--max-instances=1','--concurrency=16','--timeout=300',
+    env='OA_COMPUTERS_DATABASE_URL='+PREFIX+'-computers-proxy-dsn:1,OA_COMPUTERS_TOKEN='+PREFIX+'-computers-token:1,SPACE_API_TOKEN='+PREFIX+'-computers-space-token:1,/var/run/space-registry/registry.json='+PREFIX+'-computers-'+registry_key+':1'
+    result=cloud('run','deploy',name,'--region='+REGION,'--service-account='+identity,
+        '--execution-environment=gen2','--ingress=internal','--allow-unauthenticated',
+        '--min-instances=1','--max-instances=1','--concurrency=16','--timeout=300',
         '--no-cpu-throttling','--network='+PREFIX,'--subnet='+PREFIX+'-run','--vpc-egress=all-traffic',
+        '--labels='+LABELS+',openagents-commit='+current_commit+',openagents-image-source='+commit,
+        '--container=computers-1','--image='+image+'@'+digest,'--cpu=1','--memory=512Mi','--port=8080','--depends-on=db-proxy',
         '--set-secrets='+env,'--set-env-vars=OA_COMPUTERS_REGISTRY_FILE=/var/run/space-registry/registry.json,OA_COMPUTERS_KEEP_STOPPED_DAYS=1',
-        '--labels='+LABELS+',openagents-commit='+current_commit+',openagents-image-source='+commit)
+        '--container=db-proxy','--image=gcr.io/cloud-sql-connectors/cloud-sql-proxy@sha256:86e4f3cc266020e7ee07740df78d7511e2c340c274b56f84d80b7251913af9ad',
+        '--cpu=1','--memory=128Mi',
+        '--args=--private-ip,--structured-logs,--health-check,--http-address=0.0.0.0,--http-port=9090,--address=127.0.0.1,--port=5432,--max-connections=32,'+PROJECT+':'+REGION+':'+PREFIX,
+        '--startup-probe=httpGet.path=/startup,httpGet.port=9090,periodSeconds=2,timeoutSeconds=1,failureThreshold=30')
     print(json.dumps({'service':name,'url':result['status']['url'],'image':digest,'image_source':commit,'deployment_source':current_commit,'template':template,'qualification_only':True}))
 
 
