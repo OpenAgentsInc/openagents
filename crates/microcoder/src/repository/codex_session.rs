@@ -1,7 +1,7 @@
 //! A repository turn on a lean Codex session (#10250).
 //!
 //! The Codex counterpart of [`super::claude_session`] (#10246): one
-//! `codex exec --json` session, briefed by Jev, in place of Microcoder's
+//! shared Codex app-server session, briefed by Jev, in place of Microcoder's
 //! step loop, whose per-step requests read only 6-9% of their input from
 //! Codex's prompt cache on the #10209 panel. A Codex route whose endpoint
 //! is [`CODEX_SESSION_ENDPOINT`] runs it:
@@ -16,13 +16,13 @@
 //!   per-session prompt cache, which have no setting; standard processing
 //!   (`service_tier="default"`) whatever the person's Codex config says;
 //!   the recipe's `codex-session` row.
-//! - **Process**: `codex exec --json --dangerously-bypass-approvals-and-sandbox`,
-//!   supervised in its own process group by `coder_delegate`'s CLI adapter,
+//! - **Process**: the shared app-server harness, supervised in its own process
+//!   group by `coder_delegate`'s terminal adapter,
 //!   in the workspace, with the owner's login environment and Codex's own
 //!   login (`$CODEX_HOME`, else `~/.codex`). Full access only: the grant
 //!   names this endpoint only then (`autostart::Engine::codex`).
 //! - **Follow-ups**: a later turn of the same task resumes the session
-//!   (`codex exec resume`); one that can't resume starts afresh.
+//!   (`thread/resume`); one that can't resume starts afresh.
 //! - **Cost**: Codex reports no cost, so the turn's cost is the list-price
 //!   estimate from the usage it reports (`coder_delegate::delegate::codex_cost`),
 //!   with the cache reads in the turn's stats.
@@ -145,7 +145,7 @@ mod tests {
     use coder_delegate::policy::ExecutorHost;
 
     #[test]
-    fn the_executor_is_one_codex_exec_session_on_the_core_prompt() {
+    fn the_executor_passes_the_core_prompt_and_route_settings_to_the_shared_harness() {
         let policy = executor("gpt-6.1-sol", "medium");
         assert_eq!(policy.effort.as_deref(), Some("medium"));
         assert!(policy.tools.is_none() && policy.prompt_cache_ttl.is_none());
@@ -166,20 +166,13 @@ mod tests {
         let mut cli = cli;
         cli.codex_config = CODEX_CONFIG.iter().map(|&s| s.to_owned()).collect();
         assert_eq!(cli.agent, Agent::Codex);
-        let args = cli.live_args(&coder_delegate::delegate::Launch {
-            session: coder_delegate::delegate::SessionArg::Resume("t-1".into()),
-            steerable: false,
-        });
-        let args = args.join(" ");
-        assert!(args.starts_with("exec resume t-1 --json"), "{args}");
-        assert!(args.contains("-m gpt-6.1-sol"), "{args}");
-        assert!(args.contains("model_reasoning_effort=medium"), "{args}");
-        assert!(args.contains("model_instructions_file="), "{args}");
-        assert!(args.contains("-c service_tier=\"default\""), "{args}");
-        assert!(
-            args.contains("--dangerously-bypass-approvals-and-sandbox"),
-            "{args}"
+        assert_eq!(cli.model, "gpt-6.1-sol");
+        assert_eq!(cli.effort.as_deref(), Some("medium"));
+        assert_eq!(
+            cli.system.as_ref().unwrap().policy.mode,
+            coder_delegate::system::Mode::Replace
         );
+        assert_eq!(cli.codex_config, ["service_tier=\"default\""]);
     }
 
     #[test]
