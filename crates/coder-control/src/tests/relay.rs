@@ -59,12 +59,11 @@ async fn serve(
     events: Events,
     sender: broadcast::Sender<Event>,
 ) -> Result<(), String> {
-    let mut socket = accept_async_with_config(
-        stream,
-        Some(WebSocketConfig::default().max_message_size(Some(1024 * 1024))),
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    let mut config = WebSocketConfig::default();
+    config.max_message_size = Some(1024 * 1024);
+    let mut socket = accept_async_with_config(stream, Some(config))
+        .await
+        .map_err(|e| e.to_string())?;
     let challenge = secp256k1::rand::random::<u128>().to_string();
     socket
         .send(Message::Text(json!(["AUTH", challenge]).to_string().into()))
