@@ -59,6 +59,11 @@ fn label(line: &str) -> &str {
     line.trim_matches(['─', '┌', '┐', '└', '┘']).trim()
 }
 
+/// The repository follows the input hint and the separating rule.
+fn repository_label(line: &str) -> &str {
+    label(line).rsplit('─').next().unwrap().trim()
+}
+
 fn app() -> App {
     let mut app = App::default();
     app.set_mode(Mode::Live);
@@ -134,6 +139,7 @@ fn completed_reply_shows_neither_the_model_nor_the_elapsed_time() {
 fn reply_keeps_its_actual_model_without_showing_it_in_the_transcript() {
     let mut app = app();
     // Auto routed this chat to Coder's own loop (#11524).
+    app.plugins.model = coder_new::models::AUTO.into();
     app.live.runs_on = Some(coder_new::harness_plugin::Harness::CoderLoop);
     app.live.entries.push(Entry::User("Say hello.".into()));
     app.live.busy = true;
@@ -168,9 +174,9 @@ fn reply_keeps_its_actual_model_without_showing_it_in_the_transcript() {
             .any(|line| line.contains("openai/gpt-6-luna"))
     );
     let rail = label(&rows(&buffer)[top_rule(&rows(&buffer)).unwrap()]).to_owned();
-    // A model picked in /models pins the loop: its name, no "Auto"
-    // (#11556).
-    assert!(rail.starts_with("Coder (Claude Fable 5.1)"), "{rail}");
+    // A new pick removes "Auto" but keeps the model that answered until
+    // another turn finishes (#11654).
+    assert!(rail.starts_with("Coder (GPT 6 Luna)"), "{rail}");
     assert!(!rows(&buffer).iter().any(|line| line.contains("anthropic/")));
 }
 
@@ -215,10 +221,11 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
 #[test]
 fn claude_code_names_its_harness_and_shows_its_working() {
     let mut app = app();
-    app.live.runs_on = Some(coder_new::harness_plugin::Harness::ClaudeCode);
     app.draft.text = "hello".into();
     app.draft.cursor = 5;
     app.submit_live();
+    // Supply the fixture's route after submission chooses where to run.
+    app.live.runs_on = Some(coder_new::harness_plugin::Harness::ClaudeCode);
     app.apply_update(Update::Delta {
         id: app.request_id,
         text: "The fixture replied.".into(),
@@ -341,7 +348,7 @@ fn input_rails_name_the_chosen_model_only_and_the_bottom_rule_names_the_reposito
         assert!(!text.iter().any(|line| line.contains(":low")));
         // The bottom rule names the repository, never the key's status.
         let bottom = text.iter().rfind(|line| line.starts_with('└')).unwrap();
-        assert_eq!(label(bottom), "openagents");
+        assert_eq!(repository_label(bottom), "openagents");
     }
     app.plugins.options.reasoning = None;
     let text = rows(&render(&mut app, 110, 24).0);
@@ -353,6 +360,6 @@ fn input_rails_name_the_chosen_model_only_and_the_bottom_rule_names_the_reposito
     });
     let text = rows(&render(&mut app, 110, 24).0);
     let bottom = text.iter().rfind(|line| line.starts_with('└')).unwrap();
-    assert_eq!(label(bottom), "openagents");
+    assert_eq!(repository_label(bottom), "openagents");
     assert!(!text.iter().any(|line| line.contains("401")));
 }
