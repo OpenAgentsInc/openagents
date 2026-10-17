@@ -188,6 +188,10 @@ impl CoreAccount {
     pub(crate) fn data_dir(&self) -> &std::path::Path {
         &self.data_dir
     }
+    /// Close this account's open clients before a new sign-in.
+    pub(crate) fn close_clients(&self) {
+        close_clients(&self.clients, None);
+    }
     fn profile(&self, account: &str, edge: &str) -> PathBuf {
         self.data_dir.join(format!(
             "account-{}",
