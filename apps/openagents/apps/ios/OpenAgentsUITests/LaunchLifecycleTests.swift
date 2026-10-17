@@ -5,6 +5,12 @@ final class LaunchLifecycleTests: XCTestCase {
         continueAfterFailure = false
     }
 
+    private func openSessions(_ app: XCUIApplication) {
+        let sessions = app.tabBars.buttons["Sessions"]
+        XCTAssertTrue(sessions.waitForExistence(timeout: 15))
+        sessions.tap()
+    }
+
     private func capture(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name
@@ -30,6 +36,7 @@ final class LaunchLifecycleTests: XCTestCase {
         backgroundAndReturn(app)
         XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 5))
         app.buttons["open-demo"].tap()
+        openSessions(app)
         XCTAssertTrue(app.buttons["edit"].waitForExistence(timeout: 15))
         capture(app, "release-demo-opened")
         backgroundAndReturn(app)
@@ -41,6 +48,7 @@ final class LaunchLifecycleTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-demo"]
         app.launch()
+        openSessions(app)
         XCTAssertTrue(app.buttons["edit"].waitForExistence(timeout: 15))
         for _ in 0..<3 {
             backgroundAndReturn(app)
@@ -48,6 +56,7 @@ final class LaunchLifecycleTests: XCTestCase {
         }
         app.terminate()
         app.launch()
+        openSessions(app)
         XCTAssertTrue(app.buttons["edit"].waitForExistence(timeout: 15))
         capture(app, "release-demo-relaunched")
     }

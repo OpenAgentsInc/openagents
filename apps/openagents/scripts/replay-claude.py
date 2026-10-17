@@ -9,6 +9,11 @@ No network or API calls are made. Repetition is a synthetic stress workload.
 """
 import json
 import os
+
+# Accept settings from the previous release for one release.
+for _name, _value in list(os.environ.items()):
+    if _name.startswith("ZERON_"):
+        os.environ.setdefault("OPENAGENTS_" + _name.removeprefix("ZERON_"), _value)
 import sys
 import time
 

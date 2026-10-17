@@ -140,8 +140,9 @@ impl Peers {
                 .await?,
         );
         if initiator {
+            // Installed peers require the previous wire label for one release.
             let channel = pc
-                .create_data_channel("openagents-preview-v1", None)
+                .create_data_channel("zeron-preview-v1", None)
                 .await?;
             handler.attach(channel);
         }
