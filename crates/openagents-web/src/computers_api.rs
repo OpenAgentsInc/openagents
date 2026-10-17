@@ -533,7 +533,8 @@ fn public_lifecycle_policy(value: &Value) -> Value {
     }
     json!({"turn_complete":value["turn_complete"],"idle_ms":value["idle_ms"],
         "observed_extension_ms":value["observed_extension_ms"],"absolute_ms":value["absolute_ms"],
-        "absolute_scope":value["absolute_scope"],"uncertain_at_absolute_limit":value["uncertain_at_absolute_limit"]})
+        "absolute_scope":value["absolute_scope"],"uncertain_at_absolute_limit":value["uncertain_at_absolute_limit"],
+        "stopped_retention_ms":value["stopped_retention_ms"].as_u64()})
 }
 
 fn public_placements(value: &Value) -> Value {
@@ -637,7 +638,7 @@ pub(crate) fn extend_openapi(document: &mut Value) {
             "memory_suspend":{"type":"boolean"},"command_sessions":{"type":"boolean"},"workspace_file_bytes":{"type":["integer","null"],"minimum":1,"maximum":computer_files::MAX_BYTES}
         }},
         "AppComputerLifecyclePolicy":{"type":["object","null"],"required":["turn_complete","idle_ms","observed_extension_ms","absolute_ms","absolute_scope","uncertain_at_absolute_limit"],"description":"The recorded service policy for this computer. Absent or null means unavailable; clients must not invent timing or memory guarantees.","properties":{
-            "turn_complete":{"type":"string","enum":["suspend","delete"]},"idle_ms":{"type":"integer","minimum":0},"observed_extension_ms":{"type":"integer","minimum":0},"absolute_ms":{"type":"integer","minimum":0},"absolute_scope":{"const":"boot"},"uncertain_at_absolute_limit":{"const":"delete"}
+            "turn_complete":{"type":"string","enum":["suspend","delete"]},"idle_ms":{"type":"integer","minimum":0},"observed_extension_ms":{"type":"integer","minimum":0},"absolute_ms":{"type":"integer","minimum":0},"absolute_scope":{"const":"boot"},"uncertain_at_absolute_limit":{"const":"delete"},"stopped_retention_ms":{"type":["integer","null"],"minimum":0,"description":"Recorded maximum time to keep a stopped computer, in milliseconds. Zero means delete after the observed stop. Current operator/account limits can shorten this time; absent or null means unavailable."}
         }},
         "AppPlacementOffer":{"type":"object","required":["profiles","sizes","shapes","memory_suspend","command_sessions","workspace_file_bytes","default_environment_available"],"properties":{
             "profiles":{"type":"array","items":{"type":"string","enum":["core","suspend","snapshot","fork"]}},

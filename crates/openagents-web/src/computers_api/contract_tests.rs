@@ -159,7 +159,7 @@ fn computer_view_preserves_safe_resource_capabilities_and_recorded_policy() {
     });
     raw["lifecycle_policy"] = json!({
         "turn_complete":"suspend","idle_ms":100,"observed_extension_ms":200,
-        "absolute_ms":5000,"absolute_scope":"boot","uncertain_at_absolute_limit":"delete",
+        "absolute_ms":5000,"absolute_scope":"boot","uncertain_at_absolute_limit":"delete","stopped_retention_ms":604800000,
         "provider_key":"private-policy"
     });
     let check = validator(
@@ -190,9 +190,20 @@ fn computer_view_preserves_safe_resource_capabilities_and_recorded_policy() {
             json!({"small":{"vcpus":2,"memory_mib":1024,"min_disk_gib":4}})
         );
         assert_eq!(public["lifecycle_policy"]["absolute_ms"], 5000);
+        assert_eq!(
+            public["lifecycle_policy"]["stopped_retention_ms"],
+            604800000
+        );
         assert!(!public.to_string().contains("private"), "{public}");
         assert!(check.is_valid(&public), "{public}");
     }
+    raw["lifecycle_policy"]
+        .as_object_mut()
+        .unwrap()
+        .remove("stopped_retention_ms");
+    let old_policy = super::view(&raw);
+    assert!(old_policy["lifecycle_policy"]["stopped_retention_ms"].is_null());
+    assert!(check.is_valid(&old_policy));
     raw.as_object_mut().unwrap().remove("capabilities");
     raw.as_object_mut().unwrap().remove("lifecycle_policy");
     let legacy = super::view(&raw);
