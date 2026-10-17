@@ -89,7 +89,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 **Released 2026-10-17 01:00 CDT** by Codex (GPT-6) after #11945 landed in `92662ccae4`. Both reported unit failures are fixed; `coder-new` unit checks passed 1,055/0/24. The broader run found the separate attribution failures tracked in #11947.
 
-**Done 2026-10-17 04:03 CDT** by Codex in `~/work/openagents-chat-bridge`. #11894 is closed; #11898 is closed through `cc9f2bc14c`. #11823 stays with its active Claude Code owner.
+**Done 2026-10-17 04:03 CDT** by Codex in `~/work/openagents-chat-bridge` (removed after completion; both lane 1 targets retained). #11894 is closed; #11898 is closed through `cc9f2bc14c`. #11823 stays with its active Claude Code owner.
 
 **Released 2026-10-16 22:16 CDT** by Codex after landing #11894 prerequisites `d944461951` and `b2ac4a07c6`. #11894, #11898, and #11823 remain open and free; see their handoff comments. The `~/work/openagents-push-lane` worktree is removed; targets `~/work/openagents-target-1` and `~/work/openagents-target-1-app` stay warm.
 
@@ -126,7 +126,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 4: Labs platform
 
-**Taken 2026-10-17 04:08 CDT** by Codex working #11871 in `~/work/openagents-labs-finish`.
+**Taken 2026-10-17 04:05 CDT** by Codex working #11871 in `~/work/openagents-labs-finish`.
 
 **Released 2026-10-17 CDT** by a Claude Code subagent. Worker reads of referenced versions and files, the Game, Ship, Video and Robot registrations, and #11882 are on main (`2f7acc29fd`, `4e8463ddff`, `2c6be74847`); #11882 is closed. Production checks are in [After-close checks](#after-close-checks). The worktree `~/work/openagents-lane4b` is removed; target `~/work/openagents-target-agent2` stays warm.
 
@@ -279,7 +279,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 ### Labs platform (#11871 epic)
 
 **#11871 Epic: Labs platform.** Lane 4.
-- **Status:** #11872, #11873, #11874, and #11879 are done. The rest is open.
+- **Status:** all 15 original children (#11872–#11886) are closed, with their source checks recorded on the child issues. The remaining source work is #11948 (typed Lab rows in live sessions, version lists, and Model3d orbit), held by its existing lane 5 agent. #11871 stays claimed and blocked on that source; deploy and device checks are in After-close checks.
 - **Decided (owner, 2026-10-16):** renders that show MetaHuman or Fab content are never committed to GitHub. They live in the space's private platform storage and stream to users. The plan's other decisions stand as recommended: new hosted Labs start with owner and test accounts, and AVPlayer comes first on Apple platforms. The 1.0 bridge decision is moot.
 
 **#11875 Labs L4: CAD Lab as the first kind on the Labs platform.** Lane 4, with lane 0 for the deploy.
