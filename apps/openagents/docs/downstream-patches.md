@@ -108,3 +108,9 @@ links remain readable. Upstream fixes now require manual ports.
   check dismisses the keyboard and scrolls within the form before choosing a
   runner, saving, running, and using an agent. Composer buttons keep their
   identity when model choices change, so updates do not close another menu.
+
+- [OpenAgents #11878](https://github.com/OpenAgentsInc/openagents/issues/11878):
+  Agent Lab refuses legacy Lab tool references before a tool call or model text.
+  The shared workbench hides the add control and keeps saved references removable.
+  Enabling reads requires a typed source-policy contract; local binding flags
+  and arbitrary tool responses cannot authorize evaluation.

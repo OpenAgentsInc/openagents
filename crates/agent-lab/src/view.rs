@@ -261,13 +261,7 @@ impl Workbench {
                     ));
                 }
             }
-            for t in h.tools.iter().filter(|t| t.project == self.draft.project) {
-                n.push(button(
-                    format!("tool:{}", t.id),
-                    format!("Use {} reference", t.name),
-                    enabled,
-                ));
-            }
+            // Lab reference controls need a typed source-policy reader before they can return.
         } else {
             n.push(text(
                 "no-computer",
@@ -913,27 +907,9 @@ impl Workbench {
                         })
                     }
                     "tool" => {
-                        let offer = self
-                            .hosts
-                            .iter()
-                            .filter(|h| h.id == self.draft.host)
-                            .flat_map(|h| &h.tools)
-                            .find(|t| t.id == id && t.project == self.draft.project)
-                            .ok_or("This reference is not available.")?;
-                        if let Some(i) = self.draft.draft.components.iter().position(
-                            |c| matches!(c,Component::ToolContext{binding,..} if binding==id),
-                        ) {
-                            self.draft.draft.components.remove(i);
-                        } else {
-                            if self.draft.draft.components.len() >= 8 {
-                                return Err("Use up to eight references.".into());
-                            }
-                            self.draft.draft.components.push(Component::ToolContext {
-                                binding: offer.id.clone(),
-                                sha256: offer.sha256.clone(),
-                            });
-                        }
-                        self.dirty = true;
+                        return Err(
+                            "Remove the Lab reference before running this experiment.".into()
+                        );
                     }
                     _ => return Err("Choose an available action.".into()),
                 }

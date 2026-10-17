@@ -353,6 +353,42 @@ fn foreman_template_is_a_valid_claude_code_experiment() {
 }
 #[cfg(feature = "views")]
 #[test]
+fn legacy_lab_references_cannot_be_added_but_can_be_removed() {
+    use agent_lab::{api::*, view::Workbench};
+    let mut s = Workbench::new("references".into());
+    s.hosts.push(Host {
+        id: s.draft.host.clone(),
+        name: "Test computer".into(),
+        projects: vec![],
+        runtimes: vec![],
+        runners: vec![],
+        tools: vec![ToolOffer {
+            id: "part".into(),
+            name: "Part".into(),
+            project: s.draft.project.clone(),
+            sha256: "a".repeat(64),
+        }],
+        seen_ms: 0,
+    });
+    s.draft.draft.components.push(Component::ToolContext {
+        binding: "part".into(),
+        sha256: "a".repeat(64),
+    });
+    let view = s.view().validate().unwrap();
+    let activation = |node: &str| rust_native::Activation {
+        instance: s.instance.clone(),
+        revision: s.revision,
+        node: node.into(),
+    };
+    assert!(view.activate(&activation("tool:part")).is_err());
+    assert!(view.activate(&activation("remove-reference:0")).is_ok());
+    assert!(s.action("tool:part").is_err());
+    assert_eq!(s.draft.draft.components.len(), 1);
+    s.action("remove-reference:0").unwrap();
+    assert!(s.draft.draft.components.is_empty());
+}
+#[cfg(feature = "views")]
+#[test]
 fn workbench_starts_from_foreman() {
     use agent_lab::view::Workbench;
     let mut s = Workbench::new("fixture".into());
