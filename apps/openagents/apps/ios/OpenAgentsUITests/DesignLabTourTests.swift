@@ -36,18 +36,19 @@ final class DesignLabTourTests: XCTestCase {
         try? screenshot.pngRepresentation.write(to: folder.appendingPathComponent(file))
     }
 
-    func testSignedOut() {
-        var app = launch(["-demo", "-fast", "-route", "welcome"])
-        _ = app.staticTexts["cloud-chat-empty"].waitForExistence(timeout: 15)
-        shot(app, "welcome", "first-launch")
-        app.terminate()
-
-        app = launch(["-signedout", "-no-auth-browser", "-account-fixture"])
-        _ = app.buttons["account-sign-in"].waitForExistence(timeout: 15)
-        shot(app, "welcome", "sign-in")
-        if app.buttons["account-sign-in"].exists {
-            app.buttons["account-sign-in"].tap()
-            shot(app, "welcome", "sign-in-sheet")
+    /// First launch (#11996): the tutorial's pages, then the chat it lands
+    /// on. Nothing signs in.
+    func testOnboarding() {
+        for (step, id) in ["ask", "code", "connect", "backup"].enumerated() {
+            let app = launch(["-demo", "-fast", "-route", "onboarding", "-onboarding-step", "\(step)"])
+            _ = app.otherElements["onboarding"].waitForExistence(timeout: 15)
+            shot(app, "onboarding", "\(step + 1)-\(id)")
+            if id == "backup", app.buttons["onboarding-next"].exists {
+                app.buttons["onboarding-next"].tap()
+                _ = app.otherElements["cloud-chat"].waitForExistence(timeout: 10)
+                shot(app, "onboarding", "5-landing-chat")
+            }
+            app.terminate()
         }
     }
 

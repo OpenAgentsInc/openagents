@@ -27,10 +27,16 @@ final class LaunchLifecycleTests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         capture(app, "release-first-launch")
-        XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["OpenAgents"].exists)
+        // The tutorial shows once per install (#11996); a simulator that
+        // already finished it lands on the chat.
+        let tutorial = app.otherElements["onboarding"]
+        guard tutorial.waitForExistence(timeout: 15) else {
+            XCTAssertTrue(app.staticTexts["cloud-chat-empty"].exists)
+            XCTAssertFalse(app.buttons["account-sign-in"].exists)
+            return
+        }
         backgroundAndReturn(app)
-        XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 5))
+        XCTAssertTrue(tutorial.waitForExistence(timeout: 5))
         app.buttons["open-demo"].tap()
         XCTAssertTrue(app.buttons["drawer-menu"].waitForExistence(timeout: 15))
         capture(app, "release-demo-opened")

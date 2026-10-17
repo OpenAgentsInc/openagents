@@ -56,12 +56,12 @@ final class MarketingShotsTests: XCTestCase {
         _ = app.keyboards.firstMatch.waitForNonExistence(timeout: 3)
     }
 
-    /// The signed-out first screen, its first answer, and the
+    /// The landing chat, its first answer, and the
     /// "Run this on your own computer" card.
     func testFirstAnswerAndOwnComputerCard() {
         let app = launch(["-route", "welcome"])
         XCTAssertTrue(app.staticTexts["cloud-chat-empty"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.buttons["account-sign-in"].exists)
+        XCTAssertFalse(app.buttons["account-sign-in"].exists)
         shot(app, "demo-01-first-launch")
 
         ask(app, "What can you do?", answers: 1)

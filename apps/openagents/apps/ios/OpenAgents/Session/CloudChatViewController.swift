@@ -1,10 +1,9 @@
 import UIKit
 
 /// The chat answered by OpenAgents (#11978, #11979), over the core's
-/// `CoreCloudChat`. Signed out it runs as a visitor with a few messages
-/// before a sign-in; after a sign-in the chat moves to the account and
-/// keeps going. One per app, so the conversation survives the sign-in
-/// swap of the window's root.
+/// `CoreCloudChat`. Until the phone's account is made (#11995) it runs as a
+/// visitor; once the account exists the chat moves to it and keeps going.
+/// One per app, so the conversation survives the swap of the window's root.
 final class CloudChatModel {
     private let core: CoreCloudChat
     private let bridge: CloudChatBridge
@@ -65,9 +64,9 @@ private final class CloudChatBridge: CloudChatListener, @unchecked Sendable {
     }
 }
 
-/// The phone's first screen signed out, and the page New session opens when
-/// no computer is online: a message list, a composer with send and stop,
-/// and a quiet line about messages left before a sign-in.
+/// The phone's landing chat, and the page New session opens when no
+/// computer is online: a message list, a composer with send and stop, and a
+/// quiet line for errors. Nothing here asks anyone to sign in (#11996).
 ///
 /// `cardSlot` sits between the messages and the composer for cards such as
 /// "Run this on your own computer" (#11982): add views with `addCard(_:)`.
@@ -78,21 +77,16 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
     private let composer = ComposerBar()
     private let note = UILabel()
     private let empty = UILabel()
-    private let demo = UIButton(type: .system)
     /// Cards shown above the composer (#11982).
     let cardSlot = UIStackView()
     private var observation: AnyObject?
     private var appObservation: AnyObject?
     private var rows: [CloudChatLine] = []
-    private var promptedForSignIn = false
     private var ownComputerCard: OwnComputerCardView?
-    /// The demo's copy of the signed-out first screen (`-demo -route welcome`).
-    private let signedOutLook: Bool
 
-    init(app: AppModel, chat: CloudChatModel, signedOutLook: Bool = false) {
+    init(app: AppModel, chat: CloudChatModel) {
         self.app = app
         self.chat = chat
-        self.signedOutLook = signedOutLook
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -130,12 +124,6 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
         note.textAlignment = .center
         note.accessibilityIdentifier = "cloud-chat-note"
 
-        demo.setTitle("See a demo", for: .normal)
-        demo.titleLabel?.font = Fonts.ui(.sans, 13)
-        demo.tintColor = Palette.secondary
-        demo.accessibilityIdentifier = "open-demo"
-        demo.addAction(UIAction { [weak self] _ in self?.app.openDemo() }, for: .touchUpInside)
-
         cardSlot.axis = .vertical
         cardSlot.spacing = 8
         cardSlot.isHidden = true
@@ -145,7 +133,7 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
         composer.onSend = { [weak self] text, _, _ in self?.send(text) ?? .kept }
         composer.onStop = { [weak self] in self?.chat.stop() }
 
-        let footer = UIStackView(arrangedSubviews: [note, demo])
+        let footer = UIStackView(arrangedSubviews: [note])
         footer.axis = .vertical
         footer.alignment = .center
         footer.spacing = 2
@@ -185,7 +173,7 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
         if rows.isEmpty { _ = composer.becomeFirstResponder() }
     }
 
-    private var signedIn: Bool { app.isSignedIn && !signedOutLook }
+    private var signedIn: Bool { app.isSignedIn }
 
     /// "Run this on your own computer" (#11982): Rust decides; it goes away
     /// once closed or when one of the person's computers joins.
@@ -210,11 +198,6 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
 
     private func renderBar() {
         var items: [UIBarButtonItem] = []
-        if !signedIn {
-            let signIn = UIBarButtonItem(title: "Sign in", primaryAction: UIAction { [weak self] _ in self?.signIn() })
-            signIn.accessibilityIdentifier = "account-sign-in"
-            items.append(signIn)
-        }
         if !chat.snapshot.lines.isEmpty {
             let fresh = UIBarButtonItem(image: UIImage(systemName: "square.and.pencil"), primaryAction: UIAction { [weak self] _ in
                 self?.chat.newChat()
@@ -224,7 +207,6 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
             items.append(fresh)
         }
         navigationItem.rightBarButtonItems = items
-        demo.isHidden = signedIn
         renderOwnComputerCard()
     }
 
@@ -246,55 +228,26 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
         note.textColor = s.error == nil ? Palette.secondary : Palette.danger
         note.isHidden = note.text == nil
         renderBar()
-        if s.signInRequired, !signedIn, !promptedForSignIn {
-            promptedForSignIn = true
-            promptSignIn()
-        }
-        if !s.signInRequired { promptedForSignIn = false }
     }
+
+    /// The visitor's limit stays until #11995 gives every phone its own
+    /// account; until then it is a plain line, never a sign-in.
+    private static let limitReached = "That's all the messages we can answer for now. Try again later."
 
     private func noteText(_ s: CloudChatSnapshot) -> String? {
         if let error = s.error { return error }
-        guard !signedIn, let left = s.left else { return nil }
-        if left == 0 { return "Sign in to keep chatting. It's free." }
-        if left <= 3 { return left == 1 ? "1 message left before you sign in" : "\(left) messages left before you sign in" }
+        if s.signInRequired, !signedIn { return Self.limitReached }
         return nil
     }
 
     private func send(_ text: String) -> ComposerBar.SendResult {
-        if chat.snapshot.signInRequired, !signedIn {
-            promptSignIn()
-            return .kept
-        }
+        if chat.snapshot.signInRequired, !signedIn { return .kept }
         chat.send(text)
         return .sent
     }
 
-    // MARK: Sign-in
-
-    /// The account sign-in: the code's approval page opens in the in-app
-    /// sheet, with Sign in with Apple beside it (#11980).
-    func signIn() {
-        if presentedViewController != nil { dismiss(animated: false) }
-        app.beginAccountSignIn()
-        let nav = UINavigationController(rootViewController: SignInViewController(app: app))
-        nav.topViewController?.navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak nav, weak app] _ in
-            app?.cancelAccountSignIn()
-            nav?.dismiss(animated: true)
-        })
-        present(nav, animated: true)
-    }
-
-    private func promptSignIn() {
-        guard presentedViewController == nil else { return }
-        view.endEditing(true)
-        let prompt = SignInPromptController(app: app) { [weak self] in self?.signIn() }
-        if let sheet = prompt.sheetPresentationController {
-            sheet.detents = [.custom { _ in 290 }]
-            sheet.prefersGrabberVisible = true
-        }
-        present(prompt, animated: true)
-    }
+    /// Focus the composer, as the tutorial's last page asks.
+    func focusComposer() { _ = composer.becomeFirstResponder() }
 
     // MARK: Table
 
@@ -310,18 +263,16 @@ final class CloudChatViewController: UIViewController, UITableViewDataSource {
 // MARK: Opening the chat
 
 extension CloudChatViewController {
-    /// Signed out: the window's root.
-    static func signedOutRoot(app: AppModel) -> UIViewController? {
-        guard let chat = app.cloudChat else { return nil }
-        return DrawerShellController.nav(CloudChatViewController(app: app, chat: chat))
-    }
-
-    /// The offline demo (#11984): `-route welcome` is the signed-out first
-    /// screen, `-route cloud` the chat in the shell.
-    static func demoRoot(app: AppModel) -> UIViewController? {
-        let args = ProcessInfo.processInfo.arguments
-        guard app.isDemo, let i = args.firstIndex(of: "-route"), i + 1 < args.count, args[i + 1] == "welcome", let chat = app.cloudChat else { return nil }
-        return DrawerShellController.nav(CloudChatViewController(app: app, chat: chat, signedOutLook: true))
+    /// The landing chat: the cloud chat open in the shell `root`. With
+    /// `fresh`, a new chat with the composer focused (the tutorial's end).
+    static func land(in root: UIViewController, app: AppModel, fresh: Bool = false) {
+        guard let chat = app.cloudChat else { return }
+        if fresh, !chat.snapshot.lines.isEmpty { chat.newChat() }
+        let page = CloudChatViewController(app: app, chat: chat)
+        DispatchQueue.main.async {
+            show(page, in: root)
+            if fresh { DispatchQueue.main.async { page.focusComposer() } }
+        }
     }
 
     static func openDemo(in root: UIViewController?, app: AppModel) {
@@ -442,60 +393,5 @@ private final class CloudChatCell: UITableViewCell {
             out.addAttribute(.font, value: styled, range: range)
         }
         return out
-    }
-}
-
-/// "Sign in to keep chatting. It's free." with Sign in and Not now.
-private final class SignInPromptController: UIViewController {
-    private let onSignIn: () -> Void
-    private let app: AppModel
-
-    init(app: AppModel, onSignIn: @escaping () -> Void) {
-        self.app = app
-        self.onSignIn = onSignIn
-        super.init(nibName: nil, bundle: nil)
-    }
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = Palette.background
-        view.accessibilityIdentifier = "sign-in-prompt"
-        let message = UILabel()
-        message.text = "Sign in to keep chatting. It's free."
-        message.font = Fonts.ui(.sansSemibold, 20)
-        message.textColor = Palette.text
-        message.numberOfLines = 0
-        message.textAlignment = .center
-        var config = UIButton.Configuration.filled()
-        config.title = "Sign in"
-        config.baseBackgroundColor = Palette.text
-        config.baseForegroundColor = Palette.background
-        config.cornerStyle = .capsule
-        config.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 32, bottom: 12, trailing: 32)
-        let signIn = UIButton(configuration: config)
-        signIn.accessibilityIdentifier = "sign-in-prompt-sign-in"
-        signIn.addAction(UIAction { [weak self] _ in
-            guard let self else { return }
-            let action = self.onSignIn
-            self.dismiss(animated: true) { action() }
-        }, for: .touchUpInside)
-        let later = UIButton(type: .system)
-        later.setTitle("Not now", for: .normal)
-        later.tintColor = Palette.secondary
-        later.accessibilityIdentifier = "sign-in-prompt-later"
-        later.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside)
-        let apple = SignInSheet.appleButton(app: app, traits: traitCollection)
-        let stack = UIStackView(arrangedSubviews: [message, apple, signIn, later])
-        stack.axis = .vertical
-        stack.alignment = .center
-        stack.spacing = 16
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.centerYAnchor.constraint(equalTo: view.safeAreaLayoutGuide.centerYAnchor),
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
-        ])
     }
 }

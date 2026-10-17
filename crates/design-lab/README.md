@@ -13,9 +13,9 @@ cargo run -p design-lab -- export /tmp/board     # static index.html + board.jso
 
 - **Capturing.** `design-lab-capture.sh` runs `DesignLabTourTests` (in
   `apps/openagents/apps/ios/OpenAgentsUITests`) on the offline demo, so
-  nothing signs in: welcome and sign-in, Home, the drawer, search, Settings,
-  the new-session sheet, the cloud chat, every demo session and the voice
-  stage. Each run is saved in `~/work/design-lab/captures/<time>-<commit>/`
+  nothing signs in: the first-launch tutorial and its landing chat, Home,
+  the drawer, search, Settings, the new-session sheet, the cloud chat, every
+  demo session and the voice stage. Each run is saved in `~/work/design-lab/captures/<time>-<commit>/`
   as `<area>--<screen>.png` (set `DESIGN_LAB_CAPTURES` to move it). The tour
   runs twice, in light and in dark mode, and the dark pictures are
   `<area>--<screen>@dark.png`. Add a screen by adding a `shot` to the tour.

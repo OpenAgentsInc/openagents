@@ -87,6 +87,6 @@ final class OpenAgentsCustomAgentTests: XCTestCase {
         for _ in 0..<6 where !signOut.isHittable { app.swipeUp() }
         signOut.tap()
         app.buttons["Sign Out"].tap()
-        XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.otherElements["cloud-chat"].waitForExistence(timeout: 10))
     }
 }

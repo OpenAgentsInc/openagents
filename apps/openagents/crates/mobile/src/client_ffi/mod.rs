@@ -22,6 +22,8 @@ pub use agent_lab::*;
 mod custom_agents;
 mod home;
 mod labs;
+mod onboarding;
+pub use onboarding::*;
 mod own_computer;
 pub use account::*;
 pub use custom_agents::*;

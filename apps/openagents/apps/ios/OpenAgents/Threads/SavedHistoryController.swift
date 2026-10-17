@@ -73,7 +73,7 @@ class SavedHistoryController: UITableViewController {
         rows = []
         guard let state = app.savedSnapshot, state.signedIn else {
             title = "OpenAgents chats"
-            rows = [.note("Sign in to see your chats.", "saved-signed-out")]
+            rows = [.note("Your saved chats show here.", "saved-signed-out")]
             tableView.reloadData()
             return
         }
@@ -305,7 +305,7 @@ final class SavedTranscriptController: UIViewController {
             engine.clear()
             images.removeAllObjects()
             title = "Chat"
-            notice.text = "Sign in to open this chat."
+            notice.text = "This chat isn’t available on this phone yet."
             composer.isHidden = true
             retrySend.isHidden = true
             status.isHidden = true
@@ -358,7 +358,7 @@ final class SavedTranscriptController: UIViewController {
 
         try? app.savedHistory?.renderTranscript(view: engine)
         let label: String?
-        if transcript.loginRequired { label = "Sign in again" }
+        if transcript.loginRequired { label = "Try again" }
         else if transcript.accessLost || transcript.reloadRequired { label = "Reload chat" }
         else if transcript.smallerPage { label = "Load one message" }
         else if transcript.continueRequired { label = "Continue reading" }

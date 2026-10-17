@@ -187,6 +187,17 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
         s.appendItems([
             Row(id: "account", title: app.accountName, subtitle: app.accountDetail, symbol: "person.crop.circle", accessory: .none),
         ])
+        // The account's identity and its backup (#11996). They show once the
+        // Rust core has an identity to show (#11995).
+        if let identity = app.identity {
+            s.appendItems([Row(id: "your-id", title: "Your ID", subtitle: identity.npub, symbol: "person.text.rectangle", accessory: .none)])
+            // TODO(#11995): show these once the core can back up and restore
+            // the 12 words; they have no screen yet.
+            // s.appendItems([
+            //     Row(id: "backup", title: "Back up your account", subtitle: identity.wordsSaved ? "Your 12 words are saved" : nil, symbol: "key", tint: identity.wordsSaved ? Palette.secondary : Palette.warning),
+            //     Row(id: "restore", title: "Restore from 12 words", symbol: "arrow.counterclockwise"),
+            // ])
+        }
         if case .signedIn? = app.accountSnapshot?.state {
             s.appendItems([Row(id: "project-sharing", title: "Project sharing", symbol: "person.2")])
         }
@@ -223,8 +234,10 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
         ])
         s.appendSections(["About"])
         s.appendItems([Row(id: "about", title: "OpenAgents", subtitle: "Based on Zeron by Wing, MIT", symbol: "info.circle")])
-        s.appendSections([" "])
-        s.appendItems([Row(id: "signout", title: "Sign Out", symbol: "rectangle.portrait.and.arrow.right", accessory: .none, destructive: true)])
+        if app.isSignedIn {
+            s.appendSections([" "])
+            s.appendItems([Row(id: "signout", title: "Sign Out", symbol: "rectangle.portrait.and.arrow.right", accessory: .none, destructive: true)])
+        }
         dataSource.apply(s, animatingDifferences: false)
     }
 
@@ -328,6 +341,11 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             WallpaperStore.remove()
         case "archived":
             navigationController?.pushViewController(FolderViewController(app: app, folder: FolderRowVM(id: "archived", name: "Archived", count: 0, symbol: "archivebox")), animated: true)
+        case "your-id":
+            guard let npub = app.identity?.npub else { return }
+            // The public ID only; it is not a secret, so it may stay on the pasteboard.
+            UIPasteboard.general.string = npub
+            Toast.show("Copied your ID", in: view.window)
         case "signout":
             let alert = UIAlertController(title: "Sign out?", message: "Local drafts stay on this device.", preferredStyle: .actionSheet)
             alert.addAction(UIAlertAction(title: "Sign Out", style: .destructive) { [weak self] _ in self?.app.signOut() })

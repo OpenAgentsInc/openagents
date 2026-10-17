@@ -9,7 +9,7 @@ final class OpenAgentsLiveSyncTests: XCTestCase {
             app.terminate()
             app.launchArguments = ["-account-fixture", "-signedout", "-no-auth-browser"]
             app.launch()
-            XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.otherElements["cloud-chat"].waitForExistence(timeout: 10))
         }
         ownedApp = nil
         try super.tearDownWithError()
@@ -101,7 +101,7 @@ final class OpenAgentsLiveSyncTests: XCTestCase {
         for _ in 0..<6 where !signOut.isHittable { app.swipeUp() }
         signOut.tap()
         app.buttons["Sign Out"].tap()
-        XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.otherElements["cloud-chat"].waitForExistence(timeout: 10))
         XCTAssertFalse(session.exists)
     }
     func testContinuedComputerSession() throws {

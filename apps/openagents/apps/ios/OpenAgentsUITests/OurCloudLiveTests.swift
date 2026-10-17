@@ -39,7 +39,7 @@ final class OurCloudLiveTests: XCTestCase {
         for _ in 0..<8 where !signOut.isHittable { app.swipeUp() }
         signOut.tap()
         app.buttons["Sign Out"].tap()
-        XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.otherElements["cloud-chat"].waitForExistence(timeout: 15))
         XCTAssertFalse(app.staticTexts["Stop Our cloud"].exists)
     }
 

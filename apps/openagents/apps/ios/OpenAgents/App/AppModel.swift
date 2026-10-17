@@ -74,6 +74,21 @@ final class AppModel {
     /// The own-computer card's record (#11982); the demo's starts fresh each launch.
     private(set) lazy var ownComputerOffer: CoreOwnComputerOffer? = account?.ownComputerOffer()
         ?? (isDemo ? CoreOwnComputerOffer.demo(dataDir: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path) : nil)
+    /// The first-launch tutorial's record (#11996), or nil when it doesn't
+    /// apply: the demo shows it only for `-route onboarding`, and the test
+    /// hooks that sign in or out skip it.
+    private(set) lazy var onboarding: CoreOnboarding? = {
+        let args = ProcessInfo.processInfo.arguments
+        if isDemo {
+            guard let i = args.firstIndex(of: "-route"), i + 1 < args.count, args[i + 1] == "onboarding" else { return nil }
+            return CoreOnboarding.demo()
+        }
+        #if DEBUG
+        let hooks = ["-no-onboarding", "-signedout", "-account-sign-in", "-dev", "-account-test-credential-url"]
+        if hooks.contains(where: args.contains) { return nil }
+        #endif
+        return CoreOnboarding(dataDir: Self.coreDir.path)
+    }()
     private var accountGeneration: UInt64 = 0
     private var openedAccountGeneration: UInt64?
     #if DEBUG
@@ -148,9 +163,12 @@ final class AppModel {
                 return
             }
             #endif
+            // The account fixture's tests sign in with a code, which the app
+            // no longer offers on screen.
+            if args.contains("-account-sign-in") { account?.signIn(deviceName: UIDevice.current.name); return }
             if args.contains("-signedout") { account?.signOut(); return }
             #endif
-            account?.restore()
+            account?.startIdentity()
         } catch {
             accountSnapshot = AccountSnapshot(generation: 0, state: .failed(message: "Couldn't start sign-in. Try again.", canRestore: false))
         }
@@ -186,16 +204,14 @@ final class AppModel {
         guard let site = URL(string: Self.accountWebsite), let url = URL(string: "projects", relativeTo: site)?.absoluteURL else { return }
         UIApplication.shared.open(url)
     }
-    func beginAccountSignIn() { account?.signIn(deviceName: UIDevice.current.name) }
-    /// Sign in with Apple (#11980): the token from Apple's sheet goes to the Rust core.
-    func signInWithApple(identityToken: String, nonce: String, name: String?) {
-        account?.signInWithApple(identityToken: identityToken, nonce: nonce, name: name, deviceName: UIDevice.current.name)
-    }
-    func restoreAccount() { account?.restore() }
-    func cancelAccountSignIn() { account?.cancel() }
+    func restoreAccount() { account?.startIdentity() }
+    /// The person's account identity for Settings' "Your ID", once there is
+    /// one (#11995).
+    var identity: IdentityView? { account?.identity() }
+    /// Only the account fixture's tests reach a code approval now; the app
+    /// itself never asks anyone to sign in (#11996).
     func openAccountWebsite() {
         guard case let .waiting(_, url)? = accountSnapshot?.state, let url = URL(string: url) else { return }
-        if SignInSheet.shared.open(url.absoluteString) { return }
         UIApplication.shared.open(url)
     }
     fileprivate func handleAccount(_ snapshot: AccountSnapshot) {
@@ -208,7 +224,6 @@ final class AppModel {
         }
         accountGeneration = snapshot.generation
         accountSnapshot = snapshot
-        if case .waiting = snapshot.state {} else { SignInSheet.shared.close() }
         if isDemo { return }
         switch snapshot.state {
         case let .signedIn(_, name):
@@ -722,13 +737,15 @@ final class AppModel {
     /// Who's signed in, by name (never the WorkOS user / org ids).
     var accountName: String {
         if isDemo { return "Demo" }
-        guard client != nil else { return "Signed out" }
+        guard client != nil else { return "Your account" }
         let p = AccountProfile.load()
         return p.name ?? p.email ?? "Signed in"
     }
 
     var accountDetail: String {
         if isDemo { return "Offline demo workspace" }
+        // No account yet (#11995): the chat answers as a visitor.
+        if client == nil { return "On this phone" }
         let p = AccountProfile.load()
         return [p.name != nil ? p.email : nil, p.orgName].compactMap { $0 }.joined(separator: " · ").nonEmpty ?? "OpenAgents account"
     }

@@ -62,7 +62,7 @@ final class OpenAgentsHistoryTests: XCTestCase {
         let signOut = app.cells["settings-signout"]
         for _ in 0..<8 where !signOut.isHittable { app.swipeUp() }
         signOut.tap(); app.buttons["Sign Out"].tap()
-        XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.otherElements["cloud-chat"].waitForExistence(timeout: 15))
         XCTAssertFalse(pinned.exists)
     }
     func testSharedProjectsWithoutComputer() throws {
@@ -168,7 +168,7 @@ final class OpenAgentsHistoryTests: XCTestCase {
         let signOut = app.cells["settings-signout"]
         for _ in 0..<8 where !signOut.isHittable { app.swipeUp() }
         signOut.tap(); app.buttons["Sign Out"].tap()
-        XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.otherElements["cloud-chat"].waitForExistence(timeout: 15))
     }
 
     func testPublicSavedAccountHistory() throws {
@@ -191,7 +191,7 @@ final class OpenAgentsHistoryTests: XCTestCase {
         let signOut = app.cells["settings-signout"]
         for _ in 0..<8 where !signOut.isHittable { app.swipeUp() }
         signOut.tap(); app.buttons["Sign Out"].tap()
-        XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.otherElements["cloud-chat"].waitForExistence(timeout: 15))
     }
 
     func testLiveAccountHistory() throws {
@@ -227,7 +227,7 @@ final class OpenAgentsHistoryTests: XCTestCase {
         let signOut = app.cells["settings-signout"]
         for _ in 0..<8 where !signOut.isHittable { app.swipeUp() }
         signOut.tap(); app.buttons["Sign Out"].tap()
-        XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.otherElements["cloud-chat"].waitForExistence(timeout: 15))
     }
 
     /// Captures the real account reader while the other applications change the same chat.
@@ -268,7 +268,7 @@ final class OpenAgentsHistoryTests: XCTestCase {
         let signOut = app.cells["settings-signout"]
         for _ in 0..<8 where !signOut.isHittable { app.swipeUp() }
         signOut.tap(); app.buttons["Sign Out"].tap()
-        XCTAssertTrue(app.buttons["account-sign-in"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.otherElements["cloud-chat"].waitForExistence(timeout: 15))
     }
 
 }

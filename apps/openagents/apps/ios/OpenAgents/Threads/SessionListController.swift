@@ -262,7 +262,7 @@ class SessionListController: UIViewController, UICollectionViewDelegate {
         case .invitations: return "Project invitations"
         case .more: return "Load more chats"
         case .myChats: return "My chats"
-        case .login: return "Sign in again"
+        case .login: return "Try again"
         case .notice:
             if let state = app.savedSnapshot?.state {
                 switch state {

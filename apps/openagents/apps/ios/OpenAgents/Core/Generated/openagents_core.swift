@@ -1694,6 +1694,26 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
     func stopCloudHost() async throws  -> CloudHostView
     
     /**
+     * The account's identity, or `None` while there is none to show.
+     *
+     * TODO(#11995): return the NIP-06 identity and the words-saved marker.
+     * Settings shows "Your ID", "Back up your account" and "Restore from
+     * 12 words" only once this returns one.
+     */
+    func identity()  -> IdentityView?
+    
+    /**
+     * Starts this phone's account on launch, with nothing for the person
+     * to do.
+     *
+     * TODO(#11995): make or load the 12 words, derive the NIP-06 key and
+     * sign in with it silently. Until then this restores a saved login if
+     * there is one, and otherwise leaves the phone signed out, where the
+     * chat answers as a visitor.
+     */
+    func startIdentity() 
+    
+    /**
      * The own-computer card's record for whoever is signed in, or this
      * install while signed out.
      */
@@ -2017,6 +2037,39 @@ open func stopCloudHost()async throws  -> CloudHostView  {
             liftFunc: FfiConverterTypeCloudHostView_lift,
             errorHandler: FfiConverterTypeCoreError_lift
         )
+}
+    
+    /**
+     * The account's identity, or `None` while there is none to show.
+     *
+     * TODO(#11995): return the NIP-06 identity and the words-saved marker.
+     * Settings shows "Your ID", "Back up your account" and "Restore from
+     * 12 words" only once this returns one.
+     */
+open func identity() -> IdentityView?  {
+    return try!  FfiConverterOptionTypeIdentityView.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_identity(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Starts this phone's account on launch, with nothing for the person
+     * to do.
+     *
+     * TODO(#11995): make or load the 12 words, derive the NIP-06 key and
+     * sign in with it silently. Until then this restores a saved login if
+     * there is one, and otherwise leaves the phone signed out, where the
+     * chat answers as a visitor.
+     */
+open func startIdentity()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_start_identity(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
 }
     
     /**
@@ -4412,6 +4465,189 @@ public func FfiConverterTypeCoreHome_lift(_ handle: UInt64) throws -> CoreHome {
 #endif
 public func FfiConverterTypeCoreHome_lower(_ value: CoreHome) -> UInt64 {
     return FfiConverterTypeCoreHome.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Whether this install has seen the tutorial. The record is a file in the
+ * core's data folder, so it goes away with the app's data.
+ */
+public protocol CoreOnboardingProtocol: AnyObject, Sendable {
+    
+    /**
+     * The person finished or skipped the tutorial; it doesn't come back.
+     * Writing the record is best effort: if it fails, the tutorial shows
+     * again on the next launch, which is harmless.
+     */
+    func finish() 
+    
+    /**
+     * Whether to show the tutorial now.
+     */
+    func shouldShow()  -> Bool
+    
+    func steps()  -> [OnboardingStep]
+    
+}
+/**
+ * Whether this install has seen the tutorial. The record is a file in the
+ * core's data folder, so it goes away with the app's data.
+ */
+open class CoreOnboarding: CoreOnboardingProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_coreonboarding(self.handle, $0) }
+    }
+public convenience init(dataDir: String) {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_coreonboarding_new(
+        FfiConverterString.lower(dataDir),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_coreonboarding(handle, $0) }
+    }
+
+    
+    /**
+     * The offline demo's tutorial: always unseen, and finishing it is
+     * forgotten when the app closes.
+     */
+public static func demo() -> CoreOnboarding  {
+    return try!  FfiConverterTypeCoreOnboarding_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_coreonboarding_demo(uniffiCallStatus
+    )
+})
+}
+    
+
+    
+    /**
+     * The person finished or skipped the tutorial; it doesn't come back.
+     * Writing the record is best effort: if it fails, the tutorial shows
+     * again on the next launch, which is harmless.
+     */
+open func finish()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreonboarding_finish(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Whether to show the tutorial now.
+     */
+open func shouldShow() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreonboarding_should_show(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func steps() -> [OnboardingStep]  {
+    return try!  FfiConverterSequenceTypeOnboardingStep.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreonboarding_steps(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreOnboarding: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreOnboarding
+
+    public static func lift(_ handle: UInt64) throws -> CoreOnboarding {
+        return CoreOnboarding(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreOnboarding) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreOnboarding {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreOnboarding, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreOnboarding_lift(_ handle: UInt64) throws -> CoreOnboarding {
+    return try FfiConverterTypeCoreOnboarding.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreOnboarding_lower(_ value: CoreOnboarding) -> UInt64 {
+    return FfiConverterTypeCoreOnboarding.lower(value)
 }
 
 
@@ -11555,6 +11791,75 @@ public func FfiConverterTypeHostInfo_lower(_ value: HostInfo) -> RustBuffer {
 }
 
 
+/**
+ * The person's own account identity, for Settings' "Your ID" row.
+ */
+public struct IdentityView: Equatable, Hashable {
+    /**
+     * The public key as `npub1…`.
+     */
+    public var npub: String
+    /**
+     * Whether the 12 words were backed up and confirmed.
+     */
+    public var wordsSaved: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The public key as `npub1…`.
+         */npub: String, 
+        /**
+         * Whether the 12 words were backed up and confirmed.
+         */wordsSaved: Bool) {
+        self.npub = npub
+        self.wordsSaved = wordsSaved
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension IdentityView: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeIdentityView: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> IdentityView {
+        return
+            try IdentityView(
+                npub: FfiConverterString.read(from: &buf), 
+                wordsSaved: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: IdentityView, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.npub, into: &buf)
+        FfiConverterBool.write(value.wordsSaved, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIdentityView_lift(_ buf: RustBuffer) throws -> IdentityView {
+    return try FfiConverterTypeIdentityView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeIdentityView_lower(_ value: IdentityView) -> RustBuffer {
+    return FfiConverterTypeIdentityView.lower(value)
+}
+
+
 public struct InputRequest: Equatable, Hashable {
     public var entryId: String
     public var requestId: String
@@ -12248,6 +12553,79 @@ public func FfiConverterTypeNewSession_lift(_ buf: RustBuffer) throws -> NewSess
 #endif
 public func FfiConverterTypeNewSession_lower(_ value: NewSession) -> RustBuffer {
     return FfiConverterTypeNewSession.lower(value)
+}
+
+
+/**
+ * One tutorial page. `id` is stable: the app picks its picture by it.
+ */
+public struct OnboardingStep: Equatable, Hashable {
+    public var id: String
+    public var title: String
+    public var body: String
+    /**
+     * The page's main button: "Next", or on the last page the way into
+     * the chat.
+     */
+    public var action: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String, body: String, 
+        /**
+         * The page's main button: "Next", or on the last page the way into
+         * the chat.
+         */action: String) {
+        self.id = id
+        self.title = title
+        self.body = body
+        self.action = action
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension OnboardingStep: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOnboardingStep: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OnboardingStep {
+        return
+            try OnboardingStep(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                body: FfiConverterString.read(from: &buf), 
+                action: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: OnboardingStep, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.body, into: &buf)
+        FfiConverterString.write(value.action, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOnboardingStep_lift(_ buf: RustBuffer) throws -> OnboardingStep {
+    return try FfiConverterTypeOnboardingStep.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOnboardingStep_lower(_ value: OnboardingStep) -> RustBuffer {
+    return FfiConverterTypeOnboardingStep.lower(value)
 }
 
 
@@ -21437,6 +21815,30 @@ fileprivate struct FfiConverterOptionTypeFrameImage: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeIdentityView: FfiConverterRustBuffer {
+    typealias SwiftType = IdentityView?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeIdentityView.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeIdentityView.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeInputRequest: FfiConverterRustBuffer {
     typealias SwiftType = InputRequest?
 
@@ -22337,6 +22739,31 @@ fileprivate struct FfiConverterSequenceTypeModelOptionChoice: FfiConverterRustBu
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeModelOptionChoice.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeOnboardingStep: FfiConverterRustBuffer {
+    typealias SwiftType = [OnboardingStep]
+
+    public static func write(_ value: [OnboardingStep], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeOnboardingStep.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [OnboardingStep] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [OnboardingStep]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeOnboardingStep.read(from: &buf))
         }
         return seq
     }
@@ -23744,6 +24171,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreaccount_stop_cloud_host() != 55892) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_identity() != 38502) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_start_identity() != 35967) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_own_computer_offer() != 46210) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -23862,6 +24295,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_homelistener_on_home_changed() != 46399) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreonboarding_finish() != 30618) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreonboarding_should_show() != 51954) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreonboarding_steps() != 58133) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreowncomputeroffer_card() != 36943) {
@@ -24171,6 +24613,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_constructor_corehome_demo() != 2243) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_coreonboarding_demo() != 34088) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_coreonboarding_new() != 15328) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_constructor_coreowncomputeroffer_demo() != 291) {
