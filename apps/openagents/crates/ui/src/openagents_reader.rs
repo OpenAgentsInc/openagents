@@ -47,6 +47,7 @@ pub struct SavedReader {
     show_files: bool,
     notified_loss: Option<u64>,
     home_choices: Option<rust_native::ValidatedView<chat_home::Home>>,
+    home_menu: crate::popover::Popup<()>,
     part_choices: Option<rust_native::ValidatedView<chat_home::PartRef>>,
     home_revision: u64,
     cloud_target: Option<(String, String)>,
@@ -272,9 +273,9 @@ impl SavedReader {
             }
         }
         let blocked = if self.cloud_turns.snapshot().busy {
-            Some("Stop the current answer before continuing elsewhere.")
+            Some("Stop the answer to move this chat.")
         } else if self.composer.read(cx).has_draft(cx) {
-            Some("Send or clear your draft before moving this chat.")
+            Some("Send or clear your draft to move this chat.")
         } else {
             None
         };
@@ -304,9 +305,16 @@ impl SavedReader {
             .ok();
             self.home_fingerprint = fingerprint;
         }
-        let view = self.home_choices.as_ref()?;
-        Some(crate::native_actions::mount(
-            view,
+        let (part_lease, part_expected) = (lease.clone(), expected.clone());
+        crate::openagents_continuation::runs_on(
+            crate::openagents_continuation::RunsOn {
+                id: "saved-runs-on",
+                current: &current,
+                choices: self.home_choices.as_ref(),
+                parts: self.part_choices.as_ref(),
+                menu: &self.home_menu,
+            },
+            |this: &mut Self| &mut this.home_menu,
             move |this: &mut Self, activation, cx| {
                 if !lease.is_current()
                     || this.model.target().is_none_or(|t| t.chat != expected)
@@ -334,8 +342,23 @@ impl SavedReader {
                     Home::Cloud => this.move_to_cloud(target, cx),
                 }
             },
+            move |this: &mut Self, event, cx| {
+                if !part_lease.is_current()
+                    || this.model.target().is_none_or(|t| t.chat != part_expected)
+                {
+                    return;
+                }
+                if let Some(part) = this
+                    .part_choices
+                    .as_ref()
+                    .and_then(|v| v.activate(&event).ok())
+                    .cloned()
+                {
+                    this.open_part(part, cx);
+                }
+            },
             cx,
-        ))
+        )
     }
     pub fn new(
         account: Arc<Controller>,
@@ -435,6 +458,7 @@ impl SavedReader {
             show_files: false,
             notified_loss: None,
             home_choices: None,
+            home_menu: Default::default(),
             part_choices: None,
             home_revision: 0,
             cloud_target: None,
@@ -965,11 +989,19 @@ impl Render for SavedReader {
             footer = footer.child("This chat continues in another conversation.");
         }
         body = body.child(footer).child(self.composer.clone());
-        if let Some(parts) = self.part_controls(cx) {
+        // Parts fold into the Runs on menu; alone, they stay a row of links.
+        let parts = self.part_controls(cx);
+        if let Some(runs_on) = self.home_control(cx) {
+            body = body.child(
+                div()
+                    .flex()
+                    .justify_end()
+                    .px(px(24.))
+                    .pb(px(8.))
+                    .child(runs_on),
+            );
+        } else if let Some(parts) = parts {
             body = body.child(parts);
-        }
-        if let Some(choices) = self.home_control(cx) {
-            body = body.child(choices);
         }
         if let Some(download) = self.snapshot.download.clone() {
             let mut preview = div()

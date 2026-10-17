@@ -11676,6 +11676,10 @@ impl Render for Composer {
             session_chrome
         };
         let container = if bottom_slot > 0.0 {
+            // OpenAgents #11959: the chat's Runs on control (openagents_continuation).
+            let runs_on = (session_chrome_opacity > 0.0 && !self.side_chat)
+                .then(|| self.runs_on_control(cx))
+                .flatten();
             let footer = (session_chrome_opacity > 0.0 && !self.side_chat).then(|| {
                 self.pickers
                     .update(cx, |pickers, cx| pickers.render_footer(cx))
@@ -11724,6 +11728,7 @@ impl Render for Composer {
                                 .items_center()
                                 .opacity(session_chrome_opacity)
                                 .child(div().flex_1().min_w_0().children(footer.flatten()))
+                                .children(runs_on)
                                 .child(
                                     // The footer row's own 4px gap: the PR badge
                                     // ends flush with the row, so the rings keep
@@ -11764,9 +11769,7 @@ impl Render for Composer {
                 cx,
             ));
         }
-        container
-            .children(self.continuations.banner(&self.current_key, cx))
-            .children(self.chat_home_controls(cx))
+        container.children(self.continuations.banner(&self.current_key, cx))
     }
 }
 

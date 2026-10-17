@@ -1,11 +1,16 @@
 //! The app account control. Local workspace and model-provider logins stay separate.
-use crate::theme::Theme;
-use openagents_account::{Controller, Phase, Snapshot};
+//! Signed in, it is one sidebar row whose menu holds Agent Lab and Sign out.
+use crate::{
+    icons::{self, icon},
+    motion, popover,
+    theme::Theme,
+};
 use gpui::{
-    App, AppContext, Context, Entity, Global, Render, SharedString, Task, Window, div, prelude::*,
-    px,
+    AnyElement, App, AppContext, Context, Entity, Global, MouseButton, Render, SharedString, Task,
+    Window, div, prelude::*, px,
 };
 use gpui_tokio::Tokio;
+use openagents_account::{Controller, Phase, Snapshot};
 use std::{future::Future, path::PathBuf, sync::Arc};
 
 struct GlobalAccount(Entity<AppAccount>);
@@ -17,6 +22,7 @@ pub struct AppAccount {
     expiry: Option<Task<()>>,
     opened_generation: Option<u64>,
     automatic_browser: bool,
+    menu: popover::Popup<()>,
 }
 impl AppAccount {
     pub fn init(data: PathBuf, cx: &mut App) {
@@ -40,6 +46,7 @@ impl AppAccount {
                 expiry: None,
                 opened_generation: None,
                 automatic_browser: true,
+                menu: popover::Popup::default(),
             },
         });
         cx.set_global(GlobalAccount(entity.clone()));
@@ -126,6 +133,7 @@ impl AppAccount {
             expiry: None,
             opened_generation: None,
             automatic_browser: true,
+            menu: popover::Popup::default(),
         }
     }
     fn run(&mut self, f: impl Future<Output = ()> + Send + 'static, cx: &mut Context<Self>) {
@@ -166,6 +174,145 @@ impl AppAccount {
             self.run(operation, cx);
         }
     }
+    fn close_menu(&mut self, cx: &mut Context<Self>) {
+        if self.menu.begin_close() {
+            popover::reap_popup(cx, |this: &mut Self| &mut this.menu);
+            cx.notify();
+        }
+    }
+    #[cfg(feature = "account-fixture")]
+    pub fn fixture_open_menu(&mut self, cx: &mut Context<Self>) {
+        self.menu.open(());
+        cx.notify();
+    }
+    /// The signed-in account: avatar and name in the sidebar footer, matching
+    /// the footer's icon buttons. The menu opens upward.
+    fn signed_in_row(&mut self, label: SharedString, cx: &mut Context<Self>) -> AnyElement {
+        let theme = Theme::of(cx).for_popup();
+        let open = self.menu.is_open();
+        let initial: SharedString = label
+            .trim()
+            .chars()
+            .next()
+            .map(|c| c.to_uppercase().to_string())
+            .unwrap_or_else(|| "?".into())
+            .into();
+        let mut row = div()
+            .id("openagents-account")
+            .debug_selector(|| "openagents-account".into())
+            .role(gpui::Role::Button)
+            .aria_label(format!("Account menu: {label}"))
+            .aria_expanded(open)
+            .tab_index(0)
+            .focus_visible(|s| s.border_2().border_color(theme.accent))
+            .relative()
+            .h(px(28.))
+            .min_w_0()
+            .flex_shrink_1()
+            .w_full()
+            .rounded(px(8.))
+            .px(px(Theme::SPACE_SM))
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(Theme::SPACE_SM))
+            .text_size(crate::typography::ui_rems(13.))
+            .font_weight(gpui::FontWeight::MEDIUM)
+            .text_color(if open {
+                theme.text
+            } else {
+                motion::hover_blend("openagents-account", theme.text.opacity(0.8), theme.text)
+            })
+            .bg(if open {
+                theme.glass_hover()
+            } else {
+                motion::hover_blend(
+                    "openagents-account",
+                    theme.glass_hover().opacity(0.0),
+                    theme.glass_hover().opacity(0.8),
+                )
+            })
+            .on_hover(motion::hover_listener("openagents-account"))
+            .cursor_pointer()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, _| this.menu.note_trigger_press()),
+            )
+            .on_click(cx.listener(|this, _, _, cx| {
+                if this.menu.take_press_was_open() {
+                    this.close_menu(cx);
+                } else {
+                    this.menu.open(());
+                }
+                cx.notify();
+            }))
+            .child(
+                div()
+                    .size(px(16.))
+                    .flex_none()
+                    .rounded_full()
+                    .bg(theme.text)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .font_family(theme.font_mono.clone())
+                    .text_size(px(10.))
+                    .line_height(px(16.))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(theme.bg)
+                    .child(div().w_full().text_center().child(initial)),
+            )
+            .child(crate::shell::sidebar_faded_label(
+                "openagents-account-label".into(),
+                false,
+                div().line_height(px(17.)).child(label),
+            ));
+        if self.menu.get().is_some() {
+            let closing = self.menu.closing_since();
+            let menu = popover::popover_card(&theme)
+                .w(px(220.))
+                .on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_menu(cx)))
+                .flex()
+                .flex_col()
+                .gap(px(2.))
+                .child(
+                    popover::menu_row(&theme, false, "openagents-agent-lab")
+                        .id("openagents-agent-lab")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.close_menu(cx);
+                            cx.open_url("https://openagents.com/labs/agent");
+                        }))
+                        .child(icon(icons::BOT).size(px(16.)).text_color(theme.text_muted))
+                        .child(div().flex_1().child("Agent Lab"))
+                        .child(
+                            icon(icons::ARROW_UP_RIGHT)
+                                .size(px(12.))
+                                .text_color(theme.text_muted),
+                        ),
+                )
+                .child(
+                    popover::menu_row(&theme, false, "openagents-sign-out")
+                        .id("openagents-sign-out")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.close_menu(cx);
+                            this.sign_out(cx);
+                        }))
+                        .child(
+                            icon(icons::LOGOUT_2)
+                                .size(px(16.))
+                                .text_color(theme.text_muted),
+                        )
+                        .child("Sign out"),
+                )
+                .into_any_element();
+            row = row.child(popover::anchored_menu_above(
+                "openagents-account-menu",
+                menu,
+                closing,
+            ));
+        }
+        row.into_any_element()
+    }
     fn button(
         &self,
         id: &'static str,
@@ -190,6 +337,9 @@ impl AppAccount {
 }
 impl Render for AppAccount {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !matches!(self.snapshot.phase, Phase::SignedIn { .. }) && self.menu.get().is_some() {
+            self.menu = popover::Popup::default();
+        }
         let theme = Theme::of(cx);
         let phase = self.snapshot.phase.clone();
         let mut body = div()
@@ -242,21 +392,7 @@ impl Render for AppAccount {
                     .child(self.button("openagents-cancel", "Cancel", Self::sign_out, cx));
             }
             Phase::SignedIn { account } => {
-                body = body
-                    .child(
-                        div()
-                            .id("openagents-account-name")
-                            .truncate()
-                            .child(SharedString::from(account.label)),
-                    )
-                    .child(
-                        div()
-                            .id("agent-lab")
-                            .cursor_pointer()
-                            .child("Agent Lab ↗")
-                            .on_click(|_, _, cx| cx.open_url("https://openagents.com/labs/agent")),
-                    )
-                    .child(self.button("openagents-sign-out", "Sign out", Self::sign_out, cx));
+                return self.signed_in_row(account.label.into(), cx);
             }
             Phase::Failed {
                 message,
@@ -277,7 +413,7 @@ impl Render for AppAccount {
                 }
             }
         }
-        body
+        body.into_any_element()
     }
 }
 

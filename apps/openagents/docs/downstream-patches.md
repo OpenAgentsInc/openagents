@@ -136,6 +136,17 @@ feature keeps forms independent of the app's separate syntax-engine version.
   device rows. Pending destinations stay out of lists until their source link
   is confirmed.
 
+- [OpenAgents #11959](https://github.com/OpenAgentsInc/openagents/issues/11959):
+  the chat's Runs on view is a small "Runs on This Mac" control in the
+  composer footer. Its menu draws the shared `chat-home` view: the current
+  home, the reason the chat can't move (only when one applies), the places it
+  can move to, and links to its other parts. `openagents_continuation::runs_on`
+  draws it for the composer and the saved-chat reader. The signed-in account
+  is one sidebar row (`openagents_account.rs`) whose menu holds Agent Lab and
+  Sign out. Hook: `crates/ui/src/composer.rs` calls `runs_on_control` in the
+  session footer row instead of below the input. `examples/chrome-fixture.rs`
+  captures both offscreen.
+
 - [OpenAgents #11897](https://github.com/OpenAgentsInc/openagents/issues/11897):
   `doc_host::session_index` publishes this computer's top-level chats to the
   account's chat list on openagents.com through `openagents::sessions`, as
