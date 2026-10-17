@@ -39,7 +39,7 @@ impl std::fmt::Debug for Request {
             .finish_non_exhaustive()
     }
 }
-pub const SCHEMA_SHA256: &str = "80bef4aa48aa9a1f64c8d5b7cb3eb7ad91919e54b230bf217b88cf407b0691c0";
+pub const SCHEMA_SHA256: &str = "54ce0866363235441d42f6a4d1748bce2c8b88ca9514906de16d2b45f52dc72c";
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct AppAccount {
     #[serde(rename = "admin", default, skip_serializing_if = "Option::is_none")]
@@ -225,6 +225,12 @@ impl std::fmt::Debug for AppCommandOutputNextCursor {
 }
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct AppComputer {
+    #[serde(
+        rename = "capabilities",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub capabilities: Option<AppComputerResourceCapabilities>,
     #[serde(rename = "chat", default, skip_serializing_if = "Option::is_none")]
     pub chat: Option<String>,
     #[serde(
@@ -245,6 +251,12 @@ pub struct AppComputer {
         skip_serializing_if = "Option::is_none"
     )]
     pub last_error: Option<String>,
+    #[serde(
+        rename = "lifecycle_policy",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub lifecycle_policy: Option<AppComputerLifecyclePolicy>,
     #[serde(rename = "name")]
     pub name: String,
     #[serde(rename = "online")]
@@ -356,6 +368,35 @@ impl std::fmt::Debug for AppComputerFileInfo {
     }
 }
 #[derive(Clone, Serialize, Deserialize, Default)]
+pub struct AppComputerLifecyclePolicy {
+    #[serde(rename = "absolute_ms")]
+    pub absolute_ms: u64,
+    #[serde(rename = "absolute_scope")]
+    pub absolute_scope: String,
+    #[serde(rename = "idle_ms")]
+    pub idle_ms: u64,
+    #[serde(rename = "observed_extension_ms")]
+    pub observed_extension_ms: u64,
+    #[serde(
+        rename = "stopped_retention_ms",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub stopped_retention_ms: Option<u64>,
+    #[serde(rename = "turn_complete")]
+    pub turn_complete: String,
+    #[serde(rename = "uncertain_at_absolute_limit")]
+    pub uncertain_at_absolute_limit: String,
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+}
+impl std::fmt::Debug for AppComputerLifecyclePolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppComputerLifecyclePolicy")
+            .finish_non_exhaustive()
+    }
+}
+#[derive(Clone, Serialize, Deserialize, Default)]
 pub struct AppComputerList {
     #[serde(rename = "computers")]
     pub computers: Vec<AppComputerListComputersItem>,
@@ -413,6 +454,29 @@ pub struct AppComputerNeeds {
 impl std::fmt::Debug for AppComputerNeeds {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppComputerNeeds").finish_non_exhaustive()
+    }
+}
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub struct AppComputerResourceCapabilities {
+    #[serde(rename = "command_sessions")]
+    pub command_sessions: bool,
+    #[serde(rename = "memory_suspend")]
+    pub memory_suspend: bool,
+    #[serde(rename = "profiles")]
+    pub profiles: Vec<String>,
+    #[serde(rename = "shapes")]
+    pub shapes: std::collections::BTreeMap<String, AppComputerShape>,
+    #[serde(rename = "sizes")]
+    pub sizes: Vec<String>,
+    #[serde(rename = "workspace_file_bytes")]
+    pub workspace_file_bytes: Option<u64>,
+    #[serde(flatten)]
+    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
+}
+impl std::fmt::Debug for AppComputerResourceCapabilities {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppComputerResourceCapabilities")
+            .finish_non_exhaustive()
     }
 }
 #[derive(Clone, Serialize, Deserialize, Default)]
