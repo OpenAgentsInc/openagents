@@ -134,5 +134,39 @@
     "release_simulator_tests_passed": 3,
     "archive_verified": true,
     "upload_succeeded": true
+  },
+  "lane0_sdk_transport_probes": {
+    "checked_at": "2026-10-17T05:46:03.673510+00:00",
+    "scope": "Native saved-agent requests and the website agents door with a deterministic Rust SDK runner. The original Claude Code Foreman workflow remains separate.",
+    "account": "acct_500d3e1d125b7782",
+    "website_source_commit": "0b74ec8f79399f7091f8061209d305f729229aa1",
+    "website_image": "sha256:e195c182ffaffe32c932d6f84e80e91d0cf95065e1dada19ba193a1d1623b7ea",
+    "cli_source_commit": "264642e0a66d571bf7ab161fe4abf8f235e2d0d9",
+    "native": {
+      "exit": 0,
+      "expected_answer": true,
+      "elapsed_seconds": 21,
+      "runtime": "sdk",
+      "owner_account": false,
+      "test_header": true,
+      "engine_stopped": true
+    },
+    "website": {
+      "website_saved_agent": true,
+      "normal_question": true,
+      "runtime": "sdk",
+      "runner": "prebuilt independent Rust fixture",
+      "chats_deleted": 2,
+      "own_assignment_archived": true,
+      "own_agent_deleted": true,
+      "isolated_engine_stopped": true,
+      "owner_account": false,
+      "test_header": true,
+      "cleanup_wrapper_fixed": "Empty successful DELETE bodies are accepted."
+    },
+    "runner_sha256": "eb1024961731149486303c851371c555565de659307747ae2fe38872587a9622",
+    "runner_pin": "Captured in the isolated host allowlist and checked by the host before launch.",
+    "host_artifact": "Existing prebuilt headless fixture; no app rebuild performed.",
+    "cleanup_verified": true
   }
 }
