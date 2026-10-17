@@ -2193,7 +2193,7 @@ mod local_run {
             panic!("{:?}", turn_one[0])
         };
         assert_eq!(started.provider, "codex");
-        assert_eq!(started.reason, "Codex is signed in and has capacity.");
+        assert_eq!(started.reason, "Codex is logged in and has capacity.");
         // Grok Build follows Claude Code by default (#10091), and every
         // other agent is on unless turned off (#10184); OpenCode, with no
         // configured model here, is left out.
