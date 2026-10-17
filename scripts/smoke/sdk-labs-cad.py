@@ -3,6 +3,7 @@
 import argparse
 import datetime
 import hashlib
+import http.cookiejar
 import json
 import os
 from pathlib import Path
@@ -30,21 +31,28 @@ def main():
         def redirect_request(self, *_args, **_kwargs):
             return None
     opener = urllib.request.build_opener(NoRedirect())
+    class WebsiteRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, request, response, code, message, headers, url):
+            target = urllib.parse.urlsplit(url)
+            expected = urllib.parse.urlsplit(args.web)
+            if target.scheme != 'https' or target.netloc != expected.netloc:
+                return None
+            return super().redirect_request(request, response, code, message, headers, url)
+    browser_cookies = http.cookiejar.CookieJar()
+    website = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(browser_cookies), WebsiteRedirect())
     browser_session = None
     issued_browser_session = False
     def call(method, path, data=None, token=primary, extra=None, web=False):
         headers = {'Accept': 'application/json', 'X-OpenAgents-Test': '1'}
-        if token:
+        if token and (not web or not browser_session):
             headers['Authorization'] = 'Bearer ' + token
-            if web and browser_session:
-                headers['Cookie'] = 'oa_cloud_session=' + browser_session
         if data is not None:
             headers['Content-Type'] = 'application/json'
         headers.update(extra or {})
         request = urllib.request.Request((args.web if web else args.api).rstrip('/') + path,
             data=json.dumps(data).encode() if data is not None else None, headers=headers, method=method)
         try:
-            response = opener.open(request, timeout=100)
+            response = (website if web else opener).open(request, timeout=100)
         except urllib.error.HTTPError as error:
             response = error
         with response:
@@ -69,13 +77,16 @@ def main():
     try:
         if primary.startswith(('sess_', 'oa_sk_')):
             browser_session = primary
-            status, signed = call('GET', '/api/v1/session', token=primary, web=True)
         else:
             status, signed = call('POST', '/api/v1/sessions', token=primary, web=True)
             browser_session = signed.get('token') if status in (200, 201) else None
             issued_browser_session = bool(browser_session)
-        check('dedicated browser session', bool(browser_session and browser_session.startswith(('sess_', 'oa_sk_')))
-              and status in (200, 201) and signed.get('session', {}).get('account') == accounts[0])
+        assert browser_session and browser_session.startswith(('sess_', 'oa_sk_')), 'A dedicated browser credential is required'
+        browser_cookies.set_cookie(http.cookiejar.Cookie(0, 'oa_cloud_session', browser_session,
+            None, False, urllib.parse.urlsplit(args.web).hostname, False, False,
+            '/', True, True, None, True, None, None, {'HttpOnly': None}, False))
+        status, signed = call('GET', '/v1/account', token=browser_session)
+        check('dedicated browser session', status == 200 and signed['account']['id'] == accounts[0])
         status, body = call('POST', '/v1/projects', {'name': project_name})
         project = body.get('id') if status == 201 else None
         check('dedicated project', project is not None)
@@ -186,7 +197,7 @@ def main():
                 seen.add(cursor)
         if issued_browser_session:
             try:
-                if call('DELETE', '/api/v1/session', token=browser_session, web=True)[0] not in (200, 204):
+                if call('POST', '/v1/device/sign-out', {}, token=browser_session)[0] not in (200, 204):
                     failures.append('Browser session sign-out')
             except Exception:
                 failures.append('Browser session sign-out')
