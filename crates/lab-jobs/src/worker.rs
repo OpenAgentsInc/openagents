@@ -15,6 +15,7 @@ use std::{
 };
 
 const MAX_FILE: u64 = 12 * 1024 * 1024;
+const MAX_STATE: u64 = 32 * 1024 * 1024;
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub struct Error(pub &'static str);
@@ -61,7 +62,7 @@ struct Pending {
 pub struct Worker {
     config: Config,
     credential: Enrolled,
-    http: reqwest::Client,
+    sdk: openagents_sdk::labs::worker::Client,
     _lock: File,
 }
 fn now() -> u64 {
@@ -74,7 +75,7 @@ fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
     let metadata = file
         .metadata()
         .map_err(|_| Error("Read the worker settings file."))?;
-    if !metadata.is_file() || metadata.len() > MAX_FILE {
+    if !metadata.is_file() || metadata.len() > MAX_STATE {
         return Err(Error("Choose a smaller settings file."));
     }
     #[cfg(unix)]
@@ -88,6 +89,9 @@ fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
 }
 fn save(path: &Path, value: &impl Serialize) -> Result<()> {
     let bytes = serde_json::to_vec(value).map_err(|_| Error("Save the worker result."))?;
+    if bytes.len() as u64 > MAX_STATE {
+        return Err(Error("The worker result is too large to save."));
+    }
     let temp = path.with_extension("pending");
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
@@ -143,8 +147,12 @@ impl Worker {
         if !config.state.is_absolute() || !config.credential.is_absolute() {
             return Err(Error("Choose absolute worker file paths."));
         }
-        let url = reqwest::Url::parse(&config.origin)
-            .map_err(|_| Error("Choose the OpenAgents HTTPS address."))?;
+        let deployment = openagents_sdk::Deployment::new(
+            &format!("{}/v1/", config.origin.trim_end_matches('/')),
+            &config.origin,
+        )
+        .map_err(|_| Error("Choose the OpenAgents HTTPS address."))?;
+        let url = deployment.website();
         let loopback = matches!(
             url.host_str(),
             Some("localhost" | "127.0.0.1" | "[::1]" | "::1")
@@ -245,47 +253,21 @@ impl Worker {
                 return Err(Error("A private input has changed. Add it again."));
             }
         }
-        let http = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .connect_timeout(Duration::from_secs(5))
-            .timeout(Duration::from_secs(30))
-            .build()
-            .map_err(|_| Error("Start the worker connection."))?;
+        let transport = openagents_sdk::Client::with_timeouts(
+            deployment,
+            Duration::from_secs(5),
+            Duration::from_secs(30),
+        )
+        .map_err(|_| Error("Start the worker connection."))?;
+        let sdk = transport
+            .labs_worker(&credential.token)
+            .map_err(sdk_error)?;
         Ok(Self {
             config,
             credential,
-            http,
+            sdk,
             _lock: lock,
         })
-    }
-    async fn call<T: Serialize, R: DeserializeOwned>(&self, action: &str, body: &T) -> Result<R> {
-        let mut response = self
-            .http
-            .post(format!("{}/v1/labs/workers/{action}", self.config.origin))
-            .bearer_auth(&self.credential.token)
-            .json(body)
-            .send()
-            .await
-            .map_err(|_| Error("The worker could not reach OpenAgents."))?;
-        if !response.status().is_success() {
-            return Err(Error(if matches!(response.status().as_u16(), 401 | 403) {
-                "This worker no longer has permission. Add it again."
-            } else {
-                "OpenAgents could not accept this worker request."
-            }));
-        }
-        let mut bytes = Vec::new();
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .map_err(|_| Error("Read the worker response."))?
-        {
-            if bytes.len().saturating_add(chunk.len()) > MAX_FILE as usize {
-                return Err(Error("The worker response is too large."));
-            }
-            bytes.extend_from_slice(&chunk);
-        }
-        serde_json::from_slice(&bytes).map_err(|_| Error("Read the worker response."))
     }
     fn bound_work(&self, work: &protocol::Work, attempt: Option<&protocol::Attempt>) -> bool {
         let lease = &work.assignment.lease;
@@ -313,7 +295,10 @@ impl Worker {
             .result
             .as_ref()
             .ok_or(Error("Keep the unfinished job for review."))?;
-        let _: lab_kit::JobState = self.call("finish", result).await?;
+        self.sdk
+            .finish(result, &openagents_sdk::CancellationToken::new())
+            .await
+            .map_err(sdk_error)?;
         self.forget()
     }
     /// Resume a saved result without spawning its handler again. A crash after
@@ -339,9 +324,14 @@ impl Worker {
             self.finish(&mut pending).await?;
             return Ok(true);
         }
-        let available: protocol::Available = self
-            .call("poll", &protocol::Poll { wait_seconds: 25 })
-            .await?;
+        let available = self
+            .sdk
+            .poll(
+                &protocol::Poll { wait_seconds: 25 },
+                &openagents_sdk::CancellationToken::new(),
+            )
+            .await
+            .map_err(sdk_error)?;
         let Some(work) = available.work else {
             return Ok(false);
         };
@@ -371,7 +361,11 @@ impl Worker {
         // Once start may have been accepted, a reconnect must not repeat effects.
         pending.execution_marked = true;
         save(&self.pending_path(), &pending)?;
-        let work: protocol::Work = self.call("start", &attempt).await?;
+        let work = self
+            .sdk
+            .start(&attempt, &openagents_sdk::CancellationToken::new())
+            .await
+            .map_err(sdk_error)?;
         if !self.bound_work(&work, Some(&attempt)) || !work.assignment.lease.started {
             return Err(Error("Check this worker's job assignment."));
         }
@@ -477,7 +471,8 @@ impl Worker {
                     .min(deadline.saturating_duration_since(Instant::now()));
                 match tokio::time::timeout(
                     remaining,
-                    self.call::<_, protocol::Work>("heartbeat", attempt),
+                    self.sdk
+                        .heartbeat(attempt, &openagents_sdk::CancellationToken::new()),
                 )
                 .await
                 {
@@ -505,8 +500,32 @@ impl Worker {
         if result.outputs.len() > 16 {
             return Err(Error("The job produced too many files."));
         }
+        use base64::Engine;
+        let mut total = 0usize;
+        for output in &result.outputs {
+            if output.media_type.is_empty()
+                || output.media_type.len() > 128
+                || (work.requirements.private_local && output.role == lab_kit::ArtifactRole::Source)
+            {
+                return Err(Error("The job produced an unsupported output."));
+            }
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(&output.content_base64)
+                .map_err(|_| Error("The job produced an invalid output."))?;
+            total = total.saturating_add(bytes.len());
+            if total > 8 * 1024 * 1024 {
+                return Err(Error("The job produced too much output."));
+            }
+        }
         Ok(result.outputs)
     }
+}
+fn sdk_error(error: openagents_sdk::labs::Error) -> Error {
+    Error(if matches!(error.status(), Some(401 | 403)) {
+        "This worker no longer has permission. Add it again."
+    } else {
+        "The worker could not complete its request to OpenAgents."
+    })
 }
 fn bounded_read(mut source: impl Read, limit: u64) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();

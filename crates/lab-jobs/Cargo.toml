@@ -7,6 +7,8 @@ publish.workspace = true
 description = "Lab job placement, scoped workers, and bounded execution"
 
 [features]
+default = ["worker"]
+worker = ["dep:openagents-sdk"]
 schema = ["dep:schemars", "lab-kit/schema"]
 
 [dependencies]
@@ -15,10 +17,10 @@ fs2 = "0.4"
 libc = "0.2"
 lab-kit = { path = "../lab-kit" }
 lab-store = { path = "../lab-store" }
+openagents-sdk = { path = "../openagents-sdk", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 schemars = { version = "1", optional = true }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 sha2 = "0.10"
 thiserror = "2"
 tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
@@ -32,3 +34,8 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [lints]
 workspace = true
+
+[[bin]]
+name = "labs-worker"
+path = "src/bin/labs-worker.rs"
+required-features = ["worker"]

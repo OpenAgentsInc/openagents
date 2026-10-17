@@ -346,7 +346,12 @@ impl Client {
             job: request.job.clone(),
             attempt: request.attempt,
         })?;
-        if !request.status.finished() || request.outputs.len() > 16 {
+        if !matches!(
+            request.status,
+            lab_kit::JobStatus::Done | lab_kit::JobStatus::Failed | lab_kit::JobStatus::Uncertain
+        ) || request.outputs.len() > 16
+            || (request.status != lab_kit::JobStatus::Done && !request.outputs.is_empty())
+        {
             return Err(Error::InvalidInput);
         }
         use base64::Engine;
@@ -371,9 +376,7 @@ impl Client {
                 cancel,
             )
             .await?;
-        if value.id != request.job
-            || (!value.status.finished() && value.status != lab_kit::JobStatus::Uncertain)
-        {
+        if value.id != request.job || value.status != request.status {
             return Err(Error::InvalidResponse);
         }
         Ok(value)

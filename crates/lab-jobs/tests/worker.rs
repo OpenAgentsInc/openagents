@@ -1,5 +1,6 @@
 //! Real outbound HTTP and a real bounded child; all account/host state is under
 //! this fixture's temporary directory on the disposable qualification machine.
+#![cfg(feature = "worker")]
 use axum::{
     Json, Router,
     extract::State,

@@ -19,7 +19,7 @@ openagents-wallet = { path = "../wallet", default-features = false }
 openagents-x402 = { path = "../x402" }
 discovery = { path = "../discovery" }
 jev = { path = "../jev" }
-lab-jobs = { path = "../lab-jobs" }
+lab-jobs = { path = "../lab-jobs", default-features = false }
 lab-kit = { path = "../lab-kit" }
 lab-store = { path = "../lab-store" }
 # Decision jobs to connected Pylons over the relay (#11225).

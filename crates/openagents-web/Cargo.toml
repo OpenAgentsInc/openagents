@@ -11,7 +11,7 @@ default-run = "openagents-web"
 cad = { path = "../cad" }
 async-trait = "0.1"
 lab-api = { path = "../lab-api" }
-lab-jobs = { path = "../lab-jobs" }
+lab-jobs = { path = "../lab-jobs", default-features = false }
 lab-kit = { path = "../lab-kit" }
 lab-store = { path = "../lab-store" }
 sqlx-postgres = { version = "0.8.6", default-features = false, features = ["json"] }

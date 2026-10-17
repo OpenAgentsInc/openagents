@@ -7,4 +7,5 @@ pub use placement::{Capabilities, Decision, EffectiveRequirements, Placement, se
 pub mod coordinator;
 pub mod protocol;
 
+#[cfg(feature = "worker")]
 pub mod worker;
