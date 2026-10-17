@@ -350,6 +350,7 @@ impl SpaceDriver {
         // caller repeats the same request and waits for the original operation.
         let result = async {
             let mut request = operation.to_owned();
+            let mut authorized_retries = std::collections::BTreeSet::new();
             loop {
                 let accepted = if let Some(journal) = &self.lifecycle_journal {
                     match journal
@@ -364,6 +365,28 @@ impl SpaceDriver {
                             ));
                         }
                         LifecycleClaim::Rejected => {
+                            if let Some(next) = journal
+                                .authorized_retry(&request, computer, action)
+                                .await
+                                .map_err(|_| Error::unknown("couldn't read the retry authority"))?
+                            {
+                                if !next.strip_prefix("lifecycle-retry:").is_some_and(|suffix| {
+                                    suffix.len() == 64
+                                        && suffix.bytes().all(|b| {
+                                            b.is_ascii_digit() || (b'a'..=b'f').contains(&b)
+                                        })
+                                }) || next == request
+                                    || !authorized_retries.insert(next.clone())
+                                    || authorized_retries.len() > 8
+                                {
+                                    return Err(Error::unknown(
+                                        "the authorized retry chain is invalid",
+                                    ));
+                                }
+                                request = next;
+                                continue;
+                            }
+
                             if action == "delete"
                                 && matches!(self.observe(computer).await, Outcome::Done { value } if value.state == State::Gone)
                             {
@@ -908,11 +931,22 @@ impl Driver for SpaceDriver {
 }
 
 #[cfg(test)]
+#[path = "space/recovery_tests.rs"]
+mod recovery_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
     fn create_server(
         responses: Vec<(&'static str, u16, Value)>,
+    ) -> (SpaceDriver, std::thread::JoinHandle<()>) {
+        create_server_checked(responses, |_| {})
+    }
+
+    pub(super) fn create_server_checked(
+        responses: Vec<(&'static str, u16, Value)>,
+        check: impl Fn(&str) + Send + 'static,
     ) -> (SpaceDriver, std::thread::JoinHandle<()>) {
         use std::io::{Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -978,6 +1012,7 @@ mod tests {
                             })
                             .unwrap_or(0);
                         if request.len() >= end + 4 + length {
+                            check(headers);
                             assert_eq!(
                                 headers.lines().next().unwrap().split_whitespace().nth(1),
                                 Some(path)

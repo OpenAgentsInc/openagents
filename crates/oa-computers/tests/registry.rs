@@ -195,6 +195,9 @@ impl Driver for Simulated {
     }
 }
 
+#[path = "registry/lifecycle_retry.rs"]
+#[cfg(feature = "space")]
+mod lifecycle_retry;
 #[path = "registry/storage_allowance.rs"]
 mod storage_allowance;
 #[path = "registry/usage.rs"]

@@ -2,12 +2,37 @@
 use crate::Db;
 use computer_driver::space::{JournalFuture, LifecycleClaim, LifecycleJournal};
 
+mod recovery;
+pub use recovery::RetryRequest;
+
 #[derive(Clone)]
 pub struct Journal(pub Db);
 
 const UNAVAILABLE: &str = "The saved lifecycle request couldn't be read.";
 
 impl LifecycleJournal for Journal {
+    fn authorized_retry<'a>(
+        &'a self,
+        key: &'a str,
+        resource: &'a str,
+        action: &'a str,
+    ) -> JournalFuture<'a, Option<String>> {
+        Box::pin(async move {
+            let client = self.0.client().await.map_err(|_| UNAVAILABLE)?;
+            Ok(client
+                .query_opt(
+                    "SELECT r.next_operation FROM computers.lifecycle_retries r
+                JOIN computers.lifecycle_operations o ON o.operation=r.operation
+                WHERE r.operation=$1 AND r.resource=$2 AND r.action=$3
+                  AND o.resource=$2 AND o.action=$3 AND o.disposition='rejected'
+                  AND o.provider_operation IS NULL",
+                    &[&key, &resource, &action],
+                )
+                .await
+                .map_err(|_| UNAVAILABLE)?
+                .map(|row| row.get(0)))
+        })
+    }
     fn claim<'a>(
         &'a self,
         key: &'a str,

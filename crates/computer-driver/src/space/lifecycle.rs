@@ -3,7 +3,7 @@ use std::{future::Future, pin::Pin};
 
 pub type JournalFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, String>> + Send + 'a>>;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LifecycleClaim {
     Fresh,
     Accepted(String),
@@ -23,4 +23,13 @@ pub trait LifecycleJournal: Send + Sync {
     ) -> JournalFuture<'a, LifecycleClaim>;
     fn accepted<'a>(&'a self, key: &'a str, provider_operation: &'a str) -> JournalFuture<'a, ()>;
     fn rejected<'a>(&'a self, key: &'a str) -> JournalFuture<'a, ()>;
+    /// Optional operator authority for a new child of a definitively refused request.
+    fn authorized_retry<'a>(
+        &'a self,
+        _key: &'a str,
+        _computer: &'a str,
+        _action: &'a str,
+    ) -> JournalFuture<'a, Option<String>> {
+        Box::pin(async { Ok(None) })
+    }
 }

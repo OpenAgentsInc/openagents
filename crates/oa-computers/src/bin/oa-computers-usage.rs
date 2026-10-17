@@ -1,7 +1,7 @@
 //! Database-authorized operations for computer allocation limits and usage.
 use oa_computers::{Db, Store, usage::Limits};
 
-const USAGE: &str = "Use read ACCOUNT [AFTER], account-limits ACCOUNT FILE, service-limits FILE, economics FILE, account-cleanup ACCOUNT, account-cleanup-status ACCOUNT, storage-cleanup ACCOUNT FILE, or resolve ACCOUNT COMPUTER BOOT MAXIMUM_CPU_MS USED_CPU_MS REASON.";
+const USAGE: &str = "Use read ACCOUNT [AFTER], account-limits ACCOUNT FILE, service-limits FILE, economics FILE, account-cleanup ACCOUNT, account-cleanup-status ACCOUNT, storage-cleanup ACCOUNT FILE, lifecycle-retry ACCOUNT FILE, or resolve ACCOUNT COMPUTER BOOT MAXIMUM_CPU_MS USED_CPU_MS REASON.";
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, String> {
     use std::io::Read;
@@ -63,14 +63,36 @@ async fn run() -> Result<(), String> {
             | "account-cleanup"
             | "account-cleanup-status"
             | "storage-cleanup"
+            | "lifecycle-retry"
     ) {
         return Err(USAGE.into());
+    }
+    if command == "lifecycle-retry" && !cfg!(feature = "space") {
+        return Err("Build this command with SPACE support.".into());
     }
     let subject = argument(&mut args)?;
     let dsn = std::env::var("OA_COMPUTERS_DATABASE_URL")
         .map_err(|_| "Set OA_COMPUTERS_DATABASE_URL.".to_owned())?;
     let store = Store::new(Db::connect(&dsn).await.map_err(|e| e.to_string())?);
     match command.as_str() {
+        #[cfg(feature = "space")]
+        "lifecycle-retry" => {
+            let path = argument(&mut args)?;
+            if args.next().is_some() {
+                return Err("Too many arguments.".into());
+            }
+            let request = read_json(&path)?;
+            let next = store
+                .retry_rejected_lifecycle(&subject, &request)
+                .await
+                .map_err(|e| e.to_string())?;
+            println!(
+                "{}",
+                serde_json::json!({"authorized":true,"next_operation":next})
+            );
+        }
+        #[cfg(not(feature = "space"))]
+        "lifecycle-retry" => return Err("Build this command with SPACE support.".into()),
         "account-cleanup" | "account-cleanup-status" => {
             if args.next().is_some() {
                 return Err("Too many arguments.".into());

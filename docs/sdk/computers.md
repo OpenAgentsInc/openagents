@@ -148,6 +148,17 @@ time, saves an immutable receipt, and releases held capacity once. This is an
 operator inventory assertion, not remote attestation or automatic provider
 cleanup. Preserve unknown holds until that inventory is complete.
 
+With the `space` feature, an operator can run `lifecycle-retry ACCOUNT FILE`
+after fixing the cause of a definitively refused suspend, wake, or delete.
+The JSON file requires `computer`, `operation`, `resource`, `action`, and a
+nonempty `reason` without credentials or workload content. The command checks
+the account, current allocation, saved action, and refused outcome. It preserves
+the original receipt and authorizes one new child; duplicate requests return
+that same child. An accepted or uncertain request cannot be retried this way.
+Each original operation permits at most eight authorized children. A closed
+account cannot authorize wake. The updated SPACE driver must be deployed before
+this recovery can progress; the command does not call the provider itself.
+
 For an empty `POST` request, send `Content-Length: 0`. Cloud Run refuses a
 lengthless `POST` before it reaches the API. The server's internal transport
 sets this header for stop and wake; public SDK transports must do the same.

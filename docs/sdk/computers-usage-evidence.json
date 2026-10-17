@@ -488,5 +488,75 @@
       "Deploy through lane 0.",
       "Collect complete private storage inventory on the maintained deployment, including soft-deleted versions, then exercise quota and account cleanup with synthetic fixtures."
     ]
+  },
+  "lifecycle_retry_increment": {
+    "issue": "https://github.com/OpenAgentsInc/openagents/issues/11939",
+    "migration": "crates/oa-computers/migrations/0016_lifecycle_retries.sql",
+    "operator_command": "oa-computers-usage lifecycle-retry ACCOUNT FILE",
+    "requires_feature": "space",
+    "source_scope": "Explicit operator authority for at most eight child attempts after a saved definitive refusal. Original, accepted, and uncertain receipts stay unchanged.",
+    "deployed": false,
+    "live_qualified": false,
+    "pre_deploy_observation": {
+      "candidate_revision": "oa-space-service-computers-00002-pch",
+      "source": "0492600d791e873b51d4eab5edb2d1ef373db28d",
+      "cwc_state": "stopping",
+      "cwc_desired": "running",
+      "turns": 0,
+      "native_state": "running",
+      "saved_disposition": "rejected",
+      "saved_provider_operation": null,
+      "saved_created_at": "2026-10-17T03:39:20.316209Z",
+      "journal_edited": false,
+      "guest_command_submitted": false
+    },
+    "checks": {
+      "postgresql_recovery_cases_passed": 2,
+      "wire_cases_passed": 3,
+      "operator_cli": {
+        "operator_cli_replay": "passed",
+        "same_child_returned": true,
+        "accepted_child_retry_refused": true,
+        "invalid_input_omitted_from_errors": true,
+        "synthetic_disposable_database_only": true
+      },
+      "full_affected_crates": {
+        "earlier_combined_passed": 108,
+        "earlier_combined_scope": "Before the optional journal-method compatibility change.",
+        "final_driver_passed": 28,
+        "final_postgresql_passed": 3,
+        "failed": 0,
+        "default_build": "passed",
+        "format": "passed",
+        "note": "Final checks cover the additive journal method, wire behavior, durable authorization, and the default feature build."
+      },
+      "local_postgresql_container_removed": true,
+      "source_sha256": {
+        "crates/computer-driver/src/space.rs": "776fe3fb42efc4af1e10dce210820fd338fff41be6ed76fd6d0f5e8b11b90a5f",
+        "crates/computer-driver/src/space/lifecycle.rs": "bf6ce516b66b12ccb1225d1088f13f9398cab5da6e75f4b916827801052782fd",
+        "crates/oa-computers/src/lifecycle_operations.rs": "fde1a5c37f0ffa12f9ddfdb1ef776c603947ac03cc0809499c69842e9c6a338f",
+        "crates/oa-computers/src/lifecycle_operations/recovery.rs": "380e5f62e316296d935005ab1afffbd2ebc18c8754f573ef56beaacb59b7e682",
+        "crates/oa-computers/migrations/0016_lifecycle_retries.sql": "93454a74ac52cd8d30175ee509c5f3c01cb233f3a20dc6eb3935ae366248c192",
+        "deploy/oa-computers/Dockerfile": "2830e994d4bba7a11f9e8c2bb0fc1d9073ed40bfcb6a9820597e9898418e6635"
+      }
+    },
+    "after_close": {
+      "owner": "master delegation lane 0",
+      "steps": [
+        "Build and deploy the private candidate from checked main; the image now includes the operator binary.",
+        "Run the operator command under existing database authority for the synthetic account. Preserve the original rejected receipt.",
+        "Run saved encrypted checkpoint and resume helpers, collect memory/process and snapshot evidence, and update qualification status."
+      ],
+      "account": "space-qualification-11814",
+      "operator_request": {
+        "computer": "cmp_ef8caf1babae3b48ed87",
+        "operation": "10950749752a92fc3d55c7bec8c08543620dc74d241833e1bcd072870285de97",
+        "resource": "sbx_01a147d2-3f36-73c3-9094-f675567c2de4",
+        "action": "suspend",
+        "reason": "The bodyless Cloud Run framing defect is fixed; the saved request was refused before native API dispatch."
+      },
+      "expected_child": "lifecycle-retry:18c1a207eecb70830e1909aa86b6589bdb3a627f45fde7739d3fbc8ef8f936b9"
+    },
+    "customer_pricing": "not_enabled"
   }
 }
