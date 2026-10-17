@@ -98,6 +98,56 @@
       "line": 275
     },
     {
+      "path": "/v1/labs/agent/kinds",
+      "source": "crates/openagents-web/src/agent_lab.rs",
+      "line": 140
+    },
+    {
+      "path": "/v1/labs/agent/hosts",
+      "source": "crates/openagents-web/src/agent_lab.rs",
+      "line": 141
+    },
+    {
+      "path": "/v1/labs/agent/documents",
+      "source": "crates/openagents-web/src/agent_lab.rs",
+      "line": 142
+    },
+    {
+      "path": "/v1/labs/agent/documents/{id}",
+      "source": "crates/openagents-web/src/agent_lab.rs",
+      "line": 143
+    },
+    {
+      "path": "/v1/labs/agent/documents/{id}/jobs",
+      "source": "crates/openagents-web/src/agent_lab.rs",
+      "line": 147
+    },
+    {
+      "path": "/v1/labs/agent/documents/{id}/promote",
+      "source": "crates/openagents-web/src/agent_lab.rs",
+      "line": 148
+    },
+    {
+      "path": "/v1/labs/agent/jobs",
+      "source": "crates/openagents-web/src/agent_lab.rs",
+      "line": 149
+    },
+    {
+      "path": "/v1/labs/agent/jobs/{id}",
+      "source": "crates/openagents-web/src/agent_lab.rs",
+      "line": 150
+    },
+    {
+      "path": "/v1/labs/agent/jobs/{id}/actions",
+      "source": "crates/openagents-web/src/agent_lab.rs",
+      "line": 151
+    },
+    {
+      "path": "/v1/labs/agent/jobs/{id}/host",
+      "source": "crates/openagents-web/src/agent_lab.rs",
+      "line": 152
+    },
+    {
       "path": "/v1/openapi.json",
       "source": "crates/openagents-web/src/agent_ready.rs",
       "line": 108
@@ -1621,6 +1671,70 @@
     },
     {
       "pattern": "/v1/agents/credit",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/labs/agent/kinds",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/labs/agent/hosts",
+      "methods": [
+        "get",
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/labs/agent/documents",
+      "methods": [
+        "get",
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/labs/agent/documents/*",
+      "methods": [
+        "delete",
+        "get",
+        "put"
+      ]
+    },
+    {
+      "pattern": "/v1/labs/agent/documents/*/jobs",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/labs/agent/documents/*/promote",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/labs/agent/jobs",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/labs/agent/jobs/*",
+      "methods": [
+        "get"
+      ]
+    },
+    {
+      "pattern": "/v1/labs/agent/jobs/*/actions",
+      "methods": [
+        "post"
+      ]
+    },
+    {
+      "pattern": "/v1/labs/agent/jobs/*/host",
       "methods": [
         "post"
       ]
