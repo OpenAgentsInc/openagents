@@ -79,6 +79,8 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 1: harness and chats (critical path)
 
+**Taken 2026-10-16 22:21 CDT** by Codex working #11894, #11898, #11823 in `~/work/openagents-chat-bridge`.
+
 **Released 2026-10-16 22:16 CDT** by Codex after landing #11894 prerequisites `d944461951` and `b2ac4a07c6`. #11894, #11898, and #11823 remain open and free; see their handoff comments. The `~/work/openagents-push-lane` worktree is removed; targets `~/work/openagents-target-1` and `~/work/openagents-target-1-app` stay warm.
 
 - **Owns:** `crates/coder-delegate`, `crates/coder` (turn and delegate door), `crates/chat-home`, the Coder-facing API of `apps/openagents/crates/harness`, the continuation routes in `crates/openagents-web`, and `crates/openagents-sdk` history and continuation methods.
