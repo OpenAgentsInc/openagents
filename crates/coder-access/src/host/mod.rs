@@ -60,6 +60,16 @@ pub struct OperatePrincipal {
 /// Supplies effects and disclosures from other profiles after admission.
 /// `request` is the idempotency key for every effect.
 pub trait Dispatch: Send {
+    /// Resolve selected project labels from host configuration. Callers cannot
+    /// supply roots or turn project membership into host permission.
+    fn project_scope(
+        &mut self,
+        _account: &str,
+        _workspaces: &[String],
+    ) -> std::result::Result<crate::enrolled::Scope, Code> {
+        Err(Code::Unsupported)
+    }
+
     fn app_rpc(
         &mut self,
         _request: &str,
@@ -416,6 +426,9 @@ impl Dispatch for Unconnected {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct GrantRecord {
+    /// An owner-selected project-share expiry is an absolute deadline.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    fixed_expiry: bool,
     grant: Grant,
     authorization: Event,
     revoked_at: Option<u64>,
@@ -747,6 +760,7 @@ impl Host {
             .min(MAX_GRANT_LIFETIME);
         let newest = !book.grants.values().any(|r| {
             r.grant.device == device
+                && r.grant.scope == record.grant.scope
                 && r.grant.grant != grant
                 && current(r)
                 && r.grant.expires_at >= record.grant.expires_at
@@ -759,7 +773,8 @@ impl Host {
             <= lifetime;
         let issued_here =
             record.grant.origin.issuer == book.host || record.grant.origin.issuer == book.owner;
-        if record.grant.device != device
+        if record.fixed_expiry
+            || record.grant.device != device
             || record.grant.epoch != epoch
             || !current(&record)
             || !newest
@@ -801,6 +816,7 @@ impl Host {
         book.grants.insert(
             renewed.grant.clone(),
             GrantRecord {
+                fixed_expiry: record.fixed_expiry,
                 grant: renewed,
                 authorization: authorization.clone(),
                 revoked_at: None,
@@ -1174,6 +1190,18 @@ impl Host {
             .collect();
         dispatch.operate_snapshot(&book.owner, standing);
         Ok(match &request.op {
+            Operation::InviteProject { share } => {
+                match dispatch.project_scope(&share.account, &share.workspaces) {
+                    Ok(scope) => enroll::remote_project_invite(book, request, p, share, scope, now),
+                    Err(code) => Err(Error::new(code, "The projects could not be shared.")),
+                }
+            }
+            Operation::RevokeProject { grant } => {
+                revoke_project(book, grant, now).map(|()| Outcome::ProjectRevoked {
+                    grant: grant.clone(),
+                })
+            }
+
             Operation::Enrolled { computer } => {
                 let scope = p.scope.as_ref().ok_or_else(|| {
                     Error::new(Code::Forbidden, "Workspace permission is required.")
@@ -2076,6 +2104,26 @@ fn devices(book: &Book, now: u64) -> Vec<DeviceEntry> {
         .collect()
 }
 
+/// Revoke one invitation's scoped grant family, including its renewals.
+/// Other project grants on the same device keep their epoch and rights.
+fn revoke_project(book: &mut Book, id: &str, now: u64) -> Result<()> {
+    let grant = book
+        .grants
+        .get(id)
+        .filter(|record| record.grant.scope.is_some())
+        .map(|record| record.grant.clone())
+        .ok_or_else(|| Error::new(Code::Forbidden, "This project share is not available."))?;
+    for record in book.grants.values_mut() {
+        if record.grant.device == grant.device
+            && record.grant.scope == grant.scope
+            && record.grant.origin == grant.origin
+        {
+            record.revoked_at.get_or_insert(now);
+        }
+    }
+    Ok(())
+}
+
 fn revoke(
     book: &mut Book,
     device: &str,
@@ -2153,10 +2201,10 @@ fn issue_scoped(
     let handed_on: Vec<String> = book
         .grants
         .values()
-        .filter(|r| r.grant.device == device && live(r))
+        .filter(|r| r.grant.device == device && r.grant.scope == scope && live(r))
         .map(|r| r.grant.grant.clone())
         .collect();
-    make_room(book, device, now)?;
+    make_room(book, device, scope.as_ref(), now)?;
     let grant = Grant {
         v: GRANT.into(),
         requires: scope
@@ -2178,16 +2226,18 @@ fn issue_scoped(
     // The caller validated the relay under the host's policy; this checks shape.
     grant.validate(RelayPolicy::LoopbackTest)?;
     let authorization = seal(&grant, GRANT, secret, device, &grant.grant, now, expires_at)?;
+    let current = grant.clone();
     book.grants.insert(
         grant.grant.clone(),
         GrantRecord {
+            fixed_expiry: false,
             grant,
             authorization: authorization.clone(),
             revoked_at: None,
             seen_at: None,
         },
     );
-    reparent(book, device, &handed_on);
+    reparent(book, device, &handed_on, &current);
     Ok(authorization)
 }
 
@@ -2203,7 +2253,7 @@ fn named_grants(book: &Book) -> std::collections::BTreeSet<String> {
 }
 
 /// Make room for a new grant to `device`, whose earlier grants the new
-/// grant supersedes: one device key holds one grant. A superseded grant is revoked in the same commit as the
+/// grant supersedes within the same account and root scope. A superseded grant is revoked in the same commit as the
 /// new grant and leaves the book once no retained record names it. The
 /// device's epoch does not advance, so the new grant is current and grants
 /// that other devices hold, including ones this device delegated, are
@@ -2216,12 +2266,17 @@ fn named_grants(book: &Book) -> std::collections::BTreeSet<String> {
 ///
 /// # Errors
 /// Refuses with `Bounds` when every retained grant is live or named.
-fn make_room(book: &mut Book, device: &str, now: u64) -> Result<()> {
+fn make_room(
+    book: &mut Book,
+    device: &str,
+    scope: Option<&crate::enrolled::Scope>,
+    now: u64,
+) -> Result<()> {
     let named = named_grants(book);
     let superseded: Vec<String> = book
         .grants
         .values()
-        .filter(|r| r.grant.device == device)
+        .filter(|r| r.grant.device == device && r.grant.scope.as_ref() == scope)
         .map(|r| r.grant.grant.clone())
         .collect();
     let dead = |id: &str, r: &GrantRecord| {
@@ -2295,20 +2350,12 @@ fn evict_one_dead(book: &mut Book, now: u64) -> bool {
 /// it holds `access_admin`, every invited right, and outlives the invited
 /// grant. Any other such invitation stays on its superseded grant and is
 /// refused as `revoked` at redemption.
-fn reparent(book: &mut Book, device: &str, handed_on: &[String]) {
+fn reparent(book: &mut Book, device: &str, handed_on: &[String], current: &Grant) {
     if handed_on.is_empty() {
         return;
     }
-    let Some(current) = book
-        .grants
-        .values()
-        .find(|r| r.grant.device == device && r.revoked_at.is_none())
-        .map(|r| r.grant.clone())
-    else {
-        return;
-    };
     for invitation in book.invitations.values_mut() {
-        invitation.reparent(device, handed_on, &current);
+        invitation.reparent(device, handed_on, current);
     }
 }
 

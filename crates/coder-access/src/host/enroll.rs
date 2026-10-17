@@ -12,6 +12,8 @@ const MAX_ENROLLMENT_RECIPIENTS: usize = 16;
 pub(super) struct InvitationRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     scope: Option<crate::enrolled::Scope>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    device: Option<String>,
     capability_digest: String,
     relay: String,
     issued_at: u64,
@@ -312,7 +314,16 @@ impl Host {
         {
             return fail(Code::Forbidden, "invitation capability or relay differs");
         }
-        let state = if signer == book.owner || signer == book.host {
+        let state = if record
+            .device
+            .as_deref()
+            .is_some_and(|device| device != signer)
+        {
+            Err(Error::new(
+                Code::Forbidden,
+                "This invitation belongs to another device.",
+            ))
+        } else if signer == book.owner || signer == book.host {
             Err(Error::new(
                 Code::Forbidden,
                 "owner and host keys cannot redeem",
@@ -396,6 +407,15 @@ impl Host {
                 }
             }
         };
+        if record.device.is_some() {
+            if let Some(grant) = authorization
+                .tag_values("h")
+                .next()
+                .and_then(|id| book.grants.get_mut(id))
+            {
+                grant.fixed_expiry = true;
+            }
+        }
         let stored = book.invitations.get_mut(id).expect("validated invitation");
         stored.grant = authorization.tag_values("h").next().map(str::to_owned);
         stored.replies += 1;
@@ -436,6 +456,7 @@ fn create_invitation(
         invitation.id.clone(),
         InvitationRecord {
             scope: None,
+            device: None,
             capability_digest: digest_bytes(invitation.capability().as_bytes()),
             relay: relay.into(),
             issued_at: now,
@@ -491,6 +512,40 @@ pub(super) fn remote_invite(
         code: issued.code,
         expires_at: issued.expires_at,
     })
+}
+
+pub(super) fn remote_project_invite(
+    book: &mut Book,
+    request: &Request,
+    p: &Principal,
+    share: &crate::sharing::Invite,
+    scope: crate::enrolled::Scope,
+    now: u64,
+) -> Result<Outcome> {
+    share.validate()?;
+    scope.validate(&share.rights)?;
+    let mut labels = scope
+        .roots
+        .iter()
+        .map(|root| root.workspace.clone())
+        .collect::<Vec<_>>();
+    labels.sort();
+    if scope.account != share.account || labels != share.workspaces {
+        return fail(
+            Code::Forbidden,
+            "The shared projects do not match the request.",
+        );
+    }
+    let outcome = remote_invite(book, request, p, &share.rights, share.expires_at, now)?;
+    if let Outcome::Invitation { invitation, .. } = &outcome {
+        let record = book
+            .invitations
+            .get_mut(invitation)
+            .expect("created invitation");
+        record.scope = Some(scope);
+        record.device = Some(share.device.clone());
+    }
+    Ok(outcome)
 }
 
 pub(super) fn cancel(book: &mut Book, id: &str) -> std::result::Result<Outcome, Error> {

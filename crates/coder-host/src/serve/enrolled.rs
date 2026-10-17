@@ -97,6 +97,23 @@ impl Manager {
         }))
     }
 
+    pub(super) fn scope(&self, account: &str, workspaces: &[String]) -> Result<Scope, Code> {
+        let roots = workspaces
+            .iter()
+            .map(|label| {
+                self.roots
+                    .get(label)
+                    .map(|path| (label.clone(), path.clone()))
+                    .ok_or(Code::Forbidden)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let scope = Scope::local(account, &roots).map_err(|error| error.code)?;
+        for root in &scope.roots {
+            self.files(root)?;
+        }
+        Ok(scope)
+    }
+
     fn open(&self) -> Result<(Store, Book), Code> {
         let store = Store::open(&self.directory, false).map_err(unavailable)?;
         let book = store

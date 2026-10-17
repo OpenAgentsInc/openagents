@@ -309,6 +309,26 @@ retries from disclosing it. The host bounds admitted replies to 32 per
 invitation. Uncertain persistence returns no reply. An unused invitation can
 be cancelled; a redeemed one needs device revocation.
 
+### Owner-approved project sharing
+
+A host advertising `project-sharing-v1` accepts `project.invite` from a current
+`access_admin` device. The request names the recipient account and device key,
+sorted host-configured workspace labels, `observe` with optional `operate`, and
+an absolute expiry. The host resolves the roots from its own configuration;
+no caller path becomes a grant root. The one-use invitation can be redeemed
+only by the named device. Its grant uses the workspace-scope required feature.
+The host never renews this grant past the owner's selected expiry.
+
+`project.revoke` names a scoped grant ID and revokes that invitation's grant
+family, including renewals. Other project grants on the same device keep their
+rights and epoch. A new project share does not replace unrelated scopes.
+Existing device-wide revocation remains a separate operation.
+
+Scoped guests cannot create invitations, administer accounts, use host-wide
+reads or tasks, open raw terminals, or call the general app RPC surface.
+Project membership alone admits none of these operations. An unsupported host
+must refuse sharing; clients must not retry it as a broad device invitation.
+
 ## Enrollment over iroh
 
 A host with an iroh endpoint accepts redemption on the ALPN

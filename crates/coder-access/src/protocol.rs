@@ -563,6 +563,10 @@ pub struct TaskQueue {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
 pub enum Operation {
+    #[serde(rename = "project.invite")]
+    InviteProject { share: crate::sharing::Invite },
+    #[serde(rename = "project.revoke")]
+    RevokeProject { grant: String },
     #[serde(rename = "app.rpc")]
     AppRpc { app: crate::app_rpc::Request },
     #[serde(rename = "computer.enrolled")]
@@ -1250,6 +1254,8 @@ impl Operation {
     pub fn name(&self) -> &'static str {
         match self {
             Self::AppRpc { .. } => "app.rpc",
+            Self::InviteProject { .. } => "project.invite",
+            Self::RevokeProject { .. } => "project.revoke",
             Self::Enrolled { .. } => "computer.enrolled",
             Self::CloudProjects { .. } => "cloud.projects",
             Self::ProjectList { .. } => "project.list",
@@ -1357,6 +1363,7 @@ impl Operation {
     pub fn required(&self) -> Option<Right> {
         match self {
             Self::AppRpc { app } => Some(app.method.right()),
+            Self::InviteProject { .. } | Self::RevokeProject { .. } => Some(Right::AccessAdmin),
             Self::Enrolled { computer } => Some(computer.required()),
             Self::RobotLab { robot } => Some(if robot.reads_only() {
                 Right::Observe
@@ -1466,6 +1473,8 @@ impl Operation {
     pub fn validate(&self) -> Result<()> {
         match self {
             Self::AppRpc { app } => app.validate()?,
+            Self::InviteProject { share } => share.validate()?,
+            Self::RevokeProject { grant } => identity(grant).map_err(Error::from)?,
             Self::Enrolled { computer } => computer.validate()?,
             Self::CloudProjects { workspace } => crate::cloud::alias(workspace)?,
             Self::ProjectList { workspace } => crate::cloud::alias(workspace)?,
@@ -1896,6 +1905,9 @@ pub struct Receipt {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Outcome {
+    ProjectRevoked {
+        grant: String,
+    },
     AppRpc {
         app: crate::app_rpc::Answer,
     },
@@ -2131,6 +2143,7 @@ impl Outcome {
         }
         match self {
             Self::AppRpc { app } => app.validate()?,
+            Self::ProjectRevoked { grant } => identity(grant).map_err(Error::from)?,
             Self::Enrolled { computer } => computer.validate()?,
             Self::CloudProjects { projects } => projects.validate()?,
             Self::ProjectList { projects } => projects.validate()?,
@@ -2344,6 +2357,10 @@ impl Outcome {
     /// Whether this outcome is the one the operation can produce.
     pub fn answers(&self, op: &Operation) -> bool {
         match (op, self) {
+            (Operation::InviteProject { .. }, Self::Invitation { .. }) => true,
+            (Operation::RevokeProject { grant }, Self::ProjectRevoked { grant: answer }) => {
+                grant == answer
+            }
             (Operation::AppRpc { app: request }, Self::AppRpc { app }) => app.answers(request),
             (Operation::Enrolled { computer }, Self::Enrolled { computer: answer }) => {
                 answer.answers(computer)

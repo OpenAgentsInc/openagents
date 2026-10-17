@@ -297,3 +297,121 @@ async fn account_host_rights_revocation_and_unsupported_features_refuse_before_e
     assert!(!f.temp.path().join("project/denied").exists());
     f.finish().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_owner_phone_can_share_only_configured_projects_and_revoke_one_share() {
+    let f = Fixture::new("observe,operate").await;
+    let now = coder_access::unix_time().unwrap();
+    let admin_key = key();
+    let code = f
+        .host
+        .invite(f.device.relay(), Rights::pairing(), now, now + 86400)
+        .unwrap()
+        .code;
+    let access = coder_access::client::redeem(&code, &admin_key, POLICY)
+        .await
+        .unwrap();
+    let admin = Arc::new(Device::new(access, admin_key, POLICY).unwrap());
+    let address = f.running.local_addr();
+    let owner = Link::direct(
+        admin,
+        tokio::net::TcpStream::connect(address).await.unwrap(),
+        address.to_string(),
+        1,
+        Duration::from_secs(3),
+    )
+    .await
+    .unwrap();
+    let guest_key = key();
+    let request = coder_access::sharing::Invite {
+        account: "guest-account".into(),
+        device: coder_host::reach::pubkey(&guest_key),
+        workspaces: vec!["project".into()],
+        rights: Rights::parse_list("observe,operate").unwrap(),
+        expires_at: now + 86400,
+    };
+    let mut wrong = request.clone();
+    wrong.workspaces = vec!["../private".into()];
+    assert!(
+        matches!(owner.call(Operation::InviteProject {share:wrong}).await,Err(coder_host::Error::Access(error)) if error.code==Code::Forbidden)
+    );
+    let coder_access::Outcome::Invitation { code, .. } = owner
+        .call(Operation::InviteProject { share: request })
+        .await
+        .unwrap()
+    else {
+        panic!("no invitation")
+    };
+    assert_eq!(
+        coder_access::client::redeem(&code, &key(), POLICY)
+            .await
+            .unwrap_err()
+            .code,
+        Code::Forbidden
+    );
+    let access = coder_access::client::redeem(&code, &guest_key, POLICY)
+        .await
+        .unwrap();
+    assert_eq!(
+        access.grant.scope.as_ref().unwrap().roots[0].path,
+        f.temp
+            .path()
+            .join("project")
+            .canonicalize()
+            .unwrap()
+            .to_str()
+            .unwrap()
+    );
+    let grant = access.grant.grant.clone();
+    let guest = Arc::new(Device::new(access, guest_key, POLICY).unwrap());
+    let driver = Enrolled::new(
+        HostTransport::relay(guest.clone()),
+        "guest-account",
+        guest.host(),
+        "project",
+    )
+    .unwrap();
+    let computer = done(
+        driver
+            .create(&CreateRequest {
+                operation: "guest-attach".into(),
+                ..Default::default()
+            })
+            .await,
+    );
+    assert_eq!(
+        done(
+            driver
+                .exec(&computer, &Exec::new("printf guest > shared-file"))
+                .await
+        )
+        .code,
+        0
+    );
+    owner
+        .call(Operation::RevokeProject { grant })
+        .await
+        .unwrap();
+    assert!(matches!(
+        driver.observe(&computer).await,
+        Outcome::Failed { .. }
+    ));
+    let original = f.driver(HostTransport::relay(f.device.clone()));
+    let computer = done(
+        original
+            .create(&CreateRequest {
+                operation: "original-still-shared".into(),
+                ..Default::default()
+            })
+            .await,
+    );
+    assert_eq!(
+        original
+            .read_workspace_file(&computer, "shared-file")
+            .await
+            .unwrap(),
+        b"guest"
+    );
+    assert!(coder_host::CAPABILITIES.contains(&coder_access::sharing::CAPABILITY));
+    f.finish().await;
+}

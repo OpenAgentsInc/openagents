@@ -20,6 +20,8 @@ mod flows;
 #[path = "../../../coder-control/src/tests/relay.rs"]
 mod relay;
 mod renew;
+#[cfg(unix)]
+mod sharing;
 mod studio;
 mod supersede;
 mod task_controls;

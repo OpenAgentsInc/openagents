@@ -255,6 +255,22 @@ pub(crate) fn chat_invitation(config: &crate::config::Config) -> Result<(String,
 }
 
 impl Dispatch for Dispatcher {
+    fn project_scope(
+        &mut self,
+        account: &str,
+        workspaces: &[String],
+    ) -> Result<coder_access::enrolled::Scope, Code> {
+        #[cfg(unix)]
+        {
+            self.shared.enrolled.scope(account, workspaces)
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (account, workspaces);
+            Err(Code::Unsupported)
+        }
+    }
+
     fn app_rpc(
         &mut self,
         request: &str,

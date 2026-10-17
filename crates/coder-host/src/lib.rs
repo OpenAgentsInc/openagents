@@ -99,7 +99,9 @@ pub const PROTOCOL_VERSION: u32 = coder_reach::PROTOCOL_VERSION;
 /// `term-shares` says a device with `terminal` can share one terminal with
 /// another device key to watch or drive; `term-sessions` says the host keeps
 /// session records with their members and default layout across restarts.
-pub const CAPABILITIES: [&str; 13] = [
+pub const CAPABILITIES: [&str; 13 + cfg!(unix) as usize] = [
+    #[cfg(unix)]
+    coder_access::sharing::CAPABILITY,
     "activity-summary",
     "direct-tcp",
     "relay-control",
