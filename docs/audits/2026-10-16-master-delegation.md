@@ -377,6 +377,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 **#11852 Cloud computers: run the headless engine on a computer, so the phone works without a desktop.** Lane 8.
 - **Status:** closed. Server and SDK source is on `main` in `3063ab036c`, `1cdf329dfc`, `048005fe73`, and `4a796e8ff8`; phone controls and the local acceptance fixture are `d37ed99d0c` and `a67ec60b44`.
+- **Finding:** cloud computers suspend after every command, so the engine runs as one command of up to an hour.
 - **Checks:** mobile tests passed (57, one existing ignored), the normal simulator core and native app built, and the local UI-to-SDK fixture passed start, status, stop, and sign-out with exactly one start and stop.
 - **After-close:** the deployed dedicated-account run, usage and deletion checks, and TestFlight release are listed below.
 
@@ -387,7 +388,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 **#11854 Carry the device channel over NIP-HOST, with Nostr device proofs.** Lane 8.
 - **Status:** source is complete in `ca2be8e8dc`, `f99a91e211`, `becca883a3`, and `496773ac8e` through `02b7564692`. The optional app channel uses the existing host and connector, account-scoped keys, explicit phone pairing, admitted unary RPCs, stable command IDs, and exact-request NIP-98 proofs. Sync checks registered host keys and current grants; proved sockets expire independently of account checks. The existing Loro transcript path and default WebSocket route remain in use.
-- **Checks:** access 125, host 118, control 16, chat 198 (one existing ignored), ledger 31; app client 26, engine 516 (two existing ignored), mobile 57 (one existing ignored), RPC 18, sync 73; sync service 3 and isolated PostgreSQL auth conformance 4 passed. Normal iOS simulator core generation and native build-for-testing passed. The [NIP-HOST profile](../../nips/openagents/NIP-HOST.md#local-latency-comparison) records a 30-call-per-route local comparison with no failures; the deployed comparison is still required before changing defaults.
+- **Checks:** access 125, host 118, control 16, chat 198 (one existing ignored), ledger 31; app client 26, engine 519 (two existing ignored), mobile 58 (one existing ignored), RPC 18, sync 73; sync service 3 and isolated PostgreSQL auth conformance 4 passed. Normal iOS simulator core generation and native build-for-testing passed. The archived Docker build context resolves with the locked Linux dependencies and includes the embedded Nostr schemas. The [NIP-HOST profile](../../nips/openagents/NIP-HOST.md#local-latency-comparison) records a 30-call-per-route local comparison with no failures; the deployed comparison is still required before changing defaults.
 - **After-close:** lane 0 deploys the server and runs the dedicated-account, device, revocation, expiry, fallback, and deployed latency checks listed below.
 
 ### Signet, LND, and LayerTree
