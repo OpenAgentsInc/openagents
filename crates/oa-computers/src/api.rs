@@ -414,16 +414,28 @@ async fn create(
     }
     // The front door names a free-allowance account (#11981). Enrolling it
     // only adds limits; its own operator policy, when it has one, still wins.
+    // `free-attested` is the smaller tier of a key-only account on an
+    // attested phone install (#11994).
     if let Some(allowance) = headers.get(ALLOWANCE_HEADER) {
-        if allowance.as_bytes() != b"free" || headers.get_all(ALLOWANCE_HEADER).iter().count() != 1
-        {
+        let tier = match allowance.as_bytes() {
+            b"free" => crate::usage::FreeTier::Full,
+            b"free-attested" => crate::usage::FreeTier::Attested,
+            _ => {
+                return err(
+                    StatusCode::BAD_REQUEST,
+                    "invalid",
+                    "The allowance is invalid.",
+                );
+            }
+        };
+        if headers.get_all(ALLOWANCE_HEADER).iter().count() != 1 {
             return err(
                 StatusCode::BAD_REQUEST,
                 "invalid",
                 "The allowance is invalid.",
             );
         }
-        match api.store.enroll_free(&owner).await {
+        match api.store.enroll_free_tier(&owner, tier).await {
             Ok(true) => body.free_allowance = true,
             Ok(false) => {
                 return err(

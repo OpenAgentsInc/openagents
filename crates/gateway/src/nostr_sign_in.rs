@@ -7,7 +7,9 @@
 //!   `{"app", "computer"}`: the same 30-day app session a device sign-in
 //!   issues. A new key makes its account and personal workspace on
 //!   `signup_tenant`; there is no invite list or sign-up switch here, the
-//!   key is the account.
+//!   key is the account. A new key passes `crate::key_accounts` first:
+//!   `app_attest` (`{key_id, attestation}`) from the phone, or `pow`, a
+//!   proof of work over the challenge, under daily caps (#11994).
 //! - `GET /v1/account/keys/challenge`, `GET` and `POST /v1/account/keys`,
 //!   and `DELETE /v1/account/keys/{pubkey}`, as a session: the account's
 //!   keys, adding one with a proof the new key signed, and removing one
@@ -112,7 +114,25 @@ async fn sign_in(
         Err(response) => return response,
     };
     let authorization = headers.get("authorization").and_then(|v| v.to_str().ok());
-    answer(auth.sign_in(host(&headers), &tenant, authorization, &body, unix_now()))
+    // A key with no account passes the key-account limits first (#11994):
+    // App Attest from the phone, or a proof of work and the daily caps.
+    let mut gate = state.key_accounts.gate(&headers);
+    let answered = auth.sign_in_gated(
+        host(&headers),
+        &tenant,
+        authorization,
+        &body,
+        unix_now(),
+        &mut gate,
+    );
+    let wait = answered.body["error"]["retry_after"].as_u64();
+    let mut response = answer(answered);
+    if let Some(wait) = wait
+        && let Ok(value) = axum::http::HeaderValue::from_str(&wait.to_string())
+    {
+        response.headers_mut().insert("retry-after", value);
+    }
+    response
 }
 
 /// `GET /v1/account/keys/challenge`: a challenge for adding a key to the

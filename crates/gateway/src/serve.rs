@@ -224,6 +224,8 @@ pub struct ServeState {
     /// Agents registering themselves (#11630), present when
     /// `accounts.agents` is configured.
     pub(crate) agents: Option<crate::agent_accounts::Agents>,
+    /// Limits for key-only accounts (#11994).
+    pub(crate) key_accounts: crate::key_accounts::KeyState,
 }
 
 impl ServeState {
@@ -431,6 +433,15 @@ impl ServeState {
             ),
             None => None,
         };
+        let key_accounts = crate::key_accounts::KeyState::open(
+            &config.registry,
+            config
+                .accounts
+                .as_ref()
+                .map(|accounts| accounts.key_accounts.clone())
+                .unwrap_or_default(),
+        )
+        .map_err(Trouble::Money)?;
         let inference_book = inference_book.map(Mutex::new);
         let provider_keys = config
             .inference
@@ -521,6 +532,7 @@ impl ServeState {
             job_cancels: Mutex::new(HashMap::new()),
             decisions,
             agents,
+            key_accounts,
         });
         Ok(state)
     }

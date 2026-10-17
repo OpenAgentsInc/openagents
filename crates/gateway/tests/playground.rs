@@ -84,6 +84,7 @@ async fn deploy() -> Deployment {
             database_url_env: String::new(),
             import_files: false,
             agents: None,
+            key_accounts: Default::default(),
         }),
         billing: None,
         funding: None,

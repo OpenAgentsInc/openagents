@@ -5,6 +5,9 @@
 //! - [`apple`]: Sign in with Apple for the phone: identity-token checks
 //!   against Apple's keys, then the same app session a device sign-in
 //!   issues (#11980).
+//! - [`attest`]: App Attest for key accounts made on the iPhone: Apple's
+//!   attestation and assertion checks, and which account each attested key
+//!   belongs to (#11994).
 //! - [`config`]: the OAuth App settings and the private credentials file.
 //! - [`flow`]: the browser half (state, PKCE verifier, `return_to`), used
 //!   by the web server's `/auth/github` and `/auth/github/callback`.
@@ -26,6 +29,7 @@
 
 pub mod app;
 pub mod apple;
+pub mod attest;
 pub mod cache;
 pub mod config;
 pub mod device;

@@ -660,6 +660,12 @@ pub struct Accounts {
     /// Needs `signup_tenant`.
     #[serde(default)]
     pub agents: Option<AgentSignup>,
+    /// Limits for accounts that sign in with only a Nostr key (#11994,
+    /// `crate::key_accounts`): App Attest, the unattested sign-up limits,
+    /// and the daily breaker on their free use. Left out, the defaults
+    /// apply.
+    #[serde(default)]
+    pub key_accounts: crate::key_accounts::KeyAccounts,
 }
 
 /// Agent self-registration and what an agent account may use for free

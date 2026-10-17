@@ -33,6 +33,10 @@ const MIGRATIONS: &[(i32, &str)] = &[
     ),
     (16, include_str!("../migrations/0016_lifecycle_retries.sql")),
     (17, include_str!("../migrations/0017_free_allowance.sql")),
+    (
+        18,
+        include_str!("../migrations/0018_free_allowance_tiers.sql"),
+    ),
 ];
 
 #[derive(Debug)]
