@@ -8,7 +8,7 @@ description = "Shared Rust Native Lab cards and typed navigation"
 
 [dependencies]
 lab-kit = { path = "../lab-kit" }
-rust-native = { path = "../rust-native" }
+rust-native = { path = "../rust-native", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

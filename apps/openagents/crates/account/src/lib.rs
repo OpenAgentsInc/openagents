@@ -16,6 +16,7 @@ pub mod chat_entries;
 pub mod dashboard;
 pub mod desktop;
 pub mod history;
+pub mod lab_cards;
 mod platform;
 pub mod reader;
 pub mod turns;

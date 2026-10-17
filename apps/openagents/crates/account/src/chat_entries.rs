@@ -5,7 +5,24 @@ use openagents_proto::ToolCall;
 
 /// Adapt content without importing executable harness state or following embedded URLs.
 pub fn entries(messages: &[SavedMessage], generation: u64) -> Vec<SessionMessageEntry> {
-    make_entries(messages, generation, None)
+    make_entries(messages, generation, None, false)
+}
+/// [`entries`] with a Lab card row for each typed card (`lab-card:` visual
+/// parts, see [`crate::lab_cards`]), for a client that draws them.
+pub fn entries_with_lab_rows(
+    messages: &[SavedMessage],
+    generation: u64,
+    chat: Option<&crate::openagents::ChatRef>,
+) -> Vec<SessionMessageEntry> {
+    let url = chat.and_then(chat_url);
+    make_entries(messages, generation, url.as_deref(), true)
+}
+fn chat_url(chat: &crate::openagents::ChatRef) -> Option<String> {
+    chat.deployment()
+        .website()
+        .join(&format!("chat/{}", chat.id()))
+        .ok()
+        .map(|u| u.to_string())
 }
 /// Card links use the authenticated chat's deployment, never a URL supplied by a card.
 pub fn entries_for_chat(
@@ -13,17 +30,14 @@ pub fn entries_for_chat(
     generation: u64,
     chat: &crate::openagents::ChatRef,
 ) -> Vec<SessionMessageEntry> {
-    let url = chat
-        .deployment()
-        .website()
-        .join(&format!("chat/{}", chat.id()))
-        .ok();
-    make_entries(messages, generation, url.as_ref().map(|u| u.as_str()))
+    let url = chat_url(chat);
+    make_entries(messages, generation, url.as_deref(), false)
 }
 fn make_entries(
     messages: &[SavedMessage],
     generation: u64,
     chat_url: Option<&str>,
+    lab_rows: bool,
 ) -> Vec<SessionMessageEntry> {
     messages
         .iter()
@@ -76,9 +90,20 @@ fn make_entries(
                     subagent_tail: None,
                 });
             }
+            // Typed Lab cards (#11883) become one row each, drawn by the
+            // desktop's Lab row; the older reply cards stay links.
+            let lab_cards = if lab_rows { &message.cards[..] } else { &[] };
+            for (index, saved) in lab_cards.iter().take(16).enumerate() {
+                parts.push(MessagePart::Visual {
+                    id: format!("{id}-lab-{index}"),
+                    path: crate::lab_cards::card_path(generation, &message.id, index),
+                    title: saved.card.title.clone(),
+                });
+            }
             if let Some(cards) = message
                 .extra
                 .get("reply")
+                .filter(|_| lab_cards.is_empty())
                 .and_then(|r| r.get("cards"))
                 .and_then(|c| c.as_array())
             {

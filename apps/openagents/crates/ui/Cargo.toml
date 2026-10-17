@@ -70,6 +70,8 @@ openagents-brand.workspace = true
 openagents-account.workspace = true
 openagents-background.workspace = true
 openagents-dashboard = { path = "../../../../crates/openagents-dashboard", features = ["views"] }
+lab-kit = { path = "../../../../crates/lab-kit" }
+lab-ui = { path = "../../../../crates/lab-ui" }
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
 gethostname.workspace = true
 openagents-voice-media.workspace = true

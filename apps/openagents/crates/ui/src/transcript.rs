@@ -6687,6 +6687,9 @@ impl Transcript {
         title: &str,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        if let Some(row) = self.render_lab_row(row_id, path, cx) {
+            return row;
+        }
         let link_ui = self.link_ui(cx);
         let frame = match self.visuals.get(row_id) {
             Some(frame) => frame.clone(),

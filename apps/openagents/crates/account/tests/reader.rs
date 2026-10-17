@@ -87,8 +87,29 @@ async fn messages(
     assert!(limit <= 200);
     let count = s.count.load(Ordering::SeqCst);
     let end = (start + limit).min(count);
-    let data:Vec<_>=(start..end).map(|n|json!({"id":format!("msg_{n}"),"role":match n{0=>"user",1=>"thinking",2=>"tool",3=>"future-role",_=>"assistant"},"text":if n==0{"# Saved question\n\n**Markdown** and `code`.\n\n```rust\nlet answer = 42;\n```".to_string()}else{format!("Saved message {n}")},"files":if s.bad.load(Ordering::SeqCst){json!("malformed")}else if n==0{json!([{"id":FILE,"name":"fixture.txt","kind":"text","size":8}])}else{json!([])},"tool":if n==2{Some(json!({"name":"read","summary":"Read a saved file","status":"done","input":"fixture.txt","output":"Full saved output"}))}else{None},"future_content":{"kind":"unknown","value":n},"generated_files":if n==3{json!("malformed additive content")}else{json!([])},"artifacts":[]})).collect();
+    let data:Vec<_>=(start..end).map(|n|json!({"id":format!("msg_{n}"),"role":match n{0=>"user",1=>"thinking",2=>"tool",3=>"future-role",_=>"assistant"},"text":if n==0{"# Saved question\n\n**Markdown** and `code`.\n\n```rust\nlet answer = 42;\n```".to_string()}else{format!("Saved message {n}")},"files":if s.bad.load(Ordering::SeqCst){json!("malformed")}else if n==0{json!([{"id":FILE,"name":"fixture.txt","kind":"text","size":8}])}else{json!([])},"tool":if n==2{Some(json!({"name":"read","summary":"Read a saved file","status":"done","input":"fixture.txt","output":"Full saved output"}))}else{None},"future_content":{"kind":"unknown","value":n},"generated_files":if n==3{json!("malformed additive content")}else{json!([])},"artifacts":[],"cards":if n==4{json!([lab_card()])}else{json!([])}})).collect();
     Json(json!({"thread":{"id":chat,"title":"Saved fixture chat","revision":revision,"updated_unix":1,"pinned_unix":null,"archived_unix":if chat==id(2){Some(1)}else{None},"project":"prj_0000000000000001","source":if chat==id(2){"phone"}else{"terminal"},"messages":count},"revision":revision,"data":data,"next":(end<count).then(||format!("msg_{}",end-1)),"captures":[{"id":id(555),"name":"Saved capture","state":"saved","size":3,"media":"text/plain"},{"id":id(556),"name":"Missing capture","state":"not_saved","size":null,"media":null}]})).into_response()
+}
+const PICTURE: &[u8] = b"not really a png";
+fn lab_card() -> serde_json::Value {
+    let mut card: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../crates/lab-kit/fixtures/cards/image.json"
+    ))
+    .unwrap();
+    card["space"] = json!("me");
+    card["page"] = json!("/labs/photo/beach?v=3");
+    card
+}
+fn picture_sha() -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(PICTURE))
+}
+async fn artifact(Path(id): Path<String>, Query(q): Query<HashMap<String, String>>) -> Response {
+    assert_eq!(q["space"], "me");
+    Json(json!({"artifact":{"id":id,"version":{"document":"beach","version":3},"role":"render",
+        "media_type":"image/png","sha256":picture_sha(),"size":PICTURE.len(),"class":"public","no_training":false},
+        "url":format!("/v1/labs/artifacts/{id}/content?space=me"),"expires_seconds":null}))
+    .into_response()
 }
 async fn file(State(s): State<Arc<Server>>) -> Response {
     s.downloads.fetch_add(1, Ordering::SeqCst);
@@ -122,6 +143,11 @@ async fn setup() -> (Arc<Controller>, Arc<Reader>, Arc<Server>, tempfile::TempDi
         )
         .route("/v1/history/{id}/messages", get(messages))
         .route("/v1/history/{id}/files/{file}", get(file))
+        .route("/v1/labs/artifacts/{id}", get(artifact))
+        .route(
+            "/v1/labs/artifacts/{id}/content",
+            get(|| async { PICTURE.to_vec() }),
+        )
         .route(
             "/v1/history/{id}/captures/{capture}",
             get(|| async { b"cap".to_vec() }),
@@ -543,4 +569,53 @@ async fn automatic_image_reads_clear_revoked_access_but_preserve_missing_files()
     assert!(r.attachment(&path).await.is_err());
     assert!(r.snapshot().access_lost);
     assert!(r.snapshot().messages.is_empty());
+}
+
+#[tokio::test]
+async fn saved_lab_cards_become_rows_that_read_only_their_own_files() {
+    use openagents_account::lab_cards::Media;
+    use openagents_doc::MessagePart;
+    let (c, r, _server, _root) = setup().await;
+    r.open(target(&c, 1)).unwrap();
+    r.more().await;
+    let snapshot = r.snapshot();
+    let message = snapshot.messages.iter().find(|m| m.id == "msg_4").unwrap();
+    assert_eq!(message.cards.len(), 1);
+    let entries = openagents_account::chat_entries::entries_with_lab_rows(
+        &snapshot.messages,
+        snapshot.epoch,
+        None,
+    );
+    let path = entries
+        .iter()
+        .flat_map(|e| e.parts.iter())
+        .find_map(|p| match p {
+            MessagePart::Visual { path, title, .. } if title == "Beach, warmer" => {
+                Some(path.clone())
+            }
+            _ => None,
+        })
+        .expect("a Lab row");
+    assert!(openagents_account::lab_cards::is_card_path(&path));
+    // The phone's entries keep no Lab row until it draws them.
+    let phone = openagents_account::chat_entries::entries(&snapshot.messages, snapshot.epoch);
+    assert!(
+        !phone
+            .iter()
+            .flat_map(|e| e.parts.iter())
+            .any(|p| matches!(p, MessagePart::Visual { .. }))
+    );
+    assert_eq!(r.lab_card(&path).unwrap().card.document, "beach");
+    let page = r.lab_page(&path).unwrap();
+    assert!(page.starts_with("http://127.0.0.1:"), "{page}");
+    assert!(page.ends_with("/labs/photo/beach?v=3"), "{page}");
+    assert_eq!(
+        r.lab_media(&path, "art_photo_v2").await,
+        Some(Media::Image(PICTURE.to_vec()))
+    );
+    // A file the card doesn't name, or a row that isn't a card, reads nothing.
+    assert_eq!(r.lab_media(&path, "art_other").await, None);
+    assert_eq!(r.lab_media("lab-card:00", "art_photo_v2").await, None);
+    c.sign_out().await;
+    assert!(r.lab_card(&path).is_none());
 }

@@ -198,15 +198,11 @@ impl SavedReader {
             });
         }
         if new_content || changed {
-            let entries = self.model.target().map_or_else(
-                || openagents_account::chat_entries::entries(&snapshot.messages, snapshot.epoch),
-                |target| {
-                    openagents_account::chat_entries::entries_for_chat(
-                        &snapshot.messages,
-                        snapshot.epoch,
-                        &target.chat,
-                    )
-                },
+            let target = self.model.target();
+            let entries = openagents_account::chat_entries::entries_with_lab_rows(
+                &snapshot.messages,
+                snapshot.epoch,
+                target.as_ref().map(|target| &target.chat),
             );
             self.state.update(cx, |state, cx| {
                 state.set_subagent_snapshot(self.doc_id.clone(), entries);

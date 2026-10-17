@@ -43,6 +43,7 @@ pub mod icons;
 pub(crate) mod image_media;
 pub(crate) mod image_viewer;
 pub mod lab_card;
+pub mod lab_view;
 pub mod links;
 pub mod loaders;
 pub mod markdown;

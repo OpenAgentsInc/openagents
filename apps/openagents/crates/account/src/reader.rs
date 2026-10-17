@@ -753,6 +753,66 @@ impl Reader {
         result
     }
 
+    /// The saved Lab card a `lab-card:` transcript row shows.
+    pub fn lab_card(&self, path: &str) -> Option<crate::openagents::SavedLabCard> {
+        let s = self.state.lock().unwrap();
+        s.target.as_ref().filter(|t| t.is_current())?;
+        s.snapshot.messages.iter().find_map(|message| {
+            message.cards.iter().enumerate().find_map(|(index, saved)| {
+                (crate::lab_cards::card_path(s.epoch, &message.id, index) == path)
+                    .then(|| saved.clone())
+            })
+        })
+    }
+
+    /// The web page of a shown Lab card, on the chat's own website.
+    pub fn lab_page(&self, path: &str) -> Option<String> {
+        let page = self.lab_card(path)?.card.page?;
+        let website = self.target()?.chat.deployment().website().clone();
+        let url = website.join(&page).ok()?;
+        (url.origin() == website.origin()).then(|| url.to_string())
+    }
+
+    /// One of a shown Lab card's files: image bytes, or a signed link for a
+    /// video. Only files the card names are read, through the chat's account.
+    pub async fn lab_media(&self, path: &str, artifact: &str) -> Option<crate::lab_cards::Media> {
+        use crate::lab_cards::{MAX_IMAGE_BYTES, Media};
+        let saved = self.lab_card(path)?;
+        if !crate::lab_cards::artifacts(&saved.card)
+            .iter()
+            .any(|id| id == artifact)
+        {
+            return None;
+        }
+        let (target, cancel) = {
+            let s = self.state.lock().unwrap();
+            (
+                s.target.clone().filter(ExistingChat::is_current)?,
+                s.cancel.clone(),
+            )
+        };
+        let labs = target.lease.client().labs(target.lease.session()).ok()?;
+        let space = saved.document_ref().space();
+        let handle = labs.artifact(space, artifact, &cancel).await.ok()?;
+        let meta = handle.metadata();
+        if meta.media_type.starts_with("video/") {
+            return Some(
+                handle
+                    .signed_url()
+                    .map_or(Media::Other, |u| Media::Video(u.into())),
+            );
+        }
+        if !meta.media_type.starts_with("image/") || meta.size > MAX_IMAGE_BYTES {
+            return Some(Media::Other);
+        }
+        let mut download = labs.download(&handle, None, &cancel).await.ok()?;
+        let mut bytes = Vec::new();
+        while let Some(chunk) = download.next_chunk(&cancel).await.ok()? {
+            bytes.extend(chunk);
+        }
+        target.is_current().then_some(Media::Image(bytes))
+    }
+
     /// Only one saved attachment is kept in memory. Selecting another cancels and releases it.
     pub fn download(
         self: &Arc<Self>,

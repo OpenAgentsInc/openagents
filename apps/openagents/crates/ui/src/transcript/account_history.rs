@@ -11,6 +11,8 @@ pub(super) struct AccountHistory {
     images: HashMap<String, Option<MediaImage>>,
     order: VecDeque<String>,
     failed: HashSet<String>,
+    /// Lab card rows (#11883), by row.
+    labs: HashMap<SharedString, Entity<crate::lab_view::LabView>>,
 }
 impl Transcript {
     pub fn for_account_history(
@@ -26,6 +28,7 @@ impl Transcript {
             images: HashMap::new(),
             order: VecDeque::new(),
             failed: HashSet::new(),
+            labs: HashMap::new(),
         });
         cx.on_release(|view: &mut Self, cx| {
             if let Some(source) = &mut view.account_history {
@@ -153,5 +156,65 @@ impl Transcript {
         })
         .detach();
         AttachmentSnapshot::Loading
+    }
+
+    /// A saved chat's Lab card row (#11883): `lab-ui`'s card, drawn by
+    /// [`crate::lab_view::LabView`], for a `lab-card:` visual part. `None`
+    /// for any other visual.
+    pub(super) fn render_lab_row(
+        &mut self,
+        row_id: &SharedString,
+        path: &str,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        if !openagents_account::lab_cards::is_card_path(path) {
+            return None;
+        }
+        let Some(source) = self.account_history.as_mut() else {
+            return Some(div().into_any_element());
+        };
+        let view = match source.labs.get(row_id) {
+            Some(view) => view.clone(),
+            None => {
+                let model = source.model.clone();
+                let Some(saved) = model.lab_card(path) else {
+                    return Some(div().into_any_element());
+                };
+                let page = model.lab_page(path);
+                let fetch: crate::lab_view::Fetch = {
+                    let model = model.clone();
+                    let path = path.to_owned();
+                    Rc::new(move |id: String, cx: &mut gpui::App| {
+                        let model = model.clone();
+                        let path = path.clone();
+                        let job =
+                            Tokio::spawn(cx, async move { model.lab_media(&path, &id).await });
+                        cx.spawn(async move |_| job.await.ok().flatten())
+                    })
+                };
+                let current: crate::lab_view::Current = {
+                    let model = model.clone();
+                    Rc::new(move || model.current() && !model.snapshot().access_lost)
+                };
+                let space = saved.document_ref().space().to_owned();
+                let id = row_id.clone();
+                let view = cx.new(|cx| {
+                    crate::lab_view::LabView::new(id, saved.card, &space, page, fetch, current, cx)
+                });
+                let id = row_id.clone();
+                cx.subscribe(
+                    &view,
+                    move |this, _, _: &crate::lab_view::LabLayoutChanged, cx| {
+                        this.diagram_layout_changed(std::slice::from_ref(&id), cx);
+                    },
+                )
+                .detach();
+                if let Some(source) = self.account_history.as_mut() {
+                    source.labs.insert(row_id.clone(), view.clone());
+                }
+                view
+            }
+        };
+        Some(div().w_full().child(view).into_any_element())
     }
 }

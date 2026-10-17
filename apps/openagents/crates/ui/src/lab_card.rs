@@ -17,7 +17,7 @@
 //! computer is ever fetched or played (`http://127.0.0.1` or `localhost`).
 
 #[cfg(target_os = "macos")]
-mod player;
+pub(crate) mod player;
 mod service;
 
 pub use service::script as lab_script;

@@ -6146,6 +6146,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lab-ui"
+version = "1.0.0"
+dependencies = [
+ "lab-kit",
+ "rust-native",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8374,6 +8384,8 @@ version = "0.2.113"
 dependencies = [
  "agent-lab",
  "axum",
+ "lab-kit",
+ "lab-ui",
  "oa-copy",
  "openagents-brand",
  "openagents-dashboard",
@@ -8875,6 +8887,8 @@ dependencies = [
  "gpui_tokio",
  "html5ever",
  "image",
+ "lab-kit",
+ "lab-ui",
  "libc",
  "mermaid-rs-renderer",
  "mimalloc",
