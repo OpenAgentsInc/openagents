@@ -27,6 +27,23 @@ cross-host recovery and a production chat flow remain unproved. See the
 [measurement report](../cloud/space.md) for shapes, timing boundaries, p90,
 source pin, and cleanup evidence.
 
+Each computer read adds its bound backend's `capabilities` and its saved
+`lifecycle_policy`. `memory_suspend: false` means Suspend keeps disk contents
+without promising process survival; true also requires preserving memory and
+running programs. The policy reports suspend-after-turn, idle and observation
+bounds, and a per-boot absolute limit. An unavailable bound deployment returns
+`capabilities: null`; the service never substitutes the default backend.
+
+Lifecycle retries reuse the same operation identity after restart and wait for
+both provider completion and readiness. Memory restore checks existing services
+without rerunning startup hooks. An uncertain command on a memory-preserving
+computer blocks follow-ups and checkpoints; explicit deletion removes that
+computer without saving its possibly live command. Legacy SPACE command
+attachments cannot prove cancellation after a disconnect. Public identified
+commands remain unsupported on SPACE; Boat keeps its existing process-group
+cancellation behavior. Same-worker memory restore does not promise recovery
+after worker loss or refresh arbitrary external sockets and credentials.
+
 A person's own computer is not an isolated allocated sandbox. Its availability
 is not guaranteed instant, and a zero OpenAgents compute charge does not mean
 hardware, electricity, or any other service cost is zero.

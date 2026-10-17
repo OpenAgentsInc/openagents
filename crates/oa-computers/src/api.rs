@@ -56,6 +56,17 @@ fn sha(s: &str) -> [u8; 32] {
     Sha256::digest(s.as_bytes()).into()
 }
 impl Api {
+    fn view(&self, entry: &Entry) -> Value {
+        let mut value = view(entry);
+        // Use this computer's bound backend, never today's default driver.
+        value["capabilities"] = self
+            .capabilities_for(entry)
+            .ok()
+            .and_then(|caps| serde_json::to_value(caps).ok())
+            .unwrap_or(Value::Null);
+        value
+    }
+
     pub fn token_digest(token: &str) -> [u8; 32] {
         sha(token)
     }
@@ -207,6 +218,13 @@ pub fn view(e: &Entry) -> Value {
         "created_unix": e.created_unix,
         "updated_unix": e.updated_unix,
         "binding": e.binding,
+        "lifecycle_policy": {
+            "turn_complete": "suspend",
+            "idle_ms": e.record.bounds.idle_ms,
+            "observed_extension_ms": e.record.bounds.observed_extension_ms,
+            "absolute_ms": e.record.bounds.absolute_ms,
+            "absolute_scope": "boot",
+        },
         "resource_binding": e.binding.as_ref().and_then(|binding| e.record.resource().map(|id|
             json!({"deployment":binding.deployment,"id":id}))),
     })
@@ -403,7 +421,7 @@ async fn create(
             .await
     };
     match made {
-        Ok((e, true)) => (StatusCode::ACCEPTED, Json(view(&e))).into_response(),
+        Ok((e, true)) => (StatusCode::ACCEPTED, Json(api.view(&e))).into_response(),
         Ok((e, false)) => {
             // Legacy chat ensures wake on each turn. Replaying a keyed create
             // must not undo a stop that happened after the original request.
@@ -430,7 +448,7 @@ async fn create(
                     }
                 }
             }
-            (StatusCode::OK, Json(view(&e))).into_response()
+            (StatusCode::OK, Json(api.view(&e))).into_response()
         }
         Err(CreateError::Conflict) => err(
             StatusCode::CONFLICT,
@@ -523,7 +541,7 @@ async fn list(
             all.truncate(limit as usize);
             let next = more.then(|| all.last().map(|e| e.id.clone())).flatten();
             Json(
-                json!({"computers": all.iter().map(view).collect::<Vec<_>>(), "next_cursor": next}),
+                json!({"computers": all.iter().map(|entry| api.view(entry)).collect::<Vec<_>>(), "next_cursor": next}),
             )
             .into_response()
         }
@@ -544,7 +562,7 @@ async fn get_one(
         Err(r) => return r,
     };
     match api.store.get(&owner, &id).await {
-        Ok(Some(e)) => Json(view(&e)).into_response(),
+        Ok(Some(e)) => Json(api.view(&e)).into_response(),
         Ok(None) => err(StatusCode::NOT_FOUND, "not_found", "No such computer."),
         Err(e) => {
             eprintln!("oa-computers: get: {e}");
@@ -560,7 +578,7 @@ async fn want(api: &Api, headers: &HeaderMap, id: &str, d: Desired) -> Response 
     };
     match api.store.set_desired(&owner, id, d).await {
         Ok(true) => match api.store.get(&owner, id).await {
-            Ok(Some(e)) => (StatusCode::ACCEPTED, Json(view(&e))).into_response(),
+            Ok(Some(e)) => (StatusCode::ACCEPTED, Json(api.view(&e))).into_response(),
             _ => StatusCode::ACCEPTED.into_response(),
         },
         Ok(false) => err(
@@ -633,7 +651,7 @@ async fn by_request(
         );
     }
     match api.store.by_request(&owner, &key).await {
-        Ok(Some(entry)) => Json(view(&entry)).into_response(),
+        Ok(Some(entry)) => Json(api.view(&entry)).into_response(),
         Ok(None) => err(StatusCode::NOT_FOUND, "not_found", "No such computer."),
         Err(_) => err(
             StatusCode::SERVICE_UNAVAILABLE,

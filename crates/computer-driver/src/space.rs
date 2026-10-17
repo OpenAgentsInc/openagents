@@ -321,20 +321,25 @@ impl SpaceDriver {
         }
     }
 
-    async fn action(&self, computer: &str, action: &str) -> Outcome<String> {
+    async fn action(&self, computer: &str, action: &str, operation: &str) -> Outcome<String> {
         if !valid_id(computer, "sbx_") {
             return Outcome::failed("Invalid SPACE computer ID.");
         }
-        // Each new lifecycle request needs a new key: one computer can be
-        // suspended and woken repeatedly. Retrying an uncertain request belongs
-        // to the caller's observation loop, not an automatic mutation retry.
+        if operation.is_empty()
+            || operation.len() > 128
+            || !operation.bytes().all(|b| b.is_ascii_graphic())
+        {
+            return Outcome::failed("A lifecycle operation needs a valid request ID.");
+        }
+        // The lifecycle saves this identity before the effect. A restarted
+        // caller repeats the same request and waits for the original operation.
         let result = async {
             let v = self
                 .json(
                     Method::POST,
                     &format!("/v1/sandboxes/{computer}:{action}"),
                     None,
-                    Some(&uuid::Uuid::new_v4().to_string()),
+                    Some(operation),
                 )
                 .await?;
             let id = field(&v, "operation_id")?;
@@ -790,10 +795,18 @@ impl Driver for SpaceDriver {
     }
 
     async fn suspend(&self, computer: &str) -> Outcome<String> {
-        self.action(computer, "suspend").await
+        self.action(computer, "suspend", &uuid::Uuid::new_v4().to_string())
+            .await
     }
     async fn resume(&self, computer: &str) -> Outcome<String> {
-        self.action(computer, "wake").await
+        self.action(computer, "wake", &uuid::Uuid::new_v4().to_string())
+            .await
+    }
+    async fn suspend_operation(&self, computer: &str, operation: &str) -> Outcome<String> {
+        self.action(computer, "suspend", operation).await
+    }
+    async fn resume_operation(&self, computer: &str, operation: &str) -> Outcome<String> {
+        self.action(computer, "wake", operation).await
     }
 }
 

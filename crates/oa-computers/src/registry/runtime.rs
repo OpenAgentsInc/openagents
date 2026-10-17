@@ -60,6 +60,8 @@ impl Driver for RuntimeDriver {
         delete(computer:&str)->Outcome<()>;
         suspend(computer:&str)->Outcome<String>;
         resume(computer:&str)->Outcome<String>;
+        suspend_operation(computer:&str,operation:&str)->Outcome<String>;
+        resume_operation(computer:&str,operation:&str)->Outcome<String>;
         snapshot(computer:&str,name:&str)->Outcome<String>;
         snapshot_ready(name:&str)->Outcome<bool>;
         delete_snapshot(name:&str)->Outcome<()>;

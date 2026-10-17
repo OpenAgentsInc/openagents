@@ -641,6 +641,15 @@ pub trait Driver {
         unsupported(Profile::Suspend)
     }
 
+    /// Repeat a lifecycle mutation under the same durable identity. Drivers
+    /// with asynchronous teardown must await that operation before returning.
+    async fn suspend_operation(&self, computer: &str, _operation: &str) -> Outcome<String> {
+        self.suspend(computer).await
+    }
+    async fn resume_operation(&self, computer: &str, _operation: &str) -> Outcome<String> {
+        self.resume(computer).await
+    }
+
     // Snapshot.
     /// Save the computer's disk as `name` (it may need to be stopped
     /// first; drivers say so with `Failed`).
@@ -739,6 +748,12 @@ impl<D: Driver> Driver for std::sync::Arc<D> {
     }
     async fn resume(&self, c: &str) -> Outcome<String> {
         (**self).resume(c).await
+    }
+    async fn suspend_operation(&self, c: &str, operation: &str) -> Outcome<String> {
+        (**self).suspend_operation(c, operation).await
+    }
+    async fn resume_operation(&self, c: &str, operation: &str) -> Outcome<String> {
+        (**self).resume_operation(c, operation).await
     }
     async fn snapshot(&self, c: &str, n: &str) -> Outcome<String> {
         (**self).snapshot(c, n).await

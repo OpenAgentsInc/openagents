@@ -230,7 +230,9 @@ impl<D: Drivers + 'static> Reconciler<D> {
         // turn after a service restart. Recovery observes the same identity.
         let active_command = if let Phase::Turn { generation } = e.record.phase {
             match self.store.recovering_turn(&e.id, generation).await {
-                Ok(turn) => turn.filter(|t| t.api_command),
+                Ok(turn) => {
+                    turn.filter(|t| t.api_command || p.driver.capabilities().memory_suspend)
+                }
                 Err(error) => {
                     renewer.abort();
                     let _ = self
@@ -251,17 +253,34 @@ impl<D: Drivers + 'static> Reconciler<D> {
             None
         };
         let result = if let Some(t) = active_command {
-            crate::commands::run(
-                &self.store,
-                &self.turns,
-                &p,
-                &lease,
-                &e,
-                e.record.clone(),
-                t,
-                self.settings.heartbeat,
-            )
-            .await
+            if !t.api_command && t.state == "done" && t.exit_code.is_some() {
+                driver::turn_finished(&p, &lease, e.record.turn.dispatched, now).await
+            } else if !t.api_command {
+                let _ = self
+                    .store
+                    .turn_ended(
+                        &t.id,
+                        false,
+                        None,
+                        None,
+                        None,
+                        Some(crate::turns::UNCERTAIN_MEMORY_TURN),
+                    )
+                    .await;
+                crate::turns::uncertain_memory_turn(&p, &lease, &e, e.record.clone()).await
+            } else {
+                crate::commands::run(
+                    &self.store,
+                    &self.turns,
+                    &p,
+                    &lease,
+                    &e,
+                    e.record.clone(),
+                    t,
+                    self.settings.heartbeat,
+                )
+                .await
+            }
         } else {
             match e.desired {
                 Desired::Deleted => driver::delete(&p, &lease, now).await,

@@ -504,6 +504,9 @@ pub async fn run<D: Driver + Clone + 'static>(
     let Some(mut r) = store.command(&e.owner, &e.id, &t.id).await.map_err(io)? else {
         return Ok(Settled::Idle(computer));
     };
+    if r.status == "unknown" && p.driver.capabilities().memory_suspend {
+        return crate::turns::uncertain_memory_turn(p, lease, e, computer).await;
+    }
     if r.terminal() {
         // Crash between committing a command result and ending its turn.
         store
@@ -691,6 +694,9 @@ pub async fn run<D: Driver + Clone + 'static>(
     }.await;
     beat.abort();
     result?;
+    if r.status == "unknown" && p.driver.capabilities().memory_suspend {
+        return crate::turns::uncertain_memory_turn(p, lease, e, computer).await;
+    }
     let finished = driver::turn_finished(p, lease, generation, crate::reconcile::now_ms()).await?;
     if store.next_turn(&e.id).await.map_err(io)?.is_none() {
         let _ = store
