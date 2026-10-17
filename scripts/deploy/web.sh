@@ -6,6 +6,7 @@
 #   scripts/deploy/web.sh promote [--stack DIGEST] [--serve DIGEST] [--retire-serve] DIGEST
 #                                            # no-traffic revision at the `new` tag
 #   scripts/deploy/web.sh shift [REVISION]   # 100% of openagents.com to it
+#   scripts/deploy/web.sh shift-staging REVISION [SPEC]  # same handoff on staging
 #   scripts/deploy/web.sh rollback [REVISION]
 #
 # stage: exports REF with `git archive` (a dirty checkout never leaks into
@@ -49,6 +50,10 @@
 # the last promote recorded under $STATE. shift refuses when the revision
 # serving production is no longer the one that promote copied (another
 # deploy shifted since, and this one would roll it back; FORCE=1 overrides).
+# A temporary tag keeps each outgoing revision's web listener warm for five
+# minutes while traffic routing changes reach the edge. Production's gateway
+# still requires positive traffic; a yielded staging gateway stays idle. Tags
+# are removed on success, failure, or interruption, preserving existing tags.
 # After moving the traffic it waits for the gateway to answer, then runs the
 # full --production smoke against openagents.com, the 8 gateway checks
 # included (SMOKE=0 skips it). Every step prints its time.
@@ -65,6 +70,7 @@ REGION=us-central1
 REPO=us-central1-docker.pkg.dev/$PROJECT/openagents
 SERVICE=coder
 STAGING=openagents-web-1-staging
+TRAFFIC_ORIGIN=https://openagents.com
 TAG_URL=https://new---coder-ezxz4mgdsq-uc.a.run.app
 BUILD_SA=projects/$PROJECT/serviceAccounts/oa-mvp-automation@$PROJECT.iam.gserviceaccount.com
 # The staging chat worker's public key (deploy/staging/README.md).
@@ -207,7 +213,9 @@ print(json.dumps({"apiVersion": "serving.knative.dev/v1", "kind": "Service",
             --stack-image "$REPO/openagents-stack@$stack_digest" \
             --worker-pubkey "$WORKER_PUBKEY" > "$spec"
     fi
-    g run services replace "$spec" --region "$REGION" --project "$PROJECT" >&2
+    SERVICE=$STAGING
+    TRAFFIC_ORIGIN=https://staging.openagents.com
+    traffic_to "$revision" "$spec"
     took "staging deploy" "$t"
     printf '%s\n' "$web_digest" > "$STATE/staged-$sha"
     t=$(now)
@@ -523,10 +531,144 @@ after_shift() {
 }
 
 traffic_to() {
+    # Forward a signal sent to this script's PID to the one handoff it owns.
+    traffic_handoff "$@" &
+    handoff_pid=$!
+    interrupt_handoff() {
+        signal_result=$1
+        trap - INT TERM
+        kill -TERM "$handoff_pid" 2> /dev/null || true
+        wait "$handoff_pid" 2> /dev/null || true
+        exit "$signal_result"
+    }
+    trap 'interrupt_handoff 130' INT
+    trap 'interrupt_handoff 143' TERM
+    handoff_result=0
+    wait "$handoff_pid" || handoff_result=$?
+    trap - INT TERM
+    return "$handoff_result"
+}
+
+traffic_handoff() {
+    # Traffic changes are not instantaneous. Keep the outgoing listeners
+    # available while the edge updates, without keeping their gateways active.
+    # https://docs.cloud.google.com/run/docs/rollouts-rollbacks-traffic-migration
+    # https://docs.cloud.google.com/run/docs/configuring/min-instances
+    traffic=$(g run services describe "$SERVICE" --region "$REGION" --project "$PROJECT" \
+        --format='json(status.traffic)')
+    assignments=$(printf '%s\n' "$traffic" | python3 -c '
+import json, re, secrets, sys
+traffic = json.load(sys.stdin)["status"]["traffic"]
+outgoing = sorted({entry["revisionName"] for entry in traffic
+                   if entry.get("percent", 0) > 0 and entry["revisionName"] != sys.argv[1]})
+if any(not re.fullmatch(r"[a-z][a-z0-9-]{0,62}", revision) for revision in outgoing):
+    sys.exit("Cannot identify the outgoing web revisions.")
+used = {entry.get("tag") for entry in traffic}
+prefix = "oa-drain-" + secrets.token_hex(6)
+tags = [f"{prefix}-{index}" for index in range(len(outgoing))]
+if used.intersection(tags):
+    sys.exit("The temporary web tags already exist. Try again.")
+print(",".join(f"{tag}={revision}" for tag, revision in zip(tags, outgoing)))
+' "$1")
+    for assignment in $(printf '%s' "$assignments" | tr ',' ' '); do
+        revision=${assignment#*=}
+        g run revisions describe "$revision" --region "$REGION" --project "$PROJECT" \
+            --format='json(metadata.annotations)' | python3 -c '
+import json, sys
+annotations = json.load(sys.stdin).get("metadata", {}).get("annotations", {})
+try:
+    warm = int(annotations.get("autoscaling.knative.dev/minScale", "0")) >= 1
+except (TypeError, ValueError):
+    warm = False
+if not warm:
+    sys.exit(f"Cannot keep outgoing revision {sys.argv[1]} warm: revision minScale must be at least 1.")
+' "$revision"
+    done
+    drain_tags=$(printf '%s' "$assignments" | sed 's/=[^,]*//g')
+    drain_sleep=
+    drain_attempted=
+    cleanup_drain() {
+        result=$?
+        trap - 0 INT TERM
+        if [ -n "$drain_sleep" ]; then
+            kill "$drain_sleep" 2> /dev/null || true
+            wait "$drain_sleep" 2> /dev/null || true
+        fi
+        if [ -n "$drain_tags" ] && [ -n "$drain_attempted" ]; then
+            if ! apply run services update-traffic "$SERVICE" --region "$REGION" --project "$PROJECT" \
+                --remove-tags "$drain_tags"; then
+                say "Could not remove temporary web tags: $drain_tags"
+                say "Remove them with: gcloud run services update-traffic $SERVICE --region $REGION --project $PROJECT --remove-tags $drain_tags"
+                result=1
+            fi
+        fi
+        exit "$result"
+    }
+    trap cleanup_drain 0
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     t=$(now)
-    apply run services update-traffic "$SERVICE" --region "$REGION" --project "$PROJECT" \
-        --to-revisions "$1=100"
+    if [ -n "${2:-}" ]; then
+        # A service replacement must carry the tags too. Install the warm
+        # tags before replacing, since replace has no tag-before-traffic rule.
+        printf '%s\n' "$traffic" | python3 -c '
+import json, sys
+path, destination, assignments, service = sys.argv[1:]
+traffic = json.load(sys.stdin)["status"]["traffic"]
+tags = {entry["tag"]: entry["revisionName"] for entry in traffic if entry.get("tag")}
+for pair in filter(None, assignments.split(",")):
+    tag, revision = pair.split("=")
+    tags[tag] = revision
+with open(path) as source:
+    spec = json.load(source)
+if spec["metadata"]["name"] != service or spec["spec"]["template"]["metadata"]["name"] != destination:
+    sys.exit("The web service or revision in the replacement spec differs. No traffic was changed.")
+spec["spec"]["traffic"] = [{"revisionName": destination, "percent": 100}] + [
+    {"tag": tag, "revisionName": revision} for tag, revision in tags.items()]
+with open(path, "w") as output:
+    json.dump(spec, output)
+' "$2" "$1" "$assignments" "$SERVICE"
+        if [ -n "$assignments" ]; then
+            drain_attempted=1
+            apply run services update-traffic "$SERVICE" --region "$REGION" --project "$PROJECT" \
+                --update-tags "$assignments"
+        fi
+        apply run services replace "$2" --region "$REGION" --project "$PROJECT"
+    elif [ -n "$assignments" ]; then
+        # gcloud applies tags before the traffic percentage in this request.
+        drain_attempted=1
+        apply run services update-traffic "$SERVICE" --region "$REGION" --project "$PROJECT" \
+            --update-tags "$assignments" --to-revisions "$1=100"
+    else
+        apply run services update-traffic "$SERVICE" --region "$REGION" --project "$PROJECT" \
+            --to-revisions "$1=100"
+    fi
     took "traffic to $1" "$t"
+    if [ -n "$drain_tags" ] && [ -z "${DRY_RUN:-}" ]; then
+        say "Keeping outgoing web listeners warm for 300 s."
+        drain_now() { python3 -c 'import time; print(time.monotonic_ns() // 1000000000)'; }
+        deadline=$(( $(drain_now) + 300 ))
+        probe_result=0
+        for path in /health /docs /cli/install.sh; do
+            code=$(curl -sS --connect-timeout 5 --max-time 10 \
+                -H 'X-OpenAgents-Test: 1' -o /dev/null -w '%{http_code}' \
+                "$TRAFFIC_ORIGIN$path") || code=000
+            if [ "$code" != 200 ]; then
+                say "Immediate public read failed: $path returned $code. Keeping the outgoing listeners until the drain ends."
+                probe_result=1
+            fi
+        done
+        while :; do
+            remaining=$(( deadline - $(drain_now) ))
+            [ "$remaining" -gt 0 ] || break
+            [ "$remaining" -le 30 ] || remaining=30
+            sleep "$remaining" &
+            drain_sleep=$!
+            wait "$drain_sleep"
+            drain_sleep=
+        done
+        exit "$probe_result"
+    fi
 }
 
 case ${1:-} in
@@ -551,5 +693,10 @@ case ${1:-} in
         rev=${2:-$(cat "$STATE/$SERVICE.previous" 2> /dev/null || true)}
         [ -n "$rev" ] || { say "rollback needs a revision"; exit 2; }
         traffic_to "$rev" ;;
+    shift-staging)
+        [ -n "${2:-}" ] || { say "shift-staging needs a revision"; exit 2; }
+        SERVICE=$STAGING
+        TRAFFIC_ORIGIN=https://staging.openagents.com
+        traffic_to "$2" "${3:-}" ;;
     *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

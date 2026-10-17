@@ -854,6 +854,20 @@ scripts/deploy/web.sh shift                 # 100% to the candidate, then smoke 
 scripts/deploy/web.sh rollback              # 100% back to the revision before it
 ```
 
+Serialize deployments; the serving-revision check is not a lock. Staging,
+`shift`, and `rollback` keep outgoing revisions warm with temporary tags
+for 300 seconds, then remove only those tags. Each outgoing revision must
+already have revision-level `minScale` of at least 1. Immediate public
+health, docs, and installer reads have time limits; a failed read stays a
+failure even if a later request succeeds. The full smoke follows the drain.
+Account-backed requests still require the current gateway.
+
+For a controlled staging cutover, use `scripts/deploy/web.sh shift-staging
+REVISION [SPEC]`. The optional service spec must name that staging service
+and revision; its container configuration stays unchanged. Check the normal
+staging hostname during the cutover: temporary tag hostnames are not added
+to the site's allowed hosts.
+
 **A no-traffic candidate is expected to fail 8 gateway checks.**
 Production's `gateway` sidecar waits until its revision serves traffic
 before it takes the account store (`GATEWAY_HOLD=serving`, #11154). Until
