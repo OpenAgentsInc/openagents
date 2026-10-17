@@ -14,6 +14,8 @@ pub(crate) struct State {
     pub requests: BTreeMap<String, String>,
     pub documents: BTreeMap<String, DocumentRecord>,
     pub artifacts: BTreeMap<String, Artifact>,
+    #[serde(default)]
+    pub files: BTreeMap<String, String>,
     pub jobs: BTreeMap<String, JobRecord>,
     pub notes: Vec<Note>,
     pub events: Vec<Event>,
@@ -40,6 +42,7 @@ impl Default for State {
             requests: Default::default(),
             documents: Default::default(),
             artifacts: Default::default(),
+            files: Default::default(),
             jobs: Default::default(),
             notes: vec![],
             events: vec![],

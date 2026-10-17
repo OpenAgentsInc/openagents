@@ -235,32 +235,32 @@
     {
       "path": "/v1/environment-computers/session",
       "source": "crates/openagents-web/src/environments/computers.rs",
-      "line": 805
+      "line": 806
     },
     {
       "path": "/v1/environment-computers/{native}/image",
       "source": "crates/openagents-web/src/environments/computers.rs",
-      "line": 806
+      "line": 807
     },
     {
       "path": "/v1/environment-computers/{native}/command",
       "source": "crates/openagents-web/src/environments/computers.rs",
-      "line": 807
+      "line": 808
     },
     {
       "path": "/v1/environment-computers/{native}/computer",
       "source": "crates/openagents-web/src/environments/computers.rs",
-      "line": 808
+      "line": 809
     },
     {
       "path": "/v1/environment-computers/{native}/credentials",
       "source": "crates/openagents-web/src/environments/computers.rs",
-      "line": 812
+      "line": 813
     },
     {
       "path": "/v1/environment-computers/{native}/credentials-check",
       "source": "crates/openagents-web/src/environments/computers.rs",
-      "line": 816
+      "line": 817
     },
     {
       "path": "/v1/history",
@@ -370,97 +370,97 @@
     {
       "path": "/v1/threads",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 83
+      "line": 84
     },
     {
       "path": "/v1/threads/{id}",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 84
+      "line": 85
     },
     {
       "path": "/v1/threads/{id}/messages",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 90
+      "line": 91
     },
     {
       "path": "/v1/threads/{id}/files",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 94
+      "line": 95
     },
     {
       "path": "/v1/threads/{id}/files/{file}",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 100
+      "line": 101
     },
     {
       "path": "/v1/computer-usage",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 104
+      "line": 105
     },
     {
       "path": "/v1/computers",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 105
+      "line": 106
     },
     {
       "path": "/v1/computers/{name}",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 111
+      "line": 112
     },
     {
       "path": "/v1/computers/{name}/stop",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 115
+      "line": 116
     },
     {
       "path": "/v1/computers/{name}/wake",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 119
+      "line": 120
     },
     {
       "path": "/v1/computers/{name}/files",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 123
+      "line": 124
     },
     {
       "path": "/v1/computers/{name}/commands",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 127
+      "line": 128
     },
     {
       "path": "/v1/computers/{name}/commands/{command}",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 131
+      "line": 132
     },
     {
       "path": "/v1/computers/{name}/commands/{command}/output",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 135
+      "line": 136
     },
     {
       "path": "/v1/computers/{name}/commands/{command}/cancel",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 139
+      "line": 140
     },
     {
       "path": "/v1/computers/{name}/sync",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 143
+      "line": 144
     },
     {
       "path": "/v1/computers/{name}/activity",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 144
+      "line": 145
     },
     {
       "path": "/v1/agents",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 145
+      "line": 146
     },
     {
       "path": "/v1/agents/actions",
       "source": "crates/openagents-web/src/phone_api.rs",
-      "line": 146
+      "line": 147
     },
     {
       "path": "/v1/projects/{id}",
@@ -623,6 +623,16 @@
       "path": "/v1/schedules/sync",
       "source": "crates/openagents-web/src/account_schedules.rs",
       "constant": "SYNC"
+    },
+    {
+      "path": "/v1/cloud-host",
+      "source": "crates/openagents-web/src/cloud_host.rs",
+      "constant": "PATH"
+    },
+    {
+      "path": "/v1/cloud-host/stop",
+      "source": "crates/openagents-web/src/cloud_host.rs",
+      "constant": "STOP"
     },
     {
       "path": "/v1/threads/synced",

@@ -69,7 +69,7 @@ impl Plan {
 
 /// The signed-in viewer: the browser's session, else an app's own token
 /// (`Authorization: Bearer sess_…`).
-async fn viewer(app: &App, headers: &HeaderMap) -> Option<Viewer> {
+pub(crate) async fn viewer(app: &App, headers: &HeaderMap) -> Option<Viewer> {
     let service = app.config.cloud.as_deref()?;
     if let Ok(viewer) = service.authenticate(headers).await {
         return Some(viewer);
@@ -92,6 +92,9 @@ pub(crate) async fn plan(app: &App, headers: &HeaderMap) -> Plan {
         Some(viewer) => {
             let test_accounts = std::env::var(TEST_ACCOUNTS_ENV).unwrap_or_default();
             if passes(app, &viewer, headers, &test_accounts) {
+                if let Err(error) = crate::labs_api::bind_account(app, &viewer.account_id).await {
+                    eprintln!("openagents-web: CAD storage: {error}");
+                }
                 Plan::Pro
             } else {
                 Plan::Free
@@ -102,12 +105,25 @@ pub(crate) async fn plan(app: &App, headers: &HeaderMap) -> Plan {
 
 /// Whether a signed-in viewer gets CAD Lab.
 fn passes(app: &App, viewer: &Viewer, headers: &HeaderMap, test_accounts: &str) -> bool {
-    if test_free(headers) {
-        return false;
-    }
-    viewer.admin
-        || listed(test_accounts, &viewer.account_id)
-        || crate::plan::on_pro(app, &viewer.account_id)
+    account_passes(
+        app,
+        headers,
+        &viewer.account_id,
+        viewer.admin,
+        test_accounts,
+    )
+}
+
+/// Check the current account authority without reusing a cached viewer.
+pub(crate) fn account_passes(
+    app: &App,
+    headers: &HeaderMap,
+    account: &str,
+    admin: bool,
+    test_accounts: &str,
+) -> bool {
+    !test_free(headers)
+        && (admin || listed(test_accounts, account) || crate::plan::on_pro(app, account))
 }
 
 /// A test run asking to be treated as Free.

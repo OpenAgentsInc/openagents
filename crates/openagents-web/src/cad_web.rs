@@ -38,9 +38,12 @@
 //! [`DEADLINE`] and [`MEMORY_BYTES`], and [`RUNS_PER_HOUR`] tool runs per
 //! person.
 
+mod api;
+pub(crate) use api::CadApi;
 mod configurator;
 mod handoff;
 mod imports;
+mod platform;
 mod sales;
 mod world_physics;
 #[cfg(test)]
@@ -134,6 +137,9 @@ pub(crate) struct Scope {
     /// Whether the person may change the models.
     #[serde(skip)]
     pub edits: bool,
+    /// Whether the person owns this space and may delete its models.
+    #[serde(skip)]
+    pub owns: bool,
     /// Who is asking (their runs count toward their limit).
     #[serde(skip)]
     pub actor: String,
@@ -176,6 +182,7 @@ impl Scope {
             folder: "cad/me".into(),
             project: None,
             edits: true,
+            owns: true,
             actor: owner.to_owned(),
         })
     }
@@ -187,6 +194,7 @@ impl Scope {
             folder: format!("cad/p-{project}"),
             project: Some(project.to_owned()),
             edits,
+            owns: edits && actor == home,
             actor: actor.to_owned(),
         })
     }
@@ -212,7 +220,9 @@ impl Scope {
                     .and_then(|s| s.home.as_deref())
                     .map_or_else(|| sender.to_owned(), crate::chat_store::account_owner);
                 let edits = crate::projects::api::role_of(project).edits();
-                Scope::project(&home, id, edits, sender)
+                let mut scope = Scope::project(&home, id, edits, sender)?;
+                scope.owns = crate::projects::api::role_of(project).owns();
+                Some(scope)
             }
         }
     }
@@ -222,10 +232,12 @@ impl Scope {
         let place = &card["where"];
         let home = place["home"].as_str()?;
         let folder = place["folder"].as_str()?;
-        let scope = match place["project"].as_str() {
+        let mut scope = match place["project"].as_str() {
             Some(project) => Scope::project(home, project, false, home)?,
             None => Scope::personal(home)?,
         };
+        scope.edits = false;
+        scope.owns = false;
         (scope.folder == folder).then_some(scope)
     }
 
@@ -292,11 +304,24 @@ pub(crate) struct Index {
 }
 
 async fn read_index(store: &Store, scope: &Scope) -> Result<(Index, Option<String>), String> {
+    let (mut index, generation) = read_legacy_index(store, scope).await?;
+    platform::overlay_index(store, scope, &mut index).await?;
+    Ok((index, generation))
+}
+
+async fn read_legacy_index(
+    store: &Store,
+    scope: &Scope,
+) -> Result<(Index, Option<String>), String> {
     let key = scope.key("index.json").map_err(|e| e.to_string())?;
     match store.read_key(&key).await {
         Ok(Some((bytes, generation))) => {
-            let index: Index = serde_json::from_slice(&bytes)
-                .map_err(|_| "We couldn't read your CAD documents.".to_owned())?;
+            let index: Index = if store.labs().is_some() {
+                platform::legacy_index(store, scope).await?
+            } else {
+                serde_json::from_slice(&bytes)
+                    .map_err(|_| "We couldn't read your CAD documents.".to_owned())?
+            };
             Ok((index, Some(generation)))
         }
         Ok(None) => Ok((
@@ -319,7 +344,7 @@ async fn update_index(
 ) -> Result<Index, String> {
     let key = scope.key("index.json").map_err(|e| e.to_string())?;
     for _ in 0..5 {
-        let (mut index, generation) = read_index(store, scope).await?;
+        let (mut index, generation) = read_legacy_index(store, scope).await?;
         index.schema = INDEX_SCHEMA.into();
         edit(&mut index);
         let bytes = serde_json::to_vec(&index).map_err(|e| e.to_string())?;
@@ -587,14 +612,16 @@ impl Engine {
                 if bytes.len() > MAX_FILE_BYTES {
                     return Err("This robot archive is too large. Send a smaller assembly.".into());
                 }
-                put(
-                    store,
-                    &scope
-                        .key(&format!("{doc}/v{n}/out/{file}"))
-                        .map_err(|e| e.to_string())?,
-                    bytes,
-                )
-                .await?;
+                if !platform::output(store, scope, doc, n, file, &bytes).await? {
+                    put(
+                        store,
+                        &scope
+                            .key(&format!("{doc}/v{n}/out/{file}"))
+                            .map_err(|e| e.to_string())?,
+                        bytes,
+                    )
+                    .await?;
+                }
             }
         }
         if name == "cad_robot" && result["error"].is_null() {
@@ -860,16 +887,9 @@ async fn sync(
                 .await
                 .map_err(|_| "The CAD engine has no room to work.".to_owned())?;
             for file in ["version.json", "doc.json"] {
-                let key = scope
-                    .key(&format!("{id}/v{n}/{file}"))
-                    .map_err(|e| e.to_string())?;
-                let Some((bytes, _)) = store
-                    .read_key(&key)
+                let bytes = read_file(store, scope, &id, n, file)
                     .await
-                    .map_err(|e| format!("We couldn't read {id} v{n} ({e})."))?
-                else {
-                    return Err(format!("{id} v{n} is missing."));
-                };
+                    .ok_or_else(|| format!("{id} v{n} is missing."))?;
                 tokio::fs::write(at.join(file), bytes)
                     .await
                     .map_err(|_| "The CAD engine has no room to work.".to_owned())?;
@@ -885,6 +905,9 @@ async fn sync(
 /// Keeps a version the run saved: its document first (only when that
 /// version isn't there yet), then its files, then the index.
 async fn persist(store: &Store, scope: &Scope, dir: &Path, result: &Value) -> Result<(), String> {
+    if platform::persist(store, scope, dir, result).await? {
+        return Ok(());
+    }
     let doc = result["doc"]
         .as_str()
         .filter(|d| valid_doc(d))
@@ -1009,6 +1032,22 @@ async fn keep_outputs(store: &Store, scope: &Scope, dir: &Path) {
                 if valid_out(&name) && !name.ends_with(".robot.json") {
                     if let Ok(bytes) = tokio::fs::read(&path).await {
                         if bytes.len() <= MAX_FILE_BYTES {
+                            if let Some(n) = v.strip_prefix('v').and_then(|v| v.parse::<u64>().ok())
+                            {
+                                match platform::output(store, scope, &doc_name, n, &name, &bytes)
+                                    .await
+                                {
+                                    Ok(true) => {
+                                        let _ = tokio::fs::remove_file(&path).await;
+                                        continue;
+                                    }
+                                    Ok(false) => {}
+                                    Err(why) => {
+                                        eprintln!("openagents-web: cad: {why}");
+                                        continue;
+                                    }
+                                }
+                            }
                             if let Ok(key) = scope.key(&format!("{doc_name}/{v}/out/{name}")) {
                                 if let Err(why) = put(store, &key, bytes).await {
                                     eprintln!("openagents-web: cad: {why}");
@@ -1073,6 +1112,11 @@ pub(crate) async fn read_file(
     if !valid_doc(doc) {
         return None;
     }
+    match platform::read_file(store, scope, doc, version, name).await {
+        Ok(Some(bytes)) => return Some(bytes),
+        Ok(None) => {}
+        Err(_) => return None,
+    }
     let rest = if FILES.contains(&name) {
         format!("{doc}/v{version}/{name}")
     } else if let Some(file) = name.strip_prefix("out/").filter(|file| valid_out(file)) {
@@ -1095,10 +1139,24 @@ pub(crate) async fn load_index(store: &Store, scope: &Scope) -> Result<Index, St
     read_index(store, scope).await.map(|(index, _)| index)
 }
 
+pub(crate) async fn copy_history(
+    store: &Store,
+    owner: &str,
+    project: Option<&str>,
+    approved_checksum: &str,
+) -> Result<Value, String> {
+    let scope = match project {
+        Some(project) => Scope::project(owner, project, true, owner),
+        None => Scope::personal(owner),
+    }
+    .ok_or("Choose a valid CAD space.")?;
+    platform::migrate(store, &scope, approved_checksum).await
+}
+
 /// Deletes a document and all its versions.
 pub(crate) async fn delete(store: &Store, scope: &Scope, doc: &str) -> Result<(), String> {
-    if !scope.edits {
-        return Err("Only the project's editors can delete its models.".into());
+    if !scope.owns {
+        return Err("Only the project's owner can delete its models.".into());
     }
     if !valid_doc(doc) {
         return Err("There's no such document.".into());
@@ -1114,6 +1172,7 @@ pub(crate) async fn delete(store: &Store, scope: &Scope, doc: &str) -> Result<()
 async fn delete_now(store: &Store, scope: &Scope, doc: &str) -> Result<(), String> {
     configurator::purge(store, scope, doc).await?;
     sales::purge(store, scope, doc).await?;
+    platform::delete(store, scope, doc).await?;
     update_index(store, scope, |index| {
         index.docs.remove(doc);
     })
@@ -1200,11 +1259,26 @@ async fn page_scope(app: &App, headers: &HeaderMap, project: Option<&str>) -> Op
         return None;
     }
     match project.filter(|p| !p.is_empty()) {
-        None => Scope::personal(&reader),
+        None => {
+            let viewer = crate::cad_gate::viewer(app, headers).await?;
+            if crate::chat_store::account_owner(&viewer.account_id) != reader {
+                return None;
+            }
+            crate::labs_api::bind_account(app, &viewer.account_id)
+                .await
+                .ok()?;
+            Scope::personal(&reader)
+        }
         Some(id) => {
-            let sidebar = crate::projects::sidebar(app).await?;
-            let project = sidebar.project(id)?;
-            Scope::for_turn(&reader, Some(id), Some(project))
+            let access = crate::projects::api::access(app, headers, id).await.ok()?;
+            let mut scope = Scope::project(
+                &access.home_owner(),
+                &access.project.id,
+                access.role.edits(),
+                &reader,
+            )?;
+            scope.owns = access.role.owns();
+            Some(scope)
         }
     }
 }
@@ -1491,7 +1565,7 @@ pub(crate) fn doc_content(
                     }
                 }
             }
-            @if let Some(csrf) = csrf {
+            @if let Some(csrf) = csrf.filter(|_| scope.owns) {
                 details {
                     summary { "Delete this design" }
                     form method="post" action=(format!("/cad/{doc}/delete")) {

@@ -281,6 +281,7 @@ pub(crate) async fn identity(app: &App, headers: &HeaderMap) -> Result<Identity,
         owner: crate::chat_store::account_owner(&binding.account),
         account: binding.account,
         permitted: true,
+        admin: false,
         environment_attempt: Some(binding.native),
     })
 }

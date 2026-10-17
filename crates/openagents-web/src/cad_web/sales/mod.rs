@@ -287,6 +287,7 @@ impl Listing {
             folder: self.folder.clone(),
             project: self.project.clone(),
             edits: false,
+            owns: false,
             actor: buyer.into(),
         }
     }

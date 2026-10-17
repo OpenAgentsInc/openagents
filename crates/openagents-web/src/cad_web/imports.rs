@@ -38,6 +38,46 @@ fn manifest(bytes: &[u8]) -> Result<Vec<Asset>, String> {
     }
     Ok(assets)
 }
+pub(super) async fn restore_shared(
+    store: &lab_store::Store,
+    version: &lab_kit::Version,
+    dir: &Path,
+) -> Result<(), String> {
+    use lab_store::LabStore;
+    let artifact = match store
+        .named_artifact(&version.reference(), "assets.json")
+        .await
+    {
+        Ok(artifact) => artifact,
+        Err(lab_store::Error::NotFound) => return Ok(()),
+        Err(_) => return Err("This design's imported files couldn't be read.".into()),
+    };
+    let bytes = store
+        .artifact_bytes(&artifact.id, None)
+        .await
+        .map_err(|_| "This design's imported files couldn't be read.")?;
+    for asset in manifest(&bytes)? {
+        let artifact = store
+            .named_artifact(&version.reference(), &format!("out/{}", asset.name()))
+            .await
+            .map_err(|_| "An imported model's source file is missing. Import the file again.")?;
+        let bytes = store
+            .artifact_bytes(&artifact.id, None)
+            .await
+            .map_err(|_| "An imported model's source file couldn't be read.")?;
+        if !asset.check(&bytes) {
+            return Err("An imported model failed its SHA-256 check.".into());
+        }
+        let at = dir.join(".parts/files");
+        tokio::fs::create_dir_all(&at)
+            .await
+            .map_err(|_| "The CAD engine has no room for this model.")?;
+        tokio::fs::write(at.join(format!("{}.{}", asset.sha256, asset.format)), bytes)
+            .await
+            .map_err(|_| "The CAD engine has no room for this model.")?;
+    }
+    Ok(())
+}
 pub(super) async fn persist(
     store: &Store,
     scope: &Scope,
@@ -55,10 +95,12 @@ pub(super) async fn persist(
         if !asset.check(&data) {
             return Err("An imported model failed its SHA-256 check.".into());
         }
-        let key = scope
-            .key(&format!("{doc}/v{n}/out/{}", asset.name()))
-            .map_err(|e| e.to_string())?;
-        put(store, &key, data).await?;
+        if !platform::output(store, scope, doc, n, &asset.name(), &data).await? {
+            let key = scope
+                .key(&format!("{doc}/v{n}/out/{}", asset.name()))
+                .map_err(|e| e.to_string())?;
+            put(store, &key, data).await?;
+        }
     }
     Ok(())
 }
@@ -107,14 +149,8 @@ pub(super) async fn restore(
         let bytes = match tokio::fs::read(at.join("assets.json")).await {
             Ok(bytes) => bytes,
             Err(_) => {
-                let key = scope
-                    .key(&format!("{doc}/v{n}/assets.json"))
-                    .map_err(|e| e.to_string())?;
-                let bytes = store
-                    .read_key(&key)
+                let bytes = read_file(store, scope, &doc, n, "assets.json")
                     .await
-                    .map_err(|_| "An imported model couldn't be read.")?
-                    .map(|v| v.0)
                     .unwrap_or_else(|| b"[]".to_vec());
                 tokio::fs::write(at.join("assets.json"), &bytes)
                     .await
@@ -129,15 +165,9 @@ pub(super) async fn restore(
             if tokio::fs::read(&path).await.is_ok_and(|b| asset.check(&b)) {
                 continue;
             }
-            let key = scope
-                .key(&format!("{doc}/v{n}/out/{}", asset.name()))
-                .map_err(|e| e.to_string())?;
-            let bytes = store
-                .read_key(&key)
+            let bytes = read_file(store, scope, &doc, n, &format!("out/{}", asset.name()))
                 .await
-                .map_err(|_| "An imported model couldn't be read.")?
-                .ok_or("An imported model's source file is missing. Import the file again.")?
-                .0;
+                .ok_or("An imported model's source file is missing. Import the file again.")?;
             if !asset.check(&bytes) {
                 return Err("An imported model failed its SHA-256 check.".into());
             }

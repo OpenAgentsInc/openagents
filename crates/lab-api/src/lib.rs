@@ -26,6 +26,7 @@ pub struct Access {
     pub account: String,
     pub space: SpaceRef,
     pub experimental: bool,
+    pub cad: bool,
 }
 #[async_trait]
 pub trait Authorizer: Send + Sync {
@@ -67,6 +68,13 @@ impl Registry {
                 "This lab isn't available for this account yet.",
             ));
         }
+        if matches!(entry.gate, Gate::Cad) && !access.cad {
+            return Err(ApiError::new(
+                StatusCode::PAYMENT_REQUIRED,
+                "plan_required",
+                "CAD Lab is part of Pro. Start a free trial in Settings.",
+            ));
+        }
         Ok(entry.kind.clone())
     }
 }
@@ -74,6 +82,13 @@ impl Registry {
 /// Kind-specific tools translate only into these common, checked operations.
 #[derive(Clone, Debug)]
 pub enum Tool {
+    Put {
+        document: String,
+        title: String,
+        schema: String,
+        content: Value,
+        summary: String,
+    },
     Read {
         document: String,
     },
@@ -94,20 +109,28 @@ pub struct ResourceReference {
     pub space: String,
     pub version: Reference,
 }
+#[async_trait]
 pub trait Kind: Send + Sync {
     fn manifest(&self) -> KindManifest;
-    fn initial(
+    async fn initial(
         &self,
+        store: &Store,
+        document: &str,
         schema: &str,
         content: Value,
         summary: &str,
     ) -> lab_store::Result<CheckedDraft>;
-    fn change(
+    async fn change(
         &self,
+        store: &Store,
         base: &Version,
         change: &Change,
         summary: &str,
     ) -> lab_store::Result<CheckedDraft>;
+    async fn saved(&self, _store: &Store, _version: &Version) -> lab_store::Result<()> {
+        Ok(())
+    }
+    async fn run_job(&self, _store: Store, _job: JobState) {}
     fn jobs(&self, version: &Version, want: &Want) -> Vec<JobSpec>;
     fn card(&self, version: &Version, jobs: &[JobState], artifacts: &[Artifact]) -> Card;
     fn tool(&self, _name: &str, _arguments: &Value) -> Result<Tool, ApiError> {
@@ -129,24 +152,30 @@ impl<K> KindAdapter<K> {
         }
     }
 }
+#[async_trait]
 impl<K: LabKind + Send + Sync> Kind for KindAdapter<K> {
     fn manifest(&self) -> KindManifest {
         K::manifest()
     }
-    fn initial(
+    async fn initial(
         &self,
+        store: &Store,
+        document: &str,
         schema: &str,
         content: Value,
         summary: &str,
     ) -> lab_store::Result<CheckedDraft> {
+        let _ = (store, document);
         CheckedDraft::initial::<K>(schema, content, summary, &Value::Null)
     }
-    fn change(
+    async fn change(
         &self,
+        store: &Store,
         base: &Version,
         change: &Change,
         summary: &str,
     ) -> lab_store::Result<CheckedDraft> {
+        let _ = store;
         CheckedDraft::change::<K>(base, change, summary, &Value::Null)
     }
     fn jobs(&self, version: &Version, want: &Want) -> Vec<JobSpec> {

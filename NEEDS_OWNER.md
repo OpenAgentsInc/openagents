@@ -2742,3 +2742,14 @@ native text support; audio/video, public activity discovery, and physical
 capture or control are unsupported by these profiles. Do not enable them from
 text-fixture evidence. See [the runtime guide](crates/live-host/README.md).
 
+## Approve the existing CAD history copy (#11875)
+
+The [production review](docs/sdk/labs-cad-migration-review.json) found one
+document, two versions, and 11 files (1,940,606 bytes). No production copy ran.
+Approve review checksum
+`16445f2f215a047871e0016b99dc53f64ab5cdc7a792e1a6b4914f8a55db93ae`
+and identify its account (and project, if applicable). The image's
+`lab-cad-copy` operator command verifies that checksum before importing the
+same version numbers and content digests. It keeps the old files unchanged.
+The [operator instructions](docs/sdk/labs.md) describe its runtime setup.
+If the source changes before approval, run a fresh review first.

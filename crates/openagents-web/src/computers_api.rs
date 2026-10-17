@@ -22,6 +22,7 @@ pub(crate) struct Identity {
     pub account: String,
     pub owner: String,
     pub permitted: bool,
+    pub admin: bool,
     pub environment_attempt: Option<String>,
 }
 
@@ -61,6 +62,7 @@ pub(crate) async fn identity(app: &App, headers: &HeaderMap) -> Result<Identity,
             owner: crate::chat_store::account_owner(&account),
             permitted: admin || app.config.agent_accounts.contains(&account),
             account,
+            admin,
             environment_attempt: None,
         }),
         Err(SessionError::Unauthenticated | SessionError::InvalidRequest) => Err(refused(

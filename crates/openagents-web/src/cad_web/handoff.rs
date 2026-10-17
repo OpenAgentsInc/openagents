@@ -80,6 +80,11 @@ pub(super) async fn place(
     bytes: Option<Vec<u8>>,
 ) -> Result<Value, String> {
     let settings = place_settings(args)?;
+    let source = if args["remove"] == true {
+        None
+    } else {
+        platform::reference(store, scope, doc, n).await?
+    };
     let me = personal(scope)?;
     let key = me.key(WORLD).map_err(|e| e.to_string())?;
     let file = world_file(scope, doc, n);
@@ -154,6 +159,9 @@ pub(super) async fn place(
             item["id"] = json!(id);
             item["doc"] = json!(doc);
             item["version"] = json!(n);
+            if let Some(source) = &source {
+                item["lab_source"] = json!(source);
+            }
             item["generation"] = json!(format!("{:032x}", secp256k1::rand::random::<u128>()));
             item["file"] = json!(file);
             entries.push(item);
@@ -183,12 +191,15 @@ pub(super) async fn robot_saved(
     dir: &Path,
     result: &mut Value,
 ) -> Result<(), String> {
-    let doc = result["doc"].as_str().ok_or("The robot has no design.")?;
+    let doc = result["doc"]
+        .as_str()
+        .ok_or("The robot has no design.")?
+        .to_owned();
     let n = result["version"]
         .as_u64()
         .ok_or("The robot has no version.")?;
     let file = format!("{doc}-v{n}.robot.json");
-    let bytes = tokio::fs::read(dir.join(doc).join(format!("v{n}/out/{file}")))
+    let bytes = tokio::fs::read(dir.join(&doc).join(format!("v{n}/out/{file}")))
         .await
         .map_err(|_| "The robot files couldn't be read.")?;
     if bytes.len() > MAX_FILE_BYTES {
@@ -224,11 +235,15 @@ pub(super) async fn robot_saved(
     }
     let href = format!(
         "{}/play?document={}&version={}&readonly=1",
-        robot_base(scope, doc, n),
+        robot_base(scope, &doc, n),
         bundle.subject.document,
         bundle.subject.version
     );
     result["robot"]["reference"] = json!(bundle.subject);
+    if let Some(source) = platform::reference(store, scope, &doc, n).await? {
+        result["robot"]["source"] = json!(source);
+        result["card"]["robot"]["source"] = json!(source);
+    }
     result["card"]["robot"]["reference"] = json!(bundle.subject);
     result["robot"]["href"] = json!(href);
     result["card"]["robot"]["href"] = json!(href);

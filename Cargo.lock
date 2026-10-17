@@ -2787,12 +2787,14 @@ name = "cad"
 version = "1.0.0"
 dependencies = [
  "glam",
+ "lab-kit",
  "physics",
  "robot-description",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "solidcraft-engine",
+ "tempfile",
  "zip 3.0.0",
 ]
 
@@ -12158,6 +12160,7 @@ dependencies = [
  "base64 0.22.1",
  "bitcoin",
  "boat",
+ "cad",
  "coder",
  "coder-access",
  "coder-cloud",

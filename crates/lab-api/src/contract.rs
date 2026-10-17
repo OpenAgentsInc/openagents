@@ -234,7 +234,7 @@ pub fn extend(doc: &mut Value) {
         };
         let mut op = json!({"operationId":operation,"tags":["Labs"],"security":[{"appBearer":[]}],"parameters":parameters,"description":"Authorizes the caller and space on every request. Experimental kinds use the Computers account gate. Reads never start jobs. Pages and payloads are bounded. Source uploads are capped at 512 KiB until resumable uploads are integrated.","responses":{status:{"description":"Private, no-store result.","content":{media:{"schema":reference(result)}}}}});
         for code in [
-            "400", "401", "403", "404", "409", "413", "422", "429", "503",
+            "400", "401", "402", "403", "404", "409", "413", "422", "429", "503",
         ] {
             op["responses"][code] = json!({"description":"Stable error code and plain-language message.","content":{"application/json":{"schema":reference("Error")}}});
         }

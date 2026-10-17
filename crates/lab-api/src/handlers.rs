@@ -119,12 +119,13 @@ async fn create(
     let r = body?.0;
     let (a, s) = api.scoped(&headers, &r.space, Action::Edit).await?;
     let k = api.registry.get(&r.kind, &a)?;
-    let d = k.initial(&r.schema, r.content, &r.summary)?;
+    let d = k
+        .initial(&s, &r.id, &r.schema, r.content, &r.summary)
+        .await?;
     api.references(&headers, k.as_ref(), d.content()).await?;
-    Ok(answer(
-        StatusCode::CREATED,
-        s.create(&r.id, &r.title, &a.account, d, now()).await?,
-    ))
+    let version = s.create(&r.id, &r.title, &a.account, d, now()).await?;
+    k.saved(&s, &version).await?;
+    Ok(answer(StatusCode::CREATED, version))
 }
 async fn document(
     State(api): App,
@@ -178,12 +179,11 @@ async fn edit(
     let r = body?.0;
     let (a, s, k) = api.document(&headers, &r.space, Action::Edit, &id).await?;
     let base = s.version(&id, r.base).await?;
-    let d = k.change(&base, &r.change, &r.summary)?;
+    let d = k.change(&s, &base, &r.change, &r.summary).await?;
     api.references(&headers, k.as_ref(), d.content()).await?;
-    Ok(answer(
-        StatusCode::CREATED,
-        s.save(&id, &a.account, d, now()).await?,
-    ))
+    let version = s.save(&id, &a.account, d, now()).await?;
+    k.saved(&s, &version).await?;
+    Ok(answer(StatusCode::CREATED, version))
 }
 async fn version(
     State(api): App,
@@ -228,14 +228,33 @@ async fn card_value(
             None => break,
         }
     }
-    let mut artifacts = vec![];
-    for j in &jobs {
-        for id in &j.artifacts {
-            artifacts.push(store.artifact(id).await?);
-        }
+    let artifacts = store.version_artifacts(&v.reference()).await?;
+    if artifacts.len() > 1000 {
+        return Err(ApiError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "card_limit",
+            "This card has too many files. Open the design instead.",
+        ));
     }
-    let card = kind.card(v, &jobs, &artifacts);
-    let _ = space;
+    let mut card = kind.card(v, &jobs, &artifacts);
+    if let (Some(project), Some(page)) = (space.strip_prefix("project:"), card.page.as_mut()) {
+        let encoded: String = project
+            .bytes()
+            .map(|b| {
+                if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
+                    (b as char).to_string()
+                } else {
+                    format!("%{b:02X}")
+                }
+            })
+            .collect();
+        page.push_str(if page.contains('?') {
+            "&project="
+        } else {
+            "?project="
+        });
+        page.push_str(&encoded);
+    }
     Ok(card)
 }
 async fn card(
@@ -273,7 +292,10 @@ async fn enqueue(api: &Api, headers: &HeaderMap, r: CreateJob) -> Result<JobStat
         &json!({"operation":"job","request":r,"spec":spec}),
     )
     .await?;
-    Ok(s.create_job(spec, &k.manifest(), now()).await?)
+    let job = s.create_job(spec, &k.manifest(), now()).await?;
+    let pending = job.clone();
+    tokio::spawn(async move { k.run_job(s, pending).await });
+    Ok(job)
 }
 async fn job_create(
     State(api): App,
@@ -603,11 +625,12 @@ async fn tool(
     }
     let operation = k.tool(&name, &r.arguments)?;
     let document = match &operation {
+        Tool::Put { document, .. } => document,
         Tool::Read { document } | Tool::Change { document, .. } | Tool::Job { document, .. } => {
             document
         }
     };
-    if s.document(document).await?.kind != kind {
+    if !matches!(&operation, Tool::Put { .. }) && s.document(document).await?.kind != kind {
         return Err(ApiError::new(
             StatusCode::FORBIDDEN,
             "wrong_kind",
@@ -615,6 +638,48 @@ async fn tool(
         ));
     }
     let result = match operation {
+        Tool::Put {
+            document,
+            title,
+            schema,
+            content,
+            summary,
+        } => {
+            let (a, s) = api.scoped(&headers, &r.space, Action::Edit).await?;
+            let k = api.registry.get(&kind, &a)?;
+            let draft = match s.document(&document).await {
+                Ok(meta) => {
+                    if meta.kind != kind {
+                        return Err(ApiError::invalid("Choose a document from this lab."));
+                    }
+                    let base = r.base.ok_or_else(|| {
+                        ApiError::invalid("Choose the document version this tool changes.")
+                    })?;
+                    let version = s.version(&document, base).await?;
+                    let change = Change::Patch {
+                        ops: vec![lab_kit::change::PatchOp::Replace {
+                            path: String::new(),
+                            value: content,
+                        }],
+                    };
+                    k.change(&s, &version, &change, &summary).await?
+                }
+                Err(lab_store::Error::NotFound) => {
+                    k.initial(&s, &document, &schema, content, &summary).await?
+                }
+                Err(error) => return Err(error.into()),
+            };
+            api.references(&headers, k.as_ref(), draft.content())
+                .await?;
+            let version = if s.knows_document(&document).await? {
+                s.save(&document, &a.account, draft, now()).await?
+            } else {
+                s.create(&document, &title, &a.account, draft, now())
+                    .await?
+            };
+            k.saved(&s, &version).await?;
+            json!({"version":version,"card":card_value(&api,&headers,&r.space,&s,k.as_ref(),&version).await?})
+        }
         Tool::Read { document } => {
             let d = s.document(&document).await?;
             let v = s.version(&document, d.latest).await?;
@@ -633,10 +698,11 @@ async fn tool(
                 ApiError::invalid("Choose the document version this tool changes.")
             })?;
             let v = s.version(&document, base).await?;
-            let draft = k.change(&v, &change, &summary)?;
+            let draft = k.change(&s, &v, &change, &summary).await?;
             api.references(&headers, k.as_ref(), draft.content())
                 .await?;
             let v = s.save(&document, &a.account, draft, now()).await?;
+            k.saved(&s, &v).await?;
             json!({"version":v,"card":card_value(&api,&headers,&r.space,&s,k.as_ref(),&v).await?})
         }
         Tool::Job {

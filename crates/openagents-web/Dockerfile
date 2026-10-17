@@ -17,9 +17,9 @@ ENV OPENAGENTS_COMMIT=${OPENAGENTS_COMMIT}
 # The CAD engine (crates/cad-lab) beside it: the site runs CAD Lab's tools
 # for signed-in people in a child process (crates/openagents-web/src/cad_web.rs,
 # #11653).
-RUN cargo build --locked --release -p openagents-web --bin openagents-web \
+RUN cargo build --locked --release -p openagents-web --bin openagents-web --bin lab-cad-copy \
         -p cad-lab --bin cad-lab \
-    && strip target/release/openagents-web target/release/cad-lab
+    && strip target/release/openagents-web target/release/cad-lab target/release/lab-cad-copy
 
 # The Everglade web build (#10524) that /everglade serves (#10525): the
 # wasm32 target, wasm-bindgen-cli at the wasm-bindgen version Cargo.lock
@@ -155,6 +155,7 @@ RUN apt-get update \
         --home-dir /home/web --shell /usr/sbin/nologin web
 COPY --from=builder /build/target/release/openagents-web /usr/local/bin/openagents-web
 COPY --from=builder /build/target/release/cad-lab /usr/local/bin/cad-lab
+COPY --from=builder /build/target/release/lab-cad-copy /usr/local/bin/lab-cad-copy
 COPY --from=everglade /build/everglade /srv/everglade
 COPY --from=everglade /build/components /srv/components
 COPY --from=everglade /build/cloud /srv/cloud

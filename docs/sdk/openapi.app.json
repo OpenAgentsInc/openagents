@@ -901,6 +901,16 @@
               }
             }
           },
+          "402": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Stable error code and plain-language message.",
             "content": {
@@ -1046,6 +1056,16 @@
             }
           },
           "401": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Stable error code and plain-language message.",
             "content": {
               "application/json": {
@@ -1210,6 +1230,16 @@
             }
           },
           "401": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Stable error code and plain-language message.",
             "content": {
               "application/json": {
@@ -1399,6 +1429,16 @@
               }
             }
           },
+          "402": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Stable error code and plain-language message.",
             "content": {
@@ -1523,6 +1563,16 @@
             }
           },
           "401": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Stable error code and plain-language message.",
             "content": {
               "application/json": {
@@ -1696,6 +1746,16 @@
               }
             }
           },
+          "402": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Stable error code and plain-language message.",
             "content": {
@@ -1839,6 +1899,16 @@
             }
           },
           "401": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Stable error code and plain-language message.",
             "content": {
               "application/json": {
@@ -2020,6 +2090,16 @@
               }
             }
           },
+          "402": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Stable error code and plain-language message.",
             "content": {
@@ -2154,6 +2234,16 @@
             }
           },
           "401": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Stable error code and plain-language message.",
             "content": {
               "application/json": {
@@ -2336,6 +2426,16 @@
               }
             }
           },
+          "402": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Stable error code and plain-language message.",
             "content": {
@@ -2490,6 +2590,16 @@
             }
           },
           "401": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Stable error code and plain-language message.",
             "content": {
               "application/json": {
@@ -2671,6 +2781,16 @@
               }
             }
           },
+          "402": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Stable error code and plain-language message.",
             "content": {
@@ -2805,6 +2925,16 @@
             }
           },
           "401": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Stable error code and plain-language message.",
             "content": {
               "application/json": {
@@ -3017,6 +3147,16 @@
               }
             }
           },
+          "402": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Stable error code and plain-language message.",
             "content": {
@@ -3188,6 +3328,16 @@
               }
             }
           },
+          "402": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Stable error code and plain-language message.",
             "content": {
@@ -3323,6 +3473,16 @@
             }
           },
           "401": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Stable error code and plain-language message.",
             "content": {
               "application/json": {
@@ -3496,6 +3656,16 @@
               }
             }
           },
+          "402": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Stable error code and plain-language message.",
             "content": {
@@ -3639,6 +3809,16 @@
             }
           },
           "401": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Stable error code and plain-language message.",
             "content": {
               "application/json": {
@@ -3793,6 +3973,16 @@
             }
           },
           "401": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Stable error code and plain-language message.",
             "content": {
               "application/json": {
@@ -3964,6 +4154,16 @@
               }
             }
           },
+          "402": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Stable error code and plain-language message.",
             "content": {
@@ -4110,6 +4310,16 @@
             }
           },
           "401": {
+            "description": "Stable error code and plain-language message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabError"
+                }
+              }
+            }
+          },
+          "402": {
             "description": "Stable error code and plain-language message.",
             "content": {
               "application/json": {

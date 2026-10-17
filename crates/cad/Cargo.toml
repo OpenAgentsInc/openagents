@@ -17,10 +17,12 @@ zip = { version = "3", default-features = false, features = ["deflate"] }
 # The collision bake (#11657): hull checks and the distance-grid format.
 physics = { path = "../physics" }
 glam = "0.30.10"
+lab-kit = { path = "../lab-kit" }
 
 [dev-dependencies]
 # The URDF round trip reads what `urdf` writes the way Robot Lab does.
 robot-description = { path = "../robot-description" }
+tempfile = "3"
 
 [lints]
 workspace = true

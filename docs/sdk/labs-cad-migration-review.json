@@ -1,0 +1,22 @@
+{
+  "schema": "openagents.labs-cad-migration-review.v1",
+  "checked_at": "2026-10-17T01:06:10.992585+00:00",
+  "scopes": 1,
+  "documents": 1,
+  "versions": 2,
+  "files": 11,
+  "bytes": 1940606,
+  "manifest_sha256": "a4c2c91c7e947b755e53423a1b358b391b1722d8eaf87c06bec27ca255159218",
+  "reviews": [
+    {
+      "scope_sha256": "1f938d347e106732e3a311e77f39bb85921c2f4c9d70a723760ead793a16a27d",
+      "review_sha256": "16445f2f215a047871e0016b99dc53f64ab5cdc7a792e1a6b4914f8a55db93ae",
+      "documents": 1,
+      "versions": 2,
+      "files": 11,
+      "bytes": 1940606
+    }
+  ],
+  "source_unchanged": true,
+  "copy_performed": false
+}

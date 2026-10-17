@@ -48,6 +48,21 @@ async fn conformance(backend: Arc<dyn Backend>) {
     );
     let store = Store::new(backend.clone(), &space(&unique)).unwrap();
     let other = Store::new(backend.clone(), &space(&format!("{unique}-other"))).unwrap();
+    let alias = format!("legacy:{unique}");
+    assert!(
+        Store::from_alias(backend.clone(), &alias)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let (a, b) = tokio::join!(store.bind_alias(&alias), store.bind_alias(&alias));
+    a.unwrap();
+    b.unwrap();
+    assert!(other.bind_alias(&alias).await.is_err());
+    let through_alias = Store::from_alias(backend.clone(), &alias)
+        .await
+        .unwrap()
+        .unwrap();
     let project = Store::new(
         backend.clone(),
         &SpaceRef::Project {
@@ -120,6 +135,43 @@ async fn conformance(backend: Arc<dyn Backend>) {
         .await
         .unwrap();
     assert!(artifact.no_training);
+    assert_eq!(through_alias.version("doc", 1).await.unwrap(), v1);
+    store
+        .name_artifact(&v1.reference(), "out/example.step", &artifact.id)
+        .await
+        .unwrap();
+    assert_eq!(
+        through_alias
+            .named_artifact(&v1.reference(), "out/example.step")
+            .await
+            .unwrap(),
+        artifact
+    );
+    assert!(
+        other
+            .named_artifact(&v1.reference(), "out/example.step")
+            .await
+            .is_err()
+    );
+    assert!(
+        store
+            .name_artifact(&v1.reference(), "../escape", &artifact.id)
+            .await
+            .is_err()
+    );
+    assert!(
+        store
+            .name_artifact(
+                &lab_kit::Reference {
+                    document: "doc".into(),
+                    version: 2
+                },
+                "out/other.step",
+                &artifact.id
+            )
+            .await
+            .is_err()
+    );
     assert_eq!(
         store
             .artifact_bytes(&artifact.id, Some(1..4))
@@ -249,6 +301,14 @@ async fn conformance(backend: Arc<dyn Backend>) {
     let reopen = Store::new(backend, &space(&unique)).unwrap();
     assert_eq!(reopen.document("doc").await.unwrap().latest, 2);
     store.delete("doc", 48).await.unwrap();
+    assert!(store.knows_document("doc").await.unwrap());
+    assert_eq!(store.deleted_documents("echo").await.unwrap(), ["doc"]);
+    assert!(
+        through_alias
+            .named_artifact(&v1.reference(), "out/example.step")
+            .await
+            .is_err()
+    );
     assert!(matches!(
         reopen.version("doc", 1).await,
         Err(Error::NotFound)

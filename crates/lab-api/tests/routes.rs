@@ -32,7 +32,7 @@ impl Authorizer for Auth {
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.strip_prefix("Bearer "))
             .unwrap_or_default();
-        if !["alice", "bob", "viewer", "editor", "closed"].contains(&token) {
+        if !["alice", "bob", "viewer", "editor", "closed", "free"].contains(&token) {
             return Err(ApiError::new(
                 StatusCode::UNAUTHORIZED,
                 "signed_out",
@@ -63,6 +63,7 @@ impl Authorizer for Auth {
             account: token.into(),
             space: target,
             experimental: token != "closed",
+            cad: token != "free" || action != Action::Edit,
         })
     }
 }
@@ -86,14 +87,14 @@ fn echo_tool(name: &str, args: &Value) -> Result<Tool, ApiError> {
     })
 }
 fn app() -> (Router, tempfile::TempDir) {
+    app_with_gate(Gate::Experimental)
+}
+fn app_with_gate(gate: Gate) -> (Router, tempfile::TempDir) {
     let root = tempfile::tempdir().unwrap();
     let backend = Arc::new(FsBackend::open(root.path()).unwrap());
     let mut registry = Registry::default();
     registry
-        .register(
-            Arc::new(KindAdapter::<Echo>::new(echo_tool)),
-            Gate::Experimental,
-        )
+        .register(Arc::new(KindAdapter::<Echo>::new(echo_tool)), gate)
         .unwrap();
     let api = Arc::new(Api {
         backend,
@@ -852,25 +853,29 @@ impl LabKind for ReferenceKind {
     }
 }
 struct ReferenceRuntime(KindAdapter<ReferenceKind>);
+#[async_trait::async_trait]
 impl lab_api::Kind for ReferenceRuntime {
     fn manifest(&self) -> KindManifest {
         self.0.manifest()
     }
-    fn initial(
+    async fn initial(
         &self,
+        store: &lab_store::Store,
+        document: &str,
         s: &str,
         c: Value,
         summary: &str,
     ) -> lab_store::Result<lab_store::CheckedDraft> {
-        self.0.initial(s, c, summary)
+        self.0.initial(store, document, s, c, summary).await
     }
-    fn change(
+    async fn change(
         &self,
+        store: &lab_store::Store,
         v: &Version,
         c: &Change,
         summary: &str,
     ) -> lab_store::Result<lab_store::CheckedDraft> {
-        self.0.change(v, c, summary)
+        self.0.change(store, v, c, summary).await
     }
     fn jobs(&self, v: &Version, w: &Want) -> Vec<JobSpec> {
         self.0.jobs(v, w)
@@ -1140,4 +1145,99 @@ async fn hourly_limit_has_a_stable_code_and_retry_after() {
     assert_eq!(s, 429);
     assert_eq!(h["retry-after"], "60");
     assert_eq!(value(&b)["error"]["code"], "rate_limited");
+}
+
+#[tokio::test]
+async fn cad_plan_is_checked_on_edits_while_existing_work_stays_readable_and_deletable() {
+    let (app, _root) = app_with_gate(Gate::Cad);
+    assert_eq!(
+        call(
+            &app,
+            Some("alice"),
+            "POST",
+            "/v1/labs/documents",
+            Some(doc("plan", "project:shared")),
+            &[]
+        )
+        .await
+        .0,
+        201
+    );
+    assert_eq!(
+        call(
+            &app,
+            Some("free"),
+            "GET",
+            "/v1/labs/documents/plan?space=project:shared",
+            None,
+            &[]
+        )
+        .await
+        .0,
+        200
+    );
+    let (status, _, body) = call(
+        &app,
+        Some("free"),
+        "POST",
+        "/v1/labs/documents/plan/versions",
+        Some(change(1, "changed", "project:shared")),
+        &[],
+    )
+    .await;
+    assert_eq!(status, 402);
+    assert_eq!(value(&body)["error"]["code"], "plan_required");
+    assert_eq!(call(&app, Some("free"), "POST", "/v1/labs/kinds/echo/tools/echo_set", Some(json!({"space":"project:shared","base":1,"arguments":{"document":"plan","text":"changed"}})), &[]).await.0, 402);
+    assert_eq!(
+        call(
+            &app,
+            Some("free"),
+            "POST",
+            "/v1/labs/documents",
+            Some(doc("new-plan", "me")),
+            &[]
+        )
+        .await
+        .0,
+        402
+    );
+    assert_eq!(
+        call(
+            &app,
+            Some("viewer"),
+            "DELETE",
+            "/v1/labs/documents/plan?space=project:shared",
+            None,
+            &[]
+        )
+        .await
+        .0,
+        403
+    );
+    assert_eq!(
+        call(
+            &app,
+            Some("editor"),
+            "DELETE",
+            "/v1/labs/documents/plan?space=project:shared",
+            None,
+            &[]
+        )
+        .await
+        .0,
+        403
+    );
+    assert_eq!(
+        call(
+            &app,
+            Some("free"),
+            "DELETE",
+            "/v1/labs/documents/plan?space=project:shared",
+            None,
+            &[]
+        )
+        .await
+        .0,
+        200
+    );
 }

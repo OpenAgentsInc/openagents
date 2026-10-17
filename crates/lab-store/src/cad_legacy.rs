@@ -96,7 +96,7 @@ fn component(value: &str) -> Result<()> {
             && value != ".."
             && value
                 .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b)),
+                .all(|b| b.is_ascii_alphanumeric() || b"-_.:".contains(&b)),
         "Choose a valid CAD file address.",
     )
 }

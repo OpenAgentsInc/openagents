@@ -9,7 +9,15 @@ Every request uses an account-authorized bearer credential. `space` is `me`
 reads and deletes, and in JSON for writes. Project viewers read, editors
 change, and owners delete. Account IDs supplied by a caller grant no access.
 Experimental kinds are available only to the Computers test/admin audience.
-The Echo fixture qualifies this API; CAD integration follows in #11875.
+The Echo fixture qualifies this API. CAD uses its existing Pro audience;
+saved designs remain readable and deletable after Pro ends.
+
+CAD accepts `part.v1` and `assembly.v1`. The document ID must match the
+content's `id`. `cad_from_json` saves a checked document, `cad_drag_face`
+accepts the viewer's named face and distance, and `cad_export` requests an
+export job. Changes and jobs use the existing server child process, queue,
+75-second deadline, and 640 MiB memory limit. Cards link to the existing CAD
+page. Imported sources and derived files are marked `no_training`.
 
 Create a document with `id`, `kind`, `schema`, `title`, `content`, and `summary`.
 An existing ID returns `409`; deleted IDs cannot be reused. Changes name an
@@ -49,3 +57,14 @@ account. Run `deploy/labs/production-signing.sh` after the signing role exists;
 it grants the runtime signing access and limits the signer to the bucket's
 `labs/` files. `WEB_DEPLOY_TAG=labs-11874` gives a concurrent deployment its
 own candidate URL when running `scripts/deploy/web.sh promote`.
+
+Review existing CAD history with `scripts/dev/labs-cad-review.py --bucket
+BUCKET --evidence FILE`. Its output contains counts and digests only. After
+the owner approves a scope's review checksum, run the image's `lab-cad-copy
+--bucket BUCKET --account ACCOUNT --approved-checksum SHA256` (add
+`--project PROJECT` for a project) with the production runtime identity,
+Cloud SQL attachment, and Labs database and bucket configuration. The command
+checks the reviewed checksum, preserves the original objects, and imports
+the same version numbers and content digests. Retries verify completed
+versions before continuing. [The production review](labs-cad-migration-review.json)
+records the history awaiting approval.

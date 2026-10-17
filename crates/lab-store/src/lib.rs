@@ -259,6 +259,118 @@ pub struct Store {
     namespace: String,
 }
 impl Store {
+    /// The hashed space address, for worker caches and rate limits.
+    pub fn namespace(&self) -> &str {
+        &self.namespace
+    }
+    /// Bind a previously authorized legacy address without storing an account ID.
+    /// A binding can be retried but never redirected to a different space.
+    pub async fn bind_alias(&self, alias: &str) -> Result<()> {
+        text(alias, 512)?;
+        let key = digest(&serde_json::json!(["openagents.lab-store.alias.v1", alias]));
+        let value = serde_json::to_vec(
+            &serde_json::json!({"schema":"openagents.lab-store.alias.v1","space":self.namespace}),
+        )?;
+        for _ in 0..32 {
+            let (generation, current) = self.backend.load(&key).await?;
+            if let Some(current) = current {
+                let current: Value = serde_json::from_slice(&current)?;
+                require(
+                    current["schema"] == "openagents.lab-store.alias.v1"
+                        && current["space"] == self.namespace,
+                    "This address belongs to another lab space.",
+                )?;
+                return Ok(());
+            }
+            if self
+                .backend
+                .compare_and_swap(&key, generation, value.clone())
+                .await?
+            {
+                return Ok(());
+            }
+        }
+        Err(Error::Conflict)
+    }
+    /// The caller must authorize `alias` before opening the space it names.
+    pub async fn from_alias(
+        backend: Arc<dyn backend::Backend>,
+        alias: &str,
+    ) -> Result<Option<Self>> {
+        text(alias, 512)?;
+        let key = digest(&serde_json::json!(["openagents.lab-store.alias.v1", alias]));
+        let (_, current) = backend.load(&key).await?;
+        let Some(current) = current else {
+            return Ok(None);
+        };
+        let value: Value = serde_json::from_slice(&current)?;
+        let namespace = value["space"]
+            .as_str()
+            .filter(|s| valid_sha(s))
+            .ok_or(Error::Corrupt)?;
+        require(
+            value["schema"] == "openagents.lab-store.alias.v1",
+            "This lab address couldn't be read.",
+        )?;
+        Ok(Some(Self {
+            backend,
+            namespace: namespace.into(),
+        }))
+    }
+    /// Include deletion markers when deciding whether to fall back to an older store.
+    pub async fn knows_document(&self, id: &str) -> Result<bool> {
+        let (_, state) = self.state().await?;
+        Ok(state.documents.contains_key(id))
+    }
+    pub async fn deleted_documents(&self, kind: &str) -> Result<Vec<String>> {
+        let (_, state) = self.state().await?;
+        Ok(state
+            .documents
+            .values()
+            .filter(|d| d.deleted && d.meta.kind == kind)
+            .map(|d| d.meta.id.clone())
+            .collect())
+    }
+    /// Attach a kind's file name to an existing artifact in this version.
+    /// The object address remains content-based and never uses the file name.
+    pub async fn name_artifact(
+        &self,
+        version: &Reference,
+        name: &str,
+        artifact: &str,
+    ) -> Result<()> {
+        let key = file_key(version, name)?;
+        self.update(|state| {
+            state.reference(version)?;
+            let value = state.artifacts.get(artifact).ok_or(Error::NotFound)?;
+            require(
+                value.version == *version,
+                "Choose a file from this version.",
+            )?;
+            state.files.insert(key.clone(), artifact.into());
+            Ok(())
+        })
+        .await
+    }
+    pub async fn named_artifact(&self, version: &Reference, name: &str) -> Result<Artifact> {
+        let key = file_key(version, name)?;
+        let (_, state) = self.state().await?;
+        state.reference(version)?;
+        let id = state.files.get(&key).ok_or(Error::NotFound)?;
+        state.artifacts.get(id).cloned().ok_or(Error::Corrupt)
+    }
+    /// The extra entry lets a card refuse a history beyond its display limit.
+    pub async fn version_artifacts(&self, version: &Reference) -> Result<Vec<Artifact>> {
+        let (_, state) = self.state().await?;
+        state.reference(version)?;
+        Ok(state
+            .artifacts
+            .values()
+            .filter(|a| a.version == *version)
+            .take(1001)
+            .cloned()
+            .collect())
+    }
     /// Bind a retry identity before admitting work. Reuse requires identical input.
     pub async fn reserve_request(&self, key: &str, input: &Value) -> Result<()> {
         text(key, 128)?;
@@ -419,6 +531,22 @@ impl Store {
         })
         .await
     }
+}
+
+fn file_key(version: &Reference, name: &str) -> Result<String> {
+    require(
+        !name.is_empty()
+            && name.len() <= 256
+            && name.split('/').all(|s| {
+                !s.is_empty()
+                    && s != "."
+                    && s != ".."
+                    && s.bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
+            }),
+        "Choose a valid file name.",
+    )?;
+    Ok(serde_json::to_string(&(version, name))?)
 }
 fn page<T>(items: impl Iterator<Item = T>, after: u64, limit: u64) -> Result<Page<T>> {
     require(

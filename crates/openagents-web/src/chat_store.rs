@@ -730,7 +730,11 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {}
 
 #[derive(Clone)]
-pub struct Store(Arc<Adapter>, broadcast::Sender<Change>);
+pub struct Store(
+    Arc<Adapter>,
+    broadcast::Sender<Change>,
+    Option<Arc<dyn lab_store::backend::Backend>>,
+);
 
 /// A chat this process just wrote, for readers that follow a visitor's
 /// chats without polling each one (the sidebar's live stream, see
@@ -779,11 +783,22 @@ struct Active {
 }
 
 impl Store {
+    pub(crate) fn with_labs(
+        mut self,
+        backend: Option<Arc<dyn lab_store::backend::Backend>>,
+    ) -> Self {
+        self.2 = backend;
+        self
+    }
+    pub(crate) fn labs(&self) -> Option<Arc<dyn lab_store::backend::Backend>> {
+        self.2.clone()
+    }
     /// Disk storage is suitable for a single machine and survives restarts.
     pub fn local(directory: PathBuf) -> Self {
         Self(
             Arc::new(Adapter::Disk(directory)),
             broadcast::channel(CHANGES).0,
+            None,
         )
     }
 
@@ -833,6 +848,7 @@ impl Store {
                 token: Mutex::new(None),
             })),
             broadcast::channel(CHANGES).0,
+            None,
         ))
     }
 

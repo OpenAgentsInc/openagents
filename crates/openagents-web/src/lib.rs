@@ -45,11 +45,11 @@ mod chat_owner;
 pub mod chat_store;
 mod chat_vision;
 pub mod cloud;
+mod cloud_host;
 mod coder_sync;
 mod components;
 mod composer;
 mod composer_row;
-mod cloud_host;
 mod computer_runs;
 pub mod computers;
 mod computers_api;
@@ -68,6 +68,7 @@ mod sand_gallery;
 pub use environments::push::StandIn as StagingPush;
 mod cad_gate;
 mod cad_lab;
+pub mod cad_migration;
 mod cad_web;
 mod game_lab;
 mod github_refs;
@@ -553,7 +554,12 @@ impl std::ops::Deref for App {
 }
 
 /// The whole site.
-pub fn router(config: Config) -> Router {
+pub fn router(mut config: Config) -> Router {
+    config.chat_store = Arc::new(
+        (*config.chat_store)
+            .clone()
+            .with_labs(config.lab_backend.clone()),
+    );
     let app = App(Arc::new(Inner { config }));
     work_runs::computers::spawn_cleanup(app.clone());
     let hosts = Hosts {

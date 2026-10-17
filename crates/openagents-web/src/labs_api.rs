@@ -11,6 +11,19 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 
 struct Accounts(App);
+pub(crate) async fn bind_account(app: &App, account: &str) -> lab_store::Result<()> {
+    if let Some(backend) = &app.config.lab_backend {
+        lab_store::Store::new(
+            backend.clone(),
+            &SpaceRef::Personal {
+                account: account.into(),
+            },
+        )?
+        .bind_alias(&crate::chat_store::account_owner(account))
+        .await?;
+    }
+    Ok(())
+}
 async fn refusal(response: Response) -> ApiError {
     let status = response.status();
     let bytes = axum::body::to_bytes(response.into_body(), 16384)
@@ -50,6 +63,9 @@ impl Authorizer for Accounts {
             Ok(id) => id,
             Err(r) => return Err(refusal(r).await),
         };
+        bind_account(&self.0, &id.account)
+            .await
+            .map_err(ApiError::from)?;
         let target = if space == "me" {
             SpaceRef::Personal {
                 account: id.account.clone(),
@@ -74,7 +90,16 @@ impl Authorizer for Accounts {
                 project: access.project.id,
             }
         };
+        let cad = action != Action::Edit
+            || crate::cad_gate::account_passes(
+                &self.0,
+                headers,
+                &id.account,
+                id.admin,
+                &std::env::var(crate::cad_gate::TEST_ACCOUNTS_ENV).unwrap_or_default(),
+            );
         Ok(Access {
+            cad,
             account: id.account,
             space: target,
             experimental: id.permitted,
@@ -110,6 +135,11 @@ pub(crate) fn routes(app: &App) -> Router<App> {
     let mut registry = Registry::default();
     // This small research kind qualifies the gated API before CAD integration.
     if app.config.lab_backend.is_some() {
+        if let Some(engine) = crate::cad_web::engine() {
+            registry
+                .register(Arc::new(crate::cad_web::CadApi::new(engine)), Gate::Cad)
+                .expect("Unique CAD kind");
+        }
         registry
             .register(
                 Arc::new(KindAdapter::<Echo>::new(echo_tool)),

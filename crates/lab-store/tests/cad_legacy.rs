@@ -98,3 +98,18 @@ async fn shortcuts_cannot_escape_the_legacy_root() {
     .unwrap();
     assert!(legacy.dry_run().await.is_err());
 }
+
+#[tokio::test]
+async fn hosted_account_owner_addresses_are_supported() {
+    let root = tempfile::tempdir().unwrap();
+    fixture(root.path());
+    let owner = format!("account:{}", "a".repeat(64));
+    std::fs::rename(root.path().join("owner"), root.path().join(&owner)).unwrap();
+    let source = Arc::new(DirectorySource::open(root.path()).unwrap());
+    let legacy = CadLegacy::personal(source, &owner).unwrap();
+    let report = legacy.dry_run().await.unwrap();
+    assert_eq!(
+        (report.documents, report.versions, report.files.len()),
+        (1, 1, 4)
+    );
+}
