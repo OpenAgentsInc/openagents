@@ -10,7 +10,7 @@ description = "Lab job placement, scoped workers, and bounded execution"
 default = ["worker"]
 worker = ["dep:openagents-sdk"]
 schema = ["dep:schemars", "lab-kit/schema"]
-cloud = ["dep:openagents-sdk"]
+cloud = ["worker"]
 
 [dependencies]
 base64 = "0.22"
