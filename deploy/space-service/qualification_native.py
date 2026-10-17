@@ -47,10 +47,8 @@ def main(action):
         state=ROOT/'seed-build.json'
         if state.exists(): raise RuntimeError('Inspect the saved build before submitting another.')
         # Create the marker first: a lost response must not cause a duplicate build.
-        state.write_text(json.dumps({'state':'submission_pending','template':'qualification-seed-11814'})+'\n')
-        value=request(True,'POST','/admin/api/v1/templates/qualification-seed-11814/builds',{
-            'recipe':{'metadata':{},'origin':{'from_scratch':{'source':{'ubuntu_minimal_cloud_squashfs':{'release':'resolute','version':'26.04','date':'release-20260908'}},
-            'guest_kernel':{'version':'6.1.155','digest':'sha256:e20e46d0c36c55c0d1014eb20576171b3f3d922260d9f792017aeff53af3d4f2'}}},'steps':[]},'publish_tags':['latest']})
+        state.write_text(json.dumps({'state':'submission_pending','template':'seed'})+'\n')
+        value=request(True,'POST','/admin/api/v1/system-templates/seed/builds',{'publish_tags':['latest']})
         state.write_text(json.dumps(value,indent=2)+'\n')
         print(json.dumps(value))
     else:
@@ -59,7 +57,7 @@ def main(action):
         if not job: raise RuntimeError('No build receipt is saved. Inspect the operation before retrying submission.')
         import uuid
         job=str(uuid.UUID(job))
-        value=request(True,'GET','/admin/api/v1/templates/qualification-seed-11814/builds/'+job)
+        value=request(True,'GET','/admin/api/v1/templates/seed/builds/'+job)
         (ROOT/'seed-build-status.json').write_text(json.dumps(value,indent=2)+'\n')
         print(json.dumps(value))
 
