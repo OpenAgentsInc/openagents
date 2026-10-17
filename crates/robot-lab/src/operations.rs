@@ -151,12 +151,7 @@ impl Store {
                 let Document::Scene(mut scene) = self.get(&base)?.content else {
                     return Err(Error::Invalid("Open a scene before moving a joint.".into()));
                 };
-                let instance = scene
-                    .robots
-                    .iter_mut()
-                    .find(|r| r.id == robot)
-                    .ok_or_else(|| Error::Invalid("Choose a robot in this scene.".into()))?;
-                instance.joints.extend(joints);
+                crate::kind::pose(&mut scene, &robot, joints)?;
                 save(
                     &base.document,
                     Some(&base),
@@ -177,12 +172,7 @@ impl Store {
                         "Open a scene before moving an object.".into(),
                     ));
                 };
-                let object = scene
-                    .objects
-                    .iter_mut()
-                    .find(|o| o.id == object)
-                    .ok_or_else(|| Error::Invalid("Choose an object in this scene.".into()))?;
-                object.geometry.pose.position = position;
+                crate::kind::move_object(&mut scene, &object, position)?;
                 save(
                     &base.document,
                     Some(&base),

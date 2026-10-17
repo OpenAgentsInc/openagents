@@ -2,14 +2,19 @@
 //!
 //! Rendering, physics, dataset decoding, and policy inference are adapters.
 //! Stored references name immutable versions, including in cards and jobs.
+//! [`kind`] is the same contract as a Labs platform kind, and [`migrate`]
+//! moves a local project onto the platform.
 
 pub mod document;
+pub mod kind;
 pub mod version;
 pub use version::{Note, Selection, Version};
 // Storage and its operations touch the disk; the browser build only reads
 // checked documents.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod import;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod migrate;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod operations;
 #[cfg(not(target_arch = "wasm32"))]

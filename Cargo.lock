@@ -14678,6 +14678,8 @@ dependencies = [
  "base64 0.22.1",
  "fs2",
  "glam",
+ "lab-kit",
+ "lab-store",
  "oa-copy",
  "robot-description",
  "roxmltree",
@@ -14687,6 +14689,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.20",
+ "tokio",
 ]
 
 [[package]]

@@ -6,8 +6,13 @@ rust-version.workspace = true
 publish.workspace = true
 description = "Checked Robot Lab documents, private project storage, and typed operations"
 
+[features]
+# `migrate::import`, which writes a local project into a Labs platform store.
+platform = ["dep:lab-store"]
+
 [dependencies]
 base64 = "0.22"
+lab-kit = { path = "../lab-kit" }
 schemars = "1.2.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
@@ -22,9 +27,12 @@ robot-description = { path = "../robot-description" }
 glam = "0.30.10"
 roxmltree = "0.21.1"
 tempfile = "3"
+lab-store = { path = "../lab-store", optional = true }
 
 [dev-dependencies]
 oa-copy = { path = "../oa-copy" }
+lab-store = { path = "../lab-store" }
+tokio = { version = "1", features = ["macros", "rt"] }
 
 [lints]
 workspace = true
