@@ -1,0 +1,321 @@
+{
+  "schema": "openagents.computers.delivery-evidence.v1",
+  "observed_at": "2026-10-17T06:00:46.556009+00:00",
+  "umbrella": 11800,
+  "closure_rule": "Source merged to main with focused checks; deployment/live work remains in the master After-close table.",
+  "source_milestones_complete": true,
+  "combined_space_live_qualification_complete": false,
+  "customer_space_access_qualified": false,
+  "customer_pricing_enabled": false,
+  "public_default": "Boat",
+  "independent_open_source_issue": 11823,
+  "independent_issue_lane": 1,
+  "milestones": [
+    {
+      "name": "M1: Boat public Computers API and Rust client",
+      "issue": 11806,
+      "state": "CLOSED",
+      "evidence": "computers-web-evidence.json"
+    },
+    {
+      "name": "M2: SPACE foundations and qualification implementation",
+      "issue": 11816,
+      "state": "CLOSED",
+      "source_commit": "23aa58e189f8919a02104477d0811b914ea58441",
+      "evidence": "space-qualification-evidence.json",
+      "live_qualification_passed": false
+    }
+  ],
+  "children": [
+    {
+      "number": 11801,
+      "state": "CLOSED",
+      "title": "Computers API: expose account-authenticated lifecycle operations on the public API",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11801"
+    },
+    {
+      "number": 11802,
+      "state": "CLOSED",
+      "title": "Computers API: add durable command sessions, streaming, and confirmed cancellation",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11802"
+    },
+    {
+      "number": 11803,
+      "state": "CLOSED",
+      "title": "Computers API: expose account-scoped bounded file reads and writes",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11803"
+    },
+    {
+      "number": 11804,
+      "state": "CLOSED",
+      "title": "SDK: publish the Computers OpenAPI contract with compatibility and regeneration checks",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11804"
+    },
+    {
+      "number": 11805,
+      "state": "CLOSED",
+      "title": "SDK: implement the lightweight Rust Computers client and stable retry identities",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11805"
+    },
+    {
+      "number": 11806,
+      "state": "CLOSED",
+      "title": "SDK: move web chat computers onto the public Rust client and prove the first Boat flow",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11806"
+    },
+    {
+      "number": 11807,
+      "state": "CLOSED",
+      "title": "Computers API: migrate Solver allocation and cleanup off direct Boat calls",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11807"
+    },
+    {
+      "number": 11808,
+      "state": "CLOSED",
+      "title": "Computers API: migrate Environment builders and verifiers onto shared lifecycle ownership",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11808"
+    },
+    {
+      "number": 11809,
+      "state": "CLOSED",
+      "title": "Computers API: add persistent backend dispatch and requirement-based placement",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11809"
+    },
+    {
+      "number": 11810,
+      "state": "CLOSED",
+      "title": "SPACE: select verified snapshot boots through the Computers API driver path",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11810"
+    },
+    {
+      "number": 11811,
+      "state": "CLOSED",
+      "title": "SPACE: build and freshly verify immutable development environment artifacts",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11811"
+    },
+    {
+      "number": 11812,
+      "state": "CLOSED",
+      "title": "Computers: declare memory-preserving suspend and qualify wake, cancellation, and recovery",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11812"
+    },
+    {
+      "number": 11813,
+      "state": "CLOSED",
+      "title": "Computers: authorize credential references and enforce immutable egress profiles on GCloud",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11813"
+    },
+    {
+      "number": 11814,
+      "state": "CLOSED",
+      "title": "SPACE: deploy a private maintained GCloud service with durable storage and bounded capacity",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11814"
+    },
+    {
+      "number": 11815,
+      "state": "CLOSED",
+      "title": "Computers: persist usage, quotas, and uncertain reservations across backends",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11815"
+    },
+    {
+      "number": 11816,
+      "state": "CLOSED",
+      "title": "SPACE: qualify the public SDK and web-chat path, recovery, and staged rollout",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11816"
+    },
+    {
+      "number": 11817,
+      "state": "CLOSED",
+      "title": "Computers: implement an enrolled-own-machine adapter with safe attach and detach semantics",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11817"
+    },
+    {
+      "number": 11818,
+      "state": "CLOSED",
+      "title": "SDK: inventory public API routes and incrementally extend the unified OpenAPI reference",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11818"
+    },
+    {
+      "number": 11819,
+      "state": "CLOSED",
+      "title": "SDK follow-up: define the host public boundary and publication evidence without changing frozen binaries",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11819"
+    },
+    {
+      "number": 11820,
+      "state": "CLOSED",
+      "title": "SDK follow-up: specify external computer-provider admission and paid placement policy",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11820"
+    },
+    {
+      "number": 11821,
+      "state": "CLOSED",
+      "title": "SDK follow-up: generate additional language clients only after demand and repository decisions",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11821"
+    },
+    {
+      "number": 11822,
+      "state": "CLOSED",
+      "title": "SDK follow-up: add opt-in x402 payment with spending caps and retry-safe execution",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11822"
+    },
+    {
+      "number": 11823,
+      "state": "OPEN",
+      "title": "Next Coder release: consume the public Computers SDK for remote work and agent tools",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/11823"
+    }
+  ],
+  "evidence": {
+    "account_lifecycle": "computers-lifecycle-evidence.json",
+    "command_sessions": "computers-commands-evidence.json",
+    "files": "computers-files-evidence.json",
+    "openapi": "computers-openapi-evidence.json",
+    "rust_client": "computers-client-evidence.json",
+    "web_adoption": "computers-web-evidence.json",
+    "solver_migration": "solver-computers-evidence.json",
+    "environment_migration": "environment-computers-evidence.json",
+    "persistent_placement": "computers-registry-evidence.json",
+    "snapshot_driver": "../cloud/evidence/2026-10-16-space-computers.json",
+    "memory_lifecycle": "../cloud/space.md",
+    "credential_sources_and_native_adapter": "computers-credential-evidence.json",
+    "private_service": "../cloud/evidence/2026-10-16-space-private-foundation.json",
+    "usage": "computers-usage-evidence.json",
+    "qualification": "space-qualification-evidence.json",
+    "enrolled_host": "../../crates/computer-enrolled/README.md",
+    "route_inventory": "public-reference-evidence.json",
+    "policy_issues_11819_through_11822": "release-policy.md"
+  },
+  "latest_focused_checks": {
+    "issue": 11816,
+    "oa_computers_with_disposable_postgresql": 88,
+    "rust_sdk": 69,
+    "formatting": true,
+    "operator_and_example_builds": true,
+    "pending_packet_refuses_test_and_named_admission": true,
+    "source_and_logs": "space-qualification-evidence.json",
+    "intermittent_command_recovery_fixture_failure_recorded": true,
+    "recorded_on_issue": "https://github.com/OpenAgentsInc/openagents/issues/11815#issuecomment-6230397199"
+  },
+  "after_close": {
+    "master": "../audits/2026-10-16-master-delegation.md#after-close-checks",
+    "deployment_and_live_owner": "Lane 0",
+    "qualification_runbook": "space-qualification.md",
+    "packet": "space-qualification-packet.json",
+    "assessment": "space-qualification-assessment.json",
+    "pending": "Combined supported-client credentials, public SDK and useful web task/follow-up, fault/recovery and cross-worker evidence, rollout/rollback, measured latency/capacity/cost budgets, and complete maintained-fixture cleanup. Each case remains pending until its own evidence passes.",
+    "owner_decisions": "../../NEEDS_OWNER.md#sdk-publication-and-commercial-activation"
+  },
+  "cleanup": {
+    "observed_at": "2026-10-17T06:00:11.012753+00:00",
+    "project": "openagentsgemini",
+    "scope": "Only disposable resources created by session 01a14134 for #11800 and #11813; maintained SPACE infrastructure is excluded.",
+    "instances": 0,
+    "disks": 0,
+    "cloud_run_services": 0,
+    "secret_sources": 0,
+    "ca_pools": 0,
+    "firewalls": 0,
+    "routers": 0,
+    "pending_network_cleanup": [
+      {
+        "network": "oa-sdk-build-11800",
+        "reservations": [
+          {
+            "addressType": "INTERNAL",
+            "name": "serverless-ipv4-cloudrun-1792204802249859935",
+            "purpose": "SERVERLESS",
+            "subnetwork": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/regions/us-central1/subnetworks/oa-sdk-build-11800"
+          }
+        ]
+      }
+    ],
+    "remaining_subnets": [
+      {
+        "name": "oa-sdk-build-11800"
+      }
+    ],
+    "remaining_networks": [
+      {
+        "name": "oa-sdk-build-11800"
+      }
+    ],
+    "credential_infrastructure_deletion": {
+      "removed": [
+        "oa-cred-native-11813",
+        "oa-cred-data-11813",
+        "oa-cred-broker-11813",
+        "oa-cred-fixture-11813",
+        "oa-sdk-credentials-11813",
+        "oa-space-spike-11813",
+        "private-dns-record",
+        "private-dns-zone",
+        "broker-firewall",
+        "oa-space-spike-11813-iap",
+        "oa-cred-native-11813-firewall",
+        "oa-space-spike-11813-router",
+        "synthetic-secret",
+        "oa-sdk-credentials-11813-identity",
+        "oa-cred-edge-11813-identity",
+        "ca-pool",
+        "oa-space-spike-11813-subnet",
+        "spike-vpc"
+      ],
+      "retained": [],
+      "updated_at": "2026-10-17T05:56:53.777069+00:00",
+      "pending_serverless_reservations": [],
+      "complete": true
+    },
+    "builder_infrastructure_deletion": {
+      "removed": [
+        "builder",
+        "oa-sdk-build-11800-iap-firewall"
+      ],
+      "inventory": {
+        "vm": "oa-sdk-build-11800",
+        "labels": {
+          "agent": "codex",
+          "issue": "11800",
+          "openagents-managed": "sdk-build",
+          "session": "01a14134"
+        },
+        "network": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/global/networks/oa-sdk-build-11800",
+        "disks": [
+          "https://www.googleapis.com/compute/v1/projects/openagentsgemini/zones/us-central1-a/disks/oa-sdk-build-11800"
+        ],
+        "firewalls": [
+          {
+            "name": "oa-sdk-build-11800-iap",
+            "network": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/global/networks/oa-sdk-build-11800"
+          }
+        ],
+        "routers": [],
+        "subnets": [
+          {
+            "name": "oa-sdk-build-11800",
+            "network": "https://www.googleapis.com/compute/v1/projects/openagentsgemini/global/networks/oa-sdk-build-11800"
+          }
+        ]
+      },
+      "observed_at": "2026-10-17T05:56:56.622775+00:00",
+      "pending_serverless_reservations": [
+        "serverless-ipv4-cloudrun-1792204802249859935"
+      ],
+      "complete": false
+    },
+    "remaining_action": {
+      "owner": "Lane 0 After-close checks",
+      "subnet": "oa-sdk-build-11800",
+      "network": "oa-sdk-build-11800",
+      "region": "us-central1",
+      "reservation": "serverless-ipv4-cloudrun-1792204802249859935",
+      "condition": "Wait until compute addresses list for this exact subnetwork returns no reservations, then delete the subnet and VPC. Do not force deletion of a Google-managed in-use reservation.",
+      "commands": [
+        "gcloud compute addresses list --project=openagentsgemini --filter=subnetwork:oa-sdk-build-11800 --format=json",
+        "gcloud compute networks subnets delete oa-sdk-build-11800 --project=openagentsgemini --region=us-central1",
+        "gcloud compute networks delete oa-sdk-build-11800 --project=openagentsgemini"
+      ]
+    },
+    "cloud_run_jobs": 0
+  }
+}

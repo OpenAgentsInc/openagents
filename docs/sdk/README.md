@@ -53,21 +53,30 @@ clients; a new SDK does not need to duplicate them before computers are useful.
 
 ## What exists
 
+The [Computers delivery record](computers-delivery-evidence.json) records source
+completion as of 2026-10-17. Combined public SPACE qualification remains pending;
+the [runbook and checked assessment](space-qualification.md) define its remaining
+live checks. The release brief closes source issues separately from deployment
+and live qualification. Boat remains the default, and SPACE pricing stays off.
+
 | Area | Existing pieces | Remaining work |
 | --- | --- | --- |
 | Clients | `openagents-sdk` authentication, account/workspace discovery, saved-history readers, and the qualified Rust Computers client ([evidence](computers-client-evidence.json), #11805), and web adoption ([evidence](computers-web-evidence.json), #11806); decisions in `jev` | Broader schemas and supported SPACE operation |
 | Host | `coder-sdk`, Claude/Codex/ACP transports, hooks, policy and session ownership | Explicit third-party boundary, supported capabilities, and publication evidence |
-| Providers | `computer-driver`, Core/Suspend/Snapshot/Fork declarations, `computer-conformance`, Boat wire schema | Per-computer backend registry and separate external-provider qualification |
-| Computers | `oa-computers` intent/reconciliation, web chat integration, deployed gated account-authenticated lifecycle ([evidence](computers-lifecycle-evidence.json), #11801), durable command sessions ([evidence](computers-commands-evidence.json), #11802), bounded workspace files ([evidence](computers-files-evidence.json), #11803), and a maintained Computers contract with generated Rust bindings ([evidence](computers-openapi-evidence.json), #11804) | Solver/Environment adoption and supported SPACE operation |
-| SPACE | Completed opt-in Rust adapter and GCE spike in #11728 | Actual HTTP snapshot boots, full environment artifacts, credentials, operations, usage, and qualification |
+| Providers | `computer-driver`, independent capability declarations, conformance, the persistent backend registry (#11809), and enrolled-host adapter (#11817) | Separate external-provider qualification and commercial admission |
+| Computers | `oa-computers` intent/reconciliation, web chat integration, deployed gated account-authenticated lifecycle ([evidence](computers-lifecycle-evidence.json), #11801), durable command sessions ([evidence](computers-commands-evidence.json), #11802), bounded workspace files ([evidence](computers-files-evidence.json), #11803), and a maintained Computers contract with generated Rust bindings ([evidence](computers-openapi-evidence.json), #11804) | Combined SPACE live qualification; Solver and Environment adoption are complete (#11807, #11808) |
+| SPACE | Actual snapshot boots (#11810), verified artifacts (#11811), memory-preserving lifecycle (#11812), scoped credential implementation (#11813), private service (#11814), durable usage (#11815), and qualification tooling (#11816) | Combined public SDK/web, credential-client, recovery, rollback, performance/cost, and cleanup checks in the master After-close table; customer activation |
 | Discovery | API docs, `llms.txt`, docs MCP, agent cards | Incrementally complete verified OpenAPI and examples |
 
 The [SPACE report](../cloud/space.md) and
 [evidence](../cloud/evidence/2026-10-space-spike.json) replace the earlier
 planned-spike description. HTTP cold-to-first-command p50 was 2,045.8 ms
 on 2 vCPU/1 GiB. Native node snapshot-to-ready p50 was 319.0 ms on
-2 vCPU/2 GiB. The pinned Kind HTTP path still cold-boots, and the two
-measurements have different boundaries. Production remains on Boat.
+2 vCPU/2 GiB. Those original spike measurements have different boundaries.
+The later Direct adapter's [20-run snapshot result](../cloud/evidence/2026-10-16-space-computers.json)
+was p50 750.54 ms and p90 811.17 ms through loopback timing proxies. Neither
+result establishes public SDK/web latency on the combined maintained deployment.
+Production remains on Boat.
 
 ## First desktop delivery: sign in and read existing chats
 

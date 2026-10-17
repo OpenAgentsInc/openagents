@@ -112,7 +112,8 @@
   "cleanup": {
     "new_live_computers_or_accounts_created_for_11816": 0,
     "checks": "Synthetic unit fixtures, temporary HOME, and disposable PostgreSQL only; no owner account or real host used.",
-    "reused_builder": "oa-sdk-build-11800, finite deletion schedule; removed after this lane finishes.",
-    "prior_11813": "All probe workloads, computers, secret sources, identities, and CA pool deleted; provider-managed serverless reservation still holds the otherwise empty owned subnet/VPC."
+    "reused_builder": "oa-sdk-build-11800 VM and boot disk deleted after retaining check artifacts. Empty subnet/VPC still wait for Google-managed reservation release.",
+    "prior_11813": "All probe workloads, computers, credentials, secret sources, identities, CA pool, and the spike subnet/VPC are removed.",
+    "final_inventory": "computers-delivery-evidence.json"
   }
 }

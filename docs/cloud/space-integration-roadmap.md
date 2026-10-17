@@ -15,12 +15,19 @@ environment, and returns to the same workspace and running processes after
 suspension. Backend selection, credentials, resource limits, recovery, and
 accounting stay in our services. SPACE supplies the isolated microVMs.
 
-This document describes remaining work. It does not report a production
-deployment or change the default backend. Boat continues serving existing
-computers. Proposed fields and endpoints below are design examples, not
-implemented API contracts. Public clients express needs and placement intent;
-exact driver/deployment selection stays internal. The first public Boat SDK
-flow ships independently of production SPACE support.
+2026-10-17 status: the scoped foundation and qualification-tooling source is
+complete under [#11800](https://github.com/OpenAgentsInc/openagents/issues/11800).
+The [delivery record](../sdk/computers-delivery-evidence.json) separates those
+closed implementations from the still-pending combined public SDK/web and
+recovery checks. The [qualification runbook](../sdk/space-qualification.md) and
+master After-close table govern the remaining live work. A private maintained
+service exists; customer SPACE access and pricing remain disabled, and Boat
+remains the public default.
+
+This roadmap retains design examples and historical spike limits. Proposed
+fields and endpoints below are not substitutes for the implemented
+[Computers contract](../sdk/computers.md). Public clients express needs and
+placement intent; exact driver/deployment selection stays internal.
 
 ## Starting point and measured limits
 
@@ -59,7 +66,8 @@ Limits recorded in the initial 2026-10-15 spike:
 Later work adds the deployment registry, fast Direct API creates, and verified
 Environment artifacts. The [current qualification results](space.md) describe
 those implementations and their limits; the list below preserves the original
-assessment. Maintained deployment and customer rollout remain open.
+assessment. A private maintained deployment now exists; combined public
+qualification and customer rollout remain pending.
 
 - The pinned Kind HTTP create path chooses a cold boot even with a ready
   base snapshot. The fast node snapshot result does not meet the HTTP

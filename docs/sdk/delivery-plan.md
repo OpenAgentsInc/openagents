@@ -1,10 +1,13 @@
 # SDK and Computers delivery plan
 
-2026-10-15. Status: tracked implementation backlog. Computers umbrella:
-[#11800](https://github.com/OpenAgentsInc/openagents/issues/11800).
-The owner authorized this documentation and issue breakdown; creating the
-backlog does not report implementation, authorize publication or a new Coder
-release, or open production access.
+2026-10-17. Status: Computers source delivery complete under
+[#11800](https://github.com/OpenAgentsInc/openagents/issues/11800); combined
+SPACE live qualification remains pending. The [delivery record](computers-delivery-evidence.json)
+audits the child issues and links their evidence. The
+[master delegation](../audits/2026-10-16-master-delegation.md#after-close-checks)
+assigns remaining deployments and live checks to lane 0. Source completion does
+not enable customer SPACE access, publication, or pricing. The release brief
+separately authorizes Coder binary work; #11823 remains lane 1's delivery.
 
 The owner subsequently selected [Coder Desktop](../coder-desktop/README.md), a separate
 Zeron fork, as the first external SDK reference client. Its application work
@@ -243,6 +246,13 @@ setup, and unrelated verification failures. SPACE qualification remains M2.
 
 ### M2: supported SPACE through that same contract
 
+The #11809–#11816 implementations are closed on code. The combined public
+SDK/web journey and recovery matrix have not passed. Use the
+[qualification runbook](space-qualification.md), [pending packet](space-qualification-packet.json),
+and [assessment](space-qualification-assessment.json) for the remaining deployment
+checks. Earlier driver latency and same-worker memory evidence retain their
+narrow scope. Boat stays the public default, and pricing stays off.
+
 Repeat M1 with explicit fast-sandbox placement and a verified development
 artifact. Verify actual snapshot boots at fixed shape, preserve process/memory
 and workspace across wake, renew credentials, and measure useful agent output.
@@ -307,11 +317,13 @@ open completion dependencies Blocked, and conditional scopes Blocked with the
 activation reason rather than inventing a dependency on an unrelated issue.
 The umbrella's completion blockers are M1 and M2, not every related proposal.
 
-The documentation/issue-planning pass does not claim implementation issues or
-mark them done. Release the umbrella claim after the plan is pushed; leave it
-open tracking delivery. Close each child as soon as its scope is merged to main,
-its own checks pass, and its required deploy is done. Record owner-only activation
-in `NEEDS_OWNER.md`, and open a new defect if later owner verification fails.
+Close each child when its scoped code is on main and its focused checks pass,
+under the release brief. Record deployments and live checks in the master's
+After-close checks table; closing an issue does not mark those checks passed.
+Close the umbrella after its source milestone children close. Keep the delivery
+record explicit about pending SPACE qualification and the separately assigned
+#11823 terminal work. Record owner-only activation in `NEEDS_OWNER.md`, and open
+a new defect if later deployment or owner verification fails.
 
 Use the pinned toolchain, affected-crate tests, and formatting for behavior;
 documentation-only edits need links, referenced paths, and diff checks. Do not
