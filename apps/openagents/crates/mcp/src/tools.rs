@@ -47,6 +47,18 @@ pub struct Tools {
     inbox: tokio::sync::Mutex<std::sync::Weak<Inbox>>,
 }
 
+/// OpenAgents #11971: the agent build gate's status, on Unix.
+fn build_status_tool() -> Option<ToolDef> {
+    #[cfg(unix)]
+    {
+        Some(crate::build_status::tool())
+    }
+    #[cfg(not(unix))]
+    {
+        None
+    }
+}
+
 fn chat_key_schema(extra: Value) -> Value {
     let mut properties = json!({
         "chat": {
@@ -802,6 +814,7 @@ impl Tools {
             .into_iter()
             .filter(|tool| in_chat || (tool.name != SHOW_VISUAL && tool.name != RECORD_DECISION))
             .chain(crate::video_lab::tools().iter().cloned())
+            .chain(build_status_tool())
             .collect()
     }
 
@@ -836,6 +849,8 @@ impl Tools {
             "bring_back" => self.bring_back(parse(args)?).await,
             SHOW_VISUAL => self.show_visual(parse(args)?).await,
             RECORD_DECISION => self.record_decision(parse(args)?).await,
+            #[cfg(unix)]
+            crate::build_status::NAME => return crate::build_status::call(args),
             lab if crate::video_lab::has(lab) => return self.video_lab(lab, args).await,
             other => return Err(format!("unknown tool: {other}")),
         };

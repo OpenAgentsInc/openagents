@@ -406,3 +406,20 @@ links remain readable. Upstream fixes now require manual ports.
   `QUEUE_MESSAGE` (which now carry `originChatId`), and append
   `foreman/decisions.jsonl`. MCP adds `record_decision`. Settings → General
   shows a Foreman card.
+
+- [OpenAgents #11971](https://github.com/OpenAgentsInc/openagents/issues/11971):
+  agent chats build through a gate. `main` calls
+  `openagents_engine::build_gate::enable()` once at start, which writes the
+  `cargo` shim from `coder_lease::agent_builds` (root `crates/coder-lease`)
+  into `~/.openagents/bin/agent-build-shims`. Our module
+  `crates/harness/src/build_gate.rs` then gives every harness child that shim
+  first on `PATH`, the shared target folder root (`~/work/agent-targets`) and
+  the `openagents` command that takes the build lease. Hook: the last lines of
+  `compose_path` in `crates/harness/src/lib.rs`. Heavy `cargo` commands build
+  in one target folder per workspace, refuse below 30 GiB free, and wait for
+  one of the coordinator's build slots (5 by default). Our module
+  `crates/mcp/src/build_status.rs` is the `build_status` tool that reports
+  and sets them; hooks are one list entry and one call arm in
+  `crates/mcp/src/tools.rs` and one sentence in `crates/mcp/src/jsonrpc.rs`
+  `INSTRUCTIONS`. `OPENAGENTS_AGENT_BUILD_GATE=0` turns it off;
+  `docs/coder/runtime/leases.md` in the root has the details.

@@ -69,6 +69,7 @@ pub use registry::{HarnessDescriptor, HarnessRegistry, default_registry};
 /// Run keepers (#11930): the app binary runs `keeper::main` for its hidden
 /// `keeper` subcommand.
 #[cfg(unix)]
+pub use openagents_harness::build_gate;
 pub use openagents_harness::keeper;
 pub use sessions::set_keeper_launch;
 pub use repos::{CheckoutIdentity, Repos, worktree_branch_from_title};

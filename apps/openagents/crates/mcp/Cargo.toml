@@ -22,6 +22,11 @@ async-trait.workspace = true
 futures.workspace = true
 reqwest.workspace = true
 
+# OpenAgents #11971: `build_status` reads the agent build gate.
+[target.'cfg(unix)'.dependencies]
+coder-lease = { path = "../../../../crates/coder-lease" }
+
 [dev-dependencies]
+tempfile.workspace = true
 openagents-visual.workspace = true
 image = { version = "0.25.10", default-features = false, features = ["png"] }

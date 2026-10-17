@@ -227,6 +227,42 @@ reads it.
   the home unwritten, `lease build` from the shim runs the command without
   a lease and says so, rather than failing the build.
 
+### Agent chats in the desktop app
+
+The OpenAgents desktop app gives every agent chat it starts a build gate
+([`coder_lease::agent_builds`](../../../crates/coder-lease/src/agent_builds.rs),
+#11971), so a coordinator such as Foreman can't be overrun by its own chats.
+The app writes a `cargo` shim into `~/.openagents/bin/agent-build-shims`
+(`OPENAGENTS_AGENT_SHIMS`) and puts that folder first on each agent's `PATH`.
+For `build`, `test`, `check`, `clippy`, `run`, `bench`, and `nextest`, the
+shim does three things before it runs the real `cargo`:
+
+- **Shared target folders.** It builds in one target folder per Cargo
+  workspace under `~/work/agent-targets` (`OPENAGENTS_AGENT_TARGETS`). The
+  workspace is the nearest folder with a `Cargo.lock`, and every worktree of
+  a repository shares the folder for the same workspace, so the root
+  workspace and `apps/openagents` each get one. Cargo's own lock keeps two
+  builds in one folder from colliding: the second waits for the first. A
+  `CARGO_TARGET_DIR` the agent set is replaced, and the shim says so;
+  `OPENAGENTS_KEEP_TARGET_DIR=1` keeps it.
+- **The disk floor.** It refuses to start when less than 30 GiB is free
+  (`OPENAGENTS_AGENT_FLOOR_GIB`), and says how much is free.
+- **The build limit.** It runs `openagents lease build --keep-target-dir`
+  with `OPENAGENTS_BUILD_LEASES` set to the coordinator's limit: the number
+  in `agent-build-limit` in the lease root, else
+  `OPENAGENTS_AGENT_BUILD_LIMIT`, else 5. Each build reserves 1 GB above the
+  floor (`OPENAGENTS_BUILD_DISK_GB`), because shared folders grow little. A
+  build over the limit waits in the `build` queue and prints why.
+
+Every other subcommand, and a build already inside a `build` lease, runs the
+real `cargo` directly. Without an installed `openagents`, a build runs
+without waiting and says so. Start the app with `OPENAGENTS_AGENT_BUILD_GATE=0`
+to give its agents no gate.
+
+The app's MCP server offers `build_status`: the builds running and waiting,
+the limit, the free disk, and the floor. Called with `limit`, it sets the
+limit for builds that start from then on.
+
 ## Resources
 
 | Resource | Shape | Capacity | Notes |

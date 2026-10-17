@@ -183,6 +183,10 @@ fn main() -> anyhow::Result<()> {
     #[cfg(windows)]
     attach_parent_console();
     pin_coder_environment();
+    // OpenAgents #11971: agent chats build through the shared build gate.
+    if let Err(error) = openagents_engine::build_gate::enable() {
+        eprintln!("openagents: agent builds won't wait for a build slot: {error}");
+    }
     // Hidden: this data folder's background engine service (#11931).
     if std::env::args_os().nth(1).as_deref()
         == Some(std::ffi::OsStr::new(openagents_background::cli::SUBCOMMAND))

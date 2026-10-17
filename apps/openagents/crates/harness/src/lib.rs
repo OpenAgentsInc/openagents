@@ -307,6 +307,7 @@ pub trait Harness: Send + Sync {
 pub mod acp;
 pub(crate) mod adapter_install;
 pub mod archive_install;
+pub mod build_gate;
 mod catalog;
 mod catalog_failure;
 pub(crate) mod code_signature;
@@ -370,7 +371,9 @@ fn compose_path<'a>(
     let mut seen = std::collections::HashSet::new();
     paths.retain(|p| !p.as_os_str().is_empty() && seen.insert(p.clone()));
     if let Ok(joined) = std::env::join_paths(paths) {
-        cmd.env("PATH", joined);
+        for (name, value) in build_gate::child_vars(joined) {
+            cmd.env(name, value);
+        }
     }
 }
 

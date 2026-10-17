@@ -43,7 +43,9 @@ Discover hosts with `list_devices`, then `list_projects {device}`, \
 `list_harnesses {device}` and `list_models {device, harness}`. A project fixes \
 its host; with both project and device it must belong to that device. Use listed \
 ids when names/paths repeat. Without project or device, creation uses the local engine. \
-If a chat is `awaitingInput`, answer it with `respond_to_input`.\n\
+If a chat is `awaitingInput`, answer it with `respond_to_input`. \
+Agent builds on this computer share a few build slots and wait for one on their own; \
+`build_status` shows how many run and wait and the free disk, and sets the limit.\n\
 \n\
 When a chart, table, diagram, dashboard, or 3D view would say more than prose and \
 `show_visual` is available, write a Luau visual script and show it with `show_visual` before \
