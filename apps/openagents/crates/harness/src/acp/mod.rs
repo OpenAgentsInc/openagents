@@ -33,7 +33,6 @@
 //!   picks the run up with [`Harness::attach`], replaying the handshake from
 //!   the keeper's journal and owning the last `session/prompt` it holds.
 
-mod agent;
 mod antigravity_paths;
 mod devin_models;
 mod normalize;
@@ -1735,7 +1734,7 @@ impl AcpHarness {
     ) -> Result<
         (
             Option<ScratchDir>,
-            agent::AgentProcess,
+            crate::process::AgentProcess,
             crate::process::RuntimeInput,
             crate::process::RuntimeOutput,
             crate::StderrTail,
@@ -1769,7 +1768,7 @@ impl AcpHarness {
                 };
                 return Ok((
                     None,
-                    agent::AgentProcess::Kept(child),
+                    crate::process::AgentProcess::Kept(child),
                     stdin,
                     stdout,
                     stderr_tail,
@@ -1789,7 +1788,7 @@ impl AcpHarness {
             .ok_or_else(|| HarnessError::Protocol("agent child has no stdout".into()))?;
         Ok((
             scratch,
-            agent::AgentProcess::Owned(child),
+            crate::process::AgentProcess::Owned(child),
             Box::new(stdin),
             Box::new(stdout),
             stderr_tail,
@@ -2593,7 +2592,7 @@ async fn queued_now(incoming: &mut mpsc::Receiver<Incoming>) -> VecDeque<Incomin
 }
 
 struct Session {
-    child: agent::AgentProcess,
+    child: crate::process::AgentProcess,
     scratch: Option<ScratchDir>,
     client: RpcClient,
     incoming: mpsc::Receiver<Incoming>,

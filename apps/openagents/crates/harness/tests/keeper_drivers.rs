@@ -1,4 +1,4 @@
-//! Claude Code, Codex, and ACP agents under keepers (#11930), against the
+//! Claude Code, Codex, ACP agents, and Pi under keepers (#11930), against the
 //! fake CLIs in `tests/fixtures`: an engine dies mid-turn, and a new engine
 //! picks the run up with no gap or duplicate, asks a pending question again,
 //! and steers the same process. No real agent binary is involved.
@@ -13,8 +13,8 @@ use futures::StreamExt;
 use futures::stream::BoxStream;
 use openagents_harness::keeper::{self, Detach, KeeperScope};
 use openagents_harness::{
-    AcpHarness, CancellationToken, ClaudeHarness, CodexHarness, Harness, HarnessError, RunControls,
-    SteerMessage, TurnControl,
+    AcpHarness, CancellationToken, ClaudeHarness, CodexHarness, Harness, HarnessError, PiHarness,
+    RunControls, SteerMessage, TurnControl,
 };
 use openagents_proto::{
     AgentEvent, DoneStatus, RunRequest, SandboxLevel, UserInputAnswer, UserInputQuestion,
@@ -36,6 +36,7 @@ enum Agent {
     Codex,
     /// Grok's spec, the ACP driver's most involved one.
     Acp,
+    Pi,
 }
 
 fn fixture(name: &str) -> PathBuf {
@@ -65,6 +66,18 @@ fn harness(agent: Agent, keepers: bool) -> Arc<dyn Harness> {
                 .with_sessions_root(std::env::temp_dir().join("openagents-kept-acp-none"))
                 .with_keepers(keepers),
         ),
+        Agent::Pi => {
+            // Never the developer's own Pi settings or session index.
+            let home =
+                std::env::temp_dir().join(format!("openagents-kept-pi-{}", std::process::id()));
+            Arc::new(
+                PiHarness::new()
+                    .with_executable(fixture("fake-kept-pi.py"))
+                    .with_agent_dir(home.join("agent"))
+                    .with_session_store(home.join("index"))
+                    .with_keepers(keepers),
+            )
+        }
     }
 }
 
@@ -307,6 +320,7 @@ async fn a_pending_question_comes_back(agent: Agent) {
         Agent::Claude => "control_request",
         Agent::Codex => "requestApproval",
         Agent::Acp => "request_permission",
+        Agent::Pi => "extension_ui_request",
     };
     wait_for("the question", || {
         std::fs::read_to_string(&journal).is_ok_and(|j| j.contains(ask))
@@ -325,7 +339,7 @@ async fn a_pending_question_comes_back(agent: Agent) {
     let (label, word) = match agent {
         Agent::Claude => ("B", "answered B"),
         Agent::Codex => ("Yes", "accepted"),
-        Agent::Acp => ("B", "answered B"),
+        Agent::Acp | Agent::Pi => ("B", "answered B"),
     };
     answer
         .send(vec![UserInputAnswer {
@@ -454,4 +468,19 @@ async fn an_acp_agent_is_picked_up_during_a_later_turn() {
             ..
         })
     ));
+}
+
+#[tokio::test]
+async fn pi_is_picked_up_mid_turn_and_steered() {
+    picks_up_mid_turn_and_steers(Agent::Pi).await;
+}
+
+#[tokio::test]
+async fn a_pending_pi_dialog_comes_back() {
+    a_pending_question_comes_back(Agent::Pi).await;
+}
+
+#[tokio::test]
+async fn pi_starts_without_a_keeper_when_turned_off() {
+    the_escape_hatch_starts_without_a_keeper(Agent::Pi).await;
 }

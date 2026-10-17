@@ -79,11 +79,22 @@ pub(crate) enum Wire {
     /// `initialized` notification, and a turn that ends with the response
     /// to its long-lived `session/prompt`.
     Acp,
+    /// Pi's JSONL RPC: `{"type", "id"}` commands whose responses share one
+    /// ordered channel with its events, and `extension_ui_request` dialogs.
+    Pi,
 }
+
+/// The prefix of Pi request ids; the number after it counts up.
+const PI_ID: &str = "openagents-";
 
 impl Wire {
     fn json_rpc(self) -> bool {
         matches!(self, Wire::Codex | Wire::Acp)
+    }
+
+    /// Adopting replays the driver's handshake against the journal.
+    fn replays(self) -> bool {
+        self != Wire::Claude
     }
 
     /// A stdout line the agent waits on an answer to.
@@ -95,6 +106,13 @@ impl Wire {
             Wire::Codex | Wire::Acp => {
                 (line["method"].is_string() && is_id(&line["id"])).then(|| line["id"].to_string())
             }
+            Wire::Pi => (line["type"] == "extension_ui_request"
+                && matches!(
+                    line["method"].as_str(),
+                    Some("select" | "confirm" | "input" | "editor")
+                )
+                && is_id(&line["id"]))
+            .then(|| line["id"].to_string()),
         }
     }
 
@@ -108,10 +126,12 @@ impl Wire {
                 && is_id(&line["id"])
                 && (line.get("result").is_some() || line.get("error").is_some()))
             .then(|| line["id"].to_string()),
+            Wire::Pi => (line["type"] == "extension_ui_response" && is_id(&line["id"]))
+                .then(|| line["id"].to_string()),
         }
     }
 
-    /// A request the driver sends (Codex, ACP), by its numeric id.
+    /// A request the driver sends (Codex, ACP, Pi), by its number.
     fn request_id(self, line: &Value) -> Option<i64> {
         match self {
             Wire::Claude => None,
@@ -119,10 +139,13 @@ impl Wire {
                 .is_string()
                 .then(|| line["id"].as_i64())
                 .flatten(),
+            Wire::Pi => (line["type"].is_string() && line["type"] != "extension_ui_response")
+                .then(|| pi_id(&line["id"]))
+                .flatten(),
         }
     }
 
-    /// A response to one of the driver's requests (Codex, ACP), by its id.
+    /// A response to one of the driver's requests (Codex, ACP, Pi), by its id.
     fn response_id(self, line: &Value) -> Option<i64> {
         match self {
             Wire::Claude => None,
@@ -130,20 +153,33 @@ impl Wire {
                 && (line.get("result").is_some() || line.get("error").is_some()))
             .then(|| response_id(&line["id"]))
             .flatten(),
+            Wire::Pi => (line["type"] == "response")
+                .then(|| pi_id(&line["id"]))
+                .flatten(),
         }
     }
 
-    /// A stdout line the Codex or ACP reader passes to the session loop.
+    /// A stdout line the reader passes to the session loop: Codex and ACP
+    /// messages that aren't responses, and every Pi frame.
     fn queued(self, line: &Value) -> bool {
-        self.json_rpc()
-            && line.is_object()
-            && line.get("jsonrpc").is_none_or(|v| v == "2.0")
-            && line["method"].is_string()
+        match self {
+            Wire::Pi => line.is_object(),
+            _ => {
+                self.json_rpc()
+                    && line.is_object()
+                    && line.get("jsonrpc").is_none_or(|v| v == "2.0")
+                    && line["method"].is_string()
+            }
+        }
     }
 }
 
 fn is_id(id: &Value) -> bool {
     id.is_number() || id.is_string()
+}
+
+fn pi_id(id: &Value) -> Option<i64> {
+    id.as_str()?.strip_prefix(PI_ID)?.parse().ok()
 }
 
 fn response_id(id: &Value) -> Option<i64> {
@@ -264,7 +300,8 @@ impl Scan {
             }
             if let Some(id) = wire.request_id(&value) {
                 scan.max_request_id = scan.max_request_id.max(id);
-                if let Some(method) = value["method"].as_str() {
+                // Pi names its commands by `type`.
+                if let Some(method) = value["method"].as_str().or(value["type"].as_str()) {
                     scan.requests
                         .insert(method.to_owned(), (id, value["params"].clone()));
                 }
@@ -353,7 +390,7 @@ impl Kept {
         if let Some((acked, scan)) = adopting {
             state.replay_through = (acked > 0).then_some(acked);
             state.answered = scan.answered;
-            if wire.json_rpc() {
+            if wire.replays() {
                 state.repeat_ids_through = Some(scan.max_request_id);
             }
             journaled = scan.requests;
@@ -469,12 +506,12 @@ impl Kept {
         .boxed()
     }
 
-    /// Pass the Codex session loop's messages through a relay that tells
-    /// this transport when the loop has handled each one.
-    pub(crate) fn relay(
+    /// Pass the session loop's messages through a relay that tells this
+    /// transport when the loop has handled each one.
+    pub(crate) fn relay<T: Relayed>(
         self: &Arc<Self>,
-        from: mpsc::Receiver<Incoming>,
-    ) -> mpsc::Receiver<Incoming> {
+        from: mpsc::Receiver<T>,
+    ) -> mpsc::Receiver<T> {
         let (to, rx) = mpsc::channel(1);
         tokio::spawn(relay(self.clone(), from, to));
         rx
@@ -510,17 +547,14 @@ impl Kept {
     /// in order. The relay hands messages over one at a time, so a loop that
     /// drains its channel with `try_recv` (ACP, when a response ends a turn)
     /// takes these first. Markers are skipped.
-    pub(crate) async fn flush(
-        &self,
-        incoming: &mut mpsc::Receiver<Incoming>,
-    ) -> VecDeque<Incoming> {
+    pub(crate) async fn flush<T: Relayed>(&self, incoming: &mut mpsc::Receiver<T>) -> VecDeque<T> {
         self.flush.notify_one();
         let mut queued = VecDeque::new();
         while let Some(message) = incoming.recv().await {
-            match &message {
-                Incoming::Notification { method, .. } if method == FLUSHED => break,
-                Incoming::Notification { method, .. } if method == MARK => {}
-                _ => queued.push_back(message),
+            match message.marker() {
+                Some(FLUSHED) => break,
+                Some(_) => {}
+                None => queued.push_back(message),
             }
         }
         queued
@@ -752,9 +786,57 @@ async fn pump(
     // Closing both channels ends the driver's reads.
 }
 
+/// A message a relay passes to a session loop.
+pub(crate) trait Relayed: Send + 'static {
+    /// A marker with this method.
+    fn mark(method: &'static str) -> Self;
+    /// The method, when this is a marker.
+    fn marker(&self) -> Option<&str>;
+    /// The last message: the agent's output ended.
+    fn ends(&self) -> bool;
+}
+
+impl Relayed for Incoming {
+    fn mark(method: &'static str) -> Self {
+        Incoming::Notification {
+            method: method.into(),
+            params: Value::Null,
+        }
+    }
+
+    fn marker(&self) -> Option<&str> {
+        match self {
+            Incoming::Notification { method, .. } if is_marker(method) => Some(method),
+            _ => None,
+        }
+    }
+
+    fn ends(&self) -> bool {
+        matches!(self, Incoming::Eof)
+    }
+}
+
+/// Pi's frames: a read error is the last one.
+impl Relayed for Result<Value, HarnessError> {
+    fn mark(method: &'static str) -> Self {
+        Ok(serde_json::json!({ "type": method }))
+    }
+
+    fn marker(&self) -> Option<&str> {
+        self.as_ref()
+            .ok()
+            .and_then(|frame| frame["type"].as_str())
+            .filter(|kind| is_marker(kind))
+    }
+
+    fn ends(&self) -> bool {
+        self.is_err()
+    }
+}
+
 /// The session loop's messages, each followed by a marker. The loop takes
 /// the marker only after it has handled the message before it.
-async fn relay(kept: Arc<Kept>, mut from: mpsc::Receiver<Incoming>, to: mpsc::Sender<Incoming>) {
+async fn relay<T: Relayed>(kept: Arc<Kept>, mut from: mpsc::Receiver<T>, to: mpsc::Sender<T>) {
     let mut passed = 0u64;
     loop {
         let message = tokio::select! {
@@ -787,13 +869,8 @@ async fn relay(kept: Arc<Kept>, mut from: mpsc::Receiver<Incoming>, to: mpsc::Se
 }
 
 /// Pass one message and its marker; false once the relay is done.
-async fn pass(
-    kept: &Kept,
-    to: &mpsc::Sender<Incoming>,
-    message: Incoming,
-    passed: &mut u64,
-) -> bool {
-    let end = matches!(message, Incoming::Eof);
+async fn pass<T: Relayed>(kept: &Kept, to: &mpsc::Sender<T>, message: T, passed: &mut u64) -> bool {
+    let end = message.ends();
     if to.send(message).await.is_err() || end {
         return false;
     }
@@ -806,12 +883,8 @@ async fn pass(
 }
 
 /// Send a marker and wait until the loop has taken it.
-async fn mark(to: &mpsc::Sender<Incoming>, method: &str) -> bool {
-    let marker = Incoming::Notification {
-        method: method.into(),
-        params: Value::Null,
-    };
-    to.send(marker).await.is_ok() && to.reserve().await.is_ok()
+async fn mark<T: Relayed>(to: &mpsc::Sender<T>, method: &'static str) -> bool {
+    to.send(T::mark(method)).await.is_ok() && to.reserve().await.is_ok()
 }
 
 /// The driver's stdin: each complete line goes to the keeper.
@@ -929,5 +1002,17 @@ mod tests {
         assert_eq!(Wire::Acp.response_id(&settled), Some(5));
         assert!(Wire::Acp.queued(&ask));
         assert!(!Wire::Acp.queued(&settled));
+
+        let ask = json!({"type":"extension_ui_request","id":"u1","method":"select"});
+        let note = json!({"type":"extension_ui_request","id":"u2","method":"notify"});
+        let answer = json!({"type":"extension_ui_response","id":"u1","value":"A"});
+        let prompt = json!({"type":"prompt","id":"openagents-4","message":"hi"});
+        let accepted = json!({"type":"response","id":"openagents-4","success":true});
+        assert_eq!(Wire::Pi.request_key(&ask), Wire::Pi.answer_key(&answer));
+        assert_eq!(Wire::Pi.request_key(&note), None);
+        assert_eq!(Wire::Pi.request_id(&prompt), Some(4));
+        assert_eq!(Wire::Pi.request_id(&answer), None);
+        assert_eq!(Wire::Pi.response_id(&accepted), Some(4));
+        assert!(Wire::Pi.queued(&accepted));
     }
 }

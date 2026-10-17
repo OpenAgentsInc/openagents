@@ -8,7 +8,7 @@ mod ui;
 
 use crate::{
     Harness, HarnessError, RunControls,
-    process::{Command, Stdio, owned::Child},
+    process::{AgentProcess, Command, Stdio, owned::Child},
 };
 use async_trait::async_trait;
 use futures::{StreamExt, stream::BoxStream};
@@ -33,6 +33,10 @@ pub struct PiHarness {
     executable: Option<PathBuf>,
     interrupt_grace: Duration,
     kill_grace: Duration,
+    /// Run under a keeper when the engine lends one (#11930); `None` reads
+    /// [`crate::keeper::ENV`].
+    #[cfg(unix)]
+    keepers: Option<bool>,
 }
 impl Default for PiHarness {
     fn default() -> Self {
@@ -44,6 +48,8 @@ impl Default for PiHarness {
             workspace_commands: Default::default(),
             interrupt_grace: Duration::from_secs(2),
             kill_grace: Duration::from_secs(3),
+            #[cfg(unix)]
+            keepers: None,
         }
     }
 }
@@ -53,6 +59,12 @@ impl PiHarness {
     }
     pub fn with_executable(mut self, path: impl Into<PathBuf>) -> Self {
         self.executable = Some(path.into());
+        self
+    }
+    /// Run under a keeper when the engine lends one, or never.
+    #[cfg(unix)]
+    pub fn with_keepers(mut self, keepers: bool) -> Self {
+        self.keepers = Some(keepers);
         self
     }
     pub fn with_session_store(mut self, path: impl Into<PathBuf>) -> Self {
@@ -118,6 +130,50 @@ impl PiHarness {
         args: &[String],
         mcp: Option<&openagents_proto::McpServer>,
     ) -> Result<Process, HarnessError> {
+        let (mut cmd, scratch) = self.command(cwd, args, mcp)?;
+        let child = Child::new(cmd.spawn()?);
+        Ok(Process::new(AgentProcess::Owned(child), scratch))
+    }
+    /// The run's Pi: under a keeper when the engine lends one, the earlier
+    /// engine's for `adopt`, else a child of this process.
+    async fn start(
+        &self,
+        cwd: &Path,
+        args: &[String],
+        mcp: Option<&openagents_proto::McpServer>,
+        #[cfg(unix)] adopt: Option<crate::keeper::Link>,
+    ) -> Result<Process, HarnessError> {
+        #[cfg(unix)]
+        {
+            let (cmd, scratch) = self.command(cwd, args, mcp)?;
+            if let Some(child) = crate::keeper::kept::child(
+                &cmd,
+                crate::keeper::kept::Wire::Pi,
+                self.keepers.unwrap_or_else(crate::keeper::allowed_by_env),
+                false,
+                adopt,
+            )
+            .await?
+            {
+                // Pi loads the MCP extension at startup, so its file may go
+                // with this engine.
+                let mut process = Process::new(AgentProcess::Kept(child), scratch);
+                if let Some(kept) = process.child.keeper().cloned() {
+                    let incoming =
+                        std::mem::replace(&mut process.transport.incoming, mpsc::channel(1).1);
+                    process.transport.incoming = kept.relay(incoming);
+                }
+                return Ok(process);
+            }
+        }
+        self.spawn(cwd, args, mcp)
+    }
+    fn command(
+        &self,
+        cwd: &Path,
+        args: &[String],
+        mcp: Option<&openagents_proto::McpServer>,
+    ) -> Result<(Command, Option<crate::scratch::ScratchDir>), HarnessError> {
         let exe = self.resolve_executable()?;
         if self.executable.is_none() {
             if let Some(version) = crate::executable::binary_version(&exe) {
@@ -145,33 +201,11 @@ impl PiHarness {
         let scratch = mcp
             .map(|config| self::mcp::configure(&mut cmd, config))
             .transpose()?;
-        let mut child = Child::new(cmd.spawn()?);
-        let tail = crate::StderrTail::default();
-        let mut lines = BufReader::new(child.stderr.take().expect("piped stderr")).lines();
-        let stderr = tail.clone();
-        let stderr_task = tokio::spawn(async move {
-            while let Ok(Some(line)) = lines.next_line().await {
-                stderr.push(&line);
-            }
-            stderr.close();
-        });
-        let transport = rpc::Transport::new(
-            child.stdin.take().expect("piped stdin"),
-            child.stdout.take().expect("piped stdout"),
-        );
-        Ok(Process {
-            child,
-            _scratch: scratch,
-            transport,
-            tail,
-            stderr_task,
-            dialogs: Default::default(),
-            exit_deadline: None,
-        })
+        Ok((cmd, scratch))
     }
 }
 struct Process {
-    child: Child,
+    child: AgentProcess,
     _scratch: Option<crate::scratch::ScratchDir>,
     transport: rpc::Transport,
     tail: crate::StderrTail,
@@ -185,6 +219,29 @@ impl Drop for Process {
     }
 }
 impl Process {
+    fn new(mut child: AgentProcess, scratch: Option<crate::scratch::ScratchDir>) -> Self {
+        let (stdin, stdout, stderr) = child.take_stdio();
+        let tail = crate::StderrTail::default();
+        let mut lines = BufReader::new(stderr.expect("piped stderr")).lines();
+        let stderr = tail.clone();
+        let stderr_task = tokio::spawn(async move {
+            while let Ok(Some(line)) = lines.next_line().await {
+                stderr.push(&line);
+            }
+            stderr.close();
+        });
+        let transport =
+            rpc::Transport::new(stdin.expect("piped stdin"), stdout.expect("piped stdout"));
+        Process {
+            child,
+            _scratch: scratch,
+            transport,
+            tail,
+            stderr_task,
+            dialogs: Default::default(),
+            exit_deadline: None,
+        }
+    }
     async fn next(&mut self) -> Result<Value, HarnessError> {
         loop {
             tokio::select! {
@@ -201,7 +258,17 @@ impl Process {
                     status?;
                     self.exit_deadline = Some(tokio::time::Instant::now() + Duration::from_millis(100));
                 }
-                frame = self.transport.incoming.recv() => return frame.unwrap_or_else(|| Err(HarnessError::Protocol("Pi disconnected".into()))),
+                frame = self.transport.incoming.recv() => {
+                    #[cfg(unix)]
+                    if let Some(Ok(frame)) = &frame
+                        && frame["type"]
+                            .as_str()
+                            .is_some_and(crate::keeper::kept::is_marker)
+                    {
+                        continue;
+                    }
+                    return frame.unwrap_or_else(|| Err(HarnessError::Protocol("Pi disconnected".into())));
+                }
             }
         }
     }
@@ -342,9 +409,43 @@ impl Harness for PiHarness {
         request: RunRequest,
         controls: RunControls,
     ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
+        self.run_agent(
+            request,
+            controls,
+            #[cfg(unix)]
+            None,
+        )
+        .await
+    }
+    #[cfg(unix)]
+    async fn attach(
+        &self,
+        request: RunRequest,
+        controls: RunControls,
+        link: crate::keeper::Link,
+    ) -> Option<Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError>> {
+        Some(self.run_agent(request, controls, Some(link)).await)
+    }
+}
+impl PiHarness {
+    async fn run_agent(
+        &self,
+        request: RunRequest,
+        controls: RunControls,
+        #[cfg(unix)] adopt: Option<crate::keeper::Link>,
+    ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
         let mut request = request;
         let store = sessions::Store::new(self.session_store.clone(), self.agent_dir.clone());
         let mut lost_context = None;
+        #[cfg(unix)]
+        let adopting = adopt.is_some();
+        #[cfg(not(unix))]
+        let adopting = false;
+        // A picked-up Pi already runs its session: the journal has what it
+        // answered, so there is nothing to reopen or check against.
+        if adopting {
+            request.resume = None;
+        }
         let args = match &request.resume {
             Some(id) => match store.resume_args(id, Path::new(&request.cwd)) {
                 Ok(args) => args,
@@ -363,12 +464,34 @@ impl Harness for PiHarness {
         if lost_context.is_some() {
             request.resume = None;
         }
-        let process = self.spawn(Path::new(&request.cwd), &args, request.mcp.as_ref())?;
+        let process = self
+            .start(
+                Path::new(&request.cwd),
+                &args,
+                request.mcp.as_ref(),
+                #[cfg(unix)]
+                adopt,
+            )
+            .await?;
         let (tx, rx) = mpsc::channel(256);
+        // Under a keeper, events are counted so frames are acknowledged only
+        // once their events are handed over.
+        let plain = |rx: mpsc::Receiver<_>| {
+            futures::stream::unfold(rx, |mut rx| async move { rx.recv().await.map(|v| (v, rx)) })
+                .boxed()
+        };
+        #[cfg(unix)]
+        let events = match process.child.keeper() {
+            Some(kept) => kept.events(&tx, rx),
+            None => plain(rx),
+        };
+        #[cfg(not(unix))]
+        let events = plain(rx);
         let kill_grace = self.kill_grace;
         let interrupt_grace = self.interrupt_grace;
         tokio::spawn(async move {
             let mut runner = Runner {
+                adopting,
                 store,
                 interrupted: false,
                 extension_commands: HashSet::new(),
@@ -415,10 +538,7 @@ impl Harness for PiHarness {
             runner.process.shutdown(kill_grace).await;
             let _ = runner.finish().await;
         });
-        Ok(
-            futures::stream::unfold(rx, |mut rx| async move { rx.recv().await.map(|v| (v, rx)) })
-                .boxed(),
-        )
+        Ok(events)
     }
 }
 #[derive(Clone)]
@@ -435,6 +555,8 @@ struct Delivery {
     queued: bool,
 }
 struct Runner {
+    /// Replaying the handshake of a run an earlier engine started.
+    adopting: bool,
     extension_commands: HashSet<String>,
     auto_compaction: bool,
     interrupted: bool,
@@ -529,10 +651,22 @@ impl Runner {
         // at the next model step. Pi persists this in its global settings, so
         // select it only while no mode is configured: an explicit choice (the
         // user's, or `/steering` in a chat) is never overwritten.
-        if !self
-            .store
-            .steering_mode_configured(Path::new(&self.request.cwd))
-        {
+        // Replaying, the journal says whether the earlier engine selected it:
+        // the setting it wrote since then must not change the replayed writes.
+        #[cfg(unix)]
+        let replayed = self
+            .process
+            .child
+            .keeper()
+            .filter(|_| self.adopting)
+            .map(|kept| kept.journaled("set_steering_mode").is_some());
+        #[cfg(not(unix))]
+        let replayed = None;
+        if replayed.unwrap_or_else(|| {
+            !self
+                .store
+                .steering_mode_configured(Path::new(&self.request.cwd))
+        }) {
             self.process
                 .query(json!({"type":"set_steering_mode","mode":"all"}), backlog)
                 .await?;
@@ -670,6 +804,16 @@ impl Runner {
         }
         let images = load_images(&self.request.attachments).await;
         self.prompt(self.request.prompt.clone(), images)?;
+        // A picked-up run has replayed its handshake and opening prompt: new
+        // requests take ids after every one the journal has.
+        #[cfg(unix)]
+        if let Some(kept) = self.process.child.keeper().filter(|_| self.adopting) {
+            let client = &self.process.transport.client;
+            kept.written_through(client.last_id()).await;
+            if let Some(through) = kept.handshake_replayed() {
+                client.skip_ids_through(through);
+            }
+        }
         let mut open = true;
         loop {
             if self.deliveries.iter().all(|delivery| delivery.queued)

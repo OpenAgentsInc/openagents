@@ -174,6 +174,9 @@ mod tests {
 
 pub(crate) mod owned;
 
+mod agent;
+pub(crate) use agent::AgentProcess;
+
 #[cfg(unix)]
 mod launch;
 #[cfg(unix)]

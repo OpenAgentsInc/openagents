@@ -31,6 +31,17 @@ impl Client {
         self.send(frame)?;
         Ok(id)
     }
+    /// The number of the last request's id.
+    #[cfg(unix)]
+    pub fn last_id(&self) -> i64 {
+        self.next_id.load(Ordering::Relaxed) as i64 - 1
+    }
+    /// Give later requests ids above `id` (a run picked up from a keeper).
+    #[cfg(unix)]
+    pub fn skip_ids_through(&self, id: i64) {
+        self.next_id
+            .fetch_max(id.max(0) as u64 + 1, Ordering::Relaxed);
+    }
 }
 
 pub(super) struct Transport {
