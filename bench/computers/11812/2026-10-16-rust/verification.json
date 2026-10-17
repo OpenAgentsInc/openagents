@@ -1,0 +1,89 @@
+{
+  "schema": "openagents.computers.rust_verification.v1",
+  "issue": 11812,
+  "verified_at_utc": "2026-10-17T01:19:03Z",
+  "source_commit": "518ec10309e5021b3cf7b8d07c64aa5d8e41fba8",
+  "source_worktree_clean": true,
+  "platform": "x86_64-unknown-linux-gnu",
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+  "checks": [
+    {
+      "name": "computer-driver",
+      "command": "cargo test --locked -p computer-driver --features space",
+      "passed": 23,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "SPACE wire contract",
+      "command": "cargo test --locked -p computer-conformance --features space --test space",
+      "passed": 7,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "lifecycle adapter",
+      "command": "cargo test --locked -p coder-working-computer --test on_driver",
+      "passed": 8,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "Computers with disposable PostgreSQL",
+      "command": "cargo test --locked -p oa-computers --features space",
+      "passed": 60,
+      "failed": 0,
+      "ignored": 0
+    }
+  ],
+  "build": {
+    "command": "cargo build --locked -p oa-computers --features space --bin oa-computers",
+    "exit_code": 0,
+    "sha256": "2074d5bf4cdeb571238978c940ae710f75db4e86e05fc0766016d8a68752bb81"
+  },
+  "postgres_helper": "cargo build --locked -p computer-files --bin computer-files",
+  "database": "Disposable loopback PostgreSQL container, removed after the checks.",
+  "test_accounts": "Synthetic fixture accounts; no production account or owner computer.",
+  "default_stack": {
+    "override": false,
+    "preflight_passed": true,
+    "diagnostic": "The large inline registry scenario exhausted the unoptimized test poll stack. Split it into stages and run each worker visit as its own local task, matching the service worker. The original fixture and all 15 registry tests then passed with the default stack."
+  },
+  "formatting": [
+    "rustfmt on changed Rust files",
+    "git diff --check"
+  ],
+  "archive": {
+    "path": "passing-logs.tar.gz",
+    "sha256": "00b97b43a354d3b6b26363b9251eb4a231c8578ed9918046038cdc490d6ac287",
+    "files": [
+      {
+        "path": "build.log",
+        "bytes": 215,
+        "sha256": "2443f8861431b0dee18f4f1b4f670cddcd0946fffc6f3656cd94ad716f2e9fbd"
+      },
+      {
+        "path": "driver.log",
+        "bytes": 2229,
+        "sha256": "54a26086a598dd9d6f228524d590cd3661c114955205de8ef955180098205951"
+      },
+      {
+        "path": "lifecycle-adapter.log",
+        "bytes": 794,
+        "sha256": "60a64e5b5f109eb44f163d932a291449034e5dfb3944a054de57fc00feff5b16"
+      },
+      {
+        "path": "postgres.log",
+        "bytes": 7680,
+        "sha256": "a7b9a4f2b6513e82483fa1b553f803b85bcd675e2dc0eeebca62862b8ffb6a59"
+      },
+      {
+        "path": "space-conformance.log",
+        "bytes": 725,
+        "sha256": "2faf2711ea1c3c077709c5577fc3c5354b9781bbb206385194cd10f719354252"
+      }
+    ]
+  },
+  "scope": "Targeted Rust, PostgreSQL and wire tests. Live SPACE memory, worker cleanup and deployment evidence are recorded separately."
+}
