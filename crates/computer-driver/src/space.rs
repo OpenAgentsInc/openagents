@@ -345,68 +345,91 @@ impl SpaceDriver {
         // The lifecycle saves this identity before the effect. A restarted
         // caller repeats the same request and waits for the original operation.
         let result = async {
-            if let Some(journal) = &self.lifecycle_journal {
-                match journal
-                    .claim(operation, computer, action)
-                    .await
-                    .map_err(|_| Error::unknown("couldn't check the earlier request"))?
-                {
-                    LifecycleClaim::Accepted(id) => {
-                        self.wait_operation(&id).await?;
-                        return Ok(id);
-                    }
-                    LifecycleClaim::Uncertain => {
-                        return Err(Error::unknown("the earlier request couldn't be confirmed"));
-                    }
-                    LifecycleClaim::Rejected => {
-                        if action == "delete"
-                            && matches!(self.observe(computer).await, Outcome::Done { value } if value.state == State::Gone)
-                        {
-                            return Ok(format!("missing:{computer}"));
+            let mut request = operation.to_owned();
+            loop {
+                let accepted = if let Some(journal) = &self.lifecycle_journal {
+                    match journal
+                        .claim(&request, computer, action)
+                        .await
+                        .map_err(|_| Error::unknown("couldn't check the earlier request"))?
+                    {
+                        LifecycleClaim::Accepted(id) => Some(id),
+                        LifecycleClaim::Uncertain => {
+                            return Err(Error::unknown(
+                                "the earlier request couldn't be confirmed",
+                            ));
                         }
-                        return Err(Error {
-                            status: Some(409),
-                            message: "the earlier request was refused",
-                        });
+                        LifecycleClaim::Rejected => {
+                            if action == "delete"
+                                && matches!(self.observe(computer).await, Outcome::Done { value } if value.state == State::Gone)
+                            {
+                                return Ok(format!("missing:{computer}"));
+                            }
+                            return Err(Error {
+                                status: Some(409),
+                                message: "the earlier request was refused",
+                            });
+                        }
+                        LifecycleClaim::Fresh => None,
                     }
-                    LifecycleClaim::Fresh => {}
+                } else {
+                    None
+                };
+                let fresh = accepted.is_none();
+                let id = if let Some(id) = accepted {
+                    id
+                } else {
+                    let (method, path) = if action == "delete" {
+                        (Method::DELETE, format!("/v1/sandboxes/{computer}"))
+                    } else {
+                        (Method::POST, format!("/v1/sandboxes/{computer}:{action}"))
+                    };
+                    let v = match self.json(method, &path, None, Some(&request)).await {
+                        Ok(value) => value,
+                        Err(error) => {
+                            if error.status.is_some_and(|status| {
+                                (400..500).contains(&status) && status != 408 && status != 429
+                            }) {
+                                if let Some(journal) = &self.lifecycle_journal {
+                                    journal.rejected(&request).await.map_err(|_| {
+                                        Error::unknown("couldn't record the request refusal")
+                                    })?;
+                                }
+                            }
+                            if action == "delete" && error.status == Some(404) {
+                                return Ok(format!("missing:{computer}"));
+                            }
+                            return Err(error);
+                        }
+                    };
+                    let id = field(&v, "operation_id")?;
+                    if !valid_id(id, "op_") {
+                        return Err(Error::unknown("invalid lifecycle operation ID"));
+                    }
+                    if let Some(journal) = &self.lifecycle_journal {
+                        journal
+                            .accepted(&request, id)
+                            .await
+                            .map_err(|_| Error::unknown("couldn't record the request"))?;
+                    }
+                    id.to_owned()
+                };
+                if self.wait_action_operation(&id, action == "delete").await? {
+                    return Ok::<String, Error>(id);
+                }
+                // SPACE explicitly permits another DELETE after this terminal
+                // upload conflict. Save each child separately, so a restart or
+                // lost reply cannot repeat an uncertain mutation. All accepted
+                // operation IDs remain available in the journal.
+                let mut digest = Sha256::new();
+                digest.update(operation.as_bytes());
+                digest.update([0]);
+                digest.update(id.as_bytes());
+                request = format!("delete-retry:{:x}", digest.finalize());
+                if fresh {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             }
-            let (method, path) = if action == "delete" {
-                (Method::DELETE, format!("/v1/sandboxes/{computer}"))
-            } else {
-                (Method::POST, format!("/v1/sandboxes/{computer}:{action}"))
-            };
-            let v = match self.json(method, &path, None, Some(operation)).await {
-                Ok(value) => value,
-                Err(error) => {
-                    if error.status.is_some_and(|status| {
-                        (400..500).contains(&status) && status != 408 && status != 429
-                    }) {
-                        if let Some(journal) = &self.lifecycle_journal {
-                            journal.rejected(operation).await.map_err(|_| {
-                                Error::unknown("couldn't record the request refusal")
-                            })?;
-                        }
-                    }
-                    if action == "delete" && error.status == Some(404) {
-                        return Ok(format!("missing:{computer}"));
-                    }
-                    return Err(error);
-                }
-            };
-            let id = field(&v, "operation_id")?;
-            if !valid_id(id, "op_") {
-                return Err(Error::unknown("invalid lifecycle operation ID"));
-            }
-            if let Some(journal) = &self.lifecycle_journal {
-                journal
-                    .accepted(operation, id)
-                    .await
-                    .map_err(|_| Error::unknown("couldn't record the request"))?;
-            }
-            self.wait_operation(id).await?;
-            Ok::<String, Error>(id.to_owned())
         };
         match tokio::time::timeout(Duration::from_secs(600), result).await {
             Ok(Ok(id)) => Outcome::done(id),
@@ -418,6 +441,10 @@ impl SpaceDriver {
     }
 
     async fn wait_operation(&self, id: &str) -> Result<()> {
+        self.wait_action_operation(id, false).await.map(|_| ())
+    }
+
+    async fn wait_action_operation(&self, id: &str, deleting: bool) -> Result<bool> {
         if !valid_id(id, "op_") {
             return Err(Error::unknown("invalid lifecycle operation ID"));
         }
@@ -429,8 +456,17 @@ impl SpaceDriver {
                 // establish whether that mutation took effect.
                 .map_err(|_| Error::unknown("couldn't observe the accepted lifecycle operation; check the computer before trying again"))?;
             match field(&operation, "state")? {
-                "succeeded" => return Ok(()),
+                "succeeded" => return Ok(true),
                 "queued" | "running" => tokio::time::sleep(Duration::from_millis(100)).await,
+                "failed"
+                    if deleting
+                        && operation["terminal_error"]["kind"] == "delete_sandbox"
+                        && operation["terminal_error"]["operation_id"] == id
+                        && operation["terminal_error"]["message"]
+                            == "sandbox has a suspend-snapshot upload in flight; retry the DELETE after the snapshot finalizes" =>
+                {
+                    return Ok(false);
+                }
                 "failed" | "canceled" | "expired" => {
                     return Err(Error::unknown(
                         "the lifecycle operation did not succeed; check the computer before trying again",
