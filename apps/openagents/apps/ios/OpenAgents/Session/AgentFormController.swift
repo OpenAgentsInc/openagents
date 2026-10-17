@@ -32,6 +32,7 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
         view.backgroundColor = .systemBackground
         navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
         let scroll = UIScrollView()
+        scroll.accessibilityIdentifier = lab == nil ? "agent-form-scroll" : "lab-form-scroll"
         scroll.keyboardDismissMode = .interactive
         scroll.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .vertical
@@ -96,6 +97,13 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
                 field.layer.cornerRadius = 8
                 field.isEditable = enabled
                 field.isScrollEnabled = false
+                if field.inputAccessoryView == nil {
+                    let toolbar = UIToolbar()
+                    toolbar.items = [UIBarButtonItem(systemItem: .flexibleSpace),
+                        UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.view.endEditing(true) })]
+                    toolbar.sizeToFit()
+                    field.inputAccessoryView = toolbar
+                }
                 field.accessibilityLabel = label
                 field.accessibilityIdentifier = "\(lab == nil ? "agent" : "lab")-\(key)"
                 if field.constraints.isEmpty { field.heightAnchor.constraint(greaterThanOrEqualToConstant: (props["multiline"] as? Bool == true) ? 140 : 44).isActive = true }

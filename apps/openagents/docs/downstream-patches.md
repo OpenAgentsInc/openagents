@@ -102,3 +102,9 @@ MCP instructions, and developer settings. Existing bundle IDs, Keychain
 identities, storage locations, and the UIKit scene delegate stay stable. Old
 environment names, saved theme choices, project imports, and conversation
 links remain readable. Upstream fixes now require manual ports.
+
+- [OpenAgents #11918](https://github.com/OpenAgentsInc/openagents/issues/11918):
+  agent forms provide a Done button above the keyboard. The Agent Lab phone
+  check dismisses the keyboard and scrolls within the form before choosing a
+  runner, saving, running, and using an agent. Composer buttons keep their
+  identity when model choices change, so updates do not close another menu.

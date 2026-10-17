@@ -16,6 +16,7 @@ save. Check large text, VoiceOver, sign-out, and switching accounts. The login
 persistence fixes from build 1006 and dashboards from build 1005 are included.
 
 When editing an agent, use Done above the keyboard to return to the form.
+Agent and project menus stay open while model choices update.
 
 OpenAgents 1.0.0 (1009)
 

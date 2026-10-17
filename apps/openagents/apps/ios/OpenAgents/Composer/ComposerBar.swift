@@ -429,8 +429,14 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
     }
 
     private func rebuildChips() {
-        chipStrip.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for chip in chips {
+        let identifiers = Set(chips.map { "composer-chip-\($0.id)" })
+        for child in chipStrip.arrangedSubviews where !identifiers.contains(child.accessibilityIdentifier ?? "") {
+            chipStrip.removeArrangedSubview(child)
+            child.removeFromSuperview()
+        }
+        for (index, chip) in chips.enumerated() {
+            let identifier = "composer-chip-\(chip.id)"
+            let existing = chipStrip.arrangedSubviews.first { $0.accessibilityIdentifier == identifier } as? UIButton
             var config = UIButton.Configuration.filled()
             config.title = chip.title
             if let icon = chip.icon {
@@ -453,28 +459,38 @@ final class ComposerBar: UIView, UITextViewDelegate, UIGestureRecognizerDelegate
                 a.font = Fonts.ui(mono ? .monoMedium : .sansMedium, mono ? 12.5 : 13.5)
                 return a
             }
-            let b = UIButton(configuration: config)
-            b.accessibilityIdentifier = "composer-chip-\(chip.id)"
+            let b = existing ?? UIButton()
+            b.configuration = config
+            b.accessibilityIdentifier = identifier
             b.setContentHuggingPriority(.required, for: .horizontal)
             b.setContentCompressionResistancePriority(.required, for: .horizontal)
-            b.addAction(UIAction { [weak self, weak b] _ in
-                guard let self, let b else { return }
-                self.onChipTap?(chip.id, b)
-            }, for: .touchUpInside)
-            chipStrip.addArrangedSubview(b)
+            if existing == nil {
+                b.addAction(UIAction { [weak self, weak b] _ in
+                    guard let self, let b else { return }
+                    self.onChipTap?(chip.id, b)
+                }, for: .touchUpInside)
+            }
+            if index >= chipStrip.arrangedSubviews.count || chipStrip.arrangedSubviews[index] !== b {
+                if existing != nil { chipStrip.removeArrangedSubview(b) }
+                chipStrip.insertArrangedSubview(b, at: index)
+            }
         }
         applyChipMenus()
     }
 
     private func applyChipMenus() {
         for case let b as UIButton in chipStrip.arrangedSubviews {
-            guard let id = b.accessibilityIdentifier?.replacingOccurrences(of: "composer-chip-", with: ""),
-                  let provider = chipMenus[id]
-            else { continue }
+            guard let id = b.accessibilityIdentifier?.replacingOccurrences(of: "composer-chip-", with: "") else { continue }
+            guard chipMenus[id] != nil else {
+                b.menu = nil
+                b.showsMenuAsPrimaryAction = false
+                continue
+            }
+            guard b.menu == nil else { continue }
             // Read current choices when opening, without replacing an open menu
             // whenever presence or another account observation changes.
-            b.menu = UIMenu(children: [UIDeferredMenuElement.uncached { completion in
-                completion(provider()?.children ?? [])
+            b.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] completion in
+                completion(self?.chipMenus[id]?()?.children ?? [])
             }])
             b.showsMenuAsPrimaryAction = true
         }

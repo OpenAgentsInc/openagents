@@ -10,10 +10,17 @@ final class OpenAgentsAgentLabTests: XCTestCase {
         app.launchArguments = ["-no-auth-browser", "-account-fixture", "-account-test-credential-url", try XCTUnwrap(config["credential_url"]), "-edge", try XCTUnwrap(config["sync"])]
         app.launch()
         defer { app.terminate(); app.launchArguments = ["-account-fixture", "-signedout", "-no-auth-browser"]; app.launch() }
+        func chooseProject() {
+            app.buttons["composer-chip-project"].tap()
+            let project = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", (config["project"] ?? "Mobile fixture") + ",")).firstMatch
+            XCTAssertTrue(project.waitForExistence(timeout: 15))
+            project.tap()
+        }
         XCTAssertTrue(app.buttons["new-session"].waitForExistence(timeout: 90))
         app.buttons["new-session"].tap()
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).tap()
         _ = app.keyboards.firstMatch.waitForNonExistence(timeout: 5)
+        chooseProject()
         app.buttons["composer-chip-model"].tap()
         app.buttons["Agent Lab…"].tap()
         let name = app.textViews["lab-name"]
@@ -22,12 +29,20 @@ final class OpenAgentsAgentLabTests: XCTestCase {
         name.tap(); name.typeText(" phone fixture " + suffix)
         let title = app.textViews["lab-title"]
         title.tap(); title.typeText(" phone " + String(try XCTUnwrap(config["device"]).prefix(8)))
-        func reveal(_ element: XCUIElement, up: Bool = true) {
-            for _ in 0..<25 where !element.isHittable { if up { app.swipeUp() } else { app.swipeDown() } }
+        app.toolbars.buttons["Done"].tap()
+        func reveal(_ element: XCUIElement) {
+            let form = app.scrollViews["lab-form-scroll"]
+            let surface = form.exists ? form : app
+            for _ in 0..<25 {
+                if element.isHittable { return }
+                surface.swipeUp()
+            }
             XCTAssertTrue(element.isHittable)
         }
         let sdk = app.buttons["lab-runtime:sdk"]
         reveal(sdk); sdk.tap()
+        let computer = app.buttons["lab-host:" + (try XCTUnwrap(config["device"]))]
+        reveal(computer); computer.tap()
         let namedProject = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", try XCTUnwrap(config["project"]))).firstMatch
         reveal(namedProject); namedProject.tap()
         let runner = app.buttons["lab-runner:fixture"]
@@ -36,6 +51,7 @@ final class OpenAgentsAgentLabTests: XCTestCase {
         reveal(guidance); guidance.tap()
         let reference = app.textViews["lab-component:0"]
         reveal(reference); reference.tap(); reference.typeText("Reply briefly.")
+        app.toolbars.buttons["Done"].tap()
         let save = app.buttons["lab-save"]
         reveal(save); save.tap()
         let run = app.buttons["lab-start"]
@@ -51,17 +67,23 @@ final class OpenAgentsAgentLabTests: XCTestCase {
         if app.buttons["new-session"].exists {
             app.buttons["new-session"].tap()
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).tap()
+            chooseProject()
         }
         app.buttons["composer-chip-model"].tap(); app.buttons["Agent Lab…"].tap()
         XCTAssertTrue(app.buttons["lab-promote"].waitForExistence(timeout: 10))
         let use = app.buttons["lab-promote"]
-        reveal(use, up: false); use.tap()
+        reveal(use); use.tap()
         let ready = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "ready in your agent picker")).firstMatch
         XCTAssertTrue(ready.waitForExistence(timeout: 30))
         app.navigationBars.buttons.firstMatch.tap()
-        app.buttons["composer-chip-model"].tap()
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "phone fixture " + suffix)).firstMatch.waitForExistence(timeout: 30))
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)).tap()
+        let saved = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "phone fixture " + suffix)).firstMatch
+        for _ in 0..<3 {
+            if !app.buttons["Agent Lab…"].exists { app.buttons["composer-chip-model"].tap() }
+            if saved.waitForExistence(timeout: 10) { break }
+        }
+        XCTAssertTrue(saved.exists)
+        saved.tap()
+        XCTAssertTrue(app.buttons["composer-chip-model"].label.contains("phone fixture " + suffix))
         app.navigationBars.buttons.firstMatch.tap()
         app.tabBars.buttons["Settings"].tap()
         let signOut = app.cells["settings-signout"]
