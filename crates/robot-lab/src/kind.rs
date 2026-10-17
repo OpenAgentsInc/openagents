@@ -16,8 +16,9 @@
 use std::collections::BTreeMap;
 
 use lab_kit::{
-    Artifact, ArtifactRole, Card, Change, Draft, JobSpec, JobState, KindManifest, LabKind, Limits,
-    Locator, Measurements, Refusal, Report, Requirements, ToolDecl, Version, View, Want,
+    Artifact, ArtifactRole, Card, Change, Draft, JobSpec, JobState, JobStatus, KindManifest,
+    LabKind, Limits, Locator, Measurements, Refusal, Report, Requirements, ToolDecl, Version, View,
+    Want,
     change::{Plain, apply_patch},
 };
 use serde_json::{Value, json};
@@ -29,6 +30,9 @@ use crate::{Error, Result};
 pub const SIMULATE: &str = "simulate";
 /// Renders a robot or scene as a 3D model, or an episode as a replay video.
 pub const PREVIEW: &str = "preview";
+/// A simulation's replay: the recorded `robot-episode.v1` document as JSON,
+/// naming its experiment by platform content digest.
+pub const REPLAY_MEDIA: &str = "application/vnd.openagents.robot-episode+json";
 
 pub const SCHEMAS: [&str; 4] = [
     "robot.v1",
@@ -91,6 +95,78 @@ pub fn note_locator(content: &Value, step: Option<u32>) -> std::result::Result<L
             "Choose a step from this saved episode.",
         )),
     }
+}
+
+/// The content `change` makes from `base`, with the document checks but
+/// before the checks that need other items, so a host can check those
+/// for exactly this content.
+///
+/// # Errors
+/// The change doesn't apply, or changes the item's type.
+pub fn next_content(base: &Version, change: &Change) -> std::result::Result<Value, Refusal> {
+    let old = document(&base.content)?;
+    let next = match change {
+        Change::Patch { ops } => apply_patch(&base.content, ops, &Plain)?,
+        Change::Intent { intent } => match intent["intent"].as_str() {
+            Some("replace") => intent["content"].clone(),
+            Some("pose") => {
+                let Document::Scene(mut scene) = old.clone() else {
+                    return Err(refusal(Error::Invalid(
+                        "Open a scene before moving a joint.".into(),
+                    )));
+                };
+                let joints = serde_json::from_value(intent["joints"].clone())
+                    .map_err(|_| Refusal::new("invalid_intent", "Give joint values."))?;
+                pose(
+                    &mut scene,
+                    intent["robot"].as_str().unwrap_or_default(),
+                    joints,
+                )
+                .map_err(refusal)?;
+                content(&Document::Scene(scene))?
+            }
+            Some("move_object") => {
+                let Document::Scene(mut scene) = old.clone() else {
+                    return Err(refusal(Error::Invalid(
+                        "Open a scene before moving an object.".into(),
+                    )));
+                };
+                let position = serde_json::from_value(intent["position"].clone())
+                    .map_err(|_| Refusal::new("invalid_intent", "Give a position as [x, y, z]."))?;
+                move_object(
+                    &mut scene,
+                    intent["object"].as_str().unwrap_or_default(),
+                    position,
+                )
+                .map_err(refusal)?;
+                content(&Document::Scene(scene))?
+            }
+            _ => {
+                return Err(Refusal::new(
+                    "unknown_intent",
+                    "Choose replace, pose, or move_object.",
+                ));
+            }
+        },
+    };
+    if document(&next)?.kind() != old.kind() {
+        return Err(refusal(Error::Invalid(
+            "Keep the same item type when editing.".into(),
+        )));
+    }
+    Ok(next)
+}
+
+/// The versions `content` names, as `(document, content_sha256)`.
+///
+/// # Errors
+/// The content isn't a robot document.
+pub fn pins(content: &Value) -> std::result::Result<Vec<(String, String)>, Refusal> {
+    Ok(document(content)?
+        .references()
+        .into_iter()
+        .map(|r| (r.document.clone(), r.version.clone()))
+        .collect())
 }
 
 fn refusal(error: Error) -> Refusal {
@@ -256,58 +332,7 @@ impl LabKind for Robot {
         summary: &str,
         m: &Measurements,
     ) -> std::result::Result<Draft, Refusal> {
-        let old = document(&base.content)?;
-        let next = match change {
-            Change::Patch { ops } => apply_patch(&base.content, ops, &Plain)?,
-            Change::Intent { intent } => match intent["intent"].as_str() {
-                Some("replace") => intent["content"].clone(),
-                Some("pose") => {
-                    let Document::Scene(mut scene) = old.clone() else {
-                        return Err(refusal(Error::Invalid(
-                            "Open a scene before moving a joint.".into(),
-                        )));
-                    };
-                    let joints = serde_json::from_value(intent["joints"].clone())
-                        .map_err(|_| Refusal::new("invalid_intent", "Give joint values."))?;
-                    pose(
-                        &mut scene,
-                        intent["robot"].as_str().unwrap_or_default(),
-                        joints,
-                    )
-                    .map_err(refusal)?;
-                    content(&Document::Scene(scene))?
-                }
-                Some("move_object") => {
-                    let Document::Scene(mut scene) = old.clone() else {
-                        return Err(refusal(Error::Invalid(
-                            "Open a scene before moving an object.".into(),
-                        )));
-                    };
-                    let position =
-                        serde_json::from_value(intent["position"].clone()).map_err(|_| {
-                            Refusal::new("invalid_intent", "Give a position as [x, y, z].")
-                        })?;
-                    move_object(
-                        &mut scene,
-                        intent["object"].as_str().unwrap_or_default(),
-                        position,
-                    )
-                    .map_err(refusal)?;
-                    content(&Document::Scene(scene))?
-                }
-                _ => {
-                    return Err(Refusal::new(
-                        "unknown_intent",
-                        "Choose replace, pose, or move_object.",
-                    ));
-                }
-            },
-        };
-        if document(&next)?.kind() != old.kind() {
-            return Err(refusal(Error::Invalid(
-                "Keep the same item type when editing.".into(),
-            )));
-        }
+        let next = next_content(base, change)?;
         let report = Self::check(&next, m)?;
         Ok(Draft {
             content: next,
@@ -353,7 +378,15 @@ impl LabKind for Robot {
             .filter(|a| a.version == version.reference())
             .collect();
         let episode = version.content["schema"] == "robot-episode.v1";
-        let (view, primary) = if episode {
+        let experiment = version.content["schema"] == "robot-experiment.v1";
+        let (view, primary) = if experiment {
+            // The replay card: the latest simulation's recorded episode.
+            let replay = mine
+                .iter()
+                .rev()
+                .find(|a| a.role == ArtifactRole::Replay && a.media_type == REPLAY_MEDIA);
+            (View::Report, replay.map(|a| a.id.clone()))
+        } else if episode {
             let replay = mine
                 .iter()
                 .find(|a| a.role == ArtifactRole::Replay && a.media_type.starts_with("video/"));
@@ -372,6 +405,26 @@ impl LabKind for Robot {
             .iter()
             .rev()
             .find(|j| j.spec.version == version.reference());
+        let state_text = match (experiment, job.map(|j| j.status), &primary) {
+            (true, Some(JobStatus::Done), Some(_)) => {
+                Some("The simulation finished. Its replay is saved.".to_owned())
+            }
+            (true, Some(JobStatus::Queued), _) => Some(
+                job.and_then(|j| j.message.clone())
+                    .unwrap_or_else(|| "Waiting for a computer to run the simulation.".into()),
+            ),
+            (true, Some(JobStatus::Running), _) => Some("Running the simulation…".into()),
+            (true, Some(JobStatus::Failed | JobStatus::Uncertain), _) => {
+                Some("The simulation didn't finish. Run it again.".into())
+            }
+            _ => None,
+        };
+        let mut detail = version.report.facts.clone();
+        if let (Some(facts), Some(replay)) = (detail.as_object_mut(), &primary)
+            && experiment
+        {
+            facts.insert("replay".into(), json!(replay));
+        }
         Card {
             schema: lab_kit::card::SCHEMA.into(),
             kind: Self::KIND.into(),
@@ -383,7 +436,7 @@ impl LabKind for Robot {
                 .into(),
             summary: version.summary.clone(),
             state: job.map(|j| j.status),
-            state_text: None,
+            state_text,
             refusal: None,
             view,
             primary,
@@ -394,9 +447,12 @@ impl LabKind for Robot {
             strip: Vec::new(),
             compare: None,
             notes: Vec::new(),
-            page: None,
+            page: Some(format!(
+                "/labs/robot/{}?v={}",
+                version.document, version.number
+            )),
             private_local: version.has_private_local(),
-            detail: version.report.facts.clone(),
+            detail,
         }
     }
 }

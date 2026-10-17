@@ -18,6 +18,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await??;
         return Ok(());
     }
+    if command.as_deref() == Some("simulate-job") {
+        let arguments = args.collect();
+        tokio::task::spawn_blocking(move || {
+            robot_workbench::platform::cli(arguments).map_err(|e| e.to_string())
+        })
+        .await??;
+        return Ok(());
+    }
     if command.as_deref() == Some("publish") {
         return robot_workbench::record::publish_cli(args.collect()).await;
     }

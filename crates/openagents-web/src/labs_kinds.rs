@@ -14,6 +14,8 @@ use serde_json::{Value, json};
 pub(crate) const GAME_TOOLS: &[&str] = &["game_open", "game_play", "game_edit"];
 pub(crate) const SHIP_TOOLS: &[&str] = &["ship_open", "ship_edit"];
 pub(crate) const VIDEO_TOOLS: &[&str] = &["lab_open", "lab_edit", "lab_render"];
+pub(crate) const ROBOT_TOOLS: &[&str] =
+    &["robot_open", "robot_pose", "robot_move_object", "robot_run"];
 
 fn text<'a>(args: &'a Value, name: &str, missing: &str) -> Result<&'a str, ApiError> {
     args[name]
@@ -240,6 +242,180 @@ impl Kind for GameApi {
     }
     fn tool(&self, name: &str, args: &Value) -> Result<Tool, ApiError> {
         game_tool(name, args)
+    }
+}
+
+pub(crate) fn robot_tool(name: &str, args: &Value) -> Result<Tool, ApiError> {
+    let document = text(args, "document", "Choose a robot item.")?.to_owned();
+    match name {
+        "robot_open" => Ok(Tool::Read { document }),
+        "robot_pose" => {
+            let robot = text(args, "robot", "Choose a robot in this scene.")?;
+            Ok(Tool::Change {
+                document,
+                change: Change::Intent {
+                    intent: json!({"intent": "pose", "robot": robot, "joints": args["joints"]}),
+                },
+                summary: format!("Posed {robot}"),
+            })
+        }
+        "robot_move_object" => {
+            let object = text(args, "object", "Choose an object in this scene.")?;
+            Ok(Tool::Change {
+                document,
+                change: Change::Intent {
+                    intent: json!({"intent": "move_object", "object": object,
+                        "position": args["position"]}),
+                },
+                summary: format!("Moved {object}"),
+            })
+        }
+        "robot_run" => Ok(Tool::Job {
+            document,
+            version: version(args)
+                .ok_or_else(|| ApiError::invalid("Choose the experiment version to run."))?,
+            want: Want::Job {
+                job_type: robot_lab::kind::SIMULATE.into(),
+                params: Value::Null,
+            },
+        }),
+        _ => Err(ApiError::missing()),
+    }
+}
+
+/// Robot Lab on the platform. A reference names a version in the same
+/// space by its content digest; the checks that need those items (a pose
+/// against its robot's joints, an experiment against its scene) run here,
+/// on exactly the content being saved, with the local lab's rules.
+pub(crate) struct RobotApi;
+
+/// At most this many referenced items are read to check one save.
+const MAX_ROBOT_REFERENCES: usize = 64;
+
+fn robot_refusal(error: robot_lab::Error) -> lab_store::Error {
+    lab_store::Error::Refused(Refusal::new("robot_check", error.to_string()))
+}
+
+impl RobotApi {
+    async fn pinned(store: &Store, document: &str, sha256: &str) -> lab_store::Result<Version> {
+        let mut after = 0;
+        for _ in 0..10 {
+            let page = store.versions(document, after, 100).await?;
+            if let Some(v) = page.items.into_iter().find(|v| v.content_sha256 == sha256) {
+                return Ok(v);
+            }
+            match page.next {
+                Some(next) => after = next,
+                None => break,
+            }
+        }
+        Err(lab_store::Error::Refused(Refusal::new(
+            "robot_check",
+            "This item refers to a version that isn't in the lab.",
+        )))
+    }
+
+    /// Measurements for `content` once every reference and stored file
+    /// checks out. A first version's files are uploaded after it's saved,
+    /// so only an edit checks them, against the files of the version it edits.
+    async fn checked(
+        store: &Store,
+        base: Option<&Version>,
+        content: &Value,
+    ) -> lab_store::Result<Value> {
+        use robot_lab::{Document, Reference};
+        use std::collections::BTreeMap;
+        let document = robot_lab::kind::document(content)?;
+        let mut found: BTreeMap<Reference, Document> = BTreeMap::new();
+        let mut queue: Vec<Reference> = document.references().into_iter().cloned().collect();
+        while let Some(reference) = queue.pop() {
+            if found.contains_key(&reference) {
+                continue;
+            }
+            if found.len() >= MAX_ROBOT_REFERENCES {
+                return Err(lab_store::Error::Invalid(
+                    "This item refers to too many others.".into(),
+                ));
+            }
+            let v = Self::pinned(store, &reference.document, &reference.version).await?;
+            let item = robot_lab::kind::document(&v.content)?;
+            queue.extend(item.references().into_iter().cloned());
+            found.insert(reference, item);
+        }
+        let mut files = std::collections::BTreeSet::new();
+        if let Some(base) = base {
+            for a in store.version_artifacts(&base.reference()).await? {
+                files.insert((a.sha256, a.size));
+            }
+        }
+        robot_lab::store::check_dependencies(
+            &document,
+            &|r| {
+                found.get(r).cloned().ok_or_else(|| {
+                    robot_lab::Error::Invalid(
+                        "This item refers to a version that isn't in the lab.".into(),
+                    )
+                })
+            },
+            &|asset| {
+                if base.is_none() || files.contains(&(asset.sha256.clone(), asset.bytes)) {
+                    Ok(())
+                } else {
+                    Err(robot_lab::Error::Invalid(
+                        "Upload this item's files before changing it.".into(),
+                    ))
+                }
+            },
+        )
+        .map_err(robot_refusal)?;
+        Ok(robot_lab::kind::dependencies_checked(content))
+    }
+}
+
+#[async_trait::async_trait]
+impl Kind for RobotApi {
+    fn manifest(&self) -> KindManifest {
+        offered(robot_lab::kind::Robot::manifest(), ROBOT_TOOLS)
+    }
+    async fn initial(
+        &self,
+        store: &Store,
+        _document: &str,
+        schema: &str,
+        content: Value,
+        summary: &str,
+    ) -> lab_store::Result<CheckedDraft> {
+        let m = Self::checked(store, None, &content).await?;
+        CheckedDraft::initial::<robot_lab::kind::Robot>(schema, content, summary, &m)
+    }
+    async fn change(
+        &self,
+        store: &Store,
+        base: &Version,
+        change: &Change,
+        summary: &str,
+    ) -> lab_store::Result<CheckedDraft> {
+        let next = robot_lab::kind::next_content(base, change)?;
+        let m = Self::checked(store, Some(base), &next).await?;
+        CheckedDraft::change::<robot_lab::kind::Robot>(base, change, summary, &m)
+    }
+    fn jobs(&self, version: &Version, want: &Want) -> Vec<JobSpec> {
+        robot_lab::kind::Robot::jobs_for(version, want)
+    }
+    fn card(&self, version: &Version, jobs: &[JobState], artifacts: &[Artifact]) -> Card {
+        robot_lab::kind::Robot::card(version, jobs, artifacts)
+    }
+    fn tool(&self, name: &str, args: &Value) -> Result<Tool, ApiError> {
+        robot_tool(name, args)
+    }
+    fn pins(&self, content: &Value) -> Result<Vec<lab_api::Pin>, Refusal> {
+        Ok(robot_lab::kind::pins(content)?
+            .into_iter()
+            .map(|(document, content_sha256)| lab_api::Pin {
+                document,
+                content_sha256,
+            })
+            .collect())
     }
 }
 

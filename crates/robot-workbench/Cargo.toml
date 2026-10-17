@@ -41,6 +41,7 @@ schemars = "1.2.2"
 sha2 = "0.10"
 thiserror = "2"
 rust-native = { path = "../rust-native" }
+base64 = "0.22"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 robot-sim = { path = "../robot-sim", features = ["mujoco"], optional = true }
@@ -55,6 +56,7 @@ tempfile = { version = "3", optional = true }
 verse = { path = "../verse", default-features = false, features = ["capture"], optional = true }
 
 [dev-dependencies]
+lab-kit = { path = "../lab-kit" }
 oa-copy = { path = "../oa-copy" }
 tempfile = "3"
 

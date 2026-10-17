@@ -15319,8 +15319,10 @@ name = "robot-workbench"
 version = "1.0.0"
 dependencies = [
  "axum 0.8.9",
+ "base64 0.22.1",
  "glam",
  "gym",
+ "lab-kit",
  "oa-copy",
  "png",
  "robot-data",

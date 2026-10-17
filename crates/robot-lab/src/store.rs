@@ -385,13 +385,6 @@ impl Store {
         Ok(reference)
     }
 
-    fn robot(&self, reference: &Reference) -> Result<Robot> {
-        match self.get(reference)?.content {
-            Document::Robot(robot) => Ok(robot),
-            _ => Err(Error::Invalid("Choose a robot definition.".into())),
-        }
-    }
-
     fn scene(&self, reference: &Reference) -> Result<Scene> {
         match self.get(reference)?.content {
             Document::Scene(scene) => Ok(scene),
@@ -407,156 +400,11 @@ impl Store {
     }
 
     pub fn validate_dependencies(&self, document: &Document) -> Result<()> {
-        for asset in document.assets() {
-            self.verify_asset(asset)?;
-        }
-        match document {
-            Document::Robot(_) => {}
-            Document::Scene(scene) => {
-                for instance in &scene.robots {
-                    self.robot(&instance.robot)?
-                        .validate_pose(&instance.joints)?;
-                }
-                for camera in &scene.cameras {
-                    if let Some((id, link)) = &camera.robot_link {
-                        let instance = scene
-                            .robots
-                            .iter()
-                            .find(|r| r.id == *id)
-                            .ok_or(Error::Corrupt)?;
-                        require(
-                            self.robot(&instance.robot)?
-                                .links
-                                .iter()
-                                .any(|l| l.name == *link),
-                            "Attach the camera to a link in this robot.",
-                        )?;
-                    }
-                }
-            }
-            Document::Experiment(experiment) => {
-                let scene = self.scene(&experiment.scene)?;
-                let instance = scene
-                    .robots
-                    .iter()
-                    .find(|r| r.id == experiment.controller.robot())
-                    .ok_or_else(|| {
-                        Error::Invalid("Choose a controller for a robot in this scene.".into())
-                    })?;
-                let robot = self.robot(&instance.robot)?;
-                require(
-                    robot.capabilities.contains(&Capability::Simulate),
-                    "This robot doesn't support simulation.",
-                )?;
-                for joint in experiment.controller.joints() {
-                    require(
-                        robot
-                            .joints
-                            .iter()
-                            .any(|j| j.name == *joint && j.kind != JointKind::Fixed),
-                        "Map the controller to movable joints in this robot.",
-                    )?;
-                }
-                require(
-                    scene.objects.iter().any(|o| {
-                        o.id == experiment.task.object && o.mass > 0.0 && o.collider.is_some()
-                    }),
-                    "Choose a moving object with a collision shape for the task.",
-                )?;
-                if let Controller::Policy { cameras, .. } = &experiment.controller {
-                    for camera in cameras {
-                        require(
-                            scene.cameras.iter().any(|c| c.id == *camera),
-                            "This policy needs a camera that isn't in the scene.",
-                        )?;
-                    }
-                }
-            }
-            Document::Episode(episode) => {
-                let experiment = self.experiment(&episode.experiment)?;
-                require(
-                    experiment.seeds.contains(&episode.seed)
-                        && episode.steps.len() <= experiment.limits.max_steps as usize,
-                    "Keep the episode inside its experiment's seeds and run length.",
-                )?;
-                require(
-                    episode.wall_seconds <= f64::from(experiment.limits.wall_seconds)
-                        || matches!(
-                            episode.outcome,
-                            Outcome::Failed { .. } | Outcome::Stopped { .. }
-                        ),
-                    "The episode exceeds its experiment's time limit.",
-                )?;
-                let scene = self.scene(&experiment.scene)?;
-                let instance = scene
-                    .robots
-                    .iter()
-                    .find(|r| r.id == experiment.controller.robot())
-                    .ok_or(Error::Corrupt)?;
-                let robot = self.robot(&instance.robot)?;
-                let mut asset_bytes = 0_u64;
-                let mut seen_assets = std::collections::BTreeSet::new();
-                for step in &episode.steps {
-                    robot.validate_state(&step.joints)?;
-                    for (name, value) in &step.joints {
-                        let joint = robot
-                            .joints
-                            .iter()
-                            .find(|j| j.name == *name)
-                            .ok_or(Error::Corrupt)?;
-                        if joint
-                            .limits
-                            .is_some_and(|limits| *value < limits.lower || *value > limits.upper)
-                        {
-                            require(
-                                step.limit_violations.contains(name),
-                                "Record each joint position that exceeds its limits.",
-                            )?;
-                        }
-                    }
-                    robot.validate_pose(&step.actions)?;
-                    require(
-                        step.actions
-                            .keys()
-                            .all(|j| experiment.controller.joints().contains(j)),
-                        "The episode uses an unmapped action joint.",
-                    )?;
-                    require(
-                        step.objects
-                            .keys()
-                            .all(|id| scene.objects.iter().any(|o| o.id == *id)),
-                        "The episode names an object outside its scene.",
-                    )?;
-                    require(
-                        step.sensors
-                            .keys()
-                            .all(|id| scene.cameras.iter().any(|c| c.id == *id)),
-                        "The episode names a camera outside its scene.",
-                    )?;
-                    if episode.mode == EpisodeMode::Simulation {
-                        require(
-                            (step.time_seconds
-                                - f64::from(step.index) * experiment.timestep_seconds)
-                                .abs()
-                                <= experiment.timestep_seconds * 1e-6,
-                            "Keep simulation times on the experiment's fixed step.",
-                        )?;
-                    }
-                    for sensor in step.sensors.values() {
-                        if seen_assets.insert(&sensor.asset.sha256) {
-                            asset_bytes = asset_bytes
-                                .checked_add(sensor.asset.bytes)
-                                .ok_or(Error::Corrupt)?;
-                        }
-                    }
-                }
-                require(
-                    asset_bytes <= experiment.limits.max_artifact_bytes,
-                    "The episode's camera files exceed its storage limit.",
-                )?;
-            }
-        }
-        Ok(())
+        check_dependencies(
+            document,
+            &|reference| self.get(reference).map(|v| v.content),
+            &|asset| self.verify_asset(asset),
+        )
     }
 
     pub fn add_note(&self, note: Note) -> Result<()> {
@@ -691,6 +539,182 @@ impl Store {
         }
         Ok(value)
     }
+}
+
+/// The checks that need other items and files: a pose against its robot's
+/// joints, an experiment against its scene and robot, an episode against
+/// its experiment, and each file. `get` reads a referenced item and
+/// `verify` checks a file, so a host other than the local store (the Labs
+/// platform) runs exactly these checks.
+///
+/// # Errors
+/// A reference is missing or of the wrong type, a check fails, or a file
+/// is missing or changed.
+pub fn check_dependencies(
+    document: &Document,
+    get: &dyn Fn(&Reference) -> Result<Document>,
+    verify: &dyn Fn(&Asset) -> Result<()>,
+) -> Result<()> {
+    let robot = |reference: &Reference| match get(reference)? {
+        Document::Robot(robot) => Ok(robot),
+        _ => Err(Error::Invalid("Choose a robot definition.".into())),
+    };
+    let scene = |reference: &Reference| match get(reference)? {
+        Document::Scene(scene) => Ok(scene),
+        _ => Err(Error::Invalid("Choose a robot scene.".into())),
+    };
+    let experiment = |reference: &Reference| match get(reference)? {
+        Document::Experiment(experiment) => Ok(experiment),
+        _ => Err(Error::Invalid("Choose an experiment.".into())),
+    };
+    for asset in document.assets() {
+        verify(asset)?;
+    }
+    match document {
+        Document::Robot(_) => {}
+        Document::Scene(scene) => {
+            for instance in &scene.robots {
+                robot(&instance.robot)?.validate_pose(&instance.joints)?;
+            }
+            for camera in &scene.cameras {
+                if let Some((id, link)) = &camera.robot_link {
+                    let instance = scene
+                        .robots
+                        .iter()
+                        .find(|r| r.id == *id)
+                        .ok_or(Error::Corrupt)?;
+                    require(
+                        robot(&instance.robot)?
+                            .links
+                            .iter()
+                            .any(|l| l.name == *link),
+                        "Attach the camera to a link in this robot.",
+                    )?;
+                }
+            }
+        }
+        Document::Experiment(experiment) => {
+            let scene = scene(&experiment.scene)?;
+            let instance = scene
+                .robots
+                .iter()
+                .find(|r| r.id == experiment.controller.robot())
+                .ok_or_else(|| {
+                    Error::Invalid("Choose a controller for a robot in this scene.".into())
+                })?;
+            let robot = robot(&instance.robot)?;
+            require(
+                robot.capabilities.contains(&Capability::Simulate),
+                "This robot doesn't support simulation.",
+            )?;
+            for joint in experiment.controller.joints() {
+                require(
+                    robot
+                        .joints
+                        .iter()
+                        .any(|j| j.name == *joint && j.kind != JointKind::Fixed),
+                    "Map the controller to movable joints in this robot.",
+                )?;
+            }
+            require(
+                scene.objects.iter().any(|o| {
+                    o.id == experiment.task.object && o.mass > 0.0 && o.collider.is_some()
+                }),
+                "Choose a moving object with a collision shape for the task.",
+            )?;
+            if let Controller::Policy { cameras, .. } = &experiment.controller {
+                for camera in cameras {
+                    require(
+                        scene.cameras.iter().any(|c| c.id == *camera),
+                        "This policy needs a camera that isn't in the scene.",
+                    )?;
+                }
+            }
+        }
+        Document::Episode(episode) => {
+            let experiment = experiment(&episode.experiment)?;
+            require(
+                experiment.seeds.contains(&episode.seed)
+                    && episode.steps.len() <= experiment.limits.max_steps as usize,
+                "Keep the episode inside its experiment's seeds and run length.",
+            )?;
+            require(
+                episode.wall_seconds <= f64::from(experiment.limits.wall_seconds)
+                    || matches!(
+                        episode.outcome,
+                        Outcome::Failed { .. } | Outcome::Stopped { .. }
+                    ),
+                "The episode exceeds its experiment's time limit.",
+            )?;
+            let scene = scene(&experiment.scene)?;
+            let instance = scene
+                .robots
+                .iter()
+                .find(|r| r.id == experiment.controller.robot())
+                .ok_or(Error::Corrupt)?;
+            let robot = robot(&instance.robot)?;
+            let mut asset_bytes = 0_u64;
+            let mut seen_assets = std::collections::BTreeSet::new();
+            for step in &episode.steps {
+                robot.validate_state(&step.joints)?;
+                for (name, value) in &step.joints {
+                    let joint = robot
+                        .joints
+                        .iter()
+                        .find(|j| j.name == *name)
+                        .ok_or(Error::Corrupt)?;
+                    if joint
+                        .limits
+                        .is_some_and(|limits| *value < limits.lower || *value > limits.upper)
+                    {
+                        require(
+                            step.limit_violations.contains(name),
+                            "Record each joint position that exceeds its limits.",
+                        )?;
+                    }
+                }
+                robot.validate_pose(&step.actions)?;
+                require(
+                    step.actions
+                        .keys()
+                        .all(|j| experiment.controller.joints().contains(j)),
+                    "The episode uses an unmapped action joint.",
+                )?;
+                require(
+                    step.objects
+                        .keys()
+                        .all(|id| scene.objects.iter().any(|o| o.id == *id)),
+                    "The episode names an object outside its scene.",
+                )?;
+                require(
+                    step.sensors
+                        .keys()
+                        .all(|id| scene.cameras.iter().any(|c| c.id == *id)),
+                    "The episode names a camera outside its scene.",
+                )?;
+                if episode.mode == EpisodeMode::Simulation {
+                    require(
+                        (step.time_seconds - f64::from(step.index) * experiment.timestep_seconds)
+                            .abs()
+                            <= experiment.timestep_seconds * 1e-6,
+                        "Keep simulation times on the experiment's fixed step.",
+                    )?;
+                }
+                for sensor in step.sensors.values() {
+                    if seen_assets.insert(&sensor.asset.sha256) {
+                        asset_bytes = asset_bytes
+                            .checked_add(sensor.asset.bytes)
+                            .ok_or(Error::Corrupt)?;
+                    }
+                }
+            }
+            require(
+                asset_bytes <= experiment.limits.max_artifact_bytes,
+                "The episode's camera files exceed its storage limit.",
+            )?;
+        }
+    }
+    Ok(())
 }
 
 pub fn digest(bytes: &[u8]) -> String {

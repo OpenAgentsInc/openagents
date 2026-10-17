@@ -277,6 +277,9 @@ pub(crate) fn runtime(app: &App) -> Arc<Api> {
         registry
             .register(Arc::new(crate::labs_kinds::video()), Gate::Experimental)
             .expect("Unique Video kind");
+        registry
+            .register(Arc::new(crate::labs_kinds::RobotApi), Gate::Experimental)
+            .expect("Unique Robot kind");
     }
     Arc::new(Api {
         backend,

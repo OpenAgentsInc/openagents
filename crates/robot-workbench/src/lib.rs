@@ -9,6 +9,8 @@ pub mod experiments;
 #[cfg(all(feature = "host", not(target_arch = "wasm32")))]
 pub mod host;
 #[cfg(all(feature = "host", not(target_arch = "wasm32")))]
+pub mod platform;
+#[cfg(all(feature = "host", not(target_arch = "wasm32")))]
 pub mod record;
 #[cfg(all(feature = "host", not(target_arch = "wasm32")))]
 pub mod runs;

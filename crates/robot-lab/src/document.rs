@@ -1021,6 +1021,15 @@ impl Document {
         }
     }
 
+    pub fn references_mut(&mut self) -> Vec<&mut Reference> {
+        match self {
+            Self::Robot(_) => vec![],
+            Self::Scene(scene) => scene.robots.iter_mut().map(|r| &mut r.robot).collect(),
+            Self::Experiment(experiment) => vec![&mut experiment.scene],
+            Self::Episode(episode) => vec![&mut episode.experiment],
+        }
+    }
+
     pub fn assets(&self) -> Vec<&Asset> {
         match self {
             Self::Robot(robot) => robot

@@ -156,6 +156,13 @@ pub(crate) fn markup(card: &Card, space: &str) -> Markup {
     html! {
         section.oa-lab-card data-lab-kind=(card.kind) data-lab-document=(card.document) data-lab-version=(card.version) {
             (node(&projection.view.view().root, &projection))
+            // A report's file, such as a simulation's replay, downloads. A view
+            // this page doesn't know never links its file.
+            @if let (View::Report, Some(primary)) = (&card.view, card.primary.as_deref()) {
+                p { a href=(artifact(space, primary)) download {
+                    @if card.detail.get("replay").is_some() { "Download the replay" } @else { "Download the result" }
+                } }
+            }
         }
     }
 }
