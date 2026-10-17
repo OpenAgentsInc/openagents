@@ -120,7 +120,7 @@ native authority still authenticates and validates each node's P-256 CSR before
 calling the broker. Configuring both AWS and GCloud signers refuses startup.
 
 Configure the broker's optional `certificate_authority` object with `authority`
-(the exact Google CA Service authority resource, using its numeric project ID)
+(the exact Google CA Service authority resource, using its project number)
 and `caller_token` (the private
 file containing the central authority's token). Give the broker's Google service
 account Certificate Requester on that CA pool only. The service fixes the Google
