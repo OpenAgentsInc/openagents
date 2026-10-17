@@ -21,12 +21,18 @@
 //! Every other subcommand, and a build already inside a `build` lease, runs
 //! the real `cargo` directly. [`status`] is what the coordinator reads: the
 //! builds running and waiting, the limit, and the free disk.
+//!
+//! [`sweep`] keeps the shared folders from filling the disk: launchd runs it
+//! every five minutes, with no agent session, to hold the 100 GiB floor
+//! (#12023).
 
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::Serialize;
+
+pub mod sweep;
 
 /// Names another folder for the agent `cargo` shim than
 /// `~/.openagents/bin/agent-build-shims`.

@@ -50,6 +50,8 @@
 //! chats: a `cargo` shim that builds in one shared target folder per Cargo
 //! workspace, refuses below a disk floor, and waits for a `build` lease
 //! under the coordinator's limit, plus the status the coordinator reads.
+//! Its [`agent_builds::sweep`] keeps the shared target folders under a cap
+//! and the disk above its floor from a launchd timer.
 //!
 //! [`scratch`] gives each session a durable scratch directory under
 //! `~/.openagents/scratch/<session>/`, which a lease's command and Coder's

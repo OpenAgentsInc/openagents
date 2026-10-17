@@ -263,6 +263,78 @@ The app's MCP server offers `build_status`: the builds running and waiting,
 the limit, the free disk, and the floor. Called with `limit`, it sets the
 limit for builds that start from then on.
 
+### The build sweep
+
+Shared target folders still grow: every worktree and feature set compiles
+new artifacts into them, and on 2026-10-17 two of them reached 328 and 208
+GiB in four hours while free disk fell to 32 GiB. The build sweep
+([`coder_lease::agent_builds::sweep`](../../../crates/coder-lease/src/agent_builds/sweep.rs),
+#12023) keeps this Mac's floor of 100 GiB free with no agent session
+running. launchd runs `~/.openagents/bin/openagents-build-sweep` every 5
+minutes (`com.openagents.build-sweep`). Each run, in order:
+
+1. **Copies.** A target folder in `~/work` other than
+   `openagents-target-1` (root crates), `openagents-target-1-app` (app
+   crates), and the owner's `openagents-target-app` is a copy. The sweep
+   flags it in the log, and removes it once no build holds it and nothing
+   in it changed for an hour. A path in `agent-target-grants` in the lease
+   root (one a line) is shared, not a copy. The gate's own folders under
+   `~/work/agent-targets` are shared.
+2. **The floor.** Below 100 GiB free, it removes whole target folders no
+   build holds, copies first and then the least recently used, until 100 GiB
+   is free again.
+3. **The cap.** A target over 120 GiB loses its least recently used
+   artifacts in `deps` (a crate's files with its fingerprint), `build`, and
+   `incremental` that nothing read or wrote for 2 hours, down to 90 GiB.
+4. **Still below the floor**, it does the same across every target for
+   artifacts untouched 30 minutes, until 100 GiB is free.
+
+A `cargo`, `rustc`, `kache`, `clippy-driver`, `rustdoc`, or build-script
+process holds a target when its `CARGO_TARGET_DIR` (from `ps -E`), its
+working directory (`lsof -a -d cwd -p PIDS`), or an argument lies inside
+it, and so does a build holding one of a profile's cargo locks. If the
+process table can't be read, every target counts as held. The sweep removes
+artifacts only while it holds the profile's cargo locks itself, waiting up
+to 20 seconds for a build to let go, so a build never loses a file
+mid-compile: a build that starts meanwhile waits a few seconds, then
+rebuilds what's missing.
+
+macOS records a read in a file's access time only when that time is older
+than the file's change time, so a fresh artifact never shows a read. After
+each run the sweep sets each artifact's access time a second before its
+change time, which makes the next read show, and keeps every artifact's last
+use in `~/.openagents/build-sweep.state.json`. It counts nothing as untouched
+from before it began watching, so a fresh install removes no artifact for 2
+hours.
+
+Never touched: `~/work/openagents-target-app` (the owner's dev app) unless
+less than 40 GiB is free, agent scratch and research artifacts under
+`~/.openagents/scratch`, the paths in `~/.openagents/disk-janitor.keep`, and
+anything reached through a link.
+
+Every removal, flag, and skip is a line in
+`~/.openagents/logs/build-sweep.log` with the Chicago time, the size, the
+path, and the reason, after a line for the run with the free space and each
+target's size and holder. `build-sweep.last.json` beside it is the last run
+as JSON.
+
+| Setting | Default | Variable |
+| --- | --- | --- |
+| Per-target cap | 120 GiB | `OPENAGENTS_BUILD_SWEEP_CAP_GIB` |
+| Free-disk floor | 100 GiB | `OPENAGENTS_BUILD_SWEEP_FLOOR_GIB` |
+| Critical level (the dev app may go) | 40 GiB | `OPENAGENTS_BUILD_SWEEP_CRITICAL_GIB` |
+| Untouched before a capped target loses it | 120 minutes | `OPENAGENTS_BUILD_SWEEP_IDLE_MINUTES` |
+
+- Install or update: `scripts/dev/install-build-sweep.sh`.
+- See what a run would remove, removing nothing:
+  `~/.openagents/bin/openagents-build-sweep --dry-run`.
+- Pause: `touch ~/.openagents/build-sweep.off`; resume: `rm` it.
+- Turn it off for good: `scripts/dev/install-build-sweep.sh --uninstall`.
+
+The disk janitor (`scripts/dev/disk-janitor.sh`, every 10 minutes) still
+cleans worktrees, scratch, and old caches; the sweep is the part that keeps
+up with builds.
+
 ## Resources
 
 | Resource | Shape | Capacity | Notes |

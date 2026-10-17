@@ -171,6 +171,10 @@ Run `cargo fmt` only on the files you changed (`rustfmt FILE` or
 Reuse one long-lived Cargo target directory per agent slot
 (`~/work/openagents-target-agentN`); never create a fresh one per task or
 delete it at the end, because a cold build of this workspace costs minutes.
+On the owner's Mac, build only in the shared `~/work/openagents-target-1`
+(root crates) or `~/work/openagents-target-1-app` (app crates): the build
+sweep flags any other copy and removes it once idle
+(`docs/coder/runtime/leases.md`, "The build sweep").
 
 Run Cargo commands directly; do not wrap them in the machine's build
 lease. `openagents lease` (`docs/coder/runtime/leases.md`) stays on the
