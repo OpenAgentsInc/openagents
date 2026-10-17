@@ -323,14 +323,14 @@ pub const RELEASES_PAGE: &str = openagents_brand::DOWNLOAD_URL;
 /// installation cannot replace itself.
 pub const LATEST_RELEASE_PAGE: &str = openagents_brand::DOWNLOAD_URL;
 
-/// Shown when no update feed is configured (Coder Desktop has none yet).
+/// Shown when no update feed is configured (OpenAgents has none yet).
 pub const NO_FEED_MESSAGE: &str =
     "OpenAgents doesn't update itself yet. Get new versions at openagents.com/download.";
 
 /// Whether this build has an update feed: the developer override
 /// `OPENAGENTS_RELEASES_URL`, or `openagents_brand::UPDATE_FEED`. Without one the
-/// updater never contacts any server; in particular it never reads OpenAgents's
-/// release feed, so the app can't offer a OpenAgents release as an update.
+/// updater never contacts a server. It doesn't fall back to the upstream Zeron
+/// feed, so those releases cannot appear as OpenAgents updates.
 pub fn feed_configured() -> bool {
     openagents_brand::env_var("OPENAGENTS_RELEASES_URL").is_ok_and(|url| !url.trim().is_empty())
         || openagents_brand::UPDATE_FEED.is_some()
@@ -351,7 +351,7 @@ fn release_base(edge_url: &str) -> anyhow::Result<String> {
         return Ok(format!("{}/releases", edge_url.trim_end_matches('/')));
     }
     // Coder Desktop: the feed comes from `openagents_brand::UPDATE_FEED`, never
-    // from the edge (OpenAgents's feed lives at `{edge}/releases`).
+    // from the edge (the upstream Zeron feed lives at `{edge}/releases`).
     configured_feed(openagents_brand::UPDATE_FEED)
 }
 

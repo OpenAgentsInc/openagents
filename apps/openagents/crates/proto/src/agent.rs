@@ -51,6 +51,8 @@ pub enum HarnessInstallSource {
     Homebrew,
     Cargo,
     Vendor,
+    // Keep the installed peers' wire label for one compatibility release.
+    #[serde(rename = "managed-by-zeron", alias = "managed-by-open-agents")]
     ManagedByOpenAgents,
     #[default]
     Unknown,
@@ -708,6 +710,20 @@ pub enum AgentEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn managed_install_source_keeps_its_wire_label() {
+        for value in ["managed-by-zeron", "managed-by-open-agents"] {
+            assert_eq!(
+                serde_json::from_value::<HarnessInstallSource>(serde_json::json!(value)).unwrap(),
+                HarnessInstallSource::ManagedByOpenAgents
+            );
+        }
+        assert_eq!(
+            serde_json::to_value(HarnessInstallSource::ManagedByOpenAgents).unwrap(),
+            serde_json::json!("managed-by-zeron")
+        );
+    }
 
     #[test]
     fn agent_event_round_trips() {

@@ -34,14 +34,14 @@ This probe does not package that runtime into OpenAgents; that is C02.
 
 SSH runs only metadata commands and Codex app-server on Fedora, never a helper
 or an audio-device command. SSH must already work noninteractively; unknown host
-keys are not auto-accepted. The script neither registers a OpenAgents device nor
+keys are not auto-accepted. The script neither registers an OpenAgents device nor
 uses SSH as a proposed product transport. Product discovery and controls will
 reuse registered OpenAgents devices and the existing authenticated relay.
 
 `--live` explicitly opts into normal subscription usage. There is no API-key
 fallback. The diagnostic checks ChatGPT auth and rejects custom provider/realtime
 configuration before negotiating. Its ephemeral, read-only diagnostic thread
-instructs the model not to use tools. It does not create a OpenAgents orchestrator or
+instructs the model not to use tools. It does not create an OpenAgents orchestrator or
 send messages to other agents.
 
 ## What the result means
@@ -153,7 +153,7 @@ and will run these checks after it):
    an Opus library alone does not establish the negotiated codec contract.
 4. Validate canonical finals and a real OpenAgents MCP delegation/return using the
    full orchestrator ID. The standalone no-tools diagnostic cannot establish
-   this: it must be paired with a OpenAgents-hosted harness test. Do not interpret a
+   this: it must be paired with an OpenAgents-hosted harness test. Do not interpret a
    generic promoted-item notification as proof of MCP success.
 5. Record any provider restriction before committing the dependent product
    architecture. Runtime redistribution is avoided: clients use their installed

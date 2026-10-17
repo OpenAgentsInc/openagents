@@ -48,9 +48,15 @@ use openagents_theme::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AccentColor {
-    /// The exact upstream OpenAgents indigo.
+    /// The upstream Zeron indigo.
     #[default]
-    #[serde(alias = "violet", alias = "indigo", alias = "red", alias = "purple")]
+    #[serde(
+        alias = "zeron",
+        alias = "violet",
+        alias = "indigo",
+        alias = "red",
+        alias = "purple"
+    )]
     OpenAgents,
     Orange,
     Amber,
@@ -2016,6 +2022,18 @@ pub fn mix(a: Hsla, b: Hsla, t: f32) -> Hsla {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn previous_accent_name_remains_readable() {
+        assert_eq!(
+            serde_json::from_str::<AccentColor>(r#""zeron""#).unwrap(),
+            AccentColor::OpenAgents
+        );
+        assert_eq!(
+            serde_json::to_string(&AccentColor::OpenAgents).unwrap(),
+            r#""openAgents""#
+        );
+    }
 
     fn srgb_u8(c: [f32; 3]) -> [u8; 3] {
         [

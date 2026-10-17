@@ -62,6 +62,7 @@ pub struct ImportReport {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportAdjustment {
+    #[serde(alias = "zeronRole")]
     pub openagents_role: String,
     pub original: String,
     pub resolved: String,
@@ -71,6 +72,7 @@ pub struct ImportAdjustment {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportMapping {
+    #[serde(alias = "zeronRole")]
     pub openagents_role: String,
     pub vscode_key: String,
     pub value: String,
@@ -1325,6 +1327,24 @@ fn syntax_role_for_semantic(selector: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn previous_import_report_fields_remain_readable() {
+        let adjustment: ImportAdjustment = serde_json::from_value(serde_json::json!({
+            "zeronRole": "text", "original": "#101010", "resolved": "#ffffff", "reason": "contrast"
+        }))
+        .unwrap();
+        assert_eq!(adjustment.openagents_role, "text");
+        let mapping: ImportMapping = serde_json::from_value(serde_json::json!({
+            "zeronRole": "text", "vscodeKey": "editor.foreground", "value": "#ffffff"
+        }))
+        .unwrap();
+        assert_eq!(mapping.openagents_role, "text");
+        assert_eq!(
+            serde_json::to_value(mapping).unwrap()["openagentsRole"],
+            "text"
+        );
+    }
 
     fn options() -> ImportOptions {
         ImportOptions {

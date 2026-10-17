@@ -63,7 +63,7 @@ Tier 2: compile and test the affected Rust UI crate, then visually inspect the s
 > for supported platforms, settings, and validation limits.
 
 - Product goal: capture the frontmost application from a global shortcut and
-  stage screenshot plus semantic application context in a OpenAgents composer.
+  stage screenshot plus semantic application context in an OpenAgents composer.
 - Visible output: a distinct, removable Appshot card in the destination draft;
   the existing paperclip and ordinary attachment flows remain unchanged.
 - Editable entities: global shortcut, destination policy, staged Appshot, and

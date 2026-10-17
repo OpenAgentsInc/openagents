@@ -54,7 +54,7 @@ pub fn parse_openagents_conversation_link(url: &str) -> Result<ConversationDeepL
     let rest = url
         .strip_prefix(openagents_brand::URL_SCHEME)
         .and_then(|rest| rest.strip_prefix("://open/chat/"))
-        .ok_or("not a OpenAgents conversation link")?;
+        .ok_or("not an OpenAgents conversation link")?;
     let (chat_id, query) = rest.split_once('?').ok_or("missing workspace locator")?;
     if chat_id.is_empty() || chat_id.contains('/') {
         return Err("invalid conversation id");
