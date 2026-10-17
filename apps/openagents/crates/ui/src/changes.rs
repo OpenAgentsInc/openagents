@@ -5919,10 +5919,16 @@ rename to new_name.rs
     #[test]
     fn native_diff_font_geometry() {
         // Windows headless mode uses NoopTextSystem. This regression needs
-        // actual DirectWrite metrics, as it does CoreText/fontconfig elsewhere.
-        let platform = gpui_platform::current_platform(!cfg!(windows));
-        let text_system =
-            gpui::WindowTextSystem::new(Arc::new(gpui::TextSystem::new(platform.text_system())));
+        // actual DirectWrite metrics, as it does fontconfig on Linux. On macOS
+        // a test thread must not build the platform: its keyboard-layout
+        // lookup aborts off the main thread (#11970), so shape with
+        // cosmic-text there.
+        #[cfg(target_os = "macos")]
+        let native: Arc<dyn gpui::PlatformTextSystem> =
+            Arc::new(gpui_wgpu::CosmicTextSystem::new("Geist"));
+        #[cfg(not(target_os = "macos"))]
+        let native = gpui_platform::current_platform(!cfg!(windows)).text_system();
+        let text_system = gpui::WindowTextSystem::new(Arc::new(gpui::TextSystem::new(native)));
         text_system
             .add_fonts(
                 crate::typography::bundled_font_faces()

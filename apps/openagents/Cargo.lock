@@ -9133,6 +9133,7 @@ dependencies = [
  "gpui-base",
  "gpui_platform",
  "gpui_tokio",
+ "gpui_wgpu",
  "html5ever",
  "image",
  "lab-kit",

@@ -155,6 +155,11 @@ async-io = "2"
 url = "2"
 x11rb = { version = "0.14.0", features = ["image"] }
 
+# A real text system for native font tests without building the macOS
+# platform, whose keyboard-layout lookup aborts off the main thread (#11970).
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+gpui_wgpu = { git = "https://github.com/zeronsh/zui", rev = "361ff20b919fdfb80199ee6d9aed725300cb7d54" }
+
 [dev-dependencies]
 axum = "0.8"
 oa-copy = { path = "../../../../crates/oa-copy" }
