@@ -346,7 +346,9 @@
       "candidate_build_status": "success",
       "candidate_digest": "sha256:f469151c6f77e2327aa7e3feec2654ad1576fb7fa88a8aaa8ea1b00fc1a4f717",
       "candidate_deploy": "requested_from_lane_0",
-      "deployment_request": "https://github.com/OpenAgentsInc/openagents/issues/11936#issuecomment-6228933851"
+      "deployment_request": "https://github.com/OpenAgentsInc/openagents/issues/11936#issuecomment-6228933851",
+      "issue_closed_before_live_check": true,
+      "after_close_checks": "docs/audits/2026-10-16-master-delegation.md#after-close-checks"
     },
     "synthetic_org_encryption_enabled": true,
     "encrypted_lifecycle_complete": false,
@@ -358,7 +360,17 @@
       "volume_encryption": true,
       "organization_key_provider": "external-branching",
       "operator_create_recovery_required": false,
-      "memory_or_durable_checkpoint_recovery_proved": false
+      "memory_or_durable_checkpoint_recovery_proved": false,
+      "measured_firecracker_shape": {
+        "vcpu_count": 2,
+        "mem_size_mib": 1024,
+        "source": "Read-only Firecracker machine-config on the running encrypted guest",
+        "recipe_memory_mib": 2048,
+        "recipe_metadata_is_not_the_cold_boot_shape": true,
+        "existing_synthetic_binding_reservation_memory_mib": 2048,
+        "new_candidate_mapping_memory_mib": 1024,
+        "historical_bindings_modified": false
+      }
     },
     "native_cleanup_candidate": {
       "patch": "deploy/space-service/cleanup.patch",

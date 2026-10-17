@@ -133,6 +133,10 @@ on the control node after the empty candidate has applied its migrations. It
 bounds both the service and its synthetic account to two computers, four running
 vCPUs, 8 GiB RAM, 60-second commands, and one hour of stopped retention. Later
 limit changes use `oa-computers-usage` so committed allocations are checked.
+The encrypted cold-boot qualification guest reports two vCPUs and 1024 MiB
+through Firecracker, despite the recipe metadata declaring 2048 MiB. Use
+`--small-vcpus 2 --small-memory-mib 1024` for this private candidate. Keep
+previous synthetic bindings and their larger reservations unchanged.
 The sandbox namespace separately limits guest pods. Firecracker resources are
 controlled by the host cgroup and Computers allocation limits; the native pause
 container declares no Kubernetes CPU or memory request.
@@ -170,3 +174,10 @@ disable the deployment while its computers still need access or deletion.
 the restore operation completes, verify them with `database_restore.py` on the
 control node, and delete the copy immediately afterward. It never restores a
 backup over the maintained instance.
+
+Run `storage_inventory.py` as root on the control node to count active objects
+and unfinished multipart uploads in both owned buckets. It reads metadata only,
+limits pagination, prints no object names or credentials, and performs no
+cleanup. Soft-deleted objects remain outside those counts during their seven-day
+recovery period. A nonempty unfinished upload has unknown bytes until its parts
+are inspected.
