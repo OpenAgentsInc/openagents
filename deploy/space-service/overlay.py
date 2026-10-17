@@ -41,7 +41,9 @@ def transform(documents):
                 for name, value in {
                     "SPACE_OBJECT_STORE_MULTIPART_PART_SIZE_BYTES": "8388608",
                     "SPACE_OBJECT_STORE_MULTIPART_CONCURRENCY": "2",
-                    "SPACE_OBJECT_STORE_DOWNLOAD_READER_CONCURRENCY": "2",
+                    # GCS returns whole-object checksums for ranged responses.
+                    # Stream one complete response so SDK validation stays on.
+                    "SPACE_OBJECT_STORE_DOWNLOAD_READER_CONCURRENCY": "1",
                     "SPACE_OBJECT_STORE_DOWNLOAD_CHUNK_SIZE_BYTES": "8388608",
                     "SPACE_OBJECT_STORE_DOWNLOAD_BUFFER_BUDGET_BYTES": "268435456",
                 }.items():

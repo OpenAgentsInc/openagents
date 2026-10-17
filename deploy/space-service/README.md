@@ -47,7 +47,10 @@ Google authentication and TLS stay on the operator's machine. Deleted objects
 remain recoverable for seven days; active private data has no age-only expiry.
 `storage-probe.py` exercises the S3-compatible XML protocol with synthetic bytes
 and removes its active objects and unfinished uploads. Native checkpoint
-recovery still requires the worker-replacement qualification.
+recovery still requires the worker-replacement qualification. Native downloads
+use one complete response because [Cloud Storage returns whole-object checksums
+for ranged responses](https://docs.cloud.google.com/storage/docs/xml-api/get-object-download).
+This keeps SDK checksum validation enabled.
 
 
 ## Native service qualification
