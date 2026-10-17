@@ -84,12 +84,31 @@
     "isolated_api_processes_stopped": true,
     "isolated_postgres_containers_removed": true,
     "host": "Shared oa-space-spike-11812 is temporarily reused by active #11876, #11878, and #11894 checks. Root will delete the host and dedicated network resources when those checks end; six-hour automatic expiry remains enabled.",
-    "uploaded_snapshot_objects": "Pending native sweeper/grace inventory. Successful DELETE detaches uploaded snapshots; worker directory absence does not prove external blob deletion."
+    "uploaded_snapshot_objects": {
+      "passed": true,
+      "evidence": "bench/computers/11812/2026-10-16-rust/uploaded-checkpoint-cleanup.json",
+      "original_prefixes": 10,
+      "before_objects": 40,
+      "before_bytes": 11120014442,
+      "after_objects": 0,
+      "after_bytes": 0,
+      "normal_collector_locations": 6,
+      "normal_grace_seconds": 3600,
+      "normal_tick_seconds": 60,
+      "scoped_test_collector_locations": 4,
+      "test_collector_skips_grace": true,
+      "stale_owned_row_required_native_finalizer": true,
+      "maintained_provider_configuration_changed": false,
+      "boundary": "The old failed-delete sample required explicit, locked native test cleanup. Its failed operations remain failed. This does not qualify automatic recovery of that native stale-row failure; #11814 owns maintained-provider remediation."
+    }
   },
   "artifacts": {
     "archive": "2026-10-16-space-memory.tar.gz",
     "sha256": "ef1c104285bcdd6b3f6155f40e588a68314bfa58c3c98d2bc81825653835abcd",
     "rust_verification": "bench/computers/11812/2026-10-16-rust/delete-retry-verification.json",
-    "retry_logs": "bench/computers/11812/2026-10-16-rust/delete-retry-logs.tar.gz"
-  }
+    "retry_logs": "bench/computers/11812/2026-10-16-rust/delete-retry-logs.tar.gz",
+    "uploaded_cleanup_tools": "bench/computers/11812/2026-10-16-rust/uploaded-checkpoint-cleanup-tools.tar.gz",
+    "uploaded_cleanup_tools_sha256": "892ea0730c366f1ac0a848f21e8df073d3341be8ba851008eff56357e4808922"
+  },
+  "deployment": "bench/computers/11812/2026-10-16-rust/lifecycle-deployment.json"
 }
