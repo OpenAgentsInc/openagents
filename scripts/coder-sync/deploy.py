@@ -120,6 +120,7 @@ BUILD_PATHS = ["Cargo.toml", "Cargo.lock", "nips/openagents/schemas", "deploy/co
         'coder-link',
         'coder-pty',
         'coder-reach',
+        'coder-sync',
         'github-actions',
         'jev',
         'lab-kit',
