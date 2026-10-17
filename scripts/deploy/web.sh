@@ -656,7 +656,9 @@ with open(path, "w") as output:
     took "traffic to $1" "$t"
     if [ -n "$drain_tags" ] && [ -z "${DRY_RUN:-}" ]; then
         say "Keeping outgoing web listeners warm for 300 s."
-        drain_now() { python3 -c 'import time; print(time.monotonic_ns() // 1000000000)'; }
+        # Python 3.9 on macOS gives monotonic_ns a per-process origin.
+        # Separate reads must use the operating system's shared clock.
+        drain_now() { python3 -c 'import time; print(time.clock_gettime_ns(time.CLOCK_MONOTONIC) // 1000000000)'; }
         deadline=$(( $(drain_now) + 300 ))
         probe_result=0
         for path in /health /docs /cli/install.sh; do

@@ -12,7 +12,7 @@ import tempfile
 import unittest
 
 
-SCRIPT = Path(__file__).with_name("web.sh")
+SCRIPT = Path(os.environ.get("HANDOFF_SCRIPT", Path(__file__).with_name("web.sh")))
 
 GCLOUD = """#!/usr/bin/env python3
 import json, os, sys
@@ -80,15 +80,28 @@ state["sleeps"].append(int(sys.argv[1]))
 state["clock"] += int(sys.argv[1])
 path.write_text(json.dumps(state))
 mode = os.environ.get("HANDOFF_MODE")
-if mode in ("interrupt", "terminate"):
+if mode in ("interrupt", "terminate") or mode == "process-relative-clock" and state["clock"] > 300:
     os.kill(int(os.environ["HANDOFF_MAIN_PID"]), signal.SIGINT if mode == "interrupt" else signal.SIGTERM)
 """
 
 PYTHON = """#!{python}
-import json, os, sys
+import json, os, sys, time
 from pathlib import Path
-if sys.argv[1:] == ["-c", "import time; print(time.monotonic_ns() // 1000000000)"]:
-    print(json.loads(Path(os.environ["HANDOFF_STATE"]).read_text())["clock"])
+if len(sys.argv) == 3 and sys.argv[1] == "-c" and sys.argv[2].startswith("import time;"):
+    path = Path(os.environ["HANDOFF_STATE"])
+    state = json.loads(path.read_text())
+    def local_clock():
+        state["monotonic_reads"] += 1
+        path.write_text(json.dumps(state))
+        return 0 if os.environ.get("HANDOFF_MODE") == "process-relative-clock" else state["clock"] * 1000000000
+    def shared_clock(clock):
+        assert clock == time.CLOCK_MONOTONIC
+        state["os_clock_reads"] += 1
+        path.write_text(json.dumps(state))
+        return state["clock"] * 1000000000
+    time.monotonic_ns = local_clock
+    time.clock_gettime_ns = shared_clock
+    exec(sys.argv[2])
 else:
     os.execv({python!r}, [{python!r}] + sys.argv[1:])
 """.format(python=sys.executable)
@@ -130,6 +143,7 @@ class WebHandoff(unittest.TestCase):
                     {"revisionName": "inactive", "tag": "unrelated"},
                 ],
                 "calls": [], "sleeps": [], "probes": [], "clock": 0,
+                "monotonic_reads": 0, "os_clock_reads": 0,
             }))
             environment = {
                 **os.environ, "HOME": str(root), "XDG_STATE_HOME": str(root / "xdg"),
@@ -291,6 +305,14 @@ class WebHandoff(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(state["clock"], 300)
         self.assertEqual(sum(state["sleeps"]), 273)
+
+    def test_separate_process_clock_origins_cannot_extend_the_drain(self):
+        result, state = self.run_shift(mode="process-relative-clock")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(state["clock"], 300)
+        self.assertEqual(state["monotonic_reads"], 0)
+        self.assertGreaterEqual(state["os_clock_reads"], 11)
+        self.assert_existing_tags(state)
 
     def test_probe_timeouts_do_not_skip_cleanup_or_hide_failure(self):
         result, state = self.run_shift(mode="probe-timeout")
