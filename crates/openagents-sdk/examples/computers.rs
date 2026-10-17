@@ -339,7 +339,7 @@ async fn main() -> Result<()> {
         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
     let evidence = json!({"schema":"openagents.sdk.computers.workflow.v1","api":origin,"dedicated_test_account":true,
         "placement":placement,"resumed_checkpoint":resumed_checkpoint,
-        "latency_sample_eligible":!resumed_checkpoint && result.is_ok() && cleanup_timing.is_ok(),"timings_ms":timings,
+        "latency_sample_eligible":!resumed_checkpoint && result.is_ok() && cleanup.is_ok() && cleanup_timing.is_ok(),"timings_ms":timings,
         "workflow_passed":result.is_ok(),"cleanup_passed":cleanup.is_ok(),"computer":reference.as_ref().map(ComputerRef::id),
         "request_key":request.key().as_str(),"elapsed_ms":started.elapsed().as_millis(),
         "contains_credentials":false,"contains_file_or_command_output":false});

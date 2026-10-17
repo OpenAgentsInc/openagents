@@ -256,3 +256,58 @@ fn an_old_report_cannot_authorize_new_admission() {
             .contains(&"observation_time_missing_or_expired")
     );
 }
+
+#[test]
+fn failed_wakes_cannot_be_hidden_by_successful_cold_trials() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut packet = complete(directory.path());
+    packet.limits.as_mut().unwrap().maximum_error_permille = 10;
+    let mut failed = packet.trials[20].clone();
+    failed.succeeded = false;
+    failed.timings.first_useful_ms = None;
+    packet.trials.push(failed);
+    let mut cold = packet.trials[0].clone();
+    cold.kind = Kind::Cold;
+    packet.trials.extend(std::iter::repeat_n(cold, 1000));
+    let assessment = packet.assess(directory.path()).unwrap();
+    assert_eq!(assessment.observed_error_permille, Some(1));
+    assert_eq!(assessment.wake.observed_error_permille, Some(48));
+    assert!(!assessment.ready_for_named_group);
+    assert!(assessment.blockers.contains(&"error_budget_exceeded"));
+    for trial in packet.trials.iter_mut().filter(|t| t.kind == Kind::Wake) {
+        trial.cache = Cache::Warm;
+    }
+    assert!(
+        packet
+            .assess(directory.path())
+            .unwrap()
+            .blockers
+            .contains(&"missing_cache_or_concurrency_coverage")
+    );
+}
+
+#[test]
+fn changed_raw_evidence_cannot_reuse_an_unchanged_receipt() {
+    let directory = tempfile::tempdir().unwrap();
+    let packet = complete(directory.path());
+    std::fs::write(directory.path().join("raw.json"), b"changed").unwrap();
+    let assessment = packet.assess(directory.path()).unwrap();
+    assert!(!assessment.ready_for_named_group);
+    assert!(assessment.invalid_artifacts.contains(&Case::PublicSdk));
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_raw_evidence_is_not_followed() {
+    let directory = tempfile::tempdir().unwrap();
+    let packet = complete(directory.path());
+    std::fs::rename(
+        directory.path().join("raw.json"),
+        directory.path().join("other.json"),
+    )
+    .unwrap();
+    std::os::unix::fs::symlink("other.json", directory.path().join("raw.json")).unwrap();
+    let assessment = packet.assess(directory.path()).unwrap();
+    assert!(!assessment.ready_for_named_group);
+    assert!(assessment.invalid_artifacts.contains(&Case::PublicSdk));
+}

@@ -306,6 +306,9 @@ fn artifact_bytes(root: &Path, artifact: &Artifact, remaining: &mut u64) -> Opti
             return None;
         }
     }
+    if !std::fs::symlink_metadata(&path).ok()?.is_file() {
+        return None;
+    }
     let file = std::fs::File::open(&path).ok()?;
     let meta = file.metadata().ok()?;
     if !meta.is_file() || meta.len() > 16 * 1024 * 1024 || meta.len() > *remaining {
@@ -479,6 +482,8 @@ impl Packet {
             }
             if snapshot.cold_cache_samples == 0
                 || snapshot.warm_cache_samples == 0
+                || wake.cold_cache_samples == 0
+                || wake.warm_cache_samples == 0
                 || snapshot.maximum_concurrency < limits.required_concurrency
                 || wake.maximum_concurrency < limits.required_concurrency
             {
