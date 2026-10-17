@@ -1,7 +1,12 @@
 # Waiting for the next Coder release
 
-Changes that only reach people through a new Coder binary. While the binary
-is frozen at 1.0.0 ([1.0-freeze.md](1.0-freeze.md)) they wait here. Each
+> **2026-10-16: the freeze is lifted.** Every row below is in scope for the
+> big-bang 1.0.0 on Monday 2026-10-19
+> ([brief](../audits/2026-10-16-coder-1.0-big-bang.md)). Remove a row when
+> it lands. After launch, this page lists work for the release after 1.0.0.
+
+Changes that only reach people through a new Coder binary. They wait here
+while the binary is frozen ([1.0-freeze.md](1.0-freeze.md)). Each
 entry names its issue. Feature work stays open while it waits. Security
 fixes can land under the freeze exception; their remaining release
 decisions are recorded in `NEEDS_OWNER.md`.

@@ -25,22 +25,24 @@ The current OpenAgents mobile app lives in `apps/openagents`. Read
 `apps/openagents/apps/ios/release/README.md` for TestFlight releases.
 The previous mobile hosts and their dedicated Rust crate were removed in #11901.
 
-## Coder binary freeze at 1.0.0 (owner, 2026-10-15, binding)
+## Coder 1.0.0 big-bang release (owner, 2026-10-16, binding)
 
-The Coder programs (`coder`, `openagents`, `microcoder`, `coder-boundary`)
-are frozen at 1.0.0 (tag `coder-v1.0.0`). Read
-[`docs/coder/1.0-freeze.md`](docs/coder/1.0-freeze.md) before changing
-anything Coder or its server routes touch.
+The Coder binary freeze is lifted. The 2026-10-15 build (`coder-v1.0.0`,
+`3230ded511`) is withdrawn, and one Coder 1.0.0 with full SDK integration,
+aligned with the OpenAgents desktop and mobile apps, ships on Monday
+2026-10-19. Every open issue closes within 24 hours. Read
+[`docs/audits/2026-10-16-coder-1.0-big-bang.md`](docs/audits/2026-10-16-coder-1.0-big-bang.md)
+before you work on Coder, its server routes, or a release.
 
-- Don't make a Coder release, or land work whose value needs a new binary.
-  Add it to [`docs/coder/next-release.md`](docs/coder/next-release.md)
-  instead, and leave its issue open saying so.
-- Server, website, docs, mobile and desktop work is wanted, but must stay
-  compatible with the released 1.0.0: additive API changes only; old
-  addresses, model ids and error codes keep working.
-- Improve 1.0 through what it gets from our servers: the model list, Auto
-  routing, decisions, plugins, cloud computers, projects. The policy doc
-  lists the opportunities.
+- Binary work is in scope. Build features in `coder`, `openagents`,
+  `microcoder`, and `coder-boundary`, and drop workarounds that existed only
+  because of the freeze.
+- [`docs/coder/next-release.md`](docs/coder/next-release.md) is now 1.0.0
+  scope.
+- Old API addresses keep answering. A route change lands with the client
+  change that uses it.
+- Only the release agent cuts rcs and publishes, following the brief's
+  re-cut steps.
 
 ## One OpenAgents desktop app and one mobile app (owner, 2026-10-16, binding)
 
