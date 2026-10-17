@@ -2252,14 +2252,20 @@ public protocol CoreClientProtocol: AnyObject, Sendable {
     
     func deleteSession(chatId: String) throws 
     
+    func deviceChannelEnabled(deviceId: String)  -> Bool
+    
     func deviceId()  -> String
     
     func devices()  -> [DeviceView]
+    
+    func disableDeviceChannel(deviceId: String) 
     
     /**
      * Devices that can run sessions (new-session / new-project pickers).
      */
     func executionDevices()  -> [DeviceView]
+    
+    func forgetDeviceChannel(deviceId: String) async throws 
     
     /**
      * Threads page: pinned, sections, recent.
@@ -2309,6 +2315,8 @@ public protocol CoreClientProtocol: AnyObject, Sendable {
     func openSession(chatId: String) throws  -> SessionHandle
     
     func orgId()  -> String
+    
+    func pairDeviceChannel(deviceId: String, code: String) async throws 
     
     func pinSession(chatId: String) throws 
     
@@ -2655,6 +2663,16 @@ open func deleteSession(chatId: String)throws   {try rustCallWithError(FfiConver
 }
 }
     
+open func deviceChannelEnabled(deviceId: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreclient_device_channel_enabled(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deviceId),uniffiCallStatus
+    )
+})
+}
+    
 open func deviceId() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
         uniffiCallStatus in
@@ -2673,6 +2691,15 @@ open func devices() -> [DeviceView]  {
 })
 }
     
+open func disableDeviceChannel(deviceId: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreclient_disable_device_channel(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deviceId),uniffiCallStatus
+    )
+}
+}
+    
     /**
      * Devices that can run sessions (new-session / new-project pickers).
      */
@@ -2683,6 +2710,22 @@ open func executionDevices() -> [DeviceView]  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+open func forgetDeviceChannel(deviceId: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreclient_forget_device_channel(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(deviceId)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
 }
     
     /**
@@ -2847,6 +2890,22 @@ open func orgId() -> String  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+open func pairDeviceChannel(deviceId: String, code: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreclient_pair_device_channel(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(deviceId),FfiConverterString.lower(code)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
 }
     
 open func pinSession(chatId: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
@@ -21639,13 +21698,22 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreclient_delete_session() != 5527) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreclient_device_channel_enabled() != 34164) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreclient_device_id() != 44913) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreclient_devices() != 37462) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreclient_disable_device_channel() != 54191) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreclient_execution_devices() != 10930) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreclient_forget_device_channel() != 56224) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreclient_front_page() != 30461) {
@@ -21682,6 +21750,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreclient_org_id() != 23370) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreclient_pair_device_channel() != 29660) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreclient_pin_session() != 64812) {

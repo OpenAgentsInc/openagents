@@ -72,7 +72,9 @@ pub fn router(state: StateData) -> Router {
         )
         .route(
             "/device/{id}/key",
-            axum::routing::post(proof::register).delete(proof::revoke),
+            get(proof::read_key)
+                .post(proof::register)
+                .delete(proof::revoke),
         )
         .route("/device/{id}/ws", get(device::websocket))
         .route("/device/{id}/status", get(device::status))

@@ -63,6 +63,9 @@ pub async fn admit(state: &StateData, who: &Identity, mut request: Request) -> R
         parts.uri.path().starts_with("/device/") && parts.uri.path().ends_with("/key");
     let mut events = vec![device.id.clone()];
     if registration {
+        if parts.headers.contains_key(HOST_HEADER) {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
         parts.headers.insert(
             KEY_HEADER,
             HeaderValue::from_str(&device.pubkey).map_err(unauthorized)?,
@@ -194,6 +197,24 @@ pub async fn revoke(
     }.await;
     match result {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(status) => status.into_response(),
+    }
+}
+
+/// The account session binds the connect code to this app computer's key.
+pub async fn read_key(
+    State(state): State<Arc<StateData>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let result = async {
+        let account = header(&headers, ACCOUNT_HEADER)?;
+        let db = state.database.connect().await.map_err(unavailable)?;
+        let row = db.query_opt("SELECT public_key FROM device_host_keys WHERE device_id=$1 AND account=$2 AND NOT revoked", &[&id, &account]).await.map_err(unavailable)?.ok_or(StatusCode::NOT_FOUND)?;
+        Ok::<_, StatusCode>(row.get::<_, String>(0))
+    }.await;
+    match result {
+        Ok(public) => Json(serde_json::json!({"publicKey":public})).into_response(),
         Err(status) => status.into_response(),
     }
 }

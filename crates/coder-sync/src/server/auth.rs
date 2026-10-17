@@ -128,24 +128,31 @@ pub async fn socket_ended(lease: Option<SocketLease>) -> u16 {
     let Some(lease) = lease else {
         return std::future::pending().await;
     };
-    loop {
-        let remaining = lease
-            .proof_expiry
-            .map(|expiry| expiry.saturating_sub(coder_access::unix_time().unwrap_or(u64::MAX)));
-        if remaining == Some(0) {
-            return 4401;
+    let proof_expiry = lease.proof_expiry;
+    let expires = async move {
+        match proof_expiry {
+            Some(expiry) => {
+                tokio::time::sleep(Duration::from_secs(
+                    expiry.saturating_sub(coder_access::unix_time().unwrap_or(u64::MAX)),
+                ))
+                .await
+            }
+            None => std::future::pending::<()>().await,
         }
-        tokio::time::sleep(Duration::from_secs(remaining.unwrap_or(15).min(15))).await;
-        if lease
-            .proof_expiry
-            .is_some_and(|expiry| expiry <= coder_access::unix_time().unwrap_or(u64::MAX))
-        {
-            return 4401;
+    };
+    let account_checks = async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(15)).await;
+            match lease.accounts.verify(&lease.token).await {
+                Ok(who) if who.account == lease.account => {}
+                Ok(_) | Err(StatusCode::UNAUTHORIZED) => return 4401,
+                Err(_) => return 1013,
+            }
         }
-        match lease.accounts.verify(&lease.token).await {
-            Ok(who) if who.account == lease.account => {}
-            Ok(_) | Err(StatusCode::UNAUTHORIZED) => return 4401,
-            Err(_) => return 1013,
-        }
+    };
+    // A slow account check must not extend a proved socket's admission.
+    tokio::select! {
+        code = account_checks => code,
+        _ = expires => 4401,
     }
 }

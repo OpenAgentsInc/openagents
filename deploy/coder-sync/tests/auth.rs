@@ -63,6 +63,26 @@ async fn device_proofs_require_a_registered_host_exact_request_and_fresh_grant()
         401,
         "replay is rejected across requests"
     );
+    let response: serde_json::Value = reqwest::Client::new()
+        .get(&url)
+        .bearer_auth(token('a'))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(response["publicKey"], public);
+    assert_eq!(
+        reqwest::Client::new()
+            .get(&url)
+            .bearer_auth(token('b'))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        404
+    );
     let db = f.db.connect().await.unwrap();
     db.execute(
         "INSERT INTO registry_heads(account) VALUES('acct_alpha') ON CONFLICT DO NOTHING",
@@ -142,13 +162,16 @@ async fn device_proofs_require_a_registered_host_exact_request_and_fresh_grant()
     }
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
     let ws_url = format!(
-        "{}/chat2/{chat}/ws?token={}&device=phone&hostDevice={host_id}",
+        "{}/chat2/{chat}/ws?device=phone&hostDevice={host_id}",
         f.base.replacen("http:", "ws:", 1),
-        token('a')
     );
     let ws_intent = Intent::new(&ws_url, "GET", b"").unwrap();
     let (h, d) = make(&ws_intent, &host, coder_access::unix_time().unwrap() + 2);
     let mut request = ws_url.into_client_request().unwrap();
+    request.headers_mut().insert(
+        "authorization",
+        format!("Bearer {}", token('a')).parse().unwrap(),
+    );
     request
         .headers_mut()
         .insert(HOST_HEADER, h.parse().unwrap());
