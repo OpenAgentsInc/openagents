@@ -1,5 +1,7 @@
 //! One web renderer for the shared Lab card views.
 
+mod video;
+
 use crate::App;
 use axum::{
     Router,
@@ -16,6 +18,10 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/labs/{kind}/{document}", get(document))
         .route("/labs/files/{id}/play", get(play))
+        .route(
+            "/v1/labs/documents/{document}/versions/{version}/timeline",
+            get(video::timeline),
+        )
         .route("/chat/{id}/labs/{message}", get(saved))
 }
 
@@ -24,6 +30,15 @@ struct Page {
     #[serde(default = "personal")]
     space: String,
     v: Option<u64>,
+    project: Option<String>,
+}
+impl Page {
+    fn space(&self) -> String {
+        match self.project.as_deref().filter(|_| self.space == "me") {
+            Some(project) => format!("project:{project}"),
+            None => self.space.clone(),
+        }
+    }
 }
 fn personal() -> String {
     "me".into()
@@ -35,25 +50,26 @@ async fn document(
     Path((kind, document)): Path<(String, String)>,
     Query(page): Query<Page>,
 ) -> Response {
+    let space = page.space();
     let authority = crate::labs_api::caller_headers(&app, &headers);
     let api = crate::labs_api::runtime(&app);
     let card = match page.v {
-        Some(version) => {
-            api.read_card(&authority, &page.space, &document, version)
-                .await
-        }
-        None => api.latest_card(&authority, &page.space, &document).await,
+        Some(version) => api.read_card(&authority, &space, &document, version).await,
+        None => api.latest_card(&authority, &space, &document).await,
     };
     let card = match card {
         Ok(card) if card.kind == kind => card,
         Ok(_) => return lab_api::ApiError::missing().into_response(),
         Err(error) => return error.into_response(),
     };
+    if card.kind == "video" {
+        return video::page(&card, &space);
+    }
     crate::chat_html::protect(
         crate::ui_page::UiPage::new(&card.title)
             .path(format!("/labs/{}/{}", encoded(&kind), encoded(&document)))
             .head(crate::chat_html::head())
-            .content(openagents_ui::content::PageColumn::new(markup(&card, &page.space)).wide())
+            .content(openagents_ui::content::PageColumn::new(markup(&card, &space)).wide())
             .respond(&headers),
     )
 }
@@ -82,9 +98,10 @@ async fn play(
     Path(id): Path<String>,
     Query(page): Query<Page>,
 ) -> Response {
+    let space = page.space();
     let authority = crate::labs_api::caller_headers(&app, &headers);
     let (file, bytes) = match crate::labs_api::runtime(&app)
-        .read_artifact(&authority, &page.space, &id, 1024 * 1024)
+        .read_artifact(&authority, &space, &id, 1024 * 1024)
         .await
     {
         Ok(file) => file,

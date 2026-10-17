@@ -107,3 +107,11 @@ edits, trims and notes.
 - A card saved in a web chat plays on desktop and phone through
   `/v1/history`.
 - A cached render starts within 2 s, and seeking uses Range reads.
+
+The hosted player at `/labs/video/{document}` uses the same controls as
+`scripts/film/lab_player.html`. Its transport uses the public Labs versions,
+cards, artifact-content, jobs, and notes routes. The authenticated
+`GET /v1/labs/documents/{document}/versions/{version}/timeline?space=me`
+route computes the shared Rust timeline view; edits use the existing version
+save route. Run the transport fixtures with
+`node --test scripts/film/tests/hosted_player.mjs`.

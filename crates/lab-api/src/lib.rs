@@ -297,6 +297,22 @@ impl Api {
         let version = store.version(document, latest).await?;
         handlers::card_value(self, headers, space, &store, kind.as_ref(), &version).await
     }
+    /// Read a version with the same access and input checks as its HTTP route.
+    pub async fn read_version(
+        &self,
+        headers: &HeaderMap,
+        space: &str,
+        document: &str,
+        number: u64,
+    ) -> Result<lab_kit::Version, ApiError> {
+        let (_, store, kind) = self
+            .document(headers, space, Action::Read, document)
+            .await?;
+        let version = store.version(document, number).await?;
+        self.references(headers, kind.as_ref(), &version.content)
+            .await?;
+        Ok(version)
+    }
     /// Read bounded artifact bytes after rechecking its document and references.
     pub async fn read_artifact(
         &self,

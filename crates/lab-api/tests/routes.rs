@@ -90,6 +90,10 @@ fn app() -> (Router, tempfile::TempDir) {
     app_with_gate(Gate::Experimental)
 }
 fn app_with_gate(gate: Gate) -> (Router, tempfile::TempDir) {
+    let (api, root) = api_with_gate(gate);
+    (api.router(), root)
+}
+fn api_with_gate(gate: Gate) -> (Arc<Api>, tempfile::TempDir) {
     let root = tempfile::tempdir().unwrap();
     let backend = Arc::new(FsBackend::open(root.path()).unwrap());
     let mut registry = Registry::default();
@@ -101,7 +105,7 @@ fn app_with_gate(gate: Gate) -> (Router, tempfile::TempDir) {
         authorizer: Arc::new(Auth),
         registry,
     });
-    (api.router(), root)
+    (api, root)
 }
 async fn call(
     app: &Router,
@@ -1239,5 +1243,78 @@ async fn cad_plan_is_checked_on_edits_while_existing_work_stays_readable_and_del
         .await
         .0,
         200
+    );
+}
+
+#[tokio::test]
+async fn embedded_version_reads_keep_account_project_and_kind_checks() {
+    let (api, _root) = api_with_gate(Gate::Experimental);
+    let app = api.clone().router();
+    for space in ["me", "project:shared"] {
+        assert_eq!(
+            call(
+                &app,
+                Some("alice"),
+                "POST",
+                "/v1/labs/documents",
+                Some(doc("embedded", space)),
+                &[]
+            )
+            .await
+            .0,
+            201
+        );
+    }
+    let headers = |token: &str| {
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", format!("Bearer {token}").parse().unwrap());
+        headers
+    };
+    assert_eq!(
+        api.read_version(&headers("alice"), "me", "embedded", 1)
+            .await
+            .unwrap()
+            .content["text"],
+        "first"
+    );
+    assert_eq!(
+        api.read_version(&headers("viewer"), "project:shared", "embedded", 1)
+            .await
+            .unwrap()
+            .number,
+        1
+    );
+    assert_eq!(
+        api.read_version(&headers("bob"), "me", "embedded", 1)
+            .await
+            .unwrap_err()
+            .status,
+        404
+    );
+    assert_eq!(
+        api.read_version(&headers("bob"), "project:shared", "embedded", 1)
+            .await
+            .unwrap_err()
+            .status,
+        404
+    );
+    assert_eq!(
+        api.read_version(&HeaderMap::new(), "me", "embedded", 1)
+            .await
+            .unwrap_err()
+            .status,
+        401
+    );
+    // The gate must be checked even when a document is already stored.
+    let gated = Api {
+        backend: api.backend.clone(),
+        authorizer: api.authorizer.clone(),
+        registry: Registry::default(),
+    };
+    assert!(
+        gated
+            .read_version(&headers("alice"), "me", "embedded", 1)
+            .await
+            .is_err()
     );
 }
