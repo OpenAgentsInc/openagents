@@ -108,10 +108,14 @@ scripts/deploy/web.sh shift || fail "the shift or its openagents.com smoke"
 echo "$(when) checks"
 c=$(code -X POST "$ORIGIN/v1/visitors"); echo "  POST /v1/visitors: $c"
 [ "$c" = 201 ] || fail "POST /v1/visitors answered $c"
+# The phone's Apple sign-in goes through the web (the gateway's
+# /v1/sessions/apple is first-party and never forwarded, so it is a 404 from
+# outside); a bad token comes back from the gateway as 400.
 c=$(code -X POST -H 'Content-Type: application/json' \
-    -d '{"identity_token":"not-a-token","nonce":"check"}' "$ORIGIN/v1/sessions/apple")
-echo "  POST /v1/sessions/apple with a bad token: $c"
-[ "$c" = 400 ] || fail "POST /v1/sessions/apple answered $c"
+    -d '{"identity_token":"not-a-token","nonce":"check","app":"openagents-mobile","computer":"deploy-check"}' \
+    "$ORIGIN/v1/device/apple")
+echo "  POST /v1/device/apple with a bad token: $c"
+[ "$c" = 400 ] || fail "POST /v1/device/apple answered $c"
 for path in /layertree /layertree/start.js /layertree/layertree_web.js /layertree/layertree_web_bg.wasm; do
     c=$(code "$ORIGIN$path"); echo "  $path: $c"
     [ "$c" = 200 ] || fail "$path answered $c"
