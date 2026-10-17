@@ -106,7 +106,9 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 3: keepers and moving agents
 
-**Still free:** #11958, the desktop UI fixture repair listed below. Its scope is stale test expectations and fixture setup; leave #11933 and #11951 with their owners.
+**Taken 2026-10-17 04:14 CDT** by Codex working #11958 in `~/work/openagents-labs-finish`; #11933 and #11951 stay with their owners, and #11871 stays claimed pending #11948.
+
+**Claimed above:** #11958, the desktop UI fixture repair listed below. Its scope is stale test expectations and fixture setup; leave #11933 and #11951 with their owners.
 
 **Taken 2026-10-17 01:26 CDT** by a Claude Code subagent working #11951 in ~/work/openagents-11951.
 
@@ -198,7 +200,7 @@ Eleven lanes. Lanes 0 to 9 need a full agent each. Lane 10 is mostly waiting, so
 
 ### Lane 9: CLI, Agent Lab, and web fixes
 
-**Done 2026-10-17 04:13 CDT** by Codex in `~/work/openagents-labs-finish`: #11952 is source-complete in `2a796565b7` and closing. The #11871 claim stays held pending #11948; target `~/work/openagents-target-9` stays warm.
+**Done 2026-10-17 04:13 CDT** by Codex in `~/work/openagents-labs-finish`: #11952 is closed in `2a796565b7`. The #11871 claim stays held pending #11948; target `~/work/openagents-target-9` stays warm.
 
 **#11952 source complete:** both provider fixtures run in separate test processes through the normal library test target. No production code changed.
 
@@ -276,7 +278,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Checks:** `cargo test -p openagents-web --lib account_handoff_retries_a_read_and_does_not_replay_a_delete` passed (1).
 - **After-close:** the controlled deploy check is in [After-close checks](#after-close-checks).
 
-**#11952 Computers provider-fixture isolation.** Lane 9, code-complete in `2a796565b7`. All three `computers_api::tests` cases passed together with default parallel scheduling and one test thread. The two provider fixtures each own a child test process, so the process-wide production configuration cannot cross fixtures. No deploy or live check is needed for this test-only change.
+**#11952 Computers provider-fixture isolation.** Lane 9, closed in `2a796565b7`. All three `computers_api::tests` cases passed together with default parallel scheduling and one test thread. The two provider fixtures each own a child test process, so the process-wide production configuration cannot cross fixtures. No deploy or live check is needed for this test-only change.
 
 **#11928 Deployments: fence Environment work before a candidate receives traffic.** Lane 9, not started.
 - **Status:** a held candidate opens `Studio` and requeues unfinished setups before it gets traffic. Its guards are process-local, so it can fail a shared setup or sweep homes.
@@ -365,7 +367,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 - **Checks:** web continuation 4, client 27, document 149, engine 533 (2 ignored), mobile 69 (1 ignored), protocol 83, RPC 18, sync 74, shared controls 4, SDK fixtures 3, and access 126 passed. Five focused UI checks passed, including preservation of an unsent draft on an old part; all 56 app/shared Swift sources typechecked. The broader UI suite's 33 failures are tracked in #11958 (1,751 passed); it is not claimed as passing.
 - **After-close:** lane 0 deploys the server first and runs the dedicated-account web, Mac, and cloud round trip and the paired-computer/device checks below.
 
-**#11958 Desktop UI test failures.** Lane 3, unclaimed. Repair the stale assertions and navigation fixtures recorded on the issue; the serial suite had 1,751 passes and 33 failures. No dependency blocks #11898's continuation checks.
+**#11958 Desktop UI test failures.** Lane 3, claimed above. Repair the stale assertions and navigation fixtures recorded on the issue; the serial suite had 1,751 passes and 33 failures. No dependency blocks #11898's continuation checks.
 
 **#11911 Computer sharing: owner-approved project-scoped access over NIP-HOST.** Lane 7, closed.
 - **Status:** `72a0bc730c` adds device-pinned project invitations, absolute expiry, separate scopes, and scoped revocation. `28994246be` requires `project.redeem` and `project-sharing-v2` so an older host cannot accept a project invitation as broad enrollment. `0d5bca7a54` adds the account-bound client and shared Rust Native form. `f2b101f35b` mounts that form in Settings, cancels work on account changes, and stores device keys and grants separately for each account. It offers only implemented project files and commands; broad HOST tasks, raw terminals, and general app RPC remain unavailable to guests.
