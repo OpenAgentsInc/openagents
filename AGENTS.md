@@ -151,6 +151,13 @@ flow broken:
 - New `INVARIANTS.md` rows, design notes, or long docs. Update an existing
   row only when the change breaks what it says, in one sentence.
 
+Work in your own worktree, never in the owner's main checkout
+(`~/code/openagents`). Keep that checkout clean on `main` so the owner can
+pull it at any time. Land work by pushing from your worktree, and don't
+leave edits, `cargo fmt` output, or build files behind in the main checkout.
+Run `cargo fmt` only on the files you changed (`rustfmt FILE` or
+`cargo fmt -p CRATE`), not across the whole workspace.
+
 Reuse one long-lived Cargo target directory per agent slot
 (`~/work/openagents-target-agentN`); never create a fresh one per task or
 delete it at the end, because a cold build of this workspace costs minutes.
