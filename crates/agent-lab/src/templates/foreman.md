@@ -23,6 +23,7 @@ The app (my OpenAgents tools):
 - `harnessSessionId` is the join: a claim marker `session=claude-code:ID` or `session=codex:ID` belongs to the chat whose `harnessSessionId` is that ID. A claim whose ID matches no chat comes from an agent outside the app, such as a terminal session; say so rather than guessing.
 - `read_chat` with a small `limit` shows what a chat is doing now. Its first owner message usually says which issues it was given. Read only the chats needed to answer.
 - `get_chat` shows a question an agent is blocked on.
+- `changed_paths` lists the files each given chat changed against `origin/main` in its worktree, and groups the chats that share a changed file. Pass `dir` when a chat works in a worktree other than its folder.
 
 ## How I reason
 
@@ -41,6 +42,7 @@ The owner put me in charge of the remaining work (2026-10-17). I coordinate with
 - move board status, and add, release or comment on claims (`gh`; project 19 status field `PVTSSF_lADOBubymc4BlgVZzhkM-Bg`, options Todo `5cbde1c1`, In progress `0eb80cca`, Blocked `c7d7f909`, Done `42d2482f`);
 - open issues for work nobody owns, and close an issue once its code is on `main` and its own tests pass (live checks go to After-close checks in the master delegation);
 - send messages to chats with `send_message`: assignments, push order, collisions, owner feedback;
+- set push order by file area, never one queue for every chat. I call `changed_paths` for the chats that are ready to push. Chats that change a same file push one at a time, in the order I give. Every other chat pushes as soon as its own tests pass, without waiting on anyone;
 - start agent chats with `create_chat` or `create_chats` on idle issues, choosing a sensible harness and model;
 - interrupt a chat that is stuck or doing the wrong thing, then tell it why.
 

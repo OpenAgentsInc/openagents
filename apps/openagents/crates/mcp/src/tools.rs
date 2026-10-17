@@ -126,6 +126,28 @@ fn catalog() -> Vec<ToolDef> {
             input_schema: chat_key_schema(json!({})),
         },
         ToolDef {
+            name: "changed_paths",
+            description: "Read-only. For each chat on this device, the files its checkout changed against origin/main (committed, uncommitted, and untracked), plus which chats share a changed file. Push chats in `pushInOrder` groups one at a time; chats in `pushFreely` can push as soon as their own tests pass. Pass `dir` when the chat works in a worktree other than its folder.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "chats": {
+                        "type": "array", "minItems": 1, "maxItems": MAX_BATCH,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "chat": { "type": "string", "description": "Chat id, unique id prefix, or exact title." },
+                                "dir": { "type": "string", "description": "Worktree to read instead of the chat's folder." }
+                            },
+                            "required": ["chat"]
+                        }
+                    },
+                    "base": { "type": "string", "default": crate::changed_paths::DEFAULT_BASE, "description": "Ref to compare against. Not fetched first." }
+                },
+                "required": ["chats"]
+            }),
+        },
+        ToolDef {
             name: "create_chat",
             description: "Create a chat. It is a standalone session listed in Sessions, like one the user started. Select a project and/or device; catalogs are validated on that host. Optionally send a first prompt and wait for the reply. Returns the new chat id. For parallel delegation use create_chats, or leave wait=false on every launch and wait only after all chats have been started.",
             input_schema: json!({
@@ -537,6 +559,18 @@ struct DecisionArgs {
 }
 
 #[derive(Deserialize)]
+struct ChangedPathsArgs {
+    chats: Vec<ChangedPathsChat>,
+    base: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ChangedPathsChat {
+    chat: String,
+    dir: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct ListModelsArgs {
     harness: String,
     device: Option<String>,
@@ -786,6 +820,7 @@ impl Tools {
             "list_models" => self.list_models(parse(args)?).await,
             "list_chats" => self.list_chats(parse(args)?).await,
             "get_chat" => self.get_chat(parse(args)?).await,
+            "changed_paths" => self.changed_paths(parse(args)?).await,
             "create_chat" => self.create_chat(parse(args)?).await,
             "create_chats" => self.batch(parse(args)?, true).await,
             "send_messages" => self.batch(parse(args)?, false).await,
@@ -987,6 +1022,70 @@ impl Tools {
         summary["pendingInput"] = last_pending_input(&rendered).unwrap_or(Value::Null);
         summary["lastMessage"] = rendered.last().map(|m| json!(m)).unwrap_or(Value::Null);
         Ok(summary)
+    }
+
+    async fn changed_paths(&self, args: ChangedPathsArgs) -> anyhow::Result<Value> {
+        anyhow::ensure!(
+            (1..=MAX_BATCH).contains(&args.chats.len()),
+            "chats must contain between 1 and {MAX_BATCH} items"
+        );
+        let base = args
+            .base
+            .as_deref()
+            .unwrap_or(crate::changed_paths::DEFAULT_BASE);
+        let (local, spaces) =
+            tokio::try_join!(self.openagents.local_device_id(), self.openagents.spaces())?;
+        let reports = futures::future::join_all(args.chats.into_iter().map(|item| {
+            let (local, spaces) = (&local, &spaces);
+            async move {
+                let chat = match self.openagents.resolve_chat(&item.chat).await {
+                    Ok(chat) => chat,
+                    Err(e) => {
+                        return (
+                            None,
+                            json!({ "chat": item.chat, "error": format!("{e:#}") }),
+                        );
+                    }
+                };
+                let dir = item.dir.clone().or_else(|| {
+                    let space = chat
+                        .space_id
+                        .as_deref()
+                        .and_then(|id| spaces.iter().find(|s| s.id == id));
+                    chat.harness_session_cwd
+                        .clone()
+                        .or_else(|| chat.cwd.clone())
+                        .or_else(|| space.map(|s| s.path.clone()))
+                });
+                let mut report = json!({ "chat": chat.id, "title": chat.title, "dir": dir });
+                let result = match &dir {
+                    _ if item.dir.is_none() && chat.device_id != *local => Err(anyhow::anyhow!(
+                        "this chat runs on another device; pass dir for a local copy"
+                    )),
+                    None => Err(anyhow::anyhow!("this chat has no folder; pass dir")),
+                    Some(dir) => {
+                        crate::changed_paths::changed_files(std::path::Path::new(dir), base).await
+                    }
+                };
+                match result {
+                    Ok(paths) => {
+                        report["paths"] = json!(paths);
+                        (Some((chat.id, paths)), report)
+                    }
+                    Err(e) => {
+                        report["error"] = json!(format!("{e:#}"));
+                        (None, report)
+                    }
+                }
+            }
+        }))
+        .await;
+        let read: Vec<(String, Vec<String>)> =
+            reports.iter().filter_map(|(r, _)| r.clone()).collect();
+        let mut out = crate::changed_paths::overlaps(&read);
+        out["base"] = json!(base);
+        out["chats"] = json!(reports.into_iter().map(|(_, r)| r).collect::<Vec<_>>());
+        Ok(out)
     }
 
     async fn create_chat(&self, args: CreateChatArgs) -> anyhow::Result<Value> {
@@ -2097,6 +2196,58 @@ mod tests {
         assert_eq!(method, methods::RECORD_FOREMAN_DECISION);
         assert_eq!(params["originChatId"], "chat-alpha-1");
         assert_eq!(params["did"], "stopped Beta");
+    }
+
+    #[tokio::test]
+    async fn changed_paths_reads_local_folders_and_reports_others_per_chat() {
+        let world = Arc::new(World {
+            beta_remote: true,
+            ..World::default()
+        });
+        let tools = tools(world, Origin::default());
+        let dir = std::env::temp_dir().join(format!("oa-changed-tool-{}", uuid::Uuid::new_v4()));
+        let git = |args: &[&str]| {
+            let ok = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&dir)
+                .args(["-c", "user.name=t", "-c", "user.email=t@example.com"])
+                .args(args)
+                .status()
+                .unwrap()
+                .success();
+            assert!(ok, "git {args:?}");
+        };
+        std::fs::create_dir_all(&dir).unwrap();
+        git(&["init", "-q", "-b", "main"]);
+        git(&["commit", "-q", "--allow-empty", "-m", "base"]);
+        std::fs::write(dir.join("shell.rs"), "1").unwrap();
+        let out = tools
+            .call(
+                "changed_paths",
+                json!({ "base": "main", "chats": [
+                    { "chat": "chat-alpha-1", "dir": dir.to_str().unwrap() },
+                    { "chat": "chat-beta-2" },
+                    { "chat": "no-such-chat" },
+                ]}),
+            )
+            .await
+            .unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(out["chats"][0]["paths"], json!(["shell.rs"]));
+        assert!(
+            out["chats"][1]["error"]
+                .as_str()
+                .unwrap()
+                .contains("another device")
+        );
+        assert!(out["chats"][2]["error"].is_string());
+        assert_eq!(out["pushFreely"], json!(["chat-alpha-1"]));
+        assert!(
+            tools
+                .call("changed_paths", json!({ "chats": [] }))
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]

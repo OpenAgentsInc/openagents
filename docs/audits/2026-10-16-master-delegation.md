@@ -555,6 +555,7 @@ These add to AGENTS.md and the brief.
 - **Test accounts only.** Use `~/work/.secrets/openagents-test-account.env` or the per-issue test accounts named in the handoffs. Set `OPENAGENTS_TEST_RUN=1`. Until #11935 lands, unset any saved login in a scratch HOME before every CLI check, because a non-login `OPENAGENTS_TOKEN` silently falls back to it.
 - **No owner-machine tests.** Scratch hosts get a temporary HOME, state, root, and tasks.
 - **Label machines** you create with `python3 scripts/dev/agent-run.py labels`, and delete them before you close.
+- **Push by file area.** Serialize pushes only between chats whose changed paths overlap (the app's `changed_paths` tool computes this against `origin/main`). Every other chat pushes as soon as its own tests pass; don't hold it behind another chat's rebase.
 - **Patches in comments aren't proof.** A handoff's check counts apply to the exact commit it names. Rerun on your rebased source before you claim a pass.
 
 ## Owner decisions (answered 2026-10-16)

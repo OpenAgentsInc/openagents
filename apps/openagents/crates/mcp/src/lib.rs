@@ -3,8 +3,9 @@
 //! `openagents mcp` speaks MCP (JSON-RPC 2.0, newline-delimited) on stdin/stdout
 //! and proxies every tool into the engine's localhost IPC — the same
 //! `openagents_rpc` WebSocket the headed app and `openagents sync` dial. Nothing here
-//! talks to the edge or touches the filesystem: the engine stays the single
-//! authority for chats, devices, projects, and the command plane.
+//! talks to the edge or writes to the filesystem: the engine stays the single
+//! authority for chats, devices, projects, and the command plane. The one
+//! local read is `changed_paths`, which runs `git diff` in a chat's folder.
 //!
 //! The server is hand-rolled rather than an SDK: the MCP surface a stdio
 //! tool server needs is five methods (`initialize`, `ping`, `tools/list`,
@@ -16,6 +17,7 @@
 //! environment. Every send from such an agent is then attributed to its
 //! originating chat, and a chat can never message itself.
 
+mod changed_paths;
 mod inbox;
 mod jsonrpc;
 mod tools;
